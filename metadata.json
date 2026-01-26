@@ -1,0 +1,8 @@
+{
+  "name": "Covault V3",
+  "description": "A calm, visual budgeting app for Android and PWA. See what you've spent and what you're about to spend, together or solo.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

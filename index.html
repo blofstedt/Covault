@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Covault v1</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#10B981" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Covault" />
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/10543/10543110.png" />
+    <link rel="manifest" href="manifest.json" />
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
+          },
+        },
+      }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+        -webkit-tap-highlight-color: transparent;
+        overflow-x: hidden;
+        margin: 0;
+        padding: 0;
+      }
+      .budget-bar-dashed {
+        background-image: linear-gradient(to right, currentColor 50%, transparent 50%);
+        background-size: 8px 100%;
+      }
+      /* Hide scrollbar */
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+      /* Pebble-Inspired Motion */
+      @keyframes nestSettle {
+        0% { opacity: 0; transform: translateY(-40px) scale(1.1); }
+        70% { transform: translateY(5px) scale(0.98); }
+        100% { opacity: 1; transform: translateY(0) scale(1); }
+      }
+      .animate-nest { animation: nestSettle 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+
+      @keyframes breathe {
+        0%, 100% { transform: scale(1); opacity: 1; filter: brightness(1); }
+        50% { transform: scale(1.01); opacity: 0.9; filter: brightness(1.1); }
+      }
+      .animate-breathe { animation: breathe 5s ease-in-out infinite; }
+
+      @keyframes fanOut {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .stagger-1 { animation: fanOut 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards; animation-delay: 0.1s; opacity: 0; }
+      .stagger-2 { animation: fanOut 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards; animation-delay: 0.2s; opacity: 0; }
+      .stagger-3 { animation: fanOut 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards; animation-delay: 0.3s; opacity: 0; }
+      .stagger-4 { animation: fanOut 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards; animation-delay: 0.4s; opacity: 0; }
+      .stagger-5 { animation: fanOut 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards; animation-delay: 0.5s; opacity: 0; }
+
+      @keyframes blob {
+        0% { transform: translate(0px, 0px) scale(1); }
+        33% { transform: translate(30px, -50px) scale(1.1); }
+        66% { transform: translate(-20px, 20px) scale(0.9); }
+        100% { transform: translate(0px, 0px) scale(1); }
+      }
+      .animate-blob { animation: blob 10s infinite alternate; }
+
+      /* Liquid Sine Wave Animation */
+      @keyframes waveSlide {
+        from { background-position-y: 0; }
+        to { background-position-y: 120px; }
+      }
+
+      .liquid-edge, .liquid-start {
+        position: absolute;
+        top: 0;
+        width: 16px;
+        height: 100%;
+        background-repeat: repeat-y;
+        pointer-events: none;
+        transition: opacity 0.8s, transform 0.8s;
+        z-index: 5;
+      }
+      
+      .liquid-edge { right: -8px; }
+      .liquid-start { left: -8px; }
+
+      /* Symmetric Wave SVGs (No flat edges) */
+      .liquid-calm {
+        background-image: url("data:image/svg+xml,%3Csvg width='16' height='120' viewBox='0 0 16 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M8 0 C 11 15 11 45 8 60 C 5 75 5 105 8 120 C 5 105 5 75 8 60 C 11 45 11 15 8 0 Z' fill='%2310B981' fill-opacity='0.6'/%3E%3C/svg%3E");
+        animation: waveSlide 12s linear infinite;
+        opacity: 0.7;
+      }
+
+      .liquid-active {
+        background-image: url("data:image/svg+xml,%3Csvg width='16' height='120' viewBox='0 0 16 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M8 0 C 14 15 14 45 8 60 C 2 75 2 105 8 120 C 2 105 2 75 8 60 C 14 45 14 15 8 0 Z' fill='%2310B981' fill-opacity='0.8'/%3E%3C/svg%3E");
+        animation: waveSlide 4s linear infinite;
+        opacity: 1;
+      }
+
+      .liquid-calm-rose {
+        background-image: url("data:image/svg+xml,%3Csvg width='16' height='120' viewBox='0 0 16 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M8 0 C 11 15 11 45 8 60 C 5 75 5 105 8 120 C 5 105 5 75 8 60 C 11 45 11 15 8 0 Z' fill='%23F43F5E' fill-opacity='0.6'/%3E%3C/svg%3E");
+        animation: waveSlide 12s linear infinite;
+        opacity: 0.7;
+      }
+
+      .liquid-active-rose {
+        background-image: url("data:image/svg+xml,%3Csvg width='16' height='120' viewBox='0 0 16 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M8 0 C 14 15 14 45 8 60 C 2 75 2 105 8 120 C 2 105 2 75 8 60 C 14 45 14 15 8 0 Z' fill='%23F43F5E' fill-opacity='0.8'/%3E%3C/svg%3E");
+        animation: waveSlide 4s linear infinite;
+        opacity: 1;
+      }
+
+      /* SVG Icon Animations */
+      @keyframes barGrow {
+        0% { transform: scaleY(0); opacity: 0; }
+        60% { transform: scaleY(1.1); }
+        100% { transform: scaleY(1); opacity: 1; }
+      }
+      .animate-bar { 
+        transform-origin: bottom;
+        animation: barGrow 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; 
+      }
+
+      @keyframes swing {
+        0%, 100% { transform: rotate(-8deg); }
+        50% { transform: rotate(8deg); }
+      }
+      .animate-swing {
+        transform-origin: top center;
+        animation: swing 2s ease-in-out infinite;
+      }
+
+      /* Background Glass */
+      .glass-card {
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+      }
+      .dark .glass-card {
+        background: rgba(15, 23, 42, 0.8);
+      }
+    </style>
+    <script type="importmap">
+    {
+      "imports": {
+        "react/": "https://esm.sh/react@^19.2.3/",
+        "react": "https://esm.sh/react@^19.2.3",
+        "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+        "@google/genai": "https://esm.sh/@google/genai@^1.38.0"
+      }
+    }
+    </script>
+  </head>
+  <body class="bg-slate-50 dark:bg-slate-950">
+    <div id="root"></div>
+  </body>
+</html>
