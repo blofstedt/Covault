@@ -64,38 +64,35 @@ const Auth: React.FC<AuthProps> = ({ onSignIn, onBiometricSuccess }) => {
   };
 
   const handleGoogleLogin = async () => {
-    try {
-      setIsLoggingIn(true);
-      setAuthError(null);
+  try {
+    setIsLoggingIn(true);
+    setAuthError(null);
 
-      // For native apps, use a different redirect approach
-      const redirectUrl = Capacitor.isNativePlatform()
-        ? 'com.covault.app://auth/callback'
-        : window.location.href;
+    const { error } = await supabase.auth.signInWithOAuth(
+      Capacitor.isNativePlatform()
+        ? {
+            provider: 'google',
+            options: {
+              redirectTo: 'com.covault.app://auth/callback',
+              queryParams: {
+                access_type: 'offline',
+                prompt: 'consent',
+              },
+            },
+          }
+        : {
+            provider: 'google',
+          }
+    );
 
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: redirectUrl,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
-        }
-      });
+    if (error) throw error;
 
-      if (error) throw error;
-
-      // After successful login, show biometric setup prompt if available
-      if (Capacitor.isNativePlatform() && biometricStatus?.isAvailable && !hasBiometricSetupBeenShown()) {
-        setShowBiometricSetup(true);
-      }
-    } catch (err: any) {
-      console.error("Supabase Auth Error Detail:", err);
-      setAuthError(err.message || "An unexpected error occurred during sign in.");
-      setIsLoggingIn(false);
-    }
-  };
+  } catch (err: any) {
+    console.error("Supabase Auth Error Detail:", err);
+    setAuthError(err.message || "An unexpected error occurred during sign in.");
+    setIsLoggingIn(false);
+  }
+};
 
   const handleEnableBiometric = () => {
     setBiometricEnabled(true);
