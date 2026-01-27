@@ -128,7 +128,12 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen w-full bg-slate-50 dark:bg-slate-950 overflow-hidden relative flex flex-col transition-colors duration-300">
-      {authState === 'unauthenticated' && <Auth onSignIn={() => {}} />}
+      {authState === 'unauthenticated' && (
+        <Auth
+          onSignIn={() => setAuthState('authenticated')}
+          onBiometricSuccess={() => setAuthState('authenticated')}
+        />
+      )}
 
       {authState === 'onboarding' && (
         <Onboarding onComplete={handleOnboardingComplete} />

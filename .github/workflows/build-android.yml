@@ -1,0 +1,94 @@
+name: Build Android App
+
+on:
+  push:
+    branches: [ main, develop, claude/* ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm install --legacy-peer-deps
+
+    - name: Build web app
+      run: npm run build
+      env:
+        VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+        VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+
+    - name: Install Capacitor CLI
+      run: npm install -g @capacitor/cli
+
+    - name: Setup Capacitor and Android
+      run: |
+        rm -rf android
+        npx cap add android
+        npx cap sync android
+
+    - name: Copy custom Android files
+      run: |
+        # Copy AndroidManifest.xml
+        cp android-custom/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
+
+        # Create Java source directory
+        mkdir -p android/app/src/main/java/com/covault/app
+
+        # Copy NotificationListener and BootReceiver
+        cp android-custom/NotificationListener.java android/app/src/main/java/com/covault/app/NotificationListener.java
+        cp android-custom/BootReceiver.java android/app/src/main/java/com/covault/app/BootReceiver.java
+
+        # Copy icon assets if they exist
+        for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+          if [ -d "android-custom/res/mipmap-$density" ] && [ "$(ls -A android-custom/res/mipmap-$density 2>/dev/null)" ]; then
+            cp -r android-custom/res/mipmap-$density/* android/app/src/main/res/mipmap-$density/ 2>/dev/null || true
+          fi
+        done
+
+    - name: Add biometric auth dependency to Android
+      run: |
+        # Add androidx.biometric dependency to app/build.gradle
+        cd android/app
+        sed -i '/dependencies {/a\    implementation "androidx.biometric:biometric:1.1.0"' build.gradle
+
+    - name: Build Android APK (Debug)
+      run: |
+        cd android
+        chmod +x ./gradlew
+        ./gradlew assembleDebug
+
+    - name: Rename APK with timestamp
+      run: |
+        TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+        cp android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/Covault-${TIMESTAMP}.apk
+        echo "APK_NAME=Covault-${TIMESTAMP}.apk" >> $GITHUB_ENV
+
+    - name: Upload APK as Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.APK_NAME }}
+        path: android/app/build/outputs/apk/debug/Covault-*.apk
+        retention-days: 14
+        compression-level: 0
