@@ -11,38 +11,30 @@ export enum TransactionLabel {
   EDITED = 'Auto-Added + Edited'
 }
 
-export interface SubCategory {
-  id: string;
-  name: string;
-  allocatedAmount: number;
-}
-
 export interface BudgetCategory {
   id: string;
   name: string;
   totalLimit: number;
-  subCategories: SubCategory[];
 }
 
 export interface TransactionSplit {
-  budgetId: string;
-  subCategoryId?: string;
+  budget_id: string;
   amount: number;
 }
 
 export interface Transaction {
   id: string;
+  user_id: string;
   vendor: string;
   amount: number;
-  date: string;
-  budgetId: string;
-  subCategoryId?: string;
+  date: string; 
+  budget_id: string;
   recurrence: Recurrence;
   label: TransactionLabel;
-  userId: string;
-  userName: string;
-  isProjected?: boolean;
+  is_projected: boolean;
   splits?: TransactionSplit[];
+  created_at?: string;
+  userName: string; 
 }
 
 export interface User {
@@ -63,8 +55,10 @@ export interface AppState {
   settings: {
     rolloverEnabled: boolean;
     rolloverOverspend: boolean;
-    useLeisureAsBuffer: boolean; // Updated from negativeBalanceBehavior
+    useLeisureAsBuffer: boolean;
     showSavingsInsight: boolean;
     theme: 'light' | 'dark';
+    monthlyIncome: number;
+    hasSeenTutorial: boolean;
   };
 }

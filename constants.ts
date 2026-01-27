@@ -2,26 +2,18 @@
 import { BudgetCategory } from './types';
 
 export const SYSTEM_CATEGORIES: BudgetCategory[] = [
-  { id: '1', name: 'Housing', totalLimit: 1500, subCategories: [] },
-  { id: '2', name: 'Groceries', totalLimit: 600, subCategories: [] },
-  { id: '3', name: 'Transport', totalLimit: 300, subCategories: [] },
-  { id: '4', name: 'Utilities', totalLimit: 150, subCategories: [] },
-  { 
-    id: '5', 
-    name: 'Leisure', 
-    totalLimit: 400, 
-    subCategories: [
-      { id: 'sub_dining', name: 'Dining', allocatedAmount: 200 },
-      { id: 'sub_events', name: 'Events', allocatedAmount: 100 }
-    ] 
-  },
-  { id: '6', name: 'Other', totalLimit: 100, subCategories: [] },
+  { id: '11111111-1111-1111-1111-111111111111', name: 'Housing', totalLimit: 1500 },
+  { id: '22222222-2222-2222-2222-222222222222', name: 'Groceries', totalLimit: 600 },
+  { id: '33333333-3333-3333-3333-333333333333', name: 'Transport', totalLimit: 300 },
+  { id: '44444444-4444-4444-4444-444444444444', name: 'Utilities', totalLimit: 150 },
+  { id: '55555555-5555-5555-5555-555555555555', name: 'Leisure', totalLimit: 400 },
+  { id: '66666666-6666-6666-6666-666666666666', name: 'Other', totalLimit: 100 },
 ];
 
 export const APP_THEME = {
-  primary: '#10B981', // Emerald 500
-  secondary: '#3B82F6', // Blue 500
-  background: '#F8FAFC', // Slate 50
-  text: '#1E293B', // Slate 800
-  danger: '#EF4444', // Red 500
+  primary: '#10B981', 
+  secondary: '#3B82F6',
+  background: '#F8FAFC',
+  text: '#1E293B',
+  danger: '#EF4444',
 };
