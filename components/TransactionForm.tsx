@@ -10,6 +10,7 @@ interface TransactionFormProps {
   userId: string;
   userName: string;
   initialTransaction?: Transaction;
+  isSharedAccount?: boolean;
 }
 
 const generateUUID = () => {
@@ -20,13 +21,14 @@ const generateUUID = () => {
   });
 };
 
-const TransactionForm: React.FC<TransactionFormProps> = ({ 
-  onClose, 
-  onSave, 
-  budgets, 
-  userId, 
-  userName, 
-  initialTransaction 
+const TransactionForm: React.FC<TransactionFormProps> = ({
+  onClose,
+  onSave,
+  budgets,
+  userId,
+  userName,
+  initialTransaction,
+  isSharedAccount = false
 }) => {
   const [vendor, setVendor] = useState(initialTransaction?.vendor || '');
   const [amountStr, setAmountStr] = useState(initialTransaction?.amount.toString() || '');
@@ -232,9 +234,16 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-xl animate-in fade-in duration-300">
       <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-[3rem] p-8 space-y-6 shadow-2xl animate-in zoom-in-95 duration-300 border border-slate-100 dark:border-slate-800/60 max-h-[90vh] overflow-y-auto no-scrollbar">
         <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">
-            {initialTransaction ? 'Edit Entry' : 'New Entry'}
-          </h2>
+          <div className="flex flex-col">
+            <h2 className="text-2xl font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">
+              {initialTransaction ? 'Edit Entry' : 'New Entry'}
+            </h2>
+            {isSharedAccount && (
+              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mt-1">
+                Recording as {userName}
+              </span>
+            )}
+          </div>
           <button onClick={onClose} className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-full transition-transform active:scale-90">
             <svg className="w-6 h-6 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />

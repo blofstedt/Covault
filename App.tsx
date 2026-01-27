@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { User, BudgetCategory, Transaction, Recurrence, TransactionLabel, AppState } from './types';
+import { User, BudgetCategory, Transaction, AppState } from './types';
 import { SYSTEM_CATEGORIES } from './constants';
 import Onboarding from './components/Onboarding';
 import Dashboard from './components/Dashboard';
@@ -13,14 +13,12 @@ const App: React.FC = () => {
     user: null,
     budgets: SYSTEM_CATEGORIES,
     transactions: [],
-    currentMode: 'Mine',
     settings: {
       rolloverEnabled: true,
       rolloverOverspend: false,
       useLeisureAsBuffer: true,
       showSavingsInsight: true,
       theme: 'light',
-      monthlyIncome: 5000,
       hasSeenTutorial: false,
     }
   });
@@ -34,9 +32,9 @@ const App: React.FC = () => {
           id: session.user.id,
           name: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'User',
           email: session.user.email || '',
-          isLinked: false,
-          bankAccountMode: 'separate',
+          hasJointAccounts: false,
           budgetingSolo: true,
+          monthlyIncome: 5000,
         };
         setAppState(prev => ({ ...prev, user: mappedUser }));
         // Logic: if they have a session, we assume they passed onboarding or should be authenticated.
@@ -54,9 +52,9 @@ const App: React.FC = () => {
           id: session.user.id,
           name: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'User',
           email: session.user.email || '',
-          isLinked: false,
-          bankAccountMode: 'separate',
+          hasJointAccounts: false,
           budgetingSolo: true,
+          monthlyIncome: 5000,
         };
         setAppState(prev => ({ ...prev, user: mappedUser }));
         // Only trigger onboarding if we were just unauthenticated
@@ -79,18 +77,15 @@ const App: React.FC = () => {
     }
   }, [appState.settings.theme]);
 
-  const handleOnboardingComplete = (isSolo: boolean, bankMode: 'shared' | 'separate', budgets: BudgetCategory[], partnerEmail?: string) => {
+  const handleOnboardingComplete = (isSolo: boolean, budgets: BudgetCategory[], partnerEmail?: string) => {
     setAppState(prev => ({
       ...prev,
       budgets,
-      user: prev.user ? { 
-        ...prev.user, 
-        budgetingSolo: isSolo, 
-        bankAccountMode: bankMode,
-        isLinked: !isSolo,
-        linkedUserEmail: partnerEmail
-      } : null,
-      currentMode: isSolo ? 'Mine' : 'Ours'
+      user: prev.user ? {
+        ...prev.user,
+        budgetingSolo: isSolo,
+        partnerEmail: partnerEmail
+      } : null
     }));
     setAuthState('authenticated');
   };
@@ -140,7 +135,7 @@ const App: React.FC = () => {
       )}
 
       {authState === 'authenticated' && (
-        <Dashboard 
+        <Dashboard
           state={appState}
           setState={setAppState}
           onSignOut={handleSignOut}

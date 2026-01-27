@@ -19,16 +19,10 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
   const steps = [
     {
       title: "The Heart of Your Vault",
-      content: "This header displays your real-time remaining balance. Covault calculates this by subtracting your spent and projected costs from your Total Monthly Income.",
+      content: isShared
+        ? "This header displays your combined remaining balance. Income from both partners is combined, and all spending is tracked together."
+        : "This header displays your real-time remaining balance. Covault calculates this by subtracting your spent and projected costs from your Monthly Income.",
       target: "balance-header",
-    },
-    {
-      title: "Switch Perspectives",
-      content: isShared 
-        ? "You're in a Shared Vault. Swipe left or right to instantly switch views between your personal ('Mine') and shared ('Ours') perspective."
-        : "If you link a partner later, you can swipe left or right like this to toggle between your personal view and your shared budget.",
-      target: "balance-header",
-      showSwipe: true
     },
     {
       title: "Simplified Budgeting",
@@ -37,7 +31,9 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
     },
     {
       title: "Record Spending",
-      content: "Tap this button to manually record a transaction. You can even split a single expense across two different budget categories.",
+      content: isShared
+        ? "Tap this button to manually record a transaction. Your name will be attached to show who recorded it. You can even split a single expense across two categories."
+        : "Tap this button to manually record a transaction. You can even split a single expense across two different budget categories.",
       target: "add-transaction-button",
     },
     {
@@ -52,7 +48,9 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
     },
     {
       title: "Your Cash Flow",
-      content: "First, set your Total Monthly Income. This is the baseline from which all your remaining balances are calculated.",
+      content: isShared
+        ? "Set your Monthly Income contribution. Your partner's income will be combined with yours automatically."
+        : "First, set your Total Monthly Income. This is the baseline from which all your remaining balances are calculated.",
       target: "settings-income-container",
     },
     {
@@ -72,7 +70,9 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
     },
     {
       title: "Vault Sharing",
-      content: "Build a future together. Invite a partner to see and manage your shared vaults while still keeping your personal balance private.",
+      content: isShared
+        ? "You're already sharing your vault with a partner. You can disconnect here if needed."
+        : "Build a future together. Invite a partner to see and manage your combined budget.",
       target: "settings-sharing-container",
     },
     {
@@ -104,7 +104,7 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
     const el = document.getElementById(steps[step].target);
     if (el) {
       const rect = el.getBoundingClientRect();
-      
+
       // Auto-scroll logic: if this is a new step, bring the target into view
       if (lastScrolledStep.current !== step) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -112,10 +112,10 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
       }
 
       setTargetRect(prev => {
-        if (!prev || 
-            prev.top !== rect.top || 
-            prev.left !== rect.left || 
-            prev.width !== rect.width || 
+        if (!prev ||
+            prev.top !== rect.top ||
+            prev.left !== rect.left ||
+            prev.width !== rect.width ||
             prev.height !== rect.height) {
           return rect;
         }
@@ -159,13 +159,13 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
             </p>
           </div>
           <div className="flex flex-col space-y-3">
-            <button 
+            <button
               onClick={onComplete}
               className="w-full py-5 bg-rose-500 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-lg shadow-rose-500/20 active:scale-95 transition-all"
             >
               Skip Tutorial
             </button>
-            <button 
+            <button
               onClick={() => setShowSkipConfirm(false)}
               className="w-full py-5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-2xl font-black text-xs uppercase tracking-[0.2em] active:scale-95 transition-all"
             >
@@ -212,29 +212,6 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
     badgePos.left = '-10px';
   }
 
-  // Swipe animation positioning relative to tooltip
-  const swipeContainerStyle: React.CSSProperties = {
-    position: 'absolute',
-    left: '50%',
-    transform: 'translateX(-50%)',
-    width: '100%',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    transition: 'all 0.5s ease-out',
-    zIndex: 260 // Ensure it's above the spotlight shadow
-  };
-
-  if (targetRect) {
-    if (tooltipOnBottom) {
-       swipeContainerStyle.top = targetRect.bottom + 40 + tooltipHeight + 24;
-    } else {
-       swipeContainerStyle.top = targetRect.bottom + 60;
-    }
-  } else {
-     swipeContainerStyle.bottom = '15%';
-  }
-
   return (
     <div className="fixed inset-0 z-[250] pointer-events-none overflow-hidden">
       {/* Dimmer Overlay - Simple fade-in background */}
@@ -242,7 +219,7 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
 
       {/* Spotlight Element - Uses massive shadow to create rounded cutout effect */}
       {targetRect && (
-        <div 
+        <div
           className="absolute rounded-[2.5rem] border-2 border-emerald-500 transition-all duration-300 ease-out pointer-events-none bg-emerald-500/10"
           style={{
             left: targetRect.left - 12,
@@ -253,7 +230,7 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
           }}
         >
            {/* Step Badge */}
-           <div 
+           <div
             className="absolute bg-emerald-500 rounded-full flex items-center justify-center shadow-2xl ring-2 ring-white dark:ring-slate-900 z-50 transition-all duration-500"
             style={{
               width: '28px',
@@ -266,27 +243,8 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
         </div>
       )}
 
-      {/* Swipe Indicator Animation - Rendered AFTER spotlight for top-layer visibility */}
-      {steps[step].showSwipe && (
-        <div style={swipeContainerStyle}>
-          <div className="relative w-72 h-14 bg-white/90 backdrop-blur-md rounded-full border-2 border-white overflow-hidden flex items-center justify-center shadow-[0_0_30px_rgba(255,255,255,0.4)]">
-             <div className="absolute top-1/2 left-0 w-10 h-10 -translate-y-1/2 flex items-center justify-center animate-swipe-demo-icon z-20">
-                <div className="w-5 h-5 bg-white rounded-full shadow-[0_0_20px_rgba(52,211,153,1)] border-2 border-emerald-400" />
-             </div>
-             <div className="flex space-x-3 opacity-20">
-                {[...Array(14)].map((_, i) => (
-                  <div key={i} className="w-1.5 h-1.5 bg-emerald-300 rounded-full" />
-                ))}
-             </div>
-          </div>
-          <div className="mt-4 px-6 py-2 bg-white rounded-full shadow-lg border-2 border-emerald-500">
-            <span className="text-[11px] font-black text-emerald-600 uppercase tracking-[0.4em]">Switch Perspective</span>
-          </div>
-        </div>
-      )}
-      
       {/* Tooltip Card */}
-      <div 
+      <div
         ref={tooltipRef}
         className="pointer-events-auto"
         style={tooltipStyle}
@@ -303,13 +261,13 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
           </div>
 
           <div className="flex space-x-3">
-            <button 
+            <button
               onClick={handleSkip}
               className="flex-1 py-4 bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest active:scale-95 transition-all"
             >
               Skip
             </button>
-            <button 
+            <button
               onClick={handleNext}
               className="flex-[2] py-4 bg-emerald-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-emerald-600/20 active:scale-95 transition-all"
             >
@@ -319,25 +277,14 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
 
           <div className="flex justify-center space-x-2">
             {steps.map((_, i) => (
-              <div 
-                key={i} 
-                className={`h-1.5 rounded-full transition-all duration-500 ${i === step ? 'w-6 bg-emerald-600' : 'w-1.5 bg-slate-200 dark:bg-slate-800'}`} 
+              <div
+                key={i}
+                className={`h-1.5 rounded-full transition-all duration-500 ${i === step ? 'w-6 bg-emerald-600' : 'w-1.5 bg-slate-200 dark:bg-slate-800'}`}
               />
             ))}
           </div>
         </div>
       </div>
-      <style>{`
-        @keyframes swipe-demo-icon {
-          0% { left: 10%; opacity: 0; transform: translateY(-50%); }
-          20% { opacity: 1; }
-          80% { opacity: 1; }
-          100% { left: 80%; opacity: 0; transform: translateY(-50%); }
-        }
-        .animate-swipe-demo-icon {
-          animation: swipe-demo-icon 2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
-        }
-      `}</style>
     </div>
   );
 };

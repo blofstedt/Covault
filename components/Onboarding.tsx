@@ -3,13 +3,11 @@ import { BudgetCategory } from '../types';
 import { SYSTEM_CATEGORIES } from '../constants';
 
 interface OnboardingProps {
-  onComplete: (isSolo: boolean, bankMode: 'shared' | 'separate', budgets: BudgetCategory[], partnerEmail?: string) => void;
+  onComplete: (isSolo: boolean, budgets: BudgetCategory[], partnerEmail?: string) => void;
 }
 
 const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
   const [step, setStep] = useState(0);
-  const [isSolo, setIsSolo] = useState<boolean | null>(null);
-  const [partnerExists, setPartnerExists] = useState<boolean | null>(null);
   const [partnerEmail, setPartnerEmail] = useState('');
 
   const steps = [
@@ -52,8 +50,12 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
     setStep(step + 1);
   };
 
-  const handleFinish = () => {
-    onComplete(isSolo === true, 'separate', SYSTEM_CATEGORIES, partnerEmail || undefined);
+  const handleFinishSolo = () => {
+    onComplete(true, SYSTEM_CATEGORIES);
+  };
+
+  const handleFinishCouples = () => {
+    onComplete(false, SYSTEM_CATEGORIES, partnerEmail || undefined);
   };
 
   const StepWrapper = ({ children, className = "" }: { children?: React.ReactNode, className?: string }) => (
@@ -62,7 +64,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
     </div>
   );
 
-  // STEP: WHO IS THIS FOR (Step 2)
+  // STEP: WHO IS THIS FOR (after intro steps)
   if (step === steps.length) {
     return (
       <StepWrapper className="justify-center text-center space-y-12">
@@ -70,11 +72,11 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
           <h2 className="text-4xl font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">Who is this for?</h2>
           <p className="text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest text-xs">Clarity for yourself or confidence together.</p>
         </div>
-        
+
         <div className="space-y-6">
-          <button 
+          <button
             type="button"
-            onClick={() => { setIsSolo(true); onComplete(true, 'separate', SYSTEM_CATEGORIES); }}
+            onClick={handleFinishSolo}
             className="w-full p-8 rounded-[3rem] bg-white dark:bg-slate-900 border-2 border-transparent hover:border-emerald-500 transition-all active:scale-95 flex items-center space-x-6 text-left shadow-2xl shadow-slate-200/20 dark:shadow-none"
           >
             <div className="w-16 h-16 bg-slate-50 dark:bg-slate-800 rounded-2xl flex items-center justify-center shadow-sm">
@@ -83,14 +85,14 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
               </svg>
             </div>
             <div className="flex-1">
-              <div className="font-black text-xl text-slate-500 dark:text-slate-100 mb-1 uppercase tracking-tight">Just Mine</div>
-              <div className="text-xs text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest">Focused personal clarity.</div>
+              <div className="font-black text-xl text-slate-500 dark:text-slate-100 mb-1 uppercase tracking-tight">Just Me</div>
+              <div className="text-xs text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest">Personal budget tracking.</div>
             </div>
           </button>
-          
-          <button 
+
+          <button
             type="button"
-            onClick={() => { setIsSolo(false); setStep(step + 1); }}
+            onClick={() => setStep(step + 1)}
             className="w-full p-8 rounded-[3rem] bg-white dark:bg-slate-900 border-2 border-transparent hover:border-emerald-500 transition-all active:scale-95 flex items-center space-x-6 text-left shadow-2xl shadow-slate-200/20 dark:shadow-none"
           >
             <div className="w-16 h-16 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl flex items-center justify-center shadow-sm">
@@ -99,8 +101,8 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
               </svg>
             </div>
             <div className="flex-1">
-              <div className="font-black text-xl text-slate-500 dark:text-slate-100 mb-1 uppercase tracking-tight">Ours Together</div>
-              <div className="text-xs text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest">Build a future together.</div>
+              <div className="font-black text-xl text-slate-500 dark:text-slate-100 mb-1 uppercase tracking-tight">Couples</div>
+              <div className="text-xs text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest">Combined budgeting together.</div>
             </div>
           </button>
         </div>
@@ -108,76 +110,20 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
     );
   }
 
-  // STEP: PARTNER STATUS (Step 3)
-  if (step === steps.length + 1 && isSolo === false) {
+  // STEP: PARTNER EMAIL (for couples)
+  if (step === steps.length + 1) {
     return (
       <StepWrapper className="justify-center text-center space-y-12">
         <div className="space-y-4 animate-nest">
-          <h2 className="text-4xl font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">Partner Status</h2>
-          <p className="text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest text-xs">Is your partner already on Covault?</p>
-        </div>
-        
-        <div className="space-y-6">
-          <button 
-            type="button"
-            onClick={() => { setPartnerExists(true); setStep(step + 1); }}
-            className={`w-full p-8 rounded-[3rem] bg-white dark:bg-slate-900 border-2 border-transparent hover:border-emerald-500 transition-all active:scale-95 shadow-2xl shadow-slate-200/20 dark:shadow-none flex items-center space-x-6 text-left`}
-          >
-             <div className="w-16 h-16 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl flex items-center justify-center shadow-sm">
-                <svg className="w-8 h-8 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
-                </svg>
-             </div>
-             <div className="flex-1">
-                <div className="font-black text-xl text-slate-500 dark:text-slate-100 mb-1 uppercase tracking-tight">Yes, we're ready</div>
-                <div className="text-xs text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest">Connect our existing vaults.</div>
-             </div>
-          </button>
-          
-          <button 
-            type="button"
-            onClick={() => { setPartnerExists(false); setStep(step + 1); }}
-            className={`w-full p-8 rounded-[3rem] bg-white dark:bg-slate-900 border-2 border-transparent hover:border-emerald-500 transition-all active:scale-95 shadow-2xl shadow-slate-200/20 dark:shadow-none flex items-center space-x-6 text-left`}
-          >
-             <div className="w-16 h-16 bg-slate-50 dark:bg-slate-800 rounded-2xl flex items-center justify-center shadow-sm">
-                <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-             </div>
-             <div className="flex-1">
-                <div className="font-black text-xl text-slate-500 dark:text-slate-100 mb-1 uppercase tracking-tight">Not yet</div>
-                <div className="text-xs text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest">Send them an invite code.</div>
-             </div>
-          </button>
-        </div>
-
-        <button 
-          type="button"
-          onClick={handleFinish}
-          className="text-slate-400 dark:text-slate-600 font-black text-[10px] uppercase tracking-[0.3em] hover:text-emerald-500 transition-colors"
-        >
-          Skip for now
-        </button>
-      </StepWrapper>
-    );
-  }
-
-  // STEP: PARTNER EMAIL (Step 4)
-  if (step === steps.length + 2 && isSolo === false) {
-    return (
-      <StepWrapper className="justify-center text-center space-y-12">
-        <div className="space-y-4 animate-nest">
-          <h2 className="text-4xl font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">
-            {partnerExists ? 'Link Vault' : 'Invite Partner'}
-          </h2>
-          <p className="text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest text-xs">
-            {partnerExists ? "What is your partner's email?" : "Where should we send the invite?"}
-          </p>
+          <h2 className="text-4xl font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">Invite Partner</h2>
+          <p className="text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest text-xs">Enter your partner's email to send an invite.</p>
         </div>
 
         <div className="space-y-8">
            <div className="relative flex flex-col items-center">
-             <input 
+             <input
               autoFocus
-              type="email" 
+              type="email"
               placeholder="partner@example.com"
               value={partnerEmail}
               onChange={e => setPartnerEmail(e.target.value)}
@@ -185,16 +131,23 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
             />
            </div>
 
-           <button 
+           <button
               disabled={!partnerEmail.includes('@')}
-              onClick={handleFinish}
+              onClick={handleFinishCouples}
               className="w-full py-6 bg-emerald-600 text-white rounded-[2rem] font-black text-lg shadow-2xl shadow-emerald-500/20 active:scale-95 disabled:opacity-30 transition-all uppercase tracking-widest"
             >
-              {partnerExists ? 'Send Link Request' : 'Send App Invite'}
+              Send Invite
             </button>
         </div>
 
-        <button 
+        <button
+          onClick={handleFinishCouples}
+          className="text-slate-400 dark:text-slate-600 font-black text-[10px] uppercase tracking-[0.3em] hover:text-emerald-500 transition-colors"
+        >
+          Skip for now
+        </button>
+
+        <button
           onClick={() => setStep(step - 1)}
           className="text-slate-400 dark:text-slate-600 font-black text-[10px] uppercase tracking-[0.3em]"
         >
@@ -217,14 +170,14 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
           <p className="text-slate-400 dark:text-slate-500 font-bold text-sm uppercase tracking-widest leading-relaxed">{steps[step].content}</p>
         </div>
       </div>
-      
+
       <div className="flex items-center justify-between mt-auto pt-8">
         <div className="flex space-x-4">
           {steps.map((_, i) => (
             <div key={i} className={`h-2 rounded-full transition-all duration-700 ${i === step ? 'w-10 bg-emerald-600' : 'w-2 bg-slate-200 dark:bg-slate-800'}`} />
           ))}
         </div>
-        <button 
+        <button
           type="button"
           onClick={handleNextIntro}
           className="w-20 h-20 bg-emerald-600 rounded-[2.5rem] flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"

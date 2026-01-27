@@ -41,24 +41,24 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  linkedUserEmail?: string;
-  isLinked: boolean;
-  bankAccountMode: 'shared' | 'separate';
+  partnerId?: string;
+  partnerEmail?: string;
+  partnerName?: string;
+  hasJointAccounts: boolean;
   budgetingSolo: boolean;
+  monthlyIncome: number;
 }
 
 export interface AppState {
   user: User | null;
   budgets: BudgetCategory[];
   transactions: Transaction[];
-  currentMode: 'Mine' | 'Ours';
   settings: {
     rolloverEnabled: boolean;
     rolloverOverspend: boolean;
     useLeisureAsBuffer: boolean;
     showSavingsInsight: boolean;
     theme: 'light' | 'dark';
-    monthlyIncome: number;
     hasSeenTutorial: boolean;
   };
 }

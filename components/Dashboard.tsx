@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { AppState, Transaction, BudgetCategory } from '../types';
 import BudgetSection from './BudgetSection';
 import TransactionForm from './TransactionForm';
@@ -18,7 +18,7 @@ interface DashboardProps {
 export const getBudgetIcon = (name: string) => {
   const lower = name.toLowerCase();
   const iconProps = { className: "w-5 h-5", fill: "none", stroke: "currentColor", strokeWidth: "2.5", strokeLinecap: "round", strokeLinejoin: "round" } as const;
-  
+
   if (lower.includes('housing')) return <svg {...iconProps} viewBox="0 0 24 24"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>;
   if (lower.includes('groceries')) return <svg {...iconProps} viewBox="0 0 24 24"><path d="M2.27 21.7s9.87-3.5 12.73-6.36a4.5 4.5 0 0 0-6.36-6.37L2.27 21.7z"/><path d="M18.4 5.6 19.1 3.5"/><path d="M17 10.4 18.4 11.8"/><path d="M13.6 17 15 18.4"/><path d="M18.4 5.6 20.5 4.9"/><path d="M18.4 5.6 19.8 7"/></svg>;
   if (lower.includes('transport')) return <svg {...iconProps} viewBox="0 0 24 24"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 13.1V16c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>;
@@ -38,9 +38,6 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
   const [partnerLinkEmail, setPartnerLinkEmail] = useState('');
   const [showTutorial, setShowTutorial] = useState(!state.settings.hasSeenTutorial);
   const [tutorialStep, setTutorialStep] = useState(0);
-  
-  const [swipeDir, setSwipeDir] = useState<'left' | 'right' | null>(null);
-  const touchStartRef = useRef<number | null>(null);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const settingsScrollRef = useRef<HTMLDivElement>(null);
@@ -51,71 +48,32 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
     return () => { document.body.style.overflow = ''; };
   }, [showSettings, isAddingTx, editingTx, deletingTxId, showTutorial]);
 
-  // Demo flip logic during tutorial step 2 (index 1)
-  useEffect(() => {
-    if (showTutorial && tutorialStep === 1) {
-      const interval = setInterval(() => {
-        const nextMode = state.currentMode === 'Mine' ? 'Ours' : 'Mine';
-        setSwipeDir(nextMode === 'Ours' ? 'left' : 'right');
-        setState(prev => ({
-          ...prev,
-          currentMode: nextMode
-        }));
-        setTimeout(() => setSwipeDir(null), 650);
-      }, 3500);
-      return () => clearInterval(interval);
-    }
-  }, [showTutorial, tutorialStep, state.currentMode]);
-
   const isSharedAccount = !state.user?.budgetingSolo;
-  const currentMode = state.currentMode;
-  const isOursMode = currentMode === 'Ours';
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (!isSharedAccount) return;
-    touchStartRef.current = e.touches[0].clientX;
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (!isSharedAccount || touchStartRef.current === null) return;
-    const touchEnd = e.changedTouches[0].clientX;
-    const diff = touchStartRef.current - touchEnd;
-
-    if (Math.abs(diff) > 50) {
-      const dir = diff > 0 ? 'left' : 'right';
-      setSwipeDir(dir);
-      
-      setState(prev => ({
-        ...prev,
-        currentMode: prev.currentMode === 'Mine' ? 'Ours' : 'Mine'
-      }));
-
-      setTimeout(() => setSwipeDir(null), 650);
-    }
-    touchStartRef.current = null;
-  };
 
   const filteredTransactions = useMemo(() => {
     let list = state.transactions;
-    if (isSharedAccount && currentMode === 'Mine') {
-      list = list.filter(t => t.user_id === state.user?.id);
-    }
     if (searchQuery) {
       list = list.filter(t => t.vendor.toLowerCase().includes(searchQuery.toLowerCase()));
     }
     return list;
-  }, [state.transactions, searchQuery, currentMode, isSharedAccount, state.user?.id]);
+  }, [state.transactions, searchQuery]);
+
+  // Calculate total income (user's income + partner's income for couples)
+  const totalIncome = useMemo(() => {
+    const userIncome = state.user?.monthlyIncome || 0;
+    // TODO: When partner data is fetched, add partner's income here
+    return userIncome;
+  }, [state.user?.monthlyIncome]);
 
   const remainingMoney = useMemo(() => {
-    const monthlyIncome = state.settings.monthlyIncome || 0;
     const totalSpent = filteredTransactions.reduce((acc, tx) => acc + (tx.is_projected ? 0 : tx.amount), 0);
     const totalProjected = filteredTransactions.reduce((acc, tx) => acc + (tx.is_projected ? tx.amount : 0), 0);
-    return monthlyIncome - (totalSpent + totalProjected);
-  }, [state.settings.monthlyIncome, filteredTransactions]);
+    return totalIncome - (totalSpent + totalProjected);
+  }, [totalIncome, filteredTransactions]);
 
   const leisureAdjustments = useMemo(() => {
     if (!state.settings.useLeisureAsBuffer) return 0;
-    
+
     let totalOverspend = 0;
     state.budgets.forEach(b => {
       if (b.name.toLowerCase().includes('leisure')) return;
@@ -149,12 +107,19 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
         if (containerEl) {
           containerEl.scrollTo({ top: 0, behavior: 'smooth' });
         }
-      }, 50); 
+      }, 50);
     }
   };
 
   const updateSettings = (key: keyof AppState['settings'], value: any) => {
     setState(prev => ({ ...prev, settings: { ...prev.settings, [key]: value } }));
+  };
+
+  const updateUserIncome = (income: number) => {
+    setState(prev => ({
+      ...prev,
+      user: prev.user ? { ...prev.user, monthlyIncome: income } : null
+    }));
   };
 
   const handleConnectPartner = () => {
@@ -164,10 +129,8 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
       user: prev.user ? {
         ...prev.user,
         budgetingSolo: false,
-        isLinked: true,
-        linkedUserEmail: partnerLinkEmail
-      } : null,
-      currentMode: 'Ours'
+        partnerEmail: partnerLinkEmail
+      } : null
     }));
     setIsLinkingPartner(false);
     setPartnerLinkEmail('');
@@ -179,10 +142,10 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
       user: prev.user ? {
         ...prev.user,
         budgetingSolo: true,
-        isLinked: false,
-        linkedUserEmail: undefined
-      } : null,
-      currentMode: 'Mine'
+        partnerId: undefined,
+        partnerEmail: undefined,
+        partnerName: undefined
+      } : null
     }));
   };
 
@@ -208,10 +171,8 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
 
   const handleTutorialStepChange = (step: number) => {
     setTutorialStep(step);
-    // Based on the reordered Tutorial.tsx:
-    // Steps 0-5 are Dashboard highlights.
-    // Steps 6-13 are Settings highlights.
-    if (step >= 6 && step <= 13) {
+    // Steps 0-4 are Dashboard highlights, 5-12 are Settings highlights
+    if (step >= 5 && step <= 12) {
       setShowSettings(true);
     } else {
       setShowSettings(false);
@@ -219,30 +180,26 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
   };
 
   return (
-    <div 
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-      className={`flex-1 flex flex-col h-screen relative overflow-hidden transition-colors duration-700 ${isOursMode ? 'bg-emerald-50 dark:bg-slate-950' : 'bg-slate-50 dark:bg-slate-950'}`}
-    >
+    <div className="flex-1 flex flex-col h-screen relative overflow-hidden transition-colors duration-700 bg-slate-50 dark:bg-slate-950">
       {!isFocusMode && (
         <div className="absolute top-0 left-0 right-0 h-[320px] z-0 flex items-center justify-center pointer-events-none overflow-visible transition-opacity duration-700 animate-nest">
-          <div className={`w-80 h-80 rounded-full blur-[90px] animate-blob translate-x-20 -translate-y-16 transition-colors duration-1000 ${isOursMode ? 'bg-emerald-400/20' : 'bg-emerald-400/25 dark:bg-emerald-500/35'}`}></div>
-          <div className={`w-72 h-72 rounded-full blur-[80px] animate-blob animation-delay-4000 -translate-x-24 translate-y-8 transition-colors duration-1000 ${isOursMode ? 'bg-emerald-300/10' : 'bg-green-300/20 dark:bg-green-400/30'}`}></div>
+          <div className="w-80 h-80 rounded-full blur-[90px] animate-blob translate-x-20 -translate-y-16 transition-colors duration-1000 bg-emerald-400/25 dark:bg-emerald-500/35"></div>
+          <div className="w-72 h-72 rounded-full blur-[80px] animate-blob animation-delay-4000 -translate-x-24 translate-y-8 transition-colors duration-1000 bg-green-300/20 dark:bg-green-400/30"></div>
         </div>
       )}
 
       <header className="px-6 pt-6 pb-4 sticky top-0 z-20 transition-colors bg-transparent border-none backdrop-blur-none relative z-10">
         <div className="relative flex items-center justify-end h-10">
           <div className="absolute left-1/2 -translate-x-1/2 flex items-center space-x-2">
-            <div className={`w-7 h-7 rounded flex items-center justify-center shadow-lg transition-colors duration-700 ${isOursMode ? 'bg-emerald-700 shadow-emerald-800/20' : 'bg-emerald-600 shadow-emerald-500/20'}`}>
+            <div className="w-7 h-7 rounded flex items-center justify-center shadow-lg transition-colors duration-700 bg-emerald-600 shadow-emerald-500/20">
               <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="12" cy="12" r="3" />
               </svg>
             </div>
-            <span className={`font-black text-sm tracking-tighter uppercase transition-colors duration-700 ${isOursMode ? 'text-emerald-800 dark:text-emerald-100' : 'text-slate-500 dark:text-slate-50'}`}>Covault</span>
+            <span className="font-black text-sm tracking-tighter uppercase transition-colors duration-700 text-slate-500 dark:text-slate-50">Covault</span>
           </div>
 
-          <button id="settings-button" onClick={() => setShowSettings(true)} className={`p-2.5 transition-colors active:scale-90 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-xl ${isOursMode ? 'text-emerald-600' : 'text-slate-400 hover:text-emerald-600'}`}>
+          <button id="settings-button" onClick={() => setShowSettings(true)} className="p-2.5 transition-colors active:scale-90 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-xl text-slate-400 hover:text-emerald-600">
             <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>
             </svg>
@@ -252,34 +209,34 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
 
       <main className="flex-1 flex flex-col p-4 pb-28 overflow-hidden relative z-10">
         {!isFocusMode && (
-          <div id="balance-header" className={`flex flex-col items-center justify-center py-2 shrink-0 relative ${swipeDir === 'left' ? 'animate-slide-left' : (swipeDir === 'right' ? 'animate-slide-right' : '')}`}>
+          <div id="balance-header" className="flex flex-col items-center justify-center py-2 shrink-0 relative">
             <div className="text-center z-10 animate-nest">
-              <span className={`text-[10px] font-black uppercase tracking-[0.2em] mb-0.5 block transition-colors duration-700 ${isOursMode ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500'}`}>
-                {isOursMode ? 'Shared Multi-Vault Balance' : 'My Personal Balance'}
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] mb-0.5 block transition-colors duration-700 text-slate-400 dark:text-slate-500">
+                {isSharedAccount ? 'Our Remaining Balance' : 'My Remaining Balance'}
               </span>
               <div className="flex items-baseline justify-center space-x-1 transition-colors duration-700">
-                <span className={`text-sm font-bold opacity-30 ${isOursMode ? 'text-emerald-700 dark:text-emerald-200' : 'text-slate-500 dark:text-slate-50'}`}>$</span>
-                <span className={`text-4xl font-black tracking-tighter leading-none transition-colors duration-700 ${remainingMoney < 0 ? 'text-rose-500' : (isOursMode ? 'text-emerald-900 dark:text-emerald-50' : 'text-slate-500 dark:text-slate-50')}`}>
+                <span className="text-sm font-bold opacity-30 text-slate-500 dark:text-slate-50">$</span>
+                <span className={`text-4xl font-black tracking-tighter leading-none transition-colors duration-700 ${remainingMoney < 0 ? 'text-rose-500' : 'text-slate-500 dark:text-slate-50'}`}>
                   {remainingMoney.toLocaleString()}
                 </span>
               </div>
             </div>
 
             <div className="relative mt-2 w-full max-w-[200px] z-10 animate-nest" style={{ animationDelay: '0.1s' }}>
-              <input type="text" placeholder="Find entry..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className={`w-full bg-white/70 dark:bg-slate-900/70 backdrop-blur-md border-2 rounded-2xl py-2.5 px-10 text-[12px] font-bold focus:ring-2 transition-all placeholder-slate-400 shadow-sm text-center ${isOursMode ? 'border-emerald-200 dark:border-emerald-900 focus:ring-emerald-500/20 text-emerald-800 dark:text-emerald-100' : 'border-slate-100 dark:border-slate-800 focus:ring-emerald-500/20 dark:text-slate-100'}`} />
-              <svg className={`w-3.5 h-3.5 absolute left-4 top-1/2 -translate-y-1/2 ${isOursMode ? 'text-emerald-400' : 'text-slate-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+              <input type="text" placeholder="Find entry..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white/70 dark:bg-slate-900/70 backdrop-blur-md border-2 rounded-2xl py-2.5 px-10 text-[12px] font-bold focus:ring-2 transition-all placeholder-slate-400 shadow-sm text-center border-slate-100 dark:border-slate-800 focus:ring-emerald-500/20 dark:text-slate-100" />
+              <svg className="w-3.5 h-3.5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
             </div>
           </div>
         )}
 
-        <div 
-          ref={scrollContainerRef} 
+        <div
+          ref={scrollContainerRef}
           className={`flex-1 flex flex-col ${isFocusMode ? 'overflow-hidden' : (expandedBudgets.size > 0 ? 'overflow-y-auto' : 'overflow-hidden')} mt-3 no-scrollbar scroll-smooth h-full transition-all duration-500 gap-2`}
         >
           {state.budgets
             .filter(budget => !isFocusMode || budget.id === focusedBudgetId)
             .map((budget, index) => {
-              const budgetTxs = filteredTransactions.filter(t => 
+              const budgetTxs = filteredTransactions.filter(t =>
                 t.budget_id === budget.id || (t.splits?.some(s => s.budget_id === budget.id))
               );
               const isExpanded = expandedBudgets.has(budget.id);
@@ -288,45 +245,50 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
                 ? { ...budget, externalDeduction: leisureAdjustments }
                 : budget;
               return (
-                <div 
-                  key={budget.id} 
+                <div
+                  key={budget.id}
                   id={index === 0 ? "first-budget-card" : undefined}
-                  ref={el => { if (el) budgetRefs.current.set(budget.id, el); else budgetRefs.current.delete(budget.id); }} 
-                  className={`transition-all duration-500 ${isExpanded ? 'flex-[100] min-h-[70vh]' : 'flex-1 min-h-0'} flex flex-col ${swipeDir ? (swipeDir === 'left' ? 'animate-slide-left' : 'animate-slide-right') : ''}`}
+                  ref={el => { if (el) budgetRefs.current.set(budget.id, el); else budgetRefs.current.delete(budget.id); }}
+                  className={`transition-all duration-500 ${isExpanded ? 'flex-[100] min-h-[70vh]' : 'flex-1 min-h-0'} flex flex-col`}
                   style={{ animationDelay: `${index * 40}ms` }}
                 >
-                  <BudgetSection 
-                    budget={displayBudget as any} transactions={budgetTxs} isExpanded={isExpanded} onToggle={() => toggleExpand(budget.id)} 
-                    onUpdateBudget={onUpdateBudget} onDeleteRequest={(id) => setDeletingTxId(id)} onEdit={(tx) => setEditingTx(tx)} 
-                    currentUserName={state.user?.name || ''} isSharedView={isSharedAccount} 
+                  <BudgetSection
+                    budget={displayBudget as any}
+                    transactions={budgetTxs}
+                    isExpanded={isExpanded}
+                    onToggle={() => toggleExpand(budget.id)}
+                    onUpdateBudget={onUpdateBudget}
+                    onDeleteRequest={(id) => setDeletingTxId(id)}
+                    onEdit={(tx) => setEditingTx(tx)}
+                    currentUserName={state.user?.name || ''}
+                    isSharedView={isSharedAccount}
                     allBudgets={state.budgets}
-                    mode={currentMode}
                   />
                 </div>
               );
             })
           }
-          
+
           {!isFocusMode && expandedBudgets.size > 0 && <div className="h-[60vh] flex-none pointer-events-none" />}
         </div>
       </main>
 
       <div id="bottom-bar" className="fixed bottom-0 left-0 right-0 z-40 p-4 flex flex-col items-center pointer-events-none pb-safe">
-        <div className={`w-full backdrop-blur-3xl border rounded-[3rem] p-3 pointer-events-auto shadow-2xl animate-nest transition-all duration-700 ${isOursMode ? 'bg-emerald-950/80 border-emerald-900 shadow-emerald-950/40' : 'bg-white/95 dark:bg-slate-900/95 border-slate-100 dark:border-slate-800/60'}`} style={{ animationDelay: '0.4s' }}>
+        <div className="w-full backdrop-blur-3xl border rounded-[3rem] p-3 pointer-events-auto shadow-2xl animate-nest transition-all duration-700 bg-white/95 dark:bg-slate-900/95 border-slate-100 dark:border-slate-800/60" style={{ animationDelay: '0.4s' }}>
           <div className="flex items-center justify-between px-2">
             <div className="flex flex-1 justify-around">
               {firstHalfBudgets.map(b => (
-                <button key={b.id} onClick={() => jumpToBudget(b.id)} className={`p-4 rounded-2xl transition-all duration-300 ${expandedBudgets.has(b.id) ? (isOursMode ? 'bg-emerald-800 shadow-emerald-900/20' : 'bg-emerald-600 shadow-emerald-500/20') + ' text-white shadow-xl scale-110' : 'text-slate-400 dark:text-slate-600'}`}>
+                <button key={b.id} onClick={() => jumpToBudget(b.id)} className={`p-4 rounded-2xl transition-all duration-300 ${expandedBudgets.has(b.id) ? 'bg-emerald-600 shadow-emerald-500/20 text-white shadow-xl scale-110' : 'text-slate-400 dark:text-slate-600'}`}>
                   {getBudgetIcon(b.name)}
                 </button>
               ))}
             </div>
-            <button id="add-transaction-button" onClick={() => setIsAddingTx(true)} className={`mx-4 p-4 text-white rounded-2xl shadow-xl flex items-center justify-center active:scale-95 transition-all shrink-0 scale-110 ${isOursMode ? 'bg-emerald-700 shadow-emerald-950/50' : 'bg-slate-500 dark:bg-emerald-600'}`}>
+            <button id="add-transaction-button" onClick={() => setIsAddingTx(true)} className="mx-4 p-4 text-white rounded-2xl shadow-xl flex items-center justify-center active:scale-95 transition-all shrink-0 scale-110 bg-slate-500 dark:bg-emerald-600">
               <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             </button>
             <div className="flex flex-1 justify-around">
               {secondHalfBudgets.map(b => (
-                <button key={b.id} onClick={() => jumpToBudget(b.id)} className={`p-4 rounded-2xl transition-all duration-300 ${expandedBudgets.has(b.id) ? (isOursMode ? 'bg-emerald-800 shadow-emerald-900/20' : 'bg-emerald-600 shadow-emerald-500/20') + ' text-white shadow-xl scale-110' : 'text-slate-400 dark:text-slate-600'}`}>
+                <button key={b.id} onClick={() => jumpToBudget(b.id)} className={`p-4 rounded-2xl transition-all duration-300 ${expandedBudgets.has(b.id) ? 'bg-emerald-600 shadow-emerald-500/20 text-white shadow-xl scale-110' : 'text-slate-400 dark:text-slate-600'}`}>
                   {getBudgetIcon(b.name)}
                 </button>
               ))}
@@ -340,17 +302,17 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
           <div ref={settingsScrollRef} className="w-full max-sm bg-white dark:bg-slate-900 rounded-[3rem] p-10 space-y-8 shadow-2xl animate-in zoom-in-95 duration-500 max-h-[85vh] overflow-y-auto no-scrollbar border border-slate-100 dark:border-slate-800/60">
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">Vault Settings</h2>
-              <button 
+              <button
                 disabled={showTutorial}
-                onClick={() => { setShowSettings(false); setIsLinkingPartner(false); }} 
+                onClick={() => { setShowSettings(false); setIsLinkingPartner(false); }}
                 className={`p-2.5 bg-slate-100 dark:bg-slate-800 rounded-full transition-transform active:scale-90 ${showTutorial ? 'opacity-20 cursor-not-allowed' : ''}`}
               >
                 <svg className="w-6 h-6 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-            
+
             <div className="space-y-4">
-              <button 
+              <button
                 onClick={() => { setShowSettings(false); setShowTutorial(true); }}
                 className="w-full py-5 bg-emerald-50 dark:bg-emerald-900/20 border-2 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[11px] font-black rounded-2xl hover:bg-emerald-100 transition-colors uppercase tracking-[0.2em] shadow-sm active:scale-95"
               >
@@ -359,15 +321,22 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
 
               <div id="settings-income-container" className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60">
                 <div className="flex flex-col mb-4">
-                  <span className="font-black text-base text-slate-500 dark:text-slate-200 uppercase tracking-tight">My Monthly Income</span>
-                  <p className="text-[11px] text-slate-500 font-medium mt-1">This defines your total cash flow for the month.</p>
+                  <span className="font-black text-base text-slate-500 dark:text-slate-200 uppercase tracking-tight">
+                    {isSharedAccount ? 'My Monthly Income' : 'Monthly Income'}
+                  </span>
+                  <p className="text-[11px] text-slate-500 font-medium mt-1">
+                    {isSharedAccount
+                      ? "Your income contribution. Your partner's income will be added automatically."
+                      : "This defines your total cash flow for the month."
+                    }
+                  </p>
                 </div>
                 <div className="flex items-center space-x-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl px-4 py-3">
                   <span className="text-slate-400 font-black">$</span>
-                  <input 
-                    type="number" 
-                    value={state.settings.monthlyIncome} 
-                    onChange={(e) => updateSettings('monthlyIncome', parseFloat(e.target.value) || 0)}
+                  <input
+                    type="number"
+                    value={state.user?.monthlyIncome || 0}
+                    onChange={(e) => updateUserIncome(parseFloat(e.target.value) || 0)}
                     className="bg-transparent w-full outline-none font-black text-slate-600 dark:text-slate-100"
                   />
                 </div>
@@ -378,8 +347,8 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
                   <span className="font-black text-base text-slate-500 dark:text-slate-200">Dark Interface</span>
                   <span className="text-xs text-slate-500 font-medium">Calm appearance for low light.</span>
                 </div>
-                <button 
-                  onClick={() => updateSettings('theme', state.settings.theme === 'light' ? 'dark' : 'light')} 
+                <button
+                  onClick={() => updateSettings('theme', state.settings.theme === 'light' ? 'dark' : 'light')}
                   className={`w-14 h-8 rounded-full transition-colors relative flex items-center p-1 cursor-pointer ${state.settings.theme === 'dark' ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-700'}`}
                 >
                   <div className={`w-6 h-6 bg-white rounded-full shadow-lg transform transition-transform duration-300 ${state.settings.theme === 'dark' ? 'translate-x-6' : 'translate-x-0'}`} />
@@ -391,8 +360,8 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
                   <span className="font-black text-base text-slate-500 dark:text-slate-200">Budget Rollover</span>
                   <span className="text-xs text-slate-500 font-medium">Carry surplus to next month.</span>
                 </div>
-                <button 
-                  onClick={() => updateSettings('rolloverEnabled', !state.settings.rolloverEnabled)} 
+                <button
+                  onClick={() => updateSettings('rolloverEnabled', !state.settings.rolloverEnabled)}
                   className={`w-14 h-8 rounded-full transition-colors relative flex items-center p-1 cursor-pointer ${state.settings.rolloverEnabled ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-700'}`}
                 >
                   <div className={`w-6 h-6 bg-white rounded-full shadow-lg transform transition-transform duration-300 ${state.settings.rolloverEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
@@ -404,8 +373,8 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
                   <span className="font-black text-base text-slate-500 dark:text-slate-200 uppercase tracking-tight">Discretionary Shield</span>
                   <p className="text-[11px] text-slate-500 font-medium mt-1">If a budget overspends, money from your Leisure vault will be automatically reallocated to cover it.</p>
                 </div>
-                <button 
-                  onClick={() => updateSettings('useLeisureAsBuffer', !state.settings.useLeisureAsBuffer)} 
+                <button
+                  onClick={() => updateSettings('useLeisureAsBuffer', !state.settings.useLeisureAsBuffer)}
                   className={`w-full py-4 text-xs font-black rounded-2xl transition-all border-2 ${state.settings.useLeisureAsBuffer ? 'bg-emerald-500 border-emerald-500 text-white shadow-lg' : 'border-slate-200 dark:border-slate-700 text-slate-400'}`}
                 >
                   {state.settings.useLeisureAsBuffer ? 'SHIELD ACTIVE' : 'SHIELD OFF'}
@@ -415,10 +384,10 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
               <div id="settings-sharing-container" className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60 space-y-4">
                 <div className="flex flex-col">
                   <span className="font-black text-base text-slate-500 dark:text-slate-200 uppercase tracking-tight">Vault Sharing</span>
-                  <p className="text-[11px] text-slate-500 font-medium mt-1">Connect with a partner to view and manage your combined remaining balance.</p>
+                  <p className="text-[11px] text-slate-500 font-medium mt-1">Connect with a partner to view and manage your combined budget.</p>
                 </div>
 
-                {state.user?.isLinked ? (
+                {state.user?.partnerEmail ? (
                   <div className="space-y-4 animate-in fade-in duration-300">
                     <div className="flex items-center p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800">
                       <div className="w-10 h-10 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl flex items-center justify-center mr-4">
@@ -428,10 +397,10 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
                       </div>
                       <div className="flex flex-col">
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Linked With</span>
-                        <span className="text-xs font-bold text-slate-500 dark:text-slate-200 truncate max-w-[160px]">{state.user.linkedUserEmail}</span>
+                        <span className="text-xs font-bold text-slate-500 dark:text-slate-200 truncate max-w-[160px]">{state.user.partnerEmail}</span>
                       </div>
                     </div>
-                    <button 
+                    <button
                       onClick={handleDisconnectPartner}
                       className="w-full py-4 bg-rose-50 dark:bg-rose-900/20 text-rose-500 text-[11px] font-black rounded-2xl hover:bg-rose-100 transition-colors uppercase tracking-widest"
                     >
@@ -442,23 +411,23 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
                   <div className="space-y-4">
                     {isLinkingPartner ? (
                       <div className="space-y-3 animate-in slide-in-from-top-2 duration-300">
-                        <input 
+                        <input
                           autoFocus
-                          type="email" 
+                          type="email"
                           placeholder="Partner's email..."
                           value={partnerLinkEmail}
                           onChange={e => setPartnerLinkEmail(e.target.value)}
                           className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl py-4 px-5 text-sm font-bold text-slate-600 dark:text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
                         />
                         <div className="flex space-x-2">
-                          <button 
+                          <button
                             disabled={!partnerLinkEmail.includes('@')}
                             onClick={handleConnectPartner}
                             className="flex-1 py-4 bg-emerald-600 text-white text-[11px] font-black rounded-2xl shadow-lg shadow-emerald-500/10 active:scale-95 transition-all uppercase tracking-widest disabled:opacity-30"
                           >
                             Send Request
                           </button>
-                          <button 
+                          <button
                             onClick={() => { setIsLinkingPartner(false); setPartnerLinkEmail(''); }}
                             className="px-6 py-4 bg-slate-100 dark:bg-slate-700 text-slate-400 text-[11px] font-black rounded-2xl active:scale-95 transition-all uppercase tracking-widest"
                           >
@@ -467,7 +436,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
                         </div>
                       </div>
                     ) : (
-                      <button 
+                      <button
                         onClick={() => setIsLinkingPartner(true)}
                         className="w-full py-5 bg-white dark:bg-slate-900 border-2 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[11px] font-black rounded-2xl hover:bg-emerald-50 transition-colors uppercase tracking-[0.15em] shadow-sm active:scale-95"
                       >
@@ -485,7 +454,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
                   <div className="h-px flex-1 bg-slate-100 dark:bg-slate-800" />
                 </div>
                 <div className="space-y-3">
-                  <a 
+                  <a
                     id="report-problem-button"
                     href="mailto:itsjustmyemail@gmail.com?subject=Covault: Problem Report"
                     className="flex items-center p-5 bg-slate-50 dark:bg-slate-800/30 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm active:scale-[0.98] transition-all group"
@@ -496,8 +465,8 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
                     <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest whitespace-nowrap">Report a Problem</span>
                     <svg className="w-4 h-4 ml-auto text-slate-300 dark:text-slate-700 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg>
                   </a>
-                  
-                  <a 
+
+                  <a
                     id="request-feature-button"
                     href="mailto:itsjustmyemail@gmail.com?subject=Covault: Feature Request"
                     className="flex items-center p-5 bg-slate-50 dark:bg-slate-800/30 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm active:scale-[0.98] transition-all group"
@@ -511,16 +480,16 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
                 </div>
               </div>
 
-              <button 
+              <button
                 id="sign-out-button"
-                onClick={onSignOut} 
+                onClick={onSignOut}
                 className="w-full py-6 text-rose-500 font-black bg-rose-50 dark:bg-rose-900/20 rounded-3xl active:scale-95 transition-transform uppercase tracking-widest mt-6"
               >
                 Sign Out
               </button>
-              
+
               <div className="text-center pt-4">
-                 <p className="text-[9px] font-bold text-slate-400 dark:text-slate-700 uppercase tracking-[0.1em]">Version 2.0 • Covault encrypted</p>
+                 <p className="text-[9px] font-bold text-slate-400 dark:text-slate-700 uppercase tracking-[0.1em]">Version 3.0 • Covault simplified</p>
               </div>
             </div>
           </div>
@@ -528,11 +497,11 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
       )}
 
       {isAddingTx && (
-        <TransactionForm onClose={() => setIsAddingTx(false)} onSave={onAddTransaction} budgets={state.budgets} userId={state.user?.id || '1'} userName={state.user?.name || 'User'} />
+        <TransactionForm onClose={() => setIsAddingTx(false)} onSave={onAddTransaction} budgets={state.budgets} userId={state.user?.id || '1'} userName={state.user?.name || 'User'} isSharedAccount={isSharedAccount} />
       )}
 
       {editingTx && (
-        <TransactionForm onClose={() => setEditingTx(null)} onSave={handleUpdateTransaction} budgets={state.budgets} userId={state.user?.id || '1'} userName={state.user?.name || 'User'} initialTransaction={editingTx} />
+        <TransactionForm onClose={() => setEditingTx(null)} onSave={handleUpdateTransaction} budgets={state.budgets} userId={state.user?.id || '1'} userName={state.user?.name || 'User'} initialTransaction={editingTx} isSharedAccount={isSharedAccount} />
       )}
 
       {deletingTxId && (
@@ -540,9 +509,9 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
       )}
 
       {showTutorial && (
-        <Tutorial 
-          isShared={isSharedAccount} 
-          onComplete={handleTutorialComplete} 
+        <Tutorial
+          isShared={isSharedAccount}
+          onComplete={handleTutorialComplete}
           onStepChange={handleTutorialStepChange}
         />
       )}
