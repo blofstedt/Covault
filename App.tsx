@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { User, BudgetCategory, Transaction, AppState } from './types';
 import { SYSTEM_CATEGORIES } from './constants';
@@ -47,7 +46,6 @@ const DEFAULT_SETTINGS = {
 const App: React.FC = () => {
   const [authState, setAuthState] = useState<'loading' | 'unauthenticated' | 'onboarding' | 'authenticated'>('loading');
   const [appState, setAppState] = useState<AppState>(() => {
-    // Initialize with saved settings merged with defaults (so new settings get default values)
     const savedSettings = loadSettingsFromStorage();
     return {
       user: null,
@@ -61,7 +59,6 @@ const App: React.FC = () => {
   const isSessionValid = (): boolean => {
     const sessionStart = localStorage.getItem(SESSION_EXPIRY_KEY);
     if (!sessionStart) {
-      // No timestamp yet - this is a valid first-time session, mark it now
       markSessionStart();
       return true;
     }
@@ -73,82 +70,90 @@ const App: React.FC = () => {
     return daysSinceStart < SESSION_DURATION_DAYS;
   };
 
-  // Mark session start time
   const markSessionStart = () => {
     localStorage.setItem(SESSION_EXPIRY_KEY, Date.now().toString());
   };
 
-  // Clear session timestamp
   const clearSessionTimestamp = () => {
     localStorage.removeItem(SESSION_EXPIRY_KEY);
   };
 
-  // Save settings whenever they change
   useEffect(() => {
     saveSettingsToStorage(appState.settings);
   }, [appState.settings]);
 
   // Handle Supabase Auth Session
   useEffect(() => {
-    // Check for initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        // Check if session is within 14-day window
-        if (!isSessionValid()) {
-          // Session expired, require re-auth
-          supabase.auth.signOut();
-          clearSessionTimestamp();
-          setAuthState('unauthenticated');
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (session) {
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (user) {
+          if (!isSessionValid()) {
+            await supabase.auth.signOut();
+            clearSessionTimestamp();
+            setAuthState('unauthenticated');
+            return;
+          }
+
+          const mappedUser: User = {
+            id: user.id,
+            name: user.user_metadata.full_name || user.email?.split('@')[0] || 'User',
+            email: user.email || '',
+            hasJointAccounts: false,
+            budgetingSolo: true,
+            monthlyIncome: 5000,
+          };
+
+          setAppState(prev => ({ ...prev, user: mappedUser }));
+          setAuthState('authenticated');
+          loadUserData(user.id);
           return;
         }
-
-        const mappedUser: User = {
-          const { data: { user } } = await supabase.auth.getUser(),
-          name: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'User',
-          email: session.user.email || '',
-          hasJointAccounts: false,
-          budgetingSolo: true,
-          monthlyIncome: 5000,
-        };
-        setAppState(prev => ({ ...prev, user: mappedUser }));
-        setAuthState('authenticated');
-        // Load categories and transactions from Supabase
-        loadUserData(const { data: { user } } = await supabase.auth.getUser();
-      } else {
-        setAuthState('unauthenticated');
       }
-    });
 
-    // Listen for changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session?.user) {
-        // On new sign-in, mark session start
-        if (event === 'SIGNED_IN') {
-          markSessionStart();
+      setAuthState('unauthenticated');
+    };
+
+    init();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (session) {
+          const { data: { user } } = await supabase.auth.getUser();
+
+          if (user) {
+            if (event === 'SIGNED_IN') {
+              markSessionStart();
+            }
+
+            const mappedUser: User = {
+              id: user.id,
+              name: user.user_metadata.full_name || user.email?.split('@')[0] || 'User',
+              email: user.email || '',
+              hasJointAccounts: false,
+              budgetingSolo: true,
+              monthlyIncome: 5000,
+            };
+
+            setAppState(prev => ({ ...prev, user: mappedUser }));
+            setAuthState(prev => prev === 'unauthenticated' ? 'onboarding' : 'authenticated');
+            loadUserData(user.id);
+            return;
+          }
         }
 
-        const mappedUser: User = {
-          id: const { data: { user } } = await supabase.auth.getUser(),
-          name: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'User',
-          email: session.user.email || '',
-          hasJointAccounts: false,
-          budgetingSolo: true,
-          monthlyIncome: 5000,
-        };
-        setAppState(prev => ({ ...prev, user: mappedUser }));
-        // Only trigger onboarding if we were just unauthenticated
-        setAuthState(prev => prev === 'unauthenticated' ? 'onboarding' : 'authenticated');
-        // Load categories and transactions from Supabase
-        loadUserData(const { data: { user } } = await supabase.auth.getUser();
-      } else {
         clearSessionTimestamp();
         setAuthState('unauthenticated');
         setAppState(prev => ({ ...prev, user: null }));
       }
-    });
+    );
 
     return () => subscription.unsubscribe();
   }, []);
+
 
   // Handle deep link callback from OAuth on native platforms
   useEffect(() => {
