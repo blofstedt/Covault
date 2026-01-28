@@ -287,9 +287,10 @@ const App: React.FC = () => {
         name: row.name,
         totalLimit: DEFAULT_LIMITS[row.name] || 500,
       }));
+      console.log('Categories loaded from Supabase:', budgets.map(b => ({ id: b.id, name: b.name })));
       setAppState(prev => ({ ...prev, budgets }));
     } else {
-      console.warn('No categories found in categories table.');
+      console.warn('No categories found in categories table, using fallback SYSTEM_CATEGORIES with hardcoded IDs');
       setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
     }
     setCategoriesLoaded(true);
@@ -342,24 +343,46 @@ const App: React.FC = () => {
       transactions: [tx, ...prev.transactions]
     }));
 
-    // Sync to Supabase
-    const supabaseTx = toSupabaseTransaction(tx);
-    console.log('Inserting transaction:', JSON.stringify(supabaseTx));
+    try {
+      // Verify auth session exists before inserting
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) {
+        console.error('Transaction insert aborted: no active Supabase session');
+        setAppState(prev => ({
+          ...prev,
+          transactions: prev.transactions.filter(t => t.id !== tx.id)
+        }));
+        return;
+      }
 
-    const { data, error } = await supabase
-      .from('transactions')
-      .insert([supabaseTx])
-      .select();
+      // Sync to Supabase
+      const supabaseTx = toSupabaseTransaction(tx);
+      console.log('Inserting transaction:', JSON.stringify(supabaseTx));
+      console.log('Auth UID:', sessionData.session.user.id);
+      console.log('TX user_id:', supabaseTx.user_id);
+      console.log('TX category_id:', supabaseTx.category_id);
 
-    if (error) {
-      console.error('Transaction insert failed:', error.message, error.code, error.details, error.hint);
-      // Rollback on error
+      const { data, error } = await supabase
+        .from('transactions')
+        .insert([supabaseTx])
+        .select();
+
+      if (error) {
+        console.error('Transaction insert failed:', error.message, error.code, error.details, error.hint);
+        // Rollback on error
+        setAppState(prev => ({
+          ...prev,
+          transactions: prev.transactions.filter(t => t.id !== tx.id)
+        }));
+      } else {
+        console.log('Transaction inserted successfully:', data);
+      }
+    } catch (err) {
+      console.error('Transaction insert threw exception:', err);
       setAppState(prev => ({
         ...prev,
         transactions: prev.transactions.filter(t => t.id !== tx.id)
       }));
-    } else {
-      console.log('Transaction inserted successfully:', data);
     }
   };
 
@@ -370,19 +393,22 @@ const App: React.FC = () => {
       transactions: prev.transactions.map(t => t.id === updatedTx.id ? updatedTx : t)
     }));
 
-    // Sync to Supabase
-    const supabaseTx = toSupabaseTransaction(updatedTx);
-    const { id: txId, ...updates } = supabaseTx;
+    try {
+      const supabaseTx = toSupabaseTransaction(updatedTx);
+      const { id: txId, ...updates } = supabaseTx;
 
-    const { error } = await supabase
-      .from('transactions')
-      .update(updates)
-      .eq('id', txId);
+      const { error } = await supabase
+        .from('transactions')
+        .update(updates)
+        .eq('id', txId);
 
-    if (error) {
-      console.error('Transaction update failed:', error.message, error.code, error.details, error.hint);
-    } else {
-      console.log('Transaction updated successfully:', txId);
+      if (error) {
+        console.error('Transaction update failed:', error.message, error.code, error.details, error.hint);
+      } else {
+        console.log('Transaction updated successfully:', txId);
+      }
+    } catch (err) {
+      console.error('Transaction update threw exception:', err);
     }
   };
 
@@ -396,15 +422,25 @@ const App: React.FC = () => {
       transactions: prev.transactions.filter(t => t.id !== id)
     }));
 
-    // Sync to Supabase
-    const { error } = await supabase
-      .from('transactions')
-      .delete()
-      .eq('id', id);
+    try {
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', id);
 
-    if (error) {
-      console.error('Error deleting transaction:', error);
-      // Rollback on error
+      if (error) {
+        console.error('Error deleting transaction:', error);
+        if (deletedTx) {
+          setAppState(prev => ({
+            ...prev,
+            transactions: [deletedTx, ...prev.transactions]
+          }));
+        }
+      } else {
+        console.log('Transaction deleted successfully:', id);
+      }
+    } catch (err) {
+      console.error('Transaction delete threw exception:', err);
       if (deletedTx) {
         setAppState(prev => ({
           ...prev,
