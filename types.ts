@@ -59,4 +59,29 @@ export interface Settings {
   hasSeenTutorial?: boolean;
 }
 
+// A budget category used throughout the UI
+export interface BudgetCategory {
+  id: string;
+  name: string;
+  totalLimit: number;
+}
+
+// A split inside a transaction (your app uses flexible structures)
+export interface TransactionSplit {
+  id: string;
+  amount: number;
+  userId?: string;
+  vendor?: string;
+  note?: string;
+  [key: string]: any; // allow flexible fields
+}
+
+// Recurrence options (already present, but included for clarity)
 export type Recurrence = 'One-time' | 'Biweekly' | 'Monthly';
+
+// Transaction label options (matches your DB enum)
+export type TransactionLabel =
+  | 'Auto-Added'
+  | 'Manual'
+  | 'Auto-Added + Edited';
+
