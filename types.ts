@@ -10,28 +10,43 @@ export interface User {
   monthlyIncome: number;
 }
 
-export interface UserBudget {
+export interface BudgetCategory {
   id: string;
-  userId: string;
-  categoryId: string;
+  name: string;
   totalLimit: number;
-  createdAt: string;
-  updatedAt: string;
+  externalDeduction?: number;
+}
+
+export interface TransactionSplit {
+  budget_id: string;
+  amount: number;
+}
+
+export enum Recurrence {
+  ONE_TIME = 'One-time',
+  BIWEEKLY = 'Biweekly',
+  MONTHLY = 'Monthly',
+}
+
+export enum TransactionLabel {
+  AUTO_ADDED = 'Auto-Added',
+  MANUAL = 'Manual',
+  EDITED = 'Auto-Added + Edited',
 }
 
 export interface Transaction {
   id: string;
-  userId: string;
+  user_id: string;
   vendor: string;
   amount: number;
   date: string;
-  budgetId: string | null;
-  recurrence?: 'One-time' | 'Biweekly' | 'Monthly';
-  label?: 'Auto-Added' | 'Manual' | 'Auto-Added + Edited';
-  isProjected: boolean;
+  budget_id: string | null;
+  recurrence?: Recurrence | 'One-time' | 'Biweekly' | 'Monthly';
+  label?: TransactionLabel | 'Auto-Added' | 'Manual' | 'Auto-Added + Edited';
+  is_projected: boolean;
   userName?: string;
-  splits?: Record<string, any>;
-  createdAt: string;
+  splits?: TransactionSplit[];
+  created_at: string;
 }
 
 export interface PrimaryCategory {
@@ -59,4 +74,16 @@ export interface Settings {
   hasSeenTutorial?: boolean;
 }
 
-export type Recurrence = 'One-time' | 'Biweekly' | 'Monthly';
+export interface AppState {
+  user: User | null;
+  budgets: BudgetCategory[];
+  transactions: Transaction[];
+  settings: {
+    rolloverEnabled: boolean;
+    rolloverOverspend: boolean;
+    useLeisureAsBuffer: boolean;
+    showSavingsInsight: boolean;
+    theme: 'light' | 'dark';
+    hasSeenTutorial: boolean;
+  };
+}
