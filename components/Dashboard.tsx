@@ -274,25 +274,21 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
       </main>
 
       <div id="bottom-bar" className="fixed bottom-0 left-0 right-0 z-40 p-4 flex flex-col items-center pointer-events-none pb-safe">
-        <div className="w-full backdrop-blur-3xl border rounded-[3rem] p-3 pointer-events-auto shadow-2xl animate-nest transition-all duration-700 bg-white/95 dark:bg-slate-900/95 border-slate-100 dark:border-slate-800/60 overflow-hidden" style={{ animationDelay: '0.4s' }}>
-          <div className="flex items-center justify-between px-2 overflow-hidden">
-            <div className="flex flex-1 justify-around">
-              {firstHalfBudgets.map(b => (
-                <button key={b.id} onClick={() => jumpToBudget(b.id)} className={`p-4 rounded-2xl transition-all duration-300 ${expandedBudgets.has(b.id) ? 'bg-emerald-600 shadow-emerald-500/20 text-white shadow-xl scale-110' : 'text-slate-400 dark:text-slate-600'}`}>
-                  {getBudgetIcon(b.name)}
-                </button>
-              ))}
-            </div>
-            <button id="add-transaction-button" onClick={() => setIsAddingTx(true)} className="mx-4 p-4 text-white rounded-2xl shadow-xl flex items-center justify-center active:scale-95 transition-all shrink-0 scale-110 bg-slate-500 dark:bg-emerald-600">
+        <div className="w-full max-w-md backdrop-blur-3xl border rounded-[3rem] p-3 pointer-events-auto shadow-2xl animate-nest transition-all duration-700 bg-white/95 dark:bg-slate-900/95 border-slate-100 dark:border-slate-800/60 overflow-hidden" style={{ animationDelay: '0.4s' }}>
+          <div className="flex items-center justify-center gap-1">
+            {firstHalfBudgets.map(b => (
+              <button key={b.id} onClick={() => jumpToBudget(b.id)} className={`p-2.5 rounded-xl transition-all duration-300 flex-shrink-0 ${expandedBudgets.has(b.id) ? 'bg-emerald-600 shadow-emerald-500/20 text-white shadow-lg scale-105' : 'text-slate-400 dark:text-slate-600'}`}>
+                {getBudgetIcon(b.name)}
+              </button>
+            ))}
+            <button id="add-transaction-button" onClick={() => setIsAddingTx(true)} className="mx-2 p-3 text-white rounded-xl shadow-lg flex items-center justify-center active:scale-95 transition-all flex-shrink-0 bg-slate-500 dark:bg-emerald-600">
               <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             </button>
-            <div className="flex flex-1 justify-around">
-              {secondHalfBudgets.map(b => (
-                <button key={b.id} onClick={() => jumpToBudget(b.id)} className={`p-4 rounded-2xl transition-all duration-300 ${expandedBudgets.has(b.id) ? 'bg-emerald-600 shadow-emerald-500/20 text-white shadow-xl scale-110' : 'text-slate-400 dark:text-slate-600'}`}>
-                  {getBudgetIcon(b.name)}
-                </button>
-              ))}
-            </div>
+            {secondHalfBudgets.map(b => (
+              <button key={b.id} onClick={() => jumpToBudget(b.id)} className={`p-2.5 rounded-xl transition-all duration-300 flex-shrink-0 ${expandedBudgets.has(b.id) ? 'bg-emerald-600 shadow-emerald-500/20 text-white shadow-lg scale-105' : 'text-slate-400 dark:text-slate-600'}`}>
+                {getBudgetIcon(b.name)}
+              </button>
+            ))}
           </div>
         </div>
       </div>

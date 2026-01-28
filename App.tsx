@@ -72,8 +72,8 @@ const App: React.FC = () => {
         };
         setAppState(prev => ({ ...prev, user: mappedUser }));
         setAuthState('authenticated');
-        // Load transactions from Supabase
-        loadTransactions(session.user.id);
+        // Load categories and transactions from Supabase
+        loadUserData(session.user.id);
       } else {
         setAuthState('unauthenticated');
       }
@@ -98,8 +98,8 @@ const App: React.FC = () => {
         setAppState(prev => ({ ...prev, user: mappedUser }));
         // Only trigger onboarding if we were just unauthenticated
         setAuthState(prev => prev === 'unauthenticated' ? 'onboarding' : 'authenticated');
-        // Load transactions from Supabase
-        loadTransactions(session.user.id);
+        // Load categories and transactions from Supabase
+        loadUserData(session.user.id);
       } else {
         clearSessionTimestamp();
         setAuthState('unauthenticated');
@@ -177,6 +177,28 @@ const App: React.FC = () => {
     };
   };
 
+  // Load categories from Supabase
+  const loadCategories = async () => {
+    const { data, error } = await supabase
+      .from('primary_categories')
+      .select('*')
+      .order('name');
+
+    if (error) {
+      console.error('Error loading categories:', error);
+      return;
+    }
+
+    if (data && data.length > 0) {
+      const budgets: BudgetCategory[] = data.map(row => ({
+        id: row.id,
+        name: row.name,
+        totalLimit: row.total_limit || row.budget_limit || 500, // fallback
+      }));
+      setAppState(prev => ({ ...prev, budgets }));
+    }
+  };
+
   // Load transactions from Supabase
   const loadTransactions = async (userId: string) => {
     const { data, error } = await supabase
@@ -196,6 +218,12 @@ const App: React.FC = () => {
     }
   };
 
+  // Load all data from Supabase
+  const loadUserData = async (userId: string) => {
+    await loadCategories();
+    await loadTransactions(userId);
+  };
+
   const handleAddTransaction = async (tx: Transaction) => {
     // Optimistic update
     setAppState(prev => ({
@@ -205,17 +233,24 @@ const App: React.FC = () => {
 
     // Sync to Supabase
     const supabaseTx = toSupabaseTransaction(tx);
-    const { error } = await supabase
+    console.log('Saving transaction to Supabase:', supabaseTx);
+
+    const { data, error } = await supabase
       .from('transactions')
-      .insert(supabaseTx);
+      .insert(supabaseTx)
+      .select();
 
     if (error) {
       console.error('Error saving transaction:', error);
+      console.error('Transaction data:', supabaseTx);
       // Rollback on error
       setAppState(prev => ({
         ...prev,
         transactions: prev.transactions.filter(t => t.id !== tx.id)
       }));
+      alert(`Failed to save transaction: ${error.message}`);
+    } else {
+      console.log('Transaction saved successfully:', data);
     }
   };
 
