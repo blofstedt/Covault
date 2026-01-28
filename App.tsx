@@ -6,6 +6,8 @@ import Onboarding from './components/Onboarding';
 import Dashboard from './components/Dashboard';
 import Auth from './components/Auth';
 import { supabase } from './lib/supabase';
+import { Capacitor } from '@capacitor/core';
+import { App as CapApp } from '@capacitor/app';
 
 const SESSION_EXPIRY_KEY = 'covault_session_start';
 const SESSION_DURATION_DAYS = 14;
@@ -110,6 +112,44 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Handle deep link callback from OAuth on native platforms
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    const handleAppUrlOpen = CapApp.addListener('appUrlOpen', async ({ url }) => {
+      console.log('Deep link received:', url);
+
+      // Check if this is our auth callback
+      if (url.includes('auth/callback') || url.includes('access_token') || url.includes('#')) {
+        // Extract the fragment (tokens come after #)
+        const hashIndex = url.indexOf('#');
+        if (hashIndex !== -1) {
+          const fragment = url.substring(hashIndex + 1);
+          const params = new URLSearchParams(fragment);
+          const accessToken = params.get('access_token');
+          const refreshToken = params.get('refresh_token');
+
+          if (accessToken && refreshToken) {
+            console.log('Setting session from deep link tokens...');
+            const { error } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+            if (error) {
+              console.error('Error setting session from deep link:', error);
+            } else {
+              console.log('Session set successfully from deep link');
+            }
+          }
+        }
+      }
+    });
+
+    return () => {
+      handleAppUrlOpen.then(h => h.remove());
+    };
+  }, []);
+
   // Apply theme class to document root
   useEffect(() => {
     if (appState.settings.theme === 'dark') {
@@ -189,7 +229,6 @@ const App: React.FC = () => {
   };
 
   const loadCategories = async () => {
-    console.log('Loading categories from Supabase...');
     const { data, error } = await supabase
       .from('primary_categories')
       .select('*')
@@ -197,11 +236,8 @@ const App: React.FC = () => {
 
     if (error) {
       console.error('Error loading categories:', error);
-      alert(`Failed to load categories: ${error.message}`);
       return;
     }
-
-    console.log('Categories loaded from Supabase:', data);
 
     if (data && data.length > 0) {
       const budgets: BudgetCategory[] = data.map(row => ({
@@ -209,11 +245,9 @@ const App: React.FC = () => {
         name: row.name,
         totalLimit: DEFAULT_LIMITS[row.name] || 500,
       }));
-      console.log('Mapped budgets:', budgets);
       setAppState(prev => ({ ...prev, budgets }));
     } else {
-      console.warn('No categories found in Supabase. Make sure primary_categories table has data.');
-      alert('No categories found in database. Please add categories to the primary_categories table.');
+      console.warn('No categories found in primary_categories table.');
     }
   };
 
@@ -243,18 +277,6 @@ const App: React.FC = () => {
   };
 
   const handleAddTransaction = async (tx: Transaction) => {
-    console.log('Adding transaction:', tx);
-    console.log('Current budgets in state:', appState.budgets);
-    console.log('Transaction budget_id:', tx.budget_id);
-
-    // Validate that the budget_id exists in current budgets
-    const budgetExists = appState.budgets.some(b => b.id === tx.budget_id);
-    if (!budgetExists) {
-      console.error('Budget ID not found in current budgets!', tx.budget_id);
-      alert('Error: Selected category not found. Please refresh and try again.');
-      return;
-    }
-
     // Optimistic update
     setAppState(prev => ({
       ...prev,
@@ -263,30 +285,19 @@ const App: React.FC = () => {
 
     // Sync to Supabase
     const supabaseTx = toSupabaseTransaction(tx);
-    console.log('Saving transaction to Supabase:', JSON.stringify(supabaseTx, null, 2));
+    console.log('Inserting transaction:', JSON.stringify(supabaseTx));
 
-    try {
-      const { error } = await supabase
-        .from('transactions')
-        .insert([supabaseTx]);
+    const { error } = await supabase
+      .from('transactions')
+      .insert([supabaseTx]);
 
-      if (error) {
-        console.error('Supabase error:', error);
-        console.error('Error code:', error.code);
-        console.error('Error details:', error.details);
-        console.error('Error hint:', error.hint);
-        // Rollback on error
-        setAppState(prev => ({
-          ...prev,
-          transactions: prev.transactions.filter(t => t.id !== tx.id)
-        }));
-        alert(`Failed to save: ${error.message}\n\nCode: ${error.code}\nHint: ${error.hint || 'none'}`);
-      } else {
-        console.log('Transaction saved successfully!');
-      }
-    } catch (e) {
-      console.error('Exception while saving:', e);
-      alert(`Exception: ${e}`);
+    if (error) {
+      console.error('Transaction insert failed:', error.message, error.code, error.details, error.hint);
+      // Rollback on error
+      setAppState(prev => ({
+        ...prev,
+        transactions: prev.transactions.filter(t => t.id !== tx.id)
+      }));
     }
   };
 
