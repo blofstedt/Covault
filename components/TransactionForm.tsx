@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Transaction, BudgetCategory, Recurrence, TransactionLabel, TransactionSplit } from '../types';
+import { Transaction, BudgetCategory, Recurrence, TransactionSplit } from '../types';
 import { getBudgetIcon } from './Dashboard';
 
 interface TransactionFormProps {
