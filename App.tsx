@@ -263,24 +263,30 @@ const App: React.FC = () => {
 
     // Sync to Supabase
     const supabaseTx = toSupabaseTransaction(tx);
-    console.log('Saving transaction to Supabase:', supabaseTx);
+    console.log('Saving transaction to Supabase:', JSON.stringify(supabaseTx, null, 2));
 
-    const { data, error } = await supabase
-      .from('transactions')
-      .insert(supabaseTx)
-      .select();
+    try {
+      const { error } = await supabase
+        .from('transactions')
+        .insert([supabaseTx]);
 
-    if (error) {
-      console.error('Error saving transaction:', error);
-      console.error('Transaction data:', supabaseTx);
-      // Rollback on error
-      setAppState(prev => ({
-        ...prev,
-        transactions: prev.transactions.filter(t => t.id !== tx.id)
-      }));
-      alert(`Failed to save transaction: ${error.message}`);
-    } else {
-      console.log('Transaction saved successfully:', data);
+      if (error) {
+        console.error('Supabase error:', error);
+        console.error('Error code:', error.code);
+        console.error('Error details:', error.details);
+        console.error('Error hint:', error.hint);
+        // Rollback on error
+        setAppState(prev => ({
+          ...prev,
+          transactions: prev.transactions.filter(t => t.id !== tx.id)
+        }));
+        alert(`Failed to save: ${error.message}\n\nCode: ${error.code}\nHint: ${error.hint || 'none'}`);
+      } else {
+        console.log('Transaction saved successfully!');
+      }
+    } catch (e) {
+      console.error('Exception while saving:', e);
+      alert(`Exception: ${e}`);
     }
   };
 
