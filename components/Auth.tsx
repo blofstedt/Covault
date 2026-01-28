@@ -1,67 +1,15 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { supabase } from '../lib/supabase';
-import {
-  checkBiometricAvailability,
-  authenticateWithBiometric,
-  isBiometricEnabled,
-  setBiometricEnabled,
-  hasBiometricSetupBeenShown,
-  markBiometricSetupComplete,
-  BiometricStatus
-} from '../lib/biometric';
 
 interface AuthProps {
   onSignIn: () => void;
-  onBiometricSuccess?: () => void;
 }
 
-const Auth: React.FC<AuthProps> = ({ onSignIn, onBiometricSuccess }) => {
+const Auth: React.FC<AuthProps> = ({ onSignIn }) => {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [biometricStatus, setBiometricStatus] = useState<BiometricStatus | null>(null);
-  const [showBiometricSetup, setShowBiometricSetup] = useState(false);
-  const [isTryingBiometric, setIsTryingBiometric] = useState(false);
-
-  // Check biometric availability on mount
-  useEffect(() => {
-    const checkBiometric = async () => {
-      const status = await checkBiometricAvailability();
-      setBiometricStatus(status);
-
-      // If biometric is enabled and available, try it automatically
-      if (status.isAvailable && isBiometricEnabled()) {
-        handleBiometricAuth();
-      }
-    };
-
-    if (Capacitor.isNativePlatform()) {
-      checkBiometric();
-    }
-  }, []);
-
-  const handleBiometricAuth = async () => {
-    setIsTryingBiometric(true);
-    setAuthError(null);
-
-    const result = await authenticateWithBiometric();
-
-    if (result.success) {
-      // Check if we have a stored session
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        onBiometricSuccess?.();
-      } else {
-        // No session, need to log in with Google first
-        setAuthError('Please sign in with Google first');
-      }
-    } else if (result.error !== 'Authentication cancelled') {
-      setAuthError(result.error || 'Biometric authentication failed');
-    }
-
-    setIsTryingBiometric(false);
-  };
 
   const handleGoogleLogin = async () => {
     try {
@@ -85,11 +33,6 @@ const Auth: React.FC<AuthProps> = ({ onSignIn, onBiometricSuccess }) => {
       });
 
       if (error) throw error;
-
-      // After successful login, show biometric setup prompt if available
-      if (Capacitor.isNativePlatform() && biometricStatus?.isAvailable && !hasBiometricSetupBeenShown()) {
-        setShowBiometricSetup(true);
-      }
     } catch (err: any) {
       console.error("Supabase Auth Error Detail:", err);
       setAuthError(err.message || "An unexpected error occurred during sign in.");
@@ -97,81 +40,8 @@ const Auth: React.FC<AuthProps> = ({ onSignIn, onBiometricSuccess }) => {
     }
   };
 
-  const handleEnableBiometric = () => {
-    setBiometricEnabled(true);
-    markBiometricSetupComplete();
-    setShowBiometricSetup(false);
-    onSignIn();
-  };
-
-  const handleSkipBiometric = () => {
-    setBiometricEnabled(false);
-    markBiometricSetupComplete();
-    setShowBiometricSetup(false);
-    onSignIn();
-  };
-
-  // Biometric setup prompt modal
-  if (showBiometricSetup && biometricStatus) {
-    const biometricName = biometricStatus.biometryType === 'face' ? 'Face ID' :
-                         biometricStatus.biometryType === 'fingerprint' ? 'Fingerprint' :
-                         biometricStatus.biometryType === 'iris' ? 'Iris' : 'Biometric';
-
-    return (
-      <div className="flex-1 flex flex-col p-8 bg-slate-50 dark:bg-slate-950 transition-colors relative overflow-hidden">
-        <div className="absolute top-[-10%] left-[-10%] w-[120%] h-[120%] pointer-events-none">
-          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-emerald-400/20 dark:bg-emerald-600/10 rounded-full blur-[100px] animate-blob"></div>
-        </div>
-
-        <div className="relative flex-1 flex flex-col items-center justify-center space-y-12">
-          <div className="flex flex-col items-center space-y-6 animate-nest">
-            <div className="w-28 h-28 bg-emerald-600 rounded-[2.5rem] flex items-center justify-center shadow-2xl shadow-emerald-500/40">
-              {biometricStatus.biometryType === 'face' ? (
-                <svg className="w-16 h-16 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10" />
-                  <circle cx="9" cy="10" r="1.5" fill="currentColor" />
-                  <circle cx="15" cy="10" r="1.5" fill="currentColor" />
-                  <path d="M8 15s1.5 2 4 2 4-2 4-2" />
-                </svg>
-              ) : (
-                <svg className="w-16 h-16 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-                  <path d="M12 11c0-1.1-.9-2-2-2s-2 .9-2 2 .9 2 2 2" />
-                  <path d="M12 11c0 1.1.9 2 2 2s2-.9 2-2-.9-2-2-2" />
-                  <path d="M12 2a10 10 0 0110 10v2a10 10 0 01-20 0v-2A10 10 0 0112 2z" />
-                  <path d="M7 12v2a5 5 0 0010 0v-2" />
-                </svg>
-              )}
-            </div>
-            <div className="text-center space-y-2">
-              <h1 className="text-3xl font-black text-slate-500 dark:text-slate-100 tracking-tighter">Enable {biometricName}?</h1>
-              <p className="text-slate-500 dark:text-slate-400 text-sm font-medium max-w-xs">
-                Unlock your vault instantly with {biometricName.toLowerCase()} next time you open the app.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="relative space-y-4 mt-auto flex flex-col items-center pb-8">
-          <button
-            onClick={handleEnableBiometric}
-            className="w-full max-w-xs py-5 bg-emerald-600 text-white rounded-[2rem] shadow-xl hover:shadow-2xl transition-all active:scale-95 flex items-center justify-center space-x-4"
-          >
-            <span className="font-black text-sm uppercase tracking-widest">Enable {biometricName}</span>
-          </button>
-
-          <button
-            onClick={handleSkipBiometric}
-            className="text-slate-400 dark:text-slate-600 font-black text-[10px] uppercase tracking-[0.3em] hover:text-emerald-500 transition-colors py-4"
-          >
-            Maybe Later
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex-1 flex flex-col p-8 bg-slate-50 dark:bg-slate-950 transition-colors relative overflow-hidden">
+    <div className="flex-1 flex flex-col p-8 bg-slate-50 dark:bg-slate-950 transition-colors relative overflow-hidden" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 2rem)' }}>
       {/* Dynamic Background */}
       <div className="absolute top-[-10%] left-[-10%] w-[120%] h-[120%] pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-emerald-400/20 dark:bg-emerald-600/10 rounded-full blur-[100px] animate-blob"></div>
@@ -212,29 +82,7 @@ const Auth: React.FC<AuthProps> = ({ onSignIn, onBiometricSuccess }) => {
           </div>
         )}
 
-        {isTryingBiometric ? (
-          <div className="flex flex-col items-center space-y-4 py-4">
-            <div className="w-20 h-20 bg-emerald-50 dark:bg-emerald-900/20 rounded-full flex items-center justify-center animate-pulse">
-              {biometricStatus?.biometryType === 'face' ? (
-                <svg className="w-10 h-10 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10" />
-                  <circle cx="9" cy="10" r="1.5" fill="currentColor" />
-                  <circle cx="15" cy="10" r="1.5" fill="currentColor" />
-                  <path d="M8 15s1.5 2 4 2 4-2 4-2" />
-                </svg>
-              ) : (
-                <svg className="w-10 h-10 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-                  <path d="M12 11c0-1.1-.9-2-2-2s-2 .9-2 2 .9 2 2 2" />
-                  <path d="M12 11c0 1.1.9 2 2 2s2-.9 2-2-.9-2-2-2" />
-                  <path d="M12 2a10 10 0 0110 10v2a10 10 0 01-20 0v-2A10 10 0 0112 2z" />
-                </svg>
-              )}
-            </div>
-            <span className="text-sm font-black text-slate-500 dark:text-slate-200 tracking-tight uppercase">
-              Verifying Identity...
-            </span>
-          </div>
-        ) : isLoggingIn ? (
+        {isLoggingIn ? (
           <div className="flex items-center space-x-4 py-4 animate-pulse">
             <svg className="animate-spin h-6 w-6 text-emerald-600" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -243,57 +91,24 @@ const Auth: React.FC<AuthProps> = ({ onSignIn, onBiometricSuccess }) => {
             <span className="text-xl font-black text-slate-500 dark:text-slate-200 tracking-tight uppercase">Opening Vault...</span>
           </div>
         ) : (
-          <>
-            {/* Biometric button (if available and enabled) */}
-            {Capacitor.isNativePlatform() && biometricStatus?.isAvailable && isBiometricEnabled() && (
-              <button
-                onClick={handleBiometricAuth}
-                className="w-full max-w-xs py-5 bg-emerald-600 text-white rounded-[2rem] shadow-xl hover:shadow-2xl transition-all active:scale-95 flex items-center justify-center space-x-4 mb-4"
-              >
-                {biometricStatus.biometryType === 'face' ? (
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
-                    <circle cx="12" cy="12" r="10" />
-                    <circle cx="9" cy="10" r="1" fill="currentColor" />
-                    <circle cx="15" cy="10" r="1" fill="currentColor" />
-                    <path d="M8 15s1.5 2 4 2 4-2 4-2" />
-                  </svg>
-                ) : (
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
-                    <path d="M12 11c0-1.1-.9-2-2-2s-2 .9-2 2 .9 2 2 2" />
-                    <path d="M12 11c0 1.1.9 2 2 2s2-.9 2-2-.9-2-2-2" />
-                    <path d="M12 2a10 10 0 0110 10v2a10 10 0 01-20 0v-2A10 10 0 0112 2z" />
-                  </svg>
-                )}
-                <span className="font-black text-sm uppercase tracking-widest">
-                  Unlock with {biometricStatus.biometryType === 'face' ? 'Face ID' : 'Fingerprint'}
-                </span>
-              </button>
-            )}
-
-            {/* Google login button */}
-            <button
-              onClick={handleGoogleLogin}
-              className="w-full max-w-xs py-5 bg-white dark:bg-slate-900 border-2 border-slate-100 dark:border-slate-800 rounded-[2rem] shadow-xl hover:shadow-2xl hover:border-emerald-500 transition-all active:scale-95 flex items-center justify-center space-x-4 group"
-            >
-              <svg className="w-6 h-6" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-              </svg>
-              <span className="text-slate-600 dark:text-slate-100 font-black text-sm uppercase tracking-widest">
-                {Capacitor.isNativePlatform() && biometricStatus?.isAvailable && isBiometricEnabled()
-                  ? 'Sign In with Google'
-                  : 'Connect with Google'}
-              </span>
-            </button>
-          </>
+          <button
+            onClick={handleGoogleLogin}
+            className="w-full max-w-xs py-5 bg-white dark:bg-slate-900 border-2 border-slate-100 dark:border-slate-800 rounded-[2rem] shadow-xl hover:shadow-2xl hover:border-emerald-500 transition-all active:scale-95 flex items-center justify-center space-x-4 group"
+          >
+            <svg className="w-6 h-6" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+            </svg>
+            <span className="text-slate-600 dark:text-slate-100 font-black text-sm uppercase tracking-widest">
+              Connect with Google
+            </span>
+          </button>
         )}
 
         <p className="text-center text-[10px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest max-w-[240px] mx-auto">
-          {Capacitor.isNativePlatform() && biometricStatus?.isAvailable
-            ? 'Secured by Biometrics • AES-256'
-            : 'Secured by Supabase • AES-256'}
+          Secured by Supabase • AES-256
         </p>
       </div>
     </div>

@@ -188,7 +188,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
         </div>
       )}
 
-      <header className="px-6 pt-6 pb-4 sticky top-0 z-20 transition-colors bg-transparent border-none backdrop-blur-none relative z-10">
+      <header className="px-6 pt-safe-top pb-4 sticky top-0 z-20 transition-colors bg-transparent border-none backdrop-blur-none relative z-10" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1.5rem)' }}>
         <div className="relative flex items-center justify-end h-10">
           <div className="absolute left-1/2 -translate-x-1/2 flex items-center space-x-2">
             <div className="w-7 h-7 rounded flex items-center justify-center shadow-lg transition-colors duration-700 bg-emerald-600 shadow-emerald-500/20">

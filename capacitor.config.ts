@@ -7,12 +7,7 @@ const config: CapacitorConfig = {
   server: {
     androidScheme: 'https'
   },
-  plugins: {
-    BiometricAuth: {
-      androidBiometryStrength: 'strong',
-      androidConfirmationRequired: false
-    }
-  },
+  plugins: {},
   android: {
     allowMixedContent: true,
     captureInput: true,

@@ -7,6 +7,9 @@ import Dashboard from './components/Dashboard';
 import Auth from './components/Auth';
 import { supabase } from './lib/supabase';
 
+const SESSION_EXPIRY_KEY = 'covault_session_start';
+const SESSION_DURATION_DAYS = 14;
+
 const App: React.FC = () => {
   const [authState, setAuthState] = useState<'loading' | 'unauthenticated' | 'onboarding' | 'authenticated'>('loading');
   const [appState, setAppState] = useState<AppState>({
@@ -23,11 +26,42 @@ const App: React.FC = () => {
     }
   });
 
+  // Check if session is within 14-day window
+  const isSessionValid = (): boolean => {
+    const sessionStart = localStorage.getItem(SESSION_EXPIRY_KEY);
+    if (!sessionStart) return false;
+
+    const startTime = parseInt(sessionStart, 10);
+    const now = Date.now();
+    const daysSinceStart = (now - startTime) / (1000 * 60 * 60 * 24);
+
+    return daysSinceStart < SESSION_DURATION_DAYS;
+  };
+
+  // Mark session start time
+  const markSessionStart = () => {
+    localStorage.setItem(SESSION_EXPIRY_KEY, Date.now().toString());
+  };
+
+  // Clear session timestamp
+  const clearSessionTimestamp = () => {
+    localStorage.removeItem(SESSION_EXPIRY_KEY);
+  };
+
   // Handle Supabase Auth Session
   useEffect(() => {
     // Check for initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
+        // Check if session is within 14-day window
+        if (!isSessionValid()) {
+          // Session expired, require re-auth
+          supabase.auth.signOut();
+          clearSessionTimestamp();
+          setAuthState('unauthenticated');
+          return;
+        }
+
         const mappedUser: User = {
           id: session.user.id,
           name: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'User',
@@ -37,17 +71,22 @@ const App: React.FC = () => {
           monthlyIncome: 5000,
         };
         setAppState(prev => ({ ...prev, user: mappedUser }));
-        // Logic: if they have a session, we assume they passed onboarding or should be authenticated.
-        // For a real app, you'd check a 'profile' table here.
         setAuthState('authenticated');
+        // Load transactions from Supabase
+        loadTransactions(session.user.id);
       } else {
         setAuthState('unauthenticated');
       }
     });
 
     // Listen for changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
+        // On new sign-in, mark session start
+        if (event === 'SIGNED_IN') {
+          markSessionStart();
+        }
+
         const mappedUser: User = {
           id: session.user.id,
           name: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'User',
@@ -59,7 +98,10 @@ const App: React.FC = () => {
         setAppState(prev => ({ ...prev, user: mappedUser }));
         // Only trigger onboarding if we were just unauthenticated
         setAuthState(prev => prev === 'unauthenticated' ? 'onboarding' : 'authenticated');
+        // Load transactions from Supabase
+        loadTransactions(session.user.id);
       } else {
+        clearSessionTimestamp();
         setAuthState('unauthenticated');
         setAppState(prev => ({ ...prev, user: null }));
       }
@@ -97,18 +139,112 @@ const App: React.FC = () => {
     }));
   };
 
-  const handleAddTransaction = (tx: Transaction) => {
+  // Convert app transaction to Supabase format
+  const toSupabaseTransaction = (tx: Transaction) => {
+    // Extract date in YYYY-MM-DD format
+    const dateObj = new Date(tx.date);
+    const dateStr = dateObj.toISOString().split('T')[0];
+
+    return {
+      id: tx.id,
+      user_id: tx.user_id,
+      vendor: tx.vendor,
+      amount: tx.amount,
+      date: dateStr,
+      category_id: tx.budget_id, // Map budget_id to category_id
+      recurrence: tx.recurrence,
+      label: tx.label,
+      is_projected: tx.is_projected,
+      split_group_id: tx.splits && tx.splits.length > 1 ? tx.id : null, // Use tx.id as split group if splits exist
+      user_name: tx.userName, // Map userName to user_name
+    };
+  };
+
+  // Convert Supabase transaction to app format
+  const fromSupabaseTransaction = (row: any): Transaction => {
+    return {
+      id: row.id,
+      user_id: row.user_id,
+      vendor: row.vendor,
+      amount: parseFloat(row.amount),
+      date: new Date(row.date).toISOString(),
+      budget_id: row.category_id, // Map category_id back to budget_id
+      recurrence: row.recurrence,
+      label: row.label,
+      is_projected: row.is_projected,
+      userName: row.user_name || '', // Map user_name back to userName
+      created_at: row.created_at,
+    };
+  };
+
+  // Load transactions from Supabase
+  const loadTransactions = async (userId: string) => {
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('user_id', userId)
+      .order('date', { ascending: false });
+
+    if (error) {
+      console.error('Error loading transactions:', error);
+      return;
+    }
+
+    if (data) {
+      const transactions = data.map(fromSupabaseTransaction);
+      setAppState(prev => ({ ...prev, transactions }));
+    }
+  };
+
+  const handleAddTransaction = async (tx: Transaction) => {
+    // Optimistic update
     setAppState(prev => ({
       ...prev,
       transactions: [tx, ...prev.transactions]
     }));
+
+    // Sync to Supabase
+    const supabaseTx = toSupabaseTransaction(tx);
+    const { error } = await supabase
+      .from('transactions')
+      .insert(supabaseTx);
+
+    if (error) {
+      console.error('Error saving transaction:', error);
+      // Rollback on error
+      setAppState(prev => ({
+        ...prev,
+        transactions: prev.transactions.filter(t => t.id !== tx.id)
+      }));
+    }
   };
 
-  const handleDeleteTransaction = (id: string) => {
+  const handleDeleteTransaction = async (id: string) => {
+    // Store for potential rollback
+    const deletedTx = appState.transactions.find(t => t.id === id);
+
+    // Optimistic update
     setAppState(prev => ({
       ...prev,
       transactions: prev.transactions.filter(t => t.id !== id)
     }));
+
+    // Sync to Supabase
+    const { error } = await supabase
+      .from('transactions')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error deleting transaction:', error);
+      // Rollback on error
+      if (deletedTx) {
+        setAppState(prev => ({
+          ...prev,
+          transactions: [deletedTx, ...prev.transactions]
+        }));
+      }
+    }
   };
 
   const handleSignOut = async () => {
@@ -129,10 +265,7 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen w-full bg-slate-50 dark:bg-slate-950 overflow-hidden relative flex flex-col transition-colors duration-300">
       {authState === 'unauthenticated' && (
-        <Auth
-          onSignIn={() => setAuthState('authenticated')}
-          onBiometricSuccess={() => setAuthState('authenticated')}
-        />
+        <Auth onSignIn={() => setAuthState('authenticated')} />
       )}
 
       {authState === 'onboarding' && (
