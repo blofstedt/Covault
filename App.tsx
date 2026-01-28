@@ -11,27 +11,58 @@ import { App as CapApp } from '@capacitor/app';
 
 const SESSION_EXPIRY_KEY = 'covault_session_start';
 const SESSION_DURATION_DAYS = 14;
+const SETTINGS_KEY = 'covault_settings';
+
+// Load settings from localStorage
+const loadSettingsFromStorage = () => {
+  try {
+    const stored = localStorage.getItem(SETTINGS_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.error('Error loading settings:', e);
+  }
+  return null;
+};
+
+// Save settings to localStorage
+const saveSettingsToStorage = (settings: AppState['settings']) => {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch (e) {
+    console.error('Error saving settings:', e);
+  }
+};
 
 const App: React.FC = () => {
   const [authState, setAuthState] = useState<'loading' | 'unauthenticated' | 'onboarding' | 'authenticated'>('loading');
-  const [appState, setAppState] = useState<AppState>({
-    user: null,
-    budgets: SYSTEM_CATEGORIES,
-    transactions: [],
-    settings: {
-      rolloverEnabled: true,
-      rolloverOverspend: false,
-      useLeisureAsBuffer: true,
-      showSavingsInsight: true,
-      theme: 'light',
-      hasSeenTutorial: false,
-    }
+  const [appState, setAppState] = useState<AppState>(() => {
+    // Initialize with saved settings if available
+    const savedSettings = loadSettingsFromStorage();
+    return {
+      user: null,
+      budgets: SYSTEM_CATEGORIES,
+      transactions: [],
+      settings: savedSettings || {
+        rolloverEnabled: true,
+        rolloverOverspend: false,
+        useLeisureAsBuffer: true,
+        showSavingsInsight: true,
+        theme: 'light',
+        hasSeenTutorial: false,
+      }
+    };
   });
 
   // Check if session is within 14-day window
   const isSessionValid = (): boolean => {
     const sessionStart = localStorage.getItem(SESSION_EXPIRY_KEY);
-    if (!sessionStart) return false;
+    if (!sessionStart) {
+      // No timestamp yet - this is a valid first-time session, mark it now
+      markSessionStart();
+      return true;
+    }
 
     const startTime = parseInt(sessionStart, 10);
     const now = Date.now();
@@ -49,6 +80,11 @@ const App: React.FC = () => {
   const clearSessionTimestamp = () => {
     localStorage.removeItem(SESSION_EXPIRY_KEY);
   };
+
+  // Save settings whenever they change
+  useEffect(() => {
+    saveSettingsToStorage(appState.settings);
+  }, [appState.settings]);
 
   // Handle Supabase Auth Session
   useEffect(() => {
