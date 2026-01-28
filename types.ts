@@ -58,3 +58,5 @@ export interface Settings {
   theme?: 'light' | 'dark';
   hasSeenTutorial?: boolean;
 }
+
+export type Recurrence = 'One-time' | 'Biweekly' | 'Monthly';
