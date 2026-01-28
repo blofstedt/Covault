@@ -82,15 +82,21 @@ const App: React.FC = () => {
     saveSettingsToStorage(appState.settings);
   }, [appState.settings]);
 
-  // Handle Supabase Auth Session
-  useEffect(() => {
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+// Handle Supabase Auth Session
+useEffect(() => {
+  let mounted = true;
 
-      if (session) {
-        const { data: { user } } = await supabase.auth.getUser();
+  const init = async () => {
+    // First hydration attempt — may be null briefly after OAuth redirect
+    const { data } = await supabase.auth.getSession();
+    const initialSession = data.session;
 
-        if (user) {
+    // Subscribe to auth changes (OAuth redirect fires this)
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (!mounted) return;
+
+        if (session?.user) {
           if (!isSessionValid()) {
             await supabase.auth.signOut();
             clearSessionTimestamp();
@@ -98,10 +104,12 @@ const App: React.FC = () => {
             return;
           }
 
+          markSessionStart();
+
           const mappedUser: User = {
-            id: user.id,
-            name: user.user_metadata.full_name || user.email?.split('@')[0] || 'User',
-            email: user.email || '',
+            id: session.user.id,
+            name: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'User',
+            email: session.user.email || '',
             hasJointAccounts: false,
             budgetingSolo: true,
             monthlyIncome: 5000,
@@ -109,50 +117,52 @@ const App: React.FC = () => {
 
           setAppState(prev => ({ ...prev, user: mappedUser }));
           setAuthState('authenticated');
-          loadUserData(user.id);
-          return;
+          loadUserData(session.user.id);
+        } else {
+          clearSessionTimestamp();
+          setAuthState('unauthenticated');
+          setAppState(prev => ({ ...prev, user: null }));
         }
-      }
-
-      setAuthState('unauthenticated');
-    };
-
-    init();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (session) {
-          const { data: { user } } = await supabase.auth.getUser();
-
-          if (user) {
-            if (event === 'SIGNED_IN') {
-              markSessionStart();
-            }
-
-            const mappedUser: User = {
-              id: user.id,
-              name: user.user_metadata.full_name || user.email?.split('@')[0] || 'User',
-              email: user.email || '',
-              hasJointAccounts: false,
-              budgetingSolo: true,
-              monthlyIncome: 5000,
-            };
-
-            setAppState(prev => ({ ...prev, user: mappedUser }));
-            setAuthState(prev => prev === 'unauthenticated' ? 'onboarding' : 'authenticated');
-            loadUserData(user.id);
-            return;
-          }
-        }
-
-        clearSessionTimestamp();
-        setAuthState('unauthenticated');
-        setAppState(prev => ({ ...prev, user: null }));
       }
     );
 
-    return () => subscription.unsubscribe();
-  }, []);
+    // If Supabase already has a session after hydration, use it
+    if (initialSession?.user) {
+      if (!isSessionValid()) {
+        await supabase.auth.signOut();
+        clearSessionTimestamp();
+        setAuthState('unauthenticated');
+      } else {
+        markSessionStart();
+
+        const mappedUser: User = {
+          id: initialSession.user.id,
+          name: initialSession.user.user_metadata.full_name || initialSession.user.email?.split('@')[0] || 'User',
+          email: initialSession.user.email || '',
+          hasJointAccounts: false,
+          budgetingSolo: true,
+          monthlyIncome: 5000,
+        };
+
+        setAppState(prev => ({ ...prev, user: mappedUser }));
+        setAuthState('authenticated');
+        loadUserData(initialSession.user.id);
+      }
+    } else {
+      // IMPORTANT: do NOT mark unauthenticated yet.
+      // Wait for onAuthStateChange to fire after OAuth redirect.
+      setAuthState('loading');
+    }
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
+  };
+
+  init();
+}, []);
+
 
 
   // Handle deep link callback from OAuth on native platforms
