@@ -4,7 +4,7 @@ import { PrimaryCategory, Transaction, Settings } from '../types';
 // Fetch user settings from user_profiles by user ID
 export async function getUserSettings(userId: string): Promise<Settings | null> {
   const { data, error } = await supabase
-    .from('user_profiles')
+    .from('settings')
     .select('*')
     .eq('user_id', userId)
     .single();
@@ -92,7 +92,7 @@ export async function deleteTransaction(transactionId: string): Promise<{ error:
 // Update user profile/settings
 export async function updateUserSettings(userId: string, updates: Partial<Settings>): Promise<{ error: any }> {
   const { error } = await supabase
-    .from('user_profiles')
+    .from('settings')
     .update(updates)
     .eq('user_id', userId);
 

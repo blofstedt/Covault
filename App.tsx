@@ -46,12 +46,13 @@ const DEFAULT_SETTINGS = {
 
 const App: React.FC = () => {
   const [authState, setAuthState] = useState<'loading' | 'unauthenticated' | 'onboarding' | 'authenticated'>('loading');
+  const [categoriesLoaded, setCategoriesLoaded] = useState(false);
   const [appState, setAppState] = useState<AppState>(() => {
     // Initialize with saved settings merged with defaults (so new settings get default values)
     const savedSettings = loadSettingsFromStorage();
     return {
       user: null,
-      budgets: SYSTEM_CATEGORIES,
+      budgets: [],  // Start empty -- real IDs loaded from Supabase categories table
       transactions: [],
       settings: { ...DEFAULT_SETTINGS, ...savedSettings }
     };
@@ -274,6 +275,9 @@ const App: React.FC = () => {
 
     if (error) {
       console.error('Error loading categories:', error);
+      // Fall back to SYSTEM_CATEGORIES so UI still renders, but inserts will fail FK check
+      setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
+      setCategoriesLoaded(true);
       return;
     }
 
@@ -286,7 +290,9 @@ const App: React.FC = () => {
       setAppState(prev => ({ ...prev, budgets }));
     } else {
       console.warn('No categories found in categories table.');
+      setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
     }
+    setCategoriesLoaded(true);
   };
 
   // Load transactions from Supabase
@@ -324,6 +330,12 @@ const App: React.FC = () => {
   };
 
   const handleAddTransaction = async (tx: Transaction) => {
+    // Guard: ensure categories loaded from DB before allowing inserts
+    if (!categoriesLoaded) {
+      console.error('Cannot add transaction: categories not yet loaded from database');
+      return;
+    }
+
     // Optimistic update
     setAppState(prev => ({
       ...prev,
@@ -334,9 +346,10 @@ const App: React.FC = () => {
     const supabaseTx = toSupabaseTransaction(tx);
     console.log('Inserting transaction:', JSON.stringify(supabaseTx));
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('transactions')
-      .insert([supabaseTx]);
+      .insert([supabaseTx])
+      .select();
 
     if (error) {
       console.error('Transaction insert failed:', error.message, error.code, error.details, error.hint);
@@ -345,6 +358,31 @@ const App: React.FC = () => {
         ...prev,
         transactions: prev.transactions.filter(t => t.id !== tx.id)
       }));
+    } else {
+      console.log('Transaction inserted successfully:', data);
+    }
+  };
+
+  const handleUpdateTransaction = async (updatedTx: Transaction) => {
+    // Optimistic update
+    setAppState(prev => ({
+      ...prev,
+      transactions: prev.transactions.map(t => t.id === updatedTx.id ? updatedTx : t)
+    }));
+
+    // Sync to Supabase
+    const supabaseTx = toSupabaseTransaction(updatedTx);
+    const { id: txId, ...updates } = supabaseTx;
+
+    const { error } = await supabase
+      .from('transactions')
+      .update(updates)
+      .eq('id', txId);
+
+    if (error) {
+      console.error('Transaction update failed:', error.message, error.code, error.details, error.hint);
+    } else {
+      console.log('Transaction updated successfully:', txId);
     }
   };
 
@@ -408,6 +446,7 @@ const App: React.FC = () => {
           onSignOut={handleSignOut}
           onUpdateBudget={handleUpdateBudget}
           onAddTransaction={handleAddTransaction}
+          onUpdateTransaction={handleUpdateTransaction}
           onDeleteTransaction={handleDeleteTransaction}
         />
       )}

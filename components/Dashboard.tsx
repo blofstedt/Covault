@@ -12,6 +12,7 @@ interface DashboardProps {
   onSignOut: () => void;
   onUpdateBudget: (b: BudgetCategory) => void;
   onAddTransaction: (t: Transaction) => void;
+  onUpdateTransaction: (t: Transaction) => void;
   onDeleteTransaction: (id: string) => void;
 }
 
@@ -27,7 +28,7 @@ export const getBudgetIcon = (name: string) => {
   return <svg {...iconProps} viewBox="0 0 24 24"><path d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z"/></svg>;
 };
 
-const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpdateBudget, onAddTransaction, onDeleteTransaction }) => {
+const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpdateBudget, onAddTransaction, onUpdateTransaction, onDeleteTransaction }) => {
   const [isAddingTx, setIsAddingTx] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [deletingTxId, setDeletingTxId] = useState<string | null>(null);
@@ -150,10 +151,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
   };
 
   const handleUpdateTransaction = (updatedTx: Transaction) => {
-    setState(prev => ({
-      ...prev,
-      transactions: prev.transactions.map(t => t.id === updatedTx.id ? updatedTx : t)
-    }));
+    onUpdateTransaction(updatedTx);
     setEditingTx(null);
   };
 
