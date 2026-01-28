@@ -189,6 +189,7 @@ const App: React.FC = () => {
   };
 
   const loadCategories = async () => {
+    console.log('Loading categories from Supabase...');
     const { data, error } = await supabase
       .from('primary_categories')
       .select('*')
@@ -196,8 +197,11 @@ const App: React.FC = () => {
 
     if (error) {
       console.error('Error loading categories:', error);
+      alert(`Failed to load categories: ${error.message}`);
       return;
     }
+
+    console.log('Categories loaded from Supabase:', data);
 
     if (data && data.length > 0) {
       const budgets: BudgetCategory[] = data.map(row => ({
@@ -205,7 +209,11 @@ const App: React.FC = () => {
         name: row.name,
         totalLimit: DEFAULT_LIMITS[row.name] || 500,
       }));
+      console.log('Mapped budgets:', budgets);
       setAppState(prev => ({ ...prev, budgets }));
+    } else {
+      console.warn('No categories found in Supabase. Make sure primary_categories table has data.');
+      alert('No categories found in database. Please add categories to the primary_categories table.');
     }
   };
 
@@ -235,6 +243,18 @@ const App: React.FC = () => {
   };
 
   const handleAddTransaction = async (tx: Transaction) => {
+    console.log('Adding transaction:', tx);
+    console.log('Current budgets in state:', appState.budgets);
+    console.log('Transaction budget_id:', tx.budget_id);
+
+    // Validate that the budget_id exists in current budgets
+    const budgetExists = appState.budgets.some(b => b.id === tx.budget_id);
+    if (!budgetExists) {
+      console.error('Budget ID not found in current budgets!', tx.budget_id);
+      alert('Error: Selected category not found. Please refresh and try again.');
+      return;
+    }
+
     // Optimistic update
     setAppState(prev => ({
       ...prev,
