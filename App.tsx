@@ -35,23 +35,25 @@ const saveSettingsToStorage = (settings: AppState['settings']) => {
   }
 };
 
+const DEFAULT_SETTINGS = {
+  rolloverEnabled: true,
+  rolloverOverspend: false,
+  useLeisureAsBuffer: true,
+  showSavingsInsight: true,
+  theme: 'light' as const,
+  hasSeenTutorial: false,
+};
+
 const App: React.FC = () => {
   const [authState, setAuthState] = useState<'loading' | 'unauthenticated' | 'onboarding' | 'authenticated'>('loading');
   const [appState, setAppState] = useState<AppState>(() => {
-    // Initialize with saved settings if available
+    // Initialize with saved settings merged with defaults (so new settings get default values)
     const savedSettings = loadSettingsFromStorage();
     return {
       user: null,
       budgets: SYSTEM_CATEGORIES,
       transactions: [],
-      settings: savedSettings || {
-        rolloverEnabled: true,
-        rolloverOverspend: false,
-        useLeisureAsBuffer: true,
-        showSavingsInsight: true,
-        theme: 'light',
-        hasSeenTutorial: false,
-      }
+      settings: { ...DEFAULT_SETTINGS, ...savedSettings }
     };
   });
 
