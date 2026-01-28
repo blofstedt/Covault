@@ -178,11 +178,21 @@ const App: React.FC = () => {
   };
 
   // Load categories from Supabase
+  // Default budget limits by category name
+  const DEFAULT_LIMITS: Record<string, number> = {
+    'Housing': 1500,
+    'Groceries': 600,
+    'Transport': 300,
+    'Utilities': 150,
+    'Leisure': 400,
+    'Other': 100,
+  };
+
   const loadCategories = async () => {
     const { data, error } = await supabase
       .from('primary_categories')
       .select('*')
-      .order('name');
+      .order('display_order');
 
     if (error) {
       console.error('Error loading categories:', error);
@@ -193,7 +203,7 @@ const App: React.FC = () => {
       const budgets: BudgetCategory[] = data.map(row => ({
         id: row.id,
         name: row.name,
-        totalLimit: row.total_limit || row.budget_limit || 500, // fallback
+        totalLimit: DEFAULT_LIMITS[row.name] || 500,
       }));
       setAppState(prev => ({ ...prev, budgets }));
     }
