@@ -1,3 +1,4 @@
+// types.ts
 export interface User {
   id: string;
   name: string;
@@ -19,6 +20,7 @@ export interface UserBudget {
   updatedAt: string;
 }
 
+// Database-aligned Transaction shape (snake_case to match Supabase)
 export interface Transaction {
   id: string;
   user_id: string;
@@ -26,11 +28,11 @@ export interface Transaction {
   amount: number;
   date: string;
   category_id: string | null;
-  recurrence: Recurrence;
-  label: TransactionLabel;
+  recurrence?: Recurrence;
+  label?: TransactionLabel;
   is_projected: boolean;
   user_name?: string;
-  splits?: TransactionSplit[];
+  splits?: TransactionSplit[] | Record<string, any>;
   created_at: string;
   updated_at?: string;
 }
@@ -60,29 +62,27 @@ export interface Settings {
   hasSeenTutorial?: boolean;
 }
 
-// A budget category used throughout the UI
+// UI budget category
 export interface BudgetCategory {
   id: string;
   name: string;
   totalLimit: number;
 }
 
-// A split inside a transaction (your app uses flexible structures)
+// Transaction split (flexible)
 export interface TransactionSplit {
   id: string;
   amount: number;
-  userId?: string;
+  user_id?: string;
   vendor?: string;
   note?: string;
-  [key: string]: any; // allow flexible fields
+  [key: string]: any;
 }
 
-// Recurrence options (already present, but included for clarity)
+// Recurrence and label types
 export type Recurrence = 'One-time' | 'Biweekly' | 'Monthly';
 
-// Transaction label options (matches your DB enum)
 export type TransactionLabel =
   | 'Auto-Added'
   | 'Manual'
   | 'Auto-Added + Edited';
-
