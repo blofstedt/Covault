@@ -103,7 +103,7 @@ const App: React.FC = () => {
         }
 
         const mappedUser: User = {
-          id: session.user.id,
+          const { data: { user } } = await supabase.auth.getUser(),
           name: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'User',
           email: session.user.email || '',
           hasJointAccounts: false,
@@ -113,7 +113,7 @@ const App: React.FC = () => {
         setAppState(prev => ({ ...prev, user: mappedUser }));
         setAuthState('authenticated');
         // Load categories and transactions from Supabase
-        loadUserData(session.user.id);
+        loadUserData(const { data: { user } } = await supabase.auth.getUser();
       } else {
         setAuthState('unauthenticated');
       }
@@ -128,7 +128,7 @@ const App: React.FC = () => {
         }
 
         const mappedUser: User = {
-          id: session.user.id,
+          id: const { data: { user } } = await supabase.auth.getUser(),
           name: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || 'User',
           email: session.user.email || '',
           hasJointAccounts: false,
@@ -139,7 +139,7 @@ const App: React.FC = () => {
         // Only trigger onboarding if we were just unauthenticated
         setAuthState(prev => prev === 'unauthenticated' ? 'onboarding' : 'authenticated');
         // Load categories and transactions from Supabase
-        loadUserData(session.user.id);
+        loadUserData(const { data: { user } } = await supabase.auth.getUser();
       } else {
         clearSessionTimestamp();
         setAuthState('unauthenticated');
