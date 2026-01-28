@@ -274,8 +274,8 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
       </main>
 
       <div id="bottom-bar" className="fixed bottom-0 left-0 right-0 z-40 p-4 flex flex-col items-center pointer-events-none pb-safe">
-        <div className="w-full backdrop-blur-3xl border rounded-[3rem] p-3 pointer-events-auto shadow-2xl animate-nest transition-all duration-700 bg-white/95 dark:bg-slate-900/95 border-slate-100 dark:border-slate-800/60" style={{ animationDelay: '0.4s' }}>
-          <div className="flex items-center justify-between px-2">
+        <div className="w-full backdrop-blur-3xl border rounded-[3rem] p-3 pointer-events-auto shadow-2xl animate-nest transition-all duration-700 bg-white/95 dark:bg-slate-900/95 border-slate-100 dark:border-slate-800/60 overflow-hidden" style={{ animationDelay: '0.4s' }}>
+          <div className="flex items-center justify-between px-2 overflow-hidden">
             <div className="flex flex-1 justify-around">
               {firstHalfBudgets.map(b => (
                 <button key={b.id} onClick={() => jumpToBudget(b.id)} className={`p-4 rounded-2xl transition-all duration-300 ${expandedBudgets.has(b.id) ? 'bg-emerald-600 shadow-emerald-500/20 text-white shadow-xl scale-110' : 'text-slate-400 dark:text-slate-600'}`}>
