@@ -464,26 +464,4 @@ const handleUpdateTransaction = async (id: string, updates: Partial<Transaction>
   }
 };
 
-const handleDeleteTransaction = async (id: string) => {
-  const deletedTx = appState.transactions.find(t => t.id === id);
-
-  setAppState(prev => ({
-    ...prev,
-    transactions: prev.transactions.filter(t => t.id !== id),
-  }));
-
-  const { error } = await deleteTransaction(id);
-
-  if (error) {
-    console.error('Error deleting transaction:', error);
-    // Rollback
-    if (deletedTx) {
-      setAppState(prev => ({
-        ...prev,
-        transactions: [deletedTx, ...prev.transactions],
-      }));
-    }
-  }
-};
-
 export default App;
