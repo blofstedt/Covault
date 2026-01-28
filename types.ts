@@ -1,4 +1,3 @@
-
 export enum Recurrence {
   ONE_TIME = 'One-time',
   BIWEEKLY = 'Biweekly',
@@ -12,29 +11,35 @@ export enum TransactionLabel {
 }
 
 export interface BudgetCategory {
-  id: string;
-  name: string;
-  totalLimit: number;
+  id: string; // user_budgets ID, specific to the user
+  name: string; // comes from primary_categories
+  totalLimit: number; // user-defined limit for this budget ID
 }
 
 export interface TransactionSplit {
-  budget_id: string;
+  budget_id: string; // References user_budgets ID
   amount: number;
 }
 
 export interface Transaction {
   id: string;
-  user_id: string;
+  user_id: string; // References auth.users
   vendor: string;
   amount: number;
-  date: string; 
-  budget_id: string;
+  date: string;
+  budget_id: string; // References user_budgets ID
   recurrence: Recurrence;
   label: TransactionLabel;
   is_projected: boolean;
   splits?: TransactionSplit[];
   created_at?: string;
-  userName: string; 
+  userName: string; // User's name
+}
+
+export interface PrimaryCategory {
+  id: string;
+  name: string; // Immutable name (e.g., Housing, Groceries, etc.)
+  displayOrder: number;
 }
 
 export interface User {
