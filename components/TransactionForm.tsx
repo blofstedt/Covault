@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Transaction, BudgetCategory, Recurrence, TransactionSplit } from '@/types';
+import type { Transaction, BudgetCategory, Recurrence, TransactionSplit } from '../types';
 import { getBudgetIcon } from './Dashboard';
 
 interface TransactionFormProps {
