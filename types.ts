@@ -21,17 +21,18 @@ export interface UserBudget {
 
 export interface Transaction {
   id: string;
-  userId: string;
+  user_id: string;
   vendor: string;
   amount: number;
   date: string;
-  budgetId: string | null;
-  recurrence?: 'One-time' | 'Biweekly' | 'Monthly';
-  label?: 'Auto-Added' | 'Manual' | 'Auto-Added + Edited';
-  isProjected: boolean;
-  userName?: string;
-  splits?: Record<string, any>;
-  createdAt: string;
+  category_id: string | null;
+  recurrence: Recurrence;
+  label: TransactionLabel;
+  is_projected: boolean;
+  user_name?: string;
+  splits?: TransactionSplit[];
+  created_at: string;
+  updated_at?: string;
 }
 
 export interface PrimaryCategory {
