@@ -415,4 +415,60 @@ const App: React.FC = () => {
   );
 };
 
+const handleAddTransaction = async (tx: Transaction) => {
+  setAppState(prev => ({
+    ...prev,
+    transactions: [tx, ...prev.transactions],
+  }));
+
+  const { error } = await addTransaction(tx);
+
+  if (error) {
+    console.error('Error adding transaction:', error);
+    // Rollback
+    setAppState(prev => ({
+      ...prev,
+      transactions: prev.transactions.filter(t => t.id !== tx.id),
+    }));
+  }
+};
+
+const handleUpdateTransaction = async (id: string, updates: Partial<Transaction>) => {
+  setAppState(prev => ({
+    ...prev,
+    transactions: prev.transactions.map(t =>
+      t.id === id ? { ...t, ...updates } : t
+    ),
+  }));
+
+  const { error } = await updateTransaction(id, updates);
+
+  if (error) {
+    console.error('Error updating transaction:', error);
+    // Potential rollback implementation here if needed
+  }
+};
+
+const handleDeleteTransaction = async (id: string) => {
+  const deletedTx = appState.transactions.find(t => t.id === id);
+
+  setAppState(prev => ({
+    ...prev,
+    transactions: prev.transactions.filter(t => t.id !== id),
+  }));
+
+  const { error } = await deleteTransaction(id);
+
+  if (error) {
+    console.error('Error deleting transaction:', error);
+    // Rollback
+    if (deletedTx) {
+      setAppState(prev => ({
+        ...prev,
+        transactions: [deletedTx, ...prev.transactions],
+      }));
+    }
+  }
+};
+
 export default App;
