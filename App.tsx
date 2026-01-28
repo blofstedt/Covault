@@ -218,25 +218,26 @@ const App: React.FC = () => {
     }));
   };
 
-  // Convert app transaction to Supabase format
+  // Build the object Supabase expects — only columns that exist in the table
   const toSupabaseTransaction = (tx: Transaction) => {
-    // Extract date in YYYY-MM-DD format
-    const dateObj = new Date(tx.date);
-    const dateStr = dateObj.toISOString().split('T')[0];
+    const dateStr = new Date(tx.date).toISOString().split('T')[0];
 
-    return {
-      id: tx.id,
+    const row: Record<string, any> = {
       user_id: tx.user_id,
       vendor: tx.vendor,
-      amount: tx.amount,
+      amount: Number(tx.amount),
       date: dateStr,
-      category_id: tx.budget_id, // Map budget_id to category_id
-      recurrence: tx.recurrence,
-      label: tx.label,
-      is_projected: tx.is_projected,
-      split_group_id: tx.splits && tx.splits.length > 1 ? tx.id : null, // Use tx.id as split group if splits exist
-      user_name: tx.userName, // Map userName to user_name
+      category_id: tx.budget_id,
+      recurrence: tx.recurrence || 'One-time',
+      label: tx.label || 'Manual',
+      is_projected: tx.is_projected ?? false,
     };
+
+    // Only include optional columns when they have real values
+    if (tx.userName) row.user_name = tx.userName;
+    if (tx.splits && tx.splits.length > 1) row.split_group_id = tx.id;
+
+    return row;
   };
 
   // Convert Supabase transaction to app format
@@ -331,23 +332,30 @@ const App: React.FC = () => {
   };
 
   const handleAddTransaction = async (tx: Transaction) => {
-    // Guard: ensure categories loaded from DB before allowing inserts
     if (!categoriesLoaded) {
-      console.error('Cannot add transaction: categories not yet loaded from database');
+      console.error('Cannot add transaction: categories not yet loaded');
       return;
     }
 
-    // Optimistic update
+    // Optimistic update — use the client-side tx so UI responds instantly
     setAppState(prev => ({
       ...prev,
       transactions: [tx, ...prev.transactions]
     }));
 
     try {
-      // Verify auth session exists before inserting
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (!sessionData.session) {
-        console.error('Transaction insert aborted: no active Supabase session');
+      const row = toSupabaseTransaction(tx);
+      console.log('[insert] payload:', JSON.stringify(row));
+
+      const { data, error } = await supabase
+        .from('transactions')
+        .insert(row)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[insert] FAILED:', error.code, error.message, error.details, error.hint);
+        // Rollback optimistic add
         setAppState(prev => ({
           ...prev,
           transactions: prev.transactions.filter(t => t.id !== tx.id)
@@ -355,30 +363,15 @@ const App: React.FC = () => {
         return;
       }
 
-      // Sync to Supabase
-      const supabaseTx = toSupabaseTransaction(tx);
-      console.log('Inserting transaction:', JSON.stringify(supabaseTx));
-      console.log('Auth UID:', sessionData.session.user.id);
-      console.log('TX user_id:', supabaseTx.user_id);
-      console.log('TX category_id:', supabaseTx.category_id);
-
-      const { data, error } = await supabase
-        .from('transactions')
-        .insert([supabaseTx])
-        .select();
-
-      if (error) {
-        console.error('Transaction insert failed:', error.message, error.code, error.details, error.hint);
-        // Rollback on error
-        setAppState(prev => ({
-          ...prev,
-          transactions: prev.transactions.filter(t => t.id !== tx.id)
-        }));
-      } else {
-        console.log('Transaction inserted successfully:', data);
-      }
+      // Replace the optimistic tx with the real DB row (has server-generated id)
+      const saved = fromSupabaseTransaction(data);
+      console.log('[insert] OK, id:', saved.id);
+      setAppState(prev => ({
+        ...prev,
+        transactions: prev.transactions.map(t => t.id === tx.id ? saved : t)
+      }));
     } catch (err) {
-      console.error('Transaction insert threw exception:', err);
+      console.error('[insert] exception:', err);
       setAppState(prev => ({
         ...prev,
         transactions: prev.transactions.filter(t => t.id !== tx.id)
@@ -387,28 +380,27 @@ const App: React.FC = () => {
   };
 
   const handleUpdateTransaction = async (updatedTx: Transaction) => {
-    // Optimistic update
     setAppState(prev => ({
       ...prev,
       transactions: prev.transactions.map(t => t.id === updatedTx.id ? updatedTx : t)
     }));
 
     try {
-      const supabaseTx = toSupabaseTransaction(updatedTx);
-      const { id: txId, ...updates } = supabaseTx;
+      const row = toSupabaseTransaction(updatedTx);
+      console.log('[update] id:', updatedTx.id, 'payload:', JSON.stringify(row));
 
       const { error } = await supabase
         .from('transactions')
-        .update(updates)
-        .eq('id', txId);
+        .update(row)
+        .eq('id', updatedTx.id);
 
       if (error) {
-        console.error('Transaction update failed:', error.message, error.code, error.details, error.hint);
+        console.error('[update] FAILED:', error.code, error.message, error.details, error.hint);
       } else {
-        console.log('Transaction updated successfully:', txId);
+        console.log('[update] OK');
       }
     } catch (err) {
-      console.error('Transaction update threw exception:', err);
+      console.error('[update] exception:', err);
     }
   };
 
