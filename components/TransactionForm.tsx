@@ -38,7 +38,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       : new Date().toISOString().split('T')[0]
   );
   
-  const [recurrence, setRecurrence] = useState<Recurrence>(initialTransaction?.recurrence || Recurrence.ONE_TIME);
+  const [recurrence, setRecurrence] = useState<Recurrence>(initialTransaction?.recurrence || 'One-time');
   
   const amountInputRef = useRef<HTMLInputElement>(null);
 
