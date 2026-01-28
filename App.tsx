@@ -430,38 +430,4 @@ useEffect(() => {
   );
 };
 
-const handleAddTransaction = async (tx: Transaction) => {
-  setAppState(prev => ({
-    ...prev,
-    transactions: [tx, ...prev.transactions],
-  }));
-
-  const { error } = await addTransaction(tx);
-
-  if (error) {
-    console.error('Error adding transaction:', error);
-    // Rollback
-    setAppState(prev => ({
-      ...prev,
-      transactions: prev.transactions.filter(t => t.id !== tx.id),
-    }));
-  }
-};
-
-const handleUpdateTransaction = async (id: string, updates: Partial<Transaction>) => {
-  setAppState(prev => ({
-    ...prev,
-    transactions: prev.transactions.map(t =>
-      t.id === id ? { ...t, ...updates } : t
-    ),
-  }));
-
-  const { error } = await updateTransaction(id, updates);
-
-  if (error) {
-    console.error('Error updating transaction:', error);
-    // Potential rollback implementation here if needed
-  }
-};
-
 export default App;
