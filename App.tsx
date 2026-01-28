@@ -291,27 +291,36 @@ const App: React.FC = () => {
 
   // Load transactions from Supabase
   const loadTransactions = async (userId: string) => {
+    console.log('loadTransactions called with userId:', userId);
+
     const { data, error } = await supabase
       .from('transactions')
       .select('*')
       .eq('user_id', userId)
       .order('date', { ascending: false });
 
+    console.log('Transactions query result:', { data, error, count: data?.length });
+
     if (error) {
       console.error('Error loading transactions:', error);
       return;
     }
 
-    if (data) {
+    if (data && data.length > 0) {
       const transactions = data.map(fromSupabaseTransaction);
+      console.log('Mapped transactions:', transactions);
       setAppState(prev => ({ ...prev, transactions }));
+    } else {
+      console.log('No transactions found for user');
     }
   };
 
   // Load all data from Supabase
   const loadUserData = async (userId: string) => {
+    console.log('loadUserData called for user:', userId);
     await loadCategories();
     await loadTransactions(userId);
+    console.log('loadUserData completed');
   };
 
   const handleAddTransaction = async (tx: Transaction) => {
