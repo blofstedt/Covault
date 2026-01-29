@@ -5,6 +5,7 @@ import BudgetSection from './BudgetSection';
 import TransactionForm from './TransactionForm';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import Tutorial from './Tutorial';
+import NotificationSettings from './NotificationSettings';
 
 interface DashboardProps {
   state: AppState;
@@ -14,6 +15,8 @@ interface DashboardProps {
   onAddTransaction: (t: Transaction) => void;
   onUpdateTransaction: (t: Transaction) => void;
   onDeleteTransaction: (id: string) => void;
+  onLinkPartner?: (email: string) => void;
+  onUnlinkPartner?: () => void;
 }
 
 export const getBudgetIcon = (name: string) => {
@@ -28,7 +31,50 @@ export const getBudgetIcon = (name: string) => {
   return <svg {...iconProps} viewBox="0 0 24 24"><path d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z"/></svg>;
 };
 
-const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpdateBudget, onAddTransaction, onUpdateTransaction, onDeleteTransaction }) => {
+// Generate projected future occurrences of recurring transactions
+const generateProjections = (transactions: Transaction[]): Transaction[] => {
+  const now = new Date();
+  const endDate = new Date(now.getFullYear(), now.getMonth() + 3, 0); // 3 months out
+  const projections: Transaction[] = [];
+
+  transactions.forEach(tx => {
+    if (tx.recurrence === 'One-time' || !tx.recurrence) return;
+
+    const baseDate = new Date(tx.date);
+    const intervalDays = tx.recurrence === 'Biweekly' ? 14 : null;
+
+    let cursor = new Date(baseDate);
+
+    // Advance cursor forward
+    for (let i = 0; i < 12; i++) { // max 12 occurrences
+      if (intervalDays) {
+        cursor = new Date(cursor.getTime() + intervalDays * 86400000);
+      } else {
+        // Monthly: same day, next month
+        cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, cursor.getDate());
+      }
+
+      if (cursor > endDate) break;
+
+      // Only add if the date is in the future
+      if (cursor > now) {
+        const dateStr = cursor.toISOString();
+        projections.push({
+          ...tx,
+          id: `${tx.id}_proj_${dateStr.split('T')[0]}`,
+          date: dateStr,
+          is_projected: true,
+          label: 'Auto-Added',
+          created_at: tx.created_at,
+        });
+      }
+    }
+  });
+
+  return projections;
+};
+
+const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpdateBudget, onAddTransaction, onUpdateTransaction, onDeleteTransaction, onLinkPartner, onUnlinkPartner }) => {
   const [isAddingTx, setIsAddingTx] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [deletingTxId, setDeletingTxId] = useState<string | null>(null);
@@ -51,18 +97,36 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
 
   const isSharedAccount = !state.user?.budgetingSolo;
 
+  // Merge real transactions with projected future occurrences
+  const allTransactions = useMemo(() => {
+    const projections = generateProjections(state.transactions);
+    return [...state.transactions, ...projections];
+  }, [state.transactions]);
+
   const filteredTransactions = useMemo(() => {
-    let list = state.transactions;
+    let list = allTransactions;
     if (searchQuery) {
       list = list.filter(t => t.vendor.toLowerCase().includes(searchQuery.toLowerCase()));
     }
     return list;
-  }, [state.transactions, searchQuery]);
+  }, [allTransactions, searchQuery]);
+
+  // Auto-expand budgets that have matching search results
+  useEffect(() => {
+    if (!searchQuery) return;
+    const matchingBudgetIds = new Set<string>();
+    filteredTransactions.forEach(t => {
+      if (t.budget_id) matchingBudgetIds.add(t.budget_id);
+      t.splits?.forEach(s => matchingBudgetIds.add(s.budget_id));
+    });
+    if (matchingBudgetIds.size > 0) {
+      setExpandedBudgets(matchingBudgetIds);
+    }
+  }, [searchQuery, filteredTransactions]);
 
   // Calculate total income (user's income + partner's income for couples)
   const totalIncome = useMemo(() => {
     const userIncome = state.user?.monthlyIncome || 0;
-    // TODO: When partner data is fetched, add partner's income here
     return userIncome;
   }, [state.user?.monthlyIncome]);
 
@@ -125,29 +189,28 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
 
   const handleConnectPartner = () => {
     if (!partnerLinkEmail.includes('@')) return;
-    setState(prev => ({
-      ...prev,
-      user: prev.user ? {
-        ...prev.user,
-        budgetingSolo: false,
-        partnerEmail: partnerLinkEmail
-      } : null
-    }));
+    if (onLinkPartner) {
+      onLinkPartner(partnerLinkEmail);
+    } else {
+      // Fallback: local-only
+      setState(prev => ({
+        ...prev,
+        user: prev.user ? { ...prev.user, budgetingSolo: false, partnerEmail: partnerLinkEmail } : null
+      }));
+    }
     setIsLinkingPartner(false);
     setPartnerLinkEmail('');
   };
 
   const handleDisconnectPartner = () => {
-    setState(prev => ({
-      ...prev,
-      user: prev.user ? {
-        ...prev.user,
-        budgetingSolo: true,
-        partnerId: undefined,
-        partnerEmail: undefined,
-        partnerName: undefined
-      } : null
-    }));
+    if (onUnlinkPartner) {
+      onUnlinkPartner();
+    } else {
+      setState(prev => ({
+        ...prev,
+        user: prev.user ? { ...prev.user, budgetingSolo: true, partnerId: undefined, partnerEmail: undefined, partnerName: undefined } : null
+      }));
+    }
   };
 
   const handleUpdateTransaction = (updatedTx: Transaction) => {
@@ -169,13 +232,28 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
 
   const handleTutorialStepChange = (step: number) => {
     setTutorialStep(step);
-    // Steps 0-4 are Dashboard highlights, 5-12 are Settings highlights
     if (step >= 5 && step <= 12) {
       setShowSettings(true);
     } else {
       setShowSettings(false);
     }
   };
+
+  // Personalized balance label
+  const balanceLabel = useMemo(() => {
+    if (!state.user?.name) return 'Remaining Balance';
+    const firstName = state.user.name.split(' ')[0];
+    if (isSharedAccount && state.user.partnerName) {
+      const partnerFirst = state.user.partnerName.split(' ')[0];
+      return `${firstName} and ${partnerFirst}'s Remaining Balance`;
+    }
+    if (isSharedAccount && state.user.partnerEmail) {
+      const partnerFirst = state.user.partnerEmail.split('@')[0];
+      const capitalized = partnerFirst.charAt(0).toUpperCase() + partnerFirst.slice(1);
+      return `${firstName} & ${capitalized}'s Remaining Balance`;
+    }
+    return `${firstName}'s Remaining Balance`;
+  }, [state.user?.name, state.user?.partnerName, state.user?.partnerEmail, isSharedAccount]);
 
   return (
     <div className="flex-1 flex flex-col h-screen relative overflow-hidden transition-colors duration-700 bg-slate-50 dark:bg-slate-950">
@@ -186,11 +264,11 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
         </div>
       )}
 
-      <header className="px-6 pt-safe-top pb-4 sticky top-0 z-20 transition-colors bg-transparent border-none backdrop-blur-none relative z-10" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1.5rem)' }}>
-        <div className="relative flex items-center justify-end h-10">
-          <div className="absolute left-1/2 -translate-x-1/2 flex items-center space-x-2">
-            <div className="w-7 h-7 rounded flex items-center justify-center shadow-lg transition-colors duration-700 bg-emerald-600 shadow-emerald-500/20">
-              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+      <header className="px-6 pt-safe-top pb-3 sticky top-0 z-20 transition-colors bg-transparent border-none backdrop-blur-none relative z-10" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}>
+        <div className="relative flex items-center justify-end h-12">
+          <div className="absolute left-1/2 -translate-x-1/2 flex items-center space-x-2.5">
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center shadow-lg transition-colors duration-700 bg-emerald-600 shadow-emerald-500/20">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="12" cy="12" r="3" />
               </svg>
             </div>
@@ -205,24 +283,29 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
         </div>
       </header>
 
-      <main className="flex-1 flex flex-col p-4 pb-28 overflow-hidden relative z-10">
+      <main className="flex-1 flex flex-col p-4 pb-32 overflow-hidden relative z-10">
         {!isFocusMode && (
-          <div id="balance-header" className="flex flex-col items-center justify-center py-2 shrink-0 relative">
+          <div id="balance-header" className="flex flex-col items-center justify-center py-1 shrink-0 relative">
             <div className="text-center z-10 animate-nest">
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] mb-0.5 block transition-colors duration-700 text-slate-400 dark:text-slate-500">
-                {isSharedAccount ? 'Our Remaining Balance' : 'My Remaining Balance'}
+              <span className="text-[11px] font-black uppercase tracking-[0.18em] mb-1 block transition-colors duration-700 text-slate-400 dark:text-slate-500">
+                {balanceLabel}
               </span>
               <div className="flex items-baseline justify-center space-x-1 transition-colors duration-700">
                 <span className="text-sm font-bold opacity-30 text-slate-500 dark:text-slate-50">$</span>
-                <span className={`text-4xl font-black tracking-tighter leading-none transition-colors duration-700 ${remainingMoney < 0 ? 'text-rose-500' : 'text-slate-500 dark:text-slate-50'}`}>
+                <span className={`text-5xl font-black tracking-tighter leading-none transition-colors duration-700 ${remainingMoney < 0 ? 'text-rose-500' : 'text-slate-500 dark:text-slate-50'}`}>
                   {remainingMoney.toLocaleString()}
                 </span>
               </div>
             </div>
 
-            <div className="relative mt-2 w-full max-w-[200px] z-10 animate-nest" style={{ animationDelay: '0.1s' }}>
-              <input type="text" placeholder="Find entry..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white/70 dark:bg-slate-900/70 backdrop-blur-md border-2 rounded-2xl py-2.5 px-10 text-[12px] font-bold focus:ring-2 transition-all placeholder-slate-400 shadow-sm text-center border-slate-100 dark:border-slate-800 focus:ring-emerald-500/20 dark:text-slate-100" />
-              <svg className="w-3.5 h-3.5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+            <div className="relative mt-3 w-full max-w-[260px] z-10 animate-nest" style={{ animationDelay: '0.1s' }}>
+              <input type="text" placeholder="Search transactions..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white/70 dark:bg-slate-900/70 backdrop-blur-md border-2 rounded-2xl py-3 px-11 text-sm font-bold focus:ring-2 transition-all placeholder-slate-400 shadow-sm text-center border-slate-100 dark:border-slate-800 focus:ring-emerald-500/20 dark:text-slate-100" />
+              <svg className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+              {searchQuery && (
+                <button onClick={() => setSearchQuery('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -247,7 +330,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
                   key={budget.id}
                   id={index === 0 ? "first-budget-card" : undefined}
                   ref={el => { if (el) budgetRefs.current.set(budget.id, el); else budgetRefs.current.delete(budget.id); }}
-                  className={`transition-all duration-500 ${isExpanded ? 'flex-[100] min-h-[70vh]' : 'flex-1 min-h-0'} flex flex-col`}
+                  className={`transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] ${isExpanded ? 'flex-[100] min-h-[70vh]' : 'flex-1 min-h-0'} flex flex-col`}
                   style={{ animationDelay: `${index * 40}ms` }}
                 >
                   <BudgetSection
@@ -271,20 +354,20 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
         </div>
       </main>
 
-      <div id="bottom-bar" className="fixed bottom-0 left-0 right-0 z-40 px-4 pb-4 pt-2 flex flex-col items-center pointer-events-none pb-safe">
-        <div className="w-full backdrop-blur-3xl border rounded-full px-3 py-2 pointer-events-auto shadow-2xl animate-nest transition-all duration-700 bg-white/95 dark:bg-slate-900/95 border-slate-100 dark:border-slate-800/60" style={{ animationDelay: '0.4s' }}>
+      <div id="bottom-bar" className="fixed bottom-0 left-0 right-0 z-40 px-3 pb-3 pt-2 flex flex-col items-center pointer-events-none pb-safe">
+        <div className="w-full backdrop-blur-3xl border rounded-[2rem] px-4 py-3 pointer-events-auto shadow-2xl animate-nest transition-all duration-700 bg-white/95 dark:bg-slate-900/95 border-slate-100 dark:border-slate-800/60" style={{ animationDelay: '0.4s' }}>
           <div className="flex items-center justify-evenly">
             {firstHalfBudgets.map(b => (
-              <button key={b.id} onClick={() => jumpToBudget(b.id)} className={`p-2 rounded-full transition-all duration-300 ${expandedBudgets.has(b.id) ? 'bg-emerald-600 text-white shadow-lg scale-110' : 'text-slate-400 dark:text-slate-600'}`}>
-                {getBudgetIcon(b.name)}
+              <button key={b.id} onClick={() => jumpToBudget(b.id)} className={`p-2.5 rounded-full transition-all duration-300 ${expandedBudgets.has(b.id) ? 'bg-emerald-600 text-white shadow-lg scale-110' : 'text-slate-400 dark:text-slate-600'}`}>
+                <div className="w-6 h-6">{getBudgetIcon(b.name)}</div>
               </button>
             ))}
-            <button id="add-transaction-button" onClick={() => setIsAddingTx(true)} className="p-3 text-white rounded-full shadow-lg flex items-center justify-center active:scale-95 transition-all bg-slate-500 dark:bg-emerald-600">
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            <button id="add-transaction-button" onClick={() => setIsAddingTx(true)} className="p-4 text-white rounded-full shadow-lg flex items-center justify-center active:scale-95 transition-all bg-slate-500 dark:bg-emerald-600">
+              <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             </button>
             {secondHalfBudgets.map(b => (
-              <button key={b.id} onClick={() => jumpToBudget(b.id)} className={`p-2 rounded-full transition-all duration-300 ${expandedBudgets.has(b.id) ? 'bg-emerald-600 text-white shadow-lg scale-110' : 'text-slate-400 dark:text-slate-600'}`}>
-                {getBudgetIcon(b.name)}
+              <button key={b.id} onClick={() => jumpToBudget(b.id)} className={`p-2.5 rounded-full transition-all duration-300 ${expandedBudgets.has(b.id) ? 'bg-emerald-600 text-white shadow-lg scale-110' : 'text-slate-400 dark:text-slate-600'}`}>
+                <div className="w-6 h-6">{getBudgetIcon(b.name)}</div>
               </button>
             ))}
           </div>
@@ -374,6 +457,11 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
                   {state.settings.useLeisureAsBuffer ? 'SHIELD ACTIVE' : 'SHIELD OFF'}
                 </button>
               </div>
+
+              <NotificationSettings
+                enabled={state.settings.notificationsEnabled}
+                onToggle={(val) => updateSettings('notificationsEnabled', val)}
+              />
 
               <div id="settings-sharing-container" className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60 space-y-4">
                 <div className="flex flex-col">
@@ -483,7 +571,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
               </button>
 
               <div className="text-center pt-4">
-                 <p className="text-[9px] font-bold text-slate-400 dark:text-slate-700 uppercase tracking-[0.1em]">Version 3.0 • Covault simplified</p>
+                 <p className="text-[9px] font-bold text-slate-400 dark:text-slate-700 uppercase tracking-[0.1em]">Version 3.0 &bull; Covault simplified</p>
               </div>
             </div>
           </div>

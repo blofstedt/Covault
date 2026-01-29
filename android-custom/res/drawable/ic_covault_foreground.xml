@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Background circle (rendered by adaptive icon background layer) -->
+    <!-- Vault icon: rounded square with lock circle -->
+    <group
+        android:translateX="27"
+        android:translateY="27">
+        <!-- Outer rounded rect (vault) -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M4,8C4,5.79 5.79,4 8,4L46,4C48.21,4 50,5.79 50,8L50,46C50,48.21 48.21,50 46,50L8,50C5.79,50 4,48.21 4,46Z" />
+        <!-- Inner circle (lock) -->
+        <path
+            android:fillColor="#10B981"
+            android:pathData="M27,17C21.48,17 17,21.48 17,27C17,32.52 21.48,37 27,37C32.52,37 37,32.52 37,27C37,21.48 32.52,17 27,17Z" />
+        <!-- Lock keyhole -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M27,23C25.34,23 24,24.34 24,26C24,27.1 24.6,28.05 25.5,28.55L25.5,31C25.5,31.83 26.17,32.5 27,32.5C27.83,32.5 28.5,31.83 28.5,31L28.5,28.55C29.4,28.05 30,27.1 30,26C30,24.34 28.66,23 27,23Z" />
+    </group>
+</vector>

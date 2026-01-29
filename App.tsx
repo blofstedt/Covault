@@ -55,6 +55,7 @@ const DEFAULT_SETTINGS = {
   showSavingsInsight: true,
   theme: 'light' as const,
   hasSeenTutorial: false,
+  notificationsEnabled: false,
 };
 
 const App: React.FC = () => {
@@ -357,11 +358,152 @@ const App: React.FC = () => {
     }
   };
 
+  // Load partner link status from linked_partners table
+  const loadPartnerLink = async (userId: string) => {
+    try {
+      const headers = await getAuthHeaders();
+      // Check for accepted partnership in either direction
+      const res = await fetch(
+        `${REST_BASE}/linked_partners?select=*,partner:settings!linked_partners_partner_id_fkey(name,email),requester:settings!linked_partners_user_id_fkey(name,email)&or=(user_id.eq.${userId},partner_id.eq.${userId})&status=eq.accepted&limit=1`,
+        { headers }
+      );
+      if (!res.ok) {
+        // Try simpler query without joins
+        const res2 = await fetch(
+          `${REST_BASE}/linked_partners?select=*&or=(user_id.eq.${userId},partner_id.eq.${userId})&status=eq.accepted&limit=1`,
+          { headers }
+        );
+        if (res2.ok) {
+          const data = JSON.parse(await res2.text());
+          if (data && data.length > 0) {
+            const link = data[0];
+            const partnerId = link.user_id === userId ? link.partner_id : link.user_id;
+            setAppState(prev => ({
+              ...prev,
+              user: prev.user ? { ...prev.user, budgetingSolo: false, partnerId } : null,
+            }));
+          }
+        }
+        return;
+      }
+      const body = await res.text();
+      const data = JSON.parse(body);
+      if (data && data.length > 0) {
+        const link = data[0];
+        const isRequester = link.user_id === userId;
+        const partnerInfo = isRequester ? link.partner : link.requester;
+        const partnerId = isRequester ? link.partner_id : link.user_id;
+        setAppState(prev => ({
+          ...prev,
+          user: prev.user ? {
+            ...prev.user,
+            budgetingSolo: false,
+            partnerId,
+            partnerName: partnerInfo?.name || undefined,
+            partnerEmail: partnerInfo?.email || undefined,
+          } : null,
+        }));
+        // Also load partner's transactions
+        await loadTransactions(partnerId);
+      }
+    } catch (err: any) {
+      console.error('[loadPartnerLink]', err?.message || err);
+    }
+  };
+
+  // Send a partner link request by email
+  const handleLinkPartner = async (partnerEmail: string) => {
+    try {
+      const headers = await getAuthHeaders();
+      // Look up partner by email in settings table
+      const lookupRes = await fetch(
+        `${REST_BASE}/settings?select=user_id,name,email&email=eq.${encodeURIComponent(partnerEmail)}&limit=1`,
+        { headers }
+      );
+      if (!lookupRes.ok) {
+        setDbError(`Could not find user with email ${partnerEmail}`);
+        return;
+      }
+      const lookupData = JSON.parse(await lookupRes.text());
+      if (!lookupData || lookupData.length === 0) {
+        setDbError(`No Covault account found for ${partnerEmail}. They need to sign up first.`);
+        return;
+      }
+      const partnerId = lookupData[0].user_id;
+      const partnerName = lookupData[0].name;
+      const userId = appState.user?.id;
+      if (!userId || partnerId === userId) {
+        setDbError("You can't link with yourself.");
+        return;
+      }
+
+      // Insert the link request
+      headers['Prefer'] = 'return=representation';
+      const insertRes = await fetch(`${REST_BASE}/linked_partners`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          user_id: userId,
+          partner_id: partnerId,
+          status: 'accepted', // Auto-accept for now (MVP)
+        }),
+      });
+
+      if (!insertRes.ok) {
+        const body = await insertRes.text();
+        setDbError(`Link failed: ${body.slice(0, 200)}`);
+        return;
+      }
+
+      setAppState(prev => ({
+        ...prev,
+        user: prev.user ? {
+          ...prev.user,
+          budgetingSolo: false,
+          partnerId,
+          partnerName,
+          partnerEmail,
+        } : null,
+      }));
+      console.log('[linkPartner] OK, linked with', partnerEmail);
+    } catch (err: any) {
+      setDbError(`Link exception: ${err?.message || err}`);
+    }
+  };
+
+  // Disconnect partner
+  const handleUnlinkPartner = async () => {
+    try {
+      const userId = appState.user?.id;
+      if (!userId) return;
+      const headers = await getAuthHeaders();
+      // Delete all links involving this user
+      await fetch(
+        `${REST_BASE}/linked_partners?or=(user_id.eq.${userId},partner_id.eq.${userId})`,
+        { method: 'DELETE', headers }
+      );
+      setAppState(prev => ({
+        ...prev,
+        user: prev.user ? {
+          ...prev.user,
+          budgetingSolo: true,
+          partnerId: undefined,
+          partnerEmail: undefined,
+          partnerName: undefined,
+        } : null,
+      }));
+      console.log('[unlinkPartner] OK');
+    } catch (err: any) {
+      setDbError(`Unlink exception: ${err?.message || err}`);
+    }
+  };
+
   // Load all data from Supabase
   const loadUserData = async (userId: string) => {
     console.log('loadUserData called for user:', userId);
     await loadCategories();
     await loadTransactions(userId);
+    await loadPartnerLink(userId);
     console.log('loadUserData completed');
   };
 
@@ -539,6 +681,8 @@ const App: React.FC = () => {
           onAddTransaction={handleAddTransaction}
           onUpdateTransaction={handleUpdateTransaction}
           onDeleteTransaction={handleDeleteTransaction}
+          onLinkPartner={handleLinkPartner}
+          onUnlinkPartner={handleUnlinkPartner}
         />
       )}
     </div>

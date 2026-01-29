@@ -85,5 +85,6 @@ export interface AppState {
     showSavingsInsight: boolean;
     theme: 'light' | 'dark';
     hasSeenTutorial: boolean;
+    notificationsEnabled: boolean;
   };
 }

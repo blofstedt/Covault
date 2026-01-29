@@ -233,3 +233,88 @@ CREATE POLICY "Users can update own budgets"
 CREATE POLICY "Users can delete own budgets"
   ON public.user_budgets FOR DELETE TO authenticated
   USING (auth.uid() = user_id);
+
+-- ============================================================
+-- 7. NOTIFICATION RULES  (bank regex patterns per user)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.notification_rules (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  bank_app_id text NOT NULL,
+  bank_name text NOT NULL,
+  amount_regex text NOT NULL,
+  vendor_regex text NOT NULL,
+  default_category_id uuid REFERENCES public.categories(id),
+  is_active boolean NOT NULL DEFAULT true,
+  flagged_count integer NOT NULL DEFAULT 0,
+  last_flagged_at timestamptz,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now(),
+  CONSTRAINT notification_rules_pkey PRIMARY KEY (id),
+  CONSTRAINT notification_rules_unique UNIQUE (user_id, bank_app_id)
+);
+
+ALTER TABLE public.notification_rules ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own notification rules"
+  ON public.notification_rules FOR SELECT TO authenticated
+  USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own notification rules"
+  ON public.notification_rules FOR INSERT TO authenticated
+  WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own notification rules"
+  ON public.notification_rules FOR UPDATE TO authenticated
+  USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete own notification rules"
+  ON public.notification_rules FOR DELETE TO authenticated
+  USING (auth.uid() = user_id);
+
+-- ============================================================
+-- 8. VENDOR CATEGORY OVERRIDES  (reclassification memory)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.vendor_overrides (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  vendor_name text NOT NULL,
+  category_id uuid NOT NULL REFERENCES public.categories(id),
+  created_at timestamptz DEFAULT now(),
+  CONSTRAINT vendor_overrides_pkey PRIMARY KEY (id),
+  CONSTRAINT vendor_overrides_unique UNIQUE (user_id, vendor_name)
+);
+
+ALTER TABLE public.vendor_overrides ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own vendor overrides"
+  ON public.vendor_overrides FOR SELECT TO authenticated
+  USING (auth.uid() = user_id);
+CREATE POLICY "Users can upsert own vendor overrides"
+  ON public.vendor_overrides FOR INSERT TO authenticated
+  WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own vendor overrides"
+  ON public.vendor_overrides FOR UPDATE TO authenticated
+  USING (auth.uid() = user_id);
+
+-- ============================================================
+-- 9. FLAG REPORTS  (rate-limited Gemini correction requests)
+--    Max 5 per 24h, 1h cooldown between reports
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.flag_reports (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  notification_rule_id uuid REFERENCES public.notification_rules(id) ON DELETE SET NULL,
+  raw_notification text NOT NULL,
+  expected_vendor text,
+  expected_amount numeric(12,2),
+  resolved boolean NOT NULL DEFAULT false,
+  created_at timestamptz DEFAULT now(),
+  CONSTRAINT flag_reports_pkey PRIMARY KEY (id)
+);
+
+ALTER TABLE public.flag_reports ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own flag reports"
+  ON public.flag_reports FOR SELECT TO authenticated
+  USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own flag reports"
+  ON public.flag_reports FOR INSERT TO authenticated
+  WITH CHECK (auth.uid() = user_id);
