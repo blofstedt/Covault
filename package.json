@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "cap:sync": "npx cap sync android && bash scripts/sync-android.sh",
+    "cap:build": "vite build && npx cap sync android && bash scripts/sync-android.sh"
   },
   "dependencies": {
     "@aparajita/capacitor-biometric-auth": "^9.1.2",

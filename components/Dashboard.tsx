@@ -320,7 +320,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
               {filteredTransactions.map(tx => {
                 const budget = state.budgets.find(b => b.id === tx.budget_id);
                 return (
-                  <div key={tx.id} className="flex items-center p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800/60 shadow-sm">
+                  <div key={tx.id} className="flex items-center p-4 rounded-2xl backdrop-blur-xl border shadow-sm bg-white/20 dark:bg-slate-900/20 border-white/10 dark:border-slate-700/40">
                     <div className="w-8 h-8 flex items-center justify-center text-emerald-600 dark:text-emerald-400 mr-3 shrink-0">
                       {budget ? getBudgetIcon(budget.name) : <div className="w-5 h-5" />}
                     </div>
