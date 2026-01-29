@@ -154,7 +154,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        className="relative z-10 p-5 rounded-[2rem] backdrop-blur-xl border shadow-sm bg-white/20 dark:bg-slate-900/20 border-white/10 dark:border-slate-700/40"
+        className="relative z-10 p-5 rounded-[2rem] backdrop-blur-xl border shadow-sm bg-white/80 dark:bg-slate-900/80 border-slate-200/40 dark:border-slate-700/40"
         style={{
           transform: `translateX(${offsetX}px)`,
           transition: swiping ? 'none' : 'transform 0.3s cubic-bezier(0.25, 1, 0.5, 1)',

@@ -53,16 +53,44 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           className={`h-full transition-all duration-[700ms] ease-out relative ${isExpanded ? 'animate-breathe' : ''} bg-emerald-400/30 dark:bg-emerald-500/40`}
         >
           {spentWidth > 0 && (
-            <>
-              <div className={`liquid-start ${isExpanded ? 'liquid-active' : 'liquid-calm'}`} />
-              <div className={`liquid-edge ${isExpanded ? 'liquid-active' : 'liquid-calm'}`} />
-            </>
+            <div className="absolute right-[-5px] top-0 w-[10px] overflow-hidden pointer-events-none" style={{ height: '100%' }}>
+              <svg
+                className={isExpanded ? 'sine-wave-fast' : 'sine-wave-slow'}
+                width="10"
+                style={{ position: 'absolute', top: '-60px', left: 0, height: 'calc(100% + 120px)' }}
+                viewBox="0 0 10 120"
+                preserveAspectRatio="none"
+              >
+                <path
+                  d="M5 0 Q10 15 5 30 Q0 45 5 60 Q10 75 5 90 Q0 105 5 120"
+                  fill="none"
+                  stroke="#10B981"
+                  strokeWidth="1.5"
+                  strokeOpacity="0.5"
+                />
+              </svg>
+            </div>
           )}
         </div>
         {external > 0 && (
           <div style={{ width: `${externalWidth}%` }} className={`h-full bg-rose-400/30 dark:bg-rose-500/40 transition-all duration-[700ms] ease-out relative ${isExpanded ? 'animate-breathe' : ''}`}>
-            <div className={`liquid-start ${isExpanded ? 'liquid-active-rose' : 'liquid-calm-rose'}`} />
-            <div className={`liquid-edge ${isExpanded ? 'liquid-active-rose' : 'liquid-calm-rose'}`} />
+            <div className="absolute right-[-5px] top-0 w-[10px] overflow-hidden pointer-events-none" style={{ height: '100%' }}>
+              <svg
+                className={isExpanded ? 'sine-wave-fast' : 'sine-wave-slow'}
+                width="10"
+                style={{ position: 'absolute', top: '-60px', left: 0, height: 'calc(100% + 120px)' }}
+                viewBox="0 0 10 120"
+                preserveAspectRatio="none"
+              >
+                <path
+                  d="M5 0 Q10 15 5 30 Q0 45 5 60 Q10 75 5 90 Q0 105 5 120"
+                  fill="none"
+                  stroke="#F43F5E"
+                  strokeWidth="1.5"
+                  strokeOpacity="0.5"
+                />
+              </svg>
+            </div>
           </div>
         )}
         <div style={{ width: `${projectedWidth}%` }} className="h-full budget-bar-dashed transition-all duration-[700ms] ease-out opacity-20 text-emerald-400 dark:text-emerald-800" />
