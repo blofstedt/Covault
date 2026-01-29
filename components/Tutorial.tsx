@@ -16,6 +16,13 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
   const [tooltipHeight, setTooltipHeight] = useState(0);
   const lastScrolledStep = useRef<number | null>(null);
 
+  // Swipe demo state
+  const [demoOffsetX, setDemoOffsetX] = useState(0);
+  const [demoSwiping, setDemoSwiping] = useState(false);
+  const demoStartX = useRef(0);
+  const demoLocked = useRef<'horizontal' | 'vertical' | null>(null);
+  const [demoCompleted, setDemoCompleted] = useState(false);
+
   const steps = [
     {
       title: "Your Balance at a Glance",
@@ -35,6 +42,12 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
         ? "Tap here to record a purchase. Your name is attached automatically. You can split a single expense across two categories by selecting both."
         : "Tap here to record a new expense. Select one or two categories, and if you pick two, you can drag to split the amount between them.",
       target: "add-transaction-button",
+    },
+    {
+      title: "Swipe to Edit or Delete",
+      content: "Swipe any transaction left to delete, or right to edit. Try it on the example below!",
+      target: "first-budget-card",
+      isDemo: true,
     },
     {
       title: "Quick Navigation",
@@ -92,6 +105,8 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
     }
   ];
 
+  const currentStep = steps[step] as typeof steps[0] & { isDemo?: boolean };
+
   useEffect(() => {
     if (tooltipRef.current) {
       setTooltipHeight(tooltipRef.current.offsetHeight);
@@ -131,6 +146,13 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
     };
   }, [step]);
 
+  // Reset demo state on step change
+  useEffect(() => {
+    setDemoOffsetX(0);
+    setDemoSwiping(false);
+    setDemoCompleted(false);
+  }, [step]);
+
   const handleNext = () => {
     const nextStep = step + 1;
     if (nextStep < steps.length) {
@@ -143,6 +165,69 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
 
   const handleSkip = () => {
     setShowSkipConfirm(true);
+  };
+
+  // Swipe demo handlers
+  const handleDemoTouchStart = (e: React.TouchEvent) => {
+    demoStartX.current = e.touches[0].clientX;
+    demoLocked.current = null;
+    setDemoSwiping(true);
+  };
+
+  const handleDemoTouchMove = (e: React.TouchEvent) => {
+    if (!demoSwiping) return;
+    const dx = e.touches[0].clientX - demoStartX.current;
+    const dy = e.touches[0].clientY - (e.touches[0] as any).startY || 0;
+
+    if (!demoLocked.current) {
+      if (Math.abs(dx) > 8) {
+        demoLocked.current = 'horizontal';
+      }
+      return;
+    }
+
+    if (demoLocked.current === 'vertical') return;
+    setDemoOffsetX(Math.max(-140, Math.min(140, dx)));
+  };
+
+  const handleDemoTouchEnd = () => {
+    setDemoSwiping(false);
+    if (Math.abs(demoOffsetX) > 60) {
+      setDemoCompleted(true);
+      setDemoOffsetX(demoOffsetX > 0 ? 160 : -160);
+      setTimeout(() => {
+        setDemoOffsetX(0);
+        setTimeout(() => setDemoCompleted(false), 300);
+      }, 600);
+    } else {
+      setDemoOffsetX(0);
+    }
+    demoLocked.current = null;
+  };
+
+  // Pointer fallback for demo
+  const handleDemoPointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType === 'touch') return;
+    demoStartX.current = e.clientX;
+    demoLocked.current = null;
+    setDemoSwiping(true);
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const handleDemoPointerMove = (e: React.PointerEvent) => {
+    if (e.pointerType === 'touch' || !demoSwiping) return;
+    const dx = e.clientX - demoStartX.current;
+    if (!demoLocked.current && Math.abs(dx) > 8) {
+      demoLocked.current = 'horizontal';
+    }
+    if (demoLocked.current === 'horizontal') {
+      setDemoOffsetX(Math.max(-140, Math.min(140, dx)));
+    }
+  };
+
+  const handleDemoPointerUp = (e: React.PointerEvent) => {
+    if (e.pointerType === 'touch') return;
+    handleDemoTouchEnd();
   };
 
   if (showSkipConfirm) {
@@ -214,6 +299,11 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
 
   const progress = ((step + 1) / steps.length) * 100;
 
+  const demoDeleteHint = demoOffsetX < -25;
+  const demoEditHint = demoOffsetX > 25;
+  const demoDeleteReady = demoOffsetX < -60;
+  const demoEditReady = demoOffsetX > 60;
+
   return (
     <div className="fixed inset-0 z-[250] pointer-events-none overflow-hidden">
       {/* Dimmer */}
@@ -258,12 +348,67 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
           <div className="space-y-3 text-center">
             <span className="text-[9px] font-black text-emerald-500 uppercase tracking-[0.3em]">Step {step + 1} of {steps.length}</span>
             <h3 className="text-lg font-black text-slate-600 dark:text-slate-100 uppercase tracking-tight leading-tight">
-              {steps[step].title}
+              {currentStep.title}
             </h3>
             <p className="text-slate-500 dark:text-slate-400 font-medium text-[13px] leading-relaxed">
-              {steps[step].content}
+              {currentStep.content}
             </p>
           </div>
+
+          {/* Swipe demo */}
+          {currentStep.isDemo && (
+            <div className="relative overflow-hidden rounded-2xl">
+              {/* Delete background */}
+              <div className={`absolute inset-0 flex items-center justify-end pr-6 rounded-2xl transition-colors duration-200 ${demoDeleteReady ? 'bg-rose-500' : 'bg-rose-400/20'}`}>
+                <div className={`flex items-center space-x-1.5 transition-all duration-200 ${demoDeleteHint ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}`}>
+                  <svg className={`w-4 h-4 ${demoDeleteReady ? 'text-white' : 'text-rose-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  <span className={`text-[9px] font-black uppercase tracking-widest ${demoDeleteReady ? 'text-white' : 'text-rose-500'}`}>Delete</span>
+                </div>
+              </div>
+
+              {/* Edit background */}
+              <div className={`absolute inset-0 flex items-center justify-start pl-6 rounded-2xl transition-colors duration-200 ${demoEditReady ? 'bg-emerald-500' : 'bg-emerald-400/20'}`}>
+                <div className={`flex items-center space-x-1.5 transition-all duration-200 ${demoEditHint ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}`}>
+                  <svg className={`w-4 h-4 ${demoEditReady ? 'text-white' : 'text-emerald-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572" />
+                  </svg>
+                  <span className={`text-[9px] font-black uppercase tracking-widest ${demoEditReady ? 'text-white' : 'text-emerald-600'}`}>Edit</span>
+                </div>
+              </div>
+
+              {/* Mock transaction */}
+              <div
+                onTouchStart={handleDemoTouchStart}
+                onTouchMove={handleDemoTouchMove}
+                onTouchEnd={handleDemoTouchEnd}
+                onPointerDown={handleDemoPointerDown}
+                onPointerMove={handleDemoPointerMove}
+                onPointerUp={handleDemoPointerUp}
+                className="relative z-10 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 cursor-grab active:cursor-grabbing"
+                style={{
+                  transform: `translateX(${demoOffsetX}px)`,
+                  transition: demoSwiping ? 'none' : 'transform 0.3s cubic-bezier(0.25, 1, 0.5, 1)',
+                  touchAction: 'pan-y',
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col">
+                    <span className="font-black text-[12px] text-slate-500 dark:text-slate-200 tracking-tight uppercase">Coffee Shop</span>
+                    <span className="text-[9px] font-bold text-slate-400 mt-1">Jan 29 &bull; Dining</span>
+                  </div>
+                  <span className="text-sm font-black text-slate-500 dark:text-slate-200">$5.75</span>
+                </div>
+              </div>
+
+              {demoCompleted && (
+                <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+                  <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest animate-in fade-in zoom-in-95 duration-300">Nice!</span>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex space-x-3">
             <button

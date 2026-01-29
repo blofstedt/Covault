@@ -204,13 +204,17 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Apply theme class to document root
+  // Apply theme class to document root with smooth transition
   useEffect(() => {
+    const el = document.documentElement;
+    el.classList.add('theme-transitioning');
     if (appState.settings.theme === 'dark') {
-      document.documentElement.classList.add('dark');
+      el.classList.add('dark');
     } else {
-      document.documentElement.classList.remove('dark');
+      el.classList.remove('dark');
     }
+    const timer = setTimeout(() => el.classList.remove('theme-transitioning'), 500);
+    return () => clearTimeout(timer);
   }, [appState.settings.theme]);
 
   const handleOnboardingComplete = (isSolo: boolean, budgets: BudgetCategory[], partnerEmail?: string) => {

@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 
 interface NotificationSettingsProps {
@@ -7,56 +7,45 @@ interface NotificationSettingsProps {
   onToggle: (enabled: boolean) => void;
 }
 
-// Known banking apps with display names
-const BANKING_APPS = [
-  { id: 'com.chase.sig.android', name: 'Chase' },
-  { id: 'com.wf.wellsfargomobile', name: 'Wells Fargo' },
-  { id: 'com.infonow.bofa', name: 'Bank of America' },
-  { id: 'com.citi.citimobile', name: 'Citi' },
-  { id: 'com.usbank.mobilbanking', name: 'US Bank' },
-  { id: 'com.pnc.ecommerce.mobile', name: 'PNC' },
-  { id: 'com.tdbank', name: 'TD Bank' },
-  { id: 'com.capitalone.creditcard', name: 'Capital One' },
-  { id: 'com.huntington.m', name: 'Huntington' },
-  { id: 'com.ally.MobileBanking', name: 'Ally' },
-  { id: 'com.squareup.cash', name: 'Cash App' },
-  { id: 'com.venmo', name: 'Venmo' },
-  { id: 'com.paypal.android.p2pmobile', name: 'PayPal' },
-  { id: 'com.sofi.mobile', name: 'SoFi' },
-  { id: 'com.chime.cta', name: 'Chime' },
-  { id: 'com.zellepay.zelle', name: 'Zelle' },
-  { id: 'com.americanexpress.android.acctsvcs.us', name: 'Amex' },
-  { id: 'com.discoverfinancial.mobile', name: 'Discover' },
-  { id: 'com.navyfederal.android', name: 'Navy Federal' },
-  { id: 'com.robinhood.android', name: 'Robinhood' },
-];
-
 const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, onToggle }) => {
-  const [selectedApps, setSelectedApps] = useState<Set<string>>(new Set());
-  const [showAppPicker, setShowAppPicker] = useState(false);
+  const [permissionGranted, setPermissionGranted] = useState(false);
   const isNative = Capacitor.isNativePlatform();
+
+  const checkPermission = async () => {
+    if (!isNative) return;
+    try {
+      const result = await (window as any).AndroidNotificationPermission?.isEnabled?.();
+      setPermissionGranted(!!result);
+    } catch { /* ignore */ }
+  };
+
+  useEffect(() => {
+    checkPermission();
+    // Re-check when the app comes back to foreground (user may return from settings)
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        checkPermission();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
+
+  const requestPermission = () => {
+    try {
+      // Opens Android's ACTION_NOTIFICATION_LISTENER_SETTINGS intent
+      (window as any).AndroidNotificationPermission?.requestAccess?.();
+      // Re-check after user returns from settings
+      setTimeout(checkPermission, 2000);
+      setTimeout(checkPermission, 5000);
+    } catch { /* ignore */ }
+  };
 
   const handleToggle = () => {
     if (!enabled && isNative) {
-      // Prompt to enable notification access in system settings
-      try {
-        // On Android, direct to notification listener settings
-        (window as any).AndroidNotificationPermission?.requestAccess?.();
-      } catch {
-        // Fallback: show instruction
-      }
+      requestPermission();
     }
     onToggle(!enabled);
-    if (!enabled) {
-      setShowAppPicker(true);
-    }
-  };
-
-  const toggleApp = (appId: string) => {
-    const next = new Set(selectedApps);
-    if (next.has(appId)) next.delete(appId);
-    else next.add(appId);
-    setSelectedApps(next);
   };
 
   return (
@@ -67,7 +56,7 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
             Auto-File Transactions
           </span>
           <p className="text-[11px] text-slate-500 font-medium mt-1">
-            Listen for banking notifications and auto-log transactions. Covault extracts the vendor and amount automatically.
+            Listen for banking notifications and auto-log transactions. Covault detects your banking apps automatically.
           </p>
         </div>
         <button
@@ -88,46 +77,35 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
 
       {enabled && isNative && (
         <div className="space-y-3">
-          <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-200 dark:border-emerald-800/40">
-            <p className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
-              You need to grant Notification Access in your device settings. Tap below to open settings.
-            </p>
-            <button
-              onClick={() => {
-                try {
-                  (window as any).AndroidNotificationPermission?.requestAccess?.();
-                } catch { /* no-op */ }
-              }}
-              className="mt-3 w-full py-3 bg-emerald-600 text-white text-[10px] font-black rounded-xl uppercase tracking-widest active:scale-95 transition-all"
-            >
-              Open Notification Settings
-            </button>
+          <div className={`p-4 rounded-2xl border ${permissionGranted ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/40' : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/40'}`}>
+            <div className="flex items-center space-x-3">
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${permissionGranted ? 'bg-emerald-500' : 'bg-amber-500'}`}>
+                {permissionGranted ? (
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 13l4 4L19 7" /></svg>
+                ) : (
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 9v2m0 4h.01" /></svg>
+                )}
+              </div>
+              <p className={`text-[11px] font-bold flex-1 ${permissionGranted ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                {permissionGranted
+                  ? 'Notification access granted. Covault is listening for banking transactions.'
+                  : 'Grant notification access so Covault can read your banking alerts.'}
+              </p>
+            </div>
           </div>
 
           <button
-            onClick={() => setShowAppPicker(!showAppPicker)}
-            className="w-full py-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-[11px] font-black text-slate-500 dark:text-slate-300 uppercase tracking-widest active:scale-95 transition-all"
+            onClick={requestPermission}
+            className={`w-full py-3 text-white text-[10px] font-black rounded-xl uppercase tracking-widest active:scale-95 transition-all ${permissionGranted ? 'bg-slate-400 dark:bg-slate-600' : 'bg-emerald-600'}`}
           >
-            {showAppPicker ? 'Hide' : 'Select'} Banking Apps ({selectedApps.size} selected)
+            {permissionGranted ? 'Re-check Permission' : 'Open Notification Settings'}
           </button>
 
-          {showAppPicker && (
-            <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto no-scrollbar">
-              {BANKING_APPS.map(app => (
-                <button
-                  key={app.id}
-                  onClick={() => toggleApp(app.id)}
-                  className={`p-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border ${
-                    selectedApps.has(app.id)
-                      ? 'bg-emerald-500 text-white border-emerald-500 shadow-md'
-                      : 'bg-white dark:bg-slate-900 text-slate-400 border-slate-100 dark:border-slate-800'
-                  }`}
-                >
-                  {app.name}
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="p-3 bg-slate-100/50 dark:bg-slate-800/30 rounded-2xl">
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium text-center">
+              Covault automatically detects notifications from banking and payment apps installed on your device.
+            </p>
+          </div>
         </div>
       )}
     </div>

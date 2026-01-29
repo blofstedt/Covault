@@ -111,19 +111,6 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
     return list;
   }, [allTransactions, searchQuery]);
 
-  // Auto-expand budgets that have matching search results
-  useEffect(() => {
-    if (!searchQuery) return;
-    const matchingBudgetIds = new Set<string>();
-    filteredTransactions.forEach(t => {
-      if (t.budget_id) matchingBudgetIds.add(t.budget_id);
-      t.splits?.forEach(s => matchingBudgetIds.add(s.budget_id));
-    });
-    if (matchingBudgetIds.size > 0) {
-      setExpandedBudgets(matchingBudgetIds);
-    }
-  }, [searchQuery, filteredTransactions]);
-
   // Calculate total income (user's income + partner's income for couples)
   const totalIncome = useMemo(() => {
     const userIncome = state.user?.monthlyIncome || 0;
@@ -154,6 +141,20 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
     });
     return totalOverspend;
   }, [state.budgets, filteredTransactions, state.settings.useLeisureAsBuffer]);
+
+  // Build vendor history for autocomplete (vendor → last used budget_id)
+  const vendorHistory = useMemo(() => {
+    const map = new Map<string, string>();
+    [...state.transactions]
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .forEach(tx => {
+        const key = tx.vendor.toLowerCase();
+        if (!map.has(key) && tx.budget_id) {
+          map.set(key, tx.budget_id);
+        }
+      });
+    return Array.from(map.entries()).map(([vendor, budget_id]) => ({ vendor, budget_id }));
+  }, [state.transactions]);
 
   const toggleExpand = (id: string) => {
     const next = new Set(expandedBudgets);
@@ -232,7 +233,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
 
   const handleTutorialStepChange = (step: number) => {
     setTutorialStep(step);
-    if (step >= 5 && step <= 12) {
+    if (step >= 6 && step <= 13) {
       setShowSettings(true);
     } else {
       setShowSettings(false);
@@ -310,48 +311,79 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
           </div>
         )}
 
-        <div
-          ref={scrollContainerRef}
-          className={`flex-1 flex flex-col ${isFocusMode ? 'overflow-hidden' : (expandedBudgets.size > 0 ? 'overflow-y-auto' : 'overflow-hidden')} mt-3 no-scrollbar scroll-smooth h-full transition-all duration-500 gap-2`}
-        >
-          {state.budgets
-            .filter(budget => !isFocusMode || budget.id === focusedBudgetId)
-            .map((budget, index) => {
-              const budgetTxs = filteredTransactions.filter(t =>
-                t.budget_id === budget.id || (t.splits?.some(s => s.budget_id === budget.id))
-              );
-              const isExpanded = expandedBudgets.has(budget.id);
-              const isLeisure = budget.name.toLowerCase().includes('leisure');
-              const displayBudget = isLeisure && state.settings.useLeisureAsBuffer
-                ? { ...budget, externalDeduction: leisureAdjustments }
-                : budget;
-              return (
-                <div
-                  key={budget.id}
-                  id={index === 0 ? "first-budget-card" : undefined}
-                  ref={el => { if (el) budgetRefs.current.set(budget.id, el); else budgetRefs.current.delete(budget.id); }}
-                  className={`transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] ${isExpanded ? 'flex-[100] min-h-[70vh]' : 'flex-1 min-h-0'} flex flex-col`}
-                  style={{ animationDelay: `${index * 40}ms` }}
-                >
-                  <BudgetSection
-                    budget={displayBudget as any}
-                    transactions={budgetTxs}
-                    isExpanded={isExpanded}
-                    onToggle={() => toggleExpand(budget.id)}
-                    onUpdateBudget={onUpdateBudget}
-                    onDeleteRequest={(id) => setDeletingTxId(id)}
-                    onEdit={(tx) => setEditingTx(tx)}
-                    currentUserName={state.user?.name || ''}
-                    isSharedView={isSharedAccount}
-                    allBudgets={state.budgets}
-                  />
-                </div>
-              );
-            })
-          }
+        {searchQuery && filteredTransactions.length > 0 ? (
+          <div className="flex-1 overflow-y-auto no-scrollbar mt-3 px-1 pb-4">
+            <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] px-3 block mb-3">
+              {filteredTransactions.length} result{filteredTransactions.length !== 1 ? 's' : ''}
+            </span>
+            <div className="space-y-2">
+              {filteredTransactions.map(tx => {
+                const budget = state.budgets.find(b => b.id === tx.budget_id);
+                return (
+                  <div key={tx.id} className="flex items-center p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800/60 shadow-sm">
+                    <div className="w-8 h-8 flex items-center justify-center text-emerald-600 dark:text-emerald-400 mr-3 shrink-0">
+                      {budget ? getBudgetIcon(budget.name) : <div className="w-5 h-5" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[13px] font-black text-slate-500 dark:text-slate-100 uppercase tracking-tight block truncate">{tx.vendor}</span>
+                      <div className="flex items-center space-x-2 mt-0.5">
+                        <span className="text-[10px] text-slate-400 font-bold">
+                          {new Date(tx.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                        </span>
+                        {budget && <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">{budget.name}</span>}
+                        {tx.is_projected && <span className="text-[8px] font-black text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded uppercase tracking-widest">Projected</span>}
+                      </div>
+                    </div>
+                    <span className="text-sm font-black text-slate-500 dark:text-slate-100 ml-2">${tx.amount.toFixed(2)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div
+            ref={scrollContainerRef}
+            className={`flex-1 flex flex-col ${isFocusMode ? 'overflow-hidden' : (expandedBudgets.size > 0 ? 'overflow-y-auto' : 'overflow-hidden')} mt-3 no-scrollbar scroll-smooth h-full transition-all duration-500 gap-2`}
+          >
+            {state.budgets
+              .filter(budget => !isFocusMode || budget.id === focusedBudgetId)
+              .map((budget, index) => {
+                const budgetTxs = filteredTransactions.filter(t =>
+                  t.budget_id === budget.id || (t.splits?.some(s => s.budget_id === budget.id))
+                );
+                const isExpanded = expandedBudgets.has(budget.id);
+                const isLeisure = budget.name.toLowerCase().includes('leisure');
+                const displayBudget = isLeisure && state.settings.useLeisureAsBuffer
+                  ? { ...budget, externalDeduction: leisureAdjustments }
+                  : budget;
+                return (
+                  <div
+                    key={budget.id}
+                    id={index === 0 ? "first-budget-card" : undefined}
+                    ref={el => { if (el) budgetRefs.current.set(budget.id, el); else budgetRefs.current.delete(budget.id); }}
+                    className={`transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isExpanded ? 'flex-[100] min-h-[70vh]' : 'flex-1 min-h-0'} flex flex-col`}
+                    style={{ animationDelay: `${index * 40}ms` }}
+                  >
+                    <BudgetSection
+                      budget={displayBudget as any}
+                      transactions={budgetTxs}
+                      isExpanded={isExpanded}
+                      onToggle={() => toggleExpand(budget.id)}
+                      onUpdateBudget={onUpdateBudget}
+                      onDeleteRequest={(id) => setDeletingTxId(id)}
+                      onEdit={(tx) => setEditingTx(tx)}
+                      currentUserName={state.user?.name || ''}
+                      isSharedView={isSharedAccount}
+                      allBudgets={state.budgets}
+                    />
+                  </div>
+                );
+              })
+            }
 
-          {!isFocusMode && expandedBudgets.size > 0 && <div className="h-[60vh] flex-none pointer-events-none" />}
-        </div>
+            {!isFocusMode && expandedBudgets.size > 0 && <div className="h-[60vh] flex-none pointer-events-none" />}
+          </div>
+        )}
       </main>
 
       <div id="bottom-bar" className="fixed bottom-0 left-0 right-0 z-40 px-3 pb-3 pt-2 flex flex-col items-center pointer-events-none pb-safe">
@@ -359,7 +391,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
           <div className="flex items-center justify-evenly">
             {firstHalfBudgets.map(b => (
               <button key={b.id} onClick={() => jumpToBudget(b.id)} className={`p-2.5 rounded-full transition-all duration-300 ${expandedBudgets.has(b.id) ? 'bg-emerald-600 text-white shadow-lg scale-110' : 'text-slate-400 dark:text-slate-600'}`}>
-                <div className="w-6 h-6">{getBudgetIcon(b.name)}</div>
+                <div className="w-6 h-6 flex items-center justify-center">{getBudgetIcon(b.name)}</div>
               </button>
             ))}
             <button id="add-transaction-button" onClick={() => setIsAddingTx(true)} className="p-4 text-white rounded-full shadow-lg flex items-center justify-center active:scale-95 transition-all bg-slate-500 dark:bg-emerald-600">
@@ -367,7 +399,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
             </button>
             {secondHalfBudgets.map(b => (
               <button key={b.id} onClick={() => jumpToBudget(b.id)} className={`p-2.5 rounded-full transition-all duration-300 ${expandedBudgets.has(b.id) ? 'bg-emerald-600 text-white shadow-lg scale-110' : 'text-slate-400 dark:text-slate-600'}`}>
-                <div className="w-6 h-6">{getBudgetIcon(b.name)}</div>
+                <div className="w-6 h-6 flex items-center justify-center">{getBudgetIcon(b.name)}</div>
               </button>
             ))}
           </div>
@@ -579,11 +611,11 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
       )}
 
       {isAddingTx && (
-        <TransactionForm onClose={() => setIsAddingTx(false)} onSave={onAddTransaction} budgets={state.budgets} userId={state.user?.id || '1'} userName={state.user?.name || 'User'} isSharedAccount={isSharedAccount} />
+        <TransactionForm onClose={() => setIsAddingTx(false)} onSave={onAddTransaction} budgets={state.budgets} userId={state.user?.id || '1'} userName={state.user?.name || 'User'} isSharedAccount={isSharedAccount} vendorHistory={vendorHistory} />
       )}
 
       {editingTx && (
-        <TransactionForm onClose={() => setEditingTx(null)} onSave={handleUpdateTransaction} budgets={state.budgets} userId={state.user?.id || '1'} userName={state.user?.name || 'User'} initialTransaction={editingTx} isSharedAccount={isSharedAccount} />
+        <TransactionForm onClose={() => setEditingTx(null)} onSave={handleUpdateTransaction} budgets={state.budgets} userId={state.user?.id || '1'} userName={state.user?.name || 'User'} initialTransaction={editingTx} isSharedAccount={isSharedAccount} vendorHistory={vendorHistory} />
       )}
 
       {deletingTxId && (

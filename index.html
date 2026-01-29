@@ -60,15 +60,12 @@
         transition: background-color 0.7s ease, color 0.7s ease;
       }
 
-      /* Smooth dark mode transition on all themed elements */
-      html.dark *, html:not(.dark) * {
-        transition-property: background-color, border-color, color, fill, stroke, opacity, box-shadow;
-        transition-duration: 0.5s;
-        transition-timing-function: ease;
-      }
-      /* Don't interfere with explicit transitions */
-      [style*="transition"], [style*="transform"] {
-        transition-property: all;
+      /* Smooth dark mode fade — use targeted selectors instead of wildcard for performance */
+      html { transition: background-color 0.4s ease; }
+      html.theme-transitioning * {
+        transition-property: background-color, border-color, color, fill, stroke, box-shadow !important;
+        transition-duration: 0.4s !important;
+        transition-timing-function: ease !important;
       }
       .budget-bar-dashed {
         background-image: linear-gradient(to right, currentColor 50%, transparent 50%);

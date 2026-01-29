@@ -3,6 +3,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Transaction, BudgetCategory, Recurrence, TransactionLabel, TransactionSplit } from '../types';
 import { getBudgetIcon } from './Dashboard';
 
+interface VendorHistoryItem {
+  vendor: string;
+  budget_id: string;
+}
+
 interface TransactionFormProps {
   onClose: () => void;
   onSave: (t: Transaction) => void;
@@ -11,10 +16,10 @@ interface TransactionFormProps {
   userName: string;
   initialTransaction?: Transaction;
   isSharedAccount?: boolean;
+  vendorHistory?: VendorHistoryItem[];
 }
 
 const generateUUID = () => {
-  // crypto.randomUUID is available in all modern browsers & Capacitor webviews
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
   }
@@ -32,28 +37,52 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   userId,
   userName,
   initialTransaction,
-  isSharedAccount = false
+  isSharedAccount = false,
+  vendorHistory = []
 }) => {
   const [vendor, setVendor] = useState(initialTransaction?.vendor || '');
   const [amountStr, setAmountStr] = useState(initialTransaction?.amount.toString() || '');
   const [date, setDate] = useState(
-    initialTransaction?.date 
-      ? new Date(initialTransaction.date).toISOString().split('T')[0] 
+    initialTransaction?.date
+      ? new Date(initialTransaction.date).toISOString().split('T')[0]
       : new Date().toISOString().split('T')[0]
   );
-  
-  const [recurrence, setRecurrence] = useState<Recurrence>(initialTransaction?.recurrence || 'One-time');
-  
-  const amountInputRef = useRef<HTMLInputElement>(null);
 
-  // Focus amount input only on initial mount for new transactions
+  const [recurrence, setRecurrence] = useState<Recurrence>(initialTransaction?.recurrence || 'One-time');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  const amountInputRef = useRef<HTMLInputElement>(null);
+  const dateInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     if (!initialTransaction) {
       amountInputRef.current?.focus();
     }
   }, []);
 
-  // Track selected budget IDs - empty by default for new entries
+  // Vendor autocomplete suggestions
+  const suggestions = vendor.length > 0
+    ? vendorHistory.filter(v =>
+        v.vendor.toLowerCase().includes(vendor.toLowerCase()) &&
+        v.vendor.toLowerCase() !== vendor.toLowerCase()
+      ).slice(0, 5)
+    : [];
+
+  const selectSuggestion = (item: VendorHistoryItem) => {
+    setVendor(item.vendor);
+    setShowSuggestions(false);
+    // Auto-select the last-used budget for this vendor
+    if (item.budget_id && !initialTransaction) {
+      setSelectedIds(new Set([item.budget_id]));
+    }
+  };
+
+  // Format date for styled display
+  const formattedDate = new Date(date + 'T12:00:00').toLocaleDateString(undefined, {
+    weekday: 'short', month: 'short', day: 'numeric'
+  });
+
+  // Track selected budget IDs
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => {
     if (initialTransaction?.splits) {
       return new Set(initialTransaction.splits.map(s => s.budget_id));
@@ -64,7 +93,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     return new Set();
   });
 
-  // Track the actual split amounts
   const [splits, setSplits] = useState<Record<string, number>>(() => {
     const amountVal = parseFloat(initialTransaction?.amount.toString() || '0');
     if (initialTransaction?.splits) {
@@ -133,7 +161,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   };
 
   const handlePointerDown = (e: React.PointerEvent, id: string) => {
-    // Explicitly blur any active input to prevent re-focusing/keyboard pop-up
     if (document.activeElement instanceof HTMLInputElement) {
       document.activeElement.blur();
     }
@@ -151,7 +178,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     if (!selectedIds.has(id) || selectedIds.size < 2) return;
 
     const deltaX = e.clientX - slideStartRef.current.x;
-    
+
     if (Math.abs(deltaX) > 5) {
       hasMovedRef.current = true;
     }
@@ -163,7 +190,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
     const deltaAmount = (deltaX / rect.width) * amount;
     let newVal = Math.max(0, Math.min(amount, slideStartRef.current.initialSplit + deltaAmount));
-    
+
     const otherIds = (Array.from(selectedIds) as string[]).filter(sid => sid !== id);
     if (otherIds.length === 0) return;
 
@@ -255,32 +282,62 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-4">
             <div className="flex flex-col items-center justify-center py-8 bg-slate-50/50 dark:bg-slate-800/20 rounded-3xl border border-slate-100/50 dark:border-slate-800/30">
               <div className="flex items-center justify-center space-x-1">
                 <span className="text-xl font-black text-slate-300 dark:text-slate-700 select-none">$</span>
-                <input 
+                <input
                   ref={amountInputRef}
-                  type="number" 
-                  placeholder="0.00" 
-                  value={amountStr} 
+                  type="number"
+                  placeholder="0.00"
+                  value={amountStr}
                   onChange={e => setAmountStr(e.target.value)}
                   className="bg-transparent text-left text-3xl font-black tracking-tighter outline-none text-slate-500 dark:text-slate-50 placeholder-slate-200 dark:placeholder-slate-800 w-auto min-w-[1ch]"
                   style={{ width: amountStr ? `${amountStr.length + 0.5}ch` : '4ch' }}
                 />
               </div>
             </div>
-            <input 
-              type="text" 
-              placeholder="Where was this spent?" 
-              value={vendor} 
-              onChange={e => setVendor(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 px-6 text-sm font-bold placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500/20 text-slate-500 dark:text-slate-100 text-center shadow-sm"
-            />
+
+            {/* Vendor input with autocomplete */}
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Where was this spent?"
+                value={vendor}
+                onChange={e => { setVendor(e.target.value); setShowSuggestions(true); }}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 px-6 text-sm font-bold placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500/20 text-slate-500 dark:text-slate-100 text-center shadow-sm"
+              />
+              {showSuggestions && suggestions.length > 0 && (
+                <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-xl overflow-hidden">
+                  {suggestions.map((s, i) => {
+                    const budget = budgets.find(b => b.id === s.budget_id);
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={() => selectSuggestion(s)}
+                        className="w-full flex items-center px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors text-left"
+                      >
+                        <div className="w-6 h-6 flex items-center justify-center text-emerald-500 mr-3 shrink-0">
+                          {budget ? getBudgetIcon(budget.name) : null}
+                        </div>
+                        <span className="text-sm font-bold text-slate-500 dark:text-slate-200 capitalize">{s.vendor}</span>
+                        {budget && (
+                          <span className="text-[9px] font-bold text-slate-400 ml-auto uppercase tracking-wider">{budget.name}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-3">
             <div className="flex items-center justify-between px-2">
               <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">
                 {selectedIds.size > 1 ? 'Slide to Allocate' : 'Target Vault (Max 2)'}
@@ -292,7 +349,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-2">
               {budgets.map(b => {
                 const isSelected = selectedIds.has(b.id);
                 const isMaxSelected = selectedIds.size >= 2;
@@ -310,14 +367,14 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                     onPointerUp={e => handlePointerUp(e, b.id)}
                     onPointerCancel={e => handlePointerUp(e, b.id)}
                     style={{
-                      background: isSelected 
-                        ? `linear-gradient(to right, rgba(16, 185, 129, 0.4) ${percentage}%, transparent ${percentage}%)` 
+                      background: isSelected
+                        ? `linear-gradient(to right, rgba(16, 185, 129, 0.4) ${percentage}%, transparent ${percentage}%)`
                         : 'transparent'
                     }}
                     className={`
-                      relative group flex flex-col items-center justify-center p-5 rounded-[2.5rem] transition-all overflow-hidden border
-                      ${isSelected 
-                        ? 'border-emerald-500/50 shadow-lg shadow-emerald-500/10' 
+                      relative group flex flex-col items-center justify-center p-3 rounded-2xl transition-all overflow-hidden border
+                      ${isSelected
+                        ? 'border-emerald-500/50 shadow-lg shadow-emerald-500/10'
                         : (isMaxSelected ? 'bg-slate-50/50 dark:bg-slate-900/50 border-slate-50 dark:border-slate-900 opacity-40 text-slate-300' : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-400')
                       }
                       ${isSliding ? 'scale-[1.05] ring-2 ring-emerald-500/40' : 'active:scale-95'}
@@ -331,14 +388,14 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                     )}
 
                     <div className={`relative z-10 flex flex-col items-center transition-transform ${isSliding ? 'scale-110' : ''}`}>
-                      <div className={isSelected ? 'text-emerald-600 dark:text-emerald-400' : ''}>
+                      <div className={`w-5 h-5 ${isSelected ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>
                         {getBudgetIcon(b.name)}
                       </div>
-                      <span className={`text-[9px] font-black uppercase tracking-tighter mt-2 ${isSelected ? 'text-emerald-700 dark:text-emerald-300' : ''}`}>
+                      <span className={`text-[8px] font-black uppercase tracking-tighter mt-1.5 ${isSelected ? 'text-emerald-700 dark:text-emerald-300' : ''}`}>
                         {b.name}
                       </span>
                       {isSelected && (
-                        <span className="text-[11px] font-black text-emerald-800 dark:text-emerald-200 mt-1">
+                        <span className="text-[10px] font-black text-emerald-800 dark:text-emerald-200 mt-0.5">
                           ${share.toFixed(selectedIds.size > 1 ? 2 : 0)}
                         </span>
                       )}
@@ -350,13 +407,26 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           </div>
 
           <div className="space-y-4">
-            <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
-               <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Transaction Date</span>
-               <input 
-                type="date" 
-                value={date} 
+            {/* Styled date picker */}
+            <div
+              onClick={() => {
+                try { (dateInputRef.current as any)?.showPicker?.(); } catch { dateInputRef.current?.focus(); }
+              }}
+              className="relative flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 cursor-pointer active:scale-[0.98] transition-all"
+            >
+              <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Date</span>
+              <div className="flex items-center space-x-2">
+                <span className="text-sm font-bold text-slate-500 dark:text-slate-100">{formattedDate}</span>
+                <svg className="w-4 h-4 text-slate-300 dark:text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
+              </div>
+              <input
+                ref={dateInputRef}
+                type="date"
+                value={date}
                 onChange={e => setDate(e.target.value)}
-                className="bg-transparent text-sm font-bold text-slate-500 dark:text-slate-100 outline-none"
+                className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
               />
             </div>
 
@@ -364,7 +434,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
               <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] px-2 text-center block">Recurrence</span>
               <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl">
                 {['One-time', 'Biweekly', 'Monthly'].map(r => (
-                  <button 
+                  <button
                     key={r}
                     type="button"
                     onClick={() => setRecurrence(r as Recurrence)}
@@ -377,10 +447,10 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             </div>
           </div>
 
-          <button 
+          <button
             type="submit"
             disabled={!isFormValid}
-            className={`w-full py-4 rounded-2xl font-black text-sm shadow-xl active:scale-95 transition-all uppercase tracking-[0.2em] mt-4 ${isFormValid ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 opacity-50 cursor-not-allowed'}`}
+            className={`w-full py-4 rounded-2xl font-black text-sm shadow-xl active:scale-95 transition-all uppercase tracking-[0.2em] mt-2 ${isFormValid ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 opacity-50 cursor-not-allowed'}`}
           >
             Confirm Entry
           </button>
