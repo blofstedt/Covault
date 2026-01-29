@@ -5,9 +5,22 @@ import { SYSTEM_CATEGORIES } from './constants';
 import Onboarding from './components/Onboarding';
 import Dashboard from './components/Dashboard';
 import Auth from './components/Auth';
-import { supabase } from './lib/supabase';
+import { supabase, supabaseUrl, supabaseAnonKey } from './lib/supabase';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
+
+const REST_BASE = `${supabaseUrl}/rest/v1`;
+
+// Get auth headers with the current session token
+const getAuthHeaders = async (): Promise<Record<string, string>> => {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token || '';
+  return {
+    'apikey': supabaseAnonKey,
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  };
+};
 
 const SESSION_EXPIRY_KEY = 'covault_session_start';
 const SESSION_DURATION_DAYS = 14;
@@ -47,6 +60,7 @@ const DEFAULT_SETTINGS = {
 const App: React.FC = () => {
   const [authState, setAuthState] = useState<'loading' | 'unauthenticated' | 'onboarding' | 'authenticated'>('loading');
   const [categoriesLoaded, setCategoriesLoaded] = useState(false);
+  const [dbError, setDbError] = useState<string | null>(null);
   const [appState, setAppState] = useState<AppState>(() => {
     // Initialize with saved settings merged with defaults (so new settings get default values)
     const savedSettings = loadSettingsFromStorage();
@@ -269,57 +283,77 @@ const App: React.FC = () => {
   };
 
   const loadCategories = async () => {
-    const { data, error } = await supabase
-      .from('categories')
-      .select('*')
-      .order('display_order');
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(
+        `${REST_BASE}/categories?select=*&order=display_order`,
+        { headers }
+      );
+      const body = await res.text();
+      console.log('[loadCategories] status:', res.status, 'body:', body.slice(0, 300));
 
-    if (error) {
-      console.error('Error loading categories:', error);
-      // Fall back to SYSTEM_CATEGORIES so UI still renders, but inserts will fail FK check
+      if (!res.ok) {
+        const msg = `Load categories failed (${res.status}): ${body.slice(0, 200)}`;
+        console.error(msg);
+        setDbError(msg);
+        setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
+        setCategoriesLoaded(true);
+        return;
+      }
+
+      const data = JSON.parse(body);
+      if (data && data.length > 0) {
+        const budgets: BudgetCategory[] = data.map((row: any) => ({
+          id: row.id,
+          name: row.name,
+          totalLimit: DEFAULT_LIMITS[row.name] || 500,
+        }));
+        console.log('[loadCategories] OK:', budgets.map(b => ({ id: b.id, name: b.name })));
+        setAppState(prev => ({ ...prev, budgets }));
+      } else {
+        console.warn('[loadCategories] empty result, using fallback');
+        setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
+      }
+      setCategoriesLoaded(true);
+    } catch (err: any) {
+      const msg = `Load categories exception: ${err?.message || err}`;
+      console.error(msg);
+      setDbError(msg);
       setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
       setCategoriesLoaded(true);
-      return;
     }
-
-    if (data && data.length > 0) {
-      const budgets: BudgetCategory[] = data.map(row => ({
-        id: row.id,
-        name: row.name,
-        totalLimit: DEFAULT_LIMITS[row.name] || 500,
-      }));
-      console.log('Categories loaded from Supabase:', budgets.map(b => ({ id: b.id, name: b.name })));
-      setAppState(prev => ({ ...prev, budgets }));
-    } else {
-      console.warn('No categories found in categories table, using fallback SYSTEM_CATEGORIES with hardcoded IDs');
-      setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
-    }
-    setCategoriesLoaded(true);
   };
 
-  // Load transactions from Supabase
+  // Load transactions from Supabase via raw fetch
   const loadTransactions = async (userId: string) => {
-    console.log('loadTransactions called with userId:', userId);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(
+        `${REST_BASE}/transactions?select=*&user_id=eq.${userId}&order=date.desc`,
+        { headers }
+      );
+      const body = await res.text();
+      console.log('[loadTransactions] status:', res.status, 'body:', body.slice(0, 300));
 
-    const { data, error } = await supabase
-      .from('transactions')
-      .select('*')
-      .eq('user_id', userId)
-      .order('date', { ascending: false });
+      if (!res.ok) {
+        const msg = `Load transactions failed (${res.status}): ${body.slice(0, 200)}`;
+        console.error(msg);
+        setDbError(msg);
+        return;
+      }
 
-    console.log('Transactions query result:', { data, error, count: data?.length });
-
-    if (error) {
-      console.error('Error loading transactions:', error);
-      return;
-    }
-
-    if (data && data.length > 0) {
-      const transactions = data.map(fromSupabaseTransaction);
-      console.log('Mapped transactions:', transactions);
-      setAppState(prev => ({ ...prev, transactions }));
-    } else {
-      console.log('No transactions found for user');
+      const data = JSON.parse(body);
+      if (data && data.length > 0) {
+        const transactions = data.map(fromSupabaseTransaction);
+        console.log('[loadTransactions] OK, count:', transactions.length);
+        setAppState(prev => ({ ...prev, transactions }));
+      } else {
+        console.log('[loadTransactions] no transactions found');
+      }
+    } catch (err: any) {
+      const msg = `Load transactions exception: ${err?.message || err}`;
+      console.error(msg);
+      setDbError(msg);
     }
   };
 
@@ -333,11 +367,11 @@ const App: React.FC = () => {
 
   const handleAddTransaction = async (tx: Transaction) => {
     if (!categoriesLoaded) {
-      console.error('Cannot add transaction: categories not yet loaded');
+      setDbError('Cannot add transaction: categories not yet loaded');
       return;
     }
 
-    // Optimistic update — use the client-side tx so UI responds instantly
+    // Optimistic update
     setAppState(prev => ({
       ...prev,
       transactions: [tx, ...prev.transactions]
@@ -347,15 +381,22 @@ const App: React.FC = () => {
       const row = toSupabaseTransaction(tx);
       console.log('[insert] payload:', JSON.stringify(row));
 
-      const { data, error } = await supabase
-        .from('transactions')
-        .insert(row)
-        .select()
-        .single();
+      const headers = await getAuthHeaders();
+      headers['Prefer'] = 'return=representation';
 
-      if (error) {
-        console.error('[insert] FAILED:', error.code, error.message, error.details, error.hint);
-        // Rollback optimistic add
+      const res = await fetch(`${REST_BASE}/transactions`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(row),
+      });
+      const body = await res.text();
+      console.log('[insert] status:', res.status, 'body:', body.slice(0, 300));
+
+      if (!res.ok) {
+        const msg = `Insert failed (${res.status}): ${body.slice(0, 200)}`;
+        console.error(msg);
+        setDbError(msg);
+        // Rollback
         setAppState(prev => ({
           ...prev,
           transactions: prev.transactions.filter(t => t.id !== tx.id)
@@ -363,15 +404,18 @@ const App: React.FC = () => {
         return;
       }
 
-      // Replace the optimistic tx with the real DB row (has server-generated id)
-      const saved = fromSupabaseTransaction(data);
+      const data = JSON.parse(body);
+      // PostgREST returns an array for inserts
+      const saved = fromSupabaseTransaction(Array.isArray(data) ? data[0] : data);
       console.log('[insert] OK, id:', saved.id);
       setAppState(prev => ({
         ...prev,
         transactions: prev.transactions.map(t => t.id === tx.id ? saved : t)
       }));
-    } catch (err) {
-      console.error('[insert] exception:', err);
+    } catch (err: any) {
+      const msg = `Insert exception: ${err?.message || err}`;
+      console.error(msg);
+      setDbError(msg);
       setAppState(prev => ({
         ...prev,
         transactions: prev.transactions.filter(t => t.id !== tx.id)
@@ -389,39 +433,46 @@ const App: React.FC = () => {
       const row = toSupabaseTransaction(updatedTx);
       console.log('[update] id:', updatedTx.id, 'payload:', JSON.stringify(row));
 
-      const { error } = await supabase
-        .from('transactions')
-        .update(row)
-        .eq('id', updatedTx.id);
+      const headers = await getAuthHeaders();
+      const res = await fetch(
+        `${REST_BASE}/transactions?id=eq.${updatedTx.id}`,
+        { method: 'PATCH', headers, body: JSON.stringify(row) }
+      );
+      const body = await res.text();
+      console.log('[update] status:', res.status, 'body:', body.slice(0, 300));
 
-      if (error) {
-        console.error('[update] FAILED:', error.code, error.message, error.details, error.hint);
-      } else {
-        console.log('[update] OK');
+      if (!res.ok) {
+        const msg = `Update failed (${res.status}): ${body.slice(0, 200)}`;
+        console.error(msg);
+        setDbError(msg);
       }
-    } catch (err) {
-      console.error('[update] exception:', err);
+    } catch (err: any) {
+      const msg = `Update exception: ${err?.message || err}`;
+      console.error(msg);
+      setDbError(msg);
     }
   };
 
   const handleDeleteTransaction = async (id: string) => {
-    // Store for potential rollback
     const deletedTx = appState.transactions.find(t => t.id === id);
 
-    // Optimistic update
     setAppState(prev => ({
       ...prev,
       transactions: prev.transactions.filter(t => t.id !== id)
     }));
 
     try {
-      const { error } = await supabase
-        .from('transactions')
-        .delete()
-        .eq('id', id);
+      const headers = await getAuthHeaders();
+      const res = await fetch(
+        `${REST_BASE}/transactions?id=eq.${id}`,
+        { method: 'DELETE', headers }
+      );
 
-      if (error) {
-        console.error('Error deleting transaction:', error);
+      if (!res.ok) {
+        const body = await res.text();
+        const msg = `Delete failed (${res.status}): ${body.slice(0, 200)}`;
+        console.error(msg);
+        setDbError(msg);
         if (deletedTx) {
           setAppState(prev => ({
             ...prev,
@@ -429,10 +480,12 @@ const App: React.FC = () => {
           }));
         }
       } else {
-        console.log('Transaction deleted successfully:', id);
+        console.log('[delete] OK:', id);
       }
-    } catch (err) {
-      console.error('Transaction delete threw exception:', err);
+    } catch (err: any) {
+      const msg = `Delete exception: ${err?.message || err}`;
+      console.error(msg);
+      setDbError(msg);
       if (deletedTx) {
         setAppState(prev => ({
           ...prev,
@@ -459,6 +512,16 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen w-full bg-slate-50 dark:bg-slate-950 overflow-hidden relative flex flex-col transition-colors duration-300">
+      {dbError && (
+        <div
+          onClick={() => setDbError(null)}
+          className="fixed top-0 left-0 right-0 z-[9999] bg-red-600 text-white text-xs px-4 py-3 shadow-lg"
+          style={{ paddingTop: 'max(12px, env(safe-area-inset-top))' }}
+        >
+          <strong>DB Error:</strong> {dbError}
+          <span className="block text-[10px] opacity-75 mt-1">Tap to dismiss</span>
+        </div>
+      )}
       {authState === 'unauthenticated' && (
         <Auth onSignIn={() => setAuthState('authenticated')} />
       )}
