@@ -62,7 +62,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                 preserveAspectRatio="none"
               >
                 <path
-                  d="M5 0 Q10 15 5 30 Q0 45 5 60 Q10 75 5 90 Q0 105 5 120"
+                  d="M5 0 Q10 7.5 5 15 Q0 22.5 5 30 Q10 37.5 5 45 Q0 52.5 5 60 Q10 67.5 5 75 Q0 82.5 5 90 Q10 97.5 5 105 Q0 112.5 5 120"
                   fill="none"
                   stroke="#10B981"
                   strokeWidth="1.5"
@@ -83,7 +83,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                 preserveAspectRatio="none"
               >
                 <path
-                  d="M5 0 Q10 15 5 30 Q0 45 5 60 Q10 75 5 90 Q0 105 5 120"
+                  d="M5 0 Q10 7.5 5 15 Q0 22.5 5 30 Q10 37.5 5 45 Q0 52.5 5 60 Q10 67.5 5 75 Q0 82.5 5 90 Q10 97.5 5 105 Q0 112.5 5 120"
                   fill="none"
                   stroke="#F43F5E"
                   strokeWidth="1.5"
