@@ -2,6 +2,7 @@
 import { useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import type { Transaction, User } from '../types';
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
 interface UseNotificationListenerParams {
   user: User | null;
