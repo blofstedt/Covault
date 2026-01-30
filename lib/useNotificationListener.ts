@@ -2,6 +2,7 @@
 import { useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import type { Transaction, User } from '../types';
+import { supabase } from './supabase';
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
@@ -112,11 +113,113 @@ function applyRuleToNotification(
   }
 }
 
+// Shape of a row in public.notification_rules (simplified)
+interface NotificationRule {
+  id: string;
+  user_id: string;
+  bank_app_id: string;
+  bank_name: string;
+  amount_regex: string;
+  vendor_regex: string;
+  default_category_id: string | null;
+  is_active: boolean;
+  flagged_count: number;
+  last_flagged_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Get an existing notification_rule for (user, bank_app_id).
+ * If none exists, call Gemini ONCE to create it and save it.
+ *
+ * 👉 This is where we enforce:
+ *    - Gemini runs ONLY if no existing rule for that bank+user.
+ */
+async function getOrCreateNotificationRuleForBank(options: {
+  userId: string;
+  bankAppId: string;
+  bankName: string;
+  rawNotification: string;
+}): Promise<NotificationRule> {
+  const { userId, bankAppId, bankName, rawNotification } = options;
+
+  // 1) Look for an existing active rule
+  const { data: existing, error: existingError } = await supabase
+    .from('notification_rules')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('bank_app_id', bankAppId)
+    .eq('is_active', true)
+    .order('created_at', { ascending: false })
+    .maybeSingle();
+
+  if (existingError) {
+    console.error('[getOrCreateNotificationRuleForBank] Error fetching rule:', existingError);
+    throw existingError;
+  }
+
+  if (existing) {
+    // ✅ Rule already exists – NO Gemini call
+    return existing as NotificationRule;
+  }
+
+  // 2) No rule yet → FIRST TIME for this bank → call Gemini ONCE
+  const geminiResult = await generateRuleWithGemini(bankName, rawNotification);
+
+  // Optional: try to map category_name to an existing categories row
+  let defaultCategoryId: string | null = null;
+  if (geminiResult.category_name) {
+    const { data: cat, error: catErr } = await supabase
+      .from('categories')
+      .select('id, name')
+      .ilike('name', geminiResult.category_name)
+      .maybeSingle();
+
+    if (catErr) {
+      console.warn('[getOrCreateNotificationRuleForBank] Category lookup error:', catErr);
+    } else if (cat) {
+      defaultCategoryId = cat.id;
+    }
+  }
+
+  // 3) Save new rule in Supabase
+  const { data: inserted, error: insertError } = await supabase
+    .from('notification_rules')
+    .insert({
+      user_id: userId,
+      bank_app_id: bankAppId,
+      bank_name: bankName,
+      amount_regex: geminiResult.amount_regex,
+      vendor_regex: geminiResult.vendor_regex,
+      default_category_id: defaultCategoryId,
+    })
+    .select()
+    .single();
+
+  if (insertError) {
+    console.error('[getOrCreateNotificationRuleForBank] Error inserting rule:', insertError);
+    throw insertError;
+  }
+
+  return inserted as NotificationRule;
+}
+
 interface UseNotificationListenerParams {
   user: User | null;
   onTransactionDetected: (tx: Transaction) => void;
 }
 
+/**
+ * Hook that listens for transactionDetected events from the native CovaultNotification plugin.
+ *
+ * ⚠️ NOTE:
+ * Right now this still uses event.vendor and event.amount directly.
+ * In a later step, we'll change the plugin/event shape to send rawNotification,
+ * bankAppId, bankName and then:
+ *  - call getOrCreateNotificationRuleForBank(...)
+ *  - use applyRuleToNotification(...) to parse vendor/amount from raw text.
+ */
 export const useNotificationListener = ({
   user,
   onTransactionDetected,
@@ -141,6 +244,12 @@ export const useNotificationListener = ({
               );
               return;
             }
+
+            // TODO (next step):
+            // - Use event.rawNotification, event.bankAppId, event.bankName
+            // - Call getOrCreateNotificationRuleForBank(...)
+            // - Call applyRuleToNotification(...)
+            // For now, we keep using vendor/amount from the event.
 
             const tx: Transaction = {
               id: crypto.randomUUID(),
