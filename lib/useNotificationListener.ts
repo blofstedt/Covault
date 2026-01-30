@@ -237,7 +237,7 @@ export async function flagNotificationAndRegenerateRule(options: {
   rawNotification: string;
   expectedVendor?: string;
   expectedAmount?: number;
-}): Promise<void> {
+}: Promise<void>) {
   const { userId, notificationRuleId, rawNotification, expectedVendor, expectedAmount } = options;
 
   const now = new Date();
@@ -341,9 +341,6 @@ export async function flagNotificationAndRegenerateRule(options: {
     console.error('[flagNotification] Error updating notification_rule:', updateError);
     throw updateError;
   }
-
-  // (Optional) You could also auto-mark the flag as resolved, but your schema
-  // defaults `resolved` to false, so we'll leave it for now.
 }
 
 interface UseNotificationListenerParams {
@@ -395,9 +392,13 @@ export const useNotificationListener = ({
 
             let vendor = event.vendor || 'Unknown Merchant';
             let amount = event.amount || 0;
+            let notificationRuleId: string | undefined;
+            let rawNotification: string | undefined;
 
             // If the plugin sends raw notification info, use our regex pipeline
             if (event.rawNotification && event.bankAppId && event.bankName) {
+              rawNotification = event.rawNotification;
+
               try {
                 const rule = await getOrCreateNotificationRuleForBank({
                   userId: user.id,
@@ -405,6 +406,8 @@ export const useNotificationListener = ({
                   bankName: event.bankName,
                   rawNotification: event.rawNotification,
                 });
+
+                notificationRuleId = rule.id;
 
                 const parsed = applyRuleToNotification(
                   rule.amount_regex,
@@ -439,6 +442,10 @@ export const useNotificationListener = ({
               label: 'Auto-Added',
               userName: user.name || 'User',
               created_at: new Date().toISOString(),
+
+              // New: used for the "This is wrong" flag flow
+              notification_rule_id: notificationRuleId,
+              raw_notification: rawNotification,
             };
 
             onTransactionDetected(tx);
