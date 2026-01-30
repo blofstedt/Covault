@@ -5,7 +5,7 @@ import BudgetSection from './BudgetSection';
 import TransactionForm from './TransactionForm';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import Tutorial from './Tutorial';
-import NotificationSettings from './NotificationSettings';
+import CovaultIcon from './CovaultIcon';
 
 interface DashboardProps {
   state: AppState;
@@ -15,8 +15,6 @@ interface DashboardProps {
   onAddTransaction: (t: Transaction) => void;
   onUpdateTransaction: (t: Transaction) => void;
   onDeleteTransaction: (id: string) => void;
-  onLinkPartner?: (email: string) => void;
-  onUnlinkPartner?: () => void;
 }
 
 export const getBudgetIcon = (name: string) => {
@@ -31,50 +29,7 @@ export const getBudgetIcon = (name: string) => {
   return <svg {...iconProps} viewBox="0 0 24 24"><path d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z"/></svg>;
 };
 
-// Generate projected future occurrences of recurring transactions
-const generateProjections = (transactions: Transaction[]): Transaction[] => {
-  const now = new Date();
-  const endDate = new Date(now.getFullYear(), now.getMonth() + 3, 0); // 3 months out
-  const projections: Transaction[] = [];
-
-  transactions.forEach(tx => {
-    if (tx.recurrence === 'One-time' || !tx.recurrence) return;
-
-    const baseDate = new Date(tx.date);
-    const intervalDays = tx.recurrence === 'Biweekly' ? 14 : null;
-
-    let cursor = new Date(baseDate);
-
-    // Advance cursor forward
-    for (let i = 0; i < 12; i++) { // max 12 occurrences
-      if (intervalDays) {
-        cursor = new Date(cursor.getTime() + intervalDays * 86400000);
-      } else {
-        // Monthly: same day, next month
-        cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, cursor.getDate());
-      }
-
-      if (cursor > endDate) break;
-
-      // Only add if the date is in the future
-      if (cursor > now) {
-        const dateStr = cursor.toISOString();
-        projections.push({
-          ...tx,
-          id: `${tx.id}_proj_${dateStr.split('T')[0]}`,
-          date: dateStr,
-          is_projected: true,
-          label: 'Auto-Added',
-          created_at: tx.created_at,
-        });
-      }
-    }
-  });
-
-  return projections;
-};
-
-const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpdateBudget, onAddTransaction, onUpdateTransaction, onDeleteTransaction, onLinkPartner, onUnlinkPartner }) => {
+const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpdateBudget, onAddTransaction, onUpdateTransaction, onDeleteTransaction }) => {
   const [isAddingTx, setIsAddingTx] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [deletingTxId, setDeletingTxId] = useState<string | null>(null);
@@ -97,23 +52,18 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
 
   const isSharedAccount = !state.user?.budgetingSolo;
 
-  // Merge real transactions with projected future occurrences
-  const allTransactions = useMemo(() => {
-    const projections = generateProjections(state.transactions);
-    return [...state.transactions, ...projections];
-  }, [state.transactions]);
-
   const filteredTransactions = useMemo(() => {
-    let list = allTransactions;
+    let list = state.transactions;
     if (searchQuery) {
       list = list.filter(t => t.vendor.toLowerCase().includes(searchQuery.toLowerCase()));
     }
     return list;
-  }, [allTransactions, searchQuery]);
+  }, [state.transactions, searchQuery]);
 
   // Calculate total income (user's income + partner's income for couples)
   const totalIncome = useMemo(() => {
     const userIncome = state.user?.monthlyIncome || 0;
+    // TODO: When partner data is fetched, add partner's income here
     return userIncome;
   }, [state.user?.monthlyIncome]);
 
@@ -141,20 +91,6 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
     });
     return totalOverspend;
   }, [state.budgets, filteredTransactions, state.settings.useLeisureAsBuffer]);
-
-  // Build vendor history for autocomplete (vendor → last used budget_id)
-  const vendorHistory = useMemo(() => {
-    const map = new Map<string, string>();
-    [...state.transactions]
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .forEach(tx => {
-        const key = tx.vendor.toLowerCase();
-        if (!map.has(key) && tx.budget_id) {
-          map.set(key, tx.budget_id);
-        }
-      });
-    return Array.from(map.entries()).map(([vendor, budget_id]) => ({ vendor, budget_id }));
-  }, [state.transactions]);
 
   const toggleExpand = (id: string) => {
     const next = new Set(expandedBudgets);
@@ -190,28 +126,29 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
 
   const handleConnectPartner = () => {
     if (!partnerLinkEmail.includes('@')) return;
-    if (onLinkPartner) {
-      onLinkPartner(partnerLinkEmail);
-    } else {
-      // Fallback: local-only
-      setState(prev => ({
-        ...prev,
-        user: prev.user ? { ...prev.user, budgetingSolo: false, partnerEmail: partnerLinkEmail } : null
-      }));
-    }
+    setState(prev => ({
+      ...prev,
+      user: prev.user ? {
+        ...prev.user,
+        budgetingSolo: false,
+        partnerEmail: partnerLinkEmail
+      } : null
+    }));
     setIsLinkingPartner(false);
     setPartnerLinkEmail('');
   };
 
   const handleDisconnectPartner = () => {
-    if (onUnlinkPartner) {
-      onUnlinkPartner();
-    } else {
-      setState(prev => ({
-        ...prev,
-        user: prev.user ? { ...prev.user, budgetingSolo: true, partnerId: undefined, partnerEmail: undefined, partnerName: undefined } : null
-      }));
-    }
+    setState(prev => ({
+      ...prev,
+      user: prev.user ? {
+        ...prev.user,
+        budgetingSolo: true,
+        partnerId: undefined,
+        partnerEmail: undefined,
+        partnerName: undefined
+      } : null
+    }));
   };
 
   const handleUpdateTransaction = (updatedTx: Transaction) => {
@@ -233,28 +170,13 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
 
   const handleTutorialStepChange = (step: number) => {
     setTutorialStep(step);
-    if (step >= 6 && step <= 13) {
+    // Steps 0-4 are Dashboard highlights, 5-12 are Settings highlights
+    if (step >= 5 && step <= 12) {
       setShowSettings(true);
     } else {
       setShowSettings(false);
     }
   };
-
-  // Personalized balance label
-  const balanceLabel = useMemo(() => {
-    if (!state.user?.name) return 'Remaining Balance';
-    const firstName = state.user.name.split(' ')[0];
-    if (isSharedAccount && state.user.partnerName) {
-      const partnerFirst = state.user.partnerName.split(' ')[0];
-      return `${firstName} and ${partnerFirst}'s Remaining Balance`;
-    }
-    if (isSharedAccount && state.user.partnerEmail) {
-      const partnerFirst = state.user.partnerEmail.split('@')[0];
-      const capitalized = partnerFirst.charAt(0).toUpperCase() + partnerFirst.slice(1);
-      return `${firstName} & ${capitalized}'s Remaining Balance`;
-    }
-    return `${firstName}'s Remaining Balance`;
-  }, [state.user?.name, state.user?.partnerName, state.user?.partnerEmail, isSharedAccount]);
 
   return (
     <div className="flex-1 flex flex-col h-screen relative overflow-hidden transition-colors duration-700 bg-slate-50 dark:bg-slate-950">
@@ -265,21 +187,17 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
         </div>
       )}
 
-      <header className="px-6 pt-safe-top pb-3 sticky top-0 z-20 transition-colors bg-transparent border-none backdrop-blur-none relative z-10" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}>
-        <div className="relative flex items-center justify-end h-12">
-          <div className="absolute left-1/2 -translate-x-1/2 flex items-center space-x-2.5">
-            <div className="w-9 h-9 rounded-xl rotate-12 flex items-center justify-center shadow-lg transition-colors duration-700 bg-emerald-600 shadow-emerald-500/20">
-              <svg className="w-5 h-5 -rotate-12" viewBox="0 0 24 24" fill="none">
-                <rect x="2" y="2" width="20" height="20" rx="3.5" stroke="white" strokeWidth="1.5" />
-                <circle cx="12" cy="10.5" r="4.5" stroke="white" strokeWidth="1.5" />
-                <line x1="12" y1="6" x2="12" y2="7.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-                <line x1="12" y1="13.5" x2="12" y2="15" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-                <line x1="7.5" y1="10.5" x2="9" y2="10.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-                <line x1="15" y1="10.5" x2="16.5" y2="10.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-                <circle cx="12" cy="19" r="1.2" fill="white" />
-              </svg>
-            </div>
-            <span className="font-black text-sm tracking-tighter uppercase transition-colors duration-700 text-slate-500 dark:text-slate-50">Covault</span>
+      <header className="px-6 pt-safe-top pb-4 sticky top-0 z-20 transition-colors bg-transparent border-none backdrop-blur-none relative z-10" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1.5rem)' }}>
+        <div className="relative flex items-center justify-end h-10">
+          <div className="absolute left-1/2 -translate-x-1/2 flex items-center space-x-2">
+            <CovaultIcon
+              size={28}                // small icon size for header
+              rotate={false}           // keep it upright here for a clean nav look
+              className="shadow-lg transition-colors duration-700"
+            />
+            <span className="font-black text-sm tracking-tighter uppercase transition-colors duration-700 text-slate-500 dark:text-slate-50">
+              Covault
+            </span>
           </div>
 
           <button id="settings-button" onClick={() => setShowSettings(true)} className="p-2.5 transition-colors active:scale-90 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-xl text-slate-400 hover:text-emerald-600">
@@ -290,122 +208,86 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
         </div>
       </header>
 
-      <main className="flex-1 flex flex-col p-4 pb-32 overflow-hidden relative z-10">
+      <main className="flex-1 flex flex-col p-4 pb-28 overflow-hidden relative z-10">
         {!isFocusMode && (
-          <div id="balance-header" className="flex flex-col items-center justify-center py-1 shrink-0 relative">
+          <div id="balance-header" className="flex flex-col items-center justify-center py-2 shrink-0 relative">
             <div className="text-center z-10 animate-nest">
-              <span className="text-[11px] font-black uppercase tracking-[0.18em] mb-1 block transition-colors duration-700 text-slate-400 dark:text-slate-500">
-                {balanceLabel}
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] mb-0.5 block transition-colors duration-700 text-slate-400 dark:text-slate-500">
+                {isSharedAccount ? 'Our Remaining Balance' : 'My Remaining Balance'}
               </span>
               <div className="flex items-baseline justify-center space-x-1 transition-colors duration-700">
                 <span className="text-sm font-bold opacity-30 text-slate-500 dark:text-slate-50">$</span>
-                <span className={`text-5xl font-black tracking-tighter leading-none transition-colors duration-700 ${remainingMoney < 0 ? 'text-rose-500' : 'text-slate-500 dark:text-slate-50'}`}>
+                <span className={`text-4xl font-black tracking-tighter leading-none transition-colors duration-700 ${remainingMoney < 0 ? 'text-rose-500' : 'text-slate-500 dark:text-slate-50'}`}>
                   {remainingMoney.toLocaleString()}
                 </span>
               </div>
             </div>
 
-            <div className="relative mt-3 w-full max-w-[260px] z-10 animate-nest" style={{ animationDelay: '0.1s' }}>
-              <input type="text" placeholder="Search transactions..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white/70 dark:bg-slate-900/70 backdrop-blur-md border-2 rounded-2xl py-3 px-11 text-sm font-bold focus:ring-2 transition-all placeholder-slate-400 shadow-sm text-center border-slate-100 dark:border-slate-800 focus:ring-emerald-500/20 dark:text-slate-100" />
-              <svg className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-              {searchQuery && (
-                <button onClick={() => setSearchQuery('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
-              )}
+            <div className="relative mt-2 w-full max-w-[200px] z-10 animate-nest" style={{ animationDelay: '0.1s' }}>
+              <input type="text" placeholder="Find entry..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white/70 dark:bg-slate-900/70 backdrop-blur-md border-2 rounded-2xl py-2.5 px-10 text-[12px] font-bold focus:ring-2 transition-all placeholder-slate-400 shadow-sm text-center border-slate-100 dark:border-slate-800 focus:ring-emerald-500/20 dark:text-slate-100" />
+              <svg className="w-3.5 h-3.5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
             </div>
           </div>
         )}
 
-        {searchQuery && filteredTransactions.length > 0 ? (
-          <div className="flex-1 overflow-y-auto no-scrollbar mt-3 px-1 pb-4">
-            <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] px-3 block mb-3">
-              {filteredTransactions.length} result{filteredTransactions.length !== 1 ? 's' : ''}
-            </span>
-            <div className="space-y-2">
-              {filteredTransactions.map(tx => {
-                const budget = state.budgets.find(b => b.id === tx.budget_id);
-                return (
-                  <div key={tx.id} className="flex items-center p-4 rounded-2xl backdrop-blur-xl border shadow-sm bg-white/80 dark:bg-slate-900/80 border-slate-200/40 dark:border-slate-700/40">
-                    <div className="w-8 h-8 flex items-center justify-center text-slate-400 dark:text-slate-500 mr-3 shrink-0">
-                      {budget ? getBudgetIcon(budget.name) : <div className="w-5 h-5" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <span className="text-[13px] font-black text-slate-500 dark:text-slate-100 uppercase tracking-tight block truncate">{tx.vendor}</span>
-                      <div className="flex items-center space-x-2 mt-0.5">
-                        <span className="text-[10px] text-slate-400 font-bold">
-                          {new Date(tx.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                        </span>
-                        {budget && <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">{budget.name}</span>}
-                        {tx.is_projected && <span className="text-[8px] font-black text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded uppercase tracking-widest">Projected</span>}
-                      </div>
-                    </div>
-                    <span className="text-sm font-black text-slate-500 dark:text-slate-100 ml-2">${tx.amount.toFixed(2)}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ) : (
-          <div
-            ref={scrollContainerRef}
-            className={`flex-1 flex flex-col ${isFocusMode ? 'overflow-hidden' : (expandedBudgets.size > 0 ? 'overflow-y-auto' : 'overflow-hidden')} mt-3 no-scrollbar scroll-smooth h-full transition-all duration-500 gap-2`}
-          >
-            {state.budgets
-              .filter(budget => !isFocusMode || budget.id === focusedBudgetId)
-              .map((budget, index) => {
-                const budgetTxs = filteredTransactions.filter(t =>
-                  t.budget_id === budget.id || (t.splits?.some(s => s.budget_id === budget.id))
-                );
-                const isExpanded = expandedBudgets.has(budget.id);
-                const isLeisure = budget.name.toLowerCase().includes('leisure');
-                const displayBudget = isLeisure && state.settings.useLeisureAsBuffer
-                  ? { ...budget, externalDeduction: leisureAdjustments }
-                  : budget;
-                return (
-                  <div
-                    key={budget.id}
-                    id={index === 0 ? "first-budget-card" : undefined}
-                    ref={el => { if (el) budgetRefs.current.set(budget.id, el); else budgetRefs.current.delete(budget.id); }}
-                    className={`transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isExpanded ? 'flex-[100] min-h-[70vh]' : 'flex-1 min-h-0'} flex flex-col`}
-                    style={{ animationDelay: `${index * 40}ms` }}
-                  >
-                    <BudgetSection
-                      budget={displayBudget as any}
-                      transactions={budgetTxs}
-                      isExpanded={isExpanded}
-                      onToggle={() => toggleExpand(budget.id)}
-                      onUpdateBudget={onUpdateBudget}
-                      onDeleteRequest={(id) => setDeletingTxId(id)}
-                      onEdit={(tx) => setEditingTx(tx)}
-                      currentUserName={state.user?.name || ''}
-                      isSharedView={isSharedAccount}
-                      allBudgets={state.budgets}
-                    />
-                  </div>
-                );
-              })
-            }
+        <div
+          ref={scrollContainerRef}
+          className={`flex-1 flex flex-col ${isFocusMode ? 'overflow-hidden' : (expandedBudgets.size > 0 ? 'overflow-y-auto' : 'overflow-hidden')} mt-3 no-scrollbar scroll-smooth h-full transition-all duration-500 gap-2`}
+        >
+          {state.budgets
+            .filter(budget => !isFocusMode || budget.id === focusedBudgetId)
+            .map((budget, index) => {
+              const budgetTxs = filteredTransactions.filter(t =>
+                t.budget_id === budget.id || (t.splits?.some(s => s.budget_id === budget.id))
+              );
+              const isExpanded = expandedBudgets.has(budget.id);
+              const isLeisure = budget.name.toLowerCase().includes('leisure');
+              const displayBudget = isLeisure && state.settings.useLeisureAsBuffer
+                ? { ...budget, externalDeduction: leisureAdjustments }
+                : budget;
+              return (
+                <div
+                  key={budget.id}
+                  id={index === 0 ? "first-budget-card" : undefined}
+                  ref={el => { if (el) budgetRefs.current.set(budget.id, el); else budgetRefs.current.delete(budget.id); }}
+                  className={`transition-all duration-500 ${isExpanded ? 'flex-[100] min-h-[70vh]' : 'flex-1 min-h-0'} flex flex-col`}
+                  style={{ animationDelay: `${index * 40}ms` }}
+                >
+                  <BudgetSection
+                    budget={displayBudget as any}
+                    transactions={budgetTxs}
+                    isExpanded={isExpanded}
+                    onToggle={() => toggleExpand(budget.id)}
+                    onUpdateBudget={onUpdateBudget}
+                    onDeleteRequest={(id) => setDeletingTxId(id)}
+                    onEdit={(tx) => setEditingTx(tx)}
+                    currentUserName={state.user?.name || ''}
+                    isSharedView={isSharedAccount}
+                    allBudgets={state.budgets}
+                  />
+                </div>
+              );
+            })
+          }
 
-            {!isFocusMode && expandedBudgets.size > 0 && <div className="h-[60vh] flex-none pointer-events-none" />}
-          </div>
-        )}
+          {!isFocusMode && expandedBudgets.size > 0 && <div className="h-[60vh] flex-none pointer-events-none" />}
+        </div>
       </main>
 
-      <div id="bottom-bar" className="fixed bottom-0 left-0 right-0 z-40 px-3 pb-3 pt-2 flex flex-col items-center pointer-events-none pb-safe">
-        <div className="w-full backdrop-blur-3xl border rounded-[2rem] px-4 py-3 pointer-events-auto shadow-2xl animate-nest transition-all duration-700 bg-white/95 dark:bg-slate-900/95 border-slate-100 dark:border-slate-800/60" style={{ animationDelay: '0.4s' }}>
+      <div id="bottom-bar" className="fixed bottom-0 left-0 right-0 z-40 px-4 pb-4 pt-2 flex flex-col items-center pointer-events-none pb-safe">
+        <div className="w-full backdrop-blur-3xl border rounded-full px-3 py-2 pointer-events-auto shadow-2xl animate-nest transition-all duration-700 bg-white/95 dark:bg-slate-900/95 border-slate-100 dark:border-slate-800/60" style={{ animationDelay: '0.4s' }}>
           <div className="flex items-center justify-evenly">
             {firstHalfBudgets.map(b => (
-              <button key={b.id} onClick={() => jumpToBudget(b.id)} className={`p-2.5 rounded-full transition-all duration-300 ${expandedBudgets.has(b.id) ? 'bg-emerald-600 text-white shadow-lg scale-110' : 'text-slate-400 dark:text-slate-600'}`}>
-                <div className="w-6 h-6 flex items-center justify-center">{getBudgetIcon(b.name)}</div>
+              <button key={b.id} onClick={() => jumpToBudget(b.id)} className={`p-2 rounded-full transition-all duration-300 ${expandedBudgets.has(b.id) ? 'bg-emerald-600 text-white shadow-lg scale-110' : 'text-slate-400 dark:text-slate-600'}`}>
+                {getBudgetIcon(b.name)}
               </button>
             ))}
-            <button id="add-transaction-button" onClick={() => setIsAddingTx(true)} className="p-4 text-white rounded-full shadow-lg flex items-center justify-center active:scale-95 transition-all bg-slate-500 dark:bg-emerald-600">
-              <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            <button id="add-transaction-button" onClick={() => setIsAddingTx(true)} className="p-3 text-white rounded-full shadow-lg flex items-center justify-center active:scale-95 transition-all bg-slate-500 dark:bg-emerald-600">
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             </button>
             {secondHalfBudgets.map(b => (
-              <button key={b.id} onClick={() => jumpToBudget(b.id)} className={`p-2.5 rounded-full transition-all duration-300 ${expandedBudgets.has(b.id) ? 'bg-emerald-600 text-white shadow-lg scale-110' : 'text-slate-400 dark:text-slate-600'}`}>
-                <div className="w-6 h-6 flex items-center justify-center">{getBudgetIcon(b.name)}</div>
+              <button key={b.id} onClick={() => jumpToBudget(b.id)} className={`p-2 rounded-full transition-all duration-300 ${expandedBudgets.has(b.id) ? 'bg-emerald-600 text-white shadow-lg scale-110' : 'text-slate-400 dark:text-slate-600'}`}>
+                {getBudgetIcon(b.name)}
               </button>
             ))}
           </div>
@@ -495,11 +377,6 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
                   {state.settings.useLeisureAsBuffer ? 'SHIELD ACTIVE' : 'SHIELD OFF'}
                 </button>
               </div>
-
-              <NotificationSettings
-                enabled={state.settings.notificationsEnabled}
-                onToggle={(val) => updateSettings('notificationsEnabled', val)}
-              />
 
               <div id="settings-sharing-container" className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60 space-y-4">
                 <div className="flex flex-col">
@@ -609,7 +486,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
               </button>
 
               <div className="text-center pt-4">
-                 <p className="text-[9px] font-bold text-slate-400 dark:text-slate-700 uppercase tracking-[0.1em]">Version 3.0 &bull; Covault simplified</p>
+                 <p className="text-[9px] font-bold text-slate-400 dark:text-slate-700 uppercase tracking-[0.1em]">Version 3.0 • Covault simplified</p>
               </div>
             </div>
           </div>
@@ -617,11 +494,11 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
       )}
 
       {isAddingTx && (
-        <TransactionForm onClose={() => setIsAddingTx(false)} onSave={onAddTransaction} budgets={state.budgets} userId={state.user?.id || '1'} userName={state.user?.name || 'User'} isSharedAccount={isSharedAccount} vendorHistory={vendorHistory} />
+        <TransactionForm onClose={() => setIsAddingTx(false)} onSave={onAddTransaction} budgets={state.budgets} userId={state.user?.id || '1'} userName={state.user?.name || 'User'} isSharedAccount={isSharedAccount} />
       )}
 
       {editingTx && (
-        <TransactionForm onClose={() => setEditingTx(null)} onSave={handleUpdateTransaction} budgets={state.budgets} userId={state.user?.id || '1'} userName={state.user?.name || 'User'} initialTransaction={editingTx} isSharedAccount={isSharedAccount} vendorHistory={vendorHistory} />
+        <TransactionForm onClose={() => setEditingTx(null)} onSave={handleUpdateTransaction} budgets={state.budgets} userId={state.user?.id || '1'} userName={state.user?.name || 'User'} initialTransaction={editingTx} isSharedAccount={isSharedAccount} />
       )}
 
       {deletingTxId && (
