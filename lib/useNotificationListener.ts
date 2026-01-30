@@ -237,7 +237,7 @@ export async function flagNotificationAndRegenerateRule(options: {
   rawNotification: string;
   expectedVendor?: string;
   expectedAmount?: number;
-}: Promise<void>) {
+}): Promise<void> {
   const { userId, notificationRuleId, rawNotification, expectedVendor, expectedAmount } = options;
 
   const now = new Date();
