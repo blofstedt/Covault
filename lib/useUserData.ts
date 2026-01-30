@@ -12,13 +12,13 @@ const getAuthHeaders = async (): Promise<Record<string, string>> => {
   } = await supabase.auth.getSession();
   const token = session?.access_token || '';
   return {
-    apikey: supabaseAnonKey,
+    apikey: supabaseAnonKey || '',
     Authorization: `Bearer ${token}`,
     'Content-Type': 'application/json',
   };
 };
 
-// Default budget limits by category name
+// Default budget limits by category name (fallbacks)
 const DEFAULT_LIMITS: Record<string, number> = {
   Housing: 1500,
   Groceries: 600,
@@ -112,6 +112,7 @@ export const useUserData = ({
         const budgets: BudgetCategory[] = data.map((row: any) => ({
           id: row.id,
           name: row.name,
+          // start with default limits; user-specific overrides will be loaded separately
           totalLimit: DEFAULT_LIMITS[row.name] || 500,
         }));
         console.log(
@@ -132,6 +133,47 @@ export const useUserData = ({
       setCategoriesLoaded(true);
     }
   }, [setAppState, setDbError]);
+
+  // NEW: Load user budget limits from user_budgets
+  const loadUserBudgets = useCallback(
+    async (userId: string) => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(
+          `${REST_BASE}/user_budgets?select=*&user_id=eq.${userId}`,
+          { headers },
+        );
+        const body = await res.text();
+
+        if (!res.ok) {
+          console.error('[loadUserBudgets] failed:', body.slice(0, 200));
+          return;
+        }
+
+        const rows = JSON.parse(body);
+
+        // Map category_id → total_limit
+        const limitsByCategory: Record<string, number> = {};
+        for (const row of rows) {
+          limitsByCategory[row.category_id] = Number(row.total_limit);
+        }
+
+        // Merge with existing categories in state
+        setAppState(prev => ({
+          ...prev,
+          budgets: prev.budgets.map(b => ({
+            ...b,
+            totalLimit: limitsByCategory[b.id] ?? b.totalLimit ?? 0,
+          })),
+        }));
+
+        console.log('[loadUserBudgets] loaded:', limitsByCategory);
+      } catch (err: any) {
+        console.error('[loadUserBudgets] exception:', err?.message || err);
+      }
+    },
+    [setAppState],
+  );
 
   // Load transactions from Supabase via raw fetch
   const loadTransactions = useCallback(
@@ -245,11 +287,12 @@ export const useUserData = ({
     async (userId: string) => {
       console.log('loadUserData called for user:', userId);
       await loadCategories();
+      await loadUserBudgets(userId); // NEW: load user-specific limits
       await loadTransactions(userId);
       await loadPartnerLink(userId);
       console.log('loadUserData completed');
     },
-    [loadCategories, loadPartnerLink, loadTransactions],
+    [loadCategories, loadPartnerLink, loadTransactions, loadUserBudgets],
   );
 
   // Send a partner link request by email
@@ -352,6 +395,56 @@ export const useUserData = ({
     }
   }, [appState.user, setAppState, setDbError]);
 
+  // NEW: Save a single budget limit for the current user
+  const saveBudgetLimit = useCallback(
+    async (categoryId: string, newLimit: number) => {
+      const userId = appState.user?.id;
+      if (!userId) return;
+
+      // Optimistic UI update
+      setAppState(prev => ({
+        ...prev,
+        budgets: prev.budgets.map(b =>
+          b.id === categoryId ? { ...b, totalLimit: newLimit } : b,
+        ),
+      }));
+
+      try {
+        const headers = await getAuthHeaders();
+        (headers as any)['Prefer'] = 'return=representation';
+
+        const payload = {
+          user_id: userId,
+          category_id: categoryId,
+          total_limit: newLimit,
+        };
+
+        const res = await fetch(`${REST_BASE}/user_budgets`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload),
+        });
+        const body = await res.text();
+
+        if (!res.ok) {
+          const msg = `[saveBudgetLimit] failed (${res.status}): ${body.slice(
+            0,
+            200,
+          )}`;
+          console.error(msg);
+          setDbError(msg);
+        } else {
+          console.log('[saveBudgetLimit] OK');
+        }
+      } catch (err: any) {
+        const msg = `[saveBudgetLimit] exception: ${err?.message || err}`;
+        console.error(msg);
+        setDbError(msg);
+      }
+    },
+    [appState.user, setAppState, setDbError],
+  );
+
   // Add transaction
   const handleAddTransaction = useCallback(
     async (tx: Transaction) => {
@@ -418,7 +511,13 @@ export const useUserData = ({
         }));
       }
     },
-    [categoriesLoaded, fromSupabaseTransaction, setAppState, setDbError, toSupabaseTransaction],
+    [
+      categoriesLoaded,
+      fromSupabaseTransaction,
+      setAppState,
+      setDbError,
+      toSupabaseTransaction,
+    ],
   );
 
   // Update transaction
@@ -521,5 +620,6 @@ export const useUserData = ({
     handleDeleteTransaction,
     handleLinkPartner,
     handleUnlinkPartner,
+    saveBudgetLimit, // NEW: expose this to the UI
   };
 };
