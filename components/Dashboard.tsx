@@ -32,7 +32,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   onUpdateBudget,
   onAddTransaction,
   onUpdateTransaction,
-  onDeleteTransaction
+  onDeleteTransaction,
 }) => {
   const [isAddingTx, setIsAddingTx] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
@@ -73,19 +73,38 @@ const Dashboard: React.FC<DashboardProps> = ({
   // Total income (currently just user's income, partner to be added later)
   const totalIncome = useMemo(() => {
     const userIncome = state.user?.monthlyIncome || 0;
-    // TODO: When partner data is fetched, add partner's income here
+    // NOTE: when you later fetch partner income, you can change this to:
+    // const partnerIncome = state.user?.hasJointAccounts ? (partnerMonthlyIncome ?? 0) : 0;
+    // return userIncome + partnerIncome;
     return userIncome;
   }, [state.user?.monthlyIncome]);
 
+  // ===============================
+  // CORRECT remaining-money logic
+  // ===============================
   const remainingMoney = useMemo(() => {
-    const totalSpent = filteredTransactions.reduce(
+    // Only THIS MONTH'S transactions should count towards the top total.
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth(); // 0-based
+
+    const thisMonthTx = filteredTransactions.filter((tx) => {
+      const d = new Date(tx.date);
+      return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
+    });
+
+    const totalSpent = thisMonthTx.reduce(
       (acc, tx) => acc + (tx.is_projected ? 0 : tx.amount),
       0
     );
-    const totalProjected = filteredTransactions.reduce(
+
+    const totalProjected = thisMonthTx.reduce(
       (acc, tx) => acc + (tx.is_projected ? tx.amount : 0),
       0
     );
+
+    // For now: remaining = my income - this month's (spent + projected).
+    // When partner income is wired in, totalIncome will include theirs as well.
     return totalIncome - (totalSpent + totalProjected);
   }, [totalIncome, filteredTransactions]);
 
@@ -96,6 +115,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     state.budgets.forEach((b) => {
       if (b.name.toLowerCase().includes('leisure')) return;
 
+      // IMPORTANT: we want overspend based only on the same filtered transactions
       const bTxs = filteredTransactions.filter(
         (t) =>
           t.budget_id === b.id ||
@@ -147,14 +167,14 @@ const Dashboard: React.FC<DashboardProps> = ({
   const updateSettings = (key: keyof AppState['settings'], value: any) => {
     setState((prev) => ({
       ...prev,
-      settings: { ...prev.settings, [key]: value }
+      settings: { ...prev.settings, [key]: value },
     }));
   };
 
   const updateUserIncome = (income: number) => {
     setState((prev) => ({
       ...prev,
-      user: prev.user ? { ...prev.user, monthlyIncome: income } : null
+      user: prev.user ? { ...prev.user, monthlyIncome: income } : null,
     }));
   };
 
@@ -166,9 +186,9 @@ const Dashboard: React.FC<DashboardProps> = ({
         ? {
             ...prev.user,
             budgetingSolo: false,
-            partnerEmail: partnerLinkEmail
+            partnerEmail: partnerLinkEmail,
           }
-        : null
+        : null,
     }));
     setIsLinkingPartner(false);
     setPartnerLinkEmail('');
@@ -183,9 +203,9 @@ const Dashboard: React.FC<DashboardProps> = ({
             budgetingSolo: true,
             partnerId: undefined,
             partnerEmail: undefined,
-            partnerName: undefined
+            partnerName: undefined,
           }
-        : null
+        : null,
     }));
   };
 
@@ -251,7 +271,14 @@ const Dashboard: React.FC<DashboardProps> = ({
         {/* Budget sections list */}
         <DashboardBudgetSectionsList
           budgets={state.budgets}
-          transactions={filteredTransactions}
+          // IMPORTANT: only pass THIS MONTH'S transactions to budgets
+          transactions={filteredTransactions.filter((tx) => {
+            const now = new Date();
+            const currentYear = now.getFullYear();
+            const currentMonth = now.getMonth();
+            const d = new Date(tx.date);
+            return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
+          })}
           expandedBudgets={expandedBudgets}
           isFocusMode={isFocusMode}
           focusedBudgetId={focusedBudgetId}
