@@ -47,6 +47,10 @@ export interface Transaction {
   userName?: string;
   splits?: TransactionSplit[];
   created_at: string;
+
+  // 🔽 New: used only on the client for notification correction / flagging
+  notification_rule_id?: string;
+  raw_notification?: string;
 }
 
 export interface PrimaryCategory {
