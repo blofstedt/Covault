@@ -1,13 +1,20 @@
-
+// lib/supabase.ts
 import { createClient } from '@supabase/supabase-js';
 
-export const supabaseUrl = 'https://xqleyxrftyehodksashu.supabase.co';
-export const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhxbGV5eHJmdHllaG9ka3Nhc2h1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk0NDEyNDAsImV4cCI6MjA4NTAxNzI0MH0.d_AFPOGwCAIy8eui6hREyC8uk_iVSL_3IGNVDG9f8XI';
+// These come from your Vite env (.env) and MUST start with VITE_
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error(
+    '❌ Supabase URL or Anon Key is missing. Check your .env file for VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.'
+  );
+}
+
+export const supabase = createClient(supabaseUrl ?? '', supabaseAnonKey ?? '', {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: true
-  }
+    detectSessionInUrl: true,
+  },
 });
