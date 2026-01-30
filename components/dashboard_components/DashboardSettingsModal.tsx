@@ -118,6 +118,10 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           
           {/* Bank Notification Listener */}
           <NotificationSettingsSection />
+          <AppNotificationsSection
+            enabled={!!settings.appNotificationsEnabled}
+            onToggle={(v) => onUpdateSettings('appNotificationsEnabled', v)}
+          />
           
           {/* Budget rollover */}
           <RolloverSection
