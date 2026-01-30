@@ -13,6 +13,9 @@ import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import DashboardSettingsModal from './dashboard_components/DashboardSettingsModal';
 import SearchResults from './dashboard_components/SearchResults';
 
+// Notifications helper
+import { checkAndTriggerAppNotifications } from '../lib/appNotifications';
+
 // Re-exported so any existing imports of getBudgetIcon from Dashboard still work
 export { getBudgetIcon } from './dashboard_components/getBudgetIcon';
 
@@ -24,7 +27,6 @@ interface DashboardProps {
   onAddTransaction: (t: Transaction) => void;
   onUpdateTransaction: (t: Transaction) => void;
   onDeleteTransaction: (id: string) => void;
-  // NEW: function that actually saves limits to Supabase (from useUserData)
   saveBudgetLimit: (categoryId: string, newLimit: number) => void;
 }
 
@@ -36,7 +38,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   onAddTransaction,
   onUpdateTransaction,
   onDeleteTransaction,
-  saveBudgetLimit, // NEW
+  saveBudgetLimit,
 }) => {
   const [isAddingTx, setIsAddingTx] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
@@ -116,17 +118,11 @@ const Dashboard: React.FC<DashboardProps> = ({
   // Total income (currently just user's income, partner to be added later)
   const totalIncome = useMemo(() => {
     const userIncome = state.user?.monthlyIncome || 0;
-    // NOTE: when you later fetch partner income, you can change this to:
-    // const partnerIncome = state.user?.hasJointAccounts ? (partnerMonthlyIncome ?? 0) : 0;
-    // return userIncome + partnerIncome;
     return userIncome;
   }, [state.user?.monthlyIncome]);
 
-  // ===============================
-  // CORRECT remaining-money logic
-  // ===============================
+  // Remaining money (this month only, spent vs projected)
   const remainingMoney = useMemo(() => {
-    // Only THIS MONTH'S transactions should count towards the top total.
     const totalSpent = currentMonthTransactions.reduce(
       (acc, tx) => acc + (tx.is_projected ? 0 : tx.amount),
       0,
@@ -137,8 +133,6 @@ const Dashboard: React.FC<DashboardProps> = ({
       0,
     );
 
-    // For now: remaining = my income - this month's (spent + projected).
-    // When partner income is wired in, totalIncome will include theirs as well.
     return totalIncome - (totalSpent + totalProjected);
   }, [totalIncome, currentMonthTransactions]);
 
@@ -149,8 +143,6 @@ const Dashboard: React.FC<DashboardProps> = ({
     state.budgets.forEach((b) => {
       if (b.name.toLowerCase().includes('leisure')) return;
 
-      // Use the same filteredTransactions the user is seeing (by search vendor),
-      // but overspend still constrained to this month conceptually.
       const bTxs = filteredTransactions.filter(
         (t) =>
           t.budget_id === b.id ||
@@ -162,7 +154,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           const s = tx.splits.find((sp) => sp.budget_id === b.id);
           return acc + (s?.amount || 0);
         }
-        return acc + (tx.budget_id === b.id ? tx.amount : 0);
+        return acc + (t.budget_id === b.id ? tx.amount : 0);
       }, 0);
 
       if (spent > b.totalLimit) {
@@ -260,7 +252,6 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const handleTutorialStepChange = (step: number) => {
     setTutorialStep(step);
-    // Steps 0-4 are Dashboard highlights, 5-12 are Settings highlights
     if (step >= 5 && step <= 12) {
       setShowSettings(true);
     } else {
@@ -272,6 +263,29 @@ const Dashboard: React.FC<DashboardProps> = ({
     setShowSettings(false);
     setShowTutorial(true);
   };
+
+  // 🔔 Notification alerts: budgets + remaining money
+  useEffect(() => {
+    if (!state.user?.id) return;
+
+    checkAndTriggerAppNotifications({
+      userId: state.user.id,
+      budgets: state.budgets,
+      transactions: currentMonthTransactions,
+      totalIncome,
+      remainingMoney,
+      settings: {
+        app_notifications_enabled: (state.settings as any).app_notifications_enabled,
+      },
+    });
+  }, [
+    state.user?.id,
+    state.budgets,
+    currentMonthTransactions,
+    totalIncome,
+    remainingMoney,
+    (state.settings as any).app_notifications_enabled,
+  ]);
 
   return (
     <div className="flex-1 flex flex-col h-screen relative overflow-hidden transition-colors duration-700 bg-slate-50 dark:bg-slate-950">
@@ -293,7 +307,6 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       {/* Main content */}
       <main className="flex-1 flex flex-col p-4 pb-28 overflow-hidden relative z-10">
-        {/* Remaining balance + search (hidden in focus mode) */}
         {!isFocusMode && (
           <DashboardBalanceSection
             isSharedAccount={isSharedAccount}
@@ -303,7 +316,6 @@ const Dashboard: React.FC<DashboardProps> = ({
           />
         )}
 
-        {/* When searching: show consolidated search UI with Past/Future sections */}
         {searchQuery ? (
           <SearchResults
             searchQuery={searchQuery}
@@ -315,7 +327,6 @@ const Dashboard: React.FC<DashboardProps> = ({
             budgets={state.budgets}
           />
         ) : (
-          // Otherwise show the normal budget dashboard (this-month only)
           <DashboardBudgetSectionsList
             budgets={state.budgets}
             transactions={currentMonthTransactions}
@@ -332,13 +343,11 @@ const Dashboard: React.FC<DashboardProps> = ({
             onDeleteRequest={(id) => setDeletingTxId(id)}
             onEditTransaction={(tx) => setEditingTx(tx)}
             onUpdateBudget={onUpdateBudget}
-            // NEW: pass through to BudgetSection so it can persist limits
             saveBudgetLimit={saveBudgetLimit}
           />
         )}
       </main>
 
-      {/* Bottom bar with budget shortcuts + add transaction */}
       <DashboardBottomBar
         budgets={state.budgets}
         expandedBudgets={expandedBudgets}
@@ -346,11 +355,10 @@ const Dashboard: React.FC<DashboardProps> = ({
         onAddTransaction={() => setIsAddingTx(true)}
       />
 
-      {/* Settings modal */}
       {showSettings && (
         <DashboardSettingsModal
           isSharedAccount={isSharedAccount}
-          settings={state.settings}
+          settings={state.settings as any}
           user={state.user}
           showTutorial={showTutorial}
           isLinkingPartner={isLinkingPartner}
@@ -370,7 +378,6 @@ const Dashboard: React.FC<DashboardProps> = ({
         />
       )}
 
-      {/* Add transaction modal */}
       {isAddingTx && (
         <TransactionForm
           onClose={() => setIsAddingTx(false)}
@@ -382,7 +389,6 @@ const Dashboard: React.FC<DashboardProps> = ({
         />
       )}
 
-      {/* Edit transaction modal */}
       {editingTx && (
         <TransactionForm
           onClose={() => setEditingTx(null)}
@@ -395,7 +401,6 @@ const Dashboard: React.FC<DashboardProps> = ({
         />
       )}
 
-      {/* Confirm delete modal */}
       {deletingTxId && (
         <ConfirmDeleteModal
           onClose={() => setDeletingTxId(null)}
@@ -406,7 +411,6 @@ const Dashboard: React.FC<DashboardProps> = ({
         />
       )}
 
-      {/* Tutorial overlay */}
       {showTutorial && (
         <Tutorial
           isShared={isSharedAccount}
