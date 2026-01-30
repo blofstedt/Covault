@@ -1,6 +1,78 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 
-import React from 'react';
-import { Capacitor } from '@capacitor/core';
+interface CovaultNotificationPlugin {
+  requestAccess(): Promise<void>;
+  isEnabled(): Promise<{ enabled: boolean }>;
+  getInstalledApps(): Promise<{ apps: Array<{ packageName: string; name: string }> }>;
+  saveMonitoredApps(options: { apps: any }): Promise<void>;
+  getMonitoredApps(): Promise<{ apps: string[] }>;
+}
+
+// Known banking app package names (must match NotificationListener.java)
+const KNOWN_BANKING_APPS: Record<string, string> = {
+  // Canadian Banks
+  'com.bmo.mobile': 'BMO',
+  'com.rbc.mobile.android': 'RBC',
+  'com.td': 'TD Canada',
+  'com.cibc.android.mobi': 'CIBC',
+  'com.scotiabank.mobile': 'Scotiabank',
+  'com.bns.mobile': 'Scotiabank',
+  'ca.bnc.android': 'National Bank',
+  'com.desjardins.mobile': 'Desjardins',
+  'com.atb.atbmobile': 'ATB Financial',
+  'ca.tangerine.clients.banking': 'Tangerine',
+  'com.simplicite.app': 'Simplii',
+  'ca.hsbc.hsbccanada': 'HSBC Canada',
+  'com.laurentianbank.mobile': 'Laurentian Bank',
+  'com.eq.mobile': 'EQ Bank',
+  'com.manulife.mobile': 'Manulife',
+  // Canadian Fintech
+  'com.wealthsimple': 'Wealthsimple',
+  'com.wealthsimple.trade': 'Wealthsimple Trade',
+  'com.neofinancial.android': 'Neo Financial',
+  'com.koho.android': 'KOHO',
+  'com.mogo.mobile': 'Mogo',
+  'ca.payments.interac': 'Interac',
+  'com.questrade.questmobile': 'Questrade',
+  // US Banks
+  'com.chase.sig.android': 'Chase',
+  'com.wf.wellsfargomobile': 'Wells Fargo',
+  'com.infonow.bofa': 'Bank of America',
+  'com.citi.citimobile': 'Citi',
+  'com.usbank.mobilebanking': 'US Bank',
+  'com.pnc.ecommerce.mobile': 'PNC',
+  'com.tdbank': 'TD Bank',
+  'com.capitalone.mobile': 'Capital One',
+  'com.key.android': 'KeyBank',
+  'com.regions.mobbanking': 'Regions',
+  'com.huntington.m': 'Huntington',
+  'com.ally.MobileBanking': 'Ally',
+  // Credit Cards
+  'com.americanexpress.android.acctsvcs.us': 'Amex',
+  'com.capitalone.creditcard.app': 'Capital One CC',
+  'com.discoverfinancial.mobile': 'Discover',
+  'com.synchrony.banking': 'Synchrony',
+  // Fintech
+  'com.chime.chmapplication': 'Chime',
+  'com.sofi.mobile': 'SoFi',
+  'com.venmo': 'Venmo',
+  'com.squareup.cash': 'Cash App',
+  'com.paypal.android.p2pmobile': 'PayPal',
+  'com.zellepay.zelle': 'Zelle',
+  'com.revolut.revolut': 'Revolut',
+  'com.monzo.android': 'Monzo',
+  'com.n26.android': 'N26',
+  'com.varo': 'Varo',
+  // Credit Unions
+  'com.navyfederal.android': 'Navy Federal',
+  'com.penfed.mobile.banking': 'PenFed',
+  'org.becu.mobile': 'BECU',
+  // Investment
+  'com.robinhood.android': 'Robinhood',
+  'com.fidelity.android': 'Fidelity',
+  'com.schwab.mobile': 'Schwab',
+};
 
 interface NotificationSettingsProps {
   enabled: boolean;
@@ -9,49 +81,264 @@ interface NotificationSettingsProps {
 
 const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, onToggle }) => {
   const isNative = Capacitor.isNativePlatform();
+  const [permissionGranted, setPermissionGranted] = useState(false);
+  const [installedBankApps, setInstalledBankApps] = useState<Array<{ packageName: string; name: string }>>([]);
+  const [selectedApps, setSelectedApps] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(false);
+  const [plugin, setPlugin] = useState<CovaultNotificationPlugin | null>(null);
 
-  const openNotificationListenerSettings = () => {
-    // Capacitor's BridgeWebViewClient intercepts intent:// URIs and starts them
-    // as real Android Intents via startActivity(). This opens the system's
-    // Notification Listener Settings screen where the user can grant Covault
-    // permission to read notifications from banking apps.
-    window.location.href = 'intent:#Intent;action=android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS;end';
+  // Initialize plugin
+  useEffect(() => {
+    if (!isNative) return;
+    try {
+      const p = registerPlugin<CovaultNotificationPlugin>('CovaultNotification');
+      setPlugin(p);
+    } catch {
+      // Plugin not available
+    }
+  }, [isNative]);
+
+  // Check permission status and load data when component mounts or becomes visible
+  const checkStatus = useCallback(async () => {
+    if (!plugin) return;
+    try {
+      const { enabled: granted } = await plugin.isEnabled();
+      setPermissionGranted(granted);
+
+      if (granted) {
+        // Load installed apps and filter to known banking apps
+        const { apps: installed } = await plugin.getInstalledApps();
+        const bankApps = installed.filter(a => a.packageName in KNOWN_BANKING_APPS);
+        // Use our friendly names
+        const named = bankApps.map(a => ({
+          packageName: a.packageName,
+          name: KNOWN_BANKING_APPS[a.packageName] || a.name,
+        }));
+        named.sort((a, b) => a.name.localeCompare(b.name));
+        setInstalledBankApps(named);
+
+        // Load previously saved selections
+        const { apps: saved } = await plugin.getMonitoredApps();
+        if (saved && saved.length > 0) {
+          setSelectedApps(new Set(saved));
+        } else {
+          // Default: select all banking apps found
+          setSelectedApps(new Set(named.map(a => a.packageName)));
+        }
+      }
+    } catch (e) {
+      console.warn('[NotificationSettings] checkStatus error:', e);
+    }
+  }, [plugin]);
+
+  useEffect(() => {
+    checkStatus();
+  }, [checkStatus]);
+
+  // Re-check when app resumes (user returns from Android settings)
+  useEffect(() => {
+    if (!isNative) return;
+    const onResume = () => { checkStatus(); };
+    document.addEventListener('resume', onResume);
+    return () => document.removeEventListener('resume', onResume);
+  }, [isNative, checkStatus]);
+
+  // Also poll briefly after requesting access (covers cases where resume doesn't fire)
+  const pollForPermission = useCallback(async () => {
+    if (!plugin) return;
+    for (let i = 0; i < 20; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      try {
+        const { enabled: granted } = await plugin.isEnabled();
+        if (granted) {
+          setPermissionGranted(true);
+          checkStatus();
+          return;
+        }
+      } catch { /* ignore */ }
+    }
+  }, [plugin, checkStatus]);
+
+  const handleToggle = async () => {
+    if (!isNative || !plugin) return;
+
+    if (enabled) {
+      // Turning off
+      onToggle(false);
+      return;
+    }
+
+    // Turning on — need to check/request permission
+    setLoading(true);
+    try {
+      const { enabled: alreadyGranted } = await plugin.isEnabled();
+      if (alreadyGranted) {
+        setPermissionGranted(true);
+        onToggle(true);
+        await checkStatus();
+      } else {
+        // Open the real Android notification listener settings
+        await plugin.requestAccess();
+        onToggle(true);
+        // Start polling for when user grants and comes back
+        pollForPermission();
+      }
+    } catch (e) {
+      console.error('[NotificationSettings] handleToggle error:', e);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  return (
-    <div className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60 space-y-4">
-      <div className="flex flex-col space-y-2">
-        <span className="font-black text-base text-slate-500 dark:text-slate-200 uppercase tracking-tight">
+  const toggleApp = async (pkg: string) => {
+    const next = new Set(selectedApps);
+    if (next.has(pkg)) {
+      next.delete(pkg);
+    } else {
+      next.add(pkg);
+    }
+    setSelectedApps(next);
+
+    // Persist
+    if (plugin) {
+      try {
+        await plugin.saveMonitoredApps({ apps: Array.from(next) });
+      } catch (e) {
+        console.warn('[NotificationSettings] save error:', e);
+      }
+    }
+  };
+
+  const selectAll = async () => {
+    const all = new Set(installedBankApps.map(a => a.packageName));
+    setSelectedApps(all);
+    if (plugin) {
+      try { await plugin.saveMonitoredApps({ apps: Array.from(all) }); } catch {}
+    }
+  };
+
+  const selectNone = async () => {
+    setSelectedApps(new Set());
+    if (plugin) {
+      try { await plugin.saveMonitoredApps({ apps: [] }); } catch {}
+    }
+  };
+
+  if (!isNative) {
+    return (
+      <div className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60">
+        <span className="font-black text-xs text-slate-400 uppercase tracking-tight">
           Bank Notification Listener
         </span>
-        <p className="text-[11px] text-slate-500 font-medium">
-          Allow Covault to read your banking app notifications and automatically log transactions.
+        <p className="text-[11px] text-slate-400 mt-1">
+          Available on Android. Install the APK to use this feature.
         </p>
       </div>
+    );
+  }
 
-      {isNative ? (
-        <div className="space-y-3">
-          <button
-            onClick={openNotificationListenerSettings}
-            className="w-full py-4 bg-slate-800 dark:bg-slate-100 text-white dark:text-slate-900 text-[11px] font-black rounded-2xl uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center space-x-2"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93s.844.141 1.185-.085l.723-.48a1.125 1.125 0 011.543.387l.547.948a1.125 1.125 0 01-.322 1.465l-.574.413a1.125 1.125 0 00-.43 1.067c.024.2.024.404 0 .605a1.125 1.125 0 00.43 1.067l.574.413a1.125 1.125 0 01.322 1.465l-.547.948a1.125 1.125 0 01-1.543.387l-.723-.48a1.125 1.125 0 00-1.185-.085c-.396.166-.71.506-.78.93l-.149.894c-.09.542-.56.94-1.11.94h-1.093c-.55 0-1.02-.398-1.11-.94l-.149-.894a1.125 1.125 0 00-.78-.93 1.125 1.125 0 00-1.185.085l-.723.48a1.125 1.125 0 01-1.543-.387l-.547-.948a1.125 1.125 0 01.322-1.465l.574-.413a1.125 1.125 0 00.43-1.067 4.5 4.5 0 010-.605 1.125 1.125 0 00-.43-1.067l-.574-.413a1.125 1.125 0 01-.322-1.465l.547-.948a1.125 1.125 0 011.543-.387l.723.48c.34.226.78.255 1.185.085s.71-.506.78-.93l.149-.894z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+  return (
+    <div className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60 space-y-4">
+      {/* Toggle row */}
+      <div className="flex items-center justify-between">
+        <div className="flex-1 mr-3">
+          <span className="font-black text-xs text-slate-600 dark:text-slate-200 uppercase tracking-tight block">
+            Bank Notification Listener
+          </span>
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 leading-tight">
+            Auto-log transactions from your banking apps
+          </p>
+        </div>
+        <button
+          onClick={handleToggle}
+          disabled={loading}
+          className={`relative w-12 h-7 rounded-full transition-colors duration-200 flex-shrink-0 ${
+            enabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
+          } ${loading ? 'opacity-50' : ''}`}
+        >
+          <span className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200 ${
+            enabled ? 'translate-x-5' : 'translate-x-0'
+          }`} />
+        </button>
+      </div>
+
+      {/* Permission status */}
+      {enabled && !permissionGranted && (
+        <div className="space-y-2">
+          <div className="flex items-center space-x-2 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-2xl border border-amber-200/50 dark:border-amber-800/30">
+            <svg className="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
             </svg>
-            <span>Open Notification Settings</span>
-          </button>
-
-          <div className="p-3 bg-slate-100/50 dark:bg-slate-800/30 rounded-2xl">
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium text-center">
-              This opens your phone's settings where you grant Covault access to read notifications from RBC, BMO, TD, CIBC, Scotiabank, Wealthsimple, Neo, KOHO, Chase, Capital One, Venmo, Cash App, and 50+ more banking apps.
+            <p className="text-[10px] text-amber-700 dark:text-amber-400 font-medium leading-tight">
+              Grant notification access in your phone's settings, then come back here.
             </p>
           </div>
+          <button
+            onClick={async () => { if (plugin) { await plugin.requestAccess(); pollForPermission(); } }}
+            className="w-full py-3 bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 text-[10px] font-black rounded-xl uppercase tracking-widest active:scale-95 transition-all"
+          >
+            Open Phone Settings
+          </button>
         </div>
-      ) : (
-        <div className="p-4 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/40">
-          <p className="text-[11px] text-slate-400 font-medium text-center">
-            Notification listening is available on the Android app. Install the APK to use this feature.
+      )}
+
+      {/* Banking app picker */}
+      {enabled && permissionGranted && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              Your Banking Apps ({installedBankApps.length} found)
+            </span>
+            <div className="flex space-x-2">
+              <button onClick={selectAll} className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">All</button>
+              <button onClick={selectNone} className="text-[9px] font-bold text-slate-400 uppercase">None</button>
+            </div>
+          </div>
+
+          {installedBankApps.length === 0 ? (
+            <p className="text-[10px] text-slate-400 text-center py-3">
+              No supported banking apps detected on this device.
+            </p>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              {installedBankApps.map(app => {
+                const selected = selectedApps.has(app.packageName);
+                return (
+                  <button
+                    key={app.packageName}
+                    onClick={() => toggleApp(app.packageName)}
+                    className={`flex items-center space-x-2 px-3 py-2.5 rounded-xl text-left transition-all active:scale-95 border ${
+                      selected
+                        ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-300 dark:border-emerald-700/50'
+                        : 'bg-slate-100 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/30'
+                    }`}
+                  >
+                    <span className={`w-4 h-4 rounded-md flex items-center justify-center flex-shrink-0 ${
+                      selected
+                        ? 'bg-emerald-500'
+                        : 'bg-slate-300 dark:bg-slate-600'
+                    }`}>
+                      {selected && (
+                        <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="3">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                        </svg>
+                      )}
+                    </span>
+                    <span className={`text-[10px] font-bold truncate ${
+                      selected
+                        ? 'text-emerald-700 dark:text-emerald-300'
+                        : 'text-slate-500 dark:text-slate-400'
+                    }`}>
+                      {app.name}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <p className="text-[9px] text-slate-400 dark:text-slate-500 text-center leading-tight">
+            Covault reads notifications from selected apps to auto-log your transactions.
           </p>
         </div>
       )}
