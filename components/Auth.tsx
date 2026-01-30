@@ -51,14 +51,14 @@ const Auth: React.FC<AuthProps> = ({ onSignIn }) => {
       <div className="relative flex-1 flex flex-col items-center justify-center space-y-12">
         <div className="flex flex-col items-center space-y-6 animate-nest">
           <div className="w-28 h-28 bg-emerald-600 rounded-[2.5rem] rotate-12 flex items-center justify-center shadow-2xl shadow-emerald-500/40 animate-breathe">
-            <svg className="w-16 h-16 text-white -rotate-12" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <circle cx="12" cy="12" r="4" />
-              <path d="M12 8v1" />
-              <path d="M12 15v1" />
-              <path d="M8 12h1" />
-              <path d="M15 12h1" />
-              <path d="M12 12l2 2" />
+            <svg className="w-16 h-16 -rotate-12" viewBox="0 0 24 24" fill="none">
+              <rect x="2" y="2" width="20" height="20" rx="3.5" stroke="white" strokeWidth="1.5" />
+              <circle cx="12" cy="10.5" r="4.5" stroke="white" strokeWidth="1.5" />
+              <line x1="12" y1="6" x2="12" y2="7.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="12" y1="13.5" x2="12" y2="15" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="7.5" y1="10.5" x2="9" y2="10.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="15" y1="10.5" x2="16.5" y2="10.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+              <circle cx="12" cy="19" r="1.2" fill="white" />
             </svg>
           </div>
           <div className="text-center space-y-2">

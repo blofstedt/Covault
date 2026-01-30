@@ -268,9 +268,15 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
       <header className="px-6 pt-safe-top pb-3 sticky top-0 z-20 transition-colors bg-transparent border-none backdrop-blur-none relative z-10" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}>
         <div className="relative flex items-center justify-end h-12">
           <div className="absolute left-1/2 -translate-x-1/2 flex items-center space-x-2.5">
-            <div className="w-9 h-9 rounded-lg flex items-center justify-center shadow-lg transition-colors duration-700 bg-emerald-600 shadow-emerald-500/20">
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="12" cy="12" r="3" />
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center shadow-lg transition-colors duration-700 bg-emerald-600 shadow-emerald-500/20">
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none">
+                <rect x="2" y="2" width="20" height="20" rx="3.5" stroke="white" strokeWidth="1.5" />
+                <circle cx="12" cy="10.5" r="4.5" stroke="white" strokeWidth="1.5" />
+                <line x1="12" y1="6" x2="12" y2="7.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+                <line x1="12" y1="13.5" x2="12" y2="15" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+                <line x1="7.5" y1="10.5" x2="9" y2="10.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+                <line x1="15" y1="10.5" x2="16.5" y2="10.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+                <circle cx="12" cy="19" r="1.2" fill="white" />
               </svg>
             </div>
             <span className="font-black text-sm tracking-tighter uppercase transition-colors duration-700 text-slate-500 dark:text-slate-50">Covault</span>

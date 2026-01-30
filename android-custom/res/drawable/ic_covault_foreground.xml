@@ -4,22 +4,51 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Background circle (rendered by adaptive icon background layer) -->
-    <!-- Vault icon: rounded square with lock circle -->
+    <!-- Covault vault door icon, centered in 108dp adaptive icon safe zone.
+         Design: rounded rectangle (vault door) with circular dial handle,
+         four spokes at compass points, and a keyhole dot below. -->
     <group
         android:translateX="27"
         android:translateY="27">
-        <!-- Outer rounded rect (vault) -->
+        <!-- Vault door: rounded rectangle outline -->
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="2.5"
+            android:fillColor="#00000000"
+            android:pathData="M7,3L47,3A4,4 0,0 1,51 7L51,47A4,4 0,0 1,47 51L7,51A4,4 0,0 1,3 47L3,7A4,4 0,0 1,7 3z" />
+        <!-- Dial circle -->
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="2.5"
+            android:fillColor="#00000000"
+            android:pathData="M27,22.5m-9,0a9,9 0,1 1,18 0a9,9 0,1 1,-18 0" />
+        <!-- Spoke: top -->
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="2.5"
+            android:strokeLineCap="round"
+            android:pathData="M27,13.5L27,16.5" />
+        <!-- Spoke: bottom -->
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="2.5"
+            android:strokeLineCap="round"
+            android:pathData="M27,28.5L27,31.5" />
+        <!-- Spoke: left -->
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="2.5"
+            android:strokeLineCap="round"
+            android:pathData="M18,22.5L21,22.5" />
+        <!-- Spoke: right -->
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="2.5"
+            android:strokeLineCap="round"
+            android:pathData="M33,22.5L36,22.5" />
+        <!-- Keyhole dot -->
         <path
             android:fillColor="#FFFFFF"
-            android:pathData="M4,8C4,5.79 5.79,4 8,4L46,4C48.21,4 50,5.79 50,8L50,46C50,48.21 48.21,50 46,50L8,50C5.79,50 4,48.21 4,46Z" />
-        <!-- Inner circle (lock) -->
-        <path
-            android:fillColor="#10B981"
-            android:pathData="M27,17C21.48,17 17,21.48 17,27C17,32.52 21.48,37 27,37C32.52,37 37,32.52 37,27C37,21.48 32.52,17 27,17Z" />
-        <!-- Lock keyhole -->
-        <path
-            android:fillColor="#FFFFFF"
-            android:pathData="M27,23C25.34,23 24,24.34 24,26C24,27.1 24.6,28.05 25.5,28.55L25.5,31C25.5,31.83 26.17,32.5 27,32.5C27.83,32.5 28.5,31.83 28.5,31L28.5,28.55C29.4,28.05 30,27.1 30,26C30,24.34 28.66,23 27,23Z" />
+            android:pathData="M27,39.5m-2.4,0a2.4,2.4 0,1 1,4.8 0a2.4,2.4 0,1 1,-4.8 0" />
     </group>
 </vector>
