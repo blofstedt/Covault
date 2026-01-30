@@ -4,12 +4,16 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Covault vault door icon, centered in 108dp adaptive icon safe zone.
+    <!-- Covault vault door icon, tilted 12 degrees to match login screen.
          Design: rounded rectangle (vault door) with circular dial handle,
-         four spokes at compass points, and a keyhole dot below. -->
+         four spokes at compass points, and a keyhole dot below.
+         White strokes on emerald background (set by adaptive icon bg layer). -->
     <group
         android:translateX="27"
-        android:translateY="27">
+        android:translateY="27"
+        android:rotation="12"
+        android:pivotX="27"
+        android:pivotY="27">
         <!-- Vault door: rounded rectangle outline -->
         <path
             android:strokeColor="#FFFFFF"

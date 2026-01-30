@@ -268,8 +268,8 @@ const Dashboard: React.FC<DashboardProps> = ({ state, setState, onSignOut, onUpd
       <header className="px-6 pt-safe-top pb-3 sticky top-0 z-20 transition-colors bg-transparent border-none backdrop-blur-none relative z-10" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}>
         <div className="relative flex items-center justify-end h-12">
           <div className="absolute left-1/2 -translate-x-1/2 flex items-center space-x-2.5">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center shadow-lg transition-colors duration-700 bg-emerald-600 shadow-emerald-500/20">
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none">
+            <div className="w-9 h-9 rounded-xl rotate-12 flex items-center justify-center shadow-lg transition-colors duration-700 bg-emerald-600 shadow-emerald-500/20">
+              <svg className="w-5 h-5 -rotate-12" viewBox="0 0 24 24" fill="none">
                 <rect x="2" y="2" width="20" height="20" rx="3.5" stroke="white" strokeWidth="1.5" />
                 <circle cx="12" cy="10.5" r="4.5" stroke="white" strokeWidth="1.5" />
                 <line x1="12" y1="6" x2="12" y2="7.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
