@@ -6,7 +6,7 @@ import DiscretionaryShieldSection from './settings_modal_components/Discretionar
 import VaultSharingSection from './settings_modal_components/VaultSharingSection';
 import SupportFeedbackSection from './settings_modal_components/SupportFeedbackSection';
 import SignOutSection from './settings_modal_components/SignOutSection';
-import NotificationSettingsSection from './dashboard_components/settings_modal_components/NotificationSettingsSection;
+import NotificationSettingsSection from './settings_modal_components/NotificationSettingsSection';
   
 export interface DashboardSettings {
   theme: string;
