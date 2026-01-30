@@ -48,24 +48,8 @@ jobs:
         npx cap add android
         npx cap sync android
 
-    - name: Copy custom Android files
-      run: |
-        # Copy AndroidManifest.xml
-        cp android-custom/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
-
-        # Create Java source directory
-        mkdir -p android/app/src/main/java/com/covault/app
-
-        # Copy NotificationListener and BootReceiver
-        cp android-custom/NotificationListener.java android/app/src/main/java/com/covault/app/NotificationListener.java
-        cp android-custom/BootReceiver.java android/app/src/main/java/com/covault/app/BootReceiver.java
-
-        # Copy icon assets if they exist
-        for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
-          if [ -d "android-custom/res/mipmap-$density" ] && [ "$(ls -A android-custom/res/mipmap-$density 2>/dev/null)" ]; then
-            cp -r android-custom/res/mipmap-$density/* android/app/src/main/res/mipmap-$density/ 2>/dev/null || true
-          fi
-        done
+    - name: Sync custom Android files (icons, Java, manifest)
+      run: bash scripts/sync-android.sh
 
     - name: Add biometric auth dependency to Android
       run: |
