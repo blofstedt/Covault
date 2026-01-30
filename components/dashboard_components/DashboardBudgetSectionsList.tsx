@@ -23,6 +23,9 @@ interface DashboardBudgetSectionsListProps {
   onDeleteRequest: (id: string) => void;
   onEditTransaction: (tx: Transaction) => void;
   onUpdateBudget: (b: BudgetCategory) => void;
+
+  // ✅ NEW: allow budget limits to be saved to Supabase
+  saveBudgetLimit: (categoryId: string, newLimit: number) => void;
 }
 
 const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = ({
@@ -40,7 +43,8 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
   onToggleExpand,
   onDeleteRequest,
   onEditTransaction,
-  onUpdateBudget
+  onUpdateBudget,
+  saveBudgetLimit, // ✅ NEW
 }) => {
   return (
     <div
@@ -97,6 +101,9 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
                 currentUserName={currentUserName}
                 isSharedView={isSharedAccount}
                 allBudgets={budgets}
+
+                // ✅ NEW: actually save limit to Supabase
+                saveBudgetLimit={saveBudgetLimit}
               />
             </div>
           );
