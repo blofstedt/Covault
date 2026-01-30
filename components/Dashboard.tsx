@@ -11,6 +11,7 @@ import DashboardBalanceSection from './dashboard_components/DashboardBalanceSect
 import DashboardBudgetSectionsList from './dashboard_components/DashboardBudgetSectionsList';
 import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import DashboardSettingsModal from './dashboard_components/DashboardSettingsModal';
+import SearchResults from './dashboard_components/SearchResults';
 
 // Re-exported so any existing imports of getBudgetIcon from Dashboard still work
 export { getBudgetIcon } from './dashboard_components/getBudgetIcon';
@@ -61,6 +62,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const isSharedAccount = !state.user?.budgetingSolo;
 
+  // All transactions, optionally filtered by search query
   const filteredTransactions = useMemo(() => {
     let list = state.transactions;
     if (searchQuery) {
@@ -69,6 +71,44 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
     return list;
   }, [state.transactions, searchQuery]);
+
+  // Helper to identify the current month
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth(); // 0-based
+
+  const currentMonthTransactions = useMemo(
+    () =>
+      filteredTransactions.filter((tx) => {
+        const d = new Date(tx.date);
+        return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
+      }),
+    [filteredTransactions, currentYear, currentMonth]
+  );
+
+  const pastTransactions = useMemo(
+    () =>
+      state.transactions.filter((tx) => {
+        const d = new Date(tx.date);
+        return (
+          d.getFullYear() < currentYear ||
+          (d.getFullYear() === currentYear && d.getMonth() < currentMonth)
+        );
+      }),
+    [state.transactions, currentYear, currentMonth]
+  );
+
+  const futureTransactions = useMemo(
+    () =>
+      state.transactions.filter((tx) => {
+        const d = new Date(tx.date);
+        return (
+          d.getFullYear() > currentYear ||
+          (d.getFullYear() === currentYear && d.getMonth() > currentMonth)
+        );
+      }),
+    [state.transactions, currentYear, currentMonth]
+  );
 
   // Total income (currently just user's income, partner to be added later)
   const totalIncome = useMemo(() => {
@@ -84,21 +124,12 @@ const Dashboard: React.FC<DashboardProps> = ({
   // ===============================
   const remainingMoney = useMemo(() => {
     // Only THIS MONTH'S transactions should count towards the top total.
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth(); // 0-based
-
-    const thisMonthTx = filteredTransactions.filter((tx) => {
-      const d = new Date(tx.date);
-      return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
-    });
-
-    const totalSpent = thisMonthTx.reduce(
+    const totalSpent = currentMonthTransactions.reduce(
       (acc, tx) => acc + (tx.is_projected ? 0 : tx.amount),
       0
     );
 
-    const totalProjected = thisMonthTx.reduce(
+    const totalProjected = currentMonthTransactions.reduce(
       (acc, tx) => acc + (tx.is_projected ? tx.amount : 0),
       0
     );
@@ -106,7 +137,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     // For now: remaining = my income - this month's (spent + projected).
     // When partner income is wired in, totalIncome will include theirs as well.
     return totalIncome - (totalSpent + totalProjected);
-  }, [totalIncome, filteredTransactions]);
+  }, [totalIncome, currentMonthTransactions]);
 
   const leisureAdjustments = useMemo(() => {
     if (!state.settings.useLeisureAsBuffer) return 0;
@@ -115,7 +146,8 @@ const Dashboard: React.FC<DashboardProps> = ({
     state.budgets.forEach((b) => {
       if (b.name.toLowerCase().includes('leisure')) return;
 
-      // IMPORTANT: we want overspend based only on the same filtered transactions
+      // Use the same filteredTransactions the user is seeing (by search vendor),
+      // but overspend still constrained to this month conceptually.
       const bTxs = filteredTransactions.filter(
         (t) =>
           t.budget_id === b.id ||
@@ -268,31 +300,37 @@ const Dashboard: React.FC<DashboardProps> = ({
           />
         )}
 
-        {/* Budget sections list */}
-        <DashboardBudgetSectionsList
-          budgets={state.budgets}
-          // IMPORTANT: only pass THIS MONTH'S transactions to budgets
-          transactions={filteredTransactions.filter((tx) => {
-            const now = new Date();
-            const currentYear = now.getFullYear();
-            const currentMonth = now.getMonth();
-            const d = new Date(tx.date);
-            return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
-          })}
-          expandedBudgets={expandedBudgets}
-          isFocusMode={isFocusMode}
-          focusedBudgetId={focusedBudgetId}
-          leisureAdjustments={leisureAdjustments}
-          settings={state.settings}
-          currentUserName={state.user?.name || ''}
-          isSharedAccount={isSharedAccount}
-          scrollContainerRef={scrollContainerRef}
-          budgetRefs={budgetRefs}
-          onToggleExpand={toggleExpand}
-          onDeleteRequest={(id) => setDeletingTxId(id)}
-          onEditTransaction={(tx) => setEditingTx(tx)}
-          onUpdateBudget={onUpdateBudget}
-        />
+        {/* When searching: show consolidated search UI with Past/Future sections */}
+        {searchQuery ? (
+          <SearchResults
+            searchQuery={searchQuery}
+            currentMonthTransactions={currentMonthTransactions}
+            pastTransactions={pastTransactions}
+            futureTransactions={futureTransactions}
+            currentUserName={state.user?.name || ''}
+            isSharedAccount={isSharedAccount}
+            budgets={state.budgets}
+          />
+        ) : (
+          // Otherwise show the normal budget dashboard (this-month only)
+          <DashboardBudgetSectionsList
+            budgets={state.budgets}
+            transactions={currentMonthTransactions}
+            expandedBudgets={expandedBudgets}
+            isFocusMode={isFocusMode}
+            focusedBudgetId={focusedBudgetId}
+            leisureAdjustments={leisureAdjustments}
+            settings={state.settings}
+            currentUserName={state.user?.name || ''}
+            isSharedAccount={isSharedAccount}
+            scrollContainerRef={scrollContainerRef}
+            budgetRefs={budgetRefs}
+            onToggleExpand={toggleExpand}
+            onDeleteRequest={(id) => setDeletingTxId(id)}
+            onEditTransaction={(tx) => setEditingTx(tx)}
+            onUpdateBudget={onUpdateBudget}
+          />
+        )}
       </main>
 
       {/* Bottom bar with budget shortcuts + add transaction */}
