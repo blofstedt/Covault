@@ -9,6 +9,11 @@ const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 /**
  * Call Gemini Flash to generate regex + category suggestion
  * for a given bank notification.
+ *
+ * 👉 This is only called:
+ *    - when there is NO existing notification_rules row
+ *      for this (user, bank_app_id, bank_name)
+ *    - or later when we regenerate after a user flag (not wired yet)
  */
 async function generateRuleWithGemini(
   bankName: string,
@@ -213,12 +218,18 @@ interface UseNotificationListenerParams {
 /**
  * Hook that listens for transactionDetected events from the native CovaultNotification plugin.
  *
- * ⚠️ NOTE:
- * Right now this still uses event.vendor and event.amount directly.
- * In a later step, we'll change the plugin/event shape to send rawNotification,
- * bankAppId, bankName and then:
- *  - call getOrCreateNotificationRuleForBank(...)
- *  - use applyRuleToNotification(...) to parse vendor/amount from raw text.
+ * EVENT SHAPE (ideal, forward-looking):
+ *   event = {
+ *     rawNotification: string;  // full notification text
+ *     bankAppId: string;        // e.g. "com.scotiabank.mobile"
+ *     bankName: string;         // e.g. "Scotiabank"
+ *     vendor?: string;          // optional fallback
+ *     amount?: number;          // optional fallback
+ *   }
+ *
+ * 👉 If rawNotification/bankAppId/bankName are missing,
+ *    we fall back to event.vendor and event.amount (old behavior),
+ *    so this is backwards compatible while you update the plugin.
  */
 export const useNotificationListener = ({
   user,
@@ -236,7 +247,7 @@ export const useNotificationListener = ({
 
         const handle = await plugin.addListener(
           'transactionDetected',
-          (event: any) => {
+          async (event: any) => {
             console.log('[notification] Transaction detected:', event);
             if (!user?.id) {
               console.warn(
@@ -245,17 +256,46 @@ export const useNotificationListener = ({
               return;
             }
 
-            // TODO (next step):
-            // - Use event.rawNotification, event.bankAppId, event.bankName
-            // - Call getOrCreateNotificationRuleForBank(...)
-            // - Call applyRuleToNotification(...)
-            // For now, we keep using vendor/amount from the event.
+            let vendor = event.vendor || 'Unknown Merchant';
+            let amount = event.amount || 0;
+
+            // If the plugin sends raw notification info, use our regex pipeline
+            if (event.rawNotification && event.bankAppId && event.bankName) {
+              try {
+                const rule = await getOrCreateNotificationRuleForBank({
+                  userId: user.id,
+                  bankAppId: event.bankAppId,
+                  bankName: event.bankName,
+                  rawNotification: event.rawNotification,
+                });
+
+                const parsed = applyRuleToNotification(
+                  rule.amount_regex,
+                  rule.vendor_regex,
+                  event.rawNotification,
+                );
+
+                if (parsed) {
+                  vendor = parsed.vendor;
+                  amount = parsed.amount;
+                } else {
+                  console.warn(
+                    '[notification] Could not parse notification with regex, falling back to event.vendor/amount',
+                  );
+                }
+              } catch (err) {
+                console.error(
+                  '[notification] Error while getting/applying notification rule:',
+                  err,
+                );
+              }
+            }
 
             const tx: Transaction = {
               id: crypto.randomUUID(),
               user_id: user.id,
-              vendor: event.vendor || 'Unknown Merchant',
-              amount: event.amount || 0,
+              vendor,
+              amount,
               date: new Date().toISOString().slice(0, 10),
               budget_id: null, // User will categorize later
               is_projected: false,
