@@ -84,7 +84,6 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [installedBankApps, setInstalledBankApps] = useState<Array<{ packageName: string; name: string }>>([]);
   const [selectedApps, setSelectedApps] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(false);
   const [plugin, setPlugin] = useState<CovaultNotificationPlugin | null>(null);
 
   // Initialize plugin
@@ -163,30 +162,18 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
     if (!isNative || !plugin) return;
 
     if (enabled) {
-      // Turning off
       onToggle(false);
       return;
     }
 
-    // Turning on — need to check/request permission
-    setLoading(true);
+    // Turning on — immediately open the real Android notification listener settings
+    onToggle(true);
     try {
-      const { enabled: alreadyGranted } = await plugin.isEnabled();
-      if (alreadyGranted) {
-        setPermissionGranted(true);
-        onToggle(true);
-        await checkStatus();
-      } else {
-        // Open the real Android notification listener settings
-        await plugin.requestAccess();
-        onToggle(true);
-        // Start polling for when user grants and comes back
-        pollForPermission();
-      }
+      await plugin.requestAccess();
+      // Poll for permission after user returns from settings
+      pollForPermission();
     } catch (e) {
       console.error('[NotificationSettings] handleToggle error:', e);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -251,36 +238,15 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
         </div>
         <button
           onClick={handleToggle}
-          disabled={loading}
           className={`relative w-12 h-7 rounded-full transition-colors duration-200 flex-shrink-0 ${
             enabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
-          } ${loading ? 'opacity-50' : ''}`}
+          }`}
         >
           <span className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200 ${
             enabled ? 'translate-x-5' : 'translate-x-0'
           }`} />
         </button>
       </div>
-
-      {/* Permission status */}
-      {enabled && !permissionGranted && (
-        <div className="space-y-2">
-          <div className="flex items-center space-x-2 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-2xl border border-amber-200/50 dark:border-amber-800/30">
-            <svg className="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-            </svg>
-            <p className="text-[10px] text-amber-700 dark:text-amber-400 font-medium leading-tight">
-              Grant notification access in your phone's settings, then come back here.
-            </p>
-          </div>
-          <button
-            onClick={async () => { if (plugin) { await plugin.requestAccess(); pollForPermission(); } }}
-            className="w-full py-3 bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 text-[10px] font-black rounded-xl uppercase tracking-widest active:scale-95 transition-all"
-          >
-            Open Phone Settings
-          </button>
-        </div>
-      )}
 
       {/* Banking app picker */}
       {enabled && permissionGranted && (
