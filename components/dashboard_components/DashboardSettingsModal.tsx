@@ -13,6 +13,7 @@ export interface DashboardSettings {
   theme: string;
   rolloverEnabled: boolean;
   useLeisureAsBuffer: boolean;
+  app_notifications_enabled?: boolean;   // ← ADD THIS LINE
   [key: string]: any;
 }
 
