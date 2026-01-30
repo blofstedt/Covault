@@ -15,6 +15,7 @@ export const FlagTransactionButton: React.FC<FlagTransactionButtonProps> = ({
   const [loading, setLoading] = useState(false);
 
   const handleFlag = async () => {
+    // We only support flagging if this transaction came from a parsed notification
     if (!transaction.notification_rule_id || !transaction.raw_notification) {
       alert('Sorry, this transaction cannot be flagged for correction.');
       return;
@@ -26,7 +27,9 @@ export const FlagTransactionButton: React.FC<FlagTransactionButtonProps> = ({
         userId: user.id,
         notificationRuleId: transaction.notification_rule_id,
         rawNotification: transaction.raw_notification,
-        // You could optionally pass "expectedVendor"/"expectedAmount" here later
+        // You can later add:
+        // expectedVendor: transaction.vendor,
+        // expectedAmount: transaction.amount,
       });
 
       alert("Thanks! We'll improve how we detect this bank's transactions.");
@@ -52,3 +55,5 @@ export const FlagTransactionButton: React.FC<FlagTransactionButtonProps> = ({
     </button>
   );
 };
+
+export default FlagTransactionButton;
