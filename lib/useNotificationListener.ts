@@ -161,7 +161,10 @@ async function getOrCreateNotificationRuleForBank(options: {
     .maybeSingle();
 
   if (existingError) {
-    console.error('[getOrCreateNotificationRuleForBank] Error fetching rule:', existingError);
+    console.error(
+      '[getOrCreateNotificationRuleForBank] Error fetching rule:',
+      existingError,
+    );
     throw existingError;
   }
 
@@ -183,7 +186,10 @@ async function getOrCreateNotificationRuleForBank(options: {
       .maybeSingle();
 
     if (catErr) {
-      console.warn('[getOrCreateNotificationRuleForBank] Category lookup error:', catErr);
+      console.warn(
+        '[getOrCreateNotificationRuleForBank] Category lookup error:',
+        catErr,
+      );
     } else if (cat) {
       defaultCategoryId = cat.id;
     }
@@ -204,7 +210,10 @@ async function getOrCreateNotificationRuleForBank(options: {
     .single();
 
   if (insertError) {
-    console.error('[getOrCreateNotificationRuleForBank] Error inserting rule:', insertError);
+    console.error(
+      '[getOrCreateNotificationRuleForBank] Error inserting rule:',
+      insertError,
+    );
     throw insertError;
   }
 
@@ -243,12 +252,14 @@ export const useNotificationListener = ({
 
     const setupListener = async () => {
       try {
-        const plugin = (Capacitor as any).Plugins?.CovaultNotification;
-        if (!plugin || typeof plugin.addListener !== 'function') return;
+        // ✅ Use the typed wrapper instead of (Capacitor as any)...
+        if (!covaultNotification) {
+          return;
+        }
 
-        const handle = await plugin.addListener(
+        const handle = await covaultNotification.addListener(
           'transactionDetected',
-          async (event: any) => {
+          async (event) => {
             console.log('[notification] Transaction detected:', event);
             if (!user?.id) {
               console.warn(
