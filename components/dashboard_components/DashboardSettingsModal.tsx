@@ -8,12 +8,12 @@ import SupportFeedbackSection from './settings_modal_components/SupportFeedbackS
 import SignOutSection from './settings_modal_components/SignOutSection';
 import NotificationSettingsSection from './settings_modal_components/NotificationSettingsSection';
 import AppNotificationsSection from './settings_modal_components/AppNotificationsSection';
-  
+
 export interface DashboardSettings {
   theme: string;
   rolloverEnabled: boolean;
   useLeisureAsBuffer: boolean;
-  app_notifications_enabled?: boolean;   // ← ADD THIS LINE
+  app_notifications_enabled?: boolean; // <-- Correct key
   [key: string]: any;
 }
 
@@ -117,14 +117,16 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
             theme={settings.theme}
             onUpdateSettings={onUpdateSettings}
           />
-          
+
           {/* Bank Notification Listener */}
           <NotificationSettingsSection />
+
+          {/* App Notifications */}
           <AppNotificationsSection
-            enabled={!!settings.appNotificationsEnabled}
-            onToggle={(v) => onUpdateSettings('appNotificationsEnabled', v)}
+            enabled={!!settings.app_notifications_enabled}
+            onToggle={(v) => onUpdateSettings('app_notifications_enabled', v)}
           />
-          
+
           {/* Budget rollover */}
           <RolloverSection
             rolloverEnabled={settings.rolloverEnabled}
