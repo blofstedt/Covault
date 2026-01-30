@@ -24,6 +24,8 @@ interface DashboardProps {
   onAddTransaction: (t: Transaction) => void;
   onUpdateTransaction: (t: Transaction) => void;
   onDeleteTransaction: (id: string) => void;
+  // NEW: function that actually saves limits to Supabase (from useUserData)
+  saveBudgetLimit: (categoryId: string, newLimit: number) => void;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({
@@ -34,6 +36,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   onAddTransaction,
   onUpdateTransaction,
   onDeleteTransaction,
+  saveBudgetLimit, // NEW
 }) => {
   const [isAddingTx, setIsAddingTx] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
@@ -83,7 +86,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         const d = new Date(tx.date);
         return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
       }),
-    [filteredTransactions, currentYear, currentMonth]
+    [filteredTransactions, currentYear, currentMonth],
   );
 
   const pastTransactions = useMemo(
@@ -95,7 +98,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           (d.getFullYear() === currentYear && d.getMonth() < currentMonth)
         );
       }),
-    [state.transactions, currentYear, currentMonth]
+    [state.transactions, currentYear, currentMonth],
   );
 
   const futureTransactions = useMemo(
@@ -107,7 +110,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           (d.getFullYear() === currentYear && d.getMonth() > currentMonth)
         );
       }),
-    [state.transactions, currentYear, currentMonth]
+    [state.transactions, currentYear, currentMonth],
   );
 
   // Total income (currently just user's income, partner to be added later)
@@ -126,12 +129,12 @@ const Dashboard: React.FC<DashboardProps> = ({
     // Only THIS MONTH'S transactions should count towards the top total.
     const totalSpent = currentMonthTransactions.reduce(
       (acc, tx) => acc + (tx.is_projected ? 0 : tx.amount),
-      0
+      0,
     );
 
     const totalProjected = currentMonthTransactions.reduce(
       (acc, tx) => acc + (tx.is_projected ? tx.amount : 0),
-      0
+      0,
     );
 
     // For now: remaining = my income - this month's (spent + projected).
@@ -151,7 +154,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       const bTxs = filteredTransactions.filter(
         (t) =>
           t.budget_id === b.id ||
-          t.splits?.some((s) => s.budget_id === b.id)
+          t.splits?.some((s) => s.budget_id === b.id),
       );
 
       const spent = bTxs.reduce((acc, tx) => {
@@ -329,6 +332,8 @@ const Dashboard: React.FC<DashboardProps> = ({
             onDeleteRequest={(id) => setDeletingTxId(id)}
             onEditTransaction={(tx) => setEditingTx(tx)}
             onUpdateBudget={onUpdateBudget}
+            // NEW: pass through to BudgetSection so it can persist limits
+            saveBudgetLimit={saveBudgetLimit}
           />
         )}
       </main>
