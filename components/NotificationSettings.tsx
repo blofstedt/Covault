@@ -44,7 +44,7 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
 
           <div className="p-3 bg-slate-100/50 dark:bg-slate-800/30 rounded-2xl">
             <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium text-center">
-              This opens your phone's settings where you grant Covault access to read notifications from Chase, Bank of America, Wells Fargo, Capital One, Venmo, Cash App, Zelle, and 30+ more banking apps.
+              This opens your phone's settings where you grant Covault access to read notifications from RBC, BMO, TD, CIBC, Scotiabank, Wealthsimple, Neo, KOHO, Chase, Capital One, Venmo, Cash App, and 50+ more banking apps.
             </p>
           </div>
         </div>

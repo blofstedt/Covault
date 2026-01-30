@@ -64,24 +64,52 @@ public class NotificationListener extends NotificationListenerService {
         "com.penfed.mobile.banking",       // PenFed
         "org.becu.mobile",                 // BECU
 
+        // Canadian Banks
+        "com.bmo.mobile",                  // BMO (Bank of Montreal)
+        "com.rbc.mobile.android",          // RBC (Royal Bank of Canada)
+        "com.td",                          // TD Canada
+        "com.cibc.android.mobi",           // CIBC
+        "com.scotiabank.mobile",           // Scotiabank
+        "com.bns.mobile",                  // Scotiabank (alternate)
+        "ca.bnc.android",                  // National Bank of Canada
+        "com.desjardins.mobile",           // Desjardins
+        "com.atb.atbmobile",              // ATB Financial
+        "ca.tangerine.clients.banking",    // Tangerine
+        "com.simplicite.app",              // Simplii Financial
+        "ca.hsbc.hsbccanada",              // HSBC Canada
+        "com.laurentianbank.mobile",       // Laurentian Bank
+        "com.eq.mobile",                   // EQ Bank
+        "com.manulife.mobile",             // Manulife Bank
+
+        // Canadian Fintech / Neobanks
+        "com.wealthsimple",               // Wealthsimple
+        "com.wealthsimple.trade",          // Wealthsimple Trade
+        "com.neofinancial.android",        // Neo Financial
+        "com.koho.android",               // KOHO
+        "com.mogo.mobile",                // Mogo
+
+        // Canadian Payment / Transfer
+        "ca.payments.interac",             // Interac e-Transfer
+
         // Investment/Trading (for cash accounts)
         "com.robinhood.android",           // Robinhood
         "com.fidelity.android",            // Fidelity
-        "com.schwab.mobile"                // Charles Schwab
+        "com.schwab.mobile",              // Charles Schwab
+        "com.questrade.questmobile"        // Questrade
     ));
 
     // Patterns to extract transaction amount
     private static final Pattern[] AMOUNT_PATTERNS = {
-        Pattern.compile("\\$([\\d,]+\\.\\d{2})"),                    // $123.45
-        Pattern.compile("USD\\s*([\\d,]+\\.\\d{2})"),                // USD 123.45
-        Pattern.compile("([\\d,]+\\.\\d{2})\\s*(?:USD|dollars?)"),   // 123.45 USD
+        Pattern.compile("\\$([\\d,]+\\.\\d{2})"),                    // $123.45 (USD or CAD)
+        Pattern.compile("(?:USD|CAD)\\s*([\\d,]+\\.\\d{2})"),        // USD 123.45 or CAD 123.45
+        Pattern.compile("([\\d,]+\\.\\d{2})\\s*(?:USD|CAD|dollars?)"), // 123.45 USD/CAD
         Pattern.compile("(?:charged|spent|paid|purchase|transaction)\\s*(?:of)?\\s*\\$?([\\d,]+\\.\\d{2})", Pattern.CASE_INSENSITIVE),
         Pattern.compile("(?:amount|total)\\s*:?\\s*\\$?([\\d,]+\\.\\d{2})", Pattern.CASE_INSENSITIVE)
     };
 
     // Patterns to extract vendor/merchant name
     private static final Pattern[] VENDOR_PATTERNS = {
-        Pattern.compile("(?:at|from|to|@)\\s+([A-Za-z0-9\\s&'.-]+?)\\s+(?:for|on|\\$|USD|charged)", Pattern.CASE_INSENSITIVE),
+        Pattern.compile("(?:at|from|to|@)\\s+([A-Za-z0-9\\s&'.-]+?)\\s+(?:for|on|\\$|USD|CAD|charged)", Pattern.CASE_INSENSITIVE),
         Pattern.compile("(?:purchase|transaction|payment)\\s+(?:at|from)\\s+([A-Za-z0-9\\s&'.-]+)", Pattern.CASE_INSENSITIVE),
         Pattern.compile("([A-Z][A-Za-z0-9\\s&'.-]+?)\\s+\\$[\\d,]+\\.\\d{2}"),
         Pattern.compile("(?:merchant|vendor|store)\\s*:?\\s*([A-Za-z0-9\\s&'.-]+)", Pattern.CASE_INSENSITIVE)
