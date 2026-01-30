@@ -115,7 +115,10 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
             theme={settings.theme}
             onUpdateSettings={onUpdateSettings}
           />
-
+          
+          {/* Bank Notification Listener */}
+          <NotificationSettingsSection />
+          
           {/* Budget rollover */}
           <RolloverSection
             rolloverEnabled={settings.rolloverEnabled}
