@@ -2,8 +2,12 @@
 import { createClient } from '@supabase/supabase-js';
 
 // These come from your Vite env (.env) and MUST start with VITE_
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+// Example in your .env:
+//   VITE_SUPABASE_URL=https://your-project-id.supabase.co
+//   VITE_SUPABASE_ANON_KEY=your-anon-key-here
+
+export const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+export const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error(
@@ -11,6 +15,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
+// Create and export the Supabase client
 export const supabase = createClient(supabaseUrl ?? '', supabaseAnonKey ?? '', {
   auth: {
     autoRefreshToken: true,
