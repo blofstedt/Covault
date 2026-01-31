@@ -1,4 +1,5 @@
-import React from 'react';
+// components/settings_modal_components/IncomeSection.tsx
+import React, { useState, useEffect } from 'react';
 import type { DashboardUser } from '../DashboardSettingsModal';
 
 interface IncomeSectionProps {
@@ -12,6 +13,34 @@ const IncomeSection: React.FC<IncomeSectionProps> = ({
   user,
   onUpdateUserIncome,
 }) => {
+  // Local input state so the field behaves normally
+  const [inputValue, setInputValue] = useState('');
+
+  // Sync UI when user is loaded or updated
+  useEffect(() => {
+    if (user?.monthlyIncome !== undefined && user?.monthlyIncome !== null) {
+      setInputValue(user.monthlyIncome.toString());
+    }
+  }, [user?.monthlyIncome]);
+
+  const handleChange = (val: string) => {
+    setInputValue(val);
+
+    // Convert cleanly
+    const numeric = parseFloat(val);
+    if (!isNaN(numeric) && numeric >= 0) {
+      onUpdateUserIncome(numeric);
+    }
+  };
+
+  const handleBlur = () => {
+    // Empty field becomes 0
+    if (inputValue.trim() === '') {
+      setInputValue('0');
+      onUpdateUserIncome(0);
+    }
+  };
+
   return (
     <div
       id="settings-income-container"
@@ -27,13 +56,18 @@ const IncomeSection: React.FC<IncomeSectionProps> = ({
             : 'This defines your total cash flow for the month.'}
         </p>
       </div>
+
+      {/* Input */}
       <div className="flex items-center space-x-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl px-4 py-3">
         <span className="text-slate-400 font-black">$</span>
         <input
           type="number"
-          value={user?.monthlyIncome || 0}
-          onChange={(e) => onUpdateUserIncome(parseFloat(e.target.value) || 0)}
+          inputMode="decimal"
+          value={inputValue}
+          onChange={(e) => handleChange(e.target.value)}
+          onBlur={handleBlur}
           className="bg-transparent w-full outline-none font-black text-slate-600 dark:text-slate-100"
+          placeholder="0"
         />
       </div>
     </div>
