@@ -1,3 +1,4 @@
+// components/dashboard_components/settings_modal_components/NotificationSettingsSection.tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 
@@ -101,10 +102,9 @@ const NotificationSettingsSection: React.FC = () => {
     try {
       const { enabled: granted } = await plugin.isEnabled();
       setPermissionGranted(granted);
-      setEnabled(granted); // keep toggle in sync with OS permission
+      setEnabled(granted);
 
       if (granted) {
-        // Load installed apps and filter to known banking apps
         const { apps: installed } = await plugin.getInstalledApps();
         const bankApps = installed.filter((a) => a.packageName in KNOWN_BANKING_APPS);
 
@@ -117,14 +117,15 @@ const NotificationSettingsSection: React.FC = () => {
 
         setInstalledBankApps(named);
 
-        // Load previously saved selections
         const { apps: saved } = await plugin.getMonitoredApps();
         if (saved && saved.length > 0) {
           setSelectedApps(new Set(saved));
         } else {
-          // Default: select all banking apps found
           setSelectedApps(new Set(named.map((a) => a.packageName)));
         }
+      } else {
+        setInstalledBankApps([]);
+        setSelectedApps(new Set());
       }
     } catch (e) {
       console.warn('[NotificationSettingsSection] checkStatus error:', e);
@@ -135,7 +136,7 @@ const NotificationSettingsSection: React.FC = () => {
     checkStatus();
   }, [checkStatus]);
 
-  // Re-check when app resumes (user returns from Android settings)
+  // Re-check when app resumes
   useEffect(() => {
     if (!isNative) return;
     const onResume = () => {
@@ -145,7 +146,7 @@ const NotificationSettingsSection: React.FC = () => {
     return () => document.removeEventListener('resume', onResume);
   }, [isNative, checkStatus]);
 
-  // Poll after requesting access (covers cases where resume doesn't fire)
+  // Poll after requesting access
   const pollForPermission = useCallback(async () => {
     if (!plugin) return;
     for (let i = 0; i < 20; i++) {
@@ -168,13 +169,12 @@ const NotificationSettingsSection: React.FC = () => {
     if (!isNative || !plugin) return;
 
     if (enabled) {
-      // You cannot programmatically revoke Android notification listener permission,
-      // but you *can* treat "off" as "don't use data" in your own app.
+      // Logical off (we still can't revoke OS permission from here)
       setEnabled(false);
       return;
     }
 
-    // Turning on — open Android notification-listener settings
+    // Turning on — open Android notification listener settings
     setEnabled(true);
     try {
       await plugin.requestAccess();
@@ -193,7 +193,6 @@ const NotificationSettingsSection: React.FC = () => {
     }
     setSelectedApps(next);
 
-    // Persist selection via plugin
     if (plugin) {
       try {
         await plugin.saveMonitoredApps({ apps: Array.from(next) });
@@ -226,7 +225,7 @@ const NotificationSettingsSection: React.FC = () => {
     }
   };
 
-  // If not running on device (plain browser), show info-only block
+  // Browser-only info block
   if (!isNative) {
     return (
       <div className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60">
@@ -241,18 +240,53 @@ const NotificationSettingsSection: React.FC = () => {
     );
   }
 
+  const autoAddActive =
+    enabled && permissionGranted && selectedApps.size > 0 && installedBankApps.length > 0;
+
   return (
     <div className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60 space-y-4">
-      {/* Toggle row */}
+      {/* TOGGLE + STATUS */}
       <div className="flex items-center justify-between">
         <div className="flex-1 mr-3">
           <span className="font-black text-xs text-slate-600 dark:text-slate-200 uppercase tracking-tight block">
             Bank Notification Listener
           </span>
           <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 leading-tight">
-            Auto-log transactions from your banking apps.
+            Auto-log transactions from supported banking apps.
           </p>
+
+          {/* STATUS PILL */}
+          <div className="mt-2">
+            {autoAddActive && (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-700">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 mr-2" />
+                <span className="text-[9px] font-semibold text-emerald-700 dark:text-emerald-300">
+                  Auto-adding from {selectedApps.size} app
+                  {selectedApps.size === 1 ? '' : 's'}
+                </span>
+              </span>
+            )}
+
+            {!permissionGranted && enabled && (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700">
+                <span className="w-2 h-2 rounded-full bg-amber-500 mr-2" />
+                <span className="text-[9px] font-semibold text-amber-700 dark:text-amber-300">
+                  Permission not granted in system settings
+                </span>
+              </span>
+            )}
+
+            {enabled && permissionGranted && selectedApps.size === 0 && (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700">
+                <span className="w-2 h-2 rounded-full bg-slate-400 mr-2" />
+                <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300">
+                  No banking apps selected
+                </span>
+              </span>
+            )}
+          </div>
         </div>
+
         <button
           onClick={handleToggle}
           className={`relative w-12 h-7 rounded-full transition-colors duration-200 flex-shrink-0 ${
@@ -354,4 +388,3 @@ const NotificationSettingsSection: React.FC = () => {
 };
 
 export default NotificationSettingsSection;
-``
