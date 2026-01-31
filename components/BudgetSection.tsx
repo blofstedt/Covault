@@ -1,3 +1,4 @@
+// components/BudgetSection.tsx
 import React, { useState } from 'react';
 import { BudgetCategory, Transaction } from '../types';
 import TransactionItem from './TransactionItem';
@@ -18,7 +19,7 @@ interface BudgetSectionProps {
   currentUserName: string;
   isSharedView: boolean;
   allBudgets?: BudgetCategory[];
-  // NEW: function from useUserData that saves to Supabase
+  // Saves to Supabase
   saveBudgetLimit: (categoryId: string, newLimit: number) => void;
 }
 
@@ -40,7 +41,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
   const getAmountForThisBudget = (tx: Transaction) => {
     if (tx.splits && tx.splits.length > 0) {
-      const split = tx.splits.find(s => s.budget_id === budget.id);
+      const split = tx.splits.find((s) => s.budget_id === budget.id);
       return split ? split.amount : 0;
     }
     return tx.budget_id === budget.id ? tx.amount : 0;
@@ -73,95 +74,81 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
     budget.totalLimit > 0 ? (projected / budget.totalLimit) * 100 : 0,
   );
 
+  const startEditing = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Always reset the input to the latest value for this budget
+    setNewLimit(budget.totalLimit.toString());
+    setIsEditingLimit(true);
+  };
+
+  const commitLimit = () => {
+    const limit = parseFloat(newLimit);
+    const safeLimit = Number.isFinite(limit) && limit >= 0 ? limit : 0;
+
+    // Update local state used by the UI
+    onUpdateBudget({ ...budget, totalLimit: safeLimit });
+
+    // Persist to Supabase
+    saveBudgetLimit(budget.id, safeLimit);
+
+    setIsEditingLimit(false);
+  };
+
+  const cancelEditing = () => {
+    // Reset field to the current budget value and close
+    setNewLimit(budget.totalLimit.toString());
+    setIsEditingLimit(false);
+  };
+
+  const handleInputBlur = () => {
+    // If nothing was typed, just cancel
+    if (newLimit.trim() === '') {
+      cancelEditing();
+      return;
+    }
+    commitLimit();
+  };
+
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      (e.currentTarget as HTMLInputElement).blur();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelEditing();
+    }
+  };
+
   return (
     <div
-      className={`flex-1 h-full overflow-hidden transition-all duration-[700ms] rounded-[2.5rem] border relative flex flex-col bg-white dark:bg-slate-900 ${
+      className={`flex-1 h-full overflow-hidden transition-all duration-[300ms] rounded-[2.5rem] border relative flex flex-col bg-white dark:bg-slate-900 ${
         isExpanded
           ? 'ease-in border-emerald-300 dark:border-emerald-800 shadow-2xl'
           : 'ease-out border-slate-100 dark:border-slate-800/60 shadow-sm'
       }`}
     >
-      {/* BACKGROUND BARS */}
+      {/* CLEAN BACKGROUND BARS (NO WAVES / ANIMATIONS) */}
       <div className="absolute inset-0 z-0 pointer-events-none flex">
         {/* Spent */}
         <div
           style={{ width: `${spentWidth}%` }}
-          className={`h-full transition-all duration-[700ms] ease-out relative ${
-            isExpanded ? 'animate-breathe' : ''
-          } bg-emerald-400/30 dark:bg-emerald-500/40`}
-        >
-          {spentWidth > 0 && (
-            <div
-              className="absolute right-[-5px] top-0 w-[10px] overflow-hidden pointer-events-none"
-              style={{ height: '100%' }}
-            >
-              <svg
-                className={isExpanded ? 'sine-wave-fast' : 'sine-wave-slow'}
-                width="10"
-                style={{
-                  position: 'absolute',
-                  top: '-60px',
-                  left: 0,
-                  height: 'calc(100% + 120px)',
-                }}
-                viewBox="0 0 10 120"
-                preserveAspectRatio="none"
-              >
-                <path
-                  d="M5 0 Q10 2.5 5 5 Q0 7.5 5 10 Q10 12.5 5 15 Q0 17.5 5 20 Q10 22.5 5 25 Q0 27.5 5 30 Q10 32.5 5 35 Q0 37.5 5 40 Q10 42.5 5 45 Q0 47.5 5 50 Q10 52.5 5 55 Q0 57.5 5 60 Q10 62.5 5 65 Q0 67.5 5 70 Q10 72.5 5 75 Q0 77.5 5 80 Q10 82.5 5 85 Q0 87.5 5 90 Q10 92.5 5 95 Q0 97.5 5 100 Q10 102.5 5 105 Q0 107.5 5 110 Q10 112.5 5 115 Q0 117.5 5 120"
-                  fill="none"
-                  stroke="#10B981"
-                  strokeWidth="1.5"
-                  strokeOpacity="0.5"
-                />
-              </svg>
-            </div>
-          )}
-        </div>
+          className="h-full bg-emerald-400/30 dark:bg-emerald-500/40 transition-all duration-300"
+        />
 
         {/* External */}
         {external > 0 && (
           <div
             style={{ width: `${externalWidth}%` }}
-            className={`h-full bg-rose-400/30 dark:bg-rose-500/40 transition-all duration-[700ms] ease-out relative ${
-              isExpanded ? 'animate-breathe' : ''
-            }`}
-          >
-            <div
-              className="absolute right-[-5px] top-0 w-[10px] overflow-hidden pointer-events-none"
-              style={{ height: '100%' }}
-            >
-              <svg
-                className={isExpanded ? 'sine-wave-fast' : 'sine-wave-slow'}
-                width="10"
-                style={{
-                  position: 'absolute',
-                  top: '-60px',
-                  left: 0,
-                  height: 'calc(100% + 120px)',
-                }}
-                viewBox="0 0 10 120"
-                preserveAspectRatio="none"
-              >
-                <path
-                  d="M5 0 Q10 2.5 5 5 Q0 7.5 5 10 Q10 12.5 5 15 Q0 17.5 5 20 Q10 22.5 5 25 Q0 27.5 5 30 Q10 32.5 5 35 Q0 37.5 5 40 Q10 42.5 5 45 Q0 47.5 5 50 Q10 52.5 5 55 Q0 57.5 5 60 Q10 62.5 5 65 Q0 67.5 5 70 Q10 72.5 5 75 Q0 77.5 5 80 Q10 82.5 5 85 Q0 87.5 5 90 Q10 92.5 5 95 Q0 97.5 5 100 Q10 102.5 5 105 Q0 107.5 5 110 Q10 112.5 5 115 Q0 117.5 5 120"
-                  fill="none"
-                  stroke="#F43F5E"
-                  strokeWidth="1.5"
-                  strokeOpacity="0.5"
-                />
-              </svg>
-            </div>
-          </div>
+            className="h-full bg-rose-400/30 dark:bg-rose-500/40 transition-all duration-300"
+          />
         )}
 
         {/* Projected */}
         <div
           style={{ width: `${projectedWidth}%` }}
-          className="h-full budget-bar-dashed transition-all duration-[700ms] ease-out opacity-20 text-emerald-400 dark:text-emerald-800"
+          className="h-full bg-emerald-500/10 dark:bg-emerald-800/20 transition-all duration-300"
         />
 
-        {/* Over limit */}
+        {/* Danger */}
         {isDanger && (
           <div className="flex-1 h-full bg-rose-500/10 dark:bg-rose-500/20" />
         )}
@@ -174,9 +161,10 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           isExpanded ? 'flex-none py-10' : 'py-3'
         }`}
       >
+        {/* LEFT SIDE: ICON + NAME */}
         <div className="flex items-center space-x-6">
           <div
-            className={`p-3 rounded-2xl transition-all duration-700 ${
+            className={`p-3 rounded-2xl transition-all duration-300 ${
               isExpanded
                 ? 'bg-emerald-600 text-white shadow-lg scale-110 p-3.5'
                 : 'bg-white/80 dark:bg-slate-800 text-slate-400 dark:text-slate-500 shadow-sm'
@@ -186,13 +174,13 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           </div>
 
           <div className="flex flex-col text-left">
-            <h3 className="text-base font-black tracking-tight leading-none uppercase transition-colors duration-700 text-slate-500 dark:text-slate-100">
+            <h3 className="text-base font-black tracking-tight leading-none uppercase transition-colors duration-300 text-slate-500 dark:text-slate-100">
               {budget.name}
             </h3>
 
             {!isExpanded && (
               <span
-                className={`text-[10px] font-black uppercase tracking-[0.15em] mt-1.5 transition-colors duration-700 ${
+                className={`text-[10px] font-black uppercase tracking-[0.15em] mt-1.5 transition-colors duration-300 ${
                   isDanger
                     ? 'text-rose-500'
                     : 'text-slate-400 dark:text-slate-500'
@@ -200,20 +188,18 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
               >
                 {isDanger
                   ? `Over: $${Math.max(0, total - budget.totalLimit).toFixed(0)}`
-                  : `$${Math.max(0, budget.totalLimit - total).toFixed(
-                      0,
-                    )} left`}
+                  : `$${Math.max(0, budget.totalLimit - total).toFixed(0)} left`}
               </span>
             )}
           </div>
         </div>
 
-        {/* RIGHT SIDE: SPENT / LIMIT DISPLAY + EDIT */}
+        {/* RIGHT SIDE: SPENT / LIMIT + EDIT */}
         <div className="text-right flex flex-col items-end">
           <div className="flex items-baseline space-x-1">
             {isExpanded && !isEditingLimit && (
               <span
-                className={`text-sm font-black mr-2 tracking-tight transition-colors duration-700 ${
+                className={`text-sm font-black mr-2 tracking-tight transition-colors duration-300 ${
                   isDanger ? 'text-rose-500' : 'text-slate-500'
                 }`}
               >
@@ -229,36 +215,20 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                 autoFocus
                 type="number"
                 value={newLimit}
-                onClick={e => e.stopPropagation()}
-                onBlur={() => {
-                  const limit = parseFloat(newLimit) || 0;
-
-                  // Update parent (keeps existing behavior)
-                  onUpdateBudget({ ...budget, totalLimit: limit });
-
-                  // NEW: Persist to Supabase via useUserData
-                  saveBudgetLimit(budget.id, limit);
-
-                  setIsEditingLimit(false);
-                }}
-                onKeyDown={e =>
-                  e.key === 'Enter' &&
-                  (e.currentTarget as HTMLInputElement).blur()
-                }
-                onChange={e => setNewLimit(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                onBlur={handleInputBlur}
+                onKeyDown={handleInputKeyDown}
+                onChange={(e) => setNewLimit(e.target.value)}
                 className="w-20 bg-white dark:bg-slate-900 text-right font-black text-base p-1 rounded-lg border-2 border-emerald-500 outline-none text-slate-700 dark:text-slate-100"
               />
             ) : (
               <div className="flex items-center">
-                <span className="text-2xl font-black tracking-tighter leading-none transition-colors duration-700 text-slate-500 dark:text-slate-100">
+                <span className="text-2xl font-black tracking-tighter leading-none transition-colors duration-300 text-slate-500 dark:text-slate-100">
                   ${budget.totalLimit}
                 </span>
                 {isExpanded && (
                   <button
-                    onClick={e => {
-                      e.stopPropagation();
-                      setIsEditingLimit(true);
-                    }}
+                    onClick={startEditing}
                     className="ml-2 p-1 transition-colors text-slate-300 hover:text-emerald-500"
                   >
                     <svg
@@ -280,7 +250,14 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
             )}
           </div>
 
-          <span className="text-[10px] font-bold uppercase tracking-widest mt-0.5 transition-colors duration-700 text-slate-400 dark:text-slate-600">
+          {/* TEXT BELOW LIMIT ("My Target" / "Our Target") */}
+          <span
+            className={`text-[10px] font-bold uppercase tracking-widest mt-0.5 transition-colors duration-300 ${
+              isDanger
+                ? 'text-rose-500'
+                : 'text-slate-400 dark:text-slate-500' // same style family as "$ left"
+            }`}
+          >
             {isExpanded
               ? 'Vault Capacity'
               : isSharedView
@@ -295,14 +272,14 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
         <div className="flex-1 overflow-y-auto no-scrollbar px-6 pb-12 animate-in fade-in slide-in-from-top-2 duration-500 relative z-10">
           <div className="py-6 space-y-4">
             <div className="flex items-center justify-between px-2">
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] transition-colors duration-700 text-slate-400 dark:text-slate-500">
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] transition-colors duration-300 text-slate-400 dark:text-slate-500">
                 {isSharedView ? 'Our Activity History' : 'Activity History'}
               </span>
             </div>
 
             <div className="space-y-0">
               {transactions.length > 0 ? (
-                transactions.map(tx => (
+                transactions.map((tx) => (
                   <TransactionItem
                     key={tx.id}
                     transaction={tx}
