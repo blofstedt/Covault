@@ -144,9 +144,9 @@ const Dashboard: React.FC<DashboardProps> = ({
       if (b.name.toLowerCase().includes('leisure')) return;
 
       const bTxs = filteredTransactions.filter(
-        (t) =>
-          t.budget_id === b.id ||
-          t.splits?.some((s) => s.budget_id === b.id),
+        (tx) =>
+          tx.budget_id === b.id ||
+          tx.splits?.some((s) => s.budget_id === b.id),
       );
 
       const spent = bTxs.reduce((acc, tx) => {
@@ -154,7 +154,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           const s = tx.splits.find((sp) => sp.budget_id === b.id);
           return acc + (s?.amount || 0);
         }
-        return acc + (t.budget_id === b.id ? tx.amount : 0);
+        return acc + (tx.budget_id === b.id ? tx.amount : 0);
       }, 0);
 
       if (spent > b.totalLimit) {
