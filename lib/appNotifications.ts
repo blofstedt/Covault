@@ -18,27 +18,35 @@ function makeRemainingKey(userId: string, level: '25' | '0') {
 }
 
 async function ensurePermission() {
-  const perm = await LocalNotifications.checkPermissions();
-  if (perm.display !== 'granted') {
-    await LocalNotifications.requestPermissions();
+  try {
+    const perm = await LocalNotifications.checkPermissions();
+    if (perm.display !== 'granted') {
+      await LocalNotifications.requestPermissions();
+    }
+  } catch (e) {
+    console.error('[appNotifications] permission error', e);
   }
 }
 
 async function sendNotification(title: string, body: string) {
   if (!Capacitor.isNativePlatform()) return;
 
-  await ensurePermission();
+  try {
+    await ensurePermission();
 
-  await LocalNotifications.schedule({
-    notifications: [
-      {
-        id: Date.now() % 2147483647, // simple unique-ish id
-        title,
-        body,
-        schedule: { at: new Date(Date.now() + 1000) },
-      },
-    ],
-  });
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          id: Date.now() % 2147483647,
+          title,
+          body,
+          schedule: { at: new Date(Date.now() + 1000) },
+        },
+      ],
+    });
+  } catch (e) {
+    console.error('[appNotifications] schedule error', e);
+  }
 }
 
 // Compute how much is spent in a budget for the given transactions
@@ -85,73 +93,85 @@ export async function checkAndTriggerAppNotifications({
   remainingMoney,
   settings,
 }: CheckArgs) {
-  if (!Capacitor.isNativePlatform()) return;
-  if (!settings.app_notifications_enabled) return;
-  if (!userId) return;
+  try {
+    if (!Capacitor.isNativePlatform()) return;
+    if (!settings?.app_notifications_enabled) return;
+    if (!userId) return;
 
-  // ----- Budget alerts -----
-  for (const budget of budgets) {
-    const limit = Number((budget as any).totalLimit ?? 0);
-    if (!limit || limit <= 0) continue;
+    // ----- Budget alerts -----
+    for (const budget of budgets) {
+      const limit = Number((budget as any).totalLimit ?? 0);
+      if (!limit || limit <= 0) continue;
 
-    const spent = getSpentForBudget(budget.id, transactions);
-    const ratio = spent / limit;
+      const spent = getSpentForBudget(budget.id, transactions);
+      const ratio = spent / limit;
 
-    // 75% alert
-    if (ratio >= 0.75 && ratio < 1) {
-      const key75 = makeBudgetKey(userId, budget.id, '75');
-      const already75 = localStorage.getItem(key75) === '1';
-      if (!already75) {
-        await sendNotification(
-          'Budget warning',
-          `${budget.name} has reached 75% of its limit ($${spent.toFixed(0)} of $${limit.toFixed(0)}).`,
-        );
-        localStorage.setItem(key75, '1');
+      // 75% alert
+      if (ratio >= 0.75 && ratio < 1) {
+        const key75 = makeBudgetKey(userId, budget.id, '75');
+        const already75 = typeof localStorage !== 'undefined' && localStorage.getItem(key75) === '1';
+        if (!already75) {
+          await sendNotification(
+            'Budget warning',
+            `${budget.name} has reached 75% of its limit ($${spent.toFixed(0)} of $${limit.toFixed(0)}).`,
+          );
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(key75, '1');
+          }
+        }
+      }
+
+      // 100% alert (limit reached or exceeded)
+      if (spent >= limit) {
+        const key100 = makeBudgetKey(userId, budget.id, '100');
+        const already100 = typeof localStorage !== 'undefined' && localStorage.getItem(key100) === '1';
+        if (!already100) {
+          await sendNotification(
+            'Budget reached',
+            `${budget.name} is fully used ($${spent.toFixed(0)} of $${limit.toFixed(0)}).`,
+          );
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(key100, '1');
+          }
+        }
       }
     }
 
-    // 100% alert (limit reached or exceeded)
-    if (spent >= limit) {
-      const key100 = makeBudgetKey(userId, budget.id, '100');
-      const already100 = localStorage.getItem(key100) === '1';
-      if (!already100) {
-        await sendNotification(
-          'Budget reached',
-          `${budget.name} is fully used ($${spent.toFixed(0)} of $${limit.toFixed(0)}).`,
-        );
-        localStorage.setItem(key100, '1');
+    // ----- Remaining money alerts -----
+    if (totalIncome > 0) {
+      const threshold25 = totalIncome * 0.25;
+
+      // 25% remaining
+      if (remainingMoney <= threshold25 && remainingMoney > 0) {
+        const key25 = makeRemainingKey(userId, '25');
+        const already25 = typeof localStorage !== 'undefined' && localStorage.getItem(key25) === '1';
+        if (!already25) {
+          await sendNotification(
+            'Spending warning',
+            `Only 25% of your monthly money remains ($${remainingMoney.toFixed(0)}).`,
+          );
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(key25, '1');
+          }
+        }
+      }
+
+      // 0 remaining (or below)
+      if (remainingMoney <= 0) {
+        const key0 = makeRemainingKey(userId, '0');
+        const already0 = typeof localStorage !== 'undefined' && localStorage.getItem(key0) === '1';
+        if (!already0) {
+          await sendNotification(
+            'Spending limit reached',
+            'You have fully used your remaining monthly money.',
+          );
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(key0, '1');
+          }
+        }
       }
     }
-  }
-
-  // ----- Remaining money alerts -----
-  if (totalIncome > 0) {
-    const threshold25 = totalIncome * 0.25;
-
-    // 25% remaining
-    if (remainingMoney <= threshold25 && remainingMoney > 0) {
-      const key25 = makeRemainingKey(userId, '25');
-      const already25 = localStorage.getItem(key25) === '1';
-      if (!already25) {
-        await sendNotification(
-          'Spending warning',
-          `Only 25% of your monthly money remains ($${remainingMoney.toFixed(0)}).`,
-        );
-        localStorage.setItem(key25, '1');
-      }
-    }
-
-    // 0 remaining (or below)
-    if (remainingMoney <= 0) {
-      const key0 = makeRemainingKey(userId, '0');
-      const already0 = localStorage.getItem(key0) === '1';
-      if (!already0) {
-        await sendNotification(
-          'Spending limit reached',
-          'You have fully used your remaining monthly money.',
-        );
-        localStorage.setItem(key0, '1');
-      }
-    }
+  } catch (e) {
+    console.error('[appNotifications] check error', e);
   }
 }
