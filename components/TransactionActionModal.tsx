@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Transaction, BudgetCategory } from '../types';
 import TransactionForm from './TransactionForm';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
@@ -24,6 +24,18 @@ const TransactionActionModal: React.FC<TransactionActionModalProps> = ({
 }) => {
   const [showEditForm, setShowEditForm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // Handle Escape key to close modal
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !showEditForm && !showDeleteConfirm) {
+        onClose();
+      }
+    };
+    
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [onClose, showEditForm, showDeleteConfirm]);
 
   if (showEditForm) {
     return (
@@ -59,11 +71,19 @@ const TransactionActionModal: React.FC<TransactionActionModalProps> = ({
   }
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+    <div 
+      className="fixed inset-0 z-[120] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="transaction-modal-title"
+    >
       <div className="w-full max-w-[360px] bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 space-y-6 shadow-2xl animate-in zoom-in-95 duration-300 border border-slate-100 dark:border-slate-800/60">
         {/* Transaction Info */}
         <div className="text-center space-y-3 border-b border-slate-100 dark:border-slate-800 pb-6">
-          <h3 className="text-xl font-black text-slate-500 dark:text-slate-100 tracking-tight" style={{ textTransform: 'uppercase' }}>
+          <h3 
+            id="transaction-modal-title"
+            className="text-xl font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase"
+          >
             {transaction.vendor}
           </h3>
           <div className="flex items-center justify-center space-x-3">
@@ -89,6 +109,7 @@ const TransactionActionModal: React.FC<TransactionActionModalProps> = ({
         <div className="flex flex-col space-y-3">
           <button
             onClick={() => setShowEditForm(true)}
+            aria-label={`Edit transaction for ${transaction.vendor}`}
             className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-black text-sm shadow-lg shadow-emerald-500/20 active:scale-95 transition-all uppercase tracking-widest flex items-center justify-center space-x-2"
           >
             <svg
@@ -96,6 +117,7 @@ const TransactionActionModal: React.FC<TransactionActionModalProps> = ({
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
+              aria-hidden="true"
             >
               <path
                 strokeLinecap="round"
@@ -109,6 +131,7 @@ const TransactionActionModal: React.FC<TransactionActionModalProps> = ({
 
           <button
             onClick={() => setShowDeleteConfirm(true)}
+            aria-label={`Delete transaction for ${transaction.vendor}`}
             className="w-full py-4 bg-rose-500 hover:bg-rose-600 text-white rounded-2xl font-black text-sm shadow-lg shadow-rose-500/20 active:scale-95 transition-all uppercase tracking-widest flex items-center justify-center space-x-2"
           >
             <svg
@@ -116,6 +139,7 @@ const TransactionActionModal: React.FC<TransactionActionModalProps> = ({
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
+              aria-hidden="true"
             >
               <path
                 strokeLinecap="round"
@@ -129,6 +153,7 @@ const TransactionActionModal: React.FC<TransactionActionModalProps> = ({
 
           <button
             onClick={onClose}
+            autoFocus
             className="w-full py-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-2xl font-black text-sm active:scale-95 transition-all uppercase tracking-widest"
           >
             Cancel

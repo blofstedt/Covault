@@ -29,12 +29,21 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
 
   const isOtherUser = isSharedView && transaction.userName !== currentUserName;
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onTap(transaction);
+    }
+  };
+
   return (
     <div className="relative overflow-hidden rounded-[2rem] mb-3">
       {/* Foreground content - now clickable */}
-      <div
+      <button
         onClick={() => onTap(transaction)}
-        className="relative z-10 p-5 rounded-[2rem] backdrop-blur-xl border shadow-sm bg-white/80 dark:bg-slate-900/80 border-slate-200/40 dark:border-slate-700/40 cursor-pointer hover:bg-white/90 dark:hover:bg-slate-900/90 active:scale-[0.98] transition-all"
+        onKeyDown={handleKeyDown}
+        className="relative z-10 p-5 rounded-[2rem] backdrop-blur-xl border shadow-sm bg-white/80 dark:bg-slate-900/80 border-slate-200/40 dark:border-slate-700/40 cursor-pointer hover:bg-white/90 dark:hover:bg-slate-900/90 active:scale-[0.98] transition-all w-full text-left"
+        aria-label={`Transaction: ${transaction.vendor}, ${transaction.amount.toFixed(2)} dollars on ${new Date(transaction.date).toLocaleDateString()}`}
       >
         <div className="flex items-center justify-between">
           <div className="flex flex-col text-left">
@@ -115,7 +124,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
             )}
           </div>
         </div>
-      </div>
+      </button>
     </div>
   );
 };
