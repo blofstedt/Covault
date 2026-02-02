@@ -144,6 +144,8 @@ const App: React.FC = () => {
           onUpdateTransaction={handleUpdateTransaction}
           onDeleteTransaction={handleDeleteTransaction}
           saveBudgetLimit={saveBudgetLimit}
+          onLinkPartner={handleLinkPartner}
+          onUnlinkPartner={handleUnlinkPartner}
         />
       )}
     </div>
