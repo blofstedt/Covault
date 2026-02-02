@@ -63,7 +63,7 @@ const TransactionActionModal: React.FC<TransactionActionModalProps> = ({
       <div className="w-full max-w-[360px] bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 space-y-6 shadow-2xl animate-in zoom-in-95 duration-300 border border-slate-100 dark:border-slate-800/60">
         {/* Transaction Info */}
         <div className="text-center space-y-3 border-b border-slate-100 dark:border-slate-800 pb-6">
-          <h3 className="text-xl font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">
+          <h3 className="text-xl font-black text-slate-500 dark:text-slate-100 tracking-tight" style={{ textTransform: 'uppercase' }}>
             {transaction.vendor}
           </h3>
           <div className="flex items-center justify-center space-x-3">
