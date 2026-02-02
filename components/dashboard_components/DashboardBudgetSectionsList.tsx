@@ -20,8 +20,7 @@ interface DashboardBudgetSectionsListProps {
   scrollContainerRef: React.RefObject<HTMLDivElement>;
   budgetRefs: React.MutableRefObject<Map<string, HTMLDivElement>>;
   onToggleExpand: (id: string) => void;
-  onDeleteRequest: (id: string) => void;
-  onEditTransaction: (tx: Transaction) => void;
+  onTransactionTap: (tx: Transaction) => void;
   onUpdateBudget: (b: BudgetCategory) => void;
 }
 
@@ -38,8 +37,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
   scrollContainerRef,
   budgetRefs,
   onToggleExpand,
-  onDeleteRequest,
-  onEditTransaction,
+  onTransactionTap,
   onUpdateBudget,
 }) => {
   return (
@@ -92,8 +90,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
                 isExpanded={isExpanded}
                 onToggle={() => onToggleExpand(budget.id)}
                 onUpdateBudget={onUpdateBudget}
-                onDeleteRequest={(id) => onDeleteRequest(id)}
-                onEdit={(tx) => onEditTransaction(tx)}
+                onTransactionTap={(tx) => onTransactionTap(tx)}
                 currentUserName={currentUserName}
                 isSharedView={isSharedAccount}
                 allBudgets={budgets}

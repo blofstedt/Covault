@@ -84,6 +84,7 @@ interface CollapsibleSectionProps {
   currentUserName: string;
   isSharedAccount: boolean;
   budgets: BudgetCategory[];
+  onTransactionTap: (tx: Transaction) => void;
 }
 
 /**
@@ -96,6 +97,7 @@ const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
   currentUserName,
   isSharedAccount,
   budgets,
+  onTransactionTap,
 }) => {
   const [open, setOpen] = useState(false);
 
@@ -136,9 +138,7 @@ const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
               <TransactionItem
                 key={tx.id}
                 transaction={tx}
-                // In search view we usually don’t edit/delete directly.
-                onDeleteRequest={() => {}}
-                onEdit={() => {}}
+                onTap={onTransactionTap}
                 currentUserName={currentUserName}
                 isSharedView={isSharedAccount}
                 // Pass currentBudgetId so TransactionItem can show the correct icon
@@ -162,6 +162,7 @@ interface SearchResultsProps {
   currentUserName: string;
   isSharedAccount: boolean;
   budgets: BudgetCategory[];
+  onTransactionTap: (tx: Transaction) => void;
 }
 
 /**
@@ -179,6 +180,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   currentUserName,
   isSharedAccount,
   budgets,
+  onTransactionTap,
 }) => {
   const q = searchQuery.toLowerCase().trim();
 
@@ -293,8 +295,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                   <TransactionItem
                     key={tx.id}
                     transaction={tx}
-                    onDeleteRequest={() => {}}
-                    onEdit={() => {}}
+                    onTap={onTransactionTap}
                     currentUserName={currentUserName}
                     isSharedView={isSharedAccount}
                     currentBudgetId={budgetIdForTx}
@@ -314,6 +315,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           currentUserName={currentUserName}
           isSharedAccount={isSharedAccount}
           budgets={budgets}
+          onTransactionTap={onTransactionTap}
         />
 
         {/* FUTURE SECTION (real + projected) */}
@@ -324,6 +326,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           currentUserName={currentUserName}
           isSharedAccount={isSharedAccount}
           budgets={budgets}
+          onTransactionTap={onTransactionTap}
         />
 
         {/* NO RESULTS STATE */}

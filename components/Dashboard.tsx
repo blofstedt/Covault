@@ -5,6 +5,7 @@ import TransactionForm from './TransactionForm';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import Tutorial from './Tutorial';
 import NotificationSettings from './NotificationSettings';
+import TransactionActionModal from './TransactionActionModal';
 
 // New dashboard components
 import DashboardHeader from './dashboard_components/DashboardHeader';
@@ -42,8 +43,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   saveBudgetLimit,
 }) => {
   const [isAddingTx, setIsAddingTx] = useState(false);
-  const [editingTx, setEditingTx] = useState<Transaction | null>(null);
-  const [deletingTxId, setDeletingTxId] = useState<string | null>(null);
+  const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [expandedBudgets, setExpandedBudgets] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [showSettings, setShowSettings] = useState(false);
@@ -61,12 +61,12 @@ const Dashboard: React.FC<DashboardProps> = ({
   // Lock body scroll when overlays are open
   useEffect(() => {
     const shouldLock =
-      showSettings || showParsing || isAddingTx || !!editingTx || !!deletingTxId || showTutorial;
+      showSettings || showParsing || isAddingTx || !!selectedTx || showTutorial;
     document.body.style.overflow = shouldLock ? 'hidden' : '';
     return () => {
       document.body.style.overflow = '';
     };
-  }, [showSettings, showParsing, isAddingTx, editingTx, deletingTxId, showTutorial]);
+  }, [showSettings, showParsing, isAddingTx, selectedTx, showTutorial]);
 
   const isSharedAccount = !state.user?.budgetingSolo;
 
@@ -251,11 +251,6 @@ const Dashboard: React.FC<DashboardProps> = ({
     }));
   };
 
-  const handleUpdateTransaction = (updatedTx: Transaction) => {
-    onUpdateTransaction(updatedTx);
-    setEditingTx(null);
-  };
-
   const isFocusMode = expandedBudgets.size === 1;
   const focusedBudgetId = isFocusMode ? Array.from(expandedBudgets)[0] : null;
 
@@ -340,6 +335,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             currentUserName={state.user?.name || ''}
             isSharedAccount={isSharedAccount}
             budgets={state.budgets}
+            onTransactionTap={(tx) => setSelectedTx(tx)}
           />
         ) : (
           <DashboardBudgetSectionsList
@@ -355,8 +351,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             scrollContainerRef={scrollContainerRef}
             budgetRefs={budgetRefs}
             onToggleExpand={toggleExpand}
-            onDeleteRequest={(id) => setDeletingTxId(id)}
-            onEditTransaction={(tx) => setEditingTx(tx)}
+            onTransactionTap={(tx) => setSelectedTx(tx)}
             onUpdateBudget={onUpdateBudget}
           />
         )}
@@ -402,24 +397,20 @@ const Dashboard: React.FC<DashboardProps> = ({
         />
       )}
 
-      {editingTx && (
-        <TransactionForm
-          onClose={() => setEditingTx(null)}
-          onSave={handleUpdateTransaction}
+      {selectedTx && (
+        <TransactionActionModal
+          transaction={selectedTx}
           budgets={state.budgets}
-          userId={state.user?.id || '1'}
-          userName={state.user?.name || 'User'}
-          initialTransaction={editingTx}
+          currentUserName={state.user?.name || 'User'}
           isSharedAccount={isSharedAccount}
-        />
-      )}
-
-      {deletingTxId && (
-        <ConfirmDeleteModal
-          onClose={() => setDeletingTxId(null)}
-          onConfirm={() => {
-            onDeleteTransaction(deletingTxId);
-            setDeletingTxId(null);
+          onClose={() => setSelectedTx(null)}
+          onEdit={(updatedTx) => {
+            onUpdateTransaction(updatedTx);
+            setSelectedTx(null);
+          }}
+          onDelete={() => {
+            onDeleteTransaction(selectedTx.id);
+            setSelectedTx(null);
           }}
         />
       )}

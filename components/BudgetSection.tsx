@@ -14,8 +14,7 @@ interface BudgetSectionProps {
   isExpanded: boolean;
   onToggle: () => void;
   onUpdateBudget: (b: BudgetCategory) => void;
-  onDeleteRequest: (id: string) => void;
-  onEdit: (tx: Transaction) => void;
+  onTransactionTap: (tx: Transaction) => void;
   currentUserName: string;
   isSharedView: boolean;
   allBudgets?: BudgetCategory[];
@@ -27,8 +26,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
   isExpanded,
   onToggle,
   onUpdateBudget,
-  onDeleteRequest,
-  onEdit,
+  onTransactionTap,
   currentUserName,
   isSharedView,
   allBudgets,
@@ -199,8 +197,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                   <TransactionItem
                     key={tx.id}
                     transaction={tx}
-                    onDeleteRequest={onDeleteRequest}
-                    onEdit={onEdit}
+                    onTap={onTransactionTap}
                     currentUserName={currentUserName}
                     isSharedView={isSharedView}
                     currentBudgetId={budget.id}
