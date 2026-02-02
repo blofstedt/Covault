@@ -7,21 +7,22 @@ on:
   pull_request:
     branches:
       - main
-  workflow_dispatch:
+  workflow_dispatch: # Allows manual "Run workflow" button in Actions tab
 
-# Add this explicit block
+# Explicitly grant write access to bypass repository-level restrictions
 permissions:
   contents: write
-  packages: write
   actions: write
+  packages: write
 
+# Cancel older builds on the same branch if a new one is started
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
@@ -30,7 +31,6 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          # Use LTS Node for stability
           node-version: '20'
           cache: 'npm'
 
