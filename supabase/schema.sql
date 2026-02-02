@@ -211,7 +211,8 @@ CREATE TABLE public.user_budgets (
   total_limit numeric NOT NULL DEFAULT 0 CHECK (total_limit >= 0),
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now(),
-  CONSTRAINT user_budgets_pkey PRIMARY KEY (id)
+  CONSTRAINT user_budgets_pkey PRIMARY KEY (id),
+  CONSTRAINT user_budgets_unique UNIQUE (user_id, category_id)
 );
 
 CREATE INDEX idx_user_budgets_user_id ON public.user_budgets (user_id);
