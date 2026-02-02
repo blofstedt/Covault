@@ -417,7 +417,6 @@ export const useUserData = ({
           user_id: userId,
           category_id: categoryId,
           total_limit: newLimit,
-          updated_at: new Date().toISOString(),
         };
 
         // Use upsert by specifying on_conflict parameter
