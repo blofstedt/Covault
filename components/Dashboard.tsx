@@ -48,6 +48,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [showParsing, setShowParsing] = useState(false);
+  const [parsingEnabled, setParsingEnabled] = useState(false);
   const [isLinkingPartner, setIsLinkingPartner] = useState(false);
   const [partnerLinkEmail, setPartnerLinkEmail] = useState('');
   const [showTutorial, setShowTutorial] = useState(!state.settings.hasSeenTutorial);
@@ -453,8 +454,8 @@ const Dashboard: React.FC<DashboardProps> = ({
 
             {/* NotificationSettings Component */}
             <NotificationSettings
-              enabled={false}
-              onToggle={() => {}}
+              enabled={parsingEnabled}
+              onToggle={setParsingEnabled}
             />
 
             <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center leading-tight">
