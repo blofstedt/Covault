@@ -4,6 +4,7 @@ import BudgetSection from './BudgetSection';
 import TransactionForm from './TransactionForm';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import Tutorial from './Tutorial';
+import NotificationSettings from './NotificationSettings';
 
 // New dashboard components
 import DashboardHeader from './dashboard_components/DashboardHeader';
@@ -46,6 +47,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [expandedBudgets, setExpandedBudgets] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [showSettings, setShowSettings] = useState(false);
+  const [showParsing, setShowParsing] = useState(false);
   const [isLinkingPartner, setIsLinkingPartner] = useState(false);
   const [partnerLinkEmail, setPartnerLinkEmail] = useState('');
   const [showTutorial, setShowTutorial] = useState(!state.settings.hasSeenTutorial);
@@ -58,12 +60,12 @@ const Dashboard: React.FC<DashboardProps> = ({
   // Lock body scroll when overlays are open
   useEffect(() => {
     const shouldLock =
-      showSettings || isAddingTx || !!editingTx || !!deletingTxId || showTutorial;
+      showSettings || showParsing || isAddingTx || !!editingTx || !!deletingTxId || showTutorial;
     document.body.style.overflow = shouldLock ? 'hidden' : '';
     return () => {
       document.body.style.overflow = '';
     };
-  }, [showSettings, isAddingTx, editingTx, deletingTxId, showTutorial]);
+  }, [showSettings, showParsing, isAddingTx, editingTx, deletingTxId, showTutorial]);
 
   const isSharedAccount = !state.user?.budgetingSolo;
 
@@ -189,6 +191,18 @@ const Dashboard: React.FC<DashboardProps> = ({
         }
       }, 50);
     }
+  };
+
+  const handleGoHome = () => {
+    // Collapse all budgets and scroll to top
+    setExpandedBudgets(new Set());
+    setSearchQuery('');
+    setTimeout(() => {
+      const containerEl = scrollContainerRef.current;
+      if (containerEl) {
+        containerEl.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }, 50);
   };
 
   const updateSettings = (key: keyof AppState['settings'], value: any) => {
@@ -348,10 +362,9 @@ const Dashboard: React.FC<DashboardProps> = ({
       </main>
 
       <DashboardBottomBar
-        budgets={state.budgets}
-        expandedBudgets={expandedBudgets}
-        onJumpToBudget={jumpToBudget}
+        onGoHome={handleGoHome}
         onAddTransaction={() => setIsAddingTx(true)}
+        onOpenParsing={() => setShowParsing(true)}
       />
 
       {showSettings && (
@@ -408,6 +421,47 @@ const Dashboard: React.FC<DashboardProps> = ({
             setDeletingTxId(null);
           }}
         />
+      )}
+
+      {showParsing && (
+        <div className="fixed inset-0 z-[110] bg-slate-900/40 backdrop-blur-lg flex items-center justify-center p-6 animate-in fade-in duration-300">
+          <div className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-[3rem] p-10 space-y-6 shadow-2xl animate-in zoom-in-95 duration-500 max-h-[85vh] overflow-y-auto no-scrollbar border border-slate-100 dark:border-slate-800/60">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">
+                Transaction Parsing
+              </h2>
+              <button
+                onClick={() => setShowParsing(false)}
+                className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-full transition-transform active:scale-90"
+              >
+                <svg
+                  className="w-6 h-6 text-slate-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={3}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            {/* NotificationSettings Component */}
+            <NotificationSettings
+              enabled={false}
+              onToggle={() => {}}
+            />
+
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center leading-tight">
+              Configure transaction parsing from banking app notifications. Auto-detected transactions will appear here in a future update.
+            </p>
+          </div>
+        </div>
       )}
 
       {showTutorial && (
