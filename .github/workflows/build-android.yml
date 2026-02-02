@@ -2,13 +2,16 @@ name: Build Android App
 
 on:
   push:
-    # Run on EVERY branch
     branches:
-      - '**'
+      - main        # Only build automatically on main
   pull_request:
-    branches:
-      - main
-  workflow_dispatch:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch: # Keeps the manual button available
+
+# This cancels old builds if you push new code to the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
