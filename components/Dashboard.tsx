@@ -343,7 +343,6 @@ const Dashboard: React.FC<DashboardProps> = ({
             onDeleteRequest={(id) => setDeletingTxId(id)}
             onEditTransaction={(tx) => setEditingTx(tx)}
             onUpdateBudget={onUpdateBudget}
-            saveBudgetLimit={saveBudgetLimit}
           />
         )}
       </main>

@@ -19,8 +19,6 @@ interface BudgetSectionProps {
   currentUserName: string;
   isSharedView: boolean;
   allBudgets?: BudgetCategory[];
-  // Saves to Supabase
-  saveBudgetLimit: (categoryId: string, newLimit: number) => void;
 }
 
 const BudgetSection: React.FC<BudgetSectionProps> = ({
@@ -34,7 +32,6 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
   currentUserName,
   isSharedView,
   allBudgets,
-  saveBudgetLimit,
 }) => {
 
   const getAmountForThisBudget = (tx: Transaction) => {
