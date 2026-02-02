@@ -2,77 +2,82 @@ name: Build Android App
 
 on:
   push:
-    branches: [ main, develop, claude/* ]
+    # Run on EVERY branch
+    branches:
+      - '**'
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '22'
-        cache: 'npm'
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # LTS is safer than 22 for most projects
+          node-version: '20'
+          cache: 'npm'
 
-    - name: Install dependencies
-      run: npm install --legacy-peer-deps
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
 
-    - name: Build web app
-      run: npm run build
-      env:
-        VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-        VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      - name: Build web app
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
-    - name: Setup Java
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: '21'
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          # 17 is widely supported by Android tooling
+          java-version: '17'
 
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-    - name: Install Capacitor CLI
-      run: npm install -g @capacitor/cli
+      - name: Install Capacitor CLI
+        run: npm install -g @capacitor/cli
 
-    - name: Setup Capacitor and Android
-      run: |
-        rm -rf android
-        npx cap add android
-        npx cap sync android
+      - name: Setup Capacitor and Android
+        run: |
+          rm -rf android
+          npx cap add android
+          npx cap sync android
 
-    - name: Sync custom Android files (icons, Java, manifest)
-      run: bash scripts/sync-android.sh
+      - name: Sync custom Android files (icons, Java, manifest)
+        run: bash scripts/sync-android.sh
 
-    - name: Add biometric auth dependency to Android
-      run: |
-        # Add androidx.biometric dependency to app/build.gradle
-        cd android/app
-        sed -i '/dependencies {/a\    implementation "androidx.biometric:biometric:1.1.0"' build.gradle
+      - name: Add biometric auth dependency to Android
+        run: |
+          # Add androidx.biometric dependency to app/build.gradle
+          cd android/app
+          sed -i '/dependencies {/a\    implementation "androidx.biometric:biometric:1.1.0"' build.gradle
 
-    - name: Build Android APK (Debug)
-      run: |
-        cd android
-        chmod +x ./gradlew
-        ./gradlew assembleDebug
+      - name: Build Android APK (Debug)
+        run: |
+          cd android
+          chmod +x ./gradlew
+          ./gradlew assembleDebug
 
-    - name: Rename APK with timestamp
-      run: |
-        TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-        cp android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/Covault-${TIMESTAMP}.apk
-        echo "APK_NAME=Covault-${TIMESTAMP}.apk" >> $GITHUB_ENV
+      - name: Rename APK with timestamp
+        run: |
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          cp android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/Covault-${TIMESTAMP}.apk
+          echo "APK_NAME=Covault-${TIMESTAMP}.apk" >> $GITHUB_ENV
 
-    - name: Upload APK as Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ env.APK_NAME }}
-        path: android/app/build/outputs/apk/debug/Covault-*.apk
-        retention-days: 14
-        compression-level: 0
+      - name: Upload APK as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APK_NAME }}
+          path: android/app/build/outputs/apk/debug/Covault-*.apk
+          retention-days: 14
+          compression-level: 0
