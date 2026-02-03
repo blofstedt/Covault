@@ -94,18 +94,20 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
         {/* Projected - now with dashed pattern */}
         <div
           style={{ width: `${projectedWidth}%` }}
-          className="h-full bg-emerald-500/10 dark:bg-emerald-800/20 transition-all duration-300 relative"
+          className="h-full transition-all duration-300 relative"
         >
-          {/* Dashed overlay pattern */}
+          {/* Base color layer */}
+          <div className="absolute inset-0 bg-emerald-500/10 dark:bg-emerald-800/20" />
+          {/* Dashed overlay pattern - darker for better visibility */}
           <div 
-            className="absolute inset-0"
+            className="absolute inset-0 bg-repeat"
             style={{
               backgroundImage: `repeating-linear-gradient(
                 90deg,
                 transparent,
                 transparent 8px,
-                rgba(16, 185, 129, 0.3) 8px,
-                rgba(16, 185, 129, 0.3) 16px
+                rgba(16, 185, 129, 0.4) 8px,
+                rgba(16, 185, 129, 0.4) 16px
               )`
             }}
           />
