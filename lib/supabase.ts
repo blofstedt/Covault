@@ -92,6 +92,10 @@ const createStubClient = () =>
         }
         return { data: { subscription: { unsubscribe: () => {} } } };
       },
+      signInWithOAuth: async () => {
+        console.warn('[supabase] Stub client in use: signInWithOAuth');
+        return { data: null, error: { message: 'Supabase is not configured.' } };
+      },
       signOut: noopAuthPromise,
     },
     from: () => {
