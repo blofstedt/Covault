@@ -466,7 +466,7 @@ export const useUserData = ({
 
       console.log('loadUserData completed (batched)');
     },
-    [fromSupabaseTransaction, setAppState],
+    [fromSupabaseTransaction, setAppState, setCategoriesLoaded],
   );
 
   // Send a partner link request by email
