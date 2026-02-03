@@ -37,7 +37,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
   };
 
   return (
-    <div className="relative overflow-hidden rounded-[2rem] mb-3">
+    <div className="relative overflow-hidden rounded-[2rem]">
       {/* Foreground content - now clickable */}
       <button
         onClick={() => onTap(transaction)}

@@ -176,7 +176,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
               </span>
             </div>
 
-            <div className="space-y-0">
+            <div className="space-y-3">
               {transactions.length > 0 ? (
                 transactions.map((tx) => (
                   <TransactionItem
