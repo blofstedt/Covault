@@ -74,7 +74,7 @@ export const useAuthState = ({
           if (pendingUserId && pendingUserId !== lastLoadedUserIdRef.current) {
             maybeLoadUserData(pendingUserId).catch(error => {
               console.error(
-                `[useAuthState] Error loading pending user data for user ${pendingUserId}:`,
+                `[useAuthState] Error loading pending user data for user ${pendingUserId}. This may indicate a network issue or invalid user ID:`,
                 error,
               );
             });

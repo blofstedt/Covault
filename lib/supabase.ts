@@ -86,7 +86,7 @@ const createStubClient = () =>
       ) => {
         console.warn('[supabase] Stub client in use: onAuthStateChange');
         if (callback) {
-          callback('SIGNED_OUT', null);
+          setTimeout(() => callback('SIGNED_OUT', null), 0);
         }
         return { data: { subscription: { unsubscribe: () => {} } } };
       },
