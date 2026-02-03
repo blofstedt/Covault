@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
 import Onboarding from './components/Onboarding';
@@ -71,7 +71,7 @@ const App: React.FC = () => {
   } = useUserData({ appState, setAppState, setDbError });
 
   // Wrapped loadUserData that tracks loading state
-  const loadUserDataWithState = async (userId: string) => {
+  const loadUserDataWithState = useCallback(async (userId: string) => {
     setIsLoadingData(true);
     try {
       await loadUserData(userId);
@@ -81,7 +81,7 @@ const App: React.FC = () => {
     } finally {
       setIsLoadingData(false);
     }
-  };
+  }, [loadUserData]);
 
   // Auth + session handling
   useAuthState({ setAppState, setAuthState, loadUserData: loadUserDataWithState });

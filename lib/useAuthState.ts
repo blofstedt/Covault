@@ -1,5 +1,5 @@
 // lib/useAuthState.ts
-import { useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { supabase } from './supabase';
 import type { AppState, User } from '../types';
 
@@ -42,6 +42,52 @@ export const useAuthState = ({
   setAuthState,
   loadUserData,
 }: UseAuthStateParams) => {
+  const lastLoadedUserIdRef = useRef<string | null>(null);
+  const loadUserDataPromiseRef = useRef<Promise<void> | null>(null);
+  const loadingUserIdRef = useRef<string | null>(null);
+  const pendingUserIdRef = useRef<string | null>(null);
+
+  const maybeLoadUserData = useCallback(
+    (userId: string) => {
+      if (lastLoadedUserIdRef.current === userId) {
+        return loadUserDataPromiseRef.current ?? Promise.resolve();
+      }
+
+      if (loadUserDataPromiseRef.current) {
+        if (loadingUserIdRef.current === userId) {
+          return loadUserDataPromiseRef.current;
+        }
+        pendingUserIdRef.current = userId;
+        return loadUserDataPromiseRef.current;
+      }
+
+      loadingUserIdRef.current = userId;
+      const loadPromise = loadUserData(userId)
+        .then(() => {
+          lastLoadedUserIdRef.current = userId;
+        })
+        .finally(() => {
+          loadUserDataPromiseRef.current = null;
+          loadingUserIdRef.current = null;
+          const pendingUserId = pendingUserIdRef.current;
+          pendingUserIdRef.current = null;
+          if (pendingUserId && pendingUserId !== lastLoadedUserIdRef.current) {
+            maybeLoadUserData(pendingUserId).catch(error => {
+              console.error(
+                `[useAuthState] Error loading pending user data for user ${pendingUserId}. This may indicate a network issue or invalid user ID:`,
+                error,
+              );
+              setAuthState('unauthenticated');
+              setAppState(prev => ({ ...prev, user: null }));
+            });
+          }
+        });
+      loadUserDataPromiseRef.current = loadPromise;
+      return loadPromise;
+    },
+    [loadUserData],
+  );
+
   useEffect(() => {
     // Helper: map Supabase user to your internal User type
     const mapUser = (sessionUser: any): User => ({
@@ -63,6 +109,10 @@ export const useAuthState = ({
         if (!isSessionValid()) {
           supabase.auth.signOut();
           clearSessionTimestamp();
+          lastLoadedUserIdRef.current = null;
+          loadUserDataPromiseRef.current = null;
+          loadingUserIdRef.current = null;
+          pendingUserIdRef.current = null;
           setAuthState('unauthenticated');
           return;
         }
@@ -70,7 +120,7 @@ export const useAuthState = ({
         const mappedUser = mapUser(session.user);
         setAppState(prev => ({ ...prev, user: mappedUser }));
         setAuthState('authenticated');
-        loadUserData(session.user.id);
+        maybeLoadUserData(session.user.id);
       } else {
         setAuthState('unauthenticated');
       }
@@ -90,14 +140,18 @@ export const useAuthState = ({
         setAuthState(prev =>
           prev === 'unauthenticated' ? 'onboarding' : 'authenticated',
         );
-        loadUserData(session.user.id);
+        maybeLoadUserData(session.user.id);
       } else {
         clearSessionTimestamp();
+        lastLoadedUserIdRef.current = null;
+        loadUserDataPromiseRef.current = null;
+        loadingUserIdRef.current = null;
+        pendingUserIdRef.current = null;
         setAuthState('unauthenticated');
         setAppState(prev => ({ ...prev, user: null }));
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [setAppState, setAuthState, loadUserData]);
+  }, [setAppState, setAuthState, maybeLoadUserData]);
 };
