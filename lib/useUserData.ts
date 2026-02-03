@@ -189,19 +189,27 @@ export const useUserData = ({
         const rows = await res.json();
         
         if (rows && rows.length > 0) {
+          // If a settings row exists, use the value directly (user has set it)
+          // Even if it's 0, that's the user's choice
           const monthlyIncome = Number(rows[0].monthly_income);
-          
-          // Update user state with loaded monthly income
-          // Use DEFAULT_MONTHLY_INCOME as fallback if the value from DB is 0 or not set
-          const incomeValue = monthlyIncome > 0 ? monthlyIncome : DEFAULT_MONTHLY_INCOME;
           setAppState(prev => ({
             ...prev,
             user: prev.user
-              ? { ...prev.user, monthlyIncome: incomeValue }
+              ? { ...prev.user, monthlyIncome }
               : null,
           }));
           
-          console.log('[loadUserSettings] loaded monthly_income:', incomeValue);
+          console.log('[loadUserSettings] loaded monthly_income:', monthlyIncome);
+        } else {
+          // No settings row exists (shouldn't happen with trigger, but handle it)
+          // Use default value only in this case
+          console.log('[loadUserSettings] no settings row found, using default:', DEFAULT_MONTHLY_INCOME);
+          setAppState(prev => ({
+            ...prev,
+            user: prev.user
+              ? { ...prev.user, monthlyIncome: DEFAULT_MONTHLY_INCOME }
+              : null,
+          }));
         }
       } catch (err: any) {
         console.error('[loadUserSettings] exception:', err?.message || err);

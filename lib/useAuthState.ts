@@ -53,7 +53,7 @@ export const useAuthState = ({
       email: sessionUser.email || '',
       hasJointAccounts: false,
       budgetingSolo: true,
-      monthlyIncome: 5000,
+      monthlyIncome: 0, // Will be loaded from DB by loadUserData()
     });
 
     // Initial session check
