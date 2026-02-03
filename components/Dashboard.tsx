@@ -342,7 +342,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       </header>
 
       {/* Main content */}
-      <main className="flex-1 flex flex-col p-4 pb-28 overflow-hidden relative z-10">
+      <main className="flex-1 flex flex-col p-3 pb-24 overflow-hidden relative z-10">
         {!isFocusMode && !isLoadingData && (
           <DashboardBalanceSection
             isSharedAccount={isSharedAccount}
