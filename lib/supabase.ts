@@ -17,11 +17,16 @@ if (!isSupabaseConfigured) {
   );
 }
 
+type StubResponse = {
+  data: null;
+  error: { message: string };
+};
+
 const noopPromiseWithData = () =>
   Promise.resolve({
     data: null,
     error: { message: 'Supabase is not configured.' },
-  });
+  } as StubResponse);
 
 type QueryStub = {
   select: () => QueryStub;
@@ -34,10 +39,10 @@ type QueryStub = {
   insert: () => QueryStub;
   update: () => QueryStub;
   delete: () => QueryStub;
-  maybeSingle: () => Promise<{ data: null; error: null }>;
-  single: () => Promise<{ data: null; error: null }>;
-  then: PromiseLike<{ data: null; error: null }>['then'];
-  catch: PromiseLike<{ data: null; error: null }>['catch'];
+  maybeSingle: () => Promise<StubResponse>;
+  single: () => Promise<StubResponse>;
+  then: PromiseLike<StubResponse>['then'];
+  catch: PromiseLike<StubResponse>['catch'];
 };
 
 const createQueryStub = (): QueryStub => {
@@ -46,7 +51,7 @@ const createQueryStub = (): QueryStub => {
   const resolved = Promise.resolve({
     data: null,
     error: { message: 'Supabase is not configured.' },
-  });
+  } as StubResponse);
 
   chain.select = returnChain;
   chain.eq = returnChain;
