@@ -123,13 +123,20 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
             </h3>
 
             {!isExpanded && (
-              <span
-                className="text-[10px] font-black uppercase tracking-[0.15em] mt-1.5 transition-colors duration-300 text-slate-400 dark:text-slate-500"
-              >
-                {isDanger
-                  ? `Over: $${Math.max(0, total - budget.totalLimit).toFixed(0)}`
-                  : `$${Math.max(0, budget.totalLimit - total).toFixed(0)} left`}
-              </span>
+              <div className="flex flex-col">
+                <span
+                  className="text-[10px] font-black uppercase tracking-[0.15em] mt-1.5 transition-colors duration-300 text-slate-400 dark:text-slate-500"
+                >
+                  {isDanger
+                    ? `Over: $${Math.max(0, total - budget.totalLimit).toFixed(0)}`
+                    : `$${Math.max(0, budget.totalLimit - total).toFixed(0)} left`}
+                </span>
+                {external > 0 && (
+                  <span className="text-[9px] font-bold uppercase tracking-wider mt-0.5 text-amber-500 dark:text-amber-400">
+                    +${external.toFixed(0)} Shield
+                  </span>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -138,14 +145,26 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
         <div className="text-right flex flex-col items-end">
           <div className="flex items-baseline space-x-1">
             {isExpanded && (
-              <span
-                className="text-sm font-black mr-2 tracking-tight transition-colors duration-300 text-slate-500"
-              >
-                ${spent.toFixed(0)}
-                <span className="mx-1.5 opacity-30 font-medium text-slate-400">
-                  /
+              <div className="flex flex-col items-end">
+                <span
+                  className="text-sm font-black mr-2 tracking-tight transition-colors duration-300 text-slate-500"
+                >
+                  ${spent.toFixed(0)}
+                  {external > 0 && (
+                    <span className="text-amber-500 dark:text-amber-400">
+                      {' '}+${external.toFixed(0)}
+                    </span>
+                  )}
+                  <span className="mx-1.5 opacity-30 font-medium text-slate-400">
+                    /
+                  </span>
                 </span>
-              </span>
+                {external > 0 && (
+                  <span className="text-[8px] font-bold uppercase tracking-wider text-amber-500 dark:text-amber-400 mr-2">
+                    Shield Active
+                  </span>
+                )}
+              </div>
             )}
 
             <span className="text-2xl font-black tracking-tighter leading-none transition-colors duration-300 text-slate-500 dark:text-slate-100">
@@ -170,6 +189,22 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
       {isExpanded && (
         <div className="flex-1 overflow-y-auto no-scrollbar px-6 pb-12 animate-in fade-in slide-in-from-top-2 duration-500 relative z-10">
           <div className="py-6 space-y-4">
+            {external > 0 && (
+              <div className="px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-2xl">
+                <div className="flex items-start space-x-2">
+                  <span className="text-amber-500 dark:text-amber-400 text-lg">🛡️</span>
+                  <div className="flex-1">
+                    <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider">
+                      Discretionary Shield Active
+                    </p>
+                    <p className="text-[9px] text-amber-600 dark:text-amber-500 mt-1 leading-relaxed">
+                      ${external.toFixed(0)} from other budgets' overspending is being covered by this category.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+            
             <div className="flex items-center justify-between px-2">
               <span className="text-[10px] font-black uppercase tracking-[0.2em] transition-colors duration-300 text-slate-400 dark:text-slate-500">
                 {isSharedView ? 'Our Activity History' : 'Activity History'}
