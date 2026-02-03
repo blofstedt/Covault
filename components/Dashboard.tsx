@@ -148,7 +148,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     state.budgets.forEach((b) => {
       if (b.name.toLowerCase().includes('leisure')) return;
 
-      const bTxs = filteredTransactions.filter(
+      const bTxs = currentMonthTransactions.filter(
         (tx) =>
           tx.budget_id === b.id ||
           tx.splits?.some((s) => s.budget_id === b.id),
@@ -170,7 +170,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     });
 
     return totalOverspend;
-  }, [state.budgets, filteredTransactions, state.settings.useLeisureAsBuffer]);
+  }, [state.budgets, currentMonthTransactions, state.settings.useLeisureAsBuffer]);
 
   const toggleExpand = (id: string) => {
     const next = new Set(expandedBudgets);
