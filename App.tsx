@@ -75,6 +75,9 @@ const App: React.FC = () => {
     setIsLoadingData(true);
     try {
       await loadUserData(userId);
+    } catch (error) {
+      // Error is already logged by loadUserData functions
+      console.error('[loadUserDataWithState] Error loading user data:', error);
     } finally {
       setIsLoadingData(false);
     }
