@@ -27,6 +27,10 @@ const noopPromiseWithData = () =>
     data: null,
     error: { message: 'Supabase is not configured.' },
   } as StubResponse);
+const noopAuthPromise = () =>
+  Promise.resolve({
+    error: { message: 'Supabase is not configured.' },
+  } as { error: { message: string } });
 
 type QueryStub = {
   select: () => QueryStub;
@@ -74,11 +78,15 @@ const createQueryStub = (): QueryStub => {
 const createStubClient = () =>
   ({
     auth: {
-      getSession: async () => ({ data: { session: null }, error: null }),
+      getSession: async () => ({
+        data: { session: null },
+        error: { message: 'Supabase is not configured.' },
+      }),
       onAuthStateChange: () => ({
         data: { subscription: { unsubscribe: () => {} } },
+        error: { message: 'Supabase is not configured.' },
       }),
-      signOut: async () => ({ error: null }),
+      signOut: noopAuthPromise,
     },
     from: () => createQueryStub(),
   }) as unknown as ReturnType<typeof createClient>;

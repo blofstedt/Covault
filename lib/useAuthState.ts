@@ -51,13 +51,10 @@ export const useAuthState = ({
         return loadUserDataPromiseRef.current ?? Promise.resolve();
       }
 
-      const loadPromise = loadUserData(userId)
-        .then(() => {
-          lastLoadedUserIdRef.current = userId;
-        })
-        .finally(() => {
-          loadUserDataPromiseRef.current = null;
-        });
+      const loadPromise = loadUserData(userId).finally(() => {
+        lastLoadedUserIdRef.current = userId;
+        loadUserDataPromiseRef.current = null;
+      });
       loadUserDataPromiseRef.current = loadPromise;
       return loadPromise;
     };
