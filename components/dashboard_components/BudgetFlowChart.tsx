@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { BudgetCategory, Transaction } from '../../types';
 import { getBudgetIcon } from './getBudgetIcon';
 
@@ -15,12 +15,26 @@ interface MonthData {
   total: number;
 }
 
+type FilterMode = 'current' | 'last6';
+
 const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
   budgets,
   transactions,
 }) => {
   // Minimum width percentage to show label in bar
   const MIN_WIDTH_FOR_LABEL = 15;
+  
+  // Filter state: 'current' for current month, 'last6' for last 6 months
+  const [filterMode, setFilterMode] = useState<FilterMode>('current');
+
+  // Current date - memoized to avoid recreating on every render
+  const { currentYear, currentMonth } = useMemo(() => {
+    const now = new Date();
+    return {
+      currentYear: now.getFullYear(),
+      currentMonth: now.getMonth(),
+    };
+  }, []);
 
   // Group transactions by month
   const monthlyData = useMemo(() => {
@@ -61,14 +75,20 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
       }
     });
 
-    // Sort by date (oldest to newest) and take last 6 months
-    return Array.from(dataMap.values())
-      .sort((a, b) => {
-        if (a.year !== b.year) return a.year - b.year;
-        return a.month - b.month;
-      })
-      .slice(-6);
-  }, [transactions]);
+    // Sort by date (oldest to newest)
+    const sorted = Array.from(dataMap.values()).sort((a, b) => {
+      if (a.year !== b.year) return a.year - b.year;
+      return a.month - b.month;
+    });
+
+    // For 'current' mode, only show current month
+    // For 'last6' mode, show last 6 months
+    if (filterMode === 'current') {
+      return sorted.filter(m => m.year === currentYear && m.month === currentMonth);
+    } else {
+      return sorted.slice(-6);
+    }
+  }, [transactions, filterMode, currentYear, currentMonth]);
 
   // If no data, show empty state
   if (monthlyData.length === 0) {
@@ -99,77 +119,118 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
   return (
     <div className="w-full mb-6">
       <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-md rounded-3xl p-6 border-2 border-slate-100 dark:border-slate-800 shadow-lg">
-        {/* Chart Title */}
-        <div className="mb-4 text-center">
+        {/* Chart Title and Filter */}
+        <div className="mb-4 flex items-center justify-between">
           <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
             Spending Overview
           </h3>
-        </div>
-
-        {/* Simple Bar Chart */}
-        <div className="space-y-4">
-          {monthlyData.map((monthData) => (
-            <div key={`${monthData.year}-${monthData.month}`} className="space-y-2">
-              {/* Month Label */}
-              <div className="flex justify-between items-baseline">
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                  {monthData.label}
-                </span>
-                <span 
-                  className="text-xs font-black text-slate-600 dark:text-slate-300"
-                  aria-label={monthData.total.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                >
-                  ${monthData.total.toFixed(0)}
-                </span>
-              </div>
-              
-              {/* Bar */}
-              <div className="w-full h-8 bg-slate-100 dark:bg-slate-800 rounded-xl overflow-hidden flex">
-                {budgets.map((budget) => {
-                  const spending = monthData.budgetSpending.get(budget.id) || 0;
-                  if (spending === 0) return null;
-                  
-                  const widthPercent = (spending / monthData.total) * 100;
-                  
-                  return (
-                    <div
-                      key={budget.id}
-                      className="h-full flex items-center justify-center relative group"
-                      style={{
-                        width: `${widthPercent}%`,
-                        backgroundColor: getBudgetColor(budget.name),
-                      }}
-                      aria-label={`${budget.name}: ${spending.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
-                    >
-                      {widthPercent > MIN_WIDTH_FOR_LABEL && (
-                        <span className="text-[10px] font-bold text-white">
-                          ${spending.toFixed(0)}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Legend */}
-        <div className="mt-6 pt-4 border-t-2 border-slate-100 dark:border-slate-800">
-          <div className="flex flex-wrap gap-3 justify-center">
-            {budgets.map((budget) => (
-              <div key={budget.id} className="flex items-center gap-2">
-                <div
-                  className="w-3 h-3 rounded-full"
-                  style={{ backgroundColor: getBudgetColor(budget.name) }}
-                />
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                  {budget.name}
-                </span>
-              </div>
-            ))}
+          
+          {/* Filter Toggle */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setFilterMode('current')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                filterMode === 'current'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+              }`}
+            >
+              Current Month
+            </button>
+            <button
+              onClick={() => setFilterMode('last6')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                filterMode === 'last6'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+              }`}
+            >
+              Last 6 Months
+            </button>
           </div>
         </div>
+
+        {/* Empty state for Last 6 Months mode when only current month exists */}
+        {filterMode === 'last6' && monthlyData.length <= 1 ? (
+          <div className="text-center py-8">
+            <p className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-2">
+              No additional months found
+            </p>
+            <p className="text-xs text-slate-400 dark:text-slate-500">
+              Please continue using the app to gather historical data.
+            </p>
+          </div>
+        ) : monthlyData.length === 0 ? (
+          // No data at all (even for current month)
+          null
+        ) : (
+          <>
+            {/* Simple Bar Chart */}
+            <div className="space-y-4">
+              {monthlyData.map((monthData) => (
+                <div key={`${monthData.year}-${monthData.month}`} className="space-y-2">
+                  {/* Month Label */}
+                  <div className="flex justify-between items-baseline">
+                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                      {monthData.label}
+                    </span>
+                    <span 
+                      className="text-xs font-black text-slate-600 dark:text-slate-300"
+                      aria-label={monthData.total.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    >
+                      ${monthData.total.toFixed(0)}
+                    </span>
+                  </div>
+                  
+                  {/* Bar */}
+                  <div className="w-full h-8 bg-slate-100 dark:bg-slate-800 rounded-xl overflow-hidden flex">
+                    {budgets.map((budget) => {
+                      const spending = monthData.budgetSpending.get(budget.id) || 0;
+                      if (spending === 0) return null;
+                      
+                      const widthPercent = (spending / monthData.total) * 100;
+                      
+                      return (
+                        <div
+                          key={budget.id}
+                          className="h-full flex items-center justify-center relative group"
+                          style={{
+                            width: `${widthPercent}%`,
+                            backgroundColor: getBudgetColor(budget.name),
+                          }}
+                          aria-label={`${budget.name}: ${spending.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+                        >
+                          {widthPercent > MIN_WIDTH_FOR_LABEL && (
+                            <span className="text-[10px] font-bold text-white">
+                              ${spending.toFixed(0)}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Legend */}
+            <div className="mt-6 pt-4 border-t-2 border-slate-100 dark:border-slate-800">
+              <div className="flex flex-wrap gap-3 justify-center">
+                {budgets.map((budget) => (
+                  <div key={budget.id} className="flex items-center gap-2">
+                    <div
+                      className="w-3 h-3 rounded-full"
+                      style={{ backgroundColor: getBudgetColor(budget.name) }}
+                    />
+                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                      {budget.name}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

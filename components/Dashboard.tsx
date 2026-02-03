@@ -85,10 +85,14 @@ const Dashboard: React.FC<DashboardProps> = ({
     return list;
   }, [state.transactions, searchQuery]);
 
-  // Helper to identify the current month
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth(); // 0-based
+  // Helper to identify the current month - memoized to prevent recalculation
+  const { currentYear, currentMonth } = useMemo(() => {
+    const now = new Date();
+    return {
+      currentYear: now.getFullYear(),
+      currentMonth: now.getMonth(), // 0-based
+    };
+  }, []); // Empty dependency array - only calculate once per component mount
 
   const currentMonthTransactions = useMemo(
     () =>
