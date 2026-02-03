@@ -98,6 +98,17 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
   // Calculate the max total for scaling
   const maxTotal = Math.max(...monthlyData.map((m) => m.total), 1);
 
+  const budgetIndexMap = useMemo(
+    () =>
+      new Map(
+        budgets.map((budget, index) => [
+          budget.name.toLowerCase(),
+          index,
+        ]),
+      ),
+    [budgets],
+  );
+
   // Get budget colors with consistent mapping (limited palette to match app UX)
   const getBudgetColor = (budgetName: string) => {
     const palette = [
@@ -105,9 +116,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
       'rgb(52, 211, 153)', // light emerald
       'rgb(148, 163, 184)', // slate
     ];
-    const budgetIndex = budgets.findIndex(
-      (budget) => budget.name.toLowerCase() === budgetName.toLowerCase(),
-    );
+    const budgetIndex = budgetIndexMap.get(budgetName.toLowerCase()) ?? 0;
     const paletteIndex = budgetIndex >= 0 ? budgetIndex % palette.length : 0;
     return palette[paletteIndex];
   };
