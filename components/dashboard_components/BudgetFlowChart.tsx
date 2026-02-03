@@ -19,6 +19,9 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
   budgets,
   transactions,
 }) => {
+  // Minimum width percentage to show label in bar
+  const MIN_WIDTH_FOR_LABEL = 15;
+
   // Group transactions by month
   const monthlyData = useMemo(() => {
     const dataMap = new Map<string, MonthData>();
@@ -134,8 +137,9 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
                         backgroundColor: getBudgetColor(budget.name),
                       }}
                       title={`${budget.name}: $${spending.toFixed(0)}`}
+                      aria-label={`${budget.name}: ${spending.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
                     >
-                      {widthPercent > 15 && (
+                      {widthPercent > MIN_WIDTH_FOR_LABEL && (
                         <span className="text-[10px] font-bold text-white">
                           ${spending.toFixed(0)}
                         </span>
