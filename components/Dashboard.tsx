@@ -14,6 +14,7 @@ import DashboardBudgetSectionsList from './dashboard_components/DashboardBudgetS
 import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import DashboardSettingsModal from './dashboard_components/DashboardSettingsModal';
 import SearchResults from './dashboard_components/SearchResults';
+import BudgetFlowChart from './dashboard_components/BudgetFlowChart';
 
 // Notifications helper
 import { checkAndTriggerAppNotifications } from '../lib/appNotifications';
@@ -342,6 +343,13 @@ const Dashboard: React.FC<DashboardProps> = ({
             remainingMoney={remainingMoney}
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
+          />
+        )}
+
+        {!isFocusMode && !searchQuery && (
+          <BudgetFlowChart
+            budgets={state.budgets}
+            transactions={state.transactions}
           />
         )}
 
