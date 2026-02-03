@@ -333,27 +333,27 @@ export const useUserData = ({
       // Fetch all data in parallel
       const headers = await getAuthHeaders();
 
-      // Prepare all fetch requests
+      // Prepare all fetch requests - wrap each in catch to prevent Promise.all from failing
       const [categoriesRes, userBudgetsRes, userSettingsRes, transactionsRes, partnerLinkRes] = await Promise.all([
         // Categories
-        fetch(`${REST_BASE}/categories?select=*&order=display_order`, { headers }),
+        fetch(`${REST_BASE}/categories?select=*&order=display_order`, { headers }).catch(() => null),
         // User budgets
-        fetch(`${REST_BASE}/user_budgets?select=*&user_id=eq.${userId}`, { headers }),
+        fetch(`${REST_BASE}/user_budgets?select=*&user_id=eq.${userId}`, { headers }).catch(() => null),
         // User settings
-        fetch(`${REST_BASE}/settings?select=monthly_income&user_id=eq.${userId}`, { headers }),
+        fetch(`${REST_BASE}/settings?select=monthly_income&user_id=eq.${userId}`, { headers }).catch(() => null),
         // Transactions
-        fetch(`${REST_BASE}/transactions?select=*&user_id=eq.${userId}&order=date.desc`, { headers }),
+        fetch(`${REST_BASE}/transactions?select=*&user_id=eq.${userId}&order=date.desc`, { headers }).catch(() => null),
         // Partner link
         fetch(
           `${REST_BASE}/linked_partners?select=*,partner:settings!linked_partners_partner_id_fkey(name,email),requester:settings!linked_partners_user_id_fkey(name,email)&or=(user_id.eq.${userId},partner_id.eq.${userId})&status=eq.accepted&limit=1`,
           { headers }
-        ).catch(() => null), // Don't fail if partner link fetch fails
+        ).catch(() => null),
       ]);
 
       // Process categories
       let budgets: BudgetCategory[] = SYSTEM_CATEGORIES;
       try {
-        if (categoriesRes.ok) {
+        if (categoriesRes && categoriesRes.ok) {
           const categoriesData = await categoriesRes.json();
           if (categoriesData && categoriesData.length > 0) {
             budgets = categoriesData.map((row: any) => ({
@@ -370,7 +370,7 @@ export const useUserData = ({
 
       // Process user budgets (merge with categories)
       try {
-        if (userBudgetsRes.ok) {
+        if (userBudgetsRes && userBudgetsRes.ok) {
           const userBudgetsData = await userBudgetsRes.json();
           const limitsByCategory: Record<string, number> = {};
           for (const row of userBudgetsData) {
@@ -388,7 +388,7 @@ export const useUserData = ({
       // Process user settings
       let monthlyIncome = DEFAULT_MONTHLY_INCOME;
       try {
-        if (userSettingsRes.ok) {
+        if (userSettingsRes && userSettingsRes.ok) {
           const settingsData = await userSettingsRes.json();
           if (settingsData && settingsData.length > 0) {
             monthlyIncome = Number(settingsData[0].monthly_income);
@@ -401,7 +401,7 @@ export const useUserData = ({
       // Process transactions
       let transactions: Transaction[] = [];
       try {
-        if (transactionsRes.ok) {
+        if (transactionsRes && transactionsRes.ok) {
           const transactionsData = await transactionsRes.json();
           if (transactionsData && transactionsData.length > 0) {
             transactions = transactionsData.map(fromSupabaseTransaction);
