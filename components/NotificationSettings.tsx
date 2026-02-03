@@ -226,27 +226,29 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
 
   return (
     <div className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60 space-y-4">
-      {/* Toggle row */}
-      <div className="flex items-center justify-between">
-        <div className="flex-1 mr-3">
-          <span className="font-black text-xs text-slate-600 dark:text-slate-200 uppercase tracking-tight block">
-            Bank Notification Listener
-          </span>
-          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 leading-tight">
-            Auto-log transactions from your banking apps
-          </p>
+      {/* Only show toggle if permission not yet granted */}
+      {!permissionGranted && (
+        <div className="flex items-center justify-between">
+          <div className="flex-1 mr-3">
+            <span className="font-black text-xs text-slate-600 dark:text-slate-200 uppercase tracking-tight block">
+              Bank Notification Listener
+            </span>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 leading-tight">
+              Auto-log transactions from your banking apps
+            </p>
+          </div>
+          <button
+            onClick={handleToggle}
+            className={`relative w-12 h-7 rounded-full transition-colors duration-200 flex-shrink-0 ${
+              enabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
+            }`}
+          >
+            <span className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200 ${
+              enabled ? 'translate-x-5' : 'translate-x-0'
+            }`} />
+          </button>
         </div>
-        <button
-          onClick={handleToggle}
-          className={`relative w-12 h-7 rounded-full transition-colors duration-200 flex-shrink-0 ${
-            enabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
-          }`}
-        >
-          <span className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200 ${
-            enabled ? 'translate-x-5' : 'translate-x-0'
-          }`} />
-        </button>
-      </div>
+      )}
 
       {/* Banking app picker */}
       {enabled && permissionGranted && (

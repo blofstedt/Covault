@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
-import { Transaction } from '../types';
+import { Transaction, BudgetCategory } from '../types';
 import { FlagTransactionButton } from './FlagTransactionButton';
+import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
 
 interface TransactionItemProps {
   transaction: Transaction;
@@ -8,7 +9,8 @@ interface TransactionItemProps {
   currentUserName: string;
   isSharedView: boolean;
   currentBudgetId?: string;
-  budgets?: any[];
+  budgets?: BudgetCategory[];
+  showBudgetIcon?: boolean;
 }
 
 const TransactionItem: React.FC<TransactionItemProps> = ({
@@ -17,6 +19,8 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
   currentUserName,
   isSharedView,
   currentBudgetId,
+  budgets,
+  showBudgetIcon = false,
 }) => {
 
   const displayAmount = useMemo(() => {
@@ -26,6 +30,14 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
     }
     return transaction.amount;
   }, [transaction, currentBudgetId]);
+
+  const budget = useMemo(() => {
+    if (!budgets || !showBudgetIcon) return null;
+    const budgetId = transaction.splits && transaction.splits.length > 0
+      ? transaction.splits[0].budget_id
+      : transaction.budget_id;
+    return budgets.find(b => b.id === budgetId);
+  }, [budgets, transaction, showBudgetIcon]);
 
   const isOtherUser = isSharedView && transaction.userName !== currentUserName;
 
@@ -46,7 +58,14 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
         aria-label={`Transaction: ${transaction.vendor}, ${transaction.amount.toFixed(2)} dollars on ${new Date(transaction.date).toLocaleDateString()}`}
       >
         <div className="flex items-center justify-between">
-          <div className="flex flex-col text-left">
+          {/* Budget icon on the left for search results */}
+          {showBudgetIcon && budget && (
+            <div className="flex-shrink-0 mr-3 p-2 rounded-xl bg-slate-100/80 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500">
+              {getBudgetIcon(budget.name)}
+            </div>
+          )}
+          
+          <div className="flex flex-col text-left flex-1">
             <div className="flex items-center space-x-2">
               <span className="font-black text-[14px] text-slate-500 dark:text-slate-100 tracking-tight leading-none uppercase">
                 {transaction.vendor}
