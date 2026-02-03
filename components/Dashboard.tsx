@@ -307,6 +307,11 @@ const Dashboard: React.FC<DashboardProps> = ({
         enabled={parsingEnabled}
         onToggle={setParsingEnabled}
         onBack={() => setShowParsing(false)}
+        onAddTransaction={() => setIsAddingTx(true)}
+        onGoHome={() => {
+          setShowParsing(false);
+          handleGoHome();
+        }}
       />
     );
   }

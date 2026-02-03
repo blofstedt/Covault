@@ -91,11 +91,27 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           />
         )}
 
-        {/* Projected */}
+        {/* Projected - now with dashed pattern */}
         <div
           style={{ width: `${projectedWidth}%` }}
-          className="h-full bg-emerald-500/10 dark:bg-emerald-800/20 transition-all duration-300"
-        />
+          className="h-full transition-all duration-300 relative"
+        >
+          {/* Base color layer */}
+          <div className="absolute inset-0 bg-emerald-500/10 dark:bg-emerald-800/20" />
+          {/* Dashed overlay pattern - darker for better visibility */}
+          <div 
+            className="absolute inset-0 bg-repeat"
+            style={{
+              backgroundImage: `repeating-linear-gradient(
+                90deg,
+                transparent,
+                transparent 8px,
+                rgba(16, 185, 129, 0.4) 8px,
+                rgba(16, 185, 129, 0.4) 16px
+              )`
+            }}
+          />
+        </div>
       </div>
 
       {/* HEADER / SUMMARY */}
@@ -187,7 +203,15 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
       {/* EXPANDED TRANSACTIONS LIST */}
       {isExpanded && (
-        <div className="flex-1 overflow-y-auto no-scrollbar px-6 pb-12 animate-in fade-in slide-in-from-top-2 duration-500 relative z-10">
+        <div 
+          className="flex-1 overflow-y-auto no-scrollbar px-6 pb-12 animate-in fade-in slide-in-from-top-2 duration-500 relative z-10"
+          onClick={(e) => {
+            // If clicking on the blank space (the div itself), collapse the budget
+            if (e.target === e.currentTarget) {
+              onToggle();
+            }
+          }}
+        >
           <div className="py-6 space-y-4">
             {external > 0 && (
               <div className="px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-2xl">

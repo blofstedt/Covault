@@ -141,10 +141,9 @@ const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
                 onTap={onTransactionTap}
                 currentUserName={currentUserName}
                 isSharedView={isSharedAccount}
-                // Pass currentBudgetId so TransactionItem can show the correct icon
                 currentBudgetId={budgetIdForTx}
-                // For split/amount formatting, we still pass all budgets
                 budgets={budgets}
+                showBudgetIcon={true}
               />
             );
           })}
@@ -300,6 +299,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                     isSharedView={isSharedAccount}
                     currentBudgetId={budgetIdForTx}
                     budgets={budgets}
+                    showBudgetIcon={true}
                   />
                 );
               })}
