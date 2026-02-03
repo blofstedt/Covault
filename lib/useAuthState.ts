@@ -43,25 +43,27 @@ export const useAuthState = ({
   loadUserData,
 }: UseAuthStateParams) => {
   const lastLoadedUserIdRef = useRef<string | null>(null);
-  const isLoadingUserDataRef = useRef(false);
+  const loadUserDataPromiseRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
-    const maybeLoadUserData = async (userId: string) => {
-      if (isLoadingUserDataRef.current) {
-        return;
-      }
-
+    const maybeLoadUserData = (userId: string) => {
       if (lastLoadedUserIdRef.current === userId) {
-        return;
+        return loadUserDataPromiseRef.current ?? Promise.resolve();
       }
 
-      isLoadingUserDataRef.current = true;
-      try {
-        await loadUserData(userId);
-        lastLoadedUserIdRef.current = userId;
-      } finally {
-        isLoadingUserDataRef.current = false;
+      if (loadUserDataPromiseRef.current) {
+        return loadUserDataPromiseRef.current;
       }
+
+      const loadPromise = loadUserData(userId)
+        .then(() => {
+          lastLoadedUserIdRef.current = userId;
+        })
+        .finally(() => {
+          loadUserDataPromiseRef.current = null;
+        });
+      loadUserDataPromiseRef.current = loadPromise;
+      return loadPromise;
     };
 
     // Helper: map Supabase user to your internal User type
@@ -85,7 +87,7 @@ export const useAuthState = ({
           supabase.auth.signOut();
           clearSessionTimestamp();
           lastLoadedUserIdRef.current = null;
-          isLoadingUserDataRef.current = false;
+          loadUserDataPromiseRef.current = null;
           setAuthState('unauthenticated');
           return;
         }
@@ -117,7 +119,7 @@ export const useAuthState = ({
       } else {
         clearSessionTimestamp();
         lastLoadedUserIdRef.current = null;
-        isLoadingUserDataRef.current = false;
+        loadUserDataPromiseRef.current = null;
         setAuthState('unauthenticated');
         setAppState(prev => ({ ...prev, user: null }));
       }
