@@ -115,7 +115,10 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
                 <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
                   {monthData.label}
                 </span>
-                <span className="text-xs font-black text-slate-600 dark:text-slate-300">
+                <span 
+                  className="text-xs font-black text-slate-600 dark:text-slate-300"
+                  aria-label={monthData.total.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                >
                   ${monthData.total.toFixed(0)}
                 </span>
               </div>
@@ -136,7 +139,6 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
                         width: `${widthPercent}%`,
                         backgroundColor: getBudgetColor(budget.name),
                       }}
-                      title={`${budget.name}: $${spending.toFixed(0)}`}
                       aria-label={`${budget.name}: ${spending.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
                     >
                       {widthPercent > MIN_WIDTH_FOR_LABEL && (
