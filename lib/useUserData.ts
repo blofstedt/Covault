@@ -187,19 +187,32 @@ export const useUserData = ({
         }
         
         const rows = await res.json();
-        
+
         if (rows && rows.length > 0) {
-          // If a settings row exists, use the value directly (user has set it)
-          // Even if it's 0, that's the user's choice
-          const monthlyIncome = Number(rows[0].monthly_income);
+          const rawMonthlyIncome = rows[0].monthly_income;
+          const parsedMonthlyIncome =
+            rawMonthlyIncome === null || rawMonthlyIncome === undefined || rawMonthlyIncome === ''
+              ? null
+              : Number(rawMonthlyIncome);
+          const shouldUseDefault =
+            parsedMonthlyIncome === null || Number.isNaN(parsedMonthlyIncome);
+          const monthlyIncome = shouldUseDefault
+            ? DEFAULT_MONTHLY_INCOME
+            : parsedMonthlyIncome;
+
           setAppState(prev => ({
             ...prev,
             user: prev.user
               ? { ...prev.user, monthlyIncome }
               : null,
           }));
-          
-          console.log('[loadUserSettings] loaded monthly_income:', monthlyIncome);
+
+          console.log(
+            shouldUseDefault
+              ? '[loadUserSettings] monthly_income missing, using default:'
+              : '[loadUserSettings] loaded monthly_income:',
+            monthlyIncome,
+          );
         } else {
           // No settings row exists (shouldn't happen with trigger, but handle it)
           // Use default value only in this case

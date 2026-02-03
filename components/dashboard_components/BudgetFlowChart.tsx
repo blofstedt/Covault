@@ -98,30 +98,26 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
   // Calculate the max total for scaling
   const maxTotal = Math.max(...monthlyData.map((m) => m.total), 1);
 
-  // Get budget colors with consistent mapping
+  // Get budget colors with consistent mapping (limited palette to match app UX)
   const getBudgetColor = (budgetName: string) => {
-    const lower = budgetName.toLowerCase();
-    const colors: Record<string, string> = {
-      housing: 'rgb(59, 130, 246)', // blue
-      groceries: 'rgb(16, 185, 129)', // emerald
-      transport: 'rgb(245, 158, 11)', // amber
-      utilities: 'rgb(139, 92, 246)', // purple
-      leisure: 'rgb(236, 72, 153)', // pink
-      other: 'rgb(107, 114, 128)', // gray
-    };
-
-    for (const [key, color] of Object.entries(colors)) {
-      if (lower.includes(key)) return color;
-    }
-    return 'rgb(107, 114, 128)'; // default gray
+    const palette = [
+      'rgb(16, 185, 129)', // emerald
+      'rgb(52, 211, 153)', // light emerald
+      'rgb(148, 163, 184)', // slate
+    ];
+    const budgetIndex = budgets.findIndex(
+      (budget) => budget.name.toLowerCase() === budgetName.toLowerCase(),
+    );
+    const paletteIndex = budgetIndex >= 0 ? budgetIndex % palette.length : 0;
+    return palette[paletteIndex];
   };
 
   return (
-    <div className="w-full mb-6">
-      <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-md rounded-3xl p-6 border-2 border-slate-100 dark:border-slate-800 shadow-lg">
+    <div className="w-full mb-4">
+      <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-md rounded-3xl p-4 border-2 border-slate-100 dark:border-slate-800 shadow-lg">
         {/* Chart Title and Filter */}
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
             Spending Overview
           </h3>
           
@@ -129,9 +125,9 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
           <div className="flex gap-2">
             <button
               onClick={() => setFilterMode('current')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+              className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all ${
                 filterMode === 'current'
-                  ? 'bg-blue-500 text-white'
+                  ? 'bg-emerald-500 text-white'
                   : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
               }`}
             >
@@ -139,9 +135,9 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
             </button>
             <button
               onClick={() => setFilterMode('last6')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+              className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all ${
                 filterMode === 'last6'
-                  ? 'bg-blue-500 text-white'
+                  ? 'bg-emerald-500 text-white'
                   : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
               }`}
             >
@@ -166,16 +162,16 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
         ) : (
           <>
             {/* Simple Bar Chart */}
-            <div className="space-y-4">
+            <div className="space-y-3">
               {monthlyData.map((monthData) => (
                 <div key={`${monthData.year}-${monthData.month}`} className="space-y-2">
                   {/* Month Label */}
                   <div className="flex justify-between items-baseline">
-                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
                       {monthData.label}
                     </span>
                     <span 
-                      className="text-xs font-black text-slate-600 dark:text-slate-300"
+                      className="text-[10px] font-black text-slate-600 dark:text-slate-300"
                       aria-label={monthData.total.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                     >
                       ${monthData.total.toFixed(0)}
@@ -183,7 +179,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
                   </div>
                   
                   {/* Bar */}
-                  <div className="w-full h-8 bg-slate-100 dark:bg-slate-800 rounded-xl overflow-hidden flex">
+                  <div className="w-full h-6 bg-slate-100 dark:bg-slate-800 rounded-xl overflow-hidden flex">
                     {budgets.map((budget) => {
                       const spending = monthData.budgetSpending.get(budget.id) || 0;
                       if (spending === 0) return null;
@@ -201,7 +197,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
                           aria-label={`${budget.name}: ${spending.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
                         >
                           {widthPercent > MIN_WIDTH_FOR_LABEL && (
-                            <span className="text-[10px] font-bold text-white">
+                            <span className="text-[9px] font-bold text-white">
                               ${spending.toFixed(0)}
                             </span>
                           )}
@@ -214,15 +210,15 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
             </div>
 
             {/* Legend */}
-            <div className="mt-6 pt-4 border-t-2 border-slate-100 dark:border-slate-800">
-              <div className="flex flex-wrap gap-3 justify-center">
+            <div className="mt-4 pt-3 border-t-2 border-slate-100 dark:border-slate-800">
+              <div className="flex flex-wrap gap-2 justify-center">
                 {budgets.map((budget) => (
                   <div key={budget.id} className="flex items-center gap-2">
                     <div
-                      className="w-3 h-3 rounded-full"
+                      className="w-2.5 h-2.5 rounded-full"
                       style={{ backgroundColor: getBudgetColor(budget.name) }}
                     />
-                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
                       {budget.name}
                     </span>
                   </div>
