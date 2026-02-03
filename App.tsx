@@ -48,6 +48,7 @@ const saveSettingsToStorage = (settings: AppState['settings']) => {
 const App: React.FC = () => {
   const [authState, setAuthState] = useState<AuthStatus>('loading');
   const [dbError, setDbError] = useState<string | null>(null);
+  const [isLoadingData, setIsLoadingData] = useState(false);
   const [appState, setAppState] = useState<AppState>(() => {
     const savedSettings = loadSettingsFromStorage();
     return {
@@ -69,8 +70,18 @@ const App: React.FC = () => {
     saveUserIncome,
   } = useUserData({ appState, setAppState, setDbError });
 
+  // Wrapped loadUserData that tracks loading state
+  const loadUserDataWithState = async (userId: string) => {
+    setIsLoadingData(true);
+    try {
+      await loadUserData(userId);
+    } finally {
+      setIsLoadingData(false);
+    }
+  };
+
   // Auth + session handling
-  useAuthState({ setAppState, setAuthState, loadUserData });
+  useAuthState({ setAppState, setAuthState, loadUserData: loadUserDataWithState });
 
   // Native deep link handling (OAuth callback)
   useDeepLinks();
@@ -148,6 +159,7 @@ const App: React.FC = () => {
           saveUserIncome={saveUserIncome}
           onLinkPartner={handleLinkPartner}
           onUnlinkPartner={handleUnlinkPartner}
+          isLoadingData={isLoadingData}
         />
       )}
     </div>
