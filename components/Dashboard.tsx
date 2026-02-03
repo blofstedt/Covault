@@ -32,6 +32,7 @@ interface DashboardProps {
   onDeleteTransaction: (id: string) => void;
   saveBudgetLimit: (categoryId: string, newLimit: number) => void;
   saveUserIncome: (income: number) => void;
+  isLoadingData: boolean;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({
@@ -44,6 +45,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   onDeleteTransaction,
   saveBudgetLimit,
   saveUserIncome,
+  isLoadingData,
 }) => {
   const [isAddingTx, setIsAddingTx] = useState(false);
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
@@ -337,7 +339,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       {/* Main content */}
       <main className="flex-1 flex flex-col p-4 pb-28 overflow-hidden relative z-10">
-        {!isFocusMode && (
+        {!isFocusMode && !isLoadingData && (
           <DashboardBalanceSection
             isSharedAccount={isSharedAccount}
             remainingMoney={remainingMoney}
