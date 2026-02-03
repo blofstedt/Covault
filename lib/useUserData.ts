@@ -168,6 +168,44 @@ export const useUserData = ({
     [setAppState],
   );
 
+  // Load user settings from Supabase (monthly_income, etc.)
+  const loadUserSettings = useCallback(
+    async (userId: string) => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(
+          `${REST_BASE}/settings?select=monthly_income&user_id=eq.${userId}`,
+          { headers },
+        );
+        
+        if (!res.ok) {
+          console.error('[loadUserSettings] failed:', res.status);
+          return;
+        }
+        
+        const rows = await res.json();
+        
+        if (rows && rows.length > 0) {
+          const monthlyIncome = Number(rows[0].monthly_income);
+          
+          // Update user state with loaded monthly income
+          // Use 5000 as default if the value from DB is 0 or not set
+          setAppState(prev => ({
+            ...prev,
+            user: prev.user
+              ? { ...prev.user, monthlyIncome: monthlyIncome > 0 ? monthlyIncome : 5000 }
+              : null,
+          }));
+          
+          console.log('[loadUserSettings] loaded monthly_income:', monthlyIncome > 0 ? monthlyIncome : 5000);
+        }
+      } catch (err: any) {
+        console.error('[loadUserSettings] exception:', err?.message || err);
+      }
+    },
+    [setAppState],
+  );
+
   // Load transactions from Supabase via raw fetch
   const loadTransactions = useCallback(
     async (userId: string) => {
@@ -280,12 +318,13 @@ export const useUserData = ({
     async (userId: string) => {
       console.log('loadUserData called for user:', userId);
       await loadCategories();
-      await loadUserBudgets(userId); // NEW: load user-specific limits
+      await loadUserBudgets(userId); // load user-specific budget limits
+      await loadUserSettings(userId); // load user-specific settings (monthly_income, etc.)
       await loadTransactions(userId);
       await loadPartnerLink(userId);
       console.log('loadUserData completed');
     },
-    [loadCategories, loadPartnerLink, loadTransactions, loadUserBudgets],
+    [loadCategories, loadPartnerLink, loadTransactions, loadUserBudgets, loadUserSettings],
   );
 
   // Send a partner link request by email
@@ -473,6 +512,48 @@ export const useUserData = ({
     [appState.user, setAppState, setDbError],
   );
 
+  // Save user monthly income to Supabase settings table
+  const saveUserIncome = useCallback(
+    async (income: number) => {
+      const userId = appState.user?.id;
+      if (!userId) return;
+
+      // Optimistic UI update
+      setAppState(prev => ({
+        ...prev,
+        user: prev.user ? { ...prev.user, monthlyIncome: income } : null,
+      }));
+
+      try {
+        const headers = await getAuthHeaders();
+        
+        // Update the settings table for this user
+        const res = await fetch(
+          `${REST_BASE}/settings?user_id=eq.${userId}`,
+          {
+            method: 'PATCH',
+            headers,
+            body: JSON.stringify({ monthly_income: income }),
+          },
+        );
+        
+        if (!res.ok) {
+          const body = await res.text();
+          const msg = `[saveUserIncome] update failed (${res.status}): ${body.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+        } else {
+          console.log(`[saveUserIncome] updated to ${income}`);
+        }
+      } catch (err: any) {
+        const msg = `[saveUserIncome] exception: ${err?.message || err}`;
+        console.error(msg);
+        setDbError(msg);
+      }
+    },
+    [appState.user, setAppState, setDbError],
+  );
+
   // Add transaction
   const handleAddTransaction = useCallback(
     async (tx: Transaction) => {
@@ -648,6 +729,7 @@ export const useUserData = ({
     handleDeleteTransaction,
     handleLinkPartner,
     handleUnlinkPartner,
-    saveBudgetLimit, // NEW: expose this to the UI
+    saveBudgetLimit,
+    saveUserIncome,
   };
 };

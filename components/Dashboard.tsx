@@ -30,6 +30,7 @@ interface DashboardProps {
   onUpdateTransaction: (t: Transaction) => void;
   onDeleteTransaction: (id: string) => void;
   saveBudgetLimit: (categoryId: string, newLimit: number) => void;
+  saveUserIncome: (income: number) => void;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({
@@ -41,6 +42,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   onUpdateTransaction,
   onDeleteTransaction,
   saveBudgetLimit,
+  saveUserIncome,
 }) => {
   const [isAddingTx, setIsAddingTx] = useState(false);
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
@@ -214,10 +216,9 @@ const Dashboard: React.FC<DashboardProps> = ({
   };
 
   const updateUserIncome = (income: number) => {
-    setState((prev) => ({
-      ...prev,
-      user: prev.user ? { ...prev.user, monthlyIncome: income } : null,
-    }));
+    // Update local state (optimistic update handled in saveUserIncome)
+    // Call the save function which will also update the state
+    saveUserIncome(income);
   };
 
   const handleConnectPartner = () => {
