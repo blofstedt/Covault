@@ -82,7 +82,7 @@ const createStubClient = () =>
         data: { session: null },
         error: { message: 'Supabase is not configured.' },
       }),
-      onAuthStateChange: () => ({
+      onAuthStateChange: (_callback?: unknown) => ({
         data: { subscription: { unsubscribe: () => {} } },
         error: { message: 'Supabase is not configured.' },
       }),

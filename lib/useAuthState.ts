@@ -44,6 +44,7 @@ export const useAuthState = ({
 }: UseAuthStateParams) => {
   const lastLoadedUserIdRef = useRef<string | null>(null);
   const loadUserDataPromiseRef = useRef<Promise<void> | null>(null);
+  const loadingUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const maybeLoadUserData = (userId: string) => {
@@ -51,8 +52,18 @@ export const useAuthState = ({
         return loadUserDataPromiseRef.current ?? Promise.resolve();
       }
 
+      if (loadingUserIdRef.current === userId && loadUserDataPromiseRef.current) {
+        return loadUserDataPromiseRef.current;
+      }
+
+      if (loadingUserIdRef.current && loadUserDataPromiseRef.current) {
+        return loadUserDataPromiseRef.current;
+      }
+
+      loadingUserIdRef.current = userId;
+      lastLoadedUserIdRef.current = userId;
       const loadPromise = loadUserData(userId).finally(() => {
-        lastLoadedUserIdRef.current = userId;
+        loadingUserIdRef.current = null;
         loadUserDataPromiseRef.current = null;
       });
       loadUserDataPromiseRef.current = loadPromise;
@@ -81,6 +92,7 @@ export const useAuthState = ({
           clearSessionTimestamp();
           lastLoadedUserIdRef.current = null;
           loadUserDataPromiseRef.current = null;
+          loadingUserIdRef.current = null;
           setAuthState('unauthenticated');
           return;
         }
@@ -113,6 +125,7 @@ export const useAuthState = ({
         clearSessionTimestamp();
         lastLoadedUserIdRef.current = null;
         loadUserDataPromiseRef.current = null;
+        loadingUserIdRef.current = null;
         setAuthState('unauthenticated');
         setAppState(prev => ({ ...prev, user: null }));
       }
