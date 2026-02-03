@@ -406,6 +406,8 @@ export const useUserData = ({
         const headers = await getAuthHeaders();
         
         // First, check if a record exists
+        // Note: The user_budgets table lacks a unique constraint on (user_id, category_id),
+        // so we must check-then-update/insert rather than using a single upsert operation.
         const checkRes = await fetch(
           `${REST_BASE}/user_budgets?select=id&user_id=eq.${userId}&category_id=eq.${categoryId}`,
           { headers },
@@ -418,7 +420,7 @@ export const useUserData = ({
           return;
         }
         
-        const existingRecords = JSON.parse(await checkRes.text());
+        const existingRecords = await checkRes.json();
         const recordExists = existingRecords && existingRecords.length > 0;
 
         let res;
