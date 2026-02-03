@@ -17,7 +17,11 @@ if (!isSupabaseConfigured) {
   );
 }
 
-const noopPromiseWithData = () => Promise.resolve({ data: null, error: null });
+const noopPromiseWithData = () =>
+  Promise.resolve({
+    data: null,
+    error: { message: 'Supabase is not configured.' },
+  });
 
 type QueryStub = {
   select: () => QueryStub;
