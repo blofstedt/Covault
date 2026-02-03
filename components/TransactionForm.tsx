@@ -17,6 +17,7 @@ interface TransactionFormProps {
   initialTransaction?: Transaction;
   isSharedAccount?: boolean;
   vendorHistory?: VendorHistoryItem[];
+  onDelete?: () => void;
 }
 
 const generateUUID = () => {
@@ -38,7 +39,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   userName,
   initialTransaction,
   isSharedAccount = false,
-  vendorHistory = []
+  vendorHistory = [],
+  onDelete
 }) => {
   const [vendor, setVendor] = useState(initialTransaction?.vendor || '');
   const [amountStr, setAmountStr] = useState(initialTransaction?.amount.toString() || '');
@@ -454,6 +456,30 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           >
             Confirm Entry
           </button>
+
+          {/* Delete button only shown when editing an existing transaction */}
+          {initialTransaction && onDelete && (
+            <button
+              type="button"
+              onClick={onDelete}
+              className="w-full py-4 bg-rose-500 hover:bg-rose-600 text-white rounded-2xl font-black text-sm shadow-lg shadow-rose-500/20 active:scale-95 transition-all uppercase tracking-widest flex items-center justify-center space-x-2 mt-2"
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2.5}
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                />
+              </svg>
+              <span>Delete Transaction</span>
+            </button>
+          )}
         </form>
       </div>
     </div>

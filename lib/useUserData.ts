@@ -18,15 +18,11 @@ const getAuthHeaders = async (): Promise<Record<string, string>> => {
   };
 };
 
-// Default budget limits by category name (fallbacks)
-const DEFAULT_LIMITS: Record<string, number> = {
-  Housing: 1500,
-  Groceries: 600,
-  Transport: 300,
-  Utilities: 150,
-  Leisure: 400,
-  Other: 100,
-};
+// Default budget limit when user has not set a budget
+const DEFAULT_BUDGET_LIMIT = 500;
+
+// Default monthly income when user has not set income
+const DEFAULT_MONTHLY_INCOME = 5000;
 
 interface UseUserDataParams {
   appState: AppState;
@@ -112,8 +108,8 @@ export const useUserData = ({
         const budgets: BudgetCategory[] = data.map((row: any) => ({
           id: row.id,
           name: row.name,
-          // start with default limits; user-specific overrides will be loaded separately
-          totalLimit: DEFAULT_LIMITS[row.name] || 500,
+          // start with default limit; user-specific overrides will be loaded separately
+          totalLimit: DEFAULT_BUDGET_LIMIT,
         }));
         console.log(
           '[loadCategories] OK:',
@@ -170,6 +166,45 @@ export const useUserData = ({
         console.log('[loadUserBudgets] loaded:', limitsByCategory);
       } catch (err: any) {
         console.error('[loadUserBudgets] exception:', err?.message || err);
+      }
+    },
+    [setAppState],
+  );
+
+  // Load user settings from Supabase (monthly_income, etc.)
+  const loadUserSettings = useCallback(
+    async (userId: string) => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(
+          `${REST_BASE}/settings?select=monthly_income&user_id=eq.${userId}`,
+          { headers },
+        );
+        
+        if (!res.ok) {
+          console.error('[loadUserSettings] failed:', res.status);
+          return;
+        }
+        
+        const rows = await res.json();
+        
+        if (rows && rows.length > 0) {
+          const monthlyIncome = Number(rows[0].monthly_income);
+          
+          // Update user state with loaded monthly income
+          // Use DEFAULT_MONTHLY_INCOME as fallback if the value from DB is 0 or not set
+          const incomeValue = monthlyIncome > 0 ? monthlyIncome : DEFAULT_MONTHLY_INCOME;
+          setAppState(prev => ({
+            ...prev,
+            user: prev.user
+              ? { ...prev.user, monthlyIncome: incomeValue }
+              : null,
+          }));
+          
+          console.log('[loadUserSettings] loaded monthly_income:', incomeValue);
+        }
+      } catch (err: any) {
+        console.error('[loadUserSettings] exception:', err?.message || err);
       }
     },
     [setAppState],
@@ -287,12 +322,13 @@ export const useUserData = ({
     async (userId: string) => {
       console.log('loadUserData called for user:', userId);
       await loadCategories();
-      await loadUserBudgets(userId); // NEW: load user-specific limits
+      await loadUserBudgets(userId); // load user-specific budget limits
+      await loadUserSettings(userId); // load user-specific settings (monthly_income, etc.)
       await loadTransactions(userId);
       await loadPartnerLink(userId);
       console.log('loadUserData completed');
     },
-    [loadCategories, loadPartnerLink, loadTransactions, loadUserBudgets],
+    [loadCategories, loadPartnerLink, loadTransactions, loadUserBudgets, loadUserSettings],
   );
 
   // Send a partner link request by email
@@ -411,37 +447,110 @@ export const useUserData = ({
 
       try {
         const headers = await getAuthHeaders();
-        (headers as any)['Prefer'] = 'resolution=merge-duplicates,return=representation';
-
-        const payload = {
-          user_id: userId,
-          category_id: categoryId,
-          total_limit: newLimit,
-        };
-
-        // Use upsert by specifying on_conflict parameter
-        const res = await fetch(
-          `${REST_BASE}/user_budgets?on_conflict=user_id,category_id`,
-          {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(payload),
-          },
+        
+        // First, check if a record exists
+        // Note: The user_budgets table lacks a unique constraint on (user_id, category_id),
+        // so we must check-then-update/insert rather than using a single upsert operation.
+        const checkRes = await fetch(
+          `${REST_BASE}/user_budgets?select=id&user_id=eq.${userId}&category_id=eq.${categoryId}`,
+          { headers },
         );
+        
+        if (!checkRes.ok) {
+          const msg = `[saveBudgetLimit] check failed (${checkRes.status})`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
+        
+        const existingRecords = await checkRes.json();
+        const recordExists = existingRecords && existingRecords.length > 0;
+
+        let res;
+        if (recordExists) {
+          // Update existing record
+          const recordId = existingRecords[0].id;
+          res = await fetch(
+            `${REST_BASE}/user_budgets?id=eq.${recordId}`,
+            {
+              method: 'PATCH',
+              headers,
+              body: JSON.stringify({ total_limit: newLimit }),
+            },
+          );
+        } else {
+          // Insert new record
+          (headers as any)['Prefer'] = 'return=representation';
+          res = await fetch(
+            `${REST_BASE}/user_budgets`,
+            {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({
+                user_id: userId,
+                category_id: categoryId,
+                total_limit: newLimit,
+              }),
+            },
+          );
+        }
+        
         const body = await res.text();
 
         if (!res.ok) {
-          const msg = `[saveBudgetLimit] failed (${res.status}): ${body.slice(
+          const msg = `[saveBudgetLimit] ${recordExists ? 'update' : 'insert'} failed (${res.status}): ${body.slice(
             0,
             200,
           )}`;
           console.error(msg);
           setDbError(msg);
         } else {
-          console.log('[saveBudgetLimit] OK');
+          console.log(`[saveBudgetLimit] ${recordExists ? 'updated' : 'inserted'} OK`);
         }
       } catch (err: any) {
         const msg = `[saveBudgetLimit] exception: ${err?.message || err}`;
+        console.error(msg);
+        setDbError(msg);
+      }
+    },
+    [appState.user, setAppState, setDbError],
+  );
+
+  // Save user monthly income to Supabase settings table
+  const saveUserIncome = useCallback(
+    async (income: number) => {
+      const userId = appState.user?.id;
+      if (!userId) return;
+
+      // Optimistic UI update
+      setAppState(prev => ({
+        ...prev,
+        user: prev.user ? { ...prev.user, monthlyIncome: income } : null,
+      }));
+
+      try {
+        const headers = await getAuthHeaders();
+        
+        // Update the settings table for this user
+        const res = await fetch(
+          `${REST_BASE}/settings?user_id=eq.${userId}`,
+          {
+            method: 'PATCH',
+            headers,
+            body: JSON.stringify({ monthly_income: income }),
+          },
+        );
+        
+        if (!res.ok) {
+          const body = await res.text();
+          const msg = `[saveUserIncome] update failed (${res.status}): ${body.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+        } else {
+          console.log(`[saveUserIncome] updated to ${income}`);
+        }
+      } catch (err: any) {
+        const msg = `[saveUserIncome] exception: ${err?.message || err}`;
         console.error(msg);
         setDbError(msg);
       }
@@ -624,6 +733,7 @@ export const useUserData = ({
     handleDeleteTransaction,
     handleLinkPartner,
     handleUnlinkPartner,
-    saveBudgetLimit, // NEW: expose this to the UI
+    saveBudgetLimit,
+    saveUserIncome,
   };
 };

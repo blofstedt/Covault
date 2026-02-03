@@ -15,11 +15,11 @@ const AppNotificationsSection: React.FC<AppNotificationsSectionProps> = ({
       <div className="flex items-center justify-between">
         {/* LEFT TEXT */}
         <div className="flex flex-col">
-          <span className="font-black text-xs text-slate-600 dark:text-slate-200 uppercase tracking-tight">
+          <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
             App Notifications
           </span>
 
-          <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 leading-tight">
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 leading-relaxed">
             Notifications for budget upper limits.
           </p>
         </div>

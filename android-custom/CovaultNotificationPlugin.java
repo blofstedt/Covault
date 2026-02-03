@@ -81,18 +81,10 @@ public class CovaultNotificationPlugin extends Plugin {
 
     @PluginMethod
     public void requestAccess(PluginCall call) {
-        // On Android 13+ (Tiramisu), sideloaded apps have "restricted settings" that
-        // block notification listener access. The user must first go to the app's info
-        // page and tap ⋮ → "Allow restricted settings" before they can grant the
-        // notification listener permission. So on 13+ we open the app info page directly.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
-            intent.setData(Uri.parse("package:" + getContext().getPackageName()));
-            getActivity().startActivity(intent);
-        } else {
-            Intent intent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
-            getActivity().startActivity(intent);
-        }
+        // Always open the notification listener settings page
+        // This allows the user to enable "Notification read, reply & control" for Covault
+        Intent intent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
+        getActivity().startActivity(intent);
         call.resolve();
     }
 

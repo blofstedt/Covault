@@ -26,10 +26,10 @@ const VaultSharingSection: React.FC<VaultSharingSectionProps> = ({
       className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60 space-y-4"
     >
       <div className="flex flex-col">
-        <span className="font-black text-base text-slate-500 dark:text-slate-200 uppercase tracking-tight">
+        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
           Vault Sharing
         </span>
-        <p className="text-[11px] text-slate-500 font-medium mt-1">
+        <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium mt-1 leading-relaxed">
           Connect with a partner to view and manage your combined budget.
         </p>
       </div>
