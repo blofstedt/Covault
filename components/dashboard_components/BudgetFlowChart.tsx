@@ -247,7 +247,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
                         </div>
                       </div>
                       <div>
-                        <h4 className="font-black text-sm text-slate-500 dark:text-slate-100">
+                        <h4 className="font-black text-sm text-slate-700 dark:text-slate-100">
                           {budget.name}
                         </h4>
                         <p className="text-xs font-bold text-slate-400 dark:text-slate-500">
@@ -271,7 +271,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
                           <div className="text-xs font-bold text-slate-400 dark:text-slate-500">
                             {monthData.label}
                           </div>
-                          <div className="text-lg font-black text-slate-500 dark:text-slate-100">
+                          <div className="text-lg font-black text-slate-700 dark:text-slate-100">
                             ${spending.toFixed(0)}
                           </div>
                           <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500">
