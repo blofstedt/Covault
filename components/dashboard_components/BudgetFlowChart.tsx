@@ -27,6 +27,15 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
   // Filter state: 'current' for current month, 'last6' for last 6 months
   const [filterMode, setFilterMode] = useState<FilterMode>('current');
 
+  // Current date - memoized to avoid recreating on every render
+  const { currentYear, currentMonth } = useMemo(() => {
+    const now = new Date();
+    return {
+      currentYear: now.getFullYear(),
+      currentMonth: now.getMonth(),
+    };
+  }, []);
+
   // Group transactions by month
   const monthlyData = useMemo(() => {
     const dataMap = new Map<string, MonthData>();
@@ -75,14 +84,11 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
     // For 'current' mode, only show current month
     // For 'last6' mode, show last 6 months
     if (filterMode === 'current') {
-      const now = new Date();
-      const currentYear = now.getFullYear();
-      const currentMonth = now.getMonth();
       return sorted.filter(m => m.year === currentYear && m.month === currentMonth);
     } else {
       return sorted.slice(-6);
     }
-  }, [transactions, filterMode]);
+  }, [transactions, filterMode, currentYear, currentMonth]);
 
   // If no data, show empty state
   if (monthlyData.length === 0) {
