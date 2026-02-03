@@ -78,10 +78,14 @@ const createQueryStub = (): QueryStub => {
 const createStubClient = () =>
   ({
     auth: {
-      getSession: async () => ({ data: { session: null }, error: null }),
+      getSession: async () => {
+        console.warn('[supabase] Stub client in use: getSession');
+        return { data: { session: null }, error: null };
+      },
       onAuthStateChange: (
         callback?: (event: string, session: null) => void,
       ) => {
+        console.warn('[supabase] Stub client in use: onAuthStateChange');
         if (callback) {
           callback('SIGNED_OUT', null);
         }
@@ -89,7 +93,10 @@ const createStubClient = () =>
       },
       signOut: noopAuthPromise,
     },
-    from: () => createQueryStub(),
+    from: () => {
+      console.warn('[supabase] Stub client in use: from');
+      return createQueryStub();
+    },
   }) as unknown as ReturnType<typeof createClient>;
 
 // Create and export the Supabase client
