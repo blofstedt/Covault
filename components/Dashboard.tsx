@@ -154,7 +154,9 @@ const Dashboard: React.FC<DashboardProps> = ({
           tx.splits?.some((s) => s.budget_id === b.id),
       );
 
+      // Only count actual spent amounts, not projected transactions
       const spent = bTxs.reduce((acc, tx) => {
+        if (tx.is_projected) return acc;
         if (tx.splits) {
           const s = tx.splits.find((sp) => sp.budget_id === b.id);
           return acc + (s?.amount || 0);
