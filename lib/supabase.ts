@@ -20,9 +20,27 @@ if (!isSupabaseConfigured) {
 const noopPromise = () => Promise.resolve({ data: {}, error: null });
 const noopPromiseWithData = () => Promise.resolve({ data: null, error: null });
 
-const createQueryStub = () => {
-  const chain: any = {};
+type QueryStub = {
+  select: () => QueryStub;
+  eq: () => QueryStub;
+  or: () => QueryStub;
+  gte: () => QueryStub;
+  ilike: () => QueryStub;
+  order: () => QueryStub;
+  limit: () => QueryStub;
+  insert: () => QueryStub;
+  update: () => QueryStub;
+  delete: () => QueryStub;
+  maybeSingle: () => Promise<{ data: null; error: null }>;
+  single: () => Promise<{ data: null; error: null }>;
+  then: PromiseLike<{ data: null; error: null }>['then'];
+  catch: PromiseLike<{ data: null; error: null }>['catch'];
+};
+
+const createQueryStub = (): QueryStub => {
+  const chain = {} as QueryStub;
   const returnChain = () => chain;
+  const resolved = Promise.resolve({ data: null, error: null });
 
   chain.select = returnChain;
   chain.eq = returnChain;
@@ -36,10 +54,8 @@ const createQueryStub = () => {
   chain.delete = returnChain;
   chain.maybeSingle = noopPromiseWithData;
   chain.single = noopPromiseWithData;
-  chain.then = (resolve: (value: unknown) => unknown) =>
-    Promise.resolve({ data: null, error: null }).then(resolve);
-  chain.catch = (reject: (reason: unknown) => unknown) =>
-    Promise.resolve({ data: null, error: null }).catch(reject);
+  chain.then = (...args) => resolved.then(...args);
+  chain.catch = (...args) => resolved.catch(...args);
 
   return chain;
 };
