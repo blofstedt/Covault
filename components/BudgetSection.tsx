@@ -198,7 +198,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                       Discretionary Shield Active
                     </p>
                     <p className="text-[9px] text-amber-600 dark:text-amber-500 mt-1 leading-relaxed">
-                      ${external.toFixed(0)} from other budgets' overspending is being covered by this vault.
+                      ${external.toFixed(0)} from other budgets' overspending is being covered by this category.
                     </p>
                   </div>
                 </div>
