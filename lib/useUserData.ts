@@ -325,18 +325,148 @@ export const useUserData = ({
     [loadTransactions, setAppState],
   );
 
-  // Load all data from Supabase
+  // Load all data from Supabase - BATCHED to prevent multiple re-renders
   const loadUserData = useCallback(
     async (userId: string) => {
       console.log('loadUserData called for user:', userId);
-      await loadCategories();
-      await loadUserBudgets(userId); // load user-specific budget limits
-      await loadUserSettings(userId); // load user-specific settings (monthly_income, etc.)
-      await loadTransactions(userId);
-      await loadPartnerLink(userId);
-      console.log('loadUserData completed');
+
+      // Fetch all data in parallel
+      const headers = await getAuthHeaders();
+
+      // Prepare all fetch requests
+      const [categoriesRes, userBudgetsRes, userSettingsRes, transactionsRes, partnerLinkRes] = await Promise.all([
+        // Categories
+        fetch(`${REST_BASE}/categories?select=*&order=display_order`, { headers }),
+        // User budgets
+        fetch(`${REST_BASE}/user_budgets?select=*&user_id=eq.${userId}`, { headers }),
+        // User settings
+        fetch(`${REST_BASE}/settings?select=monthly_income&user_id=eq.${userId}`, { headers }),
+        // Transactions
+        fetch(`${REST_BASE}/transactions?select=*&user_id=eq.${userId}&order=date.desc`, { headers }),
+        // Partner link
+        fetch(
+          `${REST_BASE}/linked_partners?select=*,partner:settings!linked_partners_partner_id_fkey(name,email),requester:settings!linked_partners_user_id_fkey(name,email)&or=(user_id.eq.${userId},partner_id.eq.${userId})&status=eq.accepted&limit=1`,
+          { headers }
+        ).catch(() => null), // Don't fail if partner link fetch fails
+      ]);
+
+      // Process categories
+      let budgets: BudgetCategory[] = SYSTEM_CATEGORIES;
+      try {
+        if (categoriesRes.ok) {
+          const categoriesData = await categoriesRes.json();
+          if (categoriesData && categoriesData.length > 0) {
+            budgets = categoriesData.map((row: any) => ({
+              id: row.id,
+              name: row.name,
+              totalLimit: DEFAULT_BUDGET_LIMIT,
+            }));
+          }
+        }
+      } catch (err) {
+        console.error('[loadUserData] categories parse error:', err);
+      }
+      setCategoriesLoaded(true);
+
+      // Process user budgets (merge with categories)
+      try {
+        if (userBudgetsRes.ok) {
+          const userBudgetsData = await userBudgetsRes.json();
+          const limitsByCategory: Record<string, number> = {};
+          for (const row of userBudgetsData) {
+            limitsByCategory[row.category_id] = Number(row.total_limit);
+          }
+          budgets = budgets.map(b => ({
+            ...b,
+            totalLimit: limitsByCategory[b.id] ?? b.totalLimit ?? DEFAULT_BUDGET_LIMIT,
+          }));
+        }
+      } catch (err) {
+        console.error('[loadUserData] user budgets parse error:', err);
+      }
+
+      // Process user settings
+      let monthlyIncome = DEFAULT_MONTHLY_INCOME;
+      try {
+        if (userSettingsRes.ok) {
+          const settingsData = await userSettingsRes.json();
+          if (settingsData && settingsData.length > 0) {
+            monthlyIncome = Number(settingsData[0].monthly_income);
+          }
+        }
+      } catch (err) {
+        console.error('[loadUserData] settings parse error:', err);
+      }
+
+      // Process transactions
+      let transactions: Transaction[] = [];
+      try {
+        if (transactionsRes.ok) {
+          const transactionsData = await transactionsRes.json();
+          if (transactionsData && transactionsData.length > 0) {
+            transactions = transactionsData.map(fromSupabaseTransaction);
+          }
+        }
+      } catch (err) {
+        console.error('[loadUserData] transactions parse error:', err);
+      }
+
+      // Process partner link
+      let partnerInfo: { budgetingSolo: boolean; partnerId?: string; partnerName?: string; partnerEmail?: string } = {
+        budgetingSolo: true,
+      };
+      let partnerTransactions: Transaction[] = [];
+
+      try {
+        if (partnerLinkRes && partnerLinkRes.ok) {
+          const partnerData = await partnerLinkRes.json();
+          if (partnerData && partnerData.length > 0) {
+            const link = partnerData[0];
+            const isRequester = link.user_id === userId;
+            const partner = isRequester ? link.partner : link.requester;
+            const partnerId = isRequester ? link.partner_id : link.user_id;
+
+            partnerInfo = {
+              budgetingSolo: false,
+              partnerId,
+              partnerName: partner?.name || undefined,
+              partnerEmail: partner?.email || undefined,
+            };
+
+            // Load partner transactions
+            const partnerTxRes = await fetch(
+              `${REST_BASE}/transactions?select=*&user_id=eq.${partnerId}&order=date.desc`,
+              { headers }
+            );
+            if (partnerTxRes.ok) {
+              const partnerTxData = await partnerTxRes.json();
+              if (partnerTxData && partnerTxData.length > 0) {
+                partnerTransactions = partnerTxData.map(fromSupabaseTransaction);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[loadUserData] partner link parse error:', err);
+      }
+
+      // SINGLE BATCHED STATE UPDATE - prevents multiple re-renders
+      setAppState(prev => ({
+        ...prev,
+        budgets,
+        transactions: [...transactions, ...partnerTransactions],
+        user: prev.user
+          ? {
+              ...prev.user,
+              monthlyIncome,
+              ...partnerInfo,
+            }
+          : null,
+      }));
+
+      console.log('loadUserData completed (batched)');
     },
-    [loadCategories, loadPartnerLink, loadTransactions, loadUserBudgets, loadUserSettings],
+    [fromSupabaseTransaction, setAppState],
   );
 
   // Send a partner link request by email

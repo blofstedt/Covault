@@ -1,5 +1,5 @@
 // lib/useAuthState.ts
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { supabase } from './supabase';
 import type { AppState, User } from '../types';
 
@@ -42,6 +42,10 @@ export const useAuthState = ({
   setAuthState,
   loadUserData,
 }: UseAuthStateParams) => {
+  // Track loaded user to prevent duplicate loads
+  const loadedUserIdRef = useRef<string | null>(null);
+  const isLoadingRef = useRef(false);
+
   useEffect(() => {
     // Helper: map Supabase user to your internal User type
     const mapUser = (sessionUser: any): User => ({
@@ -55,6 +59,21 @@ export const useAuthState = ({
       budgetingSolo: true,
       monthlyIncome: 0, // Will be loaded from DB by loadUserData()
     });
+
+    // Safe load function that prevents duplicate loads
+    const safeLoadUserData = async (userId: string) => {
+      // Skip if already loaded for this user or currently loading
+      if (loadedUserIdRef.current === userId || isLoadingRef.current) {
+        return;
+      }
+      isLoadingRef.current = true;
+      loadedUserIdRef.current = userId;
+      try {
+        await loadUserData(userId);
+      } finally {
+        isLoadingRef.current = false;
+      }
+    };
 
     // Initial session check
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -70,7 +89,7 @@ export const useAuthState = ({
         const mappedUser = mapUser(session.user);
         setAppState(prev => ({ ...prev, user: mappedUser }));
         setAuthState('authenticated');
-        loadUserData(session.user.id);
+        safeLoadUserData(session.user.id);
       } else {
         setAuthState('unauthenticated');
       }
@@ -83,6 +102,8 @@ export const useAuthState = ({
       if (session?.user) {
         if (event === 'SIGNED_IN') {
           markSessionStart();
+          // Reset loaded user on sign-in to force reload
+          loadedUserIdRef.current = null;
         }
 
         const mappedUser = mapUser(session.user);
@@ -90,9 +111,10 @@ export const useAuthState = ({
         setAuthState(prev =>
           prev === 'unauthenticated' ? 'onboarding' : 'authenticated',
         );
-        loadUserData(session.user.id);
+        safeLoadUserData(session.user.id);
       } else {
         clearSessionTimestamp();
+        loadedUserIdRef.current = null;
         setAuthState('unauthenticated');
         setAppState(prev => ({ ...prev, user: null }));
       }
