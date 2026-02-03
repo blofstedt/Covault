@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { BudgetCategory, Transaction } from '../../types';
+import { getBudgetIcon } from './getBudgetIcon';
 
 interface BudgetFlowChartProps {
   budgets: BudgetCategory[];
@@ -97,19 +98,22 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
   // Calculate the max total for scaling
   const maxTotal = Math.max(...monthlyData.map((m) => m.total), 1);
 
-  // Get budget colors with green-on-green shades for consistent UI
-  const getBudgetColor = (budgetName: string, index: number) => {
-    // Green shade palette from dark to light
-    const greenShades = [
-      'rgb(6, 78, 59)',     // emerald-900
-      'rgb(4, 120, 87)',    // emerald-700
-      'rgb(16, 185, 129)',  // emerald-500
-      'rgb(52, 211, 153)',  // emerald-400
-      'rgb(110, 231, 183)', // emerald-300
-      'rgb(167, 243, 208)', // emerald-200
-    ];
+  // Get budget colors with consistent mapping
+  const getBudgetColor = (budgetName: string) => {
+    const lower = budgetName.toLowerCase();
+    const colors: Record<string, string> = {
+      housing: 'rgb(59, 130, 246)', // blue
+      groceries: 'rgb(16, 185, 129)', // emerald
+      transport: 'rgb(245, 158, 11)', // amber
+      utilities: 'rgb(139, 92, 246)', // purple
+      leisure: 'rgb(236, 72, 153)', // pink
+      other: 'rgb(107, 114, 128)', // gray
+    };
 
-    return greenShades[index % greenShades.length];
+    for (const [key, color] of Object.entries(colors)) {
+      if (lower.includes(key)) return color;
+    }
+    return 'rgb(107, 114, 128)'; // default gray
   };
 
   return (
@@ -127,7 +131,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
               onClick={() => setFilterMode('current')}
               className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
                 filterMode === 'current'
-                  ? 'bg-slate-600 dark:bg-slate-500 text-white'
+                  ? 'bg-blue-500 text-white'
                   : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
               }`}
             >
@@ -137,7 +141,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
               onClick={() => setFilterMode('last6')}
               className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
                 filterMode === 'last6'
-                  ? 'bg-slate-600 dark:bg-slate-500 text-white'
+                  ? 'bg-blue-500 text-white'
                   : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
               }`}
             >
@@ -146,7 +150,20 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
           </div>
         </div>
 
-        {monthlyData.length > 0 && (
+        {/* Empty state for Last 6 Months mode when only current month exists */}
+        {filterMode === 'last6' && monthlyData.length <= 1 ? (
+          <div className="text-center py-8">
+            <p className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-2">
+              No additional months found
+            </p>
+            <p className="text-xs text-slate-400 dark:text-slate-500">
+              Please continue using the app to gather historical data.
+            </p>
+          </div>
+        ) : monthlyData.length === 0 ? (
+          // No data at all (even for current month)
+          null
+        ) : (
           <>
             {/* Simple Bar Chart */}
             <div className="space-y-4">
@@ -167,19 +184,19 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
                   
                   {/* Bar */}
                   <div className="w-full h-8 bg-slate-100 dark:bg-slate-800 rounded-xl overflow-hidden flex">
-                    {budgets.map((budget, index) => {
+                    {budgets.map((budget) => {
                       const spending = monthData.budgetSpending.get(budget.id) || 0;
                       if (spending === 0) return null;
-
+                      
                       const widthPercent = (spending / monthData.total) * 100;
-
+                      
                       return (
                         <div
                           key={budget.id}
                           className="h-full flex items-center justify-center relative group"
                           style={{
                             width: `${widthPercent}%`,
-                            backgroundColor: getBudgetColor(budget.name, index),
+                            backgroundColor: getBudgetColor(budget.name),
                           }}
                           aria-label={`${budget.name}: ${spending.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
                         >
@@ -199,11 +216,11 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
             {/* Legend */}
             <div className="mt-6 pt-4 border-t-2 border-slate-100 dark:border-slate-800">
               <div className="flex flex-wrap gap-3 justify-center">
-                {budgets.map((budget, index) => (
+                {budgets.map((budget) => (
                   <div key={budget.id} className="flex items-center gap-2">
                     <div
                       className="w-3 h-3 rounded-full"
-                      style={{ backgroundColor: getBudgetColor(budget.name, index) }}
+                      style={{ backgroundColor: getBudgetColor(budget.name) }}
                     />
                     <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
                       {budget.name}
