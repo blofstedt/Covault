@@ -19,7 +19,7 @@ const getAuthHeaders = async (): Promise<Record<string, string>> => {
 };
 
 // Default budget limit when user has not set a budget
-const DEFAULT_BUDGET_LIMIT = 500;
+const DEFAULT_BUDGET_LIMIT = 0;
 
 // Default monthly income when user has not set income
 const DEFAULT_MONTHLY_INCOME = 5000;
