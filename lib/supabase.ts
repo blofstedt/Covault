@@ -18,7 +18,7 @@ if (!isSupabaseConfigured) {
 }
 
 type StubResponse = {
-  data: null;
+  data: null | unknown;
   error: { message: string };
 };
 

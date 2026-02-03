@@ -1,5 +1,5 @@
 // lib/useAuthState.ts
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { supabase } from './supabase';
 import type { AppState, User } from '../types';
 
@@ -47,8 +47,8 @@ export const useAuthState = ({
   const loadingUserIdRef = useRef<string | null>(null);
   const pendingUserIdRef = useRef<string | null>(null);
 
-  useEffect(() => {
-    const maybeLoadUserData = (userId: string) => {
+  const maybeLoadUserData = useCallback(
+    (userId: string) => {
       if (lastLoadedUserIdRef.current === userId) {
         return loadUserDataPromiseRef.current ?? Promise.resolve();
       }
@@ -82,7 +82,11 @@ export const useAuthState = ({
         });
       loadUserDataPromiseRef.current = loadPromise;
       return loadPromise;
-    };
+    },
+    [loadUserData],
+  );
+
+  useEffect(() => {
 
     // Helper: map Supabase user to your internal User type
     const mapUser = (sessionUser: any): User => ({
@@ -148,5 +152,5 @@ export const useAuthState = ({
     });
 
     return () => subscription.unsubscribe();
-  }, [setAppState, setAuthState, loadUserData]);
+  }, [setAppState, setAuthState, maybeLoadUserData]);
 };
