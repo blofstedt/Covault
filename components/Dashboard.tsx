@@ -4,8 +4,8 @@ import BudgetSection from './BudgetSection';
 import TransactionForm from './TransactionForm';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import Tutorial from './Tutorial';
-import NotificationSettings from './NotificationSettings';
 import TransactionActionModal from './TransactionActionModal';
+import TransactionParsing from './TransactionParsing';
 
 // New dashboard components
 import DashboardHeader from './dashboard_components/DashboardHeader';
@@ -61,12 +61,12 @@ const Dashboard: React.FC<DashboardProps> = ({
   // Lock body scroll when overlays are open
   useEffect(() => {
     const shouldLock =
-      showSettings || showParsing || isAddingTx || !!selectedTx || showTutorial;
+      showSettings || isAddingTx || !!selectedTx || showTutorial;
     document.body.style.overflow = shouldLock ? 'hidden' : '';
     return () => {
       document.body.style.overflow = '';
     };
-  }, [showSettings, showParsing, isAddingTx, selectedTx, showTutorial]);
+  }, [showSettings, isAddingTx, selectedTx, showTutorial]);
 
   const isSharedAccount = !state.user?.budgetingSolo;
 
@@ -297,6 +297,17 @@ const Dashboard: React.FC<DashboardProps> = ({
     (state.settings as any).app_notifications_enabled,
   ]);
 
+  // If showing parsing view, render that instead of the main dashboard
+  if (showParsing) {
+    return (
+      <TransactionParsing
+        enabled={parsingEnabled}
+        onToggle={setParsingEnabled}
+        onBack={() => setShowParsing(false)}
+      />
+    );
+  }
+
   return (
     <div className="flex-1 flex flex-col h-screen relative overflow-hidden transition-colors duration-700 bg-slate-50 dark:bg-slate-950">
       {/* Background glow (only when not in focus mode) */}
@@ -371,6 +382,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           showTutorial={showTutorial}
           isLinkingPartner={isLinkingPartner}
           partnerLinkEmail={partnerLinkEmail}
+          budgets={state.budgets}
           onChangePartnerLinkEmail={setPartnerLinkEmail}
           onClose={() => {
             setShowSettings(false);
@@ -383,6 +395,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           onDisconnectPartner={handleDisconnectPartner}
           onToggleLinkingPartner={setIsLinkingPartner}
           onSignOut={onSignOut}
+          onSaveBudgetLimit={saveBudgetLimit}
         />
       )}
 
@@ -413,47 +426,6 @@ const Dashboard: React.FC<DashboardProps> = ({
             setSelectedTx(null);
           }}
         />
-      )}
-
-      {showParsing && (
-        <div className="fixed inset-0 z-[110] bg-slate-900/40 backdrop-blur-lg flex items-center justify-center p-6 animate-in fade-in duration-300">
-          <div className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-[3rem] p-10 space-y-6 shadow-2xl animate-in zoom-in-95 duration-500 max-h-[85vh] overflow-y-auto no-scrollbar border border-slate-100 dark:border-slate-800/60">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">
-                Transaction Parsing
-              </h2>
-              <button
-                onClick={() => setShowParsing(false)}
-                className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-full transition-transform active:scale-90"
-              >
-                <svg
-                  className="w-6 h-6 text-slate-500"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={3}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-
-            {/* NotificationSettings Component */}
-            <NotificationSettings
-              enabled={parsingEnabled}
-              onToggle={setParsingEnabled}
-            />
-
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center leading-tight">
-              Configure transaction parsing from banking app notifications. Auto-detected transactions will appear here in a future update.
-            </p>
-          </div>
-        </div>
       )}
 
       {showTutorial && (
