@@ -21,6 +21,9 @@ const getAuthHeaders = async (): Promise<Record<string, string>> => {
 // Default budget limit when user has not set a budget
 const DEFAULT_BUDGET_LIMIT = 500;
 
+// Default monthly income when user has not set income
+const DEFAULT_MONTHLY_INCOME = 5000;
+
 interface UseUserDataParams {
   appState: AppState;
   setAppState: React.Dispatch<React.SetStateAction<AppState>>;
@@ -189,15 +192,16 @@ export const useUserData = ({
           const monthlyIncome = Number(rows[0].monthly_income);
           
           // Update user state with loaded monthly income
-          // Use 5000 as default if the value from DB is 0 or not set
+          // Use DEFAULT_MONTHLY_INCOME as fallback if the value from DB is 0 or not set
+          const incomeValue = monthlyIncome > 0 ? monthlyIncome : DEFAULT_MONTHLY_INCOME;
           setAppState(prev => ({
             ...prev,
             user: prev.user
-              ? { ...prev.user, monthlyIncome: monthlyIncome > 0 ? monthlyIncome : 5000 }
+              ? { ...prev.user, monthlyIncome: incomeValue }
               : null,
           }));
           
-          console.log('[loadUserSettings] loaded monthly_income:', monthlyIncome > 0 ? monthlyIncome : 5000);
+          console.log('[loadUserSettings] loaded monthly_income:', incomeValue);
         }
       } catch (err: any) {
         console.error('[loadUserSettings] exception:', err?.message || err);
