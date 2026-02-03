@@ -87,7 +87,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
         {external > 0 && (
           <div
             style={{ width: `${externalWidth}%` }}
-            className="h-full bg-rose-400/30 dark:bg-rose-500/40 transition-all duration-300"
+            className="h-full bg-amber-400/30 dark:bg-amber-500/40 transition-all duration-300"
           />
         )}
 
@@ -96,11 +96,6 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           style={{ width: `${projectedWidth}%` }}
           className="h-full bg-emerald-500/10 dark:bg-emerald-800/20 transition-all duration-300"
         />
-
-        {/* Danger */}
-        {isDanger && (
-          <div className="flex-1 h-full bg-rose-500/10 dark:bg-rose-500/20" />
-        )}
       </div>
 
       {/* HEADER / SUMMARY */}
@@ -129,11 +124,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
             {!isExpanded && (
               <span
-                className={`text-[10px] font-black uppercase tracking-[0.15em] mt-1.5 transition-colors duration-300 ${
-                  isDanger
-                    ? 'text-rose-500'
-                    : 'text-slate-400 dark:text-slate-500'
-                }`}
+                className="text-[10px] font-black uppercase tracking-[0.15em] mt-1.5 transition-colors duration-300 text-slate-400 dark:text-slate-500"
               >
                 {isDanger
                   ? `Over: $${Math.max(0, total - budget.totalLimit).toFixed(0)}`
@@ -148,9 +139,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           <div className="flex items-baseline space-x-1">
             {isExpanded && (
               <span
-                className={`text-sm font-black mr-2 tracking-tight transition-colors duration-300 ${
-                  isDanger ? 'text-rose-500' : 'text-slate-500'
-                }`}
+                className="text-sm font-black mr-2 tracking-tight transition-colors duration-300 text-slate-500"
               >
                 ${spent.toFixed(0)}
                 <span className="mx-1.5 opacity-30 font-medium text-slate-400">
@@ -166,11 +155,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
           {/* TEXT BELOW LIMIT ("My Target" / "Our Target") */}
           <span
-            className={`text-[10px] font-bold uppercase tracking-widest mt-0.5 transition-colors duration-300 ${
-              isDanger
-                ? 'text-rose-500'
-                : 'text-slate-400 dark:text-slate-500' // same style family as "$ left"
-            }`}
+            className="text-[10px] font-bold uppercase tracking-widest mt-0.5 transition-colors duration-300 text-slate-400 dark:text-slate-500"
           >
             {isExpanded
               ? 'Vault Capacity'

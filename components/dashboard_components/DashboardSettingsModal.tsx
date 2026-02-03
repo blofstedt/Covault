@@ -8,6 +8,8 @@ import SupportFeedbackSection from './settings_modal_components/SupportFeedbackS
 import SignOutSection from './settings_modal_components/SignOutSection';
 import NotificationSettingsSection from './settings_modal_components/NotificationSettingsSection';
 import AppNotificationsSection from './settings_modal_components/AppNotificationsSection';
+import BudgetLimitsSection from './settings_modal_components/BudgetLimitsSection';
+import { BudgetCategory } from '../../types';
 
 export interface DashboardSettings {
   theme: string;
@@ -32,6 +34,7 @@ export interface DashboardSettingsModalProps {
   showTutorial: boolean;
   isLinkingPartner: boolean;
   partnerLinkEmail: string;
+  budgets: BudgetCategory[];
   onChangePartnerLinkEmail: (value: string) => void;
   onClose: () => void;
   onRunTutorial: () => void;
@@ -41,6 +44,7 @@ export interface DashboardSettingsModalProps {
   onDisconnectPartner: () => void;
   onToggleLinkingPartner: (value: boolean) => void;
   onSignOut: () => void;
+  onSaveBudgetLimit: (categoryId: string, newLimit: number) => void;
 }
 
 const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
@@ -50,6 +54,7 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
   showTutorial,
   isLinkingPartner,
   partnerLinkEmail,
+  budgets,
   onChangePartnerLinkEmail,
   onClose,
   onRunTutorial,
@@ -59,6 +64,7 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
   onDisconnectPartner,
   onToggleLinkingPartner,
   onSignOut,
+  onSaveBudgetLimit,
 }) => {
   const settingsScrollRef = useRef<HTMLDivElement>(null);
 
@@ -110,6 +116,12 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
             isSharedAccount={isSharedAccount}
             user={user}
             onUpdateUserIncome={onUpdateUserIncome}
+          />
+
+          {/* Budget Limits */}
+          <BudgetLimitsSection
+            budgets={budgets}
+            onSaveBudgetLimit={onSaveBudgetLimit}
           />
 
           {/* Theme toggle */}
