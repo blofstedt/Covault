@@ -77,6 +77,8 @@ export const useAuthState = ({
                 `[useAuthState] Error loading pending user data for user ${pendingUserId}. This may indicate a network issue or invalid user ID:`,
                 error,
               );
+              setAuthState('unauthenticated');
+              setAppState(prev => ({ ...prev, user: null }));
             });
           }
         });

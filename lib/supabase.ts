@@ -74,6 +74,8 @@ const createQueryStub = (): QueryStub => {
   return chain;
 };
 
+type AuthEvent = 'SIGNED_IN' | 'SIGNED_OUT' | 'TOKEN_REFRESHED' | 'USER_UPDATED';
+
 const createStubClient = () =>
   ({
     auth: {
@@ -82,7 +84,7 @@ const createStubClient = () =>
         return { data: { session: null }, error: null };
       },
       onAuthStateChange: (
-        callback?: (event: string, session: unknown | null) => void,
+        callback?: (event: AuthEvent, session: unknown | null) => void,
       ) => {
         console.warn('[supabase] Stub client in use: onAuthStateChange');
         if (callback) {
