@@ -78,14 +78,15 @@ const createQueryStub = (): QueryStub => {
 const createStubClient = () =>
   ({
     auth: {
-      getSession: async () => ({
-        data: { session: null },
-        error: { message: 'Supabase is not configured.' },
-      }),
-      onAuthStateChange: (_callback?: unknown) => ({
-        data: { subscription: { unsubscribe: () => {} } },
-        error: { message: 'Supabase is not configured.' },
-      }),
+      getSession: async () => ({ data: { session: null }, error: null }),
+      onAuthStateChange: (
+        callback?: (event: string, session: null) => void,
+      ) => {
+        if (callback) {
+          callback('SIGNED_OUT', null);
+        }
+        return { data: { subscription: { unsubscribe: () => {} } } };
+      },
       signOut: noopAuthPromise,
     },
     from: () => createQueryStub(),

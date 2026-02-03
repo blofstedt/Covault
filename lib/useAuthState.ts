@@ -44,6 +44,8 @@ export const useAuthState = ({
 }: UseAuthStateParams) => {
   const lastLoadedUserIdRef = useRef<string | null>(null);
   const loadUserDataPromiseRef = useRef<Promise<void> | null>(null);
+  const loadingUserIdRef = useRef<string | null>(null);
+  const pendingUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const maybeLoadUserData = (userId: string) => {
@@ -52,15 +54,26 @@ export const useAuthState = ({
       }
 
       if (loadUserDataPromiseRef.current) {
+        if (loadingUserIdRef.current === userId) {
+          return loadUserDataPromiseRef.current;
+        }
+        pendingUserIdRef.current = userId;
         return loadUserDataPromiseRef.current;
       }
 
+      loadingUserIdRef.current = userId;
       const loadPromise = loadUserData(userId)
         .then(() => {
           lastLoadedUserIdRef.current = userId;
         })
         .finally(() => {
           loadUserDataPromiseRef.current = null;
+          loadingUserIdRef.current = null;
+          const pendingUserId = pendingUserIdRef.current;
+          pendingUserIdRef.current = null;
+          if (pendingUserId && pendingUserId !== lastLoadedUserIdRef.current) {
+            void maybeLoadUserData(pendingUserId);
+          }
         });
       loadUserDataPromiseRef.current = loadPromise;
       return loadPromise;
@@ -88,6 +101,8 @@ export const useAuthState = ({
           clearSessionTimestamp();
           lastLoadedUserIdRef.current = null;
           loadUserDataPromiseRef.current = null;
+          loadingUserIdRef.current = null;
+          pendingUserIdRef.current = null;
           setAuthState('unauthenticated');
           return;
         }
@@ -120,6 +135,8 @@ export const useAuthState = ({
         clearSessionTimestamp();
         lastLoadedUserIdRef.current = null;
         loadUserDataPromiseRef.current = null;
+        loadingUserIdRef.current = null;
+        pendingUserIdRef.current = null;
         setAuthState('unauthenticated');
         setAppState(prev => ({ ...prev, user: null }));
       }
