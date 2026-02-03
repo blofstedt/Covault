@@ -1,5 +1,5 @@
 // components/settings_modal_components/IncomeSection.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { DashboardUser } from '../DashboardSettingsModal';
 
 interface IncomeSectionProps {
@@ -16,28 +16,60 @@ const IncomeSection: React.FC<IncomeSectionProps> = ({
   // Local input state so the field behaves normally
   const [inputValue, setInputValue] = useState('');
 
-  // Sync UI when user is loaded or updated
+  // Track if user is actively editing to prevent sync-back flickering
+  const isEditingRef = useRef(false);
+  const initialSyncDoneRef = useRef(false);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Sync UI only on initial load or when user changes externally (not during editing)
   useEffect(() => {
     if (user?.monthlyIncome !== undefined && user?.monthlyIncome !== null) {
-      setInputValue(user.monthlyIncome.toString());
+      // Only sync if not currently editing and either initial sync or value changed externally
+      if (!isEditingRef.current) {
+        setInputValue(user.monthlyIncome.toString());
+        initialSyncDoneRef.current = true;
+      }
     }
   }, [user?.monthlyIncome]);
 
+  // Debounced save to prevent excessive updates
+  const debouncedSave = useCallback((value: number) => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    debounceTimerRef.current = setTimeout(() => {
+      onUpdateUserIncome(value);
+    }, 300);
+  }, [onUpdateUserIncome]);
+
   const handleChange = (val: string) => {
+    isEditingRef.current = true;
     setInputValue(val);
 
-    // Convert cleanly
+    // Convert cleanly and debounce the update
     const numeric = parseFloat(val);
     if (!isNaN(numeric) && numeric >= 0) {
-      onUpdateUserIncome(numeric);
+      debouncedSave(numeric);
     }
   };
 
   const handleBlur = () => {
+    isEditingRef.current = false;
+
+    // Clear any pending debounce and save immediately
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
     // Empty field becomes 0
     if (inputValue.trim() === '') {
       setInputValue('0');
       onUpdateUserIncome(0);
+    } else {
+      const numeric = parseFloat(inputValue);
+      if (!isNaN(numeric) && numeric >= 0) {
+        onUpdateUserIncome(numeric);
+      }
     }
   };
 
