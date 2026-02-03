@@ -17,10 +17,9 @@ if (!isSupabaseConfigured) {
   );
 }
 
-type StubResponse = {
-  data: null | unknown;
-  error: { message: string };
-};
+type StubResponse =
+  | { data: null; error: { message: string } }
+  | { data: unknown; error: null };
 
 const noopPromiseWithData = () =>
   Promise.resolve({
@@ -83,7 +82,7 @@ const createStubClient = () =>
         return { data: { session: null }, error: null };
       },
       onAuthStateChange: (
-        callback?: (event: string, session: null) => void,
+        callback?: (event: string, session: unknown | null) => void,
       ) => {
         console.warn('[supabase] Stub client in use: onAuthStateChange');
         if (callback) {
