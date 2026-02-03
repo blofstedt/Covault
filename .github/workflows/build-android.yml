@@ -23,6 +23,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     steps:
       - name: Checkout code
@@ -31,7 +32,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
@@ -52,9 +53,6 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Capacitor CLI
-        run: npm install -g @capacitor/cli
-
       - name: Setup Capacitor and Android
         run: |
           rm -rf android
@@ -66,7 +64,6 @@ jobs:
 
       - name: Add biometric auth dependency to Android
         run: |
-          # Add androidx.biometric dependency to app/build.gradle
           cd android/app
           sed -i '/dependencies {/a\    implementation "androidx.biometric:biometric:1.1.0"' build.gradle
 
