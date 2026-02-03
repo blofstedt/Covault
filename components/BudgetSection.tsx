@@ -1,5 +1,5 @@
 // components/BudgetSection.tsx
-import React, { useState } from 'react';
+import React from 'react';
 import { BudgetCategory, Transaction } from '../types';
 import TransactionItem from './TransactionItem';
 import { getBudgetIcon } from './Dashboard';
@@ -14,13 +14,10 @@ interface BudgetSectionProps {
   isExpanded: boolean;
   onToggle: () => void;
   onUpdateBudget: (b: BudgetCategory) => void;
-  onDeleteRequest: (id: string) => void;
-  onEdit: (tx: Transaction) => void;
+  onTransactionTap: (tx: Transaction) => void;
   currentUserName: string;
   isSharedView: boolean;
   allBudgets?: BudgetCategory[];
-  // Saves to Supabase
-  saveBudgetLimit: (categoryId: string, newLimit: number) => void;
 }
 
 const BudgetSection: React.FC<BudgetSectionProps> = ({
@@ -29,15 +26,11 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
   isExpanded,
   onToggle,
   onUpdateBudget,
-  onDeleteRequest,
-  onEdit,
+  onTransactionTap,
   currentUserName,
   isSharedView,
   allBudgets,
-  saveBudgetLimit,
 }) => {
-  const [isEditingLimit, setIsEditingLimit] = useState(false);
-  const [newLimit, setNewLimit] = useState(budget.totalLimit.toString());
 
   const getAmountForThisBudget = (tx: Transaction) => {
     if (tx.splits && tx.splits.length > 0) {
@@ -73,50 +66,6 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
     100 - spentWidth - externalWidth,
     budget.totalLimit > 0 ? (projected / budget.totalLimit) * 100 : 0,
   );
-
-  const startEditing = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    // Always reset the input to the latest value for this budget
-    setNewLimit(budget.totalLimit.toString());
-    setIsEditingLimit(true);
-  };
-
-  const commitLimit = () => {
-    const limit = parseFloat(newLimit);
-    const safeLimit = Number.isFinite(limit) && limit >= 0 ? limit : 0;
-
-    // Update local state used by the UI
-    onUpdateBudget({ ...budget, totalLimit: safeLimit });
-
-    // Persist to Supabase
-    saveBudgetLimit(budget.id, safeLimit);
-
-    setIsEditingLimit(false);
-  };
-
-  const cancelEditing = () => {
-    // Reset field to the current budget value and close
-    setNewLimit(budget.totalLimit.toString());
-    setIsEditingLimit(false);
-  };
-
-  const handleInputBlur = () => {
-    // If nothing was typed, just cancel
-    if (newLimit.trim() === '') {
-      cancelEditing();
-      return;
-    }
-    commitLimit();
-  };
-
-  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      (e.currentTarget as HTMLInputElement).blur();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      cancelEditing();
-    }
-  };
 
   return (
     <div
@@ -194,10 +143,10 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           </div>
         </div>
 
-        {/* RIGHT SIDE: SPENT / LIMIT + EDIT */}
+        {/* RIGHT SIDE: SPENT / LIMIT */}
         <div className="text-right flex flex-col items-end">
           <div className="flex items-baseline space-x-1">
-            {isExpanded && !isEditingLimit && (
+            {isExpanded && (
               <span
                 className={`text-sm font-black mr-2 tracking-tight transition-colors duration-300 ${
                   isDanger ? 'text-rose-500' : 'text-slate-500'
@@ -210,44 +159,9 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
               </span>
             )}
 
-            {isEditingLimit ? (
-              <input
-                autoFocus
-                type="number"
-                value={newLimit}
-                onClick={(e) => e.stopPropagation()}
-                onBlur={handleInputBlur}
-                onKeyDown={handleInputKeyDown}
-                onChange={(e) => setNewLimit(e.target.value)}
-                className="w-20 bg-white dark:bg-slate-900 text-right font-black text-base p-1 rounded-lg border-2 border-emerald-500 outline-none text-slate-700 dark:text-slate-100"
-              />
-            ) : (
-              <div className="flex items-center">
-                <span className="text-2xl font-black tracking-tighter leading-none transition-colors duration-300 text-slate-500 dark:text-slate-100">
-                  ${budget.totalLimit}
-                </span>
-                {isExpanded && (
-                  <button
-                    onClick={startEditing}
-                    className="ml-2 p-1 transition-colors text-slate-300 hover:text-emerald-500"
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                      strokeWidth="3"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572"
-                      />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            )}
+            <span className="text-2xl font-black tracking-tighter leading-none transition-colors duration-300 text-slate-500 dark:text-slate-100">
+              ${budget.totalLimit}
+            </span>
           </div>
 
           {/* TEXT BELOW LIMIT ("My Target" / "Our Target") */}
@@ -283,8 +197,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                   <TransactionItem
                     key={tx.id}
                     transaction={tx}
-                    onDeleteRequest={onDeleteRequest}
-                    onEdit={onEdit}
+                    onTap={onTransactionTap}
                     currentUserName={currentUserName}
                     isSharedView={isSharedView}
                     currentBudgetId={budget.id}

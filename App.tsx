@@ -65,6 +65,7 @@ const App: React.FC = () => {
     handleDeleteTransaction,
     handleLinkPartner,
     handleUnlinkPartner,
+    saveBudgetLimit,
   } = useUserData({ appState, setAppState, setDbError });
 
   // Auth + session handling
@@ -142,6 +143,7 @@ const App: React.FC = () => {
           onAddTransaction={handleAddTransaction}
           onUpdateTransaction={handleUpdateTransaction}
           onDeleteTransaction={handleDeleteTransaction}
+          saveBudgetLimit={saveBudgetLimit}
           onLinkPartner={handleLinkPartner}
           onUnlinkPartner={handleUnlinkPartner}
         />

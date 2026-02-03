@@ -411,7 +411,7 @@ export const useUserData = ({
 
       try {
         const headers = await getAuthHeaders();
-        (headers as any)['Prefer'] = 'return=representation';
+        (headers as any)['Prefer'] = 'resolution=merge-duplicates,return=representation';
 
         const payload = {
           user_id: userId,
@@ -419,11 +419,15 @@ export const useUserData = ({
           total_limit: newLimit,
         };
 
-        const res = await fetch(`${REST_BASE}/user_budgets`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(payload),
-        });
+        // Use upsert by specifying on_conflict parameter
+        const res = await fetch(
+          `${REST_BASE}/user_budgets?on_conflict=user_id,category_id`,
+          {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(payload),
+          },
+        );
         const body = await res.text();
 
         if (!res.ok) {
