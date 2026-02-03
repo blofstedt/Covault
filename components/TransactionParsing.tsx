@@ -1,5 +1,5 @@
 import React from 'react';
-import NotificationSettings from '../NotificationSettings';
+import NotificationSettings from './NotificationSettings';
 
 interface TransactionParsingProps {
   enabled: boolean;
@@ -50,7 +50,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
             Transaction Parsing
           </h1>
           
-          <div className="w-12" /> {/* Spacer for centering */}
+          <div className="w-12" aria-hidden="true" /> {/* Spacer for centering */}
         </div>
       </header>
 

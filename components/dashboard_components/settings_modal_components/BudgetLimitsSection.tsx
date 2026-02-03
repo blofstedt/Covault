@@ -20,7 +20,7 @@ const BudgetLimitsSection: React.FC<BudgetLimitsSectionProps> = ({
     const newValue = editingBudgets[budget.id];
     if (newValue !== undefined && newValue !== '') {
       const newLimit = parseFloat(newValue);
-      if (!isNaN(newLimit) && newLimit >= 0) {
+      if (!isNaN(newLimit) && newLimit > 0) {
         onSaveBudgetLimit(budget.id, newLimit);
         // Clear the editing state for this budget
         setEditingBudgets(prev => {
@@ -74,8 +74,8 @@ const BudgetLimitsSection: React.FC<BudgetLimitsSectionProps> = ({
                 <input
                   id={`budget-${budget.id}`}
                   type="number"
-                  min="0"
-                  step="1"
+                  min="0.01"
+                  step="0.01"
                   value={displayValue}
                   onChange={(e) => handleInputChange(budget.id, e.target.value)}
                   onBlur={() => handleSave(budget)}
