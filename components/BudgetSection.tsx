@@ -91,23 +91,23 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           />
         )}
 
-        {/* Projected - now with dashed pattern */}
+        {/* Projected - with fine slanted lines /// */}
         <div
           style={{ width: `${projectedWidth}%` }}
           className="h-full transition-all duration-300 relative"
         >
           {/* Base color layer */}
           <div className="absolute inset-0 bg-emerald-500/10 dark:bg-emerald-800/20" />
-          {/* Dashed overlay pattern - darker for better visibility */}
+          {/* Fine slanted lines overlay pattern /// */}
           <div 
             className="absolute inset-0 bg-repeat"
             style={{
               backgroundImage: `repeating-linear-gradient(
-                90deg,
+                45deg,
                 transparent,
-                transparent 8px,
-                rgba(16, 185, 129, 0.4) 8px,
-                rgba(16, 185, 129, 0.4) 16px
+                transparent 3px,
+                rgba(16, 185, 129, 0.3) 3px,
+                rgba(16, 185, 129, 0.3) 4px
               )`
             }}
           />
