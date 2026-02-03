@@ -87,7 +87,6 @@ export const useAuthState = ({
   );
 
   useEffect(() => {
-
     // Helper: map Supabase user to your internal User type
     const mapUser = (sessionUser: any): User => ({
       id: sessionUser.id,
