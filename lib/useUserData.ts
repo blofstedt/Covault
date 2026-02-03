@@ -18,15 +18,8 @@ const getAuthHeaders = async (): Promise<Record<string, string>> => {
   };
 };
 
-// Default budget limits by category name (fallbacks)
-const DEFAULT_LIMITS: Record<string, number> = {
-  Housing: 1500,
-  Groceries: 600,
-  Transport: 300,
-  Utilities: 150,
-  Leisure: 400,
-  Other: 100,
-};
+// Default budget limit when user has not set a budget
+const DEFAULT_BUDGET_LIMIT = 500;
 
 interface UseUserDataParams {
   appState: AppState;
@@ -112,8 +105,8 @@ export const useUserData = ({
         const budgets: BudgetCategory[] = data.map((row: any) => ({
           id: row.id,
           name: row.name,
-          // start with default limits; user-specific overrides will be loaded separately
-          totalLimit: DEFAULT_LIMITS[row.name] || 500,
+          // start with default limit; user-specific overrides will be loaded separately
+          totalLimit: DEFAULT_BUDGET_LIMIT,
         }));
         console.log(
           '[loadCategories] OK:',
@@ -411,34 +404,63 @@ export const useUserData = ({
 
       try {
         const headers = await getAuthHeaders();
-        (headers as any)['Prefer'] = 'resolution=merge-duplicates,return=representation';
-
-        const payload = {
-          user_id: userId,
-          category_id: categoryId,
-          total_limit: newLimit,
-        };
-
-        // Use upsert by specifying on_conflict parameter
-        const res = await fetch(
-          `${REST_BASE}/user_budgets?on_conflict=user_id,category_id`,
-          {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(payload),
-          },
+        
+        // First, check if a record exists
+        const checkRes = await fetch(
+          `${REST_BASE}/user_budgets?select=id&user_id=eq.${userId}&category_id=eq.${categoryId}`,
+          { headers },
         );
+        
+        if (!checkRes.ok) {
+          const msg = `[saveBudgetLimit] check failed (${checkRes.status})`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
+        
+        const existingRecords = JSON.parse(await checkRes.text());
+        const recordExists = existingRecords && existingRecords.length > 0;
+
+        let res;
+        if (recordExists) {
+          // Update existing record
+          const recordId = existingRecords[0].id;
+          res = await fetch(
+            `${REST_BASE}/user_budgets?id=eq.${recordId}`,
+            {
+              method: 'PATCH',
+              headers,
+              body: JSON.stringify({ total_limit: newLimit }),
+            },
+          );
+        } else {
+          // Insert new record
+          (headers as any)['Prefer'] = 'return=representation';
+          res = await fetch(
+            `${REST_BASE}/user_budgets`,
+            {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({
+                user_id: userId,
+                category_id: categoryId,
+                total_limit: newLimit,
+              }),
+            },
+          );
+        }
+        
         const body = await res.text();
 
         if (!res.ok) {
-          const msg = `[saveBudgetLimit] failed (${res.status}): ${body.slice(
+          const msg = `[saveBudgetLimit] ${recordExists ? 'update' : 'insert'} failed (${res.status}): ${body.slice(
             0,
             200,
           )}`;
           console.error(msg);
           setDbError(msg);
         } else {
-          console.log('[saveBudgetLimit] OK');
+          console.log(`[saveBudgetLimit] ${recordExists ? 'updated' : 'inserted'} OK`);
         }
       } catch (err: any) {
         const msg = `[saveBudgetLimit] exception: ${err?.message || err}`;
