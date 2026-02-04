@@ -887,6 +887,7 @@ export const useUserData = ({
         );
 
         const headers = await getAuthHeaders();
+        (headers as any)['Prefer'] = 'return=representation';
         const res = await fetch(
           `${REST_BASE}/transactions?id=eq.${updatedTx.id}`,
           { method: 'PATCH', headers, body: JSON.stringify(row) },
@@ -903,6 +904,15 @@ export const useUserData = ({
           const msg = `Update failed (${res.status}): ${body.slice(0, 200)}`;
           console.error(msg);
           setDbError(msg);
+        } else {
+          // Verify that rows were actually updated
+          const updatedRows = body ? JSON.parse(body) : [];
+          
+          if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
+            const msg = `[updateTransaction] no rows updated for transaction ${updatedTx.id}`;
+            console.error(msg);
+            setDbError(msg);
+          }
         }
       } catch (err: any) {
         const msg = `Update exception: ${err?.message || err}`;
@@ -989,7 +999,8 @@ export const useUserData = ({
 
         // Mark pending transaction as reviewed and approved
         const headers = await getAuthHeaders();
-        await fetch(`${REST_BASE}/pending_transactions?id=eq.${pendingId}`, {
+        (headers as any)['Prefer'] = 'return=representation';
+        const res = await fetch(`${REST_BASE}/pending_transactions?id=eq.${pendingId}`, {
           method: 'PATCH',
           headers,
           body: JSON.stringify({
@@ -998,6 +1009,24 @@ export const useUserData = ({
             approved: true,
           }),
         });
+
+        if (!res.ok) {
+          const body = await res.text();
+          const msg = `[approvePending] PATCH failed (${res.status}): ${body.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
+
+        const body = await res.text();
+        const updatedRows = body ? JSON.parse(body) : [];
+        
+        if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
+          const msg = `[approvePending] no rows updated for pending transaction ${pendingId}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
 
         // Remove from pending list in UI
         setAppState(prev => ({
@@ -1020,9 +1049,10 @@ export const useUserData = ({
     async (pendingId: string) => {
       try {
         const headers = await getAuthHeaders();
+        (headers as any)['Prefer'] = 'return=representation';
 
         // Mark as reviewed and not approved
-        await fetch(`${REST_BASE}/pending_transactions?id=eq.${pendingId}`, {
+        const res = await fetch(`${REST_BASE}/pending_transactions?id=eq.${pendingId}`, {
           method: 'PATCH',
           headers,
           body: JSON.stringify({
@@ -1031,6 +1061,24 @@ export const useUserData = ({
             approved: false,
           }),
         });
+
+        if (!res.ok) {
+          const body = await res.text();
+          const msg = `[rejectPending] PATCH failed (${res.status}): ${body.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
+
+        const body = await res.text();
+        const updatedRows = body ? JSON.parse(body) : [];
+        
+        if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
+          const msg = `[rejectPending] no rows updated for pending transaction ${pendingId}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
 
         // Remove from pending list in UI
         setAppState(prev => ({
