@@ -275,36 +275,20 @@ export const useUserData = ({
     [fromSupabaseTransaction, setAppState, setDbError],
   );
 
-  // Load partner link status from linked_partners table
-  const loadPartnerLink = useCallback(
+  // Load household link status from household_links table
+  const loadHouseholdLink = useCallback(
     async (userId: string) => {
       try {
         const headers = await getAuthHeaders();
 
+        // Query household_links where user is either user1 or user2
         const res = await fetch(
-          `${REST_BASE}/linked_partners?select=*,partner:settings!linked_partners_partner_id_fkey(name,email),requester:settings!linked_partners_user_id_fkey(name,email)&or=(user_id.eq.${userId},partner_id.eq.${userId})&status=eq.accepted&limit=1`,
+          `${REST_BASE}/household_links?select=*&or=(user1_id.eq.${userId},user2_id.eq.${userId})&limit=1`,
           { headers },
         );
 
         if (!res.ok) {
-          const res2 = await fetch(
-            `${REST_BASE}/linked_partners?select=*&or=(user_id.eq.${userId},partner_id.eq.${userId})&status=eq.accepted&limit=1`,
-            { headers },
-          );
-          if (res2.ok) {
-            const data = JSON.parse(await res2.text());
-            if (data && data.length > 0) {
-              const link = data[0];
-              const partnerId =
-                link.user_id === userId ? link.partner_id : link.user_id;
-              setAppState(prev => ({
-                ...prev,
-                user: prev.user
-                  ? { ...prev.user, budgetingSolo: false, partnerId }
-                  : null,
-              }));
-            }
-          }
+          console.log('[loadHouseholdLink] No household link found or error');
           return;
         }
 
@@ -312,9 +296,9 @@ export const useUserData = ({
         const data = JSON.parse(body);
         if (data && data.length > 0) {
           const link = data[0];
-          const isRequester = link.user_id === userId;
-          const partnerInfo = isRequester ? link.partner : link.requester;
-          const partnerId = isRequester ? link.partner_id : link.user_id;
+          const isUser1 = link.user1_id === userId;
+          const partnerId = isUser1 ? link.user2_id : link.user1_id;
+          const partnerName = isUser1 ? link.user2_name : link.user1_name;
 
           setAppState(prev => ({
             ...prev,
@@ -322,17 +306,18 @@ export const useUserData = ({
               ? {
                   ...prev.user,
                   budgetingSolo: false,
+                  hasJointAccounts: true,
                   partnerId,
-                  partnerName: partnerInfo?.name || undefined,
-                  partnerEmail: partnerInfo?.email || undefined,
+                  partnerName: partnerName || undefined,
                 }
               : null,
           }));
 
+          // Load partner's transactions
           await loadTransactions(partnerId);
         }
       } catch (err: any) {
-        console.error('[loadPartnerLink]', err?.message || err);
+        console.error('[loadHouseholdLink]', err?.message || err);
       }
     },
     [loadTransactions, setAppState],
@@ -346,13 +331,153 @@ export const useUserData = ({
       await loadUserBudgets(userId); // load user-specific budget limits
       await loadUserSettings(userId); // load user-specific settings (monthly_income, etc.)
       await loadTransactions(userId);
-      await loadPartnerLink(userId);
+      await loadHouseholdLink(userId); // Changed from loadPartnerLink
       console.log('loadUserData completed');
     },
-    [loadCategories, loadPartnerLink, loadTransactions, loadUserBudgets, loadUserSettings],
+    [loadCategories, loadHouseholdLink, loadTransactions, loadUserBudgets, loadUserSettings],
   );
 
-  // Send a partner link request by email
+  // Generate a link code for household linking
+  const handleGenerateLinkCode = useCallback(async (): Promise<string | null> => {
+    try {
+      const userId = appState.user?.id;
+      if (!userId) {
+        setDbError('User not logged in');
+        return null;
+      }
+
+      const headers = await getAuthHeaders();
+      
+      // Generate a 6-character code
+      const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+      
+      // Set expiration to 24 hours from now
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      
+      (headers as any)['Prefer'] = 'return=representation';
+      const res = await fetch(`${REST_BASE}/link_codes`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          code,
+          user_id: userId,
+          expires_at: expiresAt,
+        }),
+      });
+
+      if (!res.ok) {
+        const body = await res.text();
+        setDbError(`Failed to generate link code: ${body.slice(0, 200)}`);
+        return null;
+      }
+
+      console.log('[generateLinkCode] Generated code:', code);
+      return code;
+    } catch (err: any) {
+      setDbError(`Generate link code exception: ${err?.message || err}`);
+      return null;
+    }
+  }, [appState.user, setDbError]);
+
+  // Join household using a link code
+  const handleJoinWithCode = useCallback(
+    async (code: string) => {
+      try {
+        const userId = appState.user?.id;
+        const userName = appState.user?.name;
+        if (!userId || !userName) {
+          setDbError('User not logged in');
+          return;
+        }
+
+        const headers = await getAuthHeaders();
+        
+        // Look up the link code
+        const codeRes = await fetch(
+          `${REST_BASE}/link_codes?select=*&code=eq.${code.toUpperCase()}&expires_at=gt.${new Date().toISOString()}&limit=1`,
+          { headers },
+        );
+
+        if (!codeRes.ok) {
+          setDbError('Invalid or expired link code');
+          return;
+        }
+
+        const codeData = JSON.parse(await codeRes.text());
+        if (!codeData || codeData.length === 0) {
+          setDbError('Invalid or expired link code');
+          return;
+        }
+
+        const linkCode = codeData[0];
+        const otherUserId = linkCode.user_id;
+
+        if (otherUserId === userId) {
+          setDbError("You can't link with yourself");
+          return;
+        }
+
+        // Get the other user's name
+        const settingsRes = await fetch(
+          `${REST_BASE}/settings?select=name&user_id=eq.${otherUserId}&limit=1`,
+          { headers },
+        );
+
+        let otherUserName = 'Partner';
+        if (settingsRes.ok) {
+          const settingsData = JSON.parse(await settingsRes.text());
+          if (settingsData && settingsData.length > 0) {
+            otherUserName = settingsData[0].name;
+          }
+        }
+
+        // Create household link
+        (headers as any)['Prefer'] = 'return=representation';
+        const linkRes = await fetch(`${REST_BASE}/household_links`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            user1_id: otherUserId,
+            user2_id: userId,
+            user1_name: otherUserName,
+            user2_name: userName,
+          }),
+        });
+
+        if (!linkRes.ok) {
+          const body = await linkRes.text();
+          setDbError(`Failed to create household link: ${body.slice(0, 200)}`);
+          return;
+        }
+
+        // Delete the used link code
+        await fetch(`${REST_BASE}/link_codes?code=eq.${code.toUpperCase()}`, {
+          method: 'DELETE',
+          headers,
+        });
+
+        setAppState(prev => ({
+          ...prev,
+          user: prev.user
+            ? {
+                ...prev.user,
+                budgetingSolo: false,
+                hasJointAccounts: true,
+                partnerId: otherUserId,
+                partnerName: otherUserName,
+              }
+            : null,
+        }));
+
+        console.log('[joinWithCode] Successfully linked household');
+      } catch (err: any) {
+        setDbError(`Join with code exception: ${err?.message || err}`);
+      }
+    },
+    [appState.user, setAppState, setDbError],
+  );
+
+  // Send a partner link request by email (legacy method, kept for compatibility)
   const handleLinkPartner = useCallback(
     async (partnerEmail: string) => {
       try {
@@ -380,19 +505,21 @@ export const useUserData = ({
         const partnerId = lookupData[0].user_id;
         const partnerName = lookupData[0].name;
         const userId = appState.user?.id;
+        const userName = appState.user?.name;
         if (!userId || partnerId === userId) {
           setDbError("You can't link with yourself.");
           return;
         }
 
         (headers as any)['Prefer'] = 'return=representation';
-        const insertRes = await fetch(`${REST_BASE}/linked_partners`, {
+        const insertRes = await fetch(`${REST_BASE}/household_links`, {
           method: 'POST',
           headers,
           body: JSON.stringify({
-            user_id: userId,
-            partner_id: partnerId,
-            status: 'accepted',
+            user1_id: userId,
+            user2_id: partnerId,
+            user1_name: userName,
+            user2_name: partnerName,
           }),
         });
 
@@ -408,6 +535,7 @@ export const useUserData = ({
             ? {
                 ...prev.user,
                 budgetingSolo: false,
+                hasJointAccounts: true,
                 partnerId,
                 partnerName,
                 partnerEmail,
@@ -422,7 +550,7 @@ export const useUserData = ({
     [appState.user, setAppState, setDbError],
   );
 
-  // Disconnect partner
+  // Disconnect household
   const handleUnlinkPartner = useCallback(async () => {
     try {
       const userId = appState.user?.id;
@@ -430,7 +558,7 @@ export const useUserData = ({
 
       const headers = await getAuthHeaders();
       await fetch(
-        `${REST_BASE}/linked_partners?or=(user_id.eq.${userId},partner_id.eq.${userId})`,
+        `${REST_BASE}/household_links?or=(user1_id.eq.${userId},user2_id.eq.${userId})`,
         { method: 'DELETE', headers },
       );
 
@@ -440,6 +568,7 @@ export const useUserData = ({
           ? {
               ...prev.user,
               budgetingSolo: true,
+              hasJointAccounts: false,
               partnerId: undefined,
               partnerEmail: undefined,
               partnerName: undefined,
@@ -772,6 +901,8 @@ export const useUserData = ({
     handleDeleteTransaction,
     handleLinkPartner,
     handleUnlinkPartner,
+    handleGenerateLinkCode,
+    handleJoinWithCode,
     saveBudgetLimit,
     saveUserIncome,
   };
