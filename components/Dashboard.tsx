@@ -59,6 +59,11 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [showTutorial, setShowTutorial] = useState(!state.settings.hasSeenTutorial);
   const [tutorialStep, setTutorialStep] = useState(0);
 
+  // Keep tutorial visibility in sync with persisted setting
+  useEffect(() => {
+    setShowTutorial(!state.settings.hasSeenTutorial);
+  }, [state.settings.hasSeenTutorial]);
+
   // Scroll refs shared with child components
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const budgetRefs = useRef<Map<string, HTMLDivElement>>(new Map());
