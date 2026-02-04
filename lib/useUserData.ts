@@ -541,7 +541,13 @@ export const useUserData = ({
   const saveUserIncome = useCallback(
     async (income: number) => {
       const userId = appState.user?.id;
-      if (!userId) return;
+      if (!userId) {
+        console.warn('[saveUserIncome] no userId, skipping save');
+        return;
+      }
+
+      // Store the previous value for rollback (with fallback to default if not set)
+      const previousIncome = appState.user?.monthlyIncome ?? DEFAULT_MONTHLY_INCOME;
 
       // Optimistic UI update
       setAppState(prev => ({
@@ -567,13 +573,25 @@ export const useUserData = ({
           const msg = `[saveUserIncome] update failed (${res.status}): ${body.slice(0, 200)}`;
           console.error(msg);
           setDbError(msg);
+          
+          // Rollback optimistic update on failure
+          setAppState(prev => ({
+            ...prev,
+            user: prev.user ? { ...prev.user, monthlyIncome: previousIncome } : null,
+          }));
         } else {
-          console.log(`[saveUserIncome] updated to ${income}`);
+          console.log(`[saveUserIncome] successfully updated to ${income}`);
         }
       } catch (err: any) {
         const msg = `[saveUserIncome] exception: ${err?.message || err}`;
         console.error(msg);
         setDbError(msg);
+        
+        // Rollback optimistic update on error
+        setAppState(prev => ({
+          ...prev,
+          user: prev.user ? { ...prev.user, monthlyIncome: previousIncome } : null,
+        }));
       }
     },
     [appState.user, setAppState, setDbError],

@@ -27,13 +27,13 @@ const AppNotificationsSection: React.FC<AppNotificationsSectionProps> = ({
         {/* RIGHT TOGGLE */}
         <button
           onClick={() => onToggle(!enabled)}
-          className={`relative w-12 h-7 rounded-full transition-colors duration-200 flex items-center ${
-            enabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
+          className={`w-14 h-8 rounded-full transition-colors relative flex items-center p-1 cursor-pointer ${
+            enabled ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-700'
           }`}
         >
-          <span
-            className={`absolute w-6 h-6 bg-white rounded-full shadow transition-transform duration-200 left-0.5 top-0.5 ${
-              enabled ? 'translate-x-5' : 'translate-x-0'
+          <div
+            className={`w-6 h-6 bg-white rounded-full shadow-lg transform transition-transform duration-300 ${
+              enabled ? 'translate-x-6' : 'translate-x-0'
             }`}
           />
         </button>

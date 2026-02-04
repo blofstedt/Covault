@@ -37,7 +37,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       </header>
 
       {/* Main content */}
-      <main className="flex-1 flex flex-col p-6 pb-28 overflow-y-auto relative z-10">
+      <main className="flex-1 flex flex-col p-6 pb-28 overflow-y-auto no-scrollbar relative z-10">
         <div className="max-w-2xl mx-auto w-full space-y-6">
           {/* Info card */}
           <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 shadow-xl border border-slate-100 dark:border-slate-800/60 space-y-6">
