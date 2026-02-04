@@ -93,6 +93,7 @@ const createStubClient = () =>
         return { data: { subscription: { unsubscribe: () => {} } } };
       },
       signOut: noopAuthPromise,
+      signInWithOAuth: noopAuthPromise,
     },
     from: () => {
       console.warn('[supabase] Stub client in use: from');
