@@ -281,12 +281,13 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const handleTutorialComplete = () => {
     setShowTutorial(false);
+    setShowSettings(false);
     updateSettings('hasSeenTutorial', true);
   };
 
   const handleTutorialStepChange = (step: number) => {
     setTutorialStep(step);
-    if (step >= 5 && step <= 12) {
+    if (step >= 6 && step <= 13) {
       setShowSettings(true);
     } else {
       setShowSettings(false);
