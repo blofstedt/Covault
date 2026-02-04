@@ -470,6 +470,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           isShared={isSharedAccount}
           onComplete={handleTutorialComplete}
           onStepChange={handleTutorialStepChange}
+          isLoadingData={isLoadingData}
         />
       )}
     </div>

@@ -5,9 +5,10 @@ interface TutorialProps {
   onComplete: () => void;
   onStepChange?: (step: number) => void;
   isShared: boolean;
+  isLoadingData: boolean;
 }
 
-const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared }) => {
+const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared, isLoadingData }) => {
   const [step, setStep] = useState(0);
   const [showSkipConfirm, setShowSkipConfirm] = useState(false);
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
@@ -165,7 +166,10 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
       setStep(nextStep);
       onStepChange?.(nextStep);
     } else {
-      onComplete();
+      // Don't complete the tutorial if data is still loading
+      if (!isLoadingData) {
+        onComplete();
+      }
     }
   };
 
@@ -253,10 +257,18 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
           </div>
           <div className="flex flex-col space-y-3">
             <button
-              onClick={onComplete}
-              className="w-full py-4 bg-slate-500 dark:bg-slate-700 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-lg active:scale-95 transition-all"
+              onClick={() => {
+                // Don't skip the tutorial if data is still loading
+                if (!isLoadingData) {
+                  onComplete();
+                }
+              }}
+              disabled={isLoadingData}
+              className={`w-full py-4 bg-slate-500 dark:bg-slate-700 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-lg transition-all ${
+                isLoadingData ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'
+              }`}
             >
-              Skip for Now
+              {isLoadingData ? 'Loading...' : 'Skip for Now'}
             </button>
             <button
               onClick={() => setShowSkipConfirm(false)}
@@ -425,9 +437,15 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
             </button>
             <button
               onClick={handleNext}
-              className="flex-[2] py-3.5 bg-emerald-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-emerald-600/20 active:scale-95 transition-all"
+              disabled={step === steps.length - 1 && isLoadingData}
+              className={`flex-[2] py-3.5 bg-emerald-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-emerald-600/20 transition-all ${
+                step === steps.length - 1 && isLoadingData ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'
+              }`}
             >
-              {step === steps.length - 1 ? "Get Started" : "Next"}
+              {step === steps.length - 1 
+                ? (isLoadingData ? "Loading..." : "Get Started")
+                : "Next"
+              }
             </button>
           </div>
         </div>
