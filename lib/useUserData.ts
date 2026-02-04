@@ -23,13 +23,18 @@ const DEFAULT_BUDGET_LIMIT = 500;
 
 // Default monthly income when user has not set income
 const DEFAULT_MONTHLY_INCOME = 5000;
+const MAX_MONTHLY_INCOME = 1_000_000_000;
 
-const UUID_REGEX =
+const UUID_VALIDATION_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-const isValidUserId = (value: string) => UUID_REGEX.test(value);
+/**
+ * Validates UUID v1-v5 format for user IDs (Supabase auth IDs).
+ * Non-UUID values may appear in legacy/test environments.
+ */
+const isValidUserId = (value: string) => UUID_VALIDATION_REGEX.test(value);
 
-const parseAppSettingsValue = (value: any): Record<string, any> => {
+const parseAppSettingsValue = (value: unknown): Record<string, any> => {
   if (!value) return {};
   if (typeof value === 'string') {
     try {
@@ -208,9 +213,9 @@ export const useUserData = ({
             return;
           }
 
-          const encodedUserId = encodeURIComponent(userId);
+          const appSettingsKey = userId;
           const appRes = await fetch(
-            `${REST_BASE}/app_settings?select=value&key=eq.${encodedUserId}`,
+            `${REST_BASE}/app_settings?select=value&key=eq.${appSettingsKey}`,
             { headers },
           );
 
@@ -251,7 +256,7 @@ export const useUserData = ({
                 Prefer: 'resolution=merge-duplicates,return=representation',
               },
               body: JSON.stringify({
-                key: userId,
+                key: appSettingsKey,
                 value: { monthly_income: monthlyIncome },
               }),
             });
@@ -630,7 +635,11 @@ export const useUserData = ({
       // Store the previous value for rollback (with fallback to default if not set)
       const previousIncome = appState.user?.monthlyIncome ?? DEFAULT_MONTHLY_INCOME;
 
-      if (!Number.isFinite(income) || income < 0) {
+      if (
+        !Number.isFinite(income)
+        || income < 0
+        || income > MAX_MONTHLY_INCOME
+      ) {
         console.warn('[saveUserIncome] invalid income, skipping save:', income);
         setAppState(prev => ({
           ...prev,
@@ -723,9 +732,9 @@ export const useUserData = ({
             return;
           }
         } else {
-          const encodedUserId = encodeURIComponent(userId);
+          const appSettingsKey = userId;
           const appRes = await fetch(
-            `${REST_BASE}/app_settings?select=value&key=eq.${encodedUserId}&limit=1`,
+            `${REST_BASE}/app_settings?select=value&key=eq.${appSettingsKey}&limit=1`,
             { headers },
           );
 
@@ -735,16 +744,16 @@ export const useUserData = ({
               Array.isArray(appRows) ? appRows[0]?.value : null,
             );
             const nextValue = { ...currentValue, monthly_income: income };
-            const method =
-              Array.isArray(appRows) && appRows.length > 0 ? 'PATCH' : 'POST';
-            const url =
-              method === 'PATCH'
-                ? `${REST_BASE}/app_settings?key=eq.${encodedUserId}`
-                : `${REST_BASE}/app_settings`;
-            const body =
-              method === 'PATCH'
-                ? { value: nextValue }
-                : { key: userId, value: nextValue };
+          const method =
+            Array.isArray(appRows) && appRows.length > 0 ? 'PATCH' : 'POST';
+          const url =
+            method === 'PATCH'
+              ? `${REST_BASE}/app_settings?key=eq.${appSettingsKey}`
+              : `${REST_BASE}/app_settings`;
+          const body =
+            method === 'PATCH'
+              ? { value: nextValue }
+              : { key: appSettingsKey, value: nextValue };
 
             const saveRes = await fetch(url, {
               method,
