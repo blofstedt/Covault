@@ -24,6 +24,21 @@ const DEFAULT_BUDGET_LIMIT = 500;
 // Default monthly income when user has not set income
 const DEFAULT_MONTHLY_INCOME = 5000;
 
+const parseAppSettingsValue = (value: any): Record<string, any> => {
+  if (!value) return {};
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+  if (typeof value === 'object') {
+    return value as Record<string, any>;
+  }
+  return {};
+};
+
 interface UseUserDataParams {
   appState: AppState;
   setAppState: React.Dispatch<React.SetStateAction<AppState>>;
@@ -176,16 +191,72 @@ export const useUserData = ({
     async (userId: string) => {
       try {
         const headers = await getAuthHeaders();
+        const loadFromAppSettings = async () => {
+          const appRes = await fetch(
+            `${REST_BASE}/app_settings?select=value&key=eq.${encodeURIComponent(
+              userId,
+            )}`,
+            { headers },
+          );
+
+          if (!appRes.ok) {
+            console.error('[loadUserSettings] app_settings failed:', appRes.status);
+            return;
+          }
+
+          const appRows = await appRes.json();
+          const appValue = parseAppSettingsValue(appRows?.[0]?.value);
+          const rawMonthlyIncome =
+            appValue.monthly_income ?? appValue.monthlyIncome ?? null;
+          const parsedMonthlyIncome =
+            rawMonthlyIncome === null || rawMonthlyIncome === undefined
+              ? null
+              : Number(rawMonthlyIncome);
+          const shouldUseDefault =
+            parsedMonthlyIncome === null || Number.isNaN(parsedMonthlyIncome);
+          const monthlyIncome = shouldUseDefault
+            ? DEFAULT_MONTHLY_INCOME
+            : parsedMonthlyIncome;
+
+          setAppState(prev => ({
+            ...prev,
+            user: prev.user
+              ? { ...prev.user, monthlyIncome }
+              : null,
+          }));
+
+          if (!appRows || appRows.length === 0) {
+            await fetch(`${REST_BASE}/app_settings`, {
+              method: 'POST',
+              headers: {
+                ...headers,
+                Prefer: 'resolution=merge-duplicates,return=representation',
+              },
+              body: JSON.stringify({
+                key: userId,
+                value: { monthly_income: monthlyIncome },
+              }),
+            });
+          }
+
+          console.log(
+            shouldUseDefault
+              ? '[loadUserSettings] monthly_income missing, using default:'
+              : '[loadUserSettings] loaded monthly_income:',
+            monthlyIncome,
+          );
+        };
+
         const res = await fetch(
           `${REST_BASE}/settings?select=monthly_income&user_id=eq.${userId}`,
           { headers },
         );
-        
+
         if (!res.ok) {
-          console.error('[loadUserSettings] failed:', res.status);
+          await loadFromAppSettings();
           return;
         }
-        
+
         const rows = await res.json();
 
         if (rows && rows.length > 0) {
@@ -214,15 +285,7 @@ export const useUserData = ({
             monthlyIncome,
           );
         } else {
-          // No settings row exists (shouldn't happen with trigger, but handle it)
-          // Use default value only in this case
-          console.log('[loadUserSettings] no settings row found, using default:', DEFAULT_MONTHLY_INCOME);
-          setAppState(prev => ({
-            ...prev,
-            user: prev.user
-              ? { ...prev.user, monthlyIncome: DEFAULT_MONTHLY_INCOME }
-              : null,
-          }));
+          await loadFromAppSettings();
         }
       } catch (err: any) {
         console.error('[loadUserSettings] exception:', err?.message || err);
@@ -546,6 +609,11 @@ export const useUserData = ({
         return;
       }
 
+      if (!Number.isFinite(income) || income < 0) {
+        console.warn('[saveUserIncome] invalid income, skipping save:', income);
+        return;
+      }
+
       // Store the previous value for rollback (with fallback to default if not set)
       const previousIncome = appState.user?.monthlyIncome ?? DEFAULT_MONTHLY_INCOME;
 
@@ -557,37 +625,122 @@ export const useUserData = ({
 
       try {
         const headers = await getAuthHeaders();
-        
-        // Update the settings table for this user
-        const res = await fetch(
-          `${REST_BASE}/settings?user_id=eq.${userId}`,
-          {
+
+        const tryLegacySettings = async () => {
+          const existingRes = await fetch(
+            `${REST_BASE}/settings?select=user_id&user_id=eq.${userId}&limit=1`,
+            { headers },
+          );
+          const existingBody = await existingRes.text();
+          const existingRows = existingRes.ok ? JSON.parse(existingBody || '[]') : [];
+
+          if (!existingRes.ok) {
+            console.error(
+              `[saveUserIncome] lookup failed (${existingRes.status}): ${existingBody.slice(0, 200)}`,
+            );
+            setDbError(`[saveUserIncome] lookup failed (${existingRes.status})`);
+            setAppState(prev => ({
+              ...prev,
+              user: prev.user ? { ...prev.user, monthlyIncome: previousIncome } : null,
+            }));
+            return false;
+          }
+
+          if (!existingRows || existingRows.length === 0) {
+            const insertRes = await fetch(`${REST_BASE}/settings`, {
+              method: 'POST',
+              headers: { ...headers, Prefer: 'return=representation' },
+              body: JSON.stringify({ user_id: userId, monthly_income: income }),
+            });
+
+            if (!insertRes.ok) {
+              const insertBody = await insertRes.text();
+              const msg = `[saveUserIncome] insert failed (${insertRes.status}): ${insertBody.slice(0, 200)}`;
+              console.error(msg);
+              setDbError(msg);
+              setAppState(prev => ({
+                ...prev,
+                user: prev.user ? { ...prev.user, monthlyIncome: previousIncome } : null,
+              }));
+              return false;
+            }
+          }
+
+          const res = await fetch(`${REST_BASE}/settings?user_id=eq.${userId}`, {
             method: 'PATCH',
             headers,
             body: JSON.stringify({ monthly_income: income }),
-          },
+          });
+
+          if (!res.ok) {
+            const body = await res.text();
+            const msg = `[saveUserIncome] update failed (${res.status}): ${body.slice(0, 200)}`;
+            console.error(msg);
+            setDbError(msg);
+
+            setAppState(prev => ({
+              ...prev,
+              user: prev.user ? { ...prev.user, monthlyIncome: previousIncome } : null,
+            }));
+            return false;
+          }
+
+          return true;
+        };
+
+        const appRes = await fetch(
+          `${REST_BASE}/app_settings?select=value&key=eq.${encodeURIComponent(
+            userId,
+          )}&limit=1`,
+          { headers },
         );
-        
-        if (!res.ok) {
-          const body = await res.text();
-          const msg = `[saveUserIncome] update failed (${res.status}): ${body.slice(0, 200)}`;
-          console.error(msg);
-          setDbError(msg);
-          
-          // Rollback optimistic update on failure
-          setAppState(prev => ({
-            ...prev,
-            user: prev.user ? { ...prev.user, monthlyIncome: previousIncome } : null,
-          }));
+
+        if (appRes.ok) {
+          const appRows = await appRes.json();
+          const currentValue = parseAppSettingsValue(appRows?.[0]?.value);
+          const nextValue = { ...currentValue, monthly_income: income };
+          const method = appRows && appRows.length > 0 ? 'PATCH' : 'POST';
+          const url =
+            method === 'PATCH'
+              ? `${REST_BASE}/app_settings?key=eq.${encodeURIComponent(userId)}`
+              : `${REST_BASE}/app_settings`;
+          const body =
+            method === 'PATCH'
+              ? { value: nextValue }
+              : { key: userId, value: nextValue };
+
+          const saveRes = await fetch(url, {
+            method,
+            headers: {
+              ...headers,
+              Prefer: 'resolution=merge-duplicates,return=representation',
+            },
+            body: JSON.stringify(body),
+          });
+
+          if (!saveRes.ok) {
+            const saveBody = await saveRes.text();
+            console.warn(
+              `[saveUserIncome] app_settings update failed (${saveRes.status}): ${saveBody.slice(0, 200)}`,
+            );
+            const legacyOk = await tryLegacySettings();
+            if (!legacyOk) {
+              return;
+            }
+          }
         } else {
-          console.log(`[saveUserIncome] successfully updated to ${income}`);
+          const legacyOk = await tryLegacySettings();
+          if (!legacyOk) {
+            return;
+          }
         }
+
+        console.log(`[saveUserIncome] successfully updated to ${income}`);
       } catch (err: any) {
         const msg = `[saveUserIncome] exception: ${err?.message || err}`;
         console.error(msg);
         setDbError(msg);
-        
-        // Rollback optimistic update on error
+
         setAppState(prev => ({
           ...prev,
           user: prev.user ? { ...prev.user, monthlyIncome: previousIncome } : null,

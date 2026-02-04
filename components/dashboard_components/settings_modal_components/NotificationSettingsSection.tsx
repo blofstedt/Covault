@@ -229,13 +229,23 @@ const NotificationSettingsSection: React.FC = () => {
   if (!isNative) {
     return (
       <div className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60">
-        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-          Bank Notification Listener
-        </span>
-        <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 leading-relaxed">
-          This feature is available on Android via the Covault app. Install the app and
-          enable notification access to auto-log your banking transactions.
-        </p>
+        <div className="flex items-center justify-between">
+          <div className="flex-1 mr-3">
+            <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 block">
+              Bank Notification Listener
+            </span>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 leading-relaxed">
+              This feature is available on Android via the Covault app. Install the app and
+              enable notification access to auto-log your banking transactions.
+            </p>
+          </div>
+          <button
+            disabled
+            className="relative w-12 h-7 rounded-full bg-slate-200 dark:bg-slate-700 opacity-60 cursor-not-allowed flex-shrink-0"
+          >
+            <span className="absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow" />
+          </button>
+        </div>
       </div>
     );
   }
