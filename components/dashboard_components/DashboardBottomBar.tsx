@@ -14,7 +14,7 @@ const DashboardBottomBar: React.FC<DashboardBottomBarProps> = ({
   return (
     <div
       id="bottom-bar"
-      className="fixed bottom-0 left-0 right-0 z-40 px-4 pb-4 pt-2 flex flex-col items-center pointer-events-none pb-safe"
+      className="fixed bottom-0 left-0 right-0 z-40 px-4 pb-4 pt-2 flex flex-col items-center pointer-events-none pb-safe-bottom"
     >
       <div
         className="w-full max-w-sm backdrop-blur-3xl border rounded-full px-6 py-2 pointer-events-auto shadow-2xl animate-nest transition-all duration-700 bg-white/95 dark:bg-slate-900/95 border-slate-100 dark:border-slate-800/60"
