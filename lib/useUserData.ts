@@ -130,13 +130,13 @@ export const useUserData = ({
     }
   }, [setAppState, setDbError]);
 
-  // NEW: Load user budget limits from user_budgets
+  // Load user budget limits from budgets table
   const loadUserBudgets = useCallback(
     async (userId: string) => {
       try {
         const headers = await getAuthHeaders();
         const res = await fetch(
-          `${REST_BASE}/user_budgets?select=*&user_id=eq.${userId}`,
+          `${REST_BASE}/budgets?select=*&user_id=eq.${userId}`,
           { headers },
         );
         const body = await res.text();
@@ -148,10 +148,10 @@ export const useUserData = ({
 
         const rows = JSON.parse(body);
 
-        // Map category_id → total_limit
+        // Map category name → limit_amount
         const limitsByCategory: Record<string, number> = {};
         for (const row of rows) {
-          limitsByCategory[row.category_id] = Number(row.total_limit);
+          limitsByCategory[row.category] = Number(row.limit_amount);
         }
 
         // Merge with existing categories in state
@@ -159,7 +159,7 @@ export const useUserData = ({
           ...prev,
           budgets: prev.budgets.map(b => ({
             ...b,
-            totalLimit: limitsByCategory[b.id] ?? b.totalLimit ?? 0,
+            totalLimit: limitsByCategory[b.name] ?? b.totalLimit ?? 0,
           })),
         }));
 
@@ -275,36 +275,50 @@ export const useUserData = ({
     [fromSupabaseTransaction, setAppState, setDbError],
   );
 
-  // Load partner link status from linked_partners table
-  const loadPartnerLink = useCallback(
+  // Load pending transactions awaiting approval
+  const loadPendingTransactions = useCallback(
     async (userId: string) => {
       try {
         const headers = await getAuthHeaders();
-
         const res = await fetch(
-          `${REST_BASE}/linked_partners?select=*,partner:settings!linked_partners_partner_id_fkey(name,email),requester:settings!linked_partners_user_id_fkey(name,email)&or=(user_id.eq.${userId},partner_id.eq.${userId})&status=eq.accepted&limit=1`,
+          `${REST_BASE}/pending_transactions?select=*&user_id=eq.${userId}&needs_review=eq.true&order=created_at.desc`,
           { headers },
         );
 
         if (!res.ok) {
-          const res2 = await fetch(
-            `${REST_BASE}/linked_partners?select=*&or=(user_id.eq.${userId},partner_id.eq.${userId})&status=eq.accepted&limit=1`,
-            { headers },
-          );
-          if (res2.ok) {
-            const data = JSON.parse(await res2.text());
-            if (data && data.length > 0) {
-              const link = data[0];
-              const partnerId =
-                link.user_id === userId ? link.partner_id : link.user_id;
-              setAppState(prev => ({
-                ...prev,
-                user: prev.user
-                  ? { ...prev.user, budgetingSolo: false, partnerId }
-                  : null,
-              }));
-            }
-          }
+          console.log('[loadPendingTransactions] failed or no pending transactions');
+          return;
+        }
+
+        const data = JSON.parse(await res.text());
+        if (data && data.length > 0) {
+          console.log('[loadPendingTransactions] OK, count:', data.length);
+          setAppState(prev => ({ ...prev, pendingTransactions: data }));
+        } else {
+          console.log('[loadPendingTransactions] no pending transactions');
+          setAppState(prev => ({ ...prev, pendingTransactions: [] }));
+        }
+      } catch (err: any) {
+        console.error('[loadPendingTransactions]', err?.message || err);
+      }
+    },
+    [setAppState],
+  );
+
+  // Load household link status from household_links table
+  const loadHouseholdLink = useCallback(
+    async (userId: string) => {
+      try {
+        const headers = await getAuthHeaders();
+
+        // Query household_links where user is either user1 or user2
+        const res = await fetch(
+          `${REST_BASE}/household_links?select=*&or=(user1_id.eq.${userId},user2_id.eq.${userId})&limit=1`,
+          { headers },
+        );
+
+        if (!res.ok) {
+          console.log('[loadHouseholdLink] No household link found or error');
           return;
         }
 
@@ -312,9 +326,9 @@ export const useUserData = ({
         const data = JSON.parse(body);
         if (data && data.length > 0) {
           const link = data[0];
-          const isRequester = link.user_id === userId;
-          const partnerInfo = isRequester ? link.partner : link.requester;
-          const partnerId = isRequester ? link.partner_id : link.user_id;
+          const isUser1 = link.user1_id === userId;
+          const partnerId = isUser1 ? link.user2_id : link.user1_id;
+          const partnerName = isUser1 ? link.user2_name : link.user1_name;
 
           setAppState(prev => ({
             ...prev,
@@ -322,17 +336,18 @@ export const useUserData = ({
               ? {
                   ...prev.user,
                   budgetingSolo: false,
+                  hasJointAccounts: true,
                   partnerId,
-                  partnerName: partnerInfo?.name || undefined,
-                  partnerEmail: partnerInfo?.email || undefined,
+                  partnerName: partnerName || undefined,
                 }
               : null,
           }));
 
+          // Load partner's transactions
           await loadTransactions(partnerId);
         }
       } catch (err: any) {
-        console.error('[loadPartnerLink]', err?.message || err);
+        console.error('[loadHouseholdLink]', err?.message || err);
       }
     },
     [loadTransactions, setAppState],
@@ -346,13 +361,154 @@ export const useUserData = ({
       await loadUserBudgets(userId); // load user-specific budget limits
       await loadUserSettings(userId); // load user-specific settings (monthly_income, etc.)
       await loadTransactions(userId);
-      await loadPartnerLink(userId);
+      await loadPendingTransactions(userId); // load pending transactions awaiting approval
+      await loadHouseholdLink(userId); // Changed from loadPartnerLink
       console.log('loadUserData completed');
     },
-    [loadCategories, loadPartnerLink, loadTransactions, loadUserBudgets, loadUserSettings],
+    [loadCategories, loadHouseholdLink, loadPendingTransactions, loadTransactions, loadUserBudgets, loadUserSettings],
   );
 
-  // Send a partner link request by email
+  // Generate a link code for household linking
+  const handleGenerateLinkCode = useCallback(async (): Promise<string | null> => {
+    try {
+      const userId = appState.user?.id;
+      if (!userId) {
+        setDbError('User not logged in');
+        return null;
+      }
+
+      const headers = await getAuthHeaders();
+      
+      // Generate a 6-character code
+      const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+      
+      // Set expiration to 24 hours from now
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      
+      (headers as any)['Prefer'] = 'return=representation';
+      const res = await fetch(`${REST_BASE}/link_codes`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          code,
+          user_id: userId,
+          expires_at: expiresAt,
+        }),
+      });
+
+      if (!res.ok) {
+        const body = await res.text();
+        setDbError(`Failed to generate link code: ${body.slice(0, 200)}`);
+        return null;
+      }
+
+      console.log('[generateLinkCode] Generated code:', code);
+      return code;
+    } catch (err: any) {
+      setDbError(`Generate link code exception: ${err?.message || err}`);
+      return null;
+    }
+  }, [appState.user, setDbError]);
+
+  // Join household using a link code
+  const handleJoinWithCode = useCallback(
+    async (code: string) => {
+      try {
+        const userId = appState.user?.id;
+        const userName = appState.user?.name;
+        if (!userId || !userName) {
+          setDbError('User not logged in');
+          return;
+        }
+
+        const headers = await getAuthHeaders();
+        
+        // Look up the link code
+        const codeRes = await fetch(
+          `${REST_BASE}/link_codes?select=*&code=eq.${code.toUpperCase()}&expires_at=gt.${new Date().toISOString()}&limit=1`,
+          { headers },
+        );
+
+        if (!codeRes.ok) {
+          setDbError('Invalid or expired link code');
+          return;
+        }
+
+        const codeData = JSON.parse(await codeRes.text());
+        if (!codeData || codeData.length === 0) {
+          setDbError('Invalid or expired link code');
+          return;
+        }
+
+        const linkCode = codeData[0];
+        const otherUserId = linkCode.user_id;
+
+        if (otherUserId === userId) {
+          setDbError("You can't link with yourself");
+          return;
+        }
+
+        // Get the other user's name
+        const settingsRes = await fetch(
+          `${REST_BASE}/settings?select=name&user_id=eq.${otherUserId}&limit=1`,
+          { headers },
+        );
+
+        let otherUserName = 'Partner';
+        if (settingsRes.ok) {
+          const settingsData = JSON.parse(await settingsRes.text());
+          if (settingsData && settingsData.length > 0) {
+            otherUserName = settingsData[0].name;
+          }
+        }
+
+        // Create household link
+        (headers as any)['Prefer'] = 'return=representation';
+        const linkRes = await fetch(`${REST_BASE}/household_links`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            user1_id: otherUserId,
+            user2_id: userId,
+            user1_name: otherUserName,
+            user2_name: userName,
+          }),
+        });
+
+        if (!linkRes.ok) {
+          const body = await linkRes.text();
+          setDbError(`Failed to create household link: ${body.slice(0, 200)}`);
+          return;
+        }
+
+        // Delete the used link code
+        await fetch(`${REST_BASE}/link_codes?code=eq.${code.toUpperCase()}`, {
+          method: 'DELETE',
+          headers,
+        });
+
+        setAppState(prev => ({
+          ...prev,
+          user: prev.user
+            ? {
+                ...prev.user,
+                budgetingSolo: false,
+                hasJointAccounts: true,
+                partnerId: otherUserId,
+                partnerName: otherUserName,
+              }
+            : null,
+        }));
+
+        console.log('[joinWithCode] Successfully linked household');
+      } catch (err: any) {
+        setDbError(`Join with code exception: ${err?.message || err}`);
+      }
+    },
+    [appState.user, setAppState, setDbError],
+  );
+
+  // Send a partner link request by email (legacy method, kept for compatibility)
   const handleLinkPartner = useCallback(
     async (partnerEmail: string) => {
       try {
@@ -380,19 +536,21 @@ export const useUserData = ({
         const partnerId = lookupData[0].user_id;
         const partnerName = lookupData[0].name;
         const userId = appState.user?.id;
+        const userName = appState.user?.name;
         if (!userId || partnerId === userId) {
           setDbError("You can't link with yourself.");
           return;
         }
 
         (headers as any)['Prefer'] = 'return=representation';
-        const insertRes = await fetch(`${REST_BASE}/linked_partners`, {
+        const insertRes = await fetch(`${REST_BASE}/household_links`, {
           method: 'POST',
           headers,
           body: JSON.stringify({
-            user_id: userId,
-            partner_id: partnerId,
-            status: 'accepted',
+            user1_id: userId,
+            user2_id: partnerId,
+            user1_name: userName,
+            user2_name: partnerName,
           }),
         });
 
@@ -408,6 +566,7 @@ export const useUserData = ({
             ? {
                 ...prev.user,
                 budgetingSolo: false,
+                hasJointAccounts: true,
                 partnerId,
                 partnerName,
                 partnerEmail,
@@ -422,7 +581,7 @@ export const useUserData = ({
     [appState.user, setAppState, setDbError],
   );
 
-  // Disconnect partner
+  // Disconnect household
   const handleUnlinkPartner = useCallback(async () => {
     try {
       const userId = appState.user?.id;
@@ -430,7 +589,7 @@ export const useUserData = ({
 
       const headers = await getAuthHeaders();
       await fetch(
-        `${REST_BASE}/linked_partners?or=(user_id.eq.${userId},partner_id.eq.${userId})`,
+        `${REST_BASE}/household_links?or=(user1_id.eq.${userId},user2_id.eq.${userId})`,
         { method: 'DELETE', headers },
       );
 
@@ -440,6 +599,7 @@ export const useUserData = ({
           ? {
               ...prev.user,
               budgetingSolo: true,
+              hasJointAccounts: false,
               partnerId: undefined,
               partnerEmail: undefined,
               partnerName: undefined,
@@ -452,11 +612,19 @@ export const useUserData = ({
     }
   }, [appState.user, setAppState, setDbError]);
 
-  // NEW: Save a single budget limit for the current user
+  // Save a single budget limit for the current user
   const saveBudgetLimit = useCallback(
     async (categoryId: string, newLimit: number) => {
       const userId = appState.user?.id;
       if (!userId) return;
+
+      // Find the category name from the categoryId
+      const category = appState.budgets.find(b => b.id === categoryId);
+      if (!category) {
+        console.error('[saveBudgetLimit] Category not found:', categoryId);
+        return;
+      }
+      const categoryName = category.name;
 
       // Optimistic UI update
       setAppState(prev => ({
@@ -470,10 +638,8 @@ export const useUserData = ({
         const headers = await getAuthHeaders();
         
         // First, check if a record exists
-        // Note: The user_budgets table lacks a unique constraint on (user_id, category_id),
-        // so we must check-then-update/insert rather than using a single upsert operation.
         const checkRes = await fetch(
-          `${REST_BASE}/user_budgets?select=id&user_id=eq.${userId}&category_id=eq.${categoryId}`,
+          `${REST_BASE}/budgets?select=id&user_id=eq.${userId}&category=eq.${encodeURIComponent(categoryName)}`,
           { headers },
         );
         
@@ -492,25 +658,26 @@ export const useUserData = ({
           // Update existing record
           const recordId = existingRecords[0].id;
           res = await fetch(
-            `${REST_BASE}/user_budgets?id=eq.${recordId}`,
+            `${REST_BASE}/budgets?id=eq.${recordId}`,
             {
               method: 'PATCH',
               headers,
-              body: JSON.stringify({ total_limit: newLimit }),
+              body: JSON.stringify({ limit_amount: newLimit }),
             },
           );
         } else {
           // Insert new record
           (headers as any)['Prefer'] = 'return=representation';
           res = await fetch(
-            `${REST_BASE}/user_budgets`,
+            `${REST_BASE}/budgets`,
             {
               method: 'POST',
               headers,
               body: JSON.stringify({
                 user_id: userId,
-                category_id: categoryId,
-                total_limit: newLimit,
+                category: categoryName,
+                limit_amount: newLimit,
+                is_household: !appState.user?.budgetingSolo,
               }),
             },
           );
@@ -534,7 +701,7 @@ export const useUserData = ({
         setDbError(msg);
       }
     },
-    [appState.user, setAppState, setDbError],
+    [appState.user, appState.budgets, setAppState, setDbError],
   );
 
   // Save user monthly income to Supabase settings table
@@ -764,6 +931,95 @@ export const useUserData = ({
     [appState.transactions, setAppState, setDbError],
   );
 
+  // Approve a pending transaction (convert to actual transaction)
+  const handleApprovePendingTransaction = useCallback(
+    async (pendingId: string, categoryId: string) => {
+      try {
+        const userId = appState.user?.id;
+        if (!userId) return;
+
+        const pending = appState.pendingTransactions?.find(p => p.id === pendingId);
+        if (!pending) {
+          setDbError('Pending transaction not found');
+          return;
+        }
+
+        // Create the actual transaction
+        const newTransaction: Partial<Transaction> = {
+          id: pendingId, // Use same ID for tracking
+          user_id: userId,
+          vendor: pending.extracted_vendor,
+          amount: pending.extracted_amount,
+          date: pending.extracted_timestamp,
+          budget_id: categoryId,
+          recurrence: 'One-time',
+          label: 'Auto-Added',
+          is_projected: false,
+        };
+
+        await handleAddTransaction(newTransaction as Transaction);
+
+        // Mark pending transaction as reviewed and approved
+        const headers = await getAuthHeaders();
+        await fetch(`${REST_BASE}/pending_transactions?id=eq.${pendingId}`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({
+            needs_review: false,
+            reviewed_at: new Date().toISOString(),
+            approved: true,
+          }),
+        });
+
+        // Remove from pending list in UI
+        setAppState(prev => ({
+          ...prev,
+          pendingTransactions: prev.pendingTransactions?.filter(p => p.id !== pendingId) || [],
+        }));
+
+        console.log('[approvePending] OK, approved pending transaction', pendingId);
+      } catch (err: any) {
+        const msg = `Approve pending exception: ${err?.message || err}`;
+        console.error(msg);
+        setDbError(msg);
+      }
+    },
+    [appState.user, appState.pendingTransactions, handleAddTransaction, setAppState, setDbError],
+  );
+
+  // Reject a pending transaction
+  const handleRejectPendingTransaction = useCallback(
+    async (pendingId: string) => {
+      try {
+        const headers = await getAuthHeaders();
+
+        // Mark as reviewed and not approved
+        await fetch(`${REST_BASE}/pending_transactions?id=eq.${pendingId}`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({
+            needs_review: false,
+            reviewed_at: new Date().toISOString(),
+            approved: false,
+          }),
+        });
+
+        // Remove from pending list in UI
+        setAppState(prev => ({
+          ...prev,
+          pendingTransactions: prev.pendingTransactions?.filter(p => p.id !== pendingId) || [],
+        }));
+
+        console.log('[rejectPending] OK, rejected pending transaction', pendingId);
+      } catch (err: any) {
+        const msg = `Reject pending exception: ${err?.message || err}`;
+        console.error(msg);
+        setDbError(msg);
+      }
+    },
+    [setAppState, setDbError],
+  );
+
   return {
     categoriesLoaded,
     loadUserData,
@@ -772,6 +1028,10 @@ export const useUserData = ({
     handleDeleteTransaction,
     handleLinkPartner,
     handleUnlinkPartner,
+    handleGenerateLinkCode,
+    handleJoinWithCode,
+    handleApprovePendingTransaction,
+    handleRejectPendingTransaction,
     saveBudgetLimit,
     saveUserIncome,
   };
