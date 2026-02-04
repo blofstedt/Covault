@@ -70,8 +70,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       showSettings || isAddingTx || !!selectedTx || showTutorial;
     if (shouldLock) {
       if (bodyOverflowRef.current === null) {
-        bodyOverflowRef.current =
-          document.body.style.overflow || window.getComputedStyle(document.body).overflow;
+        bodyOverflowRef.current = document.body.style.overflow || '';
       }
       document.body.style.overflow = 'hidden';
     } else if (bodyOverflowRef.current !== null) {
