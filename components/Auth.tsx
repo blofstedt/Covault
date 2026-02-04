@@ -16,10 +16,13 @@ const Auth: React.FC<AuthProps> = ({ onSignIn }) => {
       setIsLoggingIn(true);
       setAuthError(null);
 
-      // For native apps, use a different redirect approach
+      // For native apps, use a deep link callback
+      // For web apps, use the origin to ensure consistent redirect URL
+      // NOTE: Add this URL to Supabase Dashboard (Authentication > URL Configuration > Redirect URLs)
+      // and to Google Cloud Console (APIs & Services > Credentials > OAuth 2.0 Client > Authorized redirect URIs)
       const redirectUrl = Capacitor.isNativePlatform()
         ? 'com.covault.app://auth/callback'
-        : window.location.href;
+        : window.location.origin;
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -82,10 +85,10 @@ const Auth: React.FC<AuthProps> = ({ onSignIn }) => {
             {!Capacitor.isNativePlatform() && (
               <div className="mt-2 space-y-1">
                 <p className="text-[7px] text-slate-400 text-center uppercase">
-                  1. Add redirect to Supabase Dashboard
+                  1. Add your site URL to Supabase redirect URLs
                 </p>
                 <p className="text-[7px] text-slate-400 text-center uppercase">
-                  2. Add Callback to Google Console
+                  2. Add Supabase callback to Google Console OAuth URIs
                 </p>
               </div>
             )}
