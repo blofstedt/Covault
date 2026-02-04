@@ -24,6 +24,11 @@ const DEFAULT_BUDGET_LIMIT = 500;
 // Default monthly income when user has not set income
 const DEFAULT_MONTHLY_INCOME = 5000;
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const isValidUserId = (value: string) => UUID_REGEX.test(value);
+
 const parseAppSettingsValue = (value: any): Record<string, any> => {
   if (!value) return {};
   if (typeof value === 'string') {
@@ -192,10 +197,20 @@ export const useUserData = ({
       try {
         const headers = await getAuthHeaders();
         const loadFromAppSettings = async () => {
+          if (!isValidUserId(userId)) {
+            console.warn('[loadUserSettings] invalid userId for app_settings:', userId);
+            setAppState(prev => ({
+              ...prev,
+              user: prev.user
+                ? { ...prev.user, monthlyIncome: DEFAULT_MONTHLY_INCOME }
+                : null,
+            }));
+            return;
+          }
+
+          const encodedUserId = encodeURIComponent(userId);
           const appRes = await fetch(
-            `${REST_BASE}/app_settings?select=value&key=eq.${encodeURIComponent(
-              userId,
-            )}`,
+            `${REST_BASE}/app_settings?select=value&key=eq.${encodedUserId}`,
             { headers },
           );
 
@@ -205,7 +220,9 @@ export const useUserData = ({
           }
 
           const appRows = await appRes.json();
-          const appValue = parseAppSettingsValue(appRows?.[0]?.value);
+          const appValue = parseAppSettingsValue(
+            Array.isArray(appRows) ? appRows[0]?.value : null,
+          );
           const rawMonthlyIncome =
             appValue.monthly_income ?? appValue.monthlyIncome ?? null;
           const parsedMonthlyIncome =
@@ -225,7 +242,7 @@ export const useUserData = ({
               : null,
           }));
 
-          if (!appRows || appRows.length === 0) {
+          if (!Array.isArray(appRows) || appRows.length === 0) {
             await fetch(`${REST_BASE}/app_settings`, {
               method: 'POST',
               headers: {
@@ -626,13 +643,20 @@ export const useUserData = ({
       try {
         const headers = await getAuthHeaders();
 
-        const tryLegacySettings = async () => {
+        const saveToSettingsTable = async () => {
           const existingRes = await fetch(
             `${REST_BASE}/settings?select=user_id&user_id=eq.${userId}&limit=1`,
             { headers },
           );
           const existingBody = await existingRes.text();
-          const existingRows = existingRes.ok ? JSON.parse(existingBody || '[]') : [];
+          let existingRows: any[] = [];
+          if (existingRes.ok) {
+            try {
+              existingRows = JSON.parse(existingBody || '[]');
+            } catch {
+              existingRows = [];
+            }
+          }
 
           if (!existingRes.ok) {
             console.error(
@@ -688,21 +712,32 @@ export const useUserData = ({
           return true;
         };
 
+        if (!isValidUserId(userId)) {
+          console.warn('[saveUserIncome] invalid userId for app_settings:', userId);
+          const legacyOk = await saveToSettingsTable();
+          if (!legacyOk) {
+            return;
+          }
+          return;
+        }
+
+        const encodedUserId = encodeURIComponent(userId);
         const appRes = await fetch(
-          `${REST_BASE}/app_settings?select=value&key=eq.${encodeURIComponent(
-            userId,
-          )}&limit=1`,
+          `${REST_BASE}/app_settings?select=value&key=eq.${encodedUserId}&limit=1`,
           { headers },
         );
 
         if (appRes.ok) {
           const appRows = await appRes.json();
-          const currentValue = parseAppSettingsValue(appRows?.[0]?.value);
+          const currentValue = parseAppSettingsValue(
+            Array.isArray(appRows) ? appRows[0]?.value : null,
+          );
           const nextValue = { ...currentValue, monthly_income: income };
-          const method = appRows && appRows.length > 0 ? 'PATCH' : 'POST';
+          const method =
+            Array.isArray(appRows) && appRows.length > 0 ? 'PATCH' : 'POST';
           const url =
             method === 'PATCH'
-              ? `${REST_BASE}/app_settings?key=eq.${encodeURIComponent(userId)}`
+              ? `${REST_BASE}/app_settings?key=eq.${encodedUserId}`
               : `${REST_BASE}/app_settings`;
           const body =
             method === 'PATCH'
@@ -723,13 +758,13 @@ export const useUserData = ({
             console.warn(
               `[saveUserIncome] app_settings update failed (${saveRes.status}): ${saveBody.slice(0, 200)}`,
             );
-            const legacyOk = await tryLegacySettings();
+            const legacyOk = await saveToSettingsTable();
             if (!legacyOk) {
               return;
             }
           }
         } else {
-          const legacyOk = await tryLegacySettings();
+          const legacyOk = await saveToSettingsTable();
           if (!legacyOk) {
             return;
           }
