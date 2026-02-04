@@ -37,6 +37,10 @@ const IncomeSection: React.FC<IncomeSectionProps> = ({
       const numeric = parseFloat(inputValue);
       if (!isNaN(numeric) && numeric >= 0) {
         onUpdateUserIncome(numeric);
+      } else {
+        // Invalid value: reset to current saved value
+        const currentIncome = user?.monthlyIncome ?? 0;
+        setInputValue(currentIncome.toString());
       }
     }
   };
