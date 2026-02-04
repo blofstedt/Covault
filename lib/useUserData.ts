@@ -232,14 +232,15 @@ export const useUserData = ({
             Array.isArray(appRows) ? appRows[0]?.value : null,
           );
           // Support legacy camelCase key from older clients
-          const rawMonthlyIncome =
-            appValue.monthly_income ?? appValue.monthlyIncome;
-          // If legacy camelCase differs, prefer it and migrate to snake_case.
+          const legacyMonthlyIncome = appValue.monthlyIncome;
+          const snakeMonthlyIncome = appValue.monthly_income;
+          const rawMonthlyIncome = snakeMonthlyIncome ?? legacyMonthlyIncome;
+          // If legacy camelCase value is present and differs, prefer it and migrate to snake_case.
           const shouldMigrateMonthlyIncome =
-            appValue.monthlyIncome !== undefined
+            legacyMonthlyIncome !== undefined
             && (
-              appValue.monthly_income === undefined
-              || appValue.monthlyIncome !== appValue.monthly_income
+              snakeMonthlyIncome === undefined
+              || legacyMonthlyIncome !== snakeMonthlyIncome
             );
           if (shouldMigrateMonthlyIncome) {
             await fetch(`${REST_BASE}/app_settings?key=eq.${appSettingsKey}`, {
@@ -694,7 +695,7 @@ export const useUserData = ({
             return false;
           }
 
-          let existingRows: unknown[] = [];
+          let existingRows: Array<{ user_id?: string }> = [];
           try {
             existingRows = await existingRes.json();
           } catch (error) {
