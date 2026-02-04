@@ -142,6 +142,11 @@ export const useUserData = ({
         const body = await res.text();
 
         if (!res.ok) {
+          // Check if it's a "table not found" error (expected during initial setup)
+          if (res.status === 404 && body.includes('Could not find the table')) {
+            console.log('[loadUserBudgets] budgets table not found - using defaults (run schema.sql to create tables)');
+            return;
+          }
           console.error('[loadUserBudgets] failed:', body.slice(0, 200));
           return;
         }
@@ -286,6 +291,13 @@ export const useUserData = ({
         );
 
         if (!res.ok) {
+          // Check if table doesn't exist (expected during initial setup)
+          const body = await res.text();
+          if (res.status === 404 && body.includes('Could not find the table')) {
+            console.log('[loadPendingTransactions] table not found - using defaults (run schema.sql to create tables)');
+            setAppState(prev => ({ ...prev, pendingTransactions: [] }));
+            return;
+          }
           console.log('[loadPendingTransactions] failed or no pending transactions');
           return;
         }
@@ -318,6 +330,12 @@ export const useUserData = ({
         );
 
         if (!res.ok) {
+          const body = await res.text();
+          // Check if table doesn't exist (expected during initial setup)
+          if (res.status === 404 && body.includes('Could not find the table')) {
+            console.log('[loadHouseholdLink] table not found - using defaults (run schema.sql to create tables)');
+            return;
+          }
           console.log('[loadHouseholdLink] No household link found or error');
           return;
         }
