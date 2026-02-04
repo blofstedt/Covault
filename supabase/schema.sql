@@ -60,8 +60,8 @@ CREATE TABLE public.settings (
   has_seen_tutorial boolean DEFAULT false,
   app_notifications_enabled boolean DEFAULT false,
   CONSTRAINT settings_pkey PRIMARY KEY (user_id),
-  CONSTRAINT settings_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
-  CONSTRAINT settings_partner_id_fkey FOREIGN KEY (partner_id) REFERENCES auth.users(id)
+  CONSTRAINT settings_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE,
+  CONSTRAINT settings_partner_id_fkey FOREIGN KEY (partner_id) REFERENCES auth.users(id) ON DELETE SET NULL
 );
 
 -- ============================================================
@@ -75,8 +75,8 @@ CREATE TABLE public.linked_partners (
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
   CONSTRAINT linked_partners_pkey PRIMARY KEY (id),
-  CONSTRAINT linked_partners_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
-  CONSTRAINT linked_partners_partner_id_fkey FOREIGN KEY (partner_id) REFERENCES auth.users(id)
+  CONSTRAINT linked_partners_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE,
+  CONSTRAINT linked_partners_partner_id_fkey FOREIGN KEY (partner_id) REFERENCES auth.users(id) ON DELETE CASCADE
 );
 
 -- ============================================================
@@ -96,8 +96,8 @@ CREATE TABLE public.notification_rules (
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
   CONSTRAINT notification_rules_pkey PRIMARY KEY (id),
-  CONSTRAINT notification_rules_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
-  CONSTRAINT notification_rules_default_category_id_fkey FOREIGN KEY (default_category_id) REFERENCES public.categories(id)
+  CONSTRAINT notification_rules_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE,
+  CONSTRAINT notification_rules_default_category_id_fkey FOREIGN KEY (default_category_id) REFERENCES public.categories(id) ON DELETE SET NULL
 );
 
 -- ============================================================
@@ -119,7 +119,7 @@ CREATE TABLE public.transactions (
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
   CONSTRAINT transactions_pkey PRIMARY KEY (id),
-  CONSTRAINT transactions_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
+  CONSTRAINT transactions_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE,
   CONSTRAINT transactions_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.categories(id)
 );
 
@@ -134,7 +134,7 @@ CREATE TABLE public.user_budgets (
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
   CONSTRAINT user_budgets_pkey PRIMARY KEY (id),
-  CONSTRAINT user_budgets_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
+  CONSTRAINT user_budgets_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE,
   CONSTRAINT user_budgets_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.categories(id)
 );
 
@@ -148,7 +148,7 @@ CREATE TABLE public.vendor_overrides (
   category_id uuid NOT NULL,
   created_at timestamp with time zone DEFAULT now(),
   CONSTRAINT vendor_overrides_pkey PRIMARY KEY (id),
-  CONSTRAINT vendor_overrides_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
+  CONSTRAINT vendor_overrides_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE,
   CONSTRAINT vendor_overrides_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.categories(id)
 );
 
@@ -165,8 +165,8 @@ CREATE TABLE public.flag_reports (
   resolved boolean NOT NULL DEFAULT false,
   created_at timestamp with time zone DEFAULT now(),
   CONSTRAINT flag_reports_pkey PRIMARY KEY (id),
-  CONSTRAINT flag_reports_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
-  CONSTRAINT flag_reports_notification_rule_id_fkey FOREIGN KEY (notification_rule_id) REFERENCES public.notification_rules(id)
+  CONSTRAINT flag_reports_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE,
+  CONSTRAINT flag_reports_notification_rule_id_fkey FOREIGN KEY (notification_rule_id) REFERENCES public.notification_rules(id) ON DELETE SET NULL
 );
 
 -- ============================================================
@@ -188,7 +188,7 @@ CREATE TABLE public.budgets (
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
   CONSTRAINT budgets_pkey PRIMARY KEY (id),
-  CONSTRAINT budgets_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+  CONSTRAINT budgets_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
 );
 
 -- ============================================================
@@ -202,8 +202,8 @@ CREATE TABLE public.household_links (
   user1_name text,
   user2_name text,
   CONSTRAINT household_links_pkey PRIMARY KEY (id),
-  CONSTRAINT household_links_user1_id_fkey FOREIGN KEY (user1_id) REFERENCES auth.users(id),
-  CONSTRAINT household_links_user2_id_fkey FOREIGN KEY (user2_id) REFERENCES auth.users(id),
+  CONSTRAINT household_links_user1_id_fkey FOREIGN KEY (user1_id) REFERENCES auth.users(id) ON DELETE CASCADE,
+  CONSTRAINT household_links_user2_id_fkey FOREIGN KEY (user2_id) REFERENCES auth.users(id) ON DELETE CASCADE,
   CONSTRAINT household_links_no_self CHECK (user1_id <> user2_id),
   CONSTRAINT household_links_unique UNIQUE (user1_id, user2_id)
 );
@@ -217,7 +217,7 @@ CREATE TABLE public.link_codes (
   expires_at timestamp with time zone NOT NULL,
   created_at timestamp with time zone DEFAULT now(),
   CONSTRAINT link_codes_pkey PRIMARY KEY (code),
-  CONSTRAINT link_codes_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+  CONSTRAINT link_codes_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
 );
 
 -- ============================================================
@@ -243,7 +243,7 @@ CREATE TABLE public.pending_transactions (
   reviewed_at timestamp with time zone,
   approved boolean,
   CONSTRAINT pending_transactions_pkey PRIMARY KEY (id),
-  CONSTRAINT pending_transactions_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+  CONSTRAINT pending_transactions_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
 );
 
 -- ============================================================
@@ -266,7 +266,7 @@ CREATE TABLE public.validation_baselines (
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
   CONSTRAINT validation_baselines_pkey PRIMARY KEY (id),
-  CONSTRAINT validation_baselines_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+  CONSTRAINT validation_baselines_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
 );
 
 -- ============================================================

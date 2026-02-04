@@ -10,7 +10,7 @@ This document explains the complete database schema for the Covault application.
 These are the 8 core tables you specified:
 
 1. **categories** - Budget categories with display order
-2. **settings** - User settings including theme, income, partner info
+2. **settings** - User settings including theme, income, partner info, and app notifications
 3. **linked_partners** - Partnership requests with status (pending/accepted/rejected)
 4. **notification_rules** - Bank notification parsing rules per user
 5. **transactions** - Financial transactions with categories and recurrence
@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS public.budgets (
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
   CONSTRAINT budgets_pkey PRIMARY KEY (id),
-  CONSTRAINT budgets_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+  CONSTRAINT budgets_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
 );
 
 -- 2. HOUSEHOLD LINKS (links two users as household partners)
@@ -80,8 +80,8 @@ CREATE TABLE IF NOT EXISTS public.household_links (
   user1_name text,
   user2_name text,
   CONSTRAINT household_links_pkey PRIMARY KEY (id),
-  CONSTRAINT household_links_user1_id_fkey FOREIGN KEY (user1_id) REFERENCES auth.users(id),
-  CONSTRAINT household_links_user2_id_fkey FOREIGN KEY (user2_id) REFERENCES auth.users(id),
+  CONSTRAINT household_links_user1_id_fkey FOREIGN KEY (user1_id) REFERENCES auth.users(id) ON DELETE CASCADE,
+  CONSTRAINT household_links_user2_id_fkey FOREIGN KEY (user2_id) REFERENCES auth.users(id) ON DELETE CASCADE,
   CONSTRAINT household_links_no_self CHECK (user1_id <> user2_id),
   CONSTRAINT household_links_unique UNIQUE (user1_id, user2_id)
 );
@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS public.link_codes (
   expires_at timestamp with time zone NOT NULL,
   created_at timestamp with time zone DEFAULT now(),
   CONSTRAINT link_codes_pkey PRIMARY KEY (code),
-  CONSTRAINT link_codes_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+  CONSTRAINT link_codes_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
 );
 
 -- 4. PENDING TRANSACTIONS (awaiting user approval)
@@ -117,7 +117,7 @@ CREATE TABLE IF NOT EXISTS public.pending_transactions (
   reviewed_at timestamp with time zone,
   approved boolean,
   CONSTRAINT pending_transactions_pkey PRIMARY KEY (id),
-  CONSTRAINT pending_transactions_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+  CONSTRAINT pending_transactions_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
 );
 
 -- 5. VALIDATION BASELINES (regex patterns for notification parsing)
@@ -138,7 +138,7 @@ CREATE TABLE IF NOT EXISTS public.validation_baselines (
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
   CONSTRAINT validation_baselines_pkey PRIMARY KEY (id),
-  CONSTRAINT validation_baselines_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+  CONSTRAINT validation_baselines_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
 );
 
 -- 6. TRANSACTION BUDGET SPLITS (for split transactions)
