@@ -546,8 +546,8 @@ export const useUserData = ({
         return;
       }
 
-      // Store the previous value for rollback
-      const previousIncome = appState.user?.monthlyIncome;
+      // Store the previous value for rollback (with fallback to default if not set)
+      const previousIncome = appState.user?.monthlyIncome ?? DEFAULT_MONTHLY_INCOME;
 
       // Optimistic UI update
       setAppState(prev => ({
