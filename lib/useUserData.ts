@@ -234,23 +234,13 @@ export const useUserData = ({
           // Support legacy camelCase key from older clients
           const rawMonthlyIncome =
             appValue.monthly_income ?? appValue.monthlyIncome;
-          if (appValue.monthlyIncome !== undefined && appValue.monthly_income === undefined) {
-            await fetch(`${REST_BASE}/app_settings?key=eq.${appSettingsKey}`, {
-              method: 'PATCH',
-              headers: {
-                ...headers,
-                Prefer: 'resolution=merge-duplicates,return=representation',
-              },
-              body: JSON.stringify({
-                value: { ...appValue, monthly_income: appValue.monthlyIncome },
-              }),
-            });
-          }
-          if (
+          const shouldMigrateMonthlyIncome =
             appValue.monthlyIncome !== undefined
-            && appValue.monthly_income !== undefined
-            && appValue.monthlyIncome !== appValue.monthly_income
-          ) {
+            && (
+              appValue.monthly_income === undefined
+              || appValue.monthlyIncome !== appValue.monthly_income
+            );
+          if (shouldMigrateMonthlyIncome) {
             await fetch(`${REST_BASE}/app_settings?key=eq.${appSettingsKey}`, {
               method: 'PATCH',
               headers: {
