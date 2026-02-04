@@ -62,16 +62,31 @@ const Dashboard: React.FC<DashboardProps> = ({
   // Scroll refs shared with child components
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const budgetRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const bodyOverflowRef = useRef<string | null>(null);
 
   // Lock body scroll when overlays are open
   useEffect(() => {
     const shouldLock =
       showSettings || isAddingTx || !!selectedTx || showTutorial;
-    document.body.style.overflow = shouldLock ? 'hidden' : '';
-    return () => {
-      document.body.style.overflow = '';
-    };
+    if (shouldLock) {
+      if (bodyOverflowRef.current === null) {
+        bodyOverflowRef.current = document.body.style.overflow || '';
+      }
+      document.body.style.overflow = 'hidden';
+    } else if (bodyOverflowRef.current !== null) {
+      document.body.style.overflow = bodyOverflowRef.current;
+      bodyOverflowRef.current = null;
+    }
   }, [showSettings, isAddingTx, selectedTx, showTutorial]);
+
+  useEffect(() => {
+    return () => {
+      if (bodyOverflowRef.current !== null) {
+        document.body.style.overflow = bodyOverflowRef.current;
+        bodyOverflowRef.current = null;
+      }
+    };
+  }, []);
 
   const isSharedAccount = !state.user?.budgetingSolo;
 
@@ -266,7 +281,6 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const handleTutorialComplete = () => {
     setShowTutorial(false);
-    setShowSettings(false);
     updateSettings('hasSeenTutorial', true);
   };
 
