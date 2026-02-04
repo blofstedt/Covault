@@ -724,6 +724,7 @@ export const useUserData = ({
 
       try {
         const headers = await getAuthHeaders();
+        (headers as any)['Prefer'] = 'return=representation';
         
         // Update the settings table for this user
         const res = await fetch(
