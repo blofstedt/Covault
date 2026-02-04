@@ -204,19 +204,13 @@ export const useUserData = ({
     async (userId: string) => {
       try {
         const headers = await getAuthHeaders();
-        const loadFromAppSettings = async () => {
+        const loadFromAppSettings = async (): Promise<boolean> => {
+          const appSettingsKey = userId;
           if (!isValidUserId(userId)) {
             console.warn('[loadUserSettings] invalid userId for app_settings:', userId);
-            setAppState(prev => ({
-              ...prev,
-              user: prev.user
-                ? { ...prev.user, monthlyIncome: DEFAULT_MONTHLY_INCOME }
-                : null,
-            }));
-            return;
+            return false;
           }
 
-          const appSettingsKey = userId;
           const appRes = await fetch(
             `${REST_BASE}/app_settings?select=value&key=eq.${appSettingsKey}`,
             { headers },
@@ -224,7 +218,7 @@ export const useUserData = ({
 
           if (!appRes.ok) {
             console.error('[loadUserSettings] app_settings failed:', appRes.status);
-            return;
+            return false;
           }
 
           const appRows = await appRes.json();
@@ -237,11 +231,7 @@ export const useUserData = ({
           const rawMonthlyIncome = snakeMonthlyIncome ?? legacyMonthlyIncome;
           // If legacy camelCase value is present and differs, prefer it and migrate to snake_case.
           const shouldMigrateMonthlyIncome =
-            legacyMonthlyIncome !== undefined
-            && (
-              snakeMonthlyIncome === undefined
-              || legacyMonthlyIncome !== snakeMonthlyIncome
-            );
+            legacyMonthlyIncome !== undefined && snakeMonthlyIncome === undefined;
           if (shouldMigrateMonthlyIncome) {
             await fetch(`${REST_BASE}/app_settings?key=eq.${appSettingsKey}`, {
               method: 'PATCH',
@@ -250,7 +240,7 @@ export const useUserData = ({
                 Prefer: 'resolution=merge-duplicates,return=representation',
               },
               body: JSON.stringify({
-                value: { ...appValue, monthly_income: appValue.monthlyIncome },
+                value: { ...appValue, monthly_income: legacyMonthlyIncome },
               }),
             });
           }
@@ -259,7 +249,9 @@ export const useUserData = ({
               ? null
               : Number(rawMonthlyIncome);
           const shouldUseDefault =
-            parsedMonthlyIncome === null || Number.isNaN(parsedMonthlyIncome);
+            parsedMonthlyIncome === null
+            || Number.isNaN(parsedMonthlyIncome)
+            || !isValidIncomeValue(parsedMonthlyIncome);
           const monthlyIncome = shouldUseDefault
             ? DEFAULT_MONTHLY_INCOME
             : parsedMonthlyIncome;
@@ -291,6 +283,7 @@ export const useUserData = ({
               : '[loadUserSettings] loaded monthly_income:',
             monthlyIncome,
           );
+          return true;
         };
 
         const res = await fetch(
@@ -299,7 +292,15 @@ export const useUserData = ({
         );
 
         if (!res.ok) {
-          await loadFromAppSettings();
+          const loaded = await loadFromAppSettings();
+          if (!loaded) {
+            setAppState(prev => ({
+              ...prev,
+              user: prev.user
+                ? { ...prev.user, monthlyIncome: DEFAULT_MONTHLY_INCOME }
+                : null,
+            }));
+          }
           return;
         }
 
@@ -331,7 +332,15 @@ export const useUserData = ({
             monthlyIncome,
           );
         } else {
-          await loadFromAppSettings();
+          const loaded = await loadFromAppSettings();
+          if (!loaded) {
+            setAppState(prev => ({
+              ...prev,
+              user: prev.user
+                ? { ...prev.user, monthlyIncome: DEFAULT_MONTHLY_INCOME }
+                : null,
+            }));
+          }
         }
       } catch (err: any) {
         console.error('[loadUserSettings] exception:', err?.message || err);
@@ -695,7 +704,7 @@ export const useUserData = ({
             return false;
           }
 
-          let existingRows: Array<{ user_id?: string }> = [];
+          let existingRows: Array<{ user_id: string }> = [];
           try {
             existingRows = await existingRes.json();
           } catch (error) {
