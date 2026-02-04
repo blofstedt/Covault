@@ -1,5 +1,5 @@
 // components/settings_modal_components/IncomeSection.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { DashboardUser } from '../DashboardSettingsModal';
 
 interface IncomeSectionProps {
@@ -15,19 +15,27 @@ const IncomeSection: React.FC<IncomeSectionProps> = ({
 }) => {
   // Local input state so the field behaves normally
   const [inputValue, setInputValue] = useState('');
+  // Track if user is currently editing to prevent unwanted resets
+  const isEditingRef = useRef(false);
 
-  // Sync UI when user is loaded or updated
+  // Sync UI when user is loaded or updated (but not while actively editing)
   useEffect(() => {
-    if (user?.monthlyIncome !== undefined && user?.monthlyIncome !== null) {
+    if (user?.monthlyIncome !== undefined && user?.monthlyIncome !== null && !isEditingRef.current) {
       setInputValue(user.monthlyIncome.toString());
     }
   }, [user?.monthlyIncome]);
+
+  const handleFocus = () => {
+    isEditingRef.current = true;
+  };
 
   const handleChange = (val: string) => {
     setInputValue(val);
   };
 
   const handleBlur = () => {
+    isEditingRef.current = false;
+    
     // Empty field becomes 0
     if (inputValue.trim() === '') {
       setInputValue('0');
@@ -68,6 +76,7 @@ const IncomeSection: React.FC<IncomeSectionProps> = ({
           type="number"
           inputMode="decimal"
           value={inputValue}
+          onFocus={handleFocus}
           onChange={(e) => handleChange(e.target.value)}
           onBlur={handleBlur}
           className="bg-transparent w-full outline-none font-black text-slate-600 dark:text-slate-100"
