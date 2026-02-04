@@ -281,14 +281,16 @@ export const useUserData = ({
       try {
         const headers = await getAuthHeaders();
 
+        // First try with foreign key joins
         const res = await fetch(
-          `${REST_BASE}/linked_partners?select=*,partner:settings!linked_partners_partner_id_fkey(name,email),requester:settings!linked_partners_user_id_fkey(name,email)&or=(user_id.eq.${userId},partner_id.eq.${userId})&status=eq.accepted&limit=1`,
+          `${REST_BASE}/linked_partners?select=*,partner:settings!linked_partners_partner_id_fkey(name,email),requester:settings!linked_partners_user_id_fkey(name,email)&status=eq.accepted&or=(user_id.eq.${userId},partner_id.eq.${userId})&limit=1`,
           { headers },
         );
 
         if (!res.ok) {
+          // Fallback query without foreign key joins if the first fails
           const res2 = await fetch(
-            `${REST_BASE}/linked_partners?select=*&or=(user_id.eq.${userId},partner_id.eq.${userId})&status=eq.accepted&limit=1`,
+            `${REST_BASE}/linked_partners?select=*&status=eq.accepted&or=(user_id.eq.${userId},partner_id.eq.${userId})&limit=1`,
             { headers },
           );
           if (res2.ok) {
@@ -304,6 +306,9 @@ export const useUserData = ({
                   : null,
               }));
             }
+          } else {
+            // If both queries fail, log the error but don't block the app
+            console.error('[loadPartnerLink] Both queries failed. Status:', res.status, res2.status);
           }
           return;
         }
