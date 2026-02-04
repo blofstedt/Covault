@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { BudgetCategory, Transaction } from '../../types';
-import { getBudgetIcon } from './getBudgetIcon';
+import { getBudgetIcon } from './getBudgetIcon'; // still unused but kept in case you use it later
 
 interface BudgetFlowChartProps {
   budgets: BudgetCategory[];
@@ -17,15 +17,18 @@ interface MonthData {
 
 type FilterMode = 'current' | 'last6';
 
+const MIN_WIDTH_FOR_LABEL = 15; // Minimum width percentage to show label in bar
+
 const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
   budgets,
   transactions,
 }) => {
-  // Minimum width percentage to show label in bar
-  const MIN_WIDTH_FOR_LABEL = 15;
-  
   // Filter state: 'current' for current month, 'last6' for last 6 months
   const [filterMode, setFilterMode] = useState<FilterMode>('current');
+
+  // Normalise props to avoid runtime errors if parent passes null/undefined
+  const safeBudgets = Array.isArray(budgets) ? budgets : [];
+  const safeTransactions = Array.isArray(transactions) ? transactions : [];
 
   // Current date - memoized to avoid recreating on every render
   const { currentYear, currentMonth } = useMemo(() => {
@@ -37,76 +40,106 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
   }, []);
 
   // Group transactions by month
-  const monthlyData = useMemo(() => {
-    const dataMap = new Map<string, MonthData>();
+  const monthlyData: MonthData[] = useMemo(() => {
+    try {
+      const dataMap = new Map<string, MonthData>();
 
-    transactions.forEach((tx) => {
-      // Skip projected transactions
-      if (tx.is_projected) return;
+      safeTransactions.forEach((tx) => {
+        // Skip projected transactions
+        if ((tx as any).is_projected) return;
 
-      const date = new Date(tx.date);
-      const year = date.getFullYear();
-      const month = date.getMonth();
-      const key = `${year}-${month}`;
+        const rawDate = (tx as any).date;
+        const date = rawDate ? new Date(rawDate) : null;
 
-      if (!dataMap.has(key)) {
-        dataMap.set(key, {
-          year,
-          month,
-          label: date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
-          budgetSpending: new Map(),
-          total: 0,
-        });
+        // Guard against invalid dates
+        if (!date || isNaN(date.getTime())) {
+          console.warn('[BudgetFlowChart] Skipping transaction with invalid date:', tx);
+          return;
+        }
+
+        const year = date.getFullYear();
+        const month = date.getMonth();
+        const key = `${year}-${month}`;
+
+        if (!dataMap.has(key)) {
+          dataMap.set(key, {
+            year,
+            month,
+            label: date.toLocaleDateString('en-US', {
+              month: 'short',
+              year: 'numeric',
+            }),
+            budgetSpending: new Map(),
+            total: 0,
+          });
+        }
+
+        const monthData = dataMap.get(key)!;
+
+        // Handle split transactions if present
+        const hasSplits = Array.isArray((tx as any).splits) && (tx as any).splits.length > 0;
+
+        if (hasSplits) {
+          (tx as any).splits.forEach((split: any) => {
+            const budgetId = split.budget_id ?? split.category_id;
+            if (!budgetId) return;
+            const current = monthData.budgetSpending.get(budgetId) || 0;
+            const amount = Number(split.amount) || 0;
+            monthData.budgetSpending.set(budgetId, current + amount);
+            monthData.total += amount;
+          });
+        } else {
+          // Fallback to single budget/category assignment
+          const budgetId = (tx as any).budget_id ?? (tx as any).category_id;
+          if (!budgetId) return;
+          const current = monthData.budgetSpending.get(budgetId) || 0;
+          const amount = Number((tx as any).amount) || 0;
+          monthData.budgetSpending.set(budgetId, current + amount);
+          monthData.total += amount;
+        }
+      });
+
+      // Sort by date (oldest to newest)
+      const sorted = Array.from(dataMap.values()).sort((a, b) => {
+        if (a.year !== b.year) return a.year - b.year;
+        return a.month - b.month;
+      });
+
+      // For 'current' mode, only show current month
+      if (filterMode === 'current') {
+        return sorted.filter(
+          (m) => m.year === currentYear && m.month === currentMonth,
+        );
       }
 
-      const monthData = dataMap.get(key)!;
-
-      // Handle split transactions
-      if (tx.splits && tx.splits.length > 0) {
-        tx.splits.forEach((split) => {
-          const current = monthData.budgetSpending.get(split.budget_id) || 0;
-          monthData.budgetSpending.set(split.budget_id, current + split.amount);
-          monthData.total += split.amount;
-        });
-      } else if (tx.budget_id) {
-        const current = monthData.budgetSpending.get(tx.budget_id) || 0;
-        monthData.budgetSpending.set(tx.budget_id, current + tx.amount);
-        monthData.total += tx.amount;
-      }
-    });
-
-    // Sort by date (oldest to newest)
-    const sorted = Array.from(dataMap.values()).sort((a, b) => {
-      if (a.year !== b.year) return a.year - b.year;
-      return a.month - b.month;
-    });
-
-    // For 'current' mode, only show current month
-    // For 'last6' mode, show last 6 months
-    if (filterMode === 'current') {
-      return sorted.filter(m => m.year === currentYear && m.month === currentMonth);
-    } else {
+      // For 'last6' mode, show last 6 months
       return sorted.slice(-6);
+    } catch (err) {
+      console.error('[BudgetFlowChart] Error while building monthly data:', err);
+      return [];
     }
-  }, [transactions, filterMode, currentYear, currentMonth]);
+  }, [safeTransactions, filterMode, currentYear, currentMonth]);
 
-  // If no data, show empty state
-  if (monthlyData.length === 0) {
+  // If no data, show nothing for now (you could show a nicer empty state if you want)
+  if (!monthlyData || monthlyData.length === 0) {
     return null;
   }
 
-  // Calculate the max total for scaling
-  const maxTotal = Math.max(...monthlyData.map((m) => m.total), 1);
+  // Calculate the max total for scaling – guard against all zeros
+  const maxTotal = Math.max(
+    ...monthlyData.map((m) => Number(m.total) || 0),
+    1,
+  );
 
   const budgetIndexMap = useMemo(
     () =>
       new Map(
-        budgets.map((budget, index) => [
+        safeBudgets.map((budget, index) => [
           budget.name.toLowerCase(),
           index,
         ]),
       ),
-    [budgets],
+    [safeBudgets],
   );
 
   // Get budget colors with consistent mapping (limited palette to match app UX)
@@ -129,7 +162,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
           <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
             Spending Overview
           </h3>
-          
+
           {/* Filter Toggle */}
           <div className="flex gap-2">
             <button
@@ -165,63 +198,83 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
               Please continue using the app to gather historical data.
             </p>
           </div>
-        ) : monthlyData.length === 0 ? (
-          // No data at all (even for current month)
-          null
         ) : (
           <>
             {/* Simple Bar Chart */}
             <div className="space-y-3">
-              {monthlyData.map((monthData) => (
-                <div key={`${monthData.year}-${monthData.month}`} className="space-y-2">
-                  {/* Month Label */}
-                  <div className="flex justify-between items-baseline">
-                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
-                      {monthData.label}
-                    </span>
-                    <span 
-                      className="text-[10px] font-black text-slate-600 dark:text-slate-300"
-                      aria-label={monthData.total.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                    >
-                      ${monthData.total.toFixed(0)}
-                    </span>
+              {monthlyData.map((monthData) => {
+                const safeTotal = Number(monthData.total) || 0;
+
+                return (
+                  <div
+                    key={`${monthData.year}-${monthData.month}`}
+                    className="space-y-2"
+                  >
+                    {/* Month Label */}
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                        {monthData.label}
+                      </span>
+                      <span
+                        className="text-[10px] font-black text-slate-600 dark:text-slate-300"
+                        aria-label={safeTotal.toLocaleString('en-US', {
+                          style: 'currency',
+                          currency: 'USD',
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 0,
+                        })}
+                      >
+                        ${safeTotal.toFixed(0)}
+                      </span>
+                    </div>
+
+                    {/* Bar */}
+                    <div className="w-full h-6 bg-slate-100 dark:bg-slate-800 rounded-xl overflow-hidden flex">
+                      {safeBudgets.map((budget) => {
+                        const spending =
+                          monthData.budgetSpending.get(budget.id) || 0;
+                        const safeSpending = Number(spending) || 0;
+                        if (safeSpending === 0 || safeTotal <= 0) return null;
+
+                        const widthPercent =
+                          (safeSpending / safeTotal) * 100;
+
+                        return (
+                          <div
+                            key={budget.id}
+                            className="h-full flex items-center justify-center relative group"
+                            style={{
+                              width: `${widthPercent}%`,
+                              backgroundColor: getBudgetColor(budget.name),
+                            }}
+                            aria-label={`${budget.name}: ${safeSpending.toLocaleString(
+                              'en-US',
+                              {
+                                style: 'currency',
+                                currency: 'USD',
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 0,
+                              },
+                            )}`}
+                          >
+                            {widthPercent > MIN_WIDTH_FOR_LABEL && (
+                              <span className="text-[9px] font-bold text-white">
+                                ${safeSpending.toFixed(0)}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                  
-                  {/* Bar */}
-                  <div className="w-full h-6 bg-slate-100 dark:bg-slate-800 rounded-xl overflow-hidden flex">
-                    {budgets.map((budget) => {
-                      const spending = monthData.budgetSpending.get(budget.id) || 0;
-                      if (spending === 0) return null;
-                      
-                      const widthPercent = (spending / monthData.total) * 100;
-                      
-                      return (
-                        <div
-                          key={budget.id}
-                          className="h-full flex items-center justify-center relative group"
-                          style={{
-                            width: `${widthPercent}%`,
-                            backgroundColor: getBudgetColor(budget.name),
-                          }}
-                          aria-label={`${budget.name}: ${spending.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
-                        >
-                          {widthPercent > MIN_WIDTH_FOR_LABEL && (
-                            <span className="text-[9px] font-bold text-white">
-                              ${spending.toFixed(0)}
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Legend */}
             <div className="mt-4 pt-3 border-t-2 border-slate-100 dark:border-slate-800">
               <div className="flex flex-wrap gap-2 justify-center">
-                {budgets.map((budget) => (
+                {safeBudgets.map((budget) => (
                   <div key={budget.id} className="flex items-center gap-2">
                     <div
                       className="w-2.5 h-2.5 rounded-full"
