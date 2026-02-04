@@ -21,6 +21,7 @@ const DEFAULT_SETTINGS = {
   theme: 'light' as const,
   hasSeenTutorial: false,
   notificationsEnabled: false,
+  app_notifications_enabled: false,
 };
 
 // Load settings from localStorage
