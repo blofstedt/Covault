@@ -265,7 +265,6 @@ const Dashboard: React.FC<DashboardProps> = ({
   const focusedBudgetId = isFocusMode ? Array.from(expandedBudgets)[0] : null;
 
   const handleTutorialComplete = () => {
-    document.body.style.overflow = '';
     setShowTutorial(false);
     setShowSettings(false);
     updateSettings('hasSeenTutorial', true);
