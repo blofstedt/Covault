@@ -30,6 +30,12 @@ interface DashboardProps {
   onAddTransaction: (t: Transaction) => void;
   onUpdateTransaction: (t: Transaction) => void;
   onDeleteTransaction: (id: string) => void;
+  onLinkPartner?: (email: string) => void;
+  onUnlinkPartner?: () => void;
+  onGenerateLinkCode?: () => Promise<string | null>;
+  onJoinWithCode?: (code: string) => void;
+  onApprovePendingTransaction?: (pendingId: string, categoryId: string) => void;
+  onRejectPendingTransaction?: (pendingId: string) => void;
   saveBudgetLimit: (categoryId: string, newLimit: number) => void;
   saveUserIncome: (income: number) => void;
   isLoadingData: boolean;
@@ -43,6 +49,12 @@ const Dashboard: React.FC<DashboardProps> = ({
   onAddTransaction,
   onUpdateTransaction,
   onDeleteTransaction,
+  onLinkPartner,
+  onUnlinkPartner,
+  onGenerateLinkCode,
+  onJoinWithCode,
+  onApprovePendingTransaction,
+  onRejectPendingTransaction,
   saveBudgetLimit,
   saveUserIncome,
   isLoadingData,

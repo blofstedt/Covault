@@ -67,6 +67,10 @@ const App: React.FC = () => {
     handleDeleteTransaction,
     handleLinkPartner,
     handleUnlinkPartner,
+    handleGenerateLinkCode,
+    handleJoinWithCode,
+    handleApprovePendingTransaction,
+    handleRejectPendingTransaction,
     saveBudgetLimit,
     saveUserIncome,
   } = useUserData({ appState, setAppState, setDbError });
@@ -163,6 +167,10 @@ const App: React.FC = () => {
           saveUserIncome={saveUserIncome}
           onLinkPartner={handleLinkPartner}
           onUnlinkPartner={handleUnlinkPartner}
+          onGenerateLinkCode={handleGenerateLinkCode}
+          onJoinWithCode={handleJoinWithCode}
+          onApprovePendingTransaction={handleApprovePendingTransaction}
+          onRejectPendingTransaction={handleRejectPendingTransaction}
           isLoadingData={isLoadingData}
         />
       )}
