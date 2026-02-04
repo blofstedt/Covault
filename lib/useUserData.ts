@@ -793,14 +793,17 @@ export const useUserData = ({
 
       try {
         const headers = await getAuthHeaders();
-        (headers as any)['Prefer'] = 'return=representation';
+        const headersWithPrefer: Record<string, string> = {
+          ...headers,
+          'Prefer': 'return=representation',
+        };
         
         // Update the settings table for this user
         const res = await fetch(
           `${REST_BASE}/settings?user_id=eq.${userId}`,
           {
             method: 'PATCH',
-            headers,
+            headers: headersWithPrefer,
             body: JSON.stringify({ theme }),
           },
         );
@@ -831,7 +834,7 @@ export const useUserData = ({
         }));
       }
     },
-    [appState.user, appState.settings.theme, setAppState, setDbError],
+    [appState.user, setAppState, setDbError],
   );
 
   // Add transaction
