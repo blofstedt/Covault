@@ -223,6 +223,7 @@ export const useUserData = ({
           const appValue = parseAppSettingsValue(
             Array.isArray(appRows) ? appRows[0]?.value : null,
           );
+          // Support legacy camelCase key from older clients
           const rawMonthlyIncome =
             appValue.monthly_income ?? appValue.monthlyIncome ?? null;
           const parsedMonthlyIncome =
@@ -653,14 +654,6 @@ export const useUserData = ({
             { headers },
           );
           const existingBody = await existingRes.text();
-          let existingRows: any[] = [];
-          if (existingRes.ok) {
-            try {
-              existingRows = JSON.parse(existingBody || '[]');
-            } catch {
-              existingRows = [];
-            }
-          }
 
           if (!existingRes.ok) {
             console.error(
@@ -672,6 +665,13 @@ export const useUserData = ({
               user: prev.user ? { ...prev.user, monthlyIncome: previousIncome } : null,
             }));
             return false;
+          }
+
+          let existingRows: any[] = [];
+          try {
+            existingRows = JSON.parse(existingBody || '[]');
+          } catch {
+            existingRows = [];
           }
 
           if (!existingRows || existingRows.length === 0) {
