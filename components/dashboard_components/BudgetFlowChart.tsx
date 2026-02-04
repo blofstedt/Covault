@@ -102,7 +102,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
     () =>
       new Map(
         budgets.map((budget, index) => [
-          budget.name.toLowerCase(),
+          budget.id,
           index,
         ]),
       ),
@@ -110,13 +110,13 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
   );
 
   // Get budget colors with consistent mapping (limited palette to match app UX)
-  const getBudgetColor = (budgetName: string) => {
+  const getBudgetColor = (budgetId: string) => {
     const palette = [
       'rgb(16, 185, 129)', // emerald
       'rgb(52, 211, 153)', // light emerald
       'rgb(148, 163, 184)', // slate
     ];
-    const budgetIndex = budgetIndexMap.get(budgetName.toLowerCase()) ?? 0;
+    const budgetIndex = budgetIndexMap.get(budgetId) ?? 0;
     const paletteIndex = budgetIndex >= 0 ? budgetIndex % palette.length : 0;
     return palette[paletteIndex];
   };
@@ -201,7 +201,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
                           className="h-full flex items-center justify-center relative group"
                           style={{
                             width: `${widthPercent}%`,
-                            backgroundColor: getBudgetColor(budget.name),
+                            backgroundColor: getBudgetColor(budget.id),
                           }}
                           aria-label={`${budget.name}: ${spending.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
                         >
@@ -225,7 +225,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
                   <div key={budget.id} className="flex items-center gap-2">
                     <div
                       className="w-2.5 h-2.5 rounded-full"
-                      style={{ backgroundColor: getBudgetColor(budget.name) }}
+                      style={{ backgroundColor: getBudgetColor(budget.id) }}
                     />
                     <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
                       {budget.name}
