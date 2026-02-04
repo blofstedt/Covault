@@ -1,294 +1,160 @@
-import React, { useMemo, useState } from 'react';
+import React from 'react';
 import { BudgetCategory, Transaction } from '../../types';
-import { getBudgetIcon } from './getBudgetIcon'; // still unused but kept in case you use it later
 
 interface BudgetFlowChartProps {
   budgets: BudgetCategory[];
   transactions: Transaction[];
 }
 
-interface MonthData {
-  year: number;
-  month: number;
-  label: string;
-  budgetSpending: Map<string, number>;
-  total: number;
-}
-
-type FilterMode = 'current' | 'last6';
-
-const MIN_WIDTH_FOR_LABEL = 15; // Minimum width percentage to show label in bar
+// Simple helper to get a color per budget name (same palette as before)
+const getBudgetColor = (budgetName: string) => {
+  const palette = [
+    'rgb(16, 185, 129)',  // emerald
+    'rgb(52, 211, 153)',  // light emerald
+    'rgb(148, 163, 184)', // slate
+  ];
+  const index =
+    Math.abs(budgetName.toLowerCase().split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0)) %
+    palette.length;
+  return palette[index];
+};
 
 const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
   budgets,
   transactions,
 }) => {
-  // Filter state: 'current' for current month, 'last6' for last 6 months
-  const [filterMode, setFilterMode] = useState<FilterMode>('current');
-
-  // Normalise props to avoid runtime errors if parent passes null/undefined
+  // ✅ Make sure we always have arrays (even if parent passes undefined/null)
   const safeBudgets = Array.isArray(budgets) ? budgets : [];
   const safeTransactions = Array.isArray(transactions) ? transactions : [];
 
-  // Current date - memoized to avoid recreating on every render
-  const { currentYear, currentMonth } = useMemo(() => {
+  // We’ll do all work in a try/catch so NOTHING here can crash React
+  let content: React.ReactNode = null;
+
+  try {
+    // Build a simple summary of ACTUAL (non-projected) spending by category for the current month
     const now = new Date();
-    return {
-      currentYear: now.getFullYear(),
-      currentMonth: now.getMonth(),
-    };
-  }, []);
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth(); // 0–11
 
-  // Group transactions by month
-  const monthlyData: MonthData[] = useMemo(() => {
-    try {
-      const dataMap = new Map<string, MonthData>();
+    const spendingByCategory = new Map<string, number>();
+    let total = 0;
 
-      safeTransactions.forEach((tx) => {
-        // Skip projected transactions
-        if ((tx as any).is_projected) return;
+    for (const tx of safeTransactions) {
+      const anyTx = tx as any;
 
-        const rawDate = (tx as any).date;
-        const date = rawDate ? new Date(rawDate) : null;
+      // Skip projected transactions
+      if (anyTx.is_projected) continue;
 
-        // Guard against invalid dates
-        if (!date || isNaN(date.getTime())) {
-          console.warn('[BudgetFlowChart] Skipping transaction with invalid date:', tx);
-          return;
-        }
+      const rawDate = anyTx.date;
+      const date = rawDate ? new Date(rawDate) : null;
+      if (!date || isNaN(date.getTime())) continue;
 
-        const year = date.getFullYear();
-        const month = date.getMonth();
-        const key = `${year}-${month}`;
-
-        if (!dataMap.has(key)) {
-          dataMap.set(key, {
-            year,
-            month,
-            label: date.toLocaleDateString('en-US', {
-              month: 'short',
-              year: 'numeric',
-            }),
-            budgetSpending: new Map(),
-            total: 0,
-          });
-        }
-
-        const monthData = dataMap.get(key)!;
-
-        // Handle split transactions if present
-        const hasSplits = Array.isArray((tx as any).splits) && (tx as any).splits.length > 0;
-
-        if (hasSplits) {
-          (tx as any).splits.forEach((split: any) => {
-            const budgetId = split.budget_id ?? split.category_id;
-            if (!budgetId) return;
-            const current = monthData.budgetSpending.get(budgetId) || 0;
-            const amount = Number(split.amount) || 0;
-            monthData.budgetSpending.set(budgetId, current + amount);
-            monthData.total += amount;
-          });
-        } else {
-          // Fallback to single budget/category assignment
-          const budgetId = (tx as any).budget_id ?? (tx as any).category_id;
-          if (!budgetId) return;
-          const current = monthData.budgetSpending.get(budgetId) || 0;
-          const amount = Number((tx as any).amount) || 0;
-          monthData.budgetSpending.set(budgetId, current + amount);
-          monthData.total += amount;
-        }
-      });
-
-      // Sort by date (oldest to newest)
-      const sorted = Array.from(dataMap.values()).sort((a, b) => {
-        if (a.year !== b.year) return a.year - b.year;
-        return a.month - b.month;
-      });
-
-      // For 'current' mode, only show current month
-      if (filterMode === 'current') {
-        return sorted.filter(
-          (m) => m.year === currentYear && m.month === currentMonth,
-        );
+      if (date.getFullYear() !== currentYear || date.getMonth() !== currentMonth) {
+        continue; // not in current month
       }
 
-      // For 'last6' mode, show last 6 months
-      return sorted.slice(-6);
-    } catch (err) {
-      console.error('[BudgetFlowChart] Error while building monthly data:', err);
-      return [];
+      const categoryId = anyTx.category_id;
+      if (!categoryId) continue;
+
+      const amount = Number(anyTx.amount) || 0;
+      if (amount === 0) continue;
+
+      const current = spendingByCategory.get(categoryId) || 0;
+      spendingByCategory.set(categoryId, current + amount);
+      total += amount;
     }
-  }, [safeTransactions, filterMode, currentYear, currentMonth]);
 
-  // If no data, show nothing for now (you could show a nicer empty state if you want)
-  if (!monthlyData || monthlyData.length === 0) {
-    return null;
+    if (total === 0 || spendingByCategory.size === 0) {
+      content = (
+        <div className="text-center py-8">
+          <p className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-2">
+            No spending yet this month
+          </p>
+          <p className="text-xs text-slate-400 dark:text-slate-500">
+            Once you add transactions, your monthly spending summary will appear here.
+          </p>
+        </div>
+      );
+    } else {
+      // Map category_id → name for display
+      const nameById = new Map<string, string>();
+      safeBudgets.forEach((b) => {
+        (nameById as any).set((b as any).id, (b as any).name);
+      });
+
+      const rows = Array.from(spendingByCategory.entries())
+        .map(([categoryId, amount]) => {
+          const name = nameById.get(categoryId) || 'Uncategorized';
+          return { categoryId, name, amount };
+        })
+        .sort((a, b) => b.amount - a.amount); // biggest spend first
+
+      content = (
+        <>
+          {/* Simple list + progress bars */}
+          <div className="space-y-3">
+            {rows.map((row) => {
+              const share = total > 0 ? (row.amount / total) * 100 : 0;
+              return (
+                <div key={row.categoryId} className="space-y-1">
+                  <div className="flex justify-between items-baseline">
+                    <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                      {row.name}
+                    </span>
+                    <span className="text-[11px] font-bold text-slate-700 dark:text-slate-100">
+                      ${row.amount.toFixed(0)}
+                    </span>
+                  </div>
+                  <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${share}%`,
+                        backgroundColor: getBudgetColor(row.name),
+                      }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Total footer */}
+          <div className="mt-4 pt-3 border-t-2 border-slate-100 dark:border-slate-800 flex justify-between items-center">
+            <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+              Total This Month
+            </span>
+            <span className="text-sm font-black text-slate-700 dark:text-slate-100">
+              ${total.toFixed(0)}
+            </span>
+          </div>
+        </>
+      );
+    }
+  } catch (err) {
+    console.error('[BudgetFlowChart] Failed to render chart:', err);
+    content = (
+      <div className="text-center py-8">
+        <p className="text-sm font-bold text-red-500">
+          Spending chart unavailable
+        </p>
+        <p className="text-xs text-slate-400 dark:text-slate-500">
+          Something went wrong while rendering the chart. Please try again later.
+        </p>
+      </div>
+    );
   }
-
-  // Calculate the max total for scaling – guard against all zeros
-  const maxTotal = Math.max(
-    ...monthlyData.map((m) => Number(m.total) || 0),
-    1,
-  );
-
-  const budgetIndexMap = useMemo(
-    () =>
-      new Map(
-        safeBudgets.map((budget, index) => [
-          budget.name.toLowerCase(),
-          index,
-        ]),
-      ),
-    [safeBudgets],
-  );
-
-  // Get budget colors with consistent mapping (limited palette to match app UX)
-  const getBudgetColor = (budgetName: string) => {
-    const palette = [
-      'rgb(16, 185, 129)', // emerald
-      'rgb(52, 211, 153)', // light emerald
-      'rgb(148, 163, 184)', // slate
-    ];
-    const budgetIndex = budgetIndexMap.get(budgetName.toLowerCase()) ?? 0;
-    const paletteIndex = budgetIndex >= 0 ? budgetIndex % palette.length : 0;
-    return palette[paletteIndex];
-  };
 
   return (
     <div className="w-full mb-4">
       <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-md rounded-3xl p-4 border-2 border-slate-100 dark:border-slate-800 shadow-lg">
-        {/* Chart Title and Filter */}
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
             Spending Overview
           </h3>
-
-          {/* Filter Toggle */}
-          <div className="flex gap-2">
-            <button
-              onClick={() => setFilterMode('current')}
-              className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all ${
-                filterMode === 'current'
-                  ? 'bg-emerald-500 text-white'
-                  : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
-              }`}
-            >
-              Current Month
-            </button>
-            <button
-              onClick={() => setFilterMode('last6')}
-              className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all ${
-                filterMode === 'last6'
-                  ? 'bg-emerald-500 text-white'
-                  : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
-              }`}
-            >
-              Last 6 Months
-            </button>
-          </div>
         </div>
 
-        {/* Empty state for Last 6 Months mode when only current month exists */}
-        {filterMode === 'last6' && monthlyData.length <= 1 ? (
-          <div className="text-center py-8">
-            <p className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-2">
-              No additional months found
-            </p>
-            <p className="text-xs text-slate-400 dark:text-slate-500">
-              Please continue using the app to gather historical data.
-            </p>
-          </div>
-        ) : (
-          <>
-            {/* Simple Bar Chart */}
-            <div className="space-y-3">
-              {monthlyData.map((monthData) => {
-                const safeTotal = Number(monthData.total) || 0;
-
-                return (
-                  <div
-                    key={`${monthData.year}-${monthData.month}`}
-                    className="space-y-2"
-                  >
-                    {/* Month Label */}
-                    <div className="flex justify-between items-baseline">
-                      <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
-                        {monthData.label}
-                      </span>
-                      <span
-                        className="text-[10px] font-black text-slate-600 dark:text-slate-300"
-                        aria-label={safeTotal.toLocaleString('en-US', {
-                          style: 'currency',
-                          currency: 'USD',
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 0,
-                        })}
-                      >
-                        ${safeTotal.toFixed(0)}
-                      </span>
-                    </div>
-
-                    {/* Bar */}
-                    <div className="w-full h-6 bg-slate-100 dark:bg-slate-800 rounded-xl overflow-hidden flex">
-                      {safeBudgets.map((budget) => {
-                        const spending =
-                          monthData.budgetSpending.get(budget.id) || 0;
-                        const safeSpending = Number(spending) || 0;
-                        if (safeSpending === 0 || safeTotal <= 0) return null;
-
-                        const widthPercent =
-                          (safeSpending / safeTotal) * 100;
-
-                        return (
-                          <div
-                            key={budget.id}
-                            className="h-full flex items-center justify-center relative group"
-                            style={{
-                              width: `${widthPercent}%`,
-                              backgroundColor: getBudgetColor(budget.name),
-                            }}
-                            aria-label={`${budget.name}: ${safeSpending.toLocaleString(
-                              'en-US',
-                              {
-                                style: 'currency',
-                                currency: 'USD',
-                                minimumFractionDigits: 0,
-                                maximumFractionDigits: 0,
-                              },
-                            )}`}
-                          >
-                            {widthPercent > MIN_WIDTH_FOR_LABEL && (
-                              <span className="text-[9px] font-bold text-white">
-                                ${safeSpending.toFixed(0)}
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Legend */}
-            <div className="mt-4 pt-3 border-t-2 border-slate-100 dark:border-slate-800">
-              <div className="flex flex-wrap gap-2 justify-center">
-                {safeBudgets.map((budget) => (
-                  <div key={budget.id} className="flex items-center gap-2">
-                    <div
-                      className="w-2.5 h-2.5 rounded-full"
-                      style={{ backgroundColor: getBudgetColor(budget.name) }}
-                    />
-                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
-                      {budget.name}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </>
-        )}
+        {content}
       </div>
     </div>
   );
