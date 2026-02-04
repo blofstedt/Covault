@@ -34,10 +34,14 @@ export default defineConfig(({ mode }) => {
       })
     ],
 
-    // 2. DEFINE ENV VARIABLES: This replaces process.env references at build time.
+    // 2. DEFINE ENV VARIABLES: This replaces process.env and import.meta.env references at build time.
+    // Critical for Android builds where env vars need to be embedded into the bundle.
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
       'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+      // Explicitly define Supabase env vars for Android/Capacitor builds
+      'import.meta.env.VITE_PUBLIC_SUPABASE_URL': JSON.stringify(env.VITE_PUBLIC_SUPABASE_URL),
+      'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY),
     },
 
     resolve: {

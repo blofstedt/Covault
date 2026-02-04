@@ -34,12 +34,38 @@ npm install
 ```
 
 3. Set up environment variables:
-Create a `.env` file in the root directory with:
+Create a `.env` file in the root directory (see `.env.example` for reference):
 ```
-VITE_PUBLIC_SUPABASE_URL=your_supabase_url
+VITE_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 GEMINI_API_KEY=your_gemini_api_key (optional)
 ```
+
+**Get your Supabase credentials:**
+- Go to your Supabase project dashboard
+- Navigate to Settings > API
+- Copy the "Project URL" (for `VITE_PUBLIC_SUPABASE_URL`)
+- Copy the "anon/public" key (for `VITE_SUPABASE_ANON_KEY`)
+
+**Configure Supabase Authentication URLs:**
+
+This is **critical** for OAuth to work on both web and Android:
+
+1. In Supabase Dashboard, go to **Authentication > URL Configuration**
+2. Under **Redirect URLs**, add:
+   - For web development: `http://localhost:3000`
+   - For web production: `https://your-domain.com`
+   - **For Android: `com.covault.app://auth/callback`** ← REQUIRED for Android
+3. Click **Save**
+
+**Configure Google OAuth:**
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Navigate to APIs & Services > Credentials
+3. Edit your OAuth 2.0 Client ID
+4. Under "Authorized redirect URIs", add:
+   - `https://your-project-id.supabase.co/auth/v1/callback`
+5. Save changes
 
 4. **IMPORTANT: Set up the Supabase database schema**
 
@@ -85,12 +111,58 @@ npm run preview
 
 ### Capacitor (Mobile)
 
-Sync with Android:
+**Prerequisites for Android:**
+- Android Studio installed
+- Java Development Kit (JDK) 11 or higher
+- Android SDK (API level 22 or higher)
+
+**Building for Android:**
+
+1. Ensure your `.env` file has the correct Supabase credentials:
+```bash
+# These MUST be set for Android builds
+VITE_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+```
+
+2. Build the web app and sync with Android:
+```bash
+npm run cap:build
+```
+
+This command runs:
+- `npm run build` - Builds the React app with env vars embedded
+- `npx cap sync android` - Copies build to Android project
+- `bash scripts/sync-android.sh` - Copies custom Android resources
+
+3. Open in Android Studio:
+```bash
+npx cap open android
+```
+
+4. Run the app from Android Studio or build APK:
+```bash
+cd android
+./gradlew assembleDebug
+```
+
+**Important: Supabase redirect URL for Android**
+
+The Android app uses a custom URL scheme for OAuth callbacks: `com.covault.app://auth/callback`
+
+You **MUST** add this to your Supabase project:
+1. Go to Supabase Dashboard > Authentication > URL Configuration
+2. Under "Redirect URLs", add: `com.covault.app://auth/callback`
+3. Click Save
+
+Without this, you'll get a "Supabase is not configured" error on Android.
+
+**Sync with Android (without rebuild):**
 ```bash
 npm run cap:sync
 ```
 
-Build and sync:
+**Build and sync:**
 ```bash
 npm run cap:build
 ```
@@ -104,6 +176,37 @@ npm run cap:build
 - **Mobile**: Capacitor for native Android app
 
 ## Common Issues
+
+### "Supabase is not configured" Error on Android
+
+**Symptoms**: The Android app shows "Supabase is not configured" error, but web version works fine.
+
+**Solutions**:
+
+1. **Check environment variables are set** before building:
+   ```bash
+   # Create .env file with your Supabase credentials
+   cat > .env << EOF
+   VITE_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
+   VITE_SUPABASE_ANON_KEY=your-anon-key
+   EOF
+   
+   # Then rebuild
+   npm run cap:build
+   ```
+
+2. **Add Android redirect URL in Supabase**:
+   - Go to Supabase Dashboard > Authentication > URL Configuration
+   - Under "Redirect URLs", add: `com.covault.app://auth/callback`
+   - Save changes
+
+3. **Verify the build includes env vars**:
+   After building, check that `dist/assets/index-*.js` contains your Supabase URL (you can grep for it)
+
+4. **Clear Android app data** and reinstall:
+   - In Android Settings, go to Apps > Covault
+   - Clear Storage and Cache
+   - Uninstall and reinstall the app
 
 ### Console Errors about Missing Tables
 
