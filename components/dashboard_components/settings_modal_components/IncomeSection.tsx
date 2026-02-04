@@ -25,12 +25,6 @@ const IncomeSection: React.FC<IncomeSectionProps> = ({
 
   const handleChange = (val: string) => {
     setInputValue(val);
-
-    // Convert cleanly
-    const numeric = parseFloat(val);
-    if (!isNaN(numeric) && numeric >= 0) {
-      onUpdateUserIncome(numeric);
-    }
   };
 
   const handleBlur = () => {
@@ -38,6 +32,12 @@ const IncomeSection: React.FC<IncomeSectionProps> = ({
     if (inputValue.trim() === '') {
       setInputValue('0');
       onUpdateUserIncome(0);
+    } else {
+      // Save the current valid numeric value when field loses focus
+      const numeric = parseFloat(inputValue);
+      if (!isNaN(numeric) && numeric >= 0) {
+        onUpdateUserIncome(numeric);
+      }
     }
   };
 
