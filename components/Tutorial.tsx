@@ -12,6 +12,7 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
   const [showSkipConfirm, setShowSkipConfirm] = useState(false);
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
   const requestRef = useRef<number>(null);
+  const isActiveRef = useRef(true);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [tooltipHeight, setTooltipHeight] = useState(0);
   const lastScrolledStep = useRef<number | null>(null);
@@ -114,6 +115,7 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
   }, [step]);
 
   const updateTargetRect = () => {
+    if (!isActiveRef.current) return;
     const el = document.getElementById(steps[step].target);
     if (el) {
       const rect = el.getBoundingClientRect();
@@ -136,12 +138,16 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
     } else {
       setTargetRect(null);
     }
-    requestRef.current = requestAnimationFrame(updateTargetRect);
+    if (isActiveRef.current) {
+      requestRef.current = requestAnimationFrame(updateTargetRect);
+    }
   };
 
   useEffect(() => {
+    isActiveRef.current = true;
     requestRef.current = requestAnimationFrame(updateTargetRect);
     return () => {
+      isActiveRef.current = false;
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
   }, [step]);
