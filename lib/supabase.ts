@@ -1,113 +1,84 @@
 // lib/supabase.ts
 import { createClient } from '@supabase/supabase-js';
 
-// These come from your Vite env (.env) and MUST start with VITE_
-// Example in your .env:
-//   VITE_SUPABASE_URL=https://your-project-id.supabase.co
-//   VITE_SUPABASE_ANON_KEY=your-anon-key-here
-
-export const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+// ✅ These MUST match what you have in Vercel / .env
+// Vercel:
+//   VITE_PUBLIC_SUPABASE_URL = https://xqleyxrftyehodksashu.supabase.co
+//   VITE_SUPABASE_ANON_KEY   = your anon key
+export const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string | undefined;
 export const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
 const isSupabaseConfigured = !!supabaseUrl && !!supabaseAnonKey;
 
 if (!isSupabaseConfigured) {
   console.error(
-    '❌ Supabase URL or Anon Key is missing. Check your .env file for VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.'
+    '❌ Supabase URL or Anon Key is missing. ' +
+      'Check your environment variables for VITE_PUBLIC_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.'
   );
 }
 
-type StubResponse =
-  | { data: null; error: { message: string } }
-  | { data: unknown; error: null };
-
-const noopPromiseWithData = () =>
-  Promise.resolve({
-    data: null,
-    error: { message: 'Supabase is not configured.' },
-  } as StubResponse);
-const noopAuthPromise = () =>
-  Promise.resolve({
-    error: { message: 'Supabase is not configured.' },
-  } as { error: { message: string } });
-
-type QueryStub = {
-  select: () => QueryStub;
-  eq: () => QueryStub;
-  or: () => QueryStub;
-  gte: () => QueryStub;
-  ilike: () => QueryStub;
-  order: () => QueryStub;
-  limit: () => QueryStub;
-  insert: () => QueryStub;
-  update: () => QueryStub;
-  delete: () => QueryStub;
-  maybeSingle: () => Promise<StubResponse>;
-  single: () => Promise<StubResponse>;
-  then: PromiseLike<StubResponse>['then'];
-  catch: PromiseLike<StubResponse>['catch'];
-};
-
-const createQueryStub = (): QueryStub => {
-  const chain = {} as QueryStub;
-  const returnChain = () => chain;
-  const resolved = Promise.resolve({
-    data: null,
-    error: { message: 'Supabase is not configured.' },
-  } as StubResponse);
-
-  chain.select = returnChain;
-  chain.eq = returnChain;
-  chain.or = returnChain;
-  chain.gte = returnChain;
-  chain.ilike = returnChain;
-  chain.order = returnChain;
-  chain.limit = returnChain;
-  chain.insert = returnChain;
-  chain.update = returnChain;
-  chain.delete = returnChain;
-  chain.maybeSingle = noopPromiseWithData;
-  chain.single = noopPromiseWithData;
-  chain.then = (...args) => resolved.then(...args);
-  chain.catch = (...args) => resolved.catch(...args);
-
-  return chain;
-};
-
-type AuthEvent = 'SIGNED_IN' | 'SIGNED_OUT' | 'TOKEN_REFRESHED' | 'USER_UPDATED';
-
+// Optional: very simple stub to avoid hard crashes in local dev
 const createStubClient = () =>
   ({
     auth: {
-      getSession: async () => {
+      async getSession() {
         console.warn('[supabase] Stub client in use: getSession');
         return { data: { session: null }, error: null };
       },
-      onAuthStateChange: (
-        callback?: (event: AuthEvent, session: unknown | null) => void,
-      ) => {
+      onAuthStateChange(callback?: (event: string, session: unknown | null) => void) {
         console.warn('[supabase] Stub client in use: onAuthStateChange');
         if (callback) {
           setTimeout(() => callback('SIGNED_OUT', null), 0);
         }
         return { data: { subscription: { unsubscribe: () => {} } } };
       },
-      signOut: noopAuthPromise,
-      signInWithOAuth: noopAuthPromise,
+      async signOut() {
+        console.warn('[supabase] Stub client in use: signOut');
+        return { error: { message: 'Supabase is not configured.' } };
+      },
+      async signInWithOAuth() {
+        console.warn('[supabase] Stub client in use: signInWithOAuth');
+        return { error: { message: 'Supabase is not configured.' } };
+      },
     },
-    from: () => {
+    from() {
       console.warn('[supabase] Stub client in use: from');
-      return createQueryStub();
+      return {
+        select: () => this,
+        eq: () => this,
+        or: () => this,
+        gte: () => this,
+        ilike: () => this,
+        order: () => this,
+        limit: () => this,
+        insert: () => this,
+        update: () => this,
+        delete: () => this,
+        maybeSingle: async () => ({
+          data: null,
+          error: { message: 'Supabase is not configured.' },
+        }),
+        single: async () => ({
+          data: null,
+          error: { message: 'Supabase is not configured.' },
+        }),
+      };
     },
   }) as unknown as ReturnType<typeof createClient>;
 
-// Create and export the Supabase client
+// ✅ Create and export the real Supabase client (or stub if misconfigured)
 export const supabase = isSupabaseConfigured
-  ? createClient(supabaseUrl ?? '', supabaseAnonKey ?? '', {
+  ? createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
-        autoRefreshToken: true,
+        // Keep the user logged in across page reloads
         persistSession: true,
+
+        // 🔥 Critical for browser OAuth:
+        // This tells Supabase to read ?code= from the URL when you come back from Google
         detectSessionInUrl: true,
+
+        // Recommended for browser-based OAuth flows
+        flowType: 'pkce',
       },
     })
   : createStubClient();
