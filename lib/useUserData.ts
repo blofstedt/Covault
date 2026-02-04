@@ -714,7 +714,23 @@ export const useUserData = ({
           }));
         } else {
           // Verify that rows were actually modified
-          const updatedRows = body ? JSON.parse(body) : [];
+          let updatedRows: any[] = [];
+          try {
+            updatedRows = body ? JSON.parse(body) : [];
+          } catch (parseErr) {
+            const msg = `[saveBudgetLimit] failed to parse response: ${body.slice(0, 200)}`;
+            console.error(msg);
+            setDbError(msg);
+            
+            // Rollback optimistic update
+            setAppState(prev => ({
+              ...prev,
+              budgets: prev.budgets.map(b =>
+                b.id === categoryId ? { ...b, totalLimit: previousLimit } : b,
+              ),
+            }));
+            return;
+          }
           
           if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
             const msg = `[saveBudgetLimit] no rows ${recordExists ? 'updated' : 'inserted'} - operation failed silently`;
@@ -796,7 +812,21 @@ export const useUserData = ({
         } else {
           // Check if any rows were actually updated
           const body = await res.text();
-          const updatedRows = body ? JSON.parse(body) : [];
+          let updatedRows: any[] = [];
+          try {
+            updatedRows = body ? JSON.parse(body) : [];
+          } catch (parseErr) {
+            const msg = `[saveUserIncome] failed to parse response: ${body.slice(0, 200)}`;
+            console.error(msg);
+            setDbError(msg);
+            
+            // Rollback optimistic update
+            setAppState(prev => ({
+              ...prev,
+              user: prev.user ? { ...prev.user, monthlyIncome: previousIncome } : null,
+            }));
+            return;
+          }
           
           if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
             const msg = `[saveUserIncome] no rows updated - settings record may not exist for user ${userId}`;
@@ -941,7 +971,15 @@ export const useUserData = ({
           setDbError(msg);
         } else {
           // Verify that rows were actually updated
-          const updatedRows = body ? JSON.parse(body) : [];
+          let updatedRows: any[] = [];
+          try {
+            updatedRows = body ? JSON.parse(body) : [];
+          } catch (parseErr) {
+            const msg = `[updateTransaction] failed to parse response: ${body.slice(0, 200)}`;
+            console.error(msg);
+            setDbError(msg);
+            return;
+          }
           
           if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
             const msg = `[updateTransaction] no rows updated for transaction ${updatedTx.id}`;
@@ -1054,7 +1092,15 @@ export const useUserData = ({
         }
 
         const body = await res.text();
-        const updatedRows = body ? JSON.parse(body) : [];
+        let updatedRows: any[] = [];
+        try {
+          updatedRows = body ? JSON.parse(body) : [];
+        } catch (parseErr) {
+          const msg = `[approvePending] failed to parse response: ${body.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
         
         if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
           const msg = `[approvePending] no rows updated for pending transaction ${pendingId}`;
@@ -1106,7 +1152,15 @@ export const useUserData = ({
         }
 
         const body = await res.text();
-        const updatedRows = body ? JSON.parse(body) : [];
+        let updatedRows: any[] = [];
+        try {
+          updatedRows = body ? JSON.parse(body) : [];
+        } catch (parseErr) {
+          const msg = `[rejectPending] failed to parse response: ${body.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
         
         if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
           const msg = `[rejectPending] no rows updated for pending transaction ${pendingId}`;
