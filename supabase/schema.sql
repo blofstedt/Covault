@@ -5,13 +5,18 @@
 
 -- 1. DROP ALL EXISTING TABLES
 DROP TABLE IF EXISTS public.transactions  CASCADE;
+DROP TABLE IF EXISTS public.transaction_budget_splits CASCADE;
+DROP TABLE IF EXISTS public.pending_transactions CASCADE;
 DROP TABLE IF EXISTS public.user_budgets   CASCADE;
+DROP TABLE IF EXISTS public.household_links CASCADE;
+DROP TABLE IF EXISTS public.link_codes CASCADE;
 DROP TABLE IF EXISTS public.linked_partners CASCADE;
 DROP TABLE IF EXISTS public.partners       CASCADE;
 DROP TABLE IF EXISTS public.settings       CASCADE;
 DROP TABLE IF EXISTS public.user_profiles  CASCADE;
 DROP TABLE IF EXISTS public.primary_categories CASCADE;
 DROP TABLE IF EXISTS public.categories     CASCADE;
+DROP TABLE IF EXISTS public.validation_baselines CASCADE;
 
 -- Drop old trigger/function if they exist
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
@@ -103,44 +108,77 @@ CREATE TRIGGER on_auth_user_created
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- ============================================================
--- 4. LINKED PARTNERS
+-- 4. HOUSEHOLD LINKS (replaces linked_partners)
+-- Links two users together as household partners
+-- Shows "Our Remaining Balance" when linked
 -- ============================================================
-CREATE TABLE public.linked_partners (
+CREATE TABLE public.household_links (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  partner_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  status text NOT NULL DEFAULT 'pending'
-    CHECK (status = ANY (ARRAY['pending','accepted','rejected'])),
+  user1_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user2_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now(),
-  CONSTRAINT linked_partners_pkey PRIMARY KEY (id),
-  CONSTRAINT linked_partners_no_self CHECK (user_id <> partner_id),
-  CONSTRAINT linked_partners_unique UNIQUE (user_id, partner_id)
+  user1_name text,
+  user2_name text,
+  CONSTRAINT household_links_pkey PRIMARY KEY (id),
+  CONSTRAINT household_links_no_self CHECK (user1_id <> user2_id),
+  CONSTRAINT household_links_unique UNIQUE (user1_id, user2_id)
 );
 
-CREATE INDEX idx_linked_partners_user_id    ON public.linked_partners (user_id);
-CREATE INDEX idx_linked_partners_partner_id ON public.linked_partners (partner_id);
+CREATE INDEX idx_household_links_user1_id ON public.household_links (user1_id);
+CREATE INDEX idx_household_links_user2_id ON public.household_links (user2_id);
 
-ALTER TABLE public.linked_partners ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.household_links ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view own partnerships"
-  ON public.linked_partners FOR SELECT TO authenticated
-  USING (auth.uid() = user_id OR auth.uid() = partner_id);
+CREATE POLICY "Users can view own household links"
+  ON public.household_links FOR SELECT TO authenticated
+  USING (auth.uid() = user1_id OR auth.uid() = user2_id);
 
-CREATE POLICY "Users can create partnership requests"
-  ON public.linked_partners FOR INSERT TO authenticated
-  WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can create household links"
+  ON public.household_links FOR INSERT TO authenticated
+  WITH CHECK (auth.uid() = user1_id OR auth.uid() = user2_id);
 
-CREATE POLICY "Users can update partnerships they're part of"
-  ON public.linked_partners FOR UPDATE TO authenticated
-  USING (auth.uid() = user_id OR auth.uid() = partner_id);
+CREATE POLICY "Users can update household links they're part of"
+  ON public.household_links FOR UPDATE TO authenticated
+  USING (auth.uid() = user1_id OR auth.uid() = user2_id);
 
-CREATE POLICY "Users can delete own partnership requests"
-  ON public.linked_partners FOR DELETE TO authenticated
-  USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete own household links"
+  ON public.household_links FOR DELETE TO authenticated
+  USING (auth.uid() = user1_id OR auth.uid() = user2_id);
 
 -- ============================================================
--- 5. TRANSACTIONS
+-- 5. LINK CODES (for joining households via code)
+-- ============================================================
+CREATE TABLE public.link_codes (
+  code text NOT NULL,
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  expires_at timestamptz NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  CONSTRAINT link_codes_pkey PRIMARY KEY (code)
+);
+
+CREATE INDEX idx_link_codes_user_id ON public.link_codes (user_id);
+CREATE INDEX idx_link_codes_expires_at ON public.link_codes (expires_at);
+
+ALTER TABLE public.link_codes ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own link codes"
+  ON public.link_codes FOR SELECT TO authenticated
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can create own link codes"
+  ON public.link_codes FOR INSERT TO authenticated
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own link codes"
+  ON public.link_codes FOR DELETE TO authenticated
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Anyone can read valid link codes"
+  ON public.link_codes FOR SELECT TO authenticated
+  USING (expires_at > now());
+
+-- ============================================================
+-- 6. TRANSACTIONS
 -- ============================================================
 CREATE TABLE public.transactions (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -193,16 +231,114 @@ CREATE POLICY "Users can view partner transactions"
   ON public.transactions FOR SELECT TO authenticated
   USING (
     user_id IN (
-      SELECT lp.partner_id FROM public.linked_partners lp
-       WHERE lp.user_id = auth.uid() AND lp.status = 'accepted'
+      SELECT hl.user2_id FROM public.household_links hl
+       WHERE hl.user1_id = auth.uid()
       UNION
-      SELECT lp.user_id FROM public.linked_partners lp
-       WHERE lp.partner_id = auth.uid() AND lp.status = 'accepted'
+      SELECT hl.user1_id FROM public.household_links hl
+       WHERE hl.user2_id = auth.uid()
     )
   );
 
 -- ============================================================
--- 6. USER BUDGETS  (per-user category spending limits)
+-- 7. TRANSACTION BUDGET SPLITS
+-- Used when a transaction is split across multiple categories
+-- ============================================================
+CREATE TABLE public.transaction_budget_splits (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  transaction_id uuid NOT NULL REFERENCES public.transactions(id) ON DELETE CASCADE,
+  budget_category text NOT NULL,
+  amount numeric(12,2) NOT NULL CHECK (amount > 0),
+  percentage numeric CHECK (percentage IS NULL OR (percentage >= 0 AND percentage <= 100)),
+  created_at timestamptz DEFAULT now(),
+  CONSTRAINT transaction_budget_splits_pkey PRIMARY KEY (id)
+);
+
+CREATE INDEX idx_transaction_budget_splits_transaction_id ON public.transaction_budget_splits (transaction_id);
+
+ALTER TABLE public.transaction_budget_splits ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view splits for own transactions"
+  ON public.transaction_budget_splits FOR SELECT TO authenticated
+  USING (
+    transaction_id IN (
+      SELECT id FROM public.transactions WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can insert splits for own transactions"
+  ON public.transaction_budget_splits FOR INSERT TO authenticated
+  WITH CHECK (
+    transaction_id IN (
+      SELECT id FROM public.transactions WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can update splits for own transactions"
+  ON public.transaction_budget_splits FOR UPDATE TO authenticated
+  USING (
+    transaction_id IN (
+      SELECT id FROM public.transactions WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can delete splits for own transactions"
+  ON public.transaction_budget_splits FOR DELETE TO authenticated
+  USING (
+    transaction_id IN (
+      SELECT id FROM public.transactions WHERE user_id = auth.uid()
+    )
+  );
+
+-- ============================================================
+-- 8. PENDING TRANSACTIONS
+-- Auto-parsed transactions awaiting user approval
+-- Sits in "purgatory" in dashboard until reviewed
+-- ============================================================
+CREATE TABLE public.pending_transactions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  app_package text NOT NULL,
+  app_name text NOT NULL,
+  notification_title text NOT NULL,
+  notification_text text NOT NULL,
+  notification_timestamp bigint NOT NULL,
+  posted_at timestamptz NOT NULL,
+  extracted_vendor text NOT NULL,
+  extracted_amount numeric(12,2) NOT NULL,
+  extracted_timestamp timestamptz NOT NULL,
+  confidence integer NOT NULL CHECK (confidence >= 0 AND confidence <= 100),
+  validation_reasons text NOT NULL,
+  needs_review boolean DEFAULT true,
+  pattern_id text,
+  created_at timestamptz DEFAULT now(),
+  reviewed_at timestamptz,
+  approved boolean,
+  CONSTRAINT pending_transactions_pkey PRIMARY KEY (id)
+);
+
+CREATE INDEX idx_pending_transactions_user_id ON public.pending_transactions (user_id);
+CREATE INDEX idx_pending_transactions_needs_review ON public.pending_transactions (needs_review);
+
+ALTER TABLE public.pending_transactions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own pending transactions"
+  ON public.pending_transactions FOR SELECT TO authenticated
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own pending transactions"
+  ON public.pending_transactions FOR INSERT TO authenticated
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own pending transactions"
+  ON public.pending_transactions FOR UPDATE TO authenticated
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own pending transactions"
+  ON public.pending_transactions FOR DELETE TO authenticated
+  USING (auth.uid() = user_id);
+
+-- ============================================================
+-- 9. USER BUDGETS  (per-user category spending limits)
 -- ============================================================
 CREATE TABLE public.user_budgets (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -250,7 +386,51 @@ CREATE TRIGGER update_user_budgets_updated_at
   EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================================
--- 7. NOTIFICATION RULES  (bank regex patterns per user)
+-- 10. VALIDATION BASELINES
+-- REGEX patterns for notification parsing validation
+-- ============================================================
+CREATE TABLE public.validation_baselines (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  app_package text NOT NULL,
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  vendor_length_min integer NOT NULL,
+  vendor_length_max integer NOT NULL,
+  vendor_character_classes text NOT NULL,
+  vendor_case_style text NOT NULL CHECK (vendor_case_style = ANY (ARRAY['title','lower','upper','mixed'])),
+  vendor_forbidden_patterns text NOT NULL,
+  amount_range_min numeric(12,2) NOT NULL,
+  amount_range_max numeric(12,2) NOT NULL,
+  amount_decimal_places integer NOT NULL,
+  confidence_threshold integer DEFAULT 70,
+  sample_count integer DEFAULT 0,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now(),
+  CONSTRAINT validation_baselines_pkey PRIMARY KEY (id)
+);
+
+CREATE INDEX idx_validation_baselines_user_id ON public.validation_baselines (user_id);
+CREATE INDEX idx_validation_baselines_app_package ON public.validation_baselines (app_package);
+
+ALTER TABLE public.validation_baselines ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own validation baselines"
+  ON public.validation_baselines FOR SELECT TO authenticated
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own validation baselines"
+  ON public.validation_baselines FOR INSERT TO authenticated
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own validation baselines"
+  ON public.validation_baselines FOR UPDATE TO authenticated
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own validation baselines"
+  ON public.validation_baselines FOR DELETE TO authenticated
+  USING (auth.uid() = user_id);
+
+-- ============================================================
+-- 11. NOTIFICATION RULES  (bank regex patterns per user)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS public.notification_rules (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -285,7 +465,7 @@ CREATE POLICY "Users can delete own notification rules"
   USING (auth.uid() = user_id);
 
 -- ============================================================
--- 8. VENDOR CATEGORY OVERRIDES  (reclassification memory)
+-- 12. VENDOR CATEGORY OVERRIDES  (reclassification memory)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS public.vendor_overrides (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -310,7 +490,7 @@ CREATE POLICY "Users can update own vendor overrides"
   USING (auth.uid() = user_id);
 
 -- ============================================================
--- 9. FLAG REPORTS  (rate-limited Gemini correction requests)
+-- 13. FLAG REPORTS  (rate-limited Gemini correction requests)
 --    Max 5 per 24h, 1h cooldown between reports
 -- ============================================================
 CREATE TABLE IF NOT EXISTS public.flag_reports (
