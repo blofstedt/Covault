@@ -275,6 +275,36 @@ export const useUserData = ({
     [fromSupabaseTransaction, setAppState, setDbError],
   );
 
+  // Load pending transactions awaiting approval
+  const loadPendingTransactions = useCallback(
+    async (userId: string) => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(
+          `${REST_BASE}/pending_transactions?select=*&user_id=eq.${userId}&needs_review=eq.true&order=created_at.desc`,
+          { headers },
+        );
+
+        if (!res.ok) {
+          console.log('[loadPendingTransactions] failed or no pending transactions');
+          return;
+        }
+
+        const data = JSON.parse(await res.text());
+        if (data && data.length > 0) {
+          console.log('[loadPendingTransactions] OK, count:', data.length);
+          setAppState(prev => ({ ...prev, pendingTransactions: data }));
+        } else {
+          console.log('[loadPendingTransactions] no pending transactions');
+          setAppState(prev => ({ ...prev, pendingTransactions: [] }));
+        }
+      } catch (err: any) {
+        console.error('[loadPendingTransactions]', err?.message || err);
+      }
+    },
+    [setAppState],
+  );
+
   // Load household link status from household_links table
   const loadHouseholdLink = useCallback(
     async (userId: string) => {
@@ -331,10 +361,11 @@ export const useUserData = ({
       await loadUserBudgets(userId); // load user-specific budget limits
       await loadUserSettings(userId); // load user-specific settings (monthly_income, etc.)
       await loadTransactions(userId);
+      await loadPendingTransactions(userId); // load pending transactions awaiting approval
       await loadHouseholdLink(userId); // Changed from loadPartnerLink
       console.log('loadUserData completed');
     },
-    [loadCategories, loadHouseholdLink, loadTransactions, loadUserBudgets, loadUserSettings],
+    [loadCategories, loadHouseholdLink, loadPendingTransactions, loadTransactions, loadUserBudgets, loadUserSettings],
   );
 
   // Generate a link code for household linking
@@ -893,6 +924,95 @@ export const useUserData = ({
     [appState.transactions, setAppState, setDbError],
   );
 
+  // Approve a pending transaction (convert to actual transaction)
+  const handleApprovePendingTransaction = useCallback(
+    async (pendingId: string, categoryId: string) => {
+      try {
+        const userId = appState.user?.id;
+        if (!userId) return;
+
+        const pending = appState.pendingTransactions?.find(p => p.id === pendingId);
+        if (!pending) {
+          setDbError('Pending transaction not found');
+          return;
+        }
+
+        // Create the actual transaction
+        const newTransaction: Partial<Transaction> = {
+          id: pendingId, // Use same ID for tracking
+          user_id: userId,
+          vendor: pending.extracted_vendor,
+          amount: pending.extracted_amount,
+          date: pending.extracted_timestamp,
+          budget_id: categoryId,
+          recurrence: 'One-time',
+          label: 'Auto-Added',
+          is_projected: false,
+        };
+
+        await handleAddTransaction(newTransaction as Transaction);
+
+        // Mark pending transaction as reviewed and approved
+        const headers = await getAuthHeaders();
+        await fetch(`${REST_BASE}/pending_transactions?id=eq.${pendingId}`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({
+            needs_review: false,
+            reviewed_at: new Date().toISOString(),
+            approved: true,
+          }),
+        });
+
+        // Remove from pending list in UI
+        setAppState(prev => ({
+          ...prev,
+          pendingTransactions: prev.pendingTransactions?.filter(p => p.id !== pendingId) || [],
+        }));
+
+        console.log('[approvePending] OK, approved pending transaction', pendingId);
+      } catch (err: any) {
+        const msg = `Approve pending exception: ${err?.message || err}`;
+        console.error(msg);
+        setDbError(msg);
+      }
+    },
+    [appState.user, appState.pendingTransactions, handleAddTransaction, setAppState, setDbError],
+  );
+
+  // Reject a pending transaction
+  const handleRejectPendingTransaction = useCallback(
+    async (pendingId: string) => {
+      try {
+        const headers = await getAuthHeaders();
+
+        // Mark as reviewed and not approved
+        await fetch(`${REST_BASE}/pending_transactions?id=eq.${pendingId}`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({
+            needs_review: false,
+            reviewed_at: new Date().toISOString(),
+            approved: false,
+          }),
+        });
+
+        // Remove from pending list in UI
+        setAppState(prev => ({
+          ...prev,
+          pendingTransactions: prev.pendingTransactions?.filter(p => p.id !== pendingId) || [],
+        }));
+
+        console.log('[rejectPending] OK, rejected pending transaction', pendingId);
+      } catch (err: any) {
+        const msg = `Reject pending exception: ${err?.message || err}`;
+        console.error(msg);
+        setDbError(msg);
+      }
+    },
+    [setAppState, setDbError],
+  );
+
   return {
     categoriesLoaded,
     loadUserData,
@@ -903,6 +1023,8 @@ export const useUserData = ({
     handleUnlinkPartner,
     handleGenerateLinkCode,
     handleJoinWithCode,
+    handleApprovePendingTransaction,
+    handleRejectPendingTransaction,
     saveBudgetLimit,
     saveUserIncome,
   };
