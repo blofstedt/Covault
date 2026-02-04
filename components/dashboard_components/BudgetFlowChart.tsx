@@ -53,7 +53,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
         continue; // not in current month
       }
 
-      const categoryId = anyTx.category_id;
+      const categoryId = anyTx.budget_id || anyTx.category_id;
       if (!categoryId) continue;
 
       const amount = Number(anyTx.amount) || 0;
