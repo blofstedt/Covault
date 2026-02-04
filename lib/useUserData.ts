@@ -657,6 +657,7 @@ export const useUserData = ({
         if (recordExists) {
           // Update existing record
           const recordId = existingRecords[0].id;
+          (headers as any)['Prefer'] = 'return=representation';
           res = await fetch(
             `${REST_BASE}/budgets?id=eq.${recordId}`,
             {
@@ -693,7 +694,16 @@ export const useUserData = ({
           console.error(msg);
           setDbError(msg);
         } else {
-          console.log(`[saveBudgetLimit] ${recordExists ? 'updated' : 'inserted'} OK`);
+          // Verify that rows were actually modified
+          const updatedRows = body ? JSON.parse(body) : [];
+          
+          if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
+            const msg = `[saveBudgetLimit] no rows ${recordExists ? 'updated' : 'inserted'} - operation failed silently`;
+            console.error(msg);
+            setDbError(msg);
+          } else {
+            console.log(`[saveBudgetLimit] ${recordExists ? 'updated' : 'inserted'} OK`);
+          }
         }
       } catch (err: any) {
         const msg = `[saveBudgetLimit] exception: ${err?.message || err}`;
@@ -724,6 +734,8 @@ export const useUserData = ({
 
       try {
         const headers = await getAuthHeaders();
+        // Add Prefer header to get the updated row(s) back
+        (headers as any)['Prefer'] = 'return=representation';
         
         // Update the settings table for this user
         const res = await fetch(
@@ -747,7 +759,23 @@ export const useUserData = ({
             user: prev.user ? { ...prev.user, monthlyIncome: previousIncome } : null,
           }));
         } else {
-          console.log(`[saveUserIncome] successfully updated to ${income}`);
+          // Check if any rows were actually updated
+          const body = await res.text();
+          const updatedRows = body ? JSON.parse(body) : [];
+          
+          if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
+            const msg = `[saveUserIncome] no rows updated - settings record may not exist for user ${userId}`;
+            console.error(msg);
+            setDbError(msg);
+            
+            // Rollback optimistic update
+            setAppState(prev => ({
+              ...prev,
+              user: prev.user ? { ...prev.user, monthlyIncome: previousIncome } : null,
+            }));
+          } else {
+            console.log(`[saveUserIncome] successfully updated to ${income}`);
+          }
         }
       } catch (err: any) {
         const msg = `[saveUserIncome] exception: ${err?.message || err}`;
