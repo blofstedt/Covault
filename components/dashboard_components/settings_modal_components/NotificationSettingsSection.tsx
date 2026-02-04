@@ -225,16 +225,41 @@ const NotificationSettingsSection: React.FC = () => {
     }
   };
 
-  // Browser-only info block
+  // Browser-only info block - now with toggle
   if (!isNative) {
     return (
-      <div className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60">
-        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-          Bank Notification Listener
-        </span>
-        <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 leading-relaxed">
-          This feature is available on Android via the Covault app. Install the app and
-          enable notification access to auto-log your banking transactions.
+      <div className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex-1 mr-3">
+            <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 block">
+              Bank Notification Listener
+            </span>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 leading-relaxed">
+              Auto-log transactions from supported banking apps.
+            </p>
+            
+            {/* Info message for browser */}
+            <div className="mt-2">
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700">
+                <span className="w-2 h-2 rounded-full bg-slate-400 mr-2" />
+                <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300">
+                  Available on Android app only
+                </span>
+              </span>
+            </div>
+          </div>
+
+          {/* Disabled toggle for browser */}
+          <button
+            disabled
+            className="relative w-12 h-7 rounded-full transition-colors duration-200 flex-shrink-0 bg-slate-300 dark:bg-slate-600 opacity-50 cursor-not-allowed"
+          >
+            <span className="absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200 translate-x-0" />
+          </button>
+        </div>
+        
+        <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-tight">
+          Install the Covault Android app and enable notification access to auto-log your banking transactions.
         </p>
       </div>
     );
