@@ -231,6 +231,18 @@ export const useUserData = ({
           // Support legacy camelCase key from older clients
           const rawMonthlyIncome =
             appValue.monthly_income ?? appValue.monthlyIncome ?? null;
+          if (appValue.monthlyIncome !== undefined && appValue.monthly_income === undefined) {
+            await fetch(`${REST_BASE}/app_settings?key=eq.${appSettingsKey}`, {
+              method: 'PATCH',
+              headers: {
+                ...headers,
+                Prefer: 'resolution=merge-duplicates,return=representation',
+              },
+              body: JSON.stringify({
+                value: { ...appValue, monthly_income: appValue.monthlyIncome },
+              }),
+            });
+          }
           const parsedMonthlyIncome =
             rawMonthlyIncome === null || rawMonthlyIncome === undefined
               ? null
@@ -744,16 +756,16 @@ export const useUserData = ({
               Array.isArray(appRows) ? appRows[0]?.value : null,
             );
             const nextValue = { ...currentValue, monthly_income: income };
-          const method =
-            Array.isArray(appRows) && appRows.length > 0 ? 'PATCH' : 'POST';
-          const url =
-            method === 'PATCH'
-              ? `${REST_BASE}/app_settings?key=eq.${appSettingsKey}`
-              : `${REST_BASE}/app_settings`;
-          const body =
-            method === 'PATCH'
-              ? { value: nextValue }
-              : { key: appSettingsKey, value: nextValue };
+            const method =
+              Array.isArray(appRows) && appRows.length > 0 ? 'PATCH' : 'POST';
+            const url =
+              method === 'PATCH'
+                ? `${REST_BASE}/app_settings?key=eq.${appSettingsKey}`
+                : `${REST_BASE}/app_settings`;
+            const body =
+              method === 'PATCH'
+                ? { value: nextValue }
+                : { key: appSettingsKey, value: nextValue };
 
             const saveRes = await fetch(url, {
               method,
