@@ -234,6 +234,7 @@ export const useUserData = ({
           // Support legacy camelCase key from older clients
           const rawMonthlyIncome =
             appValue.monthly_income ?? appValue.monthlyIncome;
+          // If legacy camelCase differs, prefer it and migrate to snake_case.
           const shouldMigrateMonthlyIncome =
             appValue.monthlyIncome !== undefined
             && (
@@ -679,9 +680,9 @@ export const useUserData = ({
             `${REST_BASE}/settings?select=user_id&user_id=eq.${userId}&limit=1`,
             { headers },
           );
-          const existingBody = await existingRes.text();
 
           if (!existingRes.ok) {
+            const existingBody = await existingRes.text();
             console.error(
               `[saveUserIncome] lookup failed (${existingRes.status}): ${existingBody.slice(0, 200)}`,
             );
@@ -695,11 +696,9 @@ export const useUserData = ({
 
           let existingRows: unknown[] = [];
           try {
-            existingRows = JSON.parse(existingBody || '[]');
-          } catch {
-            console.warn(
-              `[saveUserIncome] parse existing settings failed: ${existingBody.slice(0, 200)}`,
-            );
+            existingRows = await existingRes.json();
+          } catch (error) {
+            console.warn('[saveUserIncome] parse existing settings failed:', error);
             existingRows = [];
           }
 
