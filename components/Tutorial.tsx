@@ -160,6 +160,15 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared,
     setDemoCompleted(false);
   }, [step]);
 
+  // Helper to get the button text for the Next/Get Started button
+  const getNextButtonText = () => {
+    const isLastStep = step === steps.length - 1;
+    if (isLastStep) {
+      return isLoadingData ? "Loading..." : "Get Started";
+    }
+    return "Next";
+  };
+
   const handleNext = () => {
     const nextStep = step + 1;
     if (nextStep < steps.length) {
@@ -442,10 +451,7 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared,
                 step === steps.length - 1 && isLoadingData ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'
               }`}
             >
-              {step === steps.length - 1 
-                ? (isLoadingData ? "Loading..." : "Get Started")
-                : "Next"
-              }
+              {getNextButtonText()}
             </button>
           </div>
         </div>
