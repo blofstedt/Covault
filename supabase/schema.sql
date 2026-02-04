@@ -7,6 +7,7 @@
 DROP TABLE IF EXISTS public.transactions  CASCADE;
 DROP TABLE IF EXISTS public.transaction_budget_splits CASCADE;
 DROP TABLE IF EXISTS public.pending_transactions CASCADE;
+DROP TABLE IF EXISTS public.budgets CASCADE;
 DROP TABLE IF EXISTS public.user_budgets   CASCADE;
 DROP TABLE IF EXISTS public.household_links CASCADE;
 DROP TABLE IF EXISTS public.link_codes CASCADE;
@@ -338,37 +339,41 @@ CREATE POLICY "Users can delete own pending transactions"
   USING (auth.uid() = user_id);
 
 -- ============================================================
--- 9. USER BUDGETS  (per-user category spending limits)
+-- 9. BUDGETS  (per-user category spending limits)
 -- ============================================================
-CREATE TABLE public.user_budgets (
+CREATE TABLE public.budgets (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
+  category text NOT NULL,
+  limit_amount numeric NOT NULL,
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  category_id uuid NOT NULL REFERENCES public.categories(id),
-  total_limit numeric NOT NULL DEFAULT 0 CHECK (total_limit >= 0),
+  is_household boolean DEFAULT true,
+  parent_category text,
+  icon text,
+  color text,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now(),
-  CONSTRAINT user_budgets_pkey PRIMARY KEY (id),
-  CONSTRAINT user_budgets_unique UNIQUE (user_id, category_id)
+  CONSTRAINT budgets_pkey PRIMARY KEY (id)
 );
 
-CREATE INDEX idx_user_budgets_user_id ON public.user_budgets (user_id);
+CREATE INDEX idx_budgets_user_id ON public.budgets (user_id);
+CREATE INDEX idx_budgets_category ON public.budgets (category);
 
-ALTER TABLE public.user_budgets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.budgets ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Users can view own budgets"
-  ON public.user_budgets FOR SELECT TO authenticated
+  ON public.budgets FOR SELECT TO authenticated
   USING (auth.uid() = user_id);
 
 CREATE POLICY "Users can insert own budgets"
-  ON public.user_budgets FOR INSERT TO authenticated
+  ON public.budgets FOR INSERT TO authenticated
   WITH CHECK (auth.uid() = user_id);
 
 CREATE POLICY "Users can update own budgets"
-  ON public.user_budgets FOR UPDATE TO authenticated
+  ON public.budgets FOR UPDATE TO authenticated
   USING (auth.uid() = user_id);
 
 CREATE POLICY "Users can delete own budgets"
-  ON public.user_budgets FOR DELETE TO authenticated
+  ON public.budgets FOR DELETE TO authenticated
   USING (auth.uid() = user_id);
 
 -- Trigger to automatically update updated_at timestamp
@@ -380,8 +385,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER update_user_budgets_updated_at
-  BEFORE UPDATE ON public.user_budgets
+CREATE TRIGGER update_budgets_updated_at
+  BEFORE UPDATE ON public.budgets
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 

@@ -130,13 +130,13 @@ export const useUserData = ({
     }
   }, [setAppState, setDbError]);
 
-  // NEW: Load user budget limits from user_budgets
+  // Load user budget limits from budgets table
   const loadUserBudgets = useCallback(
     async (userId: string) => {
       try {
         const headers = await getAuthHeaders();
         const res = await fetch(
-          `${REST_BASE}/user_budgets?select=*&user_id=eq.${userId}`,
+          `${REST_BASE}/budgets?select=*&user_id=eq.${userId}`,
           { headers },
         );
         const body = await res.text();
@@ -148,10 +148,10 @@ export const useUserData = ({
 
         const rows = JSON.parse(body);
 
-        // Map category_id → total_limit
+        // Map category name → limit_amount
         const limitsByCategory: Record<string, number> = {};
         for (const row of rows) {
-          limitsByCategory[row.category_id] = Number(row.total_limit);
+          limitsByCategory[row.category] = Number(row.limit_amount);
         }
 
         // Merge with existing categories in state
@@ -159,7 +159,7 @@ export const useUserData = ({
           ...prev,
           budgets: prev.budgets.map(b => ({
             ...b,
-            totalLimit: limitsByCategory[b.id] ?? b.totalLimit ?? 0,
+            totalLimit: limitsByCategory[b.name] ?? b.totalLimit ?? 0,
           })),
         }));
 
@@ -612,11 +612,19 @@ export const useUserData = ({
     }
   }, [appState.user, setAppState, setDbError]);
 
-  // NEW: Save a single budget limit for the current user
+  // Save a single budget limit for the current user
   const saveBudgetLimit = useCallback(
     async (categoryId: string, newLimit: number) => {
       const userId = appState.user?.id;
       if (!userId) return;
+
+      // Find the category name from the categoryId
+      const category = appState.budgets.find(b => b.id === categoryId);
+      if (!category) {
+        console.error('[saveBudgetLimit] Category not found:', categoryId);
+        return;
+      }
+      const categoryName = category.name;
 
       // Optimistic UI update
       setAppState(prev => ({
@@ -630,10 +638,8 @@ export const useUserData = ({
         const headers = await getAuthHeaders();
         
         // First, check if a record exists
-        // Note: The user_budgets table lacks a unique constraint on (user_id, category_id),
-        // so we must check-then-update/insert rather than using a single upsert operation.
         const checkRes = await fetch(
-          `${REST_BASE}/user_budgets?select=id&user_id=eq.${userId}&category_id=eq.${categoryId}`,
+          `${REST_BASE}/budgets?select=id&user_id=eq.${userId}&category=eq.${encodeURIComponent(categoryName)}`,
           { headers },
         );
         
@@ -652,25 +658,26 @@ export const useUserData = ({
           // Update existing record
           const recordId = existingRecords[0].id;
           res = await fetch(
-            `${REST_BASE}/user_budgets?id=eq.${recordId}`,
+            `${REST_BASE}/budgets?id=eq.${recordId}`,
             {
               method: 'PATCH',
               headers,
-              body: JSON.stringify({ total_limit: newLimit }),
+              body: JSON.stringify({ limit_amount: newLimit }),
             },
           );
         } else {
           // Insert new record
           (headers as any)['Prefer'] = 'return=representation';
           res = await fetch(
-            `${REST_BASE}/user_budgets`,
+            `${REST_BASE}/budgets`,
             {
               method: 'POST',
               headers,
               body: JSON.stringify({
                 user_id: userId,
-                category_id: categoryId,
-                total_limit: newLimit,
+                category: categoryName,
+                limit_amount: newLimit,
+                is_household: !appState.user?.budgetingSolo,
               }),
             },
           );
@@ -694,7 +701,7 @@ export const useUserData = ({
         setDbError(msg);
       }
     },
-    [appState.user, setAppState, setDbError],
+    [appState.user, appState.budgets, setAppState, setDbError],
   );
 
   // Save user monthly income to Supabase settings table
