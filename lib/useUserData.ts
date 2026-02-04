@@ -177,7 +177,7 @@ export const useUserData = ({
       try {
         const headers = await getAuthHeaders();
         const res = await fetch(
-          `${REST_BASE}/settings?select=monthly_income&user_id=eq.${userId}`,
+          `${REST_BASE}/settings?select=monthly_income,theme&user_id=eq.${userId}`,
           { headers },
         );
         
@@ -200,11 +200,18 @@ export const useUserData = ({
             ? DEFAULT_MONTHLY_INCOME
             : parsedMonthlyIncome;
 
+          // Load theme from database
+          const theme = rows[0].theme || 'light';
+
           setAppState(prev => ({
             ...prev,
             user: prev.user
               ? { ...prev.user, monthlyIncome }
               : null,
+            settings: {
+              ...prev.settings,
+              theme: theme as 'light' | 'dark',
+            },
           }));
 
           console.log(
@@ -213,6 +220,7 @@ export const useUserData = ({
               : '[loadUserSettings] loaded monthly_income:',
             monthlyIncome,
           );
+          console.log('[loadUserSettings] loaded theme:', theme);
         } else {
           // No settings row exists (shouldn't happen with trigger, but handle it)
           // Use default value only in this case
@@ -765,6 +773,70 @@ export const useUserData = ({
     [appState.user, setAppState, setDbError],
   );
 
+  // Save theme to Supabase settings table
+  const saveTheme = useCallback(
+    async (theme: 'light' | 'dark') => {
+      const userId = appState.user?.id;
+      if (!userId) {
+        console.warn('[saveTheme] no userId, skipping save');
+        return;
+      }
+
+      // Store the previous value for rollback
+      const previousTheme = appState.settings.theme;
+
+      // Optimistic UI update
+      setAppState(prev => ({
+        ...prev,
+        settings: { ...prev.settings, theme },
+      }));
+
+      try {
+        const headers = await getAuthHeaders();
+        const headersWithPrefer: Record<string, string> = {
+          ...headers,
+          'Prefer': 'return=representation',
+        };
+        
+        // Update the settings table for this user
+        const res = await fetch(
+          `${REST_BASE}/settings?user_id=eq.${userId}`,
+          {
+            method: 'PATCH',
+            headers: headersWithPrefer,
+            body: JSON.stringify({ theme }),
+          },
+        );
+        
+        if (!res.ok) {
+          const body = await res.text();
+          const msg = `[saveTheme] update failed (${res.status}): ${body.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+          
+          // Rollback optimistic update on failure
+          setAppState(prev => ({
+            ...prev,
+            settings: { ...prev.settings, theme: previousTheme },
+          }));
+        } else {
+          console.log(`[saveTheme] successfully updated to ${theme}`);
+        }
+      } catch (err: any) {
+        const msg = `[saveTheme] exception: ${err?.message || err}`;
+        console.error(msg);
+        setDbError(msg);
+        
+        // Rollback optimistic update on error
+        setAppState(prev => ({
+          ...prev,
+          settings: { ...prev.settings, theme: previousTheme },
+        }));
+      }
+    },
+    [appState.user, setAppState, setDbError],
+  );
+
   // Add transaction
   const handleAddTransaction = useCallback(
     async (tx: Transaction) => {
@@ -1035,5 +1107,6 @@ export const useUserData = ({
     handleRejectPendingTransaction,
     saveBudgetLimit,
     saveUserIncome,
+    saveTheme,
   };
 };

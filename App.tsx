@@ -73,6 +73,7 @@ const App: React.FC = () => {
     handleRejectPendingTransaction,
     saveBudgetLimit,
     saveUserIncome,
+    saveTheme,
   } = useUserData({ appState, setAppState, setDbError });
 
   // Wrapped loadUserData that tracks loading state
@@ -165,6 +166,7 @@ const App: React.FC = () => {
           onDeleteTransaction={handleDeleteTransaction}
           saveBudgetLimit={saveBudgetLimit}
           saveUserIncome={saveUserIncome}
+          saveTheme={saveTheme}
           onLinkPartner={handleLinkPartner}
           onUnlinkPartner={handleUnlinkPartner}
           onGenerateLinkCode={handleGenerateLinkCode}
