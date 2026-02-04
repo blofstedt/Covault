@@ -25,6 +25,9 @@ const DEFAULT_BUDGET_LIMIT = 500;
 const DEFAULT_MONTHLY_INCOME = 5000;
 const MAX_MONTHLY_INCOME = 1_000_000_000;
 
+const isValidIncomeValue = (value: number) =>
+  Number.isFinite(value) && value >= 0 && value <= MAX_MONTHLY_INCOME;
+
 const UUID_VALIDATION_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -230,7 +233,7 @@ export const useUserData = ({
           );
           // Support legacy camelCase key from older clients
           const rawMonthlyIncome =
-            appValue.monthly_income ?? appValue.monthlyIncome ?? null;
+            appValue.monthly_income ?? appValue.monthlyIncome;
           if (appValue.monthlyIncome !== undefined && appValue.monthly_income === undefined) {
             await fetch(`${REST_BASE}/app_settings?key=eq.${appSettingsKey}`, {
               method: 'PATCH',
@@ -647,11 +650,7 @@ export const useUserData = ({
       // Store the previous value for rollback (with fallback to default if not set)
       const previousIncome = appState.user?.monthlyIncome ?? DEFAULT_MONTHLY_INCOME;
 
-      if (
-        !Number.isFinite(income)
-        || income < 0
-        || income > MAX_MONTHLY_INCOME
-      ) {
+      if (!isValidIncomeValue(income)) {
         console.warn('[saveUserIncome] invalid income, skipping save:', income);
         setAppState(prev => ({
           ...prev,
@@ -692,6 +691,9 @@ export const useUserData = ({
           try {
             existingRows = JSON.parse(existingBody || '[]');
           } catch {
+            console.warn(
+              `[saveUserIncome] parse existing settings failed: ${existingBody.slice(0, 200)}`,
+            );
             existingRows = [];
           }
 
