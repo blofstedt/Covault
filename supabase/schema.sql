@@ -4,6 +4,12 @@
 -- ============================================================
 
 -- DROP ALL EXISTING TABLES
+DROP TABLE IF EXISTS public.transaction_budget_splits CASCADE;
+DROP TABLE IF EXISTS public.validation_baselines CASCADE;
+DROP TABLE IF EXISTS public.pending_transactions CASCADE;
+DROP TABLE IF EXISTS public.link_codes CASCADE;
+DROP TABLE IF EXISTS public.household_links CASCADE;
+DROP TABLE IF EXISTS public.budgets CASCADE;
 DROP TABLE IF EXISTS public.vendor_overrides CASCADE;
 DROP TABLE IF EXISTS public.flag_reports CASCADE;
 DROP TABLE IF EXISTS public.user_budgets CASCADE;
@@ -161,4 +167,118 @@ CREATE TABLE public.flag_reports (
   CONSTRAINT flag_reports_pkey PRIMARY KEY (id),
   CONSTRAINT flag_reports_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
   CONSTRAINT flag_reports_notification_rule_id_fkey FOREIGN KEY (notification_rule_id) REFERENCES public.notification_rules(id)
+);
+
+-- ============================================================
+-- ADDITIONAL TABLES REQUIRED BY THE APP
+-- ============================================================
+
+-- ============================================================
+-- 9. BUDGETS (per-user category spending limits)
+-- ============================================================
+CREATE TABLE public.budgets (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  category text NOT NULL,
+  limit_amount numeric NOT NULL,
+  user_id uuid NOT NULL,
+  is_household boolean DEFAULT true,
+  parent_category text,
+  icon text,
+  color text,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT budgets_pkey PRIMARY KEY (id),
+  CONSTRAINT budgets_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+
+-- ============================================================
+-- 10. HOUSEHOLD LINKS (links two users as household partners)
+-- ============================================================
+CREATE TABLE public.household_links (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user1_id uuid NOT NULL,
+  user2_id uuid NOT NULL,
+  created_at timestamp with time zone DEFAULT now(),
+  user1_name text,
+  user2_name text,
+  CONSTRAINT household_links_pkey PRIMARY KEY (id),
+  CONSTRAINT household_links_user1_id_fkey FOREIGN KEY (user1_id) REFERENCES auth.users(id),
+  CONSTRAINT household_links_user2_id_fkey FOREIGN KEY (user2_id) REFERENCES auth.users(id),
+  CONSTRAINT household_links_no_self CHECK (user1_id <> user2_id),
+  CONSTRAINT household_links_unique UNIQUE (user1_id, user2_id)
+);
+
+-- ============================================================
+-- 11. LINK CODES (for joining households via code)
+-- ============================================================
+CREATE TABLE public.link_codes (
+  code text NOT NULL,
+  user_id uuid NOT NULL,
+  expires_at timestamp with time zone NOT NULL,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT link_codes_pkey PRIMARY KEY (code),
+  CONSTRAINT link_codes_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+
+-- ============================================================
+-- 12. PENDING TRANSACTIONS (awaiting user approval)
+-- ============================================================
+CREATE TABLE public.pending_transactions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  app_package text NOT NULL,
+  app_name text NOT NULL,
+  notification_title text NOT NULL,
+  notification_text text NOT NULL,
+  notification_timestamp bigint NOT NULL,
+  posted_at timestamp with time zone NOT NULL,
+  extracted_vendor text NOT NULL,
+  extracted_amount numeric NOT NULL,
+  extracted_timestamp timestamp with time zone NOT NULL,
+  confidence integer NOT NULL CHECK (confidence >= 0 AND confidence <= 100),
+  validation_reasons text NOT NULL,
+  needs_review boolean DEFAULT true,
+  pattern_id text,
+  created_at timestamp with time zone DEFAULT now(),
+  reviewed_at timestamp with time zone,
+  approved boolean,
+  CONSTRAINT pending_transactions_pkey PRIMARY KEY (id),
+  CONSTRAINT pending_transactions_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+
+-- ============================================================
+-- 13. VALIDATION BASELINES (regex patterns for notification parsing)
+-- ============================================================
+CREATE TABLE public.validation_baselines (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  app_package text NOT NULL,
+  user_id uuid NOT NULL,
+  vendor_length_min integer NOT NULL,
+  vendor_length_max integer NOT NULL,
+  vendor_character_classes text NOT NULL,
+  vendor_case_style text NOT NULL CHECK (vendor_case_style = ANY (ARRAY['title'::text, 'lower'::text, 'upper'::text, 'mixed'::text])),
+  vendor_forbidden_patterns text NOT NULL,
+  amount_range_min numeric NOT NULL,
+  amount_range_max numeric NOT NULL,
+  amount_decimal_places integer NOT NULL,
+  confidence_threshold integer DEFAULT 70,
+  sample_count integer DEFAULT 0,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT validation_baselines_pkey PRIMARY KEY (id),
+  CONSTRAINT validation_baselines_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+
+-- ============================================================
+-- 14. TRANSACTION BUDGET SPLITS (for split transactions)
+-- ============================================================
+CREATE TABLE public.transaction_budget_splits (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  transaction_id uuid NOT NULL,
+  budget_category text NOT NULL,
+  amount numeric NOT NULL CHECK (amount > 0),
+  percentage numeric CHECK (percentage IS NULL OR (percentage >= 0 AND percentage <= 100)),
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT transaction_budget_splits_pkey PRIMARY KEY (id),
+  CONSTRAINT transaction_budget_splits_transaction_id_fkey FOREIGN KEY (transaction_id) REFERENCES public.transactions(id) ON DELETE CASCADE
 );
