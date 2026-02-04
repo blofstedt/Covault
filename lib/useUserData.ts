@@ -626,13 +626,17 @@ export const useUserData = ({
         return;
       }
 
-      if (!Number.isFinite(income) || income < 0) {
-        console.warn('[saveUserIncome] invalid income, skipping save:', income);
-        return;
-      }
-
       // Store the previous value for rollback (with fallback to default if not set)
       const previousIncome = appState.user?.monthlyIncome ?? DEFAULT_MONTHLY_INCOME;
+
+      if (!Number.isFinite(income) || income < 0) {
+        console.warn('[saveUserIncome] invalid income, skipping save:', income);
+        setAppState(prev => ({
+          ...prev,
+          user: prev.user ? { ...prev.user, monthlyIncome: previousIncome } : null,
+        }));
+        return;
+      }
 
       // Optimistic UI update
       setAppState(prev => ({
@@ -718,55 +722,54 @@ export const useUserData = ({
           if (!legacyOk) {
             return;
           }
-          return;
-        }
-
-        const encodedUserId = encodeURIComponent(userId);
-        const appRes = await fetch(
-          `${REST_BASE}/app_settings?select=value&key=eq.${encodedUserId}&limit=1`,
-          { headers },
-        );
-
-        if (appRes.ok) {
-          const appRows = await appRes.json();
-          const currentValue = parseAppSettingsValue(
-            Array.isArray(appRows) ? appRows[0]?.value : null,
+        } else {
+          const encodedUserId = encodeURIComponent(userId);
+          const appRes = await fetch(
+            `${REST_BASE}/app_settings?select=value&key=eq.${encodedUserId}&limit=1`,
+            { headers },
           );
-          const nextValue = { ...currentValue, monthly_income: income };
-          const method =
-            Array.isArray(appRows) && appRows.length > 0 ? 'PATCH' : 'POST';
-          const url =
-            method === 'PATCH'
-              ? `${REST_BASE}/app_settings?key=eq.${encodedUserId}`
-              : `${REST_BASE}/app_settings`;
-          const body =
-            method === 'PATCH'
-              ? { value: nextValue }
-              : { key: userId, value: nextValue };
 
-          const saveRes = await fetch(url, {
-            method,
-            headers: {
-              ...headers,
-              Prefer: 'resolution=merge-duplicates,return=representation',
-            },
-            body: JSON.stringify(body),
-          });
-
-          if (!saveRes.ok) {
-            const saveBody = await saveRes.text();
-            console.warn(
-              `[saveUserIncome] app_settings update failed (${saveRes.status}): ${saveBody.slice(0, 200)}`,
+          if (appRes.ok) {
+            const appRows = await appRes.json();
+            const currentValue = parseAppSettingsValue(
+              Array.isArray(appRows) ? appRows[0]?.value : null,
             );
+            const nextValue = { ...currentValue, monthly_income: income };
+            const method =
+              Array.isArray(appRows) && appRows.length > 0 ? 'PATCH' : 'POST';
+            const url =
+              method === 'PATCH'
+                ? `${REST_BASE}/app_settings?key=eq.${encodedUserId}`
+                : `${REST_BASE}/app_settings`;
+            const body =
+              method === 'PATCH'
+                ? { value: nextValue }
+                : { key: userId, value: nextValue };
+
+            const saveRes = await fetch(url, {
+              method,
+              headers: {
+                ...headers,
+                Prefer: 'resolution=merge-duplicates,return=representation',
+              },
+              body: JSON.stringify(body),
+            });
+
+            if (!saveRes.ok) {
+              const saveBody = await saveRes.text();
+              console.warn(
+                `[saveUserIncome] app_settings update failed (${saveRes.status}): ${saveBody.slice(0, 200)}`,
+              );
+              const legacyOk = await saveToSettingsTable();
+              if (!legacyOk) {
+                return;
+              }
+            }
+          } else {
             const legacyOk = await saveToSettingsTable();
             if (!legacyOk) {
               return;
             }
-          }
-        } else {
-          const legacyOk = await saveToSettingsTable();
-          if (!legacyOk) {
-            return;
           }
         }
 
