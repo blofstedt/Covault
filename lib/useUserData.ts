@@ -625,6 +625,9 @@ export const useUserData = ({
         return;
       }
       const categoryName = category.name;
+      
+      // Store previous value for rollback
+      const previousLimit = category.totalLimit;
 
       // Optimistic UI update
       setAppState(prev => ({
@@ -647,6 +650,14 @@ export const useUserData = ({
           const msg = `[saveBudgetLimit] check failed (${checkRes.status})`;
           console.error(msg);
           setDbError(msg);
+          
+          // Rollback optimistic update
+          setAppState(prev => ({
+            ...prev,
+            budgets: prev.budgets.map(b =>
+              b.id === categoryId ? { ...b, totalLimit: previousLimit } : b,
+            ),
+          }));
           return;
         }
         
@@ -693,6 +704,14 @@ export const useUserData = ({
           )}`;
           console.error(msg);
           setDbError(msg);
+          
+          // Rollback optimistic update
+          setAppState(prev => ({
+            ...prev,
+            budgets: prev.budgets.map(b =>
+              b.id === categoryId ? { ...b, totalLimit: previousLimit } : b,
+            ),
+          }));
         } else {
           // Verify that rows were actually modified
           const updatedRows = body ? JSON.parse(body) : [];
@@ -701,6 +720,14 @@ export const useUserData = ({
             const msg = `[saveBudgetLimit] no rows ${recordExists ? 'updated' : 'inserted'} - operation failed silently`;
             console.error(msg);
             setDbError(msg);
+            
+            // Rollback optimistic update
+            setAppState(prev => ({
+              ...prev,
+              budgets: prev.budgets.map(b =>
+                b.id === categoryId ? { ...b, totalLimit: previousLimit } : b,
+              ),
+            }));
           } else {
             console.log(`[saveBudgetLimit] ${recordExists ? 'updated' : 'inserted'} OK`);
           }
@@ -709,6 +736,14 @@ export const useUserData = ({
         const msg = `[saveBudgetLimit] exception: ${err?.message || err}`;
         console.error(msg);
         setDbError(msg);
+        
+        // Rollback optimistic update
+        setAppState(prev => ({
+          ...prev,
+          budgets: prev.budgets.map(b =>
+            b.id === categoryId ? { ...b, totalLimit: previousLimit } : b,
+          ),
+        }));
       }
     },
     [appState.user, appState.budgets, setAppState, setDbError],
