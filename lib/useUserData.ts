@@ -246,6 +246,22 @@ export const useUserData = ({
               }),
             });
           }
+          if (
+            appValue.monthlyIncome !== undefined
+            && appValue.monthly_income !== undefined
+            && appValue.monthlyIncome !== appValue.monthly_income
+          ) {
+            await fetch(`${REST_BASE}/app_settings?key=eq.${appSettingsKey}`, {
+              method: 'PATCH',
+              headers: {
+                ...headers,
+                Prefer: 'resolution=merge-duplicates,return=representation',
+              },
+              body: JSON.stringify({
+                value: { ...appValue, monthly_income: appValue.monthlyIncome },
+              }),
+            });
+          }
           const parsedMonthlyIncome =
             rawMonthlyIncome === null || rawMonthlyIncome === undefined
               ? null
@@ -687,7 +703,7 @@ export const useUserData = ({
             return false;
           }
 
-          let existingRows: any[] = [];
+          let existingRows: unknown[] = [];
           try {
             existingRows = JSON.parse(existingBody || '[]');
           } catch {
