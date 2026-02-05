@@ -216,9 +216,9 @@ export const useDataLoading = ({
             if (!splitMap[row.transaction_id]) {
               splitMap[row.transaction_id] = [];
             }
-            // Map budget_category (name) back to budget_id using current budgets in state
+            // budget_category is a name string; caller resolves it to a budget UUID
             splitMap[row.transaction_id].push({
-              budget_id: row.budget_category, // Will be resolved below
+              budget_id: row.budget_category,
               amount: parseFloat(row.amount),
             });
           }

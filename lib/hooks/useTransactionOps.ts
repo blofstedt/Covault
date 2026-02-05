@@ -26,14 +26,15 @@ export const useTransactionOps = ({
           { method: 'DELETE', headers },
         );
 
-        // Find budget names from appState
+        // Find budget names from appState; the DB column is budget_category (text name)
+        const totalAmount = splits.reduce((sum, sp) => sum + sp.amount, 0);
         const rows = splits.map(s => {
           const budget = appState.budgets.find(b => b.id === s.budget_id);
           return {
             transaction_id: transactionId,
             budget_category: budget?.name || s.budget_id,
             amount: s.amount,
-            percentage: parseFloat(((s.amount / splits.reduce((sum, sp) => sum + sp.amount, 0)) * 100).toFixed(2)),
+            percentage: totalAmount > 0 ? parseFloat(((s.amount / totalAmount) * 100).toFixed(2)) : 0,
           };
         });
 
