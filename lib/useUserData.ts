@@ -196,7 +196,7 @@ export const useUserData = ({
         if (rows && rows.length > 0) {
           const rawMonthlyIncome = rows[0].monthly_income;
           const parsedMonthlyIncome =
-            rawMonthlyIncome === null || rawMonthlyIncome === undefined || rawMonthlyIncome === 0
+            rawMonthlyIncome === null || rawMonthlyIncome === undefined
               ? null
               : Number(rawMonthlyIncome);
           const shouldUseDefault =
