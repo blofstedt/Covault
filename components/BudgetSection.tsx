@@ -69,7 +69,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
   return (
     <div
-      className={`flex-1 h-full overflow-hidden transition-all duration-[300ms] rounded-[2.5rem] border relative flex flex-col bg-white dark:bg-slate-900 ${
+      className={`flex-1 h-full overflow-hidden transition-all duration-[300ms] rounded-[2rem] border relative flex flex-col bg-white dark:bg-slate-900 ${
         isExpanded
           ? 'ease-in border-emerald-300 dark:border-emerald-800 shadow-2xl'
           : 'ease-out border-slate-100 dark:border-slate-800/60 shadow-sm'
@@ -117,14 +117,14 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
       {/* HEADER / SUMMARY */}
       <div
         onClick={onToggle}
-        className={`relative z-10 flex-1 px-8 flex items-center justify-between cursor-pointer active:scale-[0.99] transition-all ${
-          isExpanded ? 'flex-none py-10' : 'py-3'
+        className={`relative z-10 flex-1 flex items-center justify-between cursor-pointer active:scale-[0.99] transition-all ${
+          isExpanded ? 'flex-none py-10 px-8' : 'py-2 px-6'
         }`}
       >
         {/* LEFT SIDE: ICON + NAME */}
-        <div className="flex items-center space-x-6">
+        <div className="flex items-center space-x-4">
           <div
-            className={`p-3 rounded-2xl transition-all duration-300 ${
+            className={`p-2 rounded-2xl transition-all duration-300 ${
               isExpanded
                 ? 'bg-emerald-600 text-white shadow-lg scale-110 p-3.5'
                 : 'bg-white/80 dark:bg-slate-800 text-slate-400 dark:text-slate-500 shadow-sm'
@@ -134,14 +134,14 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           </div>
 
           <div className="flex flex-col text-left">
-            <h3 className="text-base font-black tracking-tight leading-none uppercase transition-colors duration-300 text-slate-500 dark:text-slate-100">
+            <h3 className="text-sm font-black tracking-tight leading-none uppercase transition-colors duration-300 text-slate-500 dark:text-slate-100">
               {budget.name}
             </h3>
 
             {!isExpanded && (
               <div className="flex flex-col">
                 <span
-                  className="text-[10px] font-black uppercase tracking-[0.15em] mt-1.5 transition-colors duration-300 text-slate-400 dark:text-slate-500"
+                  className="text-[10px] font-black uppercase tracking-[0.15em] mt-1 transition-colors duration-300 text-slate-400 dark:text-slate-500"
                 >
                   {isDanger
                     ? `Over: $${Math.max(0, total - budget.totalLimit).toFixed(0)}`
@@ -183,7 +183,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
               </div>
             )}
 
-            <span className="text-2xl font-black tracking-tighter leading-none transition-colors duration-300 text-slate-500 dark:text-slate-100">
+            <span className="text-xl font-black tracking-tighter leading-none transition-colors duration-300 text-slate-500 dark:text-slate-100">
               ${budget.totalLimit}
             </span>
           </div>
