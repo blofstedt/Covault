@@ -66,12 +66,12 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
 
     if (total === 0 || spendingByCategory.size === 0) {
       content = (
-        <div className="text-center py-8">
-          <p className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-2">
+        <div className="text-center py-4">
+          <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
             No spending yet this month
           </p>
-          <p className="text-xs text-slate-400 dark:text-slate-500">
-            Once you add transactions, your monthly spending summary will appear here.
+          <p className="text-[10px] text-slate-400 dark:text-slate-500">
+            Add transactions to see your spending summary.
           </p>
         </div>
       );
@@ -92,20 +92,20 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
       content = (
         <>
           {/* Simple list + progress bars */}
-          <div className="space-y-3">
+          <div className="space-y-2">
             {rows.map((row) => {
               const share = total > 0 ? (row.amount / total) * 100 : 0;
               return (
-                <div key={row.categoryId} className="space-y-1">
+                <div key={row.categoryId} className="space-y-0.5">
                   <div className="flex justify-between items-baseline">
-                    <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                    <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300">
                       {row.name}
                     </span>
-                    <span className="text-[11px] font-bold text-slate-700 dark:text-slate-100">
+                    <span className="text-[10px] font-bold text-slate-700 dark:text-slate-100">
                       ${row.amount.toFixed(0)}
                     </span>
                   </div>
-                  <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                  <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                     <div
                       className="h-full rounded-full"
                       style={{
@@ -120,11 +120,11 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
           </div>
 
           {/* Total footer */}
-          <div className="mt-4 pt-3 border-t-2 border-slate-100 dark:border-slate-800 flex justify-between items-center">
-            <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+          <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center">
+            <span className="text-[9px] font-bold uppercase tracking-[0.1em] text-slate-400 dark:text-slate-500">
               Total This Month
             </span>
-            <span className="text-sm font-black text-slate-700 dark:text-slate-100">
+            <span className="text-xs font-black text-slate-700 dark:text-slate-100">
               ${total.toFixed(0)}
             </span>
           </div>

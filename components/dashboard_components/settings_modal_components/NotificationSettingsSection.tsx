@@ -235,42 +235,24 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
     }
   };
 
-  // Browser-only info block - now with toggle
+  // Browser-only info block - matching other toggle sections
   if (!isNative) {
     return (
-      <div className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex-1 mr-3">
-            <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 block">
-              Bank Notification Listener
-            </span>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 leading-relaxed">
-              Auto-log transactions from supported banking apps.
-            </p>
-            
-            {/* Info message for browser */}
-            <div className="mt-2">
-              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700">
-                <span className="w-2 h-2 rounded-full bg-slate-400 mr-2" />
-                <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300">
-                  Available on Android app only
-                </span>
-              </span>
-            </div>
-          </div>
-
-          {/* Disabled toggle for browser */}
-          <button
-            disabled
-            className="relative w-12 h-7 rounded-full transition-colors duration-200 flex-shrink-0 bg-slate-300 dark:bg-slate-600 opacity-50 cursor-not-allowed"
-          >
-            <span className="absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200 translate-x-0" />
-          </button>
+      <div className="flex items-center justify-between p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60">
+        <div className="flex flex-col">
+          <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+            Bank Notification Listener
+          </span>
+          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium mt-0.5 leading-relaxed">
+            Android only • Auto-log transactions.
+          </span>
         </div>
-        
-        <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-tight">
-          Install the Covault Android app and enable notification access to auto-log your banking transactions.
-        </p>
+        <button
+          disabled
+          className="w-14 h-8 rounded-full transition-colors relative flex items-center p-1 cursor-not-allowed bg-slate-200 dark:bg-slate-700 opacity-50"
+        >
+          <div className="w-6 h-6 bg-white rounded-full shadow-lg transform transition-transform duration-300 translate-x-0" />
+        </button>
       </div>
     );
   }
@@ -279,49 +261,17 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
     enabled && permissionGranted && selectedApps.size > 0 && installedBankApps.length > 0;
 
   return (
-    <div className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60 space-y-4">
-      {/* TOGGLE + STATUS */}
-      <div className="flex items-center justify-between">
-        <div className="flex-1 mr-3">
-          <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 block">
+    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60">
+      {/* Toggle row - matching other toggle sections */}
+      <div className="flex items-center justify-between p-6">
+        <div className="flex flex-col">
+          <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
             Bank Notification Listener
           </span>
-          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 leading-relaxed">
-            Auto-log transactions from supported banking apps.
-          </p>
-
-          {/* STATUS PILL */}
-          <div className="mt-2">
-            {autoAddActive && (
-              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-700">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 mr-2" />
-                <span className="text-[9px] font-semibold text-emerald-700 dark:text-emerald-300">
-                  Auto-adding from {selectedApps.size} app
-                  {selectedApps.size === 1 ? '' : 's'}
-                </span>
-              </span>
-            )}
-
-            {!permissionGranted && enabled && (
-              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700">
-                <span className="w-2 h-2 rounded-full bg-amber-500 mr-2" />
-                <span className="text-[9px] font-semibold text-amber-700 dark:text-amber-300">
-                  Permission not granted in system settings
-                </span>
-              </span>
-            )}
-
-            {enabled && permissionGranted && selectedApps.size === 0 && (
-              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700">
-                <span className="w-2 h-2 rounded-full bg-slate-400 mr-2" />
-                <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300">
-                  No banking apps selected
-                </span>
-              </span>
-            )}
-          </div>
+          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium mt-0.5 leading-relaxed">
+            Auto-log transactions from banking apps.
+          </span>
         </div>
-
         <button
           onClick={handleToggle}
           className={`w-14 h-8 rounded-full transition-colors relative flex items-center p-1 cursor-pointer ${
@@ -336,86 +286,122 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
         </button>
       </div>
 
-      {/* Banking app picker */}
-      {enabled && permissionGranted && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-              Your Banking Apps ({installedBankApps.length} found)
-            </span>
-            <div className="flex space-x-2">
-              <button
-                onClick={selectAll}
-                className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase"
-              >
-                All
-              </button>
-              <button
-                onClick={selectNone}
-                className="text-[9px] font-bold text-slate-400 uppercase"
-              >
-                None
-              </button>
-            </div>
+      {/* Status and app picker - only when enabled */}
+      {enabled && (
+        <div className="px-6 pb-5 pt-0 space-y-3 border-t border-slate-100 dark:border-slate-800/60">
+          {/* STATUS PILL */}
+          <div className="pt-3">
+            {autoAddActive && (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-700">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 mr-2" />
+                <span className="text-[9px] font-semibold text-emerald-700 dark:text-emerald-300">
+                  Auto-adding from {selectedApps.size} app
+                  {selectedApps.size === 1 ? '' : 's'}
+                </span>
+              </span>
+            )}
+
+            {!permissionGranted && (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700">
+                <span className="w-2 h-2 rounded-full bg-amber-500 mr-2" />
+                <span className="text-[9px] font-semibold text-amber-700 dark:text-amber-300">
+                  Permission not granted in system settings
+                </span>
+              </span>
+            )}
+
+            {permissionGranted && selectedApps.size === 0 && (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700">
+                <span className="w-2 h-2 rounded-full bg-slate-400 mr-2" />
+                <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300">
+                  No banking apps selected
+                </span>
+              </span>
+            )}
           </div>
 
-          {installedBankApps.length === 0 ? (
-            <p className="text-[10px] text-slate-400 text-center py-3">
-              No supported banking apps detected on this device.
-            </p>
-          ) : (
-            <div className="grid grid-cols-2 gap-2">
-              {installedBankApps.map((app) => {
-                const selected = selectedApps.has(app.packageName);
-                return (
+          {/* Banking app picker */}
+          {permissionGranted && (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                  Your Banking Apps ({installedBankApps.length} found)
+                </span>
+                <div className="flex space-x-2">
                   <button
-                    key={app.packageName}
-                    onClick={() => toggleApp(app.packageName)}
-                    className={`flex items-center space-x-2 px-3 py-2.5 rounded-xl text-left transition-all active:scale-95 border ${
-                      selected
-                        ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-300 dark:border-emerald-700/50'
-                        : 'bg-slate-100 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/30'
-                    }`}
+                    onClick={selectAll}
+                    className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase"
                   >
-                    <span
-                      className={`w-4 h-4 rounded-md flex items-center justify-center flex-shrink-0 ${
-                        selected ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
-                      }`}
-                    >
-                      {selected && (
-                        <svg
-                          className="w-3 h-3 text-white"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                          strokeWidth={3}
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M4.5 12.75l6 6 9-13.5"
-                          />
-                        </svg>
-                      )}
-                    </span>
-                    <span
-                      className={`text-[10px] font-bold truncate ${
-                        selected
-                          ? 'text-emerald-700 dark:text-emerald-300'
-                          : 'text-slate-500 dark:text-slate-400'
-                      }`}
-                    >
-                      {app.name}
-                    </span>
+                    All
                   </button>
-                );
-              })}
-            </div>
-          )}
+                  <button
+                    onClick={selectNone}
+                    className="text-[9px] font-bold text-slate-400 uppercase"
+                  >
+                    None
+                  </button>
+                </div>
+              </div>
 
-          <p className="text-[9px] text-slate-400 dark:text-slate-500 text-center leading-tight">
-            Covault reads notifications from selected apps to auto-log your transactions.
-          </p>
+              {installedBankApps.length === 0 ? (
+                <p className="text-[10px] text-slate-400 text-center py-3">
+                  No supported banking apps detected on this device.
+                </p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  {installedBankApps.map((app) => {
+                    const selected = selectedApps.has(app.packageName);
+                    return (
+                      <button
+                        key={app.packageName}
+                        onClick={() => toggleApp(app.packageName)}
+                        className={`flex items-center space-x-2 px-3 py-2.5 rounded-xl text-left transition-all active:scale-95 border ${
+                          selected
+                            ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-300 dark:border-emerald-700/50'
+                            : 'bg-slate-100 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/30'
+                        }`}
+                      >
+                        <span
+                          className={`w-4 h-4 rounded-md flex items-center justify-center flex-shrink-0 ${
+                            selected ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
+                          }`}
+                        >
+                          {selected && (
+                            <svg
+                              className="w-3 h-3 text-white"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                              strokeWidth={3}
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M4.5 12.75l6 6 9-13.5"
+                              />
+                            </svg>
+                          )}
+                        </span>
+                        <span
+                          className={`text-[10px] font-bold truncate ${
+                            selected
+                              ? 'text-emerald-700 dark:text-emerald-300'
+                              : 'text-slate-500 dark:text-slate-400'
+                          }`}
+                        >
+                          {app.name}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              <p className="text-[9px] text-slate-400 dark:text-slate-500 text-center leading-tight">
+                Covault reads notifications from selected apps to auto-log your transactions.
+              </p>
+            </>
+          )}
         </div>
       )}
     </div>

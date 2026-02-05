@@ -20,25 +20,25 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
 
       {/* Header */}
       <header
-        className="px-6 pt-safe-top pb-4 sticky top-0 z-20 transition-colors bg-transparent border-none backdrop-blur-none relative z-10"
-        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1.5rem)' }}
+        className="px-6 pt-safe-top pb-2 sticky top-0 z-20 transition-colors bg-transparent border-none backdrop-blur-none relative z-10"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}
       >
         <div className="flex items-center justify-center">
-          <h1 className="text-xl font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">
+          <h1 className="text-lg font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">
             Transaction Parsing
           </h1>
         </div>
       </header>
 
-      {/* Main content */}
-      <main className="flex-1 flex flex-col p-6 pb-28 overflow-y-auto no-scrollbar relative z-10">
-        <div className="max-w-2xl mx-auto w-full space-y-6">
-          {/* Info card */}
-          <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 shadow-xl border border-slate-100 dark:border-slate-800/60 space-y-6">
-            <div className="flex items-start space-x-4">
-              <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl">
+      {/* Main content - reduced padding */}
+      <main className="flex-1 flex flex-col p-4 pb-24 overflow-hidden relative z-10">
+        <div className="max-w-2xl mx-auto w-full space-y-4">
+          {/* Info card - more compact */}
+          <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-5 shadow-xl border border-slate-100 dark:border-slate-800/60 space-y-4">
+            <div className="flex items-start space-x-3">
+              <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
                 <svg
-                  className="w-8 h-8 text-emerald-600 dark:text-emerald-400"
+                  className="w-6 h-6 text-emerald-600 dark:text-emerald-400"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
@@ -52,11 +52,11 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               </div>
               
               <div className="flex-1">
-                <h2 className="text-lg font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase mb-2">
-                  Automatic Transaction Detection
+                <h2 className="text-base font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase mb-1">
+                  Auto Transaction Detection
                 </h2>
-                <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                  Configure transaction parsing from banking app notifications. When enabled, Covault can automatically detect and add transactions from your bank notifications.
+                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                  Covault can automatically detect and add transactions from your bank notifications.
                 </p>
               </div>
             </div>
@@ -67,44 +67,44 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               onToggle={onToggle}
             />
 
-            <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
-              <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-tight text-center">
-                Auto-detected transactions will appear in your budgets automatically. You can review and edit them at any time.
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
+              <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-tight text-center">
+                Auto-detected transactions appear in your budgets automatically.
               </p>
             </div>
           </div>
 
-          {/* Help section */}
-          <div className="bg-slate-100 dark:bg-slate-800/50 rounded-2xl p-6 space-y-4">
-            <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+          {/* Help section - more compact */}
+          <div className="bg-slate-100 dark:bg-slate-800/50 rounded-xl p-4 space-y-3">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500 dark:text-slate-400">
               How it works
             </h3>
             
-            <div className="space-y-3">
-              <div className="flex items-start space-x-3">
-                <div className="flex-shrink-0 w-6 h-6 bg-emerald-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+            <div className="space-y-2">
+              <div className="flex items-center space-x-2">
+                <div className="flex-shrink-0 w-5 h-5 bg-emerald-500 text-white rounded-full flex items-center justify-center text-[10px] font-bold">
                   1
                 </div>
-                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  Enable transaction parsing and grant notification access
+                <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                  Enable parsing and grant notification access
                 </p>
               </div>
               
-              <div className="flex items-start space-x-3">
-                <div className="flex-shrink-0 w-6 h-6 bg-emerald-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+              <div className="flex items-center space-x-2">
+                <div className="flex-shrink-0 w-5 h-5 bg-emerald-500 text-white rounded-full flex items-center justify-center text-[10px] font-bold">
                   2
                 </div>
-                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  Covault listens for banking notifications on your device
+                <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                  Covault listens for banking notifications
                 </p>
               </div>
               
-              <div className="flex items-start space-x-3">
-                <div className="flex-shrink-0 w-6 h-6 bg-emerald-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+              <div className="flex items-center space-x-2">
+                <div className="flex-shrink-0 w-5 h-5 bg-emerald-500 text-white rounded-full flex items-center justify-center text-[10px] font-bold">
                   3
                 </div>
-                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  Transactions are automatically parsed and added to your budgets
+                <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                  Transactions are parsed and added to budgets
                 </p>
               </div>
             </div>
