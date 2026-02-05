@@ -30,6 +30,10 @@ export default defineConfig(({ mode }) => {
           {
             src: 'manifest.json',
             dest: '.'
+          },
+          {
+            src: 'icons',
+            dest: '.'
           }
         ]
       }),
