@@ -11,7 +11,6 @@ export default defineConfig(({ mode }) => {
 
   // Validate required Supabase environment variables for production builds
   // This prevents building Android APKs without proper configuration
-  const isProduction = mode === 'production';
   const isBuildCommand = process.argv.includes('build');
   
   // Check for Supabase URL (supports both naming conventions for compatibility)
@@ -91,13 +90,13 @@ export default defineConfig(({ mode }) => {
       // Use undefined (not string "undefined") when env vars are missing
       'import.meta.env.VITE_SUPABASE_URL': env.VITE_SUPABASE_URL 
         ? JSON.stringify(env.VITE_SUPABASE_URL) 
-        : 'undefined',
+        : undefined,
       'import.meta.env.VITE_PUBLIC_SUPABASE_URL': env.VITE_PUBLIC_SUPABASE_URL 
         ? JSON.stringify(env.VITE_PUBLIC_SUPABASE_URL) 
-        : 'undefined',
+        : undefined,
       'import.meta.env.VITE_SUPABASE_ANON_KEY': env.VITE_SUPABASE_ANON_KEY 
         ? JSON.stringify(env.VITE_SUPABASE_ANON_KEY) 
-        : 'undefined',
+        : undefined,
     },
 
     resolve: {
