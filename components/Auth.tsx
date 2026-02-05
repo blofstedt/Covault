@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
 import { supabase } from '../lib/supabase';
 import CovaultIcon from './CovaultIcon';
 
@@ -45,12 +46,10 @@ const Auth: React.FC<AuthProps> = ({ onSignIn }) => {
         throw error;
       }
 
-      // On Android with skipBrowserRedirect, we get a URL to open
+      // On Android with skipBrowserRedirect, we get a URL to open in the system browser
       if (isNative && data?.url) {
         console.log('[Auth] Opening OAuth URL in browser:', data.url);
-        // The OAuth flow will continue in the browser
-        // When complete, it will deep link back to the app
-        // and useDeepLinks.ts will handle setting the session
+        await Browser.open({ url: data.url });
       }
 
       // NOTE: For web, Supabase redirects automatically
