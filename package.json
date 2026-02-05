@@ -20,6 +20,8 @@
     "@capacitor/local-notifications": "^8.0.0",
     "@google/genai": "^1.38.0",
     "@supabase/supabase-js": "^2.49.1",
+    "@types/d3": "^7.4.3",
+    "d3": "^7.9.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3"
   },
