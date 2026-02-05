@@ -310,7 +310,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const handleTutorialStepChange = (step: number) => {
     setTutorialStep(step);
-    if (step >= 6 && step <= 13) {
+    if (step >= 6 && step <= 17) {
       setShowSettings(true);
     } else {
       setShowSettings(false);
@@ -373,14 +373,14 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       {/* Header */}
       <header
-        className="px-6 pt-safe-top pb-4 sticky top-0 z-20 transition-colors bg-transparent border-none backdrop-blur-none relative z-10"
-        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1.5rem)' }}
+        className="px-6 pt-safe-top pb-2 sticky top-0 z-20 transition-colors bg-transparent border-none backdrop-blur-none relative z-10"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}
       >
         <DashboardHeader onOpenSettings={() => setShowSettings(true)} />
       </header>
 
       {/* Main content */}
-      <main className="flex-1 flex flex-col p-3 pb-24 overflow-hidden relative z-10">
+      <main className="flex-1 flex flex-col p-3 pb-20 overflow-hidden relative z-10">
         {!isFocusMode && !isLoadingData && (
           <DashboardBalanceSection
             isSharedAccount={isSharedAccount}

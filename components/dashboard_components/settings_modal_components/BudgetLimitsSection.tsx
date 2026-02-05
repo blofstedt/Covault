@@ -39,7 +39,7 @@ const BudgetLimitsSection: React.FC<BudgetLimitsSectionProps> = ({
   };
 
   return (
-    <div className="border-2 border-slate-100 dark:border-slate-800 rounded-2xl p-6 space-y-4">
+    <div id="settings-budget-limits-container" className="border-2 border-slate-100 dark:border-slate-800 rounded-2xl p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
           Budget Limits

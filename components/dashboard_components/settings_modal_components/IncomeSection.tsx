@@ -36,10 +36,11 @@ const IncomeSection: React.FC<IncomeSectionProps> = ({
   const handleBlur = () => {
     isEditingRef.current = false;
     
-    // Empty field becomes 0
+    // Empty field: restore previous saved value instead of saving 0
     if (inputValue.trim() === '') {
-      setInputValue('0');
-      onUpdateUserIncome(0);
+      const currentIncome = user?.monthlyIncome ?? 0;
+      setInputValue(currentIncome.toString());
+      return;
     } else {
       // Save the current valid numeric value when field loses focus
       const numeric = parseFloat(inputValue);

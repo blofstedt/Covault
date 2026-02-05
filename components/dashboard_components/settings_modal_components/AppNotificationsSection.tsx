@@ -11,7 +11,7 @@ const AppNotificationsSection: React.FC<AppNotificationsSectionProps> = ({
   onToggle,
 }) => {
   return (
-    <div className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60">
+    <div id="settings-app-notifications-container" className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60">
       <div className="flex items-center justify-between">
         {/* LEFT TEXT */}
         <div className="flex flex-col">
