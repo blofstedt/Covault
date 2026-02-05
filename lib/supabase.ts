@@ -2,11 +2,11 @@
 import { createClient } from '@supabase/supabase-js';
 import { Capacitor } from '@capacitor/core';
 
-// ✅ These MUST match what you have in Vercel / .env
-// Vercel:
-//   VITE_PUBLIC_SUPABASE_URL = https://xqleyxrftyehodksashu.supabase.co
-//   VITE_SUPABASE_ANON_KEY   = your anon key
-export const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string | undefined;
+// ✅ These MUST match what you have in Vercel / .env / GitHub
+// Supports both naming conventions for compatibility:
+//   VITE_SUPABASE_URL or VITE_PUBLIC_SUPABASE_URL = https://xqleyxrftyehodksashu.supabase.co
+//   VITE_SUPABASE_ANON_KEY = your anon key
+export const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || import.meta.env.VITE_PUBLIC_SUPABASE_URL) as string | undefined;
 export const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
 const isSupabaseConfigured = !!supabaseUrl && !!supabaseAnonKey;
@@ -14,7 +14,7 @@ const isSupabaseConfigured = !!supabaseUrl && !!supabaseAnonKey;
 if (!isSupabaseConfigured) {
   console.error(
     '❌ Supabase URL or Anon Key is missing. ' +
-      'Check your environment variables for VITE_PUBLIC_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.'
+      'Check your environment variables for VITE_SUPABASE_URL (or VITE_PUBLIC_SUPABASE_URL) and VITE_SUPABASE_ANON_KEY.'
   );
 }
 
