@@ -23,15 +23,17 @@ cp .env.example .env
 2. **Edit `.env` and add your Supabase credentials**:
 
 ```env
-VITE_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
+VITE_SUPABASE_URL=https://your-project-id.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key-here
 ```
+
+**Note:** Both `VITE_SUPABASE_URL` and `VITE_PUBLIC_SUPABASE_URL` are supported for compatibility.
 
 **Where to find these values:**
 - Log in to [Supabase Dashboard](https://app.supabase.com/)
 - Select your project
 - Go to **Settings > API**
-- Copy "Project URL" → `VITE_PUBLIC_SUPABASE_URL`
+- Copy "Project URL" → `VITE_SUPABASE_URL`
 - Copy "anon public" key → `VITE_SUPABASE_ANON_KEY`
 
 ## Step 2: Configure Supabase Redirect URLs

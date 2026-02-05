@@ -44,8 +44,10 @@ GEMINI_API_KEY=your_gemini_api_key (optional)
 **Get your Supabase credentials:**
 - Go to your Supabase project dashboard
 - Navigate to Settings > API
-- Copy the "Project URL" (for `VITE_PUBLIC_SUPABASE_URL`)
+- Copy the "Project URL" (for `VITE_SUPABASE_URL` or `VITE_PUBLIC_SUPABASE_URL`)
 - Copy the "anon/public" key (for `VITE_SUPABASE_ANON_KEY`)
+
+**Note:** Both `VITE_SUPABASE_URL` and `VITE_PUBLIC_SUPABASE_URL` are supported for compatibility.
 
 **Configure Supabase Authentication URLs:**
 
@@ -121,7 +123,8 @@ npm run preview
 1. Ensure your `.env` file has the correct Supabase credentials:
 ```bash
 # These MUST be set for Android builds
-VITE_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
+# Both VITE_SUPABASE_URL and VITE_PUBLIC_SUPABASE_URL are supported
+VITE_SUPABASE_URL=https://your-project-id.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
 
@@ -186,8 +189,9 @@ npm run cap:build
 1. **Check environment variables are set** before building:
    ```bash
    # Create .env file with your Supabase credentials
+   # Both VITE_SUPABASE_URL and VITE_PUBLIC_SUPABASE_URL are supported
    cat > .env << EOF
-   VITE_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
+   VITE_SUPABASE_URL=https://your-project-id.supabase.co
    VITE_SUPABASE_ANON_KEY=your-anon-key
    EOF
    

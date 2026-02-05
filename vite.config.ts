@@ -9,6 +9,31 @@ export default defineConfig(({ mode }) => {
   // Load env file from the current directory based on `mode`
   const env = loadEnv(mode, process.cwd(), '');
 
+  // Validate required Supabase environment variables for production builds
+  // This prevents building Android APKs without proper configuration
+  const isBuildCommand = process.argv.includes('build');
+  
+  // Check for Supabase URL (supports both naming conventions for compatibility)
+  const hasSupabaseUrl = env.VITE_SUPABASE_URL || env.VITE_PUBLIC_SUPABASE_URL;
+  
+  if (isBuildCommand && !hasSupabaseUrl) {
+    console.warn(
+      '\n⚠️  WARNING: VITE_SUPABASE_URL (or VITE_PUBLIC_SUPABASE_URL) is not set!\n' +
+      '   The app will not be able to connect to Supabase.\n' +
+      '   Please create a .env file with your Supabase credentials.\n' +
+      '   See .env.example for the required variables.\n'
+    );
+  }
+  
+  if (isBuildCommand && !env.VITE_SUPABASE_ANON_KEY) {
+    console.warn(
+      '\n⚠️  WARNING: VITE_SUPABASE_ANON_KEY is not set!\n' +
+      '   The app will not be able to connect to Supabase.\n' +
+      '   Please create a .env file with your Supabase credentials.\n' +
+      '   See .env.example for the required variables.\n'
+    );
+  }
+
   return {
     // 1. SET BASE TO RELATIVE: This is the most common fix for the "White Screen" 
     // in PWA wrappers and Vercel. It ensures scripts load from ./assets instead of /assets.
@@ -61,8 +86,17 @@ export default defineConfig(({ mode }) => {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
       'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
       // Explicitly define Supabase env vars for Android/Capacitor builds
-      'import.meta.env.VITE_PUBLIC_SUPABASE_URL': JSON.stringify(env.VITE_PUBLIC_SUPABASE_URL),
-      'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY),
+      // Support both VITE_SUPABASE_URL and VITE_PUBLIC_SUPABASE_URL for compatibility
+      // Use undefined (not string "undefined") when env vars are missing
+      'import.meta.env.VITE_SUPABASE_URL': env.VITE_SUPABASE_URL 
+        ? JSON.stringify(env.VITE_SUPABASE_URL) 
+        : undefined,
+      'import.meta.env.VITE_PUBLIC_SUPABASE_URL': env.VITE_PUBLIC_SUPABASE_URL 
+        ? JSON.stringify(env.VITE_PUBLIC_SUPABASE_URL) 
+        : undefined,
+      'import.meta.env.VITE_SUPABASE_ANON_KEY': env.VITE_SUPABASE_ANON_KEY 
+        ? JSON.stringify(env.VITE_SUPABASE_ANON_KEY) 
+        : undefined,
     },
 
     resolve: {
