@@ -75,9 +75,13 @@ const KNOWN_BANKING_APPS: Record<string, string> = {
   'com.schwab.mobile': 'Schwab',
 };
 
-const NotificationSettingsSection: React.FC = () => {
+interface NotificationSettingsSectionProps {
+  enabled: boolean;
+  onToggle: (enabled: boolean) => void;
+}
+
+const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = ({ enabled, onToggle }) => {
   const isNative = Capacitor.isNativePlatform();
-  const [enabled, setEnabled] = useState(false);
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [installedBankApps, setInstalledBankApps] = useState<
     Array<{ packageName: string; name: string }>
@@ -102,7 +106,12 @@ const NotificationSettingsSection: React.FC = () => {
     try {
       const { enabled: granted } = await plugin.isEnabled();
       setPermissionGranted(granted);
-      setEnabled(granted);
+      
+      // Sync the toggle with actual permission status
+      // If user enabled but permission not granted, turn off the toggle
+      if (enabled && !granted) {
+        onToggle(false);
+      }
 
       if (granted) {
         const { apps: installed } = await plugin.getInstalledApps();
@@ -130,7 +139,7 @@ const NotificationSettingsSection: React.FC = () => {
     } catch (e) {
       console.warn('[NotificationSettingsSection] checkStatus error:', e);
     }
-  }, [plugin]);
+  }, [plugin, enabled, onToggle]);
 
   useEffect(() => {
     checkStatus();
@@ -155,7 +164,6 @@ const NotificationSettingsSection: React.FC = () => {
         const { enabled: granted } = await plugin.isEnabled();
         if (granted) {
           setPermissionGranted(true);
-          setEnabled(true);
           checkStatus();
           return;
         }
@@ -163,19 +171,21 @@ const NotificationSettingsSection: React.FC = () => {
         // ignore
       }
     }
-  }, [plugin, checkStatus]);
+    // If polling ends without permission granted, turn off the toggle
+    onToggle(false);
+  }, [plugin, checkStatus, onToggle]);
 
   const handleToggle = async () => {
     if (!isNative || !plugin) return;
 
     if (enabled) {
       // Logical off (we still can't revoke OS permission from here)
-      setEnabled(false);
+      onToggle(false);
       return;
     }
 
     // Turning on — open Android notification listener settings
-    setEnabled(true);
+    onToggle(true);
     try {
       await plugin.requestAccess();
       pollForPermission();
@@ -314,13 +324,13 @@ const NotificationSettingsSection: React.FC = () => {
 
         <button
           onClick={handleToggle}
-          className={`relative w-12 h-7 rounded-full transition-colors duration-200 flex-shrink-0 ${
-            enabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
+          className={`w-14 h-8 rounded-full transition-colors relative flex items-center p-1 cursor-pointer ${
+            enabled ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-700'
           }`}
         >
-          <span
-            className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200 ${
-              enabled ? 'translate-x-5' : 'translate-x-0'
+          <div
+            className={`w-6 h-6 bg-white rounded-full shadow-lg transform transition-transform duration-300 ${
+              enabled ? 'translate-x-6' : 'translate-x-0'
             }`}
           />
         </button>

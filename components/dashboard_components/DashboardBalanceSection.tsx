@@ -16,7 +16,7 @@ const DashboardBalanceSection: React.FC<DashboardBalanceSectionProps> = ({
   return (
     <div
       id="balance-header"
-      className="flex flex-col items-center justify-center py-4 shrink-0 relative"
+      className="flex flex-col items-center justify-center py-2 shrink-0 relative"
     >
       <div className="text-center z-10 animate-nest">
         <span className="text-[10px] font-black uppercase tracking-[0.2em] mb-1 block transition-colors duration-700 text-slate-400 dark:text-slate-500">
@@ -39,7 +39,7 @@ const DashboardBalanceSection: React.FC<DashboardBalanceSectionProps> = ({
       </div>
 
       <div
-        className="relative mt-4 w-full max-w-[200px] z-10 animate-nest"
+        className="relative mt-2 w-full max-w-[200px] z-10 animate-nest"
         style={{ animationDelay: '0.1s' }}
       >
         <input

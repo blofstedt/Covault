@@ -35,6 +35,8 @@ export interface DashboardSettingsModalProps {
   isLinkingPartner: boolean;
   partnerLinkEmail: string;
   budgets: BudgetCategory[];
+  parsingEnabled: boolean;
+  onParsingToggle: (enabled: boolean) => void;
   onChangePartnerLinkEmail: (value: string) => void;
   onClose: () => void;
   onRunTutorial: () => void;
@@ -55,6 +57,8 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
   isLinkingPartner,
   partnerLinkEmail,
   budgets,
+  parsingEnabled,
+  onParsingToggle,
   onChangePartnerLinkEmail,
   onClose,
   onRunTutorial,
@@ -131,7 +135,10 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           />
 
           {/* Bank Notification Listener */}
-          <NotificationSettingsSection />
+          <NotificationSettingsSection
+            enabled={parsingEnabled}
+            onToggle={onParsingToggle}
+          />
 
           {/* App Notifications */}
           <AppNotificationsSection

@@ -103,6 +103,12 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
     try {
       const { enabled: granted } = await plugin.isEnabled();
       setPermissionGranted(granted);
+      
+      // Sync the toggle with actual permission status
+      // If user enabled but permission not granted, turn off the toggle
+      if (enabled && !granted) {
+        onToggle(false);
+      }
 
       if (granted) {
         // Load installed apps and filter to known banking apps
@@ -128,7 +134,7 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
     } catch (e) {
       console.warn('[NotificationSettings] checkStatus error:', e);
     }
-  }, [plugin]);
+  }, [plugin, enabled, onToggle]);
 
   useEffect(() => {
     checkStatus();
@@ -156,7 +162,9 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
         }
       } catch { /* ignore */ }
     }
-  }, [plugin, checkStatus]);
+    // If polling ends without permission granted, turn off the toggle
+    onToggle(false);
+  }, [plugin, checkStatus, onToggle]);
 
   const handleToggle = async () => {
     if (!isNative || !plugin) return;
@@ -238,12 +246,12 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
         </div>
         <button
           onClick={handleToggle}
-          className={`relative w-12 h-7 rounded-full transition-colors duration-200 flex-shrink-0 ${
-            enabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
+          className={`w-14 h-8 rounded-full transition-colors relative flex items-center p-1 cursor-pointer ${
+            enabled ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-700'
           }`}
         >
-          <span className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200 ${
-            enabled ? 'translate-x-5' : 'translate-x-0'
+          <div className={`w-6 h-6 bg-white rounded-full shadow-lg transform transition-transform duration-300 ${
+            enabled ? 'translate-x-6' : 'translate-x-0'
           }`} />
         </button>
       </div>

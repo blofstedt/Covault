@@ -146,9 +146,9 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
   }
 
   return (
-    <div className="w-full mb-4">
-      <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-md rounded-3xl p-4 border-2 border-slate-100 dark:border-slate-800 shadow-lg">
-        <div className="mb-3 flex items-center justify-between">
+    <div className="w-full mb-2">
+      <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-md rounded-3xl p-3 border-2 border-slate-100 dark:border-slate-800 shadow-lg">
+        <div className="mb-2 flex items-center justify-between">
           <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
             Spending Overview
           </h3>
