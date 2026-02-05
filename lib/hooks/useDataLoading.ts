@@ -1,0 +1,342 @@
+// lib/hooks/useDataLoading.ts
+import { useCallback, useState } from 'react';
+import { SYSTEM_CATEGORIES } from '../../constants';
+import type { BudgetCategory } from '../../types';
+import { REST_BASE, getAuthHeaders, DEFAULT_BUDGET_LIMIT, DEFAULT_MONTHLY_INCOME } from '../apiHelpers';
+import { useFromSupabaseTransaction } from './transactionMappers';
+import type { UseUserDataParams } from './types';
+
+export const useDataLoading = ({
+  setAppState,
+  setDbError,
+}: Pick<UseUserDataParams, 'setAppState' | 'setDbError'>) => {
+  const [categoriesLoaded, setCategoriesLoaded] = useState(false);
+  const fromSupabaseTransaction = useFromSupabaseTransaction();
+
+  // Load categories from Supabase
+  const loadCategories = useCallback(async () => {
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(
+        `${REST_BASE}/categories?select=*&order=display_order`,
+        { headers },
+      );
+      const body = await res.text();
+      console.log(
+        '[loadCategories] status:',
+        res.status,
+        'body:',
+        body.slice(0, 300),
+      );
+
+      if (!res.ok) {
+        const msg = `Load categories failed (${res.status}): ${body.slice(
+          0,
+          200,
+        )}`;
+        console.error(msg);
+        setDbError(msg);
+        setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
+        setCategoriesLoaded(true);
+        return;
+      }
+
+      const data = JSON.parse(body);
+      if (data && data.length > 0) {
+        const budgets: BudgetCategory[] = data.map((row: any) => ({
+          id: row.id,
+          name: row.name,
+          // start with default limit; user-specific overrides will be loaded separately
+          totalLimit: DEFAULT_BUDGET_LIMIT,
+        }));
+        console.log(
+          '[loadCategories] OK:',
+          budgets.map(b => ({ id: b.id, name: b.name })),
+        );
+        setAppState(prev => ({ ...prev, budgets }));
+      } else {
+        console.warn('[loadCategories] empty result, using fallback');
+        setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
+      }
+      setCategoriesLoaded(true);
+    } catch (err: any) {
+      const msg = `Load categories exception: ${err?.message || err}`;
+      console.error(msg);
+      setDbError(msg);
+      setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
+      setCategoriesLoaded(true);
+    }
+  }, [setAppState, setDbError]);
+
+  // Load user budget limits from budgets table
+  const loadUserBudgets = useCallback(
+    async (userId: string) => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(
+          `${REST_BASE}/budgets?select=*&user_id=eq.${userId}`,
+          { headers },
+        );
+        const body = await res.text();
+
+        if (!res.ok) {
+          // Check if it's a "table not found" error (expected during initial setup)
+          if (res.status === 404 && body.includes('Could not find the table')) {
+            console.log('[loadUserBudgets] budgets table not found - using defaults (run schema.sql to create tables)');
+            return;
+          }
+          console.error('[loadUserBudgets] failed:', body.slice(0, 200));
+          return;
+        }
+
+        const rows = JSON.parse(body);
+
+        // Map category name → limit_amount
+        const limitsByCategory: Record<string, number> = {};
+        for (const row of rows) {
+          limitsByCategory[row.category] = Number(row.limit_amount);
+        }
+
+        // Merge with existing categories in state
+        setAppState(prev => ({
+          ...prev,
+          budgets: prev.budgets.map(b => ({
+            ...b,
+            totalLimit: limitsByCategory[b.name] ?? b.totalLimit ?? 0,
+          })),
+        }));
+
+        console.log('[loadUserBudgets] loaded:', limitsByCategory);
+      } catch (err: any) {
+        console.error('[loadUserBudgets] exception:', err?.message || err);
+      }
+    },
+    [setAppState],
+  );
+
+  // Load user settings from Supabase (monthly_income, etc.)
+  const loadUserSettings = useCallback(
+    async (userId: string) => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(
+          `${REST_BASE}/settings?select=monthly_income,theme&user_id=eq.${userId}`,
+          { 
+            headers,
+            cache: 'no-store' // Prevent caching to always get fresh data
+          },
+        );
+        
+        if (!res.ok) {
+          console.error('[loadUserSettings] failed:', res.status);
+          return;
+        }
+        
+        const rows = await res.json();
+
+        if (rows && rows.length > 0) {
+          const rawMonthlyIncome = rows[0].monthly_income;
+          const parsedMonthlyIncome =
+            rawMonthlyIncome === null || rawMonthlyIncome === undefined
+              ? null
+              : Number(rawMonthlyIncome);
+          const shouldUseDefault =
+            parsedMonthlyIncome === null || Number.isNaN(parsedMonthlyIncome);
+          const monthlyIncome = shouldUseDefault
+            ? DEFAULT_MONTHLY_INCOME
+            : parsedMonthlyIncome;
+
+          // Load theme from database
+          const theme = rows[0].theme || 'light';
+
+          setAppState(prev => ({
+            ...prev,
+            user: prev.user
+              ? { ...prev.user, monthlyIncome }
+              : null,
+            settings: {
+              ...prev.settings,
+              theme: theme as 'light' | 'dark',
+            },
+          }));
+
+          console.log(
+            shouldUseDefault
+              ? '[loadUserSettings] monthly_income missing, using default:'
+              : '[loadUserSettings] loaded monthly_income:',
+            monthlyIncome,
+          );
+          console.log('[loadUserSettings] loaded theme:', theme);
+        } else {
+          // No settings row exists (shouldn't happen with trigger, but handle it)
+          // Use default value only in this case
+          console.log('[loadUserSettings] no settings row found, using default:', DEFAULT_MONTHLY_INCOME);
+          setAppState(prev => ({
+            ...prev,
+            user: prev.user
+              ? { ...prev.user, monthlyIncome: DEFAULT_MONTHLY_INCOME }
+              : null,
+          }));
+        }
+      } catch (err: any) {
+        console.error('[loadUserSettings] exception:', err?.message || err);
+      }
+    },
+    [setAppState],
+  );
+
+  // Load transactions from Supabase via raw fetch
+  const loadTransactions = useCallback(
+    async (userId: string) => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(
+          `${REST_BASE}/transactions?select=*&user_id=eq.${userId}&order=date.desc`,
+          { headers },
+        );
+        const body = await res.text();
+        console.log(
+          '[loadTransactions] status:',
+          res.status,
+          'body:',
+          body.slice(0, 300),
+        );
+
+        if (!res.ok) {
+          const msg = `Load transactions failed (${res.status}): ${body.slice(
+            0,
+            200,
+          )}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
+
+        const data = JSON.parse(body);
+        if (data && data.length > 0) {
+          const transactions = data.map(fromSupabaseTransaction);
+          console.log('[loadTransactions] OK, count:', transactions.length);
+          setAppState(prev => ({ ...prev, transactions }));
+        } else {
+          console.log('[loadTransactions] no transactions found');
+        }
+      } catch (err: any) {
+        const msg = `Load transactions exception: ${err?.message || err}`;
+        console.error(msg);
+        setDbError(msg);
+      }
+    },
+    [fromSupabaseTransaction, setAppState, setDbError],
+  );
+
+  // Load pending transactions awaiting approval
+  const loadPendingTransactions = useCallback(
+    async (userId: string) => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(
+          `${REST_BASE}/pending_transactions?select=*&user_id=eq.${userId}&needs_review=eq.true&order=created_at.desc`,
+          { headers },
+        );
+
+        if (!res.ok) {
+          // Check if table doesn't exist (expected during initial setup)
+          const body = await res.text();
+          if (res.status === 404 && body.includes('Could not find the table')) {
+            console.log('[loadPendingTransactions] table not found - using defaults (run schema.sql to create tables)');
+            setAppState(prev => ({ ...prev, pendingTransactions: [] }));
+            return;
+          }
+          console.log('[loadPendingTransactions] failed or no pending transactions');
+          return;
+        }
+
+        const data = JSON.parse(await res.text());
+        if (data && data.length > 0) {
+          console.log('[loadPendingTransactions] OK, count:', data.length);
+          setAppState(prev => ({ ...prev, pendingTransactions: data }));
+        } else {
+          console.log('[loadPendingTransactions] no pending transactions');
+          setAppState(prev => ({ ...prev, pendingTransactions: [] }));
+        }
+      } catch (err: any) {
+        console.error('[loadPendingTransactions]', err?.message || err);
+      }
+    },
+    [setAppState],
+  );
+
+  // Load household link status from household_links table
+  const loadHouseholdLink = useCallback(
+    async (userId: string) => {
+      try {
+        const headers = await getAuthHeaders();
+
+        // Query household_links where user is either user1 or user2
+        const res = await fetch(
+          `${REST_BASE}/household_links?select=*&or=(user1_id.eq.${userId},user2_id.eq.${userId})&limit=1`,
+          { headers },
+        );
+
+        if (!res.ok) {
+          const body = await res.text();
+          // Check if table doesn't exist (expected during initial setup)
+          if (res.status === 404 && body.includes('Could not find the table')) {
+            console.log('[loadHouseholdLink] table not found - using defaults (run schema.sql to create tables)');
+            return;
+          }
+          console.log('[loadHouseholdLink] No household link found or error');
+          return;
+        }
+
+        const body = await res.text();
+        const data = JSON.parse(body);
+        if (data && data.length > 0) {
+          const link = data[0];
+          const isUser1 = link.user1_id === userId;
+          const partnerId = isUser1 ? link.user2_id : link.user1_id;
+          const partnerName = isUser1 ? link.user2_name : link.user1_name;
+
+          setAppState(prev => ({
+            ...prev,
+            user: prev.user
+              ? {
+                  ...prev.user,
+                  budgetingSolo: false,
+                  hasJointAccounts: true,
+                  partnerId,
+                  partnerName: partnerName || undefined,
+                }
+              : null,
+          }));
+
+          // Load partner's transactions
+          await loadTransactions(partnerId);
+        }
+      } catch (err: any) {
+        console.error('[loadHouseholdLink]', err?.message || err);
+      }
+    },
+    [loadTransactions, setAppState],
+  );
+
+  // Load all data from Supabase
+  const loadUserData = useCallback(
+    async (userId: string) => {
+      console.log('loadUserData called for user:', userId);
+      await loadCategories();
+      await loadUserBudgets(userId); // load user-specific budget limits
+      await loadUserSettings(userId); // load user-specific settings (monthly_income, etc.)
+      await loadTransactions(userId);
+      await loadPendingTransactions(userId); // load pending transactions awaiting approval
+      await loadHouseholdLink(userId); // Changed from loadPartnerLink
+      console.log('loadUserData completed');
+    },
+    [loadCategories, loadHouseholdLink, loadPendingTransactions, loadTransactions, loadUserBudgets, loadUserSettings],
+  );
+
+  return {
+    categoriesLoaded,
+    loadUserData,
+  };
+};
