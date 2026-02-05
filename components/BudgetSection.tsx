@@ -117,8 +117,8 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
       {/* HEADER / SUMMARY */}
       <div
         onClick={onToggle}
-        className={`relative z-10 flex-1 px-6 flex items-center justify-between cursor-pointer active:scale-[0.99] transition-all ${
-          isExpanded ? 'flex-none py-10 px-8' : 'py-2'
+        className={`relative z-10 flex-1 flex items-center justify-between cursor-pointer active:scale-[0.99] transition-all ${
+          isExpanded ? 'flex-none py-10 px-8' : 'py-2 px-6'
         }`}
       >
         {/* LEFT SIDE: ICON + NAME */}
