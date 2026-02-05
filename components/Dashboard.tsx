@@ -428,6 +428,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         onGoHome={handleGoHome}
         onAddTransaction={() => setIsAddingTx(true)}
         onOpenParsing={() => setShowParsing(true)}
+        activeView="home"
       />
 
       {showSettings && (

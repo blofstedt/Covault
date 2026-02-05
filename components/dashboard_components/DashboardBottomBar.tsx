@@ -4,12 +4,14 @@ interface DashboardBottomBarProps {
   onGoHome: () => void;
   onAddTransaction: () => void;
   onOpenParsing: () => void;
+  activeView?: 'home' | 'parsing';
 }
 
 const DashboardBottomBar: React.FC<DashboardBottomBarProps> = ({
   onGoHome,
   onAddTransaction,
   onOpenParsing,
+  activeView = 'home',
 }) => {
   return (
     <div
@@ -24,7 +26,11 @@ const DashboardBottomBar: React.FC<DashboardBottomBarProps> = ({
           {/* Home Button */}
           <button
             onClick={onGoHome}
-            className="p-3 rounded-full transition-all duration-300 text-slate-400 dark:text-slate-500 hover:text-emerald-600 dark:hover:text-emerald-400 active:scale-95"
+            className={`p-3 rounded-full transition-all duration-300 active:scale-95 ${
+              activeView === 'home'
+                ? 'text-emerald-600 dark:text-emerald-400'
+                : 'text-slate-400 dark:text-slate-500 hover:text-emerald-600 dark:hover:text-emerald-400'
+            }`}
             aria-label="Go to dashboard home"
           >
             <svg
@@ -65,7 +71,11 @@ const DashboardBottomBar: React.FC<DashboardBottomBarProps> = ({
           {/* Parsing Button */}
           <button
             onClick={onOpenParsing}
-            className="p-3 rounded-full transition-all duration-300 text-slate-400 dark:text-slate-500 hover:text-emerald-600 dark:hover:text-emerald-400 active:scale-95"
+            className={`p-3 rounded-full transition-all duration-300 active:scale-95 ${
+              activeView === 'parsing'
+                ? 'text-emerald-600 dark:text-emerald-400'
+                : 'text-slate-400 dark:text-slate-500 hover:text-emerald-600 dark:hover:text-emerald-400'
+            }`}
             aria-label="Open transaction parsing"
           >
             <svg
