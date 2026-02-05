@@ -372,14 +372,38 @@ export const useUserData = ({
               : null,
           }));
 
-          // Load partner's transactions
-          await loadTransactions(partnerId);
+          // Load partner's transactions and merge with existing transactions
+          try {
+            const partnerRes = await fetch(
+              `${REST_BASE}/transactions?select=*&user_id=eq.${partnerId}&order=date.desc`,
+              { headers },
+            );
+            if (partnerRes.ok) {
+              const partnerBody = await partnerRes.text();
+              const partnerData = JSON.parse(partnerBody);
+              if (partnerData && partnerData.length > 0) {
+                const partnerTransactions = partnerData.map(fromSupabaseTransaction);
+                console.log('[loadHouseholdLink] Merging partner transactions, count:', partnerTransactions.length);
+                // Merge partner transactions with existing transactions (avoid duplicates by ID)
+                setAppState(prev => {
+                  const existingIds = new Set(prev.transactions.map(t => t.id));
+                  const newTransactions = partnerTransactions.filter((t: Transaction) => !existingIds.has(t.id));
+                  return {
+                    ...prev,
+                    transactions: [...prev.transactions, ...newTransactions],
+                  };
+                });
+              }
+            }
+          } catch (partnerErr: any) {
+            console.error('[loadHouseholdLink] Error loading partner transactions for partnerId:', partnerId, partnerErr?.message || partnerErr);
+          }
         }
       } catch (err: any) {
         console.error('[loadHouseholdLink]', err?.message || err);
       }
     },
-    [loadTransactions, setAppState],
+    [fromSupabaseTransaction, setAppState],
   );
 
   // Load all data from Supabase
