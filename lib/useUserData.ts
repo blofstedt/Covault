@@ -183,7 +183,10 @@ export const useUserData = ({
         const headers = await getAuthHeaders();
         const res = await fetch(
           `${REST_BASE}/settings?select=monthly_income,theme&user_id=eq.${userId}`,
-          { headers },
+          { 
+            headers,
+            cache: 'no-store' // Prevent caching to always get fresh data
+          },
         );
         
         if (!res.ok) {
