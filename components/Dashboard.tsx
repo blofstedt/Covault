@@ -38,6 +38,7 @@ interface DashboardProps {
   onRejectPendingTransaction?: (pendingId: string) => void;
   saveBudgetLimit: (categoryId: string, newLimit: number) => void;
   saveUserIncome: (income: number) => void;
+  saveTheme: (theme: 'light' | 'dark') => void;
   isLoadingData: boolean;
 }
 
@@ -57,6 +58,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   onRejectPendingTransaction,
   saveBudgetLimit,
   saveUserIncome,
+  saveTheme,
   isLoadingData,
 }) => {
   const [isAddingTx, setIsAddingTx] = useState(false);
@@ -249,6 +251,11 @@ const Dashboard: React.FC<DashboardProps> = ({
       ...prev,
       settings: { ...prev.settings, [key]: value },
     }));
+    
+    // Save theme to database when it changes
+    if (key === 'theme') {
+      saveTheme(value as 'light' | 'dark');
+    }
   };
 
   const updateUserIncome = (income: number) => {

@@ -69,6 +69,7 @@ CREATE TABLE public.settings (
   show_savings_insight boolean DEFAULT true,
   theme text DEFAULT 'light' CHECK (theme = ANY (ARRAY['light','dark'])),
   has_seen_tutorial boolean DEFAULT false,
+  app_notifications_enabled boolean DEFAULT false,
   CONSTRAINT settings_pkey PRIMARY KEY (user_id),
   CONSTRAINT settings_email_key UNIQUE (email)
 );
