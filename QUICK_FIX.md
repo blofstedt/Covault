@@ -10,9 +10,11 @@ You're getting "Supabase is not configured" error on Android, but the web versio
 In the project root, create a `.env` file with your Supabase credentials:
 
 ```bash
-VITE_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
+VITE_SUPABASE_URL=https://your-project-id.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key-here
 ```
+
+**Note:** Both `VITE_SUPABASE_URL` and `VITE_PUBLIC_SUPABASE_URL` are supported for compatibility with different deployment platforms.
 
 **Where to get these:**
 1. Go to https://app.supabase.com/
@@ -64,9 +66,16 @@ npx cap open android
 
 ## Why This Fixes It
 
-**The Issue:** Android apps need environment variables to be embedded into the JavaScript bundle at build time. The previous config wasn't explicitly telling Vite to do this for Android builds.
+**The Issues:** 
+1. Android apps need environment variables embedded into the JavaScript bundle at build time
+2. When env vars were undefined, `JSON.stringify(undefined)` created the string `"undefined"` instead of actual undefined, causing the app to try using "undefined" as the URL
+3. The code only supported `VITE_PUBLIC_SUPABASE_URL` but GitHub Actions uses `VITE_SUPABASE_URL`
 
-**The Fix:** Updated `vite.config.ts` to explicitly define the Supabase env vars, ensuring they're embedded when you run `npm run build`.
+**The Fix:** 
+1. Updated `vite.config.ts` to properly handle undefined environment variables (using actual `undefined` instead of string `"undefined"`)
+2. Added support for both `VITE_SUPABASE_URL` and `VITE_PUBLIC_SUPABASE_URL` naming conventions for compatibility
+3. Added build-time warnings when environment variables are missing
+4. Updated `lib/supabase.ts` to check both variable names
 
 ---
 
