@@ -72,11 +72,17 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [partnerLinkEmail, setPartnerLinkEmail] = useState('');
   const [showTutorial, setShowTutorial] = useState(!state.settings.hasSeenTutorial);
   const [tutorialStep, setTutorialStep] = useState(0);
+  const [hasInitiallyMounted, setHasInitiallyMounted] = useState(false);
 
   // Scroll refs shared with child components
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const budgetRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const bodyOverflowRef = useRef<string | null>(null);
+
+  // Track initial mount for animation purposes
+  useEffect(() => {
+    setHasInitiallyMounted(true);
+  }, []);
 
   // Lock body scroll when overlays are open
   useEffect(() => {
@@ -429,6 +435,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         onAddTransaction={() => setIsAddingTx(true)}
         onOpenParsing={() => setShowParsing(true)}
         activeView="home"
+        shouldAnimate={!hasInitiallyMounted}
       />
 
       {showSettings && (
