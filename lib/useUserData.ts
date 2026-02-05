@@ -799,7 +799,11 @@ export const useUserData = ({
       const userEmail = appState.user?.email;
       
       if (!userId || !userName || !userEmail) {
-        console.warn('[saveUserIncome] missing user data, skipping save');
+        const missing = [];
+        if (!userId) missing.push('userId');
+        if (!userName) missing.push('userName');
+        if (!userEmail) missing.push('userEmail');
+        console.warn(`[saveUserIncome] missing user data: ${missing.join(', ')}, skipping save`);
         return;
       }
 
@@ -819,7 +823,8 @@ export const useUserData = ({
         (headers as any)['Prefer'] = 'return=representation,resolution=merge-duplicates';
         
         // Upsert to the settings table - will insert if missing or update if exists
-        // Include required fields (name, email) for INSERT case
+        // PostgREST upsert requires all NOT NULL fields (name, email) even for updates
+        // These fields won't overwrite existing data in UPDATE case as they're part of the user record
         const res = await fetch(
           `${REST_BASE}/settings`,
           {
