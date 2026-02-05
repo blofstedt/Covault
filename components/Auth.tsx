@@ -20,11 +20,14 @@ const Auth: React.FC<AuthProps> = ({ onSignIn }) => {
       // For web apps, use the origin to ensure consistent redirect URL
       // NOTE: Add this URL to Supabase Dashboard (Authentication > URL Configuration > Redirect URLs)
       // and to Google Cloud Console (APIs & Services > Credentials > OAuth 2.0 Client > Authorized redirect URIs)
-      const redirectUrl = Capacitor.isNativePlatform()
+      const isNative = Capacitor.isNativePlatform();
+      const redirectUrl = isNative
         ? 'com.covault.app://auth/callback'
         : window.location.origin;
 
-      const { error } = await supabase.auth.signInWithOAuth({
+      console.log(`[Auth] Starting OAuth flow (${isNative ? 'Android' : 'Web'}) with redirect:`, redirectUrl);
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: redirectUrl,
@@ -32,15 +35,29 @@ const Auth: React.FC<AuthProps> = ({ onSignIn }) => {
             access_type: 'offline',
             prompt: 'consent',
           },
+          // For Android, skip browser redirect and handle manually
+          skipBrowserRedirect: isNative,
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('[Auth] OAuth error:', error);
+        throw error;
+      }
 
-      // NOTE: Supabase redirects and then App.tsx listens for auth changes,
-      // so we don't call onSignIn() directly here.
+      // On Android with skipBrowserRedirect, we get a URL to open
+      if (isNative && data?.url) {
+        console.log('[Auth] Opening OAuth URL in browser:', data.url);
+        // The OAuth flow will continue in the browser
+        // When complete, it will deep link back to the app
+        // and useDeepLinks.ts will handle setting the session
+      }
+
+      // NOTE: For web, Supabase redirects automatically
+      // For Android, the browser opens and then deep links back
+      // In both cases, App.tsx listens for auth changes via useAuthState
     } catch (err: any) {
-      console.error('Supabase Auth Error Detail:', err);
+      console.error('[Auth] Supabase Auth Error Detail:', err);
       setAuthError(
         err.message || 'An unexpected error occurred during sign in.',
       );

@@ -142,6 +142,11 @@ export const useUserData = ({
         const body = await res.text();
 
         if (!res.ok) {
+          // Check if it's a "table not found" error (expected during initial setup)
+          if (res.status === 404 && body.includes('Could not find the table')) {
+            console.log('[loadUserBudgets] budgets table not found - using defaults (run schema.sql to create tables)');
+            return;
+          }
           console.error('[loadUserBudgets] failed:', body.slice(0, 200));
           return;
         }
@@ -294,6 +299,13 @@ export const useUserData = ({
         );
 
         if (!res.ok) {
+          // Check if table doesn't exist (expected during initial setup)
+          const body = await res.text();
+          if (res.status === 404 && body.includes('Could not find the table')) {
+            console.log('[loadPendingTransactions] table not found - using defaults (run schema.sql to create tables)');
+            setAppState(prev => ({ ...prev, pendingTransactions: [] }));
+            return;
+          }
           console.log('[loadPendingTransactions] failed or no pending transactions');
           return;
         }
@@ -326,6 +338,12 @@ export const useUserData = ({
         );
 
         if (!res.ok) {
+          const body = await res.text();
+          // Check if table doesn't exist (expected during initial setup)
+          if (res.status === 404 && body.includes('Could not find the table')) {
+            console.log('[loadHouseholdLink] table not found - using defaults (run schema.sql to create tables)');
+            return;
+          }
           console.log('[loadHouseholdLink] No household link found or error');
           return;
         }
@@ -633,6 +651,9 @@ export const useUserData = ({
         return;
       }
       const categoryName = category.name;
+      
+      // Store previous value for rollback
+      const previousLimit = category.totalLimit;
 
       // Optimistic UI update
       setAppState(prev => ({
@@ -655,6 +676,14 @@ export const useUserData = ({
           const msg = `[saveBudgetLimit] check failed (${checkRes.status})`;
           console.error(msg);
           setDbError(msg);
+          
+          // Rollback optimistic update
+          setAppState(prev => ({
+            ...prev,
+            budgets: prev.budgets.map(b =>
+              b.id === categoryId ? { ...b, totalLimit: previousLimit } : b,
+            ),
+          }));
           return;
         }
         
@@ -665,6 +694,7 @@ export const useUserData = ({
         if (recordExists) {
           // Update existing record
           const recordId = existingRecords[0].id;
+          (headers as any)['Prefer'] = 'return=representation';
           res = await fetch(
             `${REST_BASE}/budgets?id=eq.${recordId}`,
             {
@@ -700,13 +730,62 @@ export const useUserData = ({
           )}`;
           console.error(msg);
           setDbError(msg);
+          
+          // Rollback optimistic update
+          setAppState(prev => ({
+            ...prev,
+            budgets: prev.budgets.map(b =>
+              b.id === categoryId ? { ...b, totalLimit: previousLimit } : b,
+            ),
+          }));
         } else {
-          console.log(`[saveBudgetLimit] ${recordExists ? 'updated' : 'inserted'} OK`);
+          // Verify that rows were actually modified
+          let updatedRows: any[] = [];
+          try {
+            updatedRows = body ? JSON.parse(body) : [];
+          } catch (parseErr) {
+            const msg = `[saveBudgetLimit] failed to parse response: ${body.slice(0, 200)}`;
+            console.error(msg);
+            setDbError(msg);
+            
+            // Rollback optimistic update
+            setAppState(prev => ({
+              ...prev,
+              budgets: prev.budgets.map(b =>
+                b.id === categoryId ? { ...b, totalLimit: previousLimit } : b,
+              ),
+            }));
+            return;
+          }
+          
+          if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
+            const msg = `[saveBudgetLimit] no rows ${recordExists ? 'updated' : 'inserted'} - operation failed silently`;
+            console.error(msg);
+            setDbError(msg);
+            
+            // Rollback optimistic update
+            setAppState(prev => ({
+              ...prev,
+              budgets: prev.budgets.map(b =>
+                b.id === categoryId ? { ...b, totalLimit: previousLimit } : b,
+              ),
+            }));
+          } else {
+            console.log(`[saveBudgetLimit] ${recordExists ? 'updated' : 'inserted'} OK`);
+          }
         }
       } catch (err: any) {
         const msg = `[saveBudgetLimit] exception: ${err?.message || err}`;
         console.error(msg);
         setDbError(msg);
+        
+        // Rollback optimistic update
+        setAppState(prev => ({
+          ...prev,
+          budgets: prev.budgets.map(b =>
+            b.id === categoryId ? { ...b, totalLimit: previousLimit } : b,
+          ),
+        }));
       }
     },
     [appState.user, appState.budgets, setAppState, setDbError],
@@ -732,6 +811,7 @@ export const useUserData = ({
 
       try {
         const headers = await getAuthHeaders();
+        // Add Prefer header to get the updated row(s) back
         (headers as any)['Prefer'] = 'return=representation';
         
         // Update the settings table for this user
@@ -756,7 +836,37 @@ export const useUserData = ({
             user: prev.user ? { ...prev.user, monthlyIncome: previousIncome } : null,
           }));
         } else {
-          console.log(`[saveUserIncome] successfully updated to ${income}`);
+          // Check if any rows were actually updated
+          const body = await res.text();
+          let updatedRows: any[] = [];
+          try {
+            updatedRows = body ? JSON.parse(body) : [];
+          } catch (parseErr) {
+            const msg = `[saveUserIncome] failed to parse response: ${body.slice(0, 200)}`;
+            console.error(msg);
+            setDbError(msg);
+            
+            // Rollback optimistic update
+            setAppState(prev => ({
+              ...prev,
+              user: prev.user ? { ...prev.user, monthlyIncome: previousIncome } : null,
+            }));
+            return;
+          }
+          
+          if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
+            const msg = `[saveUserIncome] no rows updated - settings record may not exist for user ${userId}`;
+            console.error(msg);
+            setDbError(msg);
+            
+            // Rollback optimistic update
+            setAppState(prev => ({
+              ...prev,
+              user: prev.user ? { ...prev.user, monthlyIncome: previousIncome } : null,
+            }));
+          } else {
+            console.log(`[saveUserIncome] successfully updated to ${income}`);
+          }
         }
       } catch (err: any) {
         const msg = `[saveUserIncome] exception: ${err?.message || err}`;
@@ -932,6 +1042,7 @@ export const useUserData = ({
         );
 
         const headers = await getAuthHeaders();
+        (headers as any)['Prefer'] = 'return=representation';
         const res = await fetch(
           `${REST_BASE}/transactions?id=eq.${updatedTx.id}`,
           { method: 'PATCH', headers, body: JSON.stringify(row) },
@@ -948,6 +1059,23 @@ export const useUserData = ({
           const msg = `Update failed (${res.status}): ${body.slice(0, 200)}`;
           console.error(msg);
           setDbError(msg);
+        } else {
+          // Verify that rows were actually updated
+          let updatedRows: any[] = [];
+          try {
+            updatedRows = body ? JSON.parse(body) : [];
+          } catch (parseErr) {
+            const msg = `[updateTransaction] failed to parse response: ${body.slice(0, 200)}`;
+            console.error(msg);
+            setDbError(msg);
+            return;
+          }
+          
+          if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
+            const msg = `[updateTransaction] no rows updated for transaction ${updatedTx.id}`;
+            console.error(msg);
+            setDbError(msg);
+          }
         }
       } catch (err: any) {
         const msg = `Update exception: ${err?.message || err}`;
@@ -1034,7 +1162,8 @@ export const useUserData = ({
 
         // Mark pending transaction as reviewed and approved
         const headers = await getAuthHeaders();
-        await fetch(`${REST_BASE}/pending_transactions?id=eq.${pendingId}`, {
+        (headers as any)['Prefer'] = 'return=representation';
+        const res = await fetch(`${REST_BASE}/pending_transactions?id=eq.${pendingId}`, {
           method: 'PATCH',
           headers,
           body: JSON.stringify({
@@ -1043,6 +1172,32 @@ export const useUserData = ({
             approved: true,
           }),
         });
+
+        if (!res.ok) {
+          const body = await res.text();
+          const msg = `[approvePending] PATCH failed (${res.status}): ${body.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
+
+        const body = await res.text();
+        let updatedRows: any[] = [];
+        try {
+          updatedRows = body ? JSON.parse(body) : [];
+        } catch (parseErr) {
+          const msg = `[approvePending] failed to parse response: ${body.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
+        
+        if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
+          const msg = `[approvePending] no rows updated for pending transaction ${pendingId}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
 
         // Remove from pending list in UI
         setAppState(prev => ({
@@ -1065,9 +1220,10 @@ export const useUserData = ({
     async (pendingId: string) => {
       try {
         const headers = await getAuthHeaders();
+        (headers as any)['Prefer'] = 'return=representation';
 
         // Mark as reviewed and not approved
-        await fetch(`${REST_BASE}/pending_transactions?id=eq.${pendingId}`, {
+        const res = await fetch(`${REST_BASE}/pending_transactions?id=eq.${pendingId}`, {
           method: 'PATCH',
           headers,
           body: JSON.stringify({
@@ -1076,6 +1232,32 @@ export const useUserData = ({
             approved: false,
           }),
         });
+
+        if (!res.ok) {
+          const body = await res.text();
+          const msg = `[rejectPending] PATCH failed (${res.status}): ${body.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
+
+        const body = await res.text();
+        let updatedRows: any[] = [];
+        try {
+          updatedRows = body ? JSON.parse(body) : [];
+        } catch (parseErr) {
+          const msg = `[rejectPending] failed to parse response: ${body.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
+        
+        if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
+          const msg = `[rejectPending] no rows updated for pending transaction ${pendingId}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
 
         // Remove from pending list in UI
         setAppState(prev => ({
