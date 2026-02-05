@@ -1,5 +1,6 @@
 // lib/supabase.ts
 import { createClient } from '@supabase/supabase-js';
+import { Capacitor } from '@capacitor/core';
 
 // ✅ These MUST match what you have in Vercel / .env
 // Vercel:
@@ -73,12 +74,19 @@ export const supabase = isSupabaseConfigured
         // Keep the user logged in across page reloads
         persistSession: true,
 
-        // 🔥 Critical for browser OAuth:
-        // This tells Supabase to read ?code= from the URL when you come back from Google
-        detectSessionInUrl: true,
+        // For Android/native apps, we handle deep links manually
+        // For web, Supabase auto-detects the session from URL
+        detectSessionInUrl: !Capacitor.isNativePlatform(),
+        
+        // Skip automatic browser redirect on Android (we handle it manually)
+        // This prevents the OAuth window from staying open
+        skipBrowserRedirect: Capacitor.isNativePlatform(),
 
         // Recommended for browser-based OAuth flows
         flowType: 'pkce',
+        
+        // Use Capacitor secure storage on native platforms
+        storage: Capacitor.isNativePlatform() ? undefined : localStorage,
       },
     })
   : createStubClient();
