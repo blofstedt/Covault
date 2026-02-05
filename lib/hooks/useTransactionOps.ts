@@ -1,0 +1,416 @@
+// lib/hooks/useTransactionOps.ts
+import { useCallback } from 'react';
+import type { Transaction } from '../../types';
+import { REST_BASE, getAuthHeaders } from '../apiHelpers';
+import { useToSupabaseTransaction, useFromSupabaseTransaction } from './transactionMappers';
+import type { UseUserDataParams } from './types';
+
+export const useTransactionOps = ({
+  appState,
+  setAppState,
+  setDbError,
+  categoriesLoaded,
+}: UseUserDataParams & { categoriesLoaded: boolean }) => {
+  const toSupabaseTransaction = useToSupabaseTransaction();
+  const fromSupabaseTransaction = useFromSupabaseTransaction();
+
+  // Save split records to transaction_budget_splits table
+  const saveSplits = useCallback(
+    async (transactionId: string, splits: { budget_id: string; amount: number }[]) => {
+      try {
+        const headers = await getAuthHeaders();
+
+        // Delete any existing splits for this transaction
+        await fetch(
+          `${REST_BASE}/transaction_budget_splits?transaction_id=eq.${transactionId}`,
+          { method: 'DELETE', headers },
+        );
+
+        // Find budget names from appState; the DB column is budget_category (text name)
+        const totalAmount = splits.reduce((sum, sp) => sum + sp.amount, 0);
+        const rows = splits.map(s => {
+          const budget = appState.budgets.find(b => b.id === s.budget_id);
+          return {
+            transaction_id: transactionId,
+            budget_category: budget?.name || s.budget_id,
+            amount: s.amount,
+            percentage: totalAmount > 0 ? parseFloat(((s.amount / totalAmount) * 100).toFixed(2)) : 0,
+          };
+        });
+
+        (headers as any)['Prefer'] = 'return=representation';
+        const res = await fetch(`${REST_BASE}/transaction_budget_splits`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(rows),
+        });
+
+        if (!res.ok) {
+          const body = await res.text();
+          console.error('[saveSplits] failed:', body.slice(0, 200));
+        } else {
+          console.log('[saveSplits] OK, saved', rows.length, 'splits for transaction', transactionId);
+        }
+      } catch (err: any) {
+        console.error('[saveSplits] exception:', err?.message || err);
+      }
+    },
+    [appState.budgets],
+  );
+
+  // Add transaction
+  const handleAddTransaction = useCallback(
+    async (tx: Transaction) => {
+      if (!categoriesLoaded) {
+        setDbError('Cannot add transaction: categories not yet loaded');
+        return;
+      }
+
+      // Optimistic update
+      setAppState(prev => ({
+        ...prev,
+        transactions: [tx, ...prev.transactions],
+      }));
+
+      try {
+        const row = toSupabaseTransaction(tx);
+        console.log('[insert] payload:', JSON.stringify(row));
+
+        const headers = await getAuthHeaders();
+        (headers as any)['Prefer'] = 'return=representation';
+
+        const res = await fetch(`${REST_BASE}/transactions`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(row),
+        });
+        const body = await res.text();
+        console.log(
+          '[insert] status:',
+          res.status,
+          'body:',
+          body.slice(0, 300),
+        );
+
+        if (!res.ok) {
+          const msg = `Insert failed (${res.status}): ${body.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+          setAppState(prev => ({
+            ...prev,
+            transactions: prev.transactions.filter(t => t.id !== tx.id),
+          }));
+          return;
+        }
+
+        const data = JSON.parse(body);
+        const saved = fromSupabaseTransaction(
+          Array.isArray(data) ? data[0] : data,
+        );
+
+        // Persist splits if present
+        if (tx.splits && tx.splits.length > 1) {
+          await saveSplits(saved.id, tx.splits);
+          saved.splits = tx.splits;
+        }
+
+        console.log('[insert] OK, id:', saved.id);
+        setAppState(prev => ({
+          ...prev,
+          transactions: prev.transactions.map(t =>
+            t.id === tx.id ? saved : t,
+          ),
+        }));
+      } catch (err: any) {
+        const msg = `Insert exception: ${err?.message || err}`;
+        console.error(msg);
+        setDbError(msg);
+        setAppState(prev => ({
+          ...prev,
+          transactions: prev.transactions.filter(t => t.id !== tx.id),
+        }));
+      }
+    },
+    [
+      categoriesLoaded,
+      fromSupabaseTransaction,
+      saveSplits,
+      setAppState,
+      setDbError,
+      toSupabaseTransaction,
+    ],
+  );
+
+  // Update transaction
+  const handleUpdateTransaction = useCallback(
+    async (updatedTx: Transaction) => {
+      setAppState(prev => ({
+        ...prev,
+        transactions: prev.transactions.map(t =>
+          t.id === updatedTx.id ? updatedTx : t,
+        ),
+      }));
+
+      try {
+        const row = toSupabaseTransaction(updatedTx);
+        console.log(
+          '[update] id:',
+          updatedTx.id,
+          'payload:',
+          JSON.stringify(row),
+        );
+
+        const headers = await getAuthHeaders();
+        (headers as any)['Prefer'] = 'return=representation';
+        const res = await fetch(
+          `${REST_BASE}/transactions?id=eq.${updatedTx.id}`,
+          { method: 'PATCH', headers, body: JSON.stringify(row) },
+        );
+        const body = await res.text();
+        console.log(
+          '[update] status:',
+          res.status,
+          'body:',
+          body.slice(0, 300),
+        );
+
+        if (!res.ok) {
+          const msg = `Update failed (${res.status}): ${body.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+        } else {
+          // Verify that rows were actually updated
+          let updatedRows: any[] = [];
+          try {
+            updatedRows = body ? JSON.parse(body) : [];
+          } catch (parseErr) {
+            const msg = `[updateTransaction] failed to parse response: ${body.slice(0, 200)}`;
+            console.error(msg);
+            setDbError(msg);
+            return;
+          }
+          
+          if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
+            const msg = `[updateTransaction] no rows updated for transaction ${updatedTx.id}`;
+            console.error(msg);
+            setDbError(msg);
+          }
+
+          // Persist splits (replace existing ones)
+          if (updatedTx.splits && updatedTx.splits.length > 1) {
+            await saveSplits(updatedTx.id, updatedTx.splits);
+          } else {
+            // If no splits, delete any existing ones
+            const deleteHeaders = await getAuthHeaders();
+            await fetch(
+              `${REST_BASE}/transaction_budget_splits?transaction_id=eq.${updatedTx.id}`,
+              { method: 'DELETE', headers: deleteHeaders },
+            );
+          }
+        }
+      } catch (err: any) {
+        const msg = `Update exception: ${err?.message || err}`;
+        console.error(msg);
+        setDbError(msg);
+      }
+    },
+    [saveSplits, setAppState, setDbError, toSupabaseTransaction],
+  );
+
+  // Delete transaction
+  const handleDeleteTransaction = useCallback(
+    async (id: string) => {
+      const deletedTx = appState.transactions.find(t => t.id === id);
+
+      setAppState(prev => ({
+        ...prev,
+        transactions: prev.transactions.filter(t => t.id !== id),
+      }));
+
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(
+          `${REST_BASE}/transactions?id=eq.${id}`,
+          { method: 'DELETE', headers },
+        );
+
+        if (!res.ok) {
+          const body = await res.text();
+          const msg = `Delete failed (${res.status}): ${body.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+          if (deletedTx) {
+            setAppState(prev => ({
+              ...prev,
+              transactions: [deletedTx, ...prev.transactions],
+            }));
+          }
+        } else {
+          console.log('[delete] OK:', id);
+        }
+      } catch (err: any) {
+        const msg = `Delete exception: ${err?.message || err}`;
+        console.error(msg);
+        setDbError(msg);
+        if (deletedTx) {
+          setAppState(prev => ({
+            ...prev,
+            transactions: [deletedTx, ...prev.transactions],
+          }));
+        }
+      }
+    },
+    [appState.transactions, setAppState, setDbError],
+  );
+
+  // Approve a pending transaction (convert to actual transaction)
+  const handleApprovePendingTransaction = useCallback(
+    async (pendingId: string, categoryId: string) => {
+      try {
+        const userId = appState.user?.id;
+        if (!userId) return;
+
+        const pending = appState.pendingTransactions?.find(p => p.id === pendingId);
+        if (!pending) {
+          setDbError('Pending transaction not found');
+          return;
+        }
+
+        // Create the actual transaction
+        const newTransaction: Partial<Transaction> = {
+          id: pendingId, // Use same ID for tracking
+          user_id: userId,
+          vendor: pending.extracted_vendor,
+          amount: pending.extracted_amount,
+          date: pending.extracted_timestamp,
+          budget_id: categoryId,
+          recurrence: 'One-time',
+          label: 'Auto-Added',
+          is_projected: false,
+        };
+
+        await handleAddTransaction(newTransaction as Transaction);
+
+        // Mark pending transaction as reviewed and approved
+        const headers = await getAuthHeaders();
+        (headers as any)['Prefer'] = 'return=representation';
+        const res = await fetch(`${REST_BASE}/pending_transactions?id=eq.${pendingId}`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({
+            needs_review: false,
+            reviewed_at: new Date().toISOString(),
+            approved: true,
+          }),
+        });
+
+        if (!res.ok) {
+          const body = await res.text();
+          const msg = `[approvePending] PATCH failed (${res.status}): ${body.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
+
+        const body = await res.text();
+        let updatedRows: any[] = [];
+        try {
+          updatedRows = body ? JSON.parse(body) : [];
+        } catch (parseErr) {
+          const msg = `[approvePending] failed to parse response: ${body.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
+        
+        if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
+          const msg = `[approvePending] no rows updated for pending transaction ${pendingId}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
+
+        // Remove from pending list in UI
+        setAppState(prev => ({
+          ...prev,
+          pendingTransactions: prev.pendingTransactions?.filter(p => p.id !== pendingId) || [],
+        }));
+
+        console.log('[approvePending] OK, approved pending transaction', pendingId);
+      } catch (err: any) {
+        const msg = `Approve pending exception: ${err?.message || err}`;
+        console.error(msg);
+        setDbError(msg);
+      }
+    },
+    [appState.user, appState.pendingTransactions, handleAddTransaction, setAppState, setDbError],
+  );
+
+  // Reject a pending transaction
+  const handleRejectPendingTransaction = useCallback(
+    async (pendingId: string) => {
+      try {
+        const headers = await getAuthHeaders();
+        (headers as any)['Prefer'] = 'return=representation';
+
+        // Mark as reviewed and not approved
+        const res = await fetch(`${REST_BASE}/pending_transactions?id=eq.${pendingId}`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({
+            needs_review: false,
+            reviewed_at: new Date().toISOString(),
+            approved: false,
+          }),
+        });
+
+        if (!res.ok) {
+          const body = await res.text();
+          const msg = `[rejectPending] PATCH failed (${res.status}): ${body.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
+
+        const body = await res.text();
+        let updatedRows: any[] = [];
+        try {
+          updatedRows = body ? JSON.parse(body) : [];
+        } catch (parseErr) {
+          const msg = `[rejectPending] failed to parse response: ${body.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
+        
+        if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
+          const msg = `[rejectPending] no rows updated for pending transaction ${pendingId}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
+
+        // Remove from pending list in UI
+        setAppState(prev => ({
+          ...prev,
+          pendingTransactions: prev.pendingTransactions?.filter(p => p.id !== pendingId) || [],
+        }));
+
+        console.log('[rejectPending] OK, rejected pending transaction', pendingId);
+      } catch (err: any) {
+        const msg = `Reject pending exception: ${err?.message || err}`;
+        console.error(msg);
+        setDbError(msg);
+      }
+    },
+    [setAppState, setDbError],
+  );
+
+  return {
+    handleAddTransaction,
+    handleUpdateTransaction,
+    handleDeleteTransaction,
+    handleApprovePendingTransaction,
+    handleRejectPendingTransaction,
+  };
+};

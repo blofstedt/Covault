@@ -122,13 +122,6 @@ export interface Transaction {
   raw_notification?: string;
 }
 
-export interface PrimaryCategory {
-  id: string;
-  name: string;
-  displayOrder: number;
-  createdAt: string;
-}
-
 export interface Settings {
   userId: string;
   name: string;
