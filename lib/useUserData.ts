@@ -795,8 +795,15 @@ export const useUserData = ({
   const saveUserIncome = useCallback(
     async (income: number) => {
       const userId = appState.user?.id;
-      if (!userId) {
-        console.warn('[saveUserIncome] no userId, skipping save');
+      const userName = appState.user?.name;
+      const userEmail = appState.user?.email;
+      
+      if (!userId || !userName || !userEmail) {
+        const missing = [];
+        if (!userId) missing.push('userId');
+        if (!userName) missing.push('userName');
+        if (!userEmail) missing.push('userEmail');
+        console.warn(`[saveUserIncome] missing user data: ${missing.join(', ')}, skipping save`);
         return;
       }
 
@@ -811,16 +818,24 @@ export const useUserData = ({
 
       try {
         const headers = await getAuthHeaders();
-        // Add Prefer header to get the updated row(s) back
-        (headers as any)['Prefer'] = 'return=representation';
+        // Use POST with upsert to handle both insert and update cases
+        // resolution=merge-duplicates will update if row exists (on conflict with primary key)
+        (headers as any)['Prefer'] = 'return=representation,resolution=merge-duplicates';
         
-        // Update the settings table for this user
+        // Upsert to the settings table - will insert if missing or update if exists
+        // PostgREST upsert requires all NOT NULL fields (name, email) even for updates
+        // These fields won't overwrite existing data in UPDATE case as they're part of the user record
         const res = await fetch(
-          `${REST_BASE}/settings?user_id=eq.${userId}`,
+          `${REST_BASE}/settings`,
           {
-            method: 'PATCH',
+            method: 'POST',
             headers,
-            body: JSON.stringify({ monthly_income: income }),
+            body: JSON.stringify({ 
+              user_id: userId, 
+              name: userName,
+              email: userEmail,
+              monthly_income: income 
+            }),
           },
         );
         
