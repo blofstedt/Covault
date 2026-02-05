@@ -2,46 +2,56 @@
 import { useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
+import { Browser } from '@capacitor/browser';
 import { supabase } from './supabase';
 
 /**
- * Parse OAuth tokens from deep link URL
- * Handles both hash (#) and query (?) parameter formats
+ * Parse OAuth callback from deep link URL
+ * Handles PKCE flow (code param), implicit flow (hash fragment tokens),
+ * and query parameter tokens as fallback
  */
-const parseOAuthUrl = (url: string): { accessToken?: string; refreshToken?: string } | null => {
+const parseOAuthUrl = (url: string): { accessToken?: string; refreshToken?: string; code?: string } | null => {
   try {
     console.log('[useDeepLinks] Parsing URL:', url);
-    
-    // Try hash fragment first (most common for OAuth)
+
+    // Check query parameters first for PKCE authorization code
     const hashIndex = url.indexOf('#');
-    if (hashIndex !== -1) {
-      const fragment = url.substring(hashIndex + 1);
-      const params = new URLSearchParams(fragment);
-      const accessToken = params.get('access_token');
-      const refreshToken = params.get('refresh_token');
-      
-      if (accessToken && refreshToken) {
-        console.log('[useDeepLinks] Found tokens in hash fragment');
-        return { accessToken, refreshToken };
-      }
-    }
-    
-    // Try query parameters as fallback
     const queryIndex = url.indexOf('?');
     if (queryIndex !== -1) {
-      const hashPart = hashIndex !== -1 ? url.substring(0, hashIndex) : url;
-      const query = hashPart.substring(queryIndex + 1);
+      const queryEnd = hashIndex !== -1 ? hashIndex : url.length;
+      const query = url.substring(queryIndex + 1, queryEnd);
       const params = new URLSearchParams(query);
+
+      // PKCE flow: look for authorization code
+      const code = params.get('code');
+      if (code) {
+        console.log('[useDeepLinks] Found PKCE authorization code in query params');
+        return { code };
+      }
+
+      // Implicit flow fallback: tokens in query params
       const accessToken = params.get('access_token');
       const refreshToken = params.get('refresh_token');
-      
       if (accessToken && refreshToken) {
         console.log('[useDeepLinks] Found tokens in query parameters');
         return { accessToken, refreshToken };
       }
     }
-    
-    console.log('[useDeepLinks] No OAuth tokens found in URL');
+
+    // Try hash fragment (implicit flow)
+    if (hashIndex !== -1) {
+      const fragment = url.substring(hashIndex + 1);
+      const params = new URLSearchParams(fragment);
+      const accessToken = params.get('access_token');
+      const refreshToken = params.get('refresh_token');
+
+      if (accessToken && refreshToken) {
+        console.log('[useDeepLinks] Found tokens in hash fragment');
+        return { accessToken, refreshToken };
+      }
+    }
+
+    console.log('[useDeepLinks] No OAuth code or tokens found in URL');
     return null;
   } catch (error) {
     console.error('[useDeepLinks] Error parsing OAuth URL:', error);
@@ -67,30 +77,51 @@ export const useDeepLinks = () => {
         if (
           url.includes('auth/callback') ||
           url.includes('access_token') ||
-          url.includes('refresh_token')
+          url.includes('refresh_token') ||
+          url.includes('code=')
         ) {
-          const tokens = parseOAuthUrl(url);
-          
-          if (tokens && tokens.accessToken && tokens.refreshToken) {
-            console.log('[useDeepLinks] Setting session from deep link tokens...');
-            
+          const parsed = parseOAuthUrl(url);
+
+          if (parsed?.code) {
+            // PKCE flow: exchange authorization code for session
+            console.log('[useDeepLinks] Exchanging PKCE code for session...');
+            try {
+              const { data, error } = await supabase.auth.exchangeCodeForSession(parsed.code);
+              if (error) {
+                console.error('[useDeepLinks] Error exchanging PKCE code:', error);
+              } else {
+                console.log('[useDeepLinks] ✅ Session set from PKCE code exchange');
+                console.log('[useDeepLinks] User:', data?.session?.user?.email);
+              }
+            } catch (error) {
+              console.error('[useDeepLinks] Exception exchanging PKCE code:', error);
+            }
+          } else if (parsed?.accessToken && parsed?.refreshToken) {
+            // Implicit flow: set session directly from tokens
+            console.log('[useDeepLinks] Setting session from tokens...');
             try {
               const { data, error } = await supabase.auth.setSession({
-                access_token: tokens.accessToken,
-                refresh_token: tokens.refreshToken,
+                access_token: parsed.accessToken,
+                refresh_token: parsed.refreshToken,
               });
-              
               if (error) {
-                console.error('[useDeepLinks] Error setting session from deep link:', error);
+                console.error('[useDeepLinks] Error setting session from tokens:', error);
               } else {
-                console.log('[useDeepLinks] ✅ Session set successfully from deep link');
-                console.log('[useDeepLinks] Session data:', data?.session?.user?.email);
+                console.log('[useDeepLinks] ✅ Session set from tokens');
+                console.log('[useDeepLinks] User:', data?.session?.user?.email);
               }
             } catch (error) {
               console.error('[useDeepLinks] Exception setting session:', error);
             }
           } else {
-            console.warn('[useDeepLinks] OAuth callback received but tokens not found in URL');
+            console.warn('[useDeepLinks] OAuth callback received but no code or tokens found');
+          }
+
+          // Close the in-app browser that was opened for OAuth
+          try {
+            await Browser.close();
+          } catch (_) {
+            // Browser may already be closed
           }
         } else {
           console.log('[useDeepLinks] Deep link is not an OAuth callback, ignoring');
