@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Transaction, BudgetCategory, Recurrence, TransactionLabel, TransactionSplit } from '../types';
-import { getBudgetIcon } from './Dashboard';
+import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
 
 interface VendorHistoryItem {
   vendor: string;

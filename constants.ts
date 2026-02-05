@@ -9,11 +9,3 @@ export const SYSTEM_CATEGORIES: BudgetCategory[] = [
   { id: '55555555-5555-5555-5555-555555555555', name: 'Leisure', totalLimit: 500 },
   { id: '66666666-6666-6666-6666-666666666666', name: 'Other', totalLimit: 500 },
 ];
-
-export const APP_THEME = {
-  primary: '#10B981', 
-  secondary: '#3B82F6',
-  background: '#F8FAFC',
-  text: '#1E293B',
-  danger: '#EF4444',
-};

@@ -19,9 +19,6 @@ import BudgetFlowChart from './dashboard_components/BudgetFlowChart';
 // Notifications helper
 import { checkAndTriggerAppNotifications } from '../lib/appNotifications';
 
-// Re-exported so any existing imports of getBudgetIcon from Dashboard still work
-export { getBudgetIcon } from './dashboard_components/getBudgetIcon';
-
 interface DashboardProps {
   state: AppState;
   setState: React.Dispatch<React.SetStateAction<AppState>>;

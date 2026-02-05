@@ -2,7 +2,7 @@
 import React from 'react';
 import { BudgetCategory, Transaction } from '../types';
 import TransactionItem from './TransactionItem';
-import { getBudgetIcon } from './Dashboard';
+import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
 
 interface ExtendedBudgetCategory extends BudgetCategory {
   externalDeduction?: number;
