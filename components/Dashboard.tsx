@@ -310,8 +310,8 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const handleTutorialStepChange = (step: number) => {
     setTutorialStep(step);
-    // Steps 6 ("Your Settings") through 17 ("Sign Out") target elements inside the settings modal
-    if (step >= 6 && step <= 17) {
+    // Steps 7 ("Monthly Income") through 17 ("Sign Out") target elements inside the settings modal
+    if (step >= 7 && step <= 17) {
       setShowSettings(true);
     } else {
       setShowSettings(false);
