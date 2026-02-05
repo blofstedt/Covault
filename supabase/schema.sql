@@ -86,7 +86,8 @@ CREATE POLICY "Users can insert own settings"
 
 CREATE POLICY "Users can update own settings"
   ON public.settings FOR UPDATE TO authenticated
-  USING (auth.uid() = user_id);
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
 
 -- Auto-create a settings row when a new user signs up
 CREATE OR REPLACE FUNCTION public.handle_new_user()
