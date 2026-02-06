@@ -118,7 +118,12 @@ export const useAuthState = ({
         }
 
         const mappedUser = mapUser(session.user);
-        setAppState(prev => ({ ...prev, user: mappedUser }));
+        setAppState(prev => ({
+          ...prev,
+          user: prev.user?.id === mappedUser.id
+            ? { ...prev.user, ...mappedUser, monthlyIncome: prev.user.monthlyIncome }
+            : mappedUser,
+        }));
         setAuthState('authenticated');
         maybeLoadUserData(session.user.id);
       } else {
@@ -136,7 +141,12 @@ export const useAuthState = ({
         }
 
         const mappedUser = mapUser(session.user);
-        setAppState(prev => ({ ...prev, user: mappedUser }));
+        setAppState(prev => ({
+          ...prev,
+          user: prev.user?.id === mappedUser.id
+            ? { ...prev.user, ...mappedUser, monthlyIncome: prev.user.monthlyIncome }
+            : mappedUser,
+        }));
         setAuthState(prev =>
           prev === 'unauthenticated' ? 'onboarding' : 'authenticated',
         );

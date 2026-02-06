@@ -1,5 +1,4 @@
 import React from 'react';
-import CovaultIcon from '../CovaultIcon';
 
 interface DashboardHeaderProps {
   onOpenSettings: () => void;
@@ -8,17 +7,6 @@ interface DashboardHeaderProps {
 const DashboardHeader: React.FC<DashboardHeaderProps> = ({ onOpenSettings }) => {
   return (
     <div className="relative flex items-center justify-end h-10">
-      <div className="absolute left-1/2 -translate-x-1/2 flex items-center space-x-2">
-        <CovaultIcon
-          size={28} // small icon size for header
-          rotate={false} // keep it upright here for a clean nav look
-          className="shadow-lg transition-colors duration-700"
-        />
-        <span className="font-black text-sm tracking-tighter uppercase transition-colors duration-700 text-slate-500 dark:text-slate-50">
-          Covault
-        </span>
-      </div>
-
       <button
         id="settings-button"
         onClick={onOpenSettings}

@@ -49,7 +49,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
           : expandedBudgets.size > 0
           ? 'overflow-y-auto'
           : 'overflow-hidden'
-      } mt-2 no-scrollbar scroll-smooth h-full transition-all duration-500 gap-0.5`}
+      } mt-2 pb-20 no-scrollbar scroll-smooth h-full transition-all duration-500 gap-2`}
     >
       {budgets
         .filter((budget) => !isFocusMode || budget.id === focusedBudgetId)
