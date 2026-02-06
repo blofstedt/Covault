@@ -53,6 +53,10 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
     >
       {budgets
         .filter((budget) => !isFocusMode || budget.id === focusedBudgetId)
+        .filter((budget) => {
+          const hiddenCategories: string[] = (settings as any).hiddenCategories || [];
+          return !hiddenCategories.includes(budget.id);
+        })
         .map((budget, index) => {
           const budgetTxs = transactions.filter(
             (t) =>

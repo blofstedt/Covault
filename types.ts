@@ -153,5 +153,6 @@ export interface AppState {
     theme: 'light' | 'dark';
     hasSeenTutorial: boolean;
     notificationsEnabled: boolean;
+    hiddenCategories: string[]; // IDs of hidden budget categories
   };
 }

@@ -351,7 +351,7 @@ const NotificationSettingsSection: React.FC = () => {
 
           {installedBankApps.length === 0 ? (
             <p className="text-[10px] text-slate-400 text-center py-3">
-              No supported banking apps detected on this device.
+              No banking app notifications received yet. Once a notification arrives from a supported app, it will appear here automatically.
             </p>
           ) : (
             <div className="grid grid-cols-2 gap-2">
