@@ -289,6 +289,7 @@ const Tutorial: React.FC<TutorialProps> = ({
   }, [onOpenTransactionForm, advanceToNextStep]);
 
   // Run the split demo animation
+  const SPLIT_DEMO_DURATION_MS = 2500;
   const runSplitDemoAnimation = useCallback(() => {
     setIsAnimating(true);
     let cancelled = false;
@@ -308,7 +309,7 @@ const Tutorial: React.FC<TutorialProps> = ({
       setIsAnimating(false);
       animationCleanupRef.current = null;
       advanceToNextStep();
-    }, 2500);
+    }, SPLIT_DEMO_DURATION_MS);
   }, [onDemoSplit, advanceToNextStep]);
 
   useEffect(() => {

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import * as d3 from 'd3';
-import { BudgetCategory, Transaction } from '../../types';
+import { BudgetCategory, Transaction, TransactionLabel } from '../../types';
 
 interface BudgetFlowChartProps {
   budgets: BudgetCategory[];
@@ -72,7 +72,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
             budget_id: b.id,
             user_id: '__tutorial__',
             is_projected: false,
-            label: 'Manual' as any,
+            label: TransactionLabel.MANUAL,
             created_at: d.toISOString(),
           });
         });

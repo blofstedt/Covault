@@ -62,9 +62,11 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const amountInputRef = useRef<HTMLInputElement>(null);
   const dateInputRef = useRef<HTMLInputElement>(null);
 
+  const CLOSE_ANIMATION_MS = 250;
+
   const handleClose = () => {
     setIsClosing(true);
-    setTimeout(() => onClose(), 250);
+    setTimeout(() => onClose(), CLOSE_ANIMATION_MS);
   };
 
   useEffect(() => {
