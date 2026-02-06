@@ -75,7 +75,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
   // Aggregate transactions into monthly data by category
   const chartData: MonthlyBudgetData[] = useMemo(() => {
-    if (safeTransactions.length === 0 || categoryNames.length === 0) return [];
+    if (categoryNames.length === 0) return [];
 
     // Group spending by "YYYY-MM" and category name
     const monthMap = new Map<string, Map<string, number>>();
@@ -128,6 +128,22 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
       return entry;
     });
+
+    // If no spending data, create a synthetic current-month entry with zero spending
+    // so the chart always renders the budget corridor and threshold lines
+    if (data.length === 0) {
+      const now = new Date();
+      const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const entry: MonthlyBudgetData = {
+        month: formatMonthLabel(currentMonthKey),
+        total: 0,
+        budgetLimit: totalBudgetLimit,
+      };
+      for (const name of categoryNames) {
+        entry[name] = 0;
+      }
+      data.push(entry);
+    }
 
     // If only one month of data, duplicate it so the chart renders a flat band
     if (data.length === 1) {
