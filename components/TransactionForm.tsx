@@ -6,6 +6,7 @@ import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
 interface VendorHistoryItem {
   vendor: string;
   budget_id: string;
+  splits?: { budget_id: string; amount: number }[];
 }
 
 interface TransactionFormProps {
@@ -19,6 +20,7 @@ interface TransactionFormProps {
   vendorHistory?: VendorHistoryItem[];
   onDelete?: () => void;
   isTutorialMode?: boolean;
+  demoSplitTrigger?: number;
 }
 
 const generateUUID = () => {
@@ -43,6 +45,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   vendorHistory = [],
   onDelete,
   isTutorialMode = false,
+  demoSplitTrigger,
 }) => {
   const [vendor, setVendor] = useState(initialTransaction?.vendor || '');
   const [amountStr, setAmountStr] = useState(initialTransaction?.amount.toString() || '');
@@ -54,12 +57,20 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
   const [recurrence, setRecurrence] = useState<Recurrence>(initialTransaction?.recurrence || 'One-time');
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
 
   const amountInputRef = useRef<HTMLInputElement>(null);
   const dateInputRef = useRef<HTMLInputElement>(null);
 
+  const CLOSE_ANIMATION_MS = 250;
+
+  const handleClose = () => {
+    setIsClosing(true);
+    setTimeout(() => onClose(), CLOSE_ANIMATION_MS);
+  };
+
   useEffect(() => {
-    if (!initialTransaction) {
+    if (!initialTransaction && !isTutorialMode) {
       amountInputRef.current?.focus();
     }
   }, []);
@@ -75,9 +86,18 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const selectSuggestion = (item: VendorHistoryItem) => {
     setVendor(item.vendor);
     setShowSuggestions(false);
-    // Auto-select the last-used budget for this vendor
-    if (item.budget_id && !initialTransaction) {
-      setSelectedIds(new Set([item.budget_id]));
+    // Auto-select the last-used budget(s) for this vendor
+    if (!initialTransaction) {
+      if (item.splits && item.splits.length > 1) {
+        // Restore the previous split configuration
+        const ids = new Set(item.splits.map(s => s.budget_id));
+        setSelectedIds(ids);
+        const restored: Record<string, number> = {};
+        item.splits.forEach(s => { restored[s.budget_id] = s.amount; });
+        setSplits(restored);
+      } else if (item.budget_id) {
+        setSelectedIds(new Set([item.budget_id]));
+      }
     }
   };
 
@@ -117,6 +137,30 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const hasMovedRef = useRef<boolean>(false);
 
   const amount = parseFloat(amountStr) || 0;
+
+  // Demo split animation: select two budgets and animate the split
+  useEffect(() => {
+    if (!demoSplitTrigger || !isTutorialMode || budgets.length < 2) return;
+    const demoAmount = 50;
+    setAmountStr('50');
+    setVendor('Demo Split');
+    const id1 = budgets[0].id;
+    const id2 = budgets[1].id;
+    setSelectedIds(new Set([id1, id2]));
+    setSplits({ [id1]: demoAmount / 2, [id2]: demoAmount / 2 });
+
+    // Animate the split shifting
+    let frame = 0;
+    const totalFrames = 40;
+    const interval = setInterval(() => {
+      frame++;
+      const ratio = 0.5 + 0.3 * Math.sin((frame / totalFrames) * Math.PI * 2);
+      setSplits({ [id1]: demoAmount * ratio, [id2]: demoAmount * (1 - ratio) });
+      if (frame >= totalFrames) clearInterval(interval);
+    }, 50);
+
+    return () => clearInterval(interval);
+  }, [demoSplitTrigger]);
 
   // Sync splits when amount or selectedIds change
   useEffect(() => {
@@ -266,8 +310,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const isFormValid = amount > 0 && selectedIds.size > 0 && vendor.trim() !== '';
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-xl animate-in fade-in duration-300">
-      <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-[3rem] p-8 space-y-6 shadow-2xl animate-in zoom-in-95 duration-300 border border-slate-100 dark:border-slate-800/60 max-h-[90vh] overflow-y-auto no-scrollbar">
+    <div className={`fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-xl transition-opacity duration-250 ${isClosing ? 'opacity-0' : 'animate-in fade-in duration-300'}`}>
+      <div className={`w-full max-w-sm bg-white dark:bg-slate-900 rounded-[3rem] p-8 space-y-6 shadow-2xl border border-slate-100 dark:border-slate-800/60 max-h-[90vh] overflow-y-auto no-scrollbar transition-all duration-250 ${isClosing ? 'opacity-0 scale-95' : 'animate-in zoom-in-95 duration-300'}`}>
         <div className="flex items-center justify-between">
           <div className="flex flex-col">
             <h2 className="text-2xl font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">
@@ -279,7 +323,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
               </span>
             )}
           </div>
-          <button onClick={onClose} className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-full transition-transform active:scale-90">
+          <button onClick={handleClose} className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-full transition-transform active:scale-90">
             <svg className="w-6 h-6 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -297,6 +341,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                   placeholder="0.00"
                   value={amountStr}
                   onChange={e => setAmountStr(e.target.value)}
+                  readOnly={isTutorialMode}
                   className="bg-transparent text-left text-3xl font-black tracking-tighter outline-none text-slate-500 dark:text-slate-50 placeholder-slate-200 dark:placeholder-slate-800 w-auto min-w-[1ch]"
                   style={{ width: amountStr ? `${amountStr.length + 0.5}ch` : '4ch' }}
                 />
