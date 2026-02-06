@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import IncomeSection from './settings_modal_components/IncomeSection';
 import ThemeToggleSection from './settings_modal_components/ThemeToggleSection';
 import RolloverSection from './settings_modal_components/RolloverSection';
@@ -67,20 +67,6 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
   onSaveBudgetLimit,
 }) => {
   const settingsScrollRef = useRef<HTMLDivElement>(null);
-  const [showOverflowMenu, setShowOverflowMenu] = useState(false);
-
-  const handleOpenAdvancedPermissions = () => {
-    setShowOverflowMenu(false);
-    // Scroll to the notification settings section and flash it to draw attention
-    const notifSection = document.getElementById('settings-notifications-container');
-    if (notifSection) {
-      notifSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      notifSection.classList.add('ring-2', 'ring-emerald-500', 'ring-offset-2');
-      setTimeout(() => {
-        notifSection.classList.remove('ring-2', 'ring-emerald-500', 'ring-offset-2');
-      }, 2000);
-    }
-  };
 
   return (
     <div className="fixed inset-0 z-[110] bg-slate-900/40 backdrop-blur-lg flex items-center justify-center p-6 animate-in fade-in duration-300">
@@ -93,87 +79,27 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           <h2 className="text-2xl font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">
             Vault Settings
           </h2>
-          <div className="flex items-center space-x-2">
-            {/* Three-dot overflow menu for advanced permissions */}
-            <div className="relative">
-              <button
-                disabled={showTutorial}
-                onClick={() => setShowOverflowMenu(!showOverflowMenu)}
-                className={`p-2.5 bg-slate-100 dark:bg-slate-800 rounded-full transition-transform active:scale-90 ${
-                  showTutorial ? 'opacity-20 cursor-not-allowed' : ''
-                }`}
-                aria-label="More options"
-              >
-                <svg
-                  className="w-6 h-6 text-slate-500"
-                  fill="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <circle cx="12" cy="5" r="2" />
-                  <circle cx="12" cy="12" r="2" />
-                  <circle cx="12" cy="19" r="2" />
-                </svg>
-              </button>
-
-              {/* Dropdown menu */}
-              {showOverflowMenu && (
-                <>
-                  <div
-                    className="fixed inset-0 z-[10]"
-                    onClick={() => setShowOverflowMenu(false)}
-                  />
-                  <div className="absolute right-0 top-full mt-2 z-[20] bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700 py-2 min-w-[220px] animate-in fade-in slide-in-from-top-1 duration-200">
-                    <button
-                      onClick={handleOpenAdvancedPermissions}
-                      className="w-full flex items-center space-x-3 px-5 py-3.5 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors text-left active:scale-[0.98]"
-                    >
-                      <svg
-                        className="w-5 h-5 text-emerald-500 shrink-0"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                        strokeWidth={2}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                      </svg>
-                      <div className="flex flex-col">
-                        <span className="text-[11px] font-black text-slate-600 dark:text-slate-200 uppercase tracking-wider">
-                          Advanced Permissions
-                        </span>
-                        <span className="text-[9px] font-medium text-slate-400 dark:text-slate-500 mt-0.5">
-                          Notification read &amp; write access
-                        </span>
-                      </div>
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-
-            <button
-              disabled={showTutorial}
-              onClick={onClose}
-              className={`p-2.5 bg-slate-100 dark:bg-slate-800 rounded-full transition-transform active:scale-90 ${
-                showTutorial ? 'opacity-20 cursor-not-allowed' : ''
-              }`}
+          <button
+            disabled={showTutorial}
+            onClick={onClose}
+            className={`p-2.5 bg-slate-100 dark:bg-slate-800 rounded-full transition-transform active:scale-90 ${
+              showTutorial ? 'opacity-20 cursor-not-allowed' : ''
+            }`}
+          >
+            <svg
+              className="w-6 h-6 text-slate-500"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              <svg
-                className="w-6 h-6 text-slate-500"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={3}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
-          </div>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={3}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
         </div>
 
         <div className="space-y-4">
