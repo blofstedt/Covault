@@ -78,7 +78,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   // Vendor autocomplete suggestions
   const suggestions = vendor.length > 0
     ? vendorHistory.filter(v =>
-        v.vendor.toLowerCase().includes(vendor.toLowerCase()) &&
+        v.vendor.toLowerCase().startsWith(vendor.toLowerCase()) &&
         v.vendor.toLowerCase() !== vendor.toLowerCase()
       ).slice(0, 5)
     : [];
@@ -292,13 +292,13 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       id: initialTransaction?.id || generateUUID(),
       vendor: vendor || 'Untitled Vendor',
       amount: amount,
-      date: new Date(date).toISOString(),
+      date: new Date(date + 'T12:00:00').toISOString(),
       budget_id: (Array.from(selectedIds) as string[])[0],
       recurrence,
       label: initialTransaction ? TransactionLabel.EDITED : TransactionLabel.MANUAL,
       user_id: userId,
       userName,
-      is_projected: recurrence !== Recurrence.ONE_TIME && new Date(date) > new Date(),
+      is_projected: recurrence !== Recurrence.ONE_TIME && new Date(date + 'T12:00:00') > new Date(),
       splits: finalSplits.length > 1 ? finalSplits : undefined,
       created_at: initialTransaction?.created_at || new Date().toISOString()
     };

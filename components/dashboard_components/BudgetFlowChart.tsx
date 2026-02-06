@@ -22,6 +22,7 @@ const CATEGORY_GRADIENTS: Record<string, [string, string]> = {
   Transport: ['#059669', '#10b981'],
   Utilities: ['#34d399', '#10b981'],
   Leisure:   ['#0d9488', '#1EA078'],
+  Services:  ['#047857', '#34d399'],
   Other:     ['#10b981', '#6ee7b7'],
 };
 
@@ -264,7 +265,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .attr('y', budgetYTop)
       .attr('width', width)
       .attr('height', budgetYBottom - budgetYTop)
-      .attr('fill', '#0f2b22');
+      .attr('fill', '#0f172a');
 
     const area = d3
       .area<d3.SeriesPoint<MonthlyBudgetData>>()
@@ -457,7 +458,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
             }}
           >
             <div
-              className={`absolute p-2.5 w-[150px] bg-[#0c1a17]/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-[0_20px_50px_-10px_rgba(0,0,0,0.9)] flex flex-col gap-2 ${
+              className={`absolute p-2.5 w-[150px] bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-[0_20px_50px_-10px_rgba(0,0,0,0.9)] flex flex-col gap-2 ${
                 mouseCoords.x > chartWidth / 2 ? '-translate-x-[110%]' : 'translate-x-[12%]'
               }`}
             >
@@ -523,7 +524,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         {/* Chart container */}
         <div ref={containerRef} className="w-full">
           <div className="bg-white/[0.03] dark:bg-white/[0.02] rounded-[2.5rem] p-0.5 shadow-xl border border-slate-200/30 dark:border-white/10 overflow-hidden">
-            <div className="bg-[#061410] rounded-[2.4rem] overflow-hidden border border-slate-200/20 dark:border-white/10 relative">
+            <div className="bg-slate-900 rounded-[2.4rem] overflow-hidden border border-slate-200/20 dark:border-white/10 relative">
               <svg
                 ref={svgRef}
                 className="w-full h-auto overflow-visible cursor-crosshair relative z-10 select-none"

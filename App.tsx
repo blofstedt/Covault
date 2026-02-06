@@ -22,6 +22,7 @@ const DEFAULT_SETTINGS = {
   hasSeenTutorial: false,
   notificationsEnabled: false,
   app_notifications_enabled: false,
+  hiddenCategories: [] as string[],
 };
 
 // Load settings from localStorage

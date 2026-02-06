@@ -79,27 +79,45 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           <h2 className="text-2xl font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">
             Vault Settings
           </h2>
-          <button
-            disabled={showTutorial}
-            onClick={onClose}
-            className={`p-2.5 bg-slate-100 dark:bg-slate-800 rounded-full transition-transform active:scale-90 ${
-              showTutorial ? 'opacity-20 cursor-not-allowed' : ''
-            }`}
-          >
-            <svg
-              className="w-6 h-6 text-slate-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+          <div className="flex items-center space-x-2">
+            {/* Three-dots menu for advanced options */}
+            <button
+              onClick={() => onUpdateSettings('advancedMode', !(settings as any).advancedMode)}
+              className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-full transition-transform active:scale-90"
+              aria-label="Advanced options"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={3}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
+              <svg
+                className="w-6 h-6 text-slate-500"
+                fill="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <circle cx="12" cy="5" r="2" />
+                <circle cx="12" cy="12" r="2" />
+                <circle cx="12" cy="19" r="2" />
+              </svg>
+            </button>
+            <button
+              disabled={showTutorial}
+              onClick={onClose}
+              className={`p-2.5 bg-slate-100 dark:bg-slate-800 rounded-full transition-transform active:scale-90 ${
+                showTutorial ? 'opacity-20 cursor-not-allowed' : ''
+              }`}
+            >
+              <svg
+                className="w-6 h-6 text-slate-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={3}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
 
         <div className="space-y-4">
@@ -123,6 +141,14 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
             budgets={budgets}
             onSaveBudgetLimit={onSaveBudgetLimit}
             showTutorial={showTutorial}
+            hiddenCategories={(settings as any).hiddenCategories || []}
+            onToggleHideCategory={(categoryId: string) => {
+              const current: string[] = (settings as any).hiddenCategories || [];
+              const next = current.includes(categoryId)
+                ? current.filter((id: string) => id !== categoryId)
+                : [...current, categoryId];
+              onUpdateSettings('hiddenCategories', next);
+            }}
           />
 
           {/* Theme toggle */}

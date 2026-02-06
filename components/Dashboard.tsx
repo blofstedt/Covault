@@ -112,6 +112,13 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const isSharedAccount = !state.user?.budgetingSolo;
 
+  // Filter out hidden budget categories
+  const hiddenCategories: string[] = (state.settings as any).hiddenCategories || [];
+  const visibleBudgets = useMemo(
+    () => state.budgets.filter(b => !hiddenCategories.includes(b.id)),
+    [state.budgets, hiddenCategories],
+  );
+
   // All transactions, optionally filtered by search query
   const filteredTransactions = useMemo(() => {
     let list = state.transactions;
@@ -144,8 +151,8 @@ const Dashboard: React.FC<DashboardProps> = ({
   const { currentYear, currentMonth } = useMemo(() => {
     const now = new Date();
     return {
-      currentYear: now.getFullYear(),
-      currentMonth: now.getMonth(), // 0-based
+      currentYear: now.getUTCFullYear(),
+      currentMonth: now.getUTCMonth(), // 0-based
     };
   }, []); // Empty dependency array - only calculate once per component mount
 
@@ -153,7 +160,8 @@ const Dashboard: React.FC<DashboardProps> = ({
     () =>
       filteredTransactions.filter((tx) => {
         const d = new Date(tx.date);
-        return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
+        // Use UTC methods to avoid timezone shift issues with ISO date strings
+        return d.getUTCFullYear() === currentYear && d.getUTCMonth() === currentMonth;
       }),
     [filteredTransactions, currentYear, currentMonth],
   );
@@ -163,8 +171,8 @@ const Dashboard: React.FC<DashboardProps> = ({
       state.transactions.filter((tx) => {
         const d = new Date(tx.date);
         return (
-          d.getFullYear() < currentYear ||
-          (d.getFullYear() === currentYear && d.getMonth() < currentMonth)
+          d.getUTCFullYear() < currentYear ||
+          (d.getUTCFullYear() === currentYear && d.getUTCMonth() < currentMonth)
         );
       }),
     [state.transactions, currentYear, currentMonth],
@@ -175,8 +183,8 @@ const Dashboard: React.FC<DashboardProps> = ({
       state.transactions.filter((tx) => {
         const d = new Date(tx.date);
         return (
-          d.getFullYear() > currentYear ||
-          (d.getFullYear() === currentYear && d.getMonth() > currentMonth)
+          d.getUTCFullYear() > currentYear ||
+          (d.getUTCFullYear() === currentYear && d.getUTCMonth() > currentMonth)
         );
       }),
     [state.transactions, currentYear, currentMonth],
@@ -479,7 +487,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
         {!isFocusMode && !searchQuery && (
           <BudgetFlowChart
-            budgets={state.budgets}
+            budgets={visibleBudgets}
             transactions={state.transactions}
             isTutorialMode={showTutorial}
           />
@@ -558,7 +566,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             setTutorialFormOpen(false);
           }}
           onSave={tutorialFormOpen ? (_tx: Transaction) => { /* no-op: saves disabled during tutorial */ } : onAddTransaction}
-          budgets={state.budgets}
+          budgets={visibleBudgets}
           userId={state.user?.id || '1'}
           userName={state.user?.name || 'User'}
           isSharedAccount={isSharedAccount}

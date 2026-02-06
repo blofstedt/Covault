@@ -103,7 +103,7 @@ const Tutorial: React.FC<TutorialProps> = ({
     },
     {
       title: "Quick Navigation",
-      content: "Use the bottom bar to navigate: Home returns to the dashboard, the + button adds a new transaction, and <> opens transaction parsing.",
+      content: "Use the bottom bar to navigate: Home returns to the dashboard, the + button adds a new transaction, and the angle-brackets icon opens transaction parsing.",
       target: "bottom-bar",
     },
     {
