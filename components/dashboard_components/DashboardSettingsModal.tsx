@@ -122,6 +122,7 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           <BudgetLimitsSection
             budgets={budgets}
             onSaveBudgetLimit={onSaveBudgetLimit}
+            showTutorial={showTutorial}
           />
 
           {/* Theme toggle */}

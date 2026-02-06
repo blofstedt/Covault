@@ -4,11 +4,13 @@ import { BudgetCategory } from '../../../types';
 interface BudgetLimitsSectionProps {
   budgets: BudgetCategory[];
   onSaveBudgetLimit: (categoryId: string, newLimit: number) => void;
+  showTutorial?: boolean;
 }
 
 const BudgetLimitsSection: React.FC<BudgetLimitsSectionProps> = ({
   budgets,
   onSaveBudgetLimit,
+  showTutorial,
 }) => {
   const [editingBudgets, setEditingBudgets] = useState<Record<string, string>>({});
 
@@ -51,7 +53,7 @@ const BudgetLimitsSection: React.FC<BudgetLimitsSectionProps> = ({
       </p>
 
       <div className="space-y-3">
-        {budgets.map((budget) => {
+        {(showTutorial ? budgets.slice(0, 1) : budgets).map((budget) => {
           const isEditing = editingBudgets[budget.id] !== undefined;
           const displayValue = isEditing 
             ? editingBudgets[budget.id] 
