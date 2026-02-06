@@ -374,14 +374,14 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       {/* Header */}
       <header
-        className="px-6 pt-safe-top pb-2 sticky top-0 z-20 transition-colors bg-transparent border-none backdrop-blur-none relative z-10"
-        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}
+        className="px-6 pt-safe-top pb-1 sticky top-0 z-20 transition-colors bg-transparent border-none backdrop-blur-none relative z-10"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.5rem)' }}
       >
         <DashboardHeader onOpenSettings={() => setShowSettings(true)} />
       </header>
 
       {/* Main content */}
-      <main className="flex-1 flex flex-col p-3 pb-20 overflow-hidden relative z-10">
+      <main className="flex-1 flex flex-col p-3 pb-2 overflow-hidden relative z-10">
         {!isFocusMode && !isLoadingData && (
           <DashboardBalanceSection
             isSharedAccount={isSharedAccount}
