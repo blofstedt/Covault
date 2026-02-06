@@ -102,6 +102,16 @@ export const useAuthState = ({
       monthlyIncome: 0, // Will be loaded from DB by loadUserData()
     });
 
+    // Merge mapped user into state, preserving DB-loaded fields for the same user
+    const mergeUser = (mappedUser: User) => {
+      setAppState(prev => ({
+        ...prev,
+        user: prev.user?.id === mappedUser.id
+          ? { ...prev.user, ...mappedUser, monthlyIncome: prev.user.monthlyIncome }
+          : mappedUser,
+      }));
+    };
+
     // Initial session check
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
@@ -117,13 +127,7 @@ export const useAuthState = ({
           return;
         }
 
-        const mappedUser = mapUser(session.user);
-        setAppState(prev => ({
-          ...prev,
-          user: prev.user?.id === mappedUser.id
-            ? { ...prev.user, ...mappedUser, monthlyIncome: prev.user.monthlyIncome }
-            : mappedUser,
-        }));
+        mergeUser(mapUser(session.user));
         setAuthState('authenticated');
         maybeLoadUserData(session.user.id);
       } else {
@@ -140,13 +144,7 @@ export const useAuthState = ({
           markSessionStart();
         }
 
-        const mappedUser = mapUser(session.user);
-        setAppState(prev => ({
-          ...prev,
-          user: prev.user?.id === mappedUser.id
-            ? { ...prev.user, ...mappedUser, monthlyIncome: prev.user.monthlyIncome }
-            : mappedUser,
-        }));
+        mergeUser(mapUser(session.user));
         setAuthState(prev =>
           prev === 'unauthenticated' ? 'onboarding' : 'authenticated',
         );
