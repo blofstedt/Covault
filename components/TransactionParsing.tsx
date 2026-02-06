@@ -87,32 +87,32 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               How it works
             </h3>
             
-            <div className="space-y-3">
+            <div className="flex flex-col gap-4">
               <div className="flex items-start space-x-3">
-                <div className="flex-shrink-0 w-6 h-6 bg-emerald-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                <div className="flex-shrink-0 w-6 h-6 bg-emerald-500 text-white rounded-full flex items-center justify-center text-xs font-bold mt-0.5">
                   1
                 </div>
-                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                <span className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                   Enable transaction parsing and grant notification access
-                </p>
+                </span>
               </div>
-              
+
               <div className="flex items-start space-x-3">
-                <div className="flex-shrink-0 w-6 h-6 bg-emerald-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                <div className="flex-shrink-0 w-6 h-6 bg-emerald-500 text-white rounded-full flex items-center justify-center text-xs font-bold mt-0.5">
                   2
                 </div>
-                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                <span className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                   Covault listens for banking notifications on your device
-                </p>
+                </span>
               </div>
-              
+
               <div className="flex items-start space-x-3">
-                <div className="flex-shrink-0 w-6 h-6 bg-emerald-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                <div className="flex-shrink-0 w-6 h-6 bg-emerald-500 text-white rounded-full flex items-center justify-center text-xs font-bold mt-0.5">
                   3
                 </div>
-                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                <span className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                   Transactions are automatically parsed and added to your budgets
-                </p>
+                </span>
               </div>
             </div>
           </div>

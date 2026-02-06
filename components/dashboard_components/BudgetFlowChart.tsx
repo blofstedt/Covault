@@ -189,7 +189,10 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     const x = d3.scalePoint().domain(chartData.map((d) => d.month)).range([0, width]);
 
     const maxTotal = d3.max(chartData, (d) => d.total) || 1;
-    const viewLimit = Math.max(maxTotal, totalBudgetLimit) + Math.max(maxTotal, totalBudgetLimit) * 0.3;
+    // Ensure spending bands are visible: cap so spending is ≥ ~12% of chart height
+    const baseView = Math.max(maxTotal, totalBudgetLimit) * 1.3;
+    const maxViewForVisibility = maxTotal * 8;
+    const viewLimit = Math.min(baseView, maxViewForVisibility);
 
     const y = d3
       .scaleLinear()
