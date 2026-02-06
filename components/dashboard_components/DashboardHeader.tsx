@@ -6,7 +6,7 @@ interface DashboardHeaderProps {
 
 const DashboardHeader: React.FC<DashboardHeaderProps> = ({ onOpenSettings }) => {
   return (
-    <div className="relative flex items-center justify-end h-10">
+    <div className="relative flex items-center justify-end h-8">
       <button
         id="settings-button"
         onClick={onOpenSettings}
