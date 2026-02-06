@@ -18,6 +18,7 @@ interface TransactionFormProps {
   isSharedAccount?: boolean;
   vendorHistory?: VendorHistoryItem[];
   onDelete?: () => void;
+  isTutorialMode?: boolean;
 }
 
 const generateUUID = () => {
@@ -40,7 +41,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   initialTransaction,
   isSharedAccount = false,
   vendorHistory = [],
-  onDelete
+  onDelete,
+  isTutorialMode = false,
 }) => {
   const [vendor, setVendor] = useState(initialTransaction?.vendor || '');
   const [amountStr, setAmountStr] = useState(initialTransaction?.amount.toString() || '');
@@ -286,7 +288,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-4">
-            <div className="flex flex-col items-center justify-center py-8 bg-slate-50/50 dark:bg-slate-800/20 rounded-3xl border border-slate-100/50 dark:border-slate-800/30">
+            <div id="tutorial-amount-field" className="flex flex-col items-center justify-center py-8 bg-slate-50/50 dark:bg-slate-800/20 rounded-3xl border border-slate-100/50 dark:border-slate-800/30">
               <div className="flex items-center justify-center space-x-1">
                 <span className="text-xl font-black text-slate-300 dark:text-slate-700 select-none">$</span>
                 <input
@@ -302,7 +304,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             </div>
 
             {/* Vendor input with autocomplete */}
-            <div className="relative">
+            <div id="tutorial-vendor-field" className="relative">
               <input
                 type="text"
                 placeholder="Where was this spent?"
@@ -351,7 +353,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
               )}
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div id="tutorial-budget-grid" className="grid grid-cols-3 gap-2">
               {budgets.map(b => {
                 const isSelected = selectedIds.has(b.id);
                 const isMaxSelected = selectedIds.size >= 2;

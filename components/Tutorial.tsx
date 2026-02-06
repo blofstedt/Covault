@@ -1,13 +1,27 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 interface TutorialProps {
   onComplete: () => void;
   onStepChange?: (step: number) => void;
   isShared: boolean;
+  onExpandBudget?: (budgetId: string | null) => void;
+  onShowPlaceholderTransaction?: (show: boolean) => void;
+  onShowTransactionModal?: (show: boolean) => void;
+  onOpenTransactionForm?: (open: boolean) => void;
+  firstBudgetId?: string;
 }
 
-const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared }) => {
+const Tutorial: React.FC<TutorialProps> = ({
+  onComplete,
+  onStepChange,
+  isShared,
+  onExpandBudget,
+  onShowPlaceholderTransaction,
+  onShowTransactionModal,
+  onOpenTransactionForm,
+  firstBudgetId,
+}) => {
   const [step, setStep] = useState(0);
   const [showSkipConfirm, setShowSkipConfirm] = useState(false);
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
@@ -16,6 +30,8 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [tooltipHeight, setTooltipHeight] = useState(0);
   const lastScrolledStep = useRef<number | null>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const animationCleanupRef = useRef<(() => void) | null>(null);
 
   const steps = [
     {
@@ -36,16 +52,45 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
       target: "first-budget-card",
     },
     {
+      // Step 3: Add a Transaction - will trigger animation
       title: "Add a Transaction",
       content: isShared
-        ? "Tap here to record a purchase. Your name is attached automatically. You can split a single expense across two categories by selecting both."
-        : "Tap here to record a new expense. Select one or two categories, and if you pick two, you can drag to split the amount between them.",
+        ? "Tap the + button to record a purchase. Let's walk through the transaction entry form."
+        : "Tap the + button to record a new expense. Let's walk through the transaction entry form.",
       target: "add-transaction-button",
+      animation: "open-transaction-form",
     },
     {
-      title: "Tap to Edit or Delete",
-      content: "Tap a transaction in a budget to edit or delete it. Expand any vial to see its full transaction history.",
+      // Step 4: $ amount field (inside open form)
+      title: "Enter the Amount",
+      content: "Start by typing the dollar amount of your expense. This is the total cost of the transaction.",
+      target: "tutorial-amount-field",
+    },
+    {
+      // Step 5: Vendor field
+      title: "Name the Vendor",
+      content: "Enter where you made the purchase. This helps you track spending by store or service.",
+      target: "tutorial-vendor-field",
+    },
+    {
+      // Step 6: Budget selection
+      title: "Choose a Budget",
+      content: "Select which budget category this expense belongs to. You can pick up to two categories to split the transaction between them.",
+      target: "tutorial-budget-grid",
+    },
+    {
+      // Step 7: Close form, then move on
+      title: "Splitting Budgets",
+      content: "When two categories are selected, drag to adjust how the amount is split between them. This is great for shared expenses like groceries and dining.",
+      target: "tutorial-budget-grid",
+      animation: "close-transaction-form",
+    },
+    {
+      // Step 8: Transaction demo - will trigger animation
+      title: "View Your Transactions",
+      content: "Tap any budget vial to expand it and see your transactions. Let's see how it works.",
       target: "first-budget-card",
+      animation: "demo-transaction-tap",
     },
     {
       title: "Quick Navigation",
@@ -120,6 +165,120 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
 
   const currentStep = steps[step];
 
+  // Clean up animations on unmount
+  useEffect(() => {
+    return () => {
+      if (animationCleanupRef.current) {
+        animationCleanupRef.current();
+      }
+    };
+  }, []);
+
+  // Helper: advance to the next tutorial step
+  const advanceToNextStep = useCallback(() => {
+    const nextStep = step + 1;
+    if (nextStep < steps.length) {
+      setStep(nextStep);
+      onStepChange?.(nextStep);
+    }
+  }, [step, steps.length, onStepChange]);
+
+  // Run the transaction tap demo animation sequence
+  const runTransactionDemoAnimation = useCallback(() => {
+    if (!firstBudgetId) {
+      return;
+    }
+
+    setIsAnimating(true);
+    let cancelled = false;
+
+    const cleanup = () => {
+      cancelled = true;
+      onExpandBudget?.(null);
+      onShowPlaceholderTransaction?.(false);
+      onShowTransactionModal?.(false);
+      setIsAnimating(false);
+    };
+    animationCleanupRef.current = cleanup;
+
+    // Step 1: Expand the first budget
+    onExpandBudget?.(firstBudgetId);
+
+    // Step 2: After expand animation, show placeholder transaction
+    setTimeout(() => {
+      if (cancelled) return;
+      onShowPlaceholderTransaction?.(true);
+
+      // Step 3: After a pause, emulate tap on placeholder transaction
+      setTimeout(() => {
+        if (cancelled) return;
+        onShowTransactionModal?.(true);
+
+        // Step 4: After showing the modal, close it
+        setTimeout(() => {
+          if (cancelled) return;
+          onShowTransactionModal?.(false);
+
+          // Step 5: Collapse the budget and clean up
+          setTimeout(() => {
+            if (cancelled) return;
+            onShowPlaceholderTransaction?.(false);
+            onExpandBudget?.(null);
+            setIsAnimating(false);
+            animationCleanupRef.current = null;
+            advanceToNextStep();
+          }, 600);
+        }, 2000);
+      }, 1000);
+    }, 800);
+  }, [firstBudgetId, onExpandBudget, onShowPlaceholderTransaction, onShowTransactionModal, advanceToNextStep]);
+
+  // Run the open transaction form animation
+  const runOpenTransactionFormAnimation = useCallback(() => {
+    setIsAnimating(true);
+    let cancelled = false;
+
+    const cleanup = () => {
+      cancelled = true;
+      setIsAnimating(false);
+    };
+    animationCleanupRef.current = cleanup;
+
+    // Open the transaction form
+    onOpenTransactionForm?.(true);
+
+    // Wait for form to open, then auto-advance
+    setTimeout(() => {
+      if (cancelled) return;
+      setIsAnimating(false);
+      animationCleanupRef.current = null;
+      advanceToNextStep();
+    }, 600);
+  }, [onOpenTransactionForm, advanceToNextStep]);
+
+  // Run the close transaction form animation
+  const runCloseTransactionFormAnimation = useCallback(() => {
+    setIsAnimating(true);
+    let cancelled = false;
+
+    const cleanup = () => {
+      cancelled = true;
+      onOpenTransactionForm?.(false);
+      setIsAnimating(false);
+    };
+    animationCleanupRef.current = cleanup;
+
+    // Close the transaction form
+    onOpenTransactionForm?.(false);
+
+    setTimeout(() => {
+      if (cancelled) return;
+      setIsAnimating(false);
+      animationCleanupRef.current = null;
+      advanceToNextStep();
+    }, 500);
+  }, [onOpenTransactionForm, advanceToNextStep]);
+
   useEffect(() => {
     if (tooltipRef.current) {
       setTooltipHeight(tooltipRef.current.offsetHeight);
@@ -165,6 +324,24 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
   }, [step]);
 
   const handleNext = () => {
+    if (isAnimating) return;
+
+    const currentStepData = steps[step] as any;
+
+    // Check if this step triggers an animation
+    if (currentStepData.animation === 'open-transaction-form') {
+      runOpenTransactionFormAnimation();
+      return;
+    }
+    if (currentStepData.animation === 'close-transaction-form') {
+      runCloseTransactionFormAnimation();
+      return;
+    }
+    if (currentStepData.animation === 'demo-transaction-tap') {
+      runTransactionDemoAnimation();
+      return;
+    }
+
     const nextStep = step + 1;
     if (nextStep < steps.length) {
       setStep(nextStep);
@@ -175,6 +352,15 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
   };
 
   const handleSkip = () => {
+    // Clean up any running animations
+    if (animationCleanupRef.current) {
+      animationCleanupRef.current();
+      animationCleanupRef.current = null;
+    }
+    onOpenTransactionForm?.(false);
+    onExpandBudget?.(null);
+    onShowPlaceholderTransaction?.(false);
+    onShowTransactionModal?.(false);
     setShowSkipConfirm(true);
   };
 
@@ -273,47 +459,63 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
         </div>
       )}
 
-      {/* Tooltip */}
-      <div
-        ref={tooltipRef}
-        className="pointer-events-auto"
-        style={tooltipStyle}
-      >
-        <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 space-y-5 shadow-2xl border border-slate-100 dark:border-slate-800/80 animate-in slide-in-from-bottom-3 duration-500">
-          {/* Progress bar */}
-          <div className="w-full h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-emerald-500 rounded-full transition-all duration-500 ease-out"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
+      {/* Animated tap indicator during animations */}
+      {isAnimating && targetRect && (
+        <div
+          className="absolute pointer-events-none z-[260]"
+          style={{
+            left: targetRect.left + targetRect.width / 2 - 20,
+            top: targetRect.top + targetRect.height / 2 - 20,
+          }}
+        >
+          <div className="w-10 h-10 rounded-full bg-white/30 border-2 border-white/60 animate-ping" />
+        </div>
+      )}
 
-          <div className="space-y-3 text-center">
-            <span className="text-[9px] font-black text-emerald-500 uppercase tracking-[0.3em]">Step {step + 1} of {steps.length}</span>
-            <h3 className="text-lg font-black text-slate-600 dark:text-slate-100 uppercase tracking-tight leading-tight">
-              {currentStep.title}
-            </h3>
-            <p className="text-slate-500 dark:text-slate-400 font-medium text-[13px] leading-relaxed">
-              {currentStep.content}
-            </p>
-          </div>
+      {/* Tooltip - hidden during animation */}
+      {!isAnimating && (
+        <div
+          ref={tooltipRef}
+          className="pointer-events-auto"
+          style={tooltipStyle}
+        >
+          <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 space-y-5 shadow-2xl border border-slate-100 dark:border-slate-800/80 animate-in slide-in-from-bottom-3 duration-500">
+            {/* Progress bar */}
+            <div className="w-full h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-emerald-500 rounded-full transition-all duration-500 ease-out"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
 
-          <div className="flex space-x-3">
-            <button
-              onClick={handleSkip}
-              className="flex-1 py-3.5 bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest active:scale-95 transition-all"
-            >
-              Skip
-            </button>
-            <button
-              onClick={handleNext}
-              className="flex-[2] py-3.5 bg-emerald-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-emerald-600/20 active:scale-95 transition-all"
-            >
-              {step === steps.length - 1 ? "Get Started" : "Next"}
-            </button>
+            <div className="space-y-3 text-center">
+              <span className="text-[9px] font-black text-emerald-500 uppercase tracking-[0.3em]">Step {step + 1} of {steps.length}</span>
+              <h3 className="text-lg font-black text-slate-600 dark:text-slate-100 uppercase tracking-tight leading-tight">
+                {currentStep.title}
+              </h3>
+              <p className="text-slate-500 dark:text-slate-400 font-medium text-[13px] leading-relaxed">
+                {currentStep.content}
+              </p>
+            </div>
+
+            <div className="flex space-x-3">
+              <button
+                onClick={handleSkip}
+                className="flex-1 py-3.5 bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest active:scale-95 transition-all"
+              >
+                Skip
+              </button>
+              <button
+                onClick={handleNext}
+                disabled={isAnimating}
+                className={`flex-[2] py-3.5 bg-emerald-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-emerald-600/20 active:scale-95 transition-all ${isAnimating ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                {step === steps.length - 1 ? "Get Started" : "Next"}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

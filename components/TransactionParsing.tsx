@@ -87,7 +87,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               How it works
             </h3>
             
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-3">
               <div className="flex items-start space-x-3">
                 <div className="flex-shrink-0 w-6 h-6 bg-emerald-500 text-white rounded-full flex items-center justify-center text-xs font-bold mt-0.5">
                   1
