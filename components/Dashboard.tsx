@@ -70,6 +70,9 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [showTutorial, setShowTutorial] = useState(!state.settings.hasSeenTutorial);
   const [tutorialStep, setTutorialStep] = useState(0);
   const shouldAnimateBottomBarRef = useRef(true);
+  const [tutorialPlaceholderTx, setTutorialPlaceholderTx] = useState(false);
+  const [tutorialShowTxModal, setTutorialShowTxModal] = useState(false);
+  const [tutorialFormOpen, setTutorialFormOpen] = useState(false);
 
   // Scroll refs shared with child components
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -305,18 +308,84 @@ const Dashboard: React.FC<DashboardProps> = ({
   const handleTutorialComplete = () => {
     setShowTutorial(false);
     setShowSettings(false);
+    // Clean up any tutorial state
+    setTutorialPlaceholderTx(false);
+    setTutorialShowTxModal(false);
+    setTutorialFormOpen(false);
+    setExpandedBudgets(new Set());
+    setIsAddingTx(false);
+    setSelectedTx(null);
     updateSettings('hasSeenTutorial', true);
   };
 
   const handleTutorialStepChange = (step: number) => {
     setTutorialStep(step);
-    // Steps 7 ("Monthly Income") through 17 ("Sign Out") target elements inside the settings modal
-    if (step >= 7 && step <= 17) {
+    // Steps 11 ("Monthly Income") through 21 ("Sign Out") target elements inside the settings modal
+    if (step >= 11 && step <= 21) {
       setShowSettings(true);
     } else {
       setShowSettings(false);
     }
   };
+
+  // Tutorial callback: expand/collapse a budget
+  const handleTutorialExpandBudget = (budgetId: string | null) => {
+    if (budgetId) {
+      setExpandedBudgets(new Set([budgetId]));
+    } else {
+      setExpandedBudgets(new Set());
+    }
+  };
+
+  // Tutorial callback: show/hide placeholder transaction
+  const handleTutorialShowPlaceholder = (show: boolean) => {
+    setTutorialPlaceholderTx(show);
+  };
+
+  // Tutorial callback: show/hide transaction modal for demo
+  const handleTutorialShowTxModal = (show: boolean) => {
+    setTutorialShowTxModal(show);
+    if (show && state.budgets.length > 0) {
+      // Create a placeholder transaction for the demo
+      const placeholderTx: Transaction = {
+        id: '__tutorial_placeholder__',
+        vendor: 'Example Store',
+        amount: 24.99,
+        date: new Date().toISOString(),
+        budget_id: state.budgets[0].id,
+        user_id: state.user?.id || '1',
+        userName: state.user?.name || 'You',
+        is_projected: false,
+        label: 'Manual' as any,
+        created_at: new Date().toISOString(),
+      };
+      setSelectedTx(placeholderTx);
+    } else {
+      setSelectedTx(null);
+    }
+  };
+
+  // Tutorial callback: open/close the transaction form
+  const handleTutorialOpenForm = (open: boolean) => {
+    setTutorialFormOpen(open);
+    setIsAddingTx(open);
+  };
+
+  // Build placeholder transaction for display in expanded budget during tutorial
+  const tutorialPlaceholderTransaction: Transaction | null = tutorialPlaceholderTx && state.budgets.length > 0
+    ? {
+        id: '__tutorial_placeholder__',
+        vendor: 'Example Store',
+        amount: 24.99,
+        date: new Date().toISOString(),
+        budget_id: state.budgets[0].id,
+        user_id: state.user?.id || '1',
+        userName: state.user?.name || 'You',
+        is_projected: false,
+        label: 'Manual' as any,
+        created_at: new Date().toISOString(),
+      }
+    : null;
 
   const handleRunTutorialFromSettings = () => {
     setShowSettings(false);
@@ -412,7 +481,9 @@ const Dashboard: React.FC<DashboardProps> = ({
         ) : (
           <DashboardBudgetSectionsList
             budgets={state.budgets}
-            transactions={currentMonthTransactions}
+            transactions={tutorialPlaceholderTransaction
+              ? [...currentMonthTransactions, tutorialPlaceholderTransaction]
+              : currentMonthTransactions}
             expandedBudgets={expandedBudgets}
             isFocusMode={isFocusMode}
             focusedBudgetId={focusedBudgetId}
@@ -464,12 +535,16 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       {isAddingTx && (
         <TransactionForm
-          onClose={() => setIsAddingTx(false)}
-          onSave={onAddTransaction}
+          onClose={() => {
+            setIsAddingTx(false);
+            setTutorialFormOpen(false);
+          }}
+          onSave={tutorialFormOpen ? () => {} : onAddTransaction}
           budgets={state.budgets}
           userId={state.user?.id || '1'}
           userName={state.user?.name || 'User'}
           isSharedAccount={isSharedAccount}
+          isTutorialMode={tutorialFormOpen && showTutorial}
         />
       )}
 
@@ -479,12 +554,23 @@ const Dashboard: React.FC<DashboardProps> = ({
           budgets={state.budgets}
           currentUserName={state.user?.name || 'User'}
           isSharedAccount={isSharedAccount}
-          onClose={() => setSelectedTx(null)}
+          onClose={() => {
+            setSelectedTx(null);
+            setTutorialShowTxModal(false);
+          }}
           onEdit={(updatedTx) => {
+            if (selectedTx.id === '__tutorial_placeholder__') {
+              setSelectedTx(null);
+              return;
+            }
             onUpdateTransaction(updatedTx);
             setSelectedTx(null);
           }}
           onDelete={() => {
+            if (selectedTx.id === '__tutorial_placeholder__') {
+              setSelectedTx(null);
+              return;
+            }
             onDeleteTransaction(selectedTx.id);
             setSelectedTx(null);
           }}
@@ -496,6 +582,11 @@ const Dashboard: React.FC<DashboardProps> = ({
           isShared={isSharedAccount}
           onComplete={handleTutorialComplete}
           onStepChange={handleTutorialStepChange}
+          onExpandBudget={handleTutorialExpandBudget}
+          onShowPlaceholderTransaction={handleTutorialShowPlaceholder}
+          onShowTransactionModal={handleTutorialShowTxModal}
+          onOpenTransactionForm={handleTutorialOpenForm}
+          firstBudgetId={state.budgets.length > 0 ? state.budgets[0].id : undefined}
         />
       )}
     </div>
