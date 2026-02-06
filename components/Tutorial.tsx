@@ -174,6 +174,15 @@ const Tutorial: React.FC<TutorialProps> = ({
     };
   }, []);
 
+  // Helper: advance to the next tutorial step
+  const advanceToNextStep = useCallback(() => {
+    const nextStep = step + 1;
+    if (nextStep < steps.length) {
+      setStep(nextStep);
+      onStepChange?.(nextStep);
+    }
+  }, [step, steps.length, onStepChange]);
+
   // Run the transaction tap demo animation sequence
   const runTransactionDemoAnimation = useCallback(() => {
     if (!firstBudgetId) {
@@ -217,18 +226,12 @@ const Tutorial: React.FC<TutorialProps> = ({
             onExpandBudget?.(null);
             setIsAnimating(false);
             animationCleanupRef.current = null;
-
-            // Auto-advance to next step
-            const nextStep = step + 1;
-            if (nextStep < steps.length) {
-              setStep(nextStep);
-              onStepChange?.(nextStep);
-            }
+            advanceToNextStep();
           }, 600);
         }, 2000);
       }, 1000);
     }, 800);
-  }, [firstBudgetId, onExpandBudget, onShowPlaceholderTransaction, onShowTransactionModal, step, steps.length, onStepChange]);
+  }, [firstBudgetId, onExpandBudget, onShowPlaceholderTransaction, onShowTransactionModal, advanceToNextStep]);
 
   // Run the open transaction form animation
   const runOpenTransactionFormAnimation = useCallback(() => {
@@ -249,15 +252,9 @@ const Tutorial: React.FC<TutorialProps> = ({
       if (cancelled) return;
       setIsAnimating(false);
       animationCleanupRef.current = null;
-
-      // Advance to next step (amount field)
-      const nextStep = step + 1;
-      if (nextStep < steps.length) {
-        setStep(nextStep);
-        onStepChange?.(nextStep);
-      }
+      advanceToNextStep();
     }, 600);
-  }, [onOpenTransactionForm, step, steps.length, onStepChange]);
+  }, [onOpenTransactionForm, advanceToNextStep]);
 
   // Run the close transaction form animation
   const runCloseTransactionFormAnimation = useCallback(() => {
@@ -278,15 +275,9 @@ const Tutorial: React.FC<TutorialProps> = ({
       if (cancelled) return;
       setIsAnimating(false);
       animationCleanupRef.current = null;
-
-      // Advance to next step
-      const nextStep = step + 1;
-      if (nextStep < steps.length) {
-        setStep(nextStep);
-        onStepChange?.(nextStep);
-      }
+      advanceToNextStep();
     }, 500);
-  }, [onOpenTransactionForm, step, steps.length, onStepChange]);
+  }, [onOpenTransactionForm, advanceToNextStep]);
 
   useEffect(() => {
     if (tooltipRef.current) {

@@ -342,24 +342,28 @@ const Dashboard: React.FC<DashboardProps> = ({
     setTutorialPlaceholderTx(show);
   };
 
+  // Build a tutorial placeholder transaction object
+  const buildTutorialPlaceholder = (): Transaction | null => {
+    if (state.budgets.length === 0) return null;
+    return {
+      id: '__tutorial_placeholder__',
+      vendor: 'Example Store',
+      amount: 24.99,
+      date: new Date().toISOString(),
+      budget_id: state.budgets[0].id,
+      user_id: state.user?.id || '1',
+      userName: state.user?.name || 'You',
+      is_projected: false,
+      label: 'Manual' as any,
+      created_at: new Date().toISOString(),
+    };
+  };
+
   // Tutorial callback: show/hide transaction modal for demo
   const handleTutorialShowTxModal = (show: boolean) => {
     setTutorialShowTxModal(show);
-    if (show && state.budgets.length > 0) {
-      // Create a placeholder transaction for the demo
-      const placeholderTx: Transaction = {
-        id: '__tutorial_placeholder__',
-        vendor: 'Example Store',
-        amount: 24.99,
-        date: new Date().toISOString(),
-        budget_id: state.budgets[0].id,
-        user_id: state.user?.id || '1',
-        userName: state.user?.name || 'You',
-        is_projected: false,
-        label: 'Manual' as any,
-        created_at: new Date().toISOString(),
-      };
-      setSelectedTx(placeholderTx);
+    if (show) {
+      setSelectedTx(buildTutorialPlaceholder());
     } else {
       setSelectedTx(null);
     }
@@ -372,19 +376,8 @@ const Dashboard: React.FC<DashboardProps> = ({
   };
 
   // Build placeholder transaction for display in expanded budget during tutorial
-  const tutorialPlaceholderTransaction: Transaction | null = tutorialPlaceholderTx && state.budgets.length > 0
-    ? {
-        id: '__tutorial_placeholder__',
-        vendor: 'Example Store',
-        amount: 24.99,
-        date: new Date().toISOString(),
-        budget_id: state.budgets[0].id,
-        user_id: state.user?.id || '1',
-        userName: state.user?.name || 'You',
-        is_projected: false,
-        label: 'Manual' as any,
-        created_at: new Date().toISOString(),
-      }
+  const tutorialPlaceholderTransaction: Transaction | null = tutorialPlaceholderTx
+    ? buildTutorialPlaceholder()
     : null;
 
   const handleRunTutorialFromSettings = () => {
@@ -539,7 +532,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             setIsAddingTx(false);
             setTutorialFormOpen(false);
           }}
-          onSave={tutorialFormOpen ? () => {} : onAddTransaction}
+          onSave={tutorialFormOpen ? (_tx: Transaction) => { /* no-op: saves disabled during tutorial */ } : onAddTransaction}
           budgets={state.budgets}
           userId={state.user?.id || '1'}
           userName={state.user?.name || 'User'}
