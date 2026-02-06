@@ -112,7 +112,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     const sortedMonths = Array.from(monthMap.keys()).sort();
 
     // Build the data array
-    return sortedMonths.map((monthKey) => {
+    const data = sortedMonths.map((monthKey) => {
       const catMap = monthMap.get(monthKey)!;
       const entry: MonthlyBudgetData = {
         month: formatMonthLabel(monthKey),
@@ -128,6 +128,15 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
       return entry;
     });
+
+    // If only one month of data, duplicate it so the chart renders a flat band
+    if (data.length === 1) {
+      const original = data[0];
+      const duplicate: MonthlyBudgetData = { ...original, month: original.month + ' ' };
+      data.push(duplicate);
+    }
+
+    return data;
   }, [safeTransactions, categoryNames, budgetNameById, totalBudgetLimit]);
 
   // Draw the D3 streamgraph
@@ -370,7 +379,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
   // No data fallback
   if (chartData.length === 0) {
     return (
-      <div className="w-full mb-2">
+      <div id="spending-flow-chart" className="w-full mb-2">
         <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-md rounded-3xl p-4 border-2 border-slate-100 dark:border-slate-800 shadow-lg">
           <div className="mb-3">
             <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
@@ -389,7 +398,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
   }
 
   return (
-    <div className="w-full mb-1 shrink-0">
+    <div id="spending-flow-chart" className="w-full mb-1 shrink-0">
       <div className="relative">
         {/* Tooltip card */}
         {activeCategory && mouseCoords && activeMonthData && (

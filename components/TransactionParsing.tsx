@@ -27,8 +27,8 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
 
       {/* Header */}
       <header
-        className="px-6 pt-safe-top pb-4 sticky top-0 z-20 transition-colors bg-transparent border-none backdrop-blur-none relative z-10"
-        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1.5rem)' }}
+        className="px-6 pt-safe-top pb-2 sticky top-0 z-20 transition-colors bg-transparent border-none backdrop-blur-none relative z-10"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}
       >
         <div className="flex items-center justify-center">
           <h1 className="text-xl font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">
@@ -38,10 +38,10 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       </header>
 
       {/* Main content */}
-      <main className="flex-1 flex flex-col p-6 pb-28 overflow-y-auto no-scrollbar relative z-10">
-        <div className="max-w-2xl mx-auto w-full space-y-6">
+      <main className="flex-1 flex flex-col p-4 pb-24 overflow-hidden relative z-10">
+        <div className="max-w-2xl mx-auto w-full space-y-4">
           {/* Info card */}
-          <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 shadow-xl border border-slate-100 dark:border-slate-800/60 space-y-6">
+          <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-slate-100 dark:border-slate-800/60 space-y-4">
             <div className="flex items-start space-x-4">
               <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl">
                 <svg
@@ -82,7 +82,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
           </div>
 
           {/* Help section */}
-          <div className="bg-slate-100 dark:bg-slate-800/50 rounded-2xl p-6 space-y-4">
+          <div className="bg-slate-100 dark:bg-slate-800/50 rounded-2xl p-4 space-y-3">
             <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
               How it works
             </h3>

@@ -33,6 +33,11 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
       target: "balance-header",
     },
     {
+      title: "Spending Flow",
+      content: "This chart visualizes your spending across categories over time. Each colored band represents a budget category. Touch and hold to explore individual months.",
+      target: "spending-flow-chart",
+    },
+    {
       title: "Spending Vials",
       content: "Each category is a vial. The solid fill is what you've spent. Dashed sections represent projected future expenses. Watch them fill as you spend.",
       target: "first-budget-card",
@@ -68,9 +73,24 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, onStepChange, isShared 
       target: "settings-income-container",
     },
     {
+      title: "Budget Limits",
+      content: "Set the spending cap for each category. These limits define how full each vial can get before it overflows.",
+      target: "settings-budget-limits-container",
+    },
+    {
       title: "Dark Interface",
       content: "Switch to dark mode for a calmer look that's easier on the eyes at night.",
       target: "settings-theme-container",
+    },
+    {
+      title: "Bank Notification Listener",
+      content: "On Android, Covault can read banking notifications and auto-log transactions for you. Enable this to save time on manual entry.",
+      target: "settings-notifications-container",
+    },
+    {
+      title: "App Notifications",
+      content: "Get notified when you're approaching or exceeding your budget limits. Stay on top of your spending without opening the app.",
+      target: "settings-app-notifications-container",
     },
     {
       title: "Budget Rollover",

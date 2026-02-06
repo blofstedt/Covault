@@ -175,7 +175,7 @@ const NotificationSettingsSection: React.FC = () => {
     }
 
     // Turning on — open Android notification listener settings
-    setEnabled(true);
+    // Don't set enabled yet; wait for permission to be confirmed
     try {
       await plugin.requestAccess();
       pollForPermission();
@@ -228,7 +228,7 @@ const NotificationSettingsSection: React.FC = () => {
   // Browser-only info block - now with toggle
   if (!isNative) {
     return (
-      <div className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60 space-y-4">
+      <div id="settings-notifications-container" className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex-1 mr-3">
             <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 block">
@@ -269,7 +269,7 @@ const NotificationSettingsSection: React.FC = () => {
     enabled && permissionGranted && selectedApps.size > 0 && installedBankApps.length > 0;
 
   return (
-    <div className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60 space-y-4">
+    <div id="settings-notifications-container" className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60 space-y-4">
       {/* TOGGLE + STATUS */}
       <div className="flex items-center justify-between">
         <div className="flex-1 mr-3">
