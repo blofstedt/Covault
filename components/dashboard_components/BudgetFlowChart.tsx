@@ -5,6 +5,7 @@ import { BudgetCategory, Transaction } from '../../types';
 interface BudgetFlowChartProps {
   budgets: BudgetCategory[];
   transactions: Transaction[];
+  isTutorialMode?: boolean;
 }
 
 interface MonthlyBudgetData {
@@ -44,7 +45,7 @@ function formatMonthLabel(key: string): string {
   return `${months[parseInt(month, 10) - 1]} ${year}`;
 }
 
-const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions }) => {
+const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions, isTutorialMode = false }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -53,7 +54,33 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
   const [chartWidth, setChartWidth] = useState(0);
 
   const safeBudgets = Array.isArray(budgets) ? budgets : [];
-  const safeTransactions = Array.isArray(transactions) ? transactions : [];
+  const safeTransactions = useMemo(() => {
+    const txs = Array.isArray(transactions) ? transactions : [];
+    if (isTutorialMode && txs.length === 0 && safeBudgets.length > 0) {
+      // Generate placeholder transactions so the chart renders during tutorial
+      const now = new Date();
+      const placeholders: Transaction[] = [];
+      for (let m = 5; m >= 0; m--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - m, 15);
+        safeBudgets.forEach((b, i) => {
+          const base = (b.totalLimit || 500) * (0.3 + Math.abs(Math.sin(m + i)) * 0.5);
+          placeholders.push({
+            id: `__tutorial_chart_${m}_${i}__`,
+            vendor: 'Tutorial',
+            amount: Math.round(base * 100) / 100,
+            date: d.toISOString(),
+            budget_id: b.id,
+            user_id: '__tutorial__',
+            is_projected: false,
+            label: 'Manual' as any,
+            created_at: d.toISOString(),
+          });
+        });
+      }
+      return placeholders;
+    }
+    return txs;
+  }, [transactions, isTutorialMode, safeBudgets]);
 
   // Build a map from budget id -> budget name
   const budgetNameById = useMemo(() => {
@@ -237,7 +264,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .attr('y', budgetYTop)
       .attr('width', width)
       .attr('height', budgetYBottom - budgetYTop)
-      .attr('fill', '#010504');
+      .attr('fill', '#0f2b22');
 
     const area = d3
       .area<d3.SeriesPoint<MonthlyBudgetData>>()
@@ -302,10 +329,10 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         .attr('x2', width)
         .attr('y1', yPos)
         .attr('y2', yPos)
-        .attr('stroke', 'white')
+        .attr('stroke', '#6ee7b7')
         .attr('stroke-width', 1.5)
         .attr('stroke-dasharray', '6 10')
-        .attr('opacity', 0.8);
+        .attr('opacity', 0.5);
     });
 
     // Scrubber line
@@ -430,7 +457,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
             }}
           >
             <div
-              className={`absolute p-4 w-[190px] bg-[#0c1a17]/95 backdrop-blur-xl border border-white/20 rounded-2xl shadow-[0_20px_50px_-10px_rgba(0,0,0,0.9)] flex flex-col gap-3 ${
+              className={`absolute p-2.5 w-[150px] bg-[#0c1a17]/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-[0_20px_50px_-10px_rgba(0,0,0,0.9)] flex flex-col gap-2 ${
                 mouseCoords.x > chartWidth / 2 ? '-translate-x-[110%]' : 'translate-x-[12%]'
               }`}
             >
@@ -449,16 +476,16 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
                 <div className="flex-1 min-w-0">
-                  <h4 className="text-[9px] font-bold tracking-widest uppercase text-white/40 truncate mb-0.5">
+                  <h4 className="text-[8px] font-bold tracking-widest uppercase text-white/40 truncate mb-0.5">
                     {activeCategory}
                   </h4>
-                  <div className="text-xl font-black tracking-tighter text-white leading-tight">
+                  <div className="text-base font-black tracking-tighter text-white leading-tight">
                     ${activeCatAmount.toFixed(0)}
                   </div>
                 </div>
-                <div className="w-1.5 h-10 bg-white/10 rounded-full relative overflow-hidden shrink-0">
+                <div className="w-1 h-8 bg-white/10 rounded-full relative overflow-hidden shrink-0">
                   <div
                     className="absolute bottom-0 left-0 w-full rounded-full transition-all duration-500 ease-out"
                     style={{
@@ -471,15 +498,15 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
                 </div>
               </div>
 
-              <div className="pt-2 border-t border-white/10 grid grid-cols-2 gap-3">
+              <div className="pt-1.5 border-t border-white/10 grid grid-cols-2 gap-2">
                 <div className="flex flex-col">
-                  <span className="text-[8px] font-black uppercase tracking-tighter text-white/30 mb-0.5">Part</span>
-                  <span className="text-[13px] font-black text-white">{categoryPercentage}%</span>
+                  <span className="text-[7px] font-black uppercase tracking-tighter text-white/30 mb-0.5">Part</span>
+                  <span className="text-[11px] font-black text-white">{categoryPercentage}%</span>
                 </div>
                 <div className="flex flex-col text-right">
-                  <span className="text-[8px] font-black uppercase tracking-tighter text-white/30 mb-0.5">Total</span>
+                  <span className="text-[7px] font-black uppercase tracking-tighter text-white/30 mb-0.5">Total</span>
                   <span
-                    className={`text-[13px] font-black ${
+                    className={`text-[11px] font-black ${
                       activeMonthData.total > totalBudgetLimit
                         ? 'text-white underline decoration-white/40 underline-offset-4'
                         : 'text-emerald-400'
@@ -496,7 +523,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         {/* Chart container */}
         <div ref={containerRef} className="w-full">
           <div className="bg-white/[0.03] dark:bg-white/[0.02] rounded-[2.5rem] p-0.5 shadow-xl border border-slate-200/30 dark:border-white/10 overflow-hidden">
-            <div className="bg-[#010807] rounded-[2.4rem] overflow-hidden border border-slate-200/20 dark:border-white/10 relative">
+            <div className="bg-[#061410] rounded-[2.4rem] overflow-hidden border border-slate-200/20 dark:border-white/10 relative">
               <svg
                 ref={svgRef}
                 className="w-full h-auto overflow-visible cursor-crosshair relative z-10 select-none"

@@ -73,6 +73,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [tutorialPlaceholderTx, setTutorialPlaceholderTx] = useState(false);
   const [tutorialShowTxModal, setTutorialShowTxModal] = useState(false);
   const [tutorialFormOpen, setTutorialFormOpen] = useState(false);
+  const [demoSplitTrigger, setDemoSplitTrigger] = useState(0);
 
   // Scroll refs shared with child components
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -120,6 +121,24 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
     return list;
   }, [state.transactions, searchQuery]);
+
+  // Build vendor history for autocomplete (most recent transaction per vendor)
+  const vendorHistory = useMemo(() => {
+    const vendorMap = new Map<string, { vendor: string; budget_id: string; splits?: { budget_id: string; amount: number }[]; date: string }>();
+    const sorted = [...state.transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    for (const tx of sorted) {
+      const key = tx.vendor.toLowerCase();
+      if (!vendorMap.has(key)) {
+        vendorMap.set(key, {
+          vendor: tx.vendor,
+          budget_id: tx.budget_id || '',
+          splits: tx.splits,
+          date: tx.date,
+        });
+      }
+    }
+    return Array.from(vendorMap.values());
+  }, [state.transactions]);
 
   // Helper to identify the current month - memoized to prevent recalculation
   const { currentYear, currentMonth } = useMemo(() => {
@@ -320,8 +339,8 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const handleTutorialStepChange = (step: number) => {
     setTutorialStep(step);
-    // Steps 11 ("Monthly Income") through 21 ("Sign Out") target elements inside the settings modal
-    if (step >= 11 && step <= 21) {
+    // Steps 12 ("Monthly Income") through 22 ("Sign Out") target elements inside the settings modal
+    if (step >= 12 && step <= 22) {
       setShowSettings(true);
     } else {
       setShowSettings(false);
@@ -373,6 +392,11 @@ const Dashboard: React.FC<DashboardProps> = ({
   const handleTutorialOpenForm = (open: boolean) => {
     setTutorialFormOpen(open);
     setIsAddingTx(open);
+  };
+
+  // Tutorial callback: trigger split demo animation
+  const handleTutorialDemoSplit = () => {
+    setDemoSplitTrigger(prev => prev + 1);
   };
 
   // Build placeholder transaction for display in expanded budget during tutorial
@@ -457,6 +481,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           <BudgetFlowChart
             budgets={state.budgets}
             transactions={state.transactions}
+            isTutorialMode={showTutorial}
           />
         )}
 
@@ -538,6 +563,8 @@ const Dashboard: React.FC<DashboardProps> = ({
           userName={state.user?.name || 'User'}
           isSharedAccount={isSharedAccount}
           isTutorialMode={tutorialFormOpen && showTutorial}
+          vendorHistory={vendorHistory}
+          demoSplitTrigger={demoSplitTrigger}
         />
       )}
 
@@ -579,6 +606,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           onShowPlaceholderTransaction={handleTutorialShowPlaceholder}
           onShowTransactionModal={handleTutorialShowTxModal}
           onOpenTransactionForm={handleTutorialOpenForm}
+          onDemoSplit={handleTutorialDemoSplit}
           firstBudgetId={state.budgets.length > 0 ? state.budgets[0].id : undefined}
         />
       )}
