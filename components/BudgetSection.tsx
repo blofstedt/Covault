@@ -197,10 +197,8 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           ) : (
             <span
               className="text-sm font-black tracking-tight transition-colors duration-300 text-slate-500 dark:text-slate-100"
-              aria-label={`${total.toFixed(0)} dollars spent of ${budget.totalLimit} dollar limit`}
+              aria-label={`${budget.totalLimit} dollar budget`}
             >
-              ${total.toFixed(0)}
-              <span className="mx-1 opacity-30 font-medium text-slate-400">/</span>
               ${budget.totalLimit}
             </span>
           )}

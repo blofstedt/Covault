@@ -64,7 +64,6 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [showParsing, setShowParsing] = useState(false);
-  const [parsingEnabled, setParsingEnabled] = useState(false);
   const [isLinkingPartner, setIsLinkingPartner] = useState(false);
   const [partnerLinkEmail, setPartnerLinkEmail] = useState('');
   const [showTutorial, setShowTutorial] = useState(!state.settings.hasSeenTutorial);
@@ -332,6 +331,12 @@ const Dashboard: React.FC<DashboardProps> = ({
   const isFocusMode = expandedBudgets.size === 1;
   const focusedBudgetId = isFocusMode ? Array.from(expandedBudgets)[0] : null;
 
+  // Auto-detected transactions (from bank notification listener)
+  const autoDetectedTransactions = useMemo(
+    () => state.transactions.filter((tx) => tx.label === 'Auto-Added'),
+    [state.transactions],
+  );
+
   const handleTutorialComplete = () => {
     setShowTutorial(false);
     setShowSettings(false);
@@ -444,14 +449,16 @@ const Dashboard: React.FC<DashboardProps> = ({
   if (showParsing) {
     return (
       <TransactionParsing
-        enabled={parsingEnabled}
-        onToggle={setParsingEnabled}
+        enabled={state.settings.notificationsEnabled || false}
+        onToggle={(v: boolean) => updateSettings('notificationsEnabled', v)}
         onBack={() => setShowParsing(false)}
         onAddTransaction={() => setIsAddingTx(true)}
         onGoHome={() => {
           setShowParsing(false);
           handleGoHome();
         }}
+        autoDetectedTransactions={autoDetectedTransactions}
+        onTransactionTap={(tx) => setSelectedTx(tx)}
       />
     );
   }
