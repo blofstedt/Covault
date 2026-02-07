@@ -184,13 +184,26 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     // If only one month of data, prepend a synthetic prior month with zero spending
     // so the chart renders a flat band without mislabeling the actual month
     if (data.length === 1) {
-      const [labelMonth, labelYear] = data[0].month.split(' ');
       const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const parts = data[0].month.split(' ');
+      const labelMonth = parts[0];
+      const labelYear = parts[1];
       const mIdx = monthNames.indexOf(labelMonth);
-      const prevMonth = mIdx === 0 ? 11 : mIdx - 1;
-      const prevYear = mIdx === 0 ? String(parseInt(labelYear, 10) - 1) : labelYear;
+
+      let priorLabel: string;
+      if (mIdx >= 0 && labelYear && !isNaN(parseInt(labelYear, 10))) {
+        const prevMonth = mIdx === 0 ? 11 : mIdx - 1;
+        const prevYear = mIdx === 0 ? String(parseInt(labelYear, 10) - 1) : labelYear;
+        priorLabel = `${monthNames[prevMonth]} ${prevYear}`;
+      } else {
+        // Fallback: compute prior month from current date
+        const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const prevKey = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+        priorLabel = formatMonthLabel(prevKey);
+      }
+
       const priorEntry: MonthlyBudgetData = {
-        month: `${monthNames[prevMonth]} ${prevYear}`,
+        month: priorLabel,
         total: 0,
         budgetLimit: totalBudgetLimit,
       };
