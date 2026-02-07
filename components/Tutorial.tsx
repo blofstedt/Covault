@@ -90,16 +90,21 @@ const Tutorial: React.FC<TutorialProps> = ({
     {
       // Step 8: Close form, then move on
       title: "Splitting Budgets",
-      content: "When two categories are selected, drag to adjust how the amount is split between them. This is great for shared expenses like groceries and dining.",
+      content: "Splitting is great when a single expense belongs to more than one category, allowing you to divide it up as roughly or precisely as you like.",
       target: "tutorial-budget-grid",
       animation: "close-transaction-form",
     },
     {
       // Step 9: Transaction demo - will trigger animation
       title: "View Your Transactions",
-      content: "Tap any budget vial to expand it and see your transactions. Let's see how it works.",
+      content: "Tap any budget vial to open it and reveal your transactions inside. Each vial houses all the entries for that category. Watch as we tap one open now.",
       target: "first-budget-card",
       animation: "demo-transaction-tap",
+    },
+    {
+      title: "Transaction Details",
+      content: "Tapping a transaction opens its details. From here you can edit any field — the amount, vendor, category, date, and recurrence are all editable. Use the Update Transaction button to save changes, or the Delete Transaction button to remove it entirely.",
+      target: "first-budget-card",
     },
     {
       title: "Quick Navigation",
@@ -121,6 +126,11 @@ const Tutorial: React.FC<TutorialProps> = ({
     {
       title: "Budget Limits",
       content: "Set the spending cap for each category. These limits define how full each vial can get before it overflows.",
+      target: "settings-budget-limits-container",
+    },
+    {
+      title: "Hide Categories",
+      content: "Use the eye icon next to each budget to hide categories you don't need. Hidden categories won't appear on your dashboard or chart, keeping your view focused on what matters.",
       target: "settings-budget-limits-container",
     },
     {

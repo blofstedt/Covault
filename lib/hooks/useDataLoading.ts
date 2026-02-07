@@ -49,6 +49,15 @@ export const useDataLoading = ({
           // start with default limit; user-specific overrides will be loaded separately
           totalLimit: DEFAULT_BUDGET_LIMIT,
         }));
+
+        // Ensure all system categories are present (e.g. Services)
+        const loadedNames = new Set(budgets.map(b => b.name));
+        for (const sysCat of SYSTEM_CATEGORIES) {
+          if (!loadedNames.has(sysCat.name)) {
+            budgets.push({ ...sysCat });
+          }
+        }
+
         console.log(
           '[loadCategories] OK:',
           budgets.map(b => ({ id: b.id, name: b.name })),
