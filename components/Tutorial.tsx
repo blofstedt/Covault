@@ -90,22 +90,9 @@ const Tutorial: React.FC<TutorialProps> = ({
     {
       // Step 8: Close form, then move on
       title: "Splitting Budgets",
-      content: "Splitting is great when a single expense belongs to more than one category, allowing you to divide it up as roughly or precisely as you like.",
+      content: "Splitting is great when a single expense belongs to more than one category, allowing you to divide it up as roughly or precisely as you like. You can also edit or delete any transaction by tapping it in the main dashboard under the budget it belongs to.",
       target: "tutorial-budget-grid",
       animation: "close-transaction-form",
-    },
-    {
-      // Step 9: Transaction demo - will trigger animation
-      title: "View Your Transactions",
-      content: "Tap any budget vial to open it and reveal your transactions inside. Each vial houses all the entries for that category. Watch as we tap one open now.",
-      target: "first-budget-card",
-      animation: "demo-transaction-tap",
-    },
-    {
-      title: "Transaction Details",
-      content: "Tapping a transaction opens its details. From here you can edit any field — the amount, vendor, category, date, and recurrence are all editable. Use the Update Transaction button to save changes, or the Delete Transaction button to remove it entirely.",
-      target: "tutorial-transaction-form",
-      animation: "close-transaction-demo",
     },
     {
       title: "Quick Navigation",
@@ -203,48 +190,6 @@ const Tutorial: React.FC<TutorialProps> = ({
     }
   }, [step, steps.length, onStepChange]);
 
-  // Run the transaction tap demo animation sequence
-  const runTransactionDemoAnimation = useCallback(() => {
-    if (!firstBudgetId) {
-      return;
-    }
-
-    setIsAnimating(true);
-    let cancelled = false;
-
-    const cleanup = () => {
-      cancelled = true;
-      onExpandBudget?.(null);
-      onShowPlaceholderTransaction?.(false);
-      onShowTransactionModal?.(false);
-      setIsAnimating(false);
-    };
-    animationCleanupRef.current = cleanup;
-
-    // Step 1: Expand the first budget
-    onExpandBudget?.(firstBudgetId);
-
-    // Step 2: After expand animation, show placeholder transaction
-    setTimeout(() => {
-      if (cancelled) return;
-      onShowPlaceholderTransaction?.(true);
-
-      // Step 3: After a pause, emulate tap on placeholder transaction
-      setTimeout(() => {
-        if (cancelled) return;
-        onShowTransactionModal?.(true);
-
-        // Step 4: Leave the modal open and advance to the next step
-        setTimeout(() => {
-          if (cancelled) return;
-          setIsAnimating(false);
-          animationCleanupRef.current = cleanup;
-          advanceToNextStep();
-        }, 800);
-      }, 1000);
-    }, 800);
-  }, [firstBudgetId, onExpandBudget, onShowPlaceholderTransaction, onShowTransactionModal, advanceToNextStep]);
-
   // Run the open transaction form animation
   const runOpenTransactionFormAnimation = useCallback(() => {
     setIsAnimating(true);
@@ -290,37 +235,6 @@ const Tutorial: React.FC<TutorialProps> = ({
       advanceToNextStep();
     }, 500);
   }, [onOpenTransactionForm, advanceToNextStep]);
-
-  // Run the close transaction demo animation (cleans up the open transaction modal)
-  const runCloseTransactionDemoAnimation = useCallback(() => {
-    setIsAnimating(true);
-    let cancelled = false;
-
-    const cleanup = () => {
-      cancelled = true;
-      onShowTransactionModal?.(false);
-      onShowPlaceholderTransaction?.(false);
-      onExpandBudget?.(null);
-      setIsAnimating(false);
-    };
-    animationCleanupRef.current = cleanup;
-
-    // Close modal, then collapse the vial
-    onShowTransactionModal?.(false);
-
-    setTimeout(() => {
-      if (cancelled) return;
-      onShowPlaceholderTransaction?.(false);
-      onExpandBudget?.(null);
-
-      setTimeout(() => {
-        if (cancelled) return;
-        setIsAnimating(false);
-        animationCleanupRef.current = null;
-        advanceToNextStep();
-      }, 400);
-    }, 300);
-  }, [onShowTransactionModal, onShowPlaceholderTransaction, onExpandBudget, advanceToNextStep]);
 
   // Run the split demo animation
   const SPLIT_DEMO_DURATION_MS = 2500;
@@ -404,14 +318,7 @@ const Tutorial: React.FC<TutorialProps> = ({
       runCloseTransactionFormAnimation();
       return;
     }
-    if (currentStepData.animation === 'close-transaction-demo') {
-      runCloseTransactionDemoAnimation();
-      return;
-    }
-    if (currentStepData.animation === 'demo-transaction-tap') {
-      runTransactionDemoAnimation();
-      return;
-    }
+
     if (currentStepData.animation === 'demo-split') {
       runSplitDemoAnimation();
       return;
