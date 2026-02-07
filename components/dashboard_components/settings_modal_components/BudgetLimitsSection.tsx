@@ -67,7 +67,7 @@ const BudgetLimitsSection: React.FC<BudgetLimitsSectionProps> = ({
           return (
             <div
               key={budget.id}
-              className={`flex items-center justify-between gap-4 p-3 rounded-xl transition-all ${
+              className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
                 isHidden
                   ? 'bg-slate-100/50 dark:bg-slate-800/20 opacity-50'
                   : 'bg-slate-50 dark:bg-slate-800/50'
@@ -75,14 +75,14 @@ const BudgetLimitsSection: React.FC<BudgetLimitsSectionProps> = ({
             >
               <label
                 htmlFor={`budget-${budget.id}`}
-                className={`text-xs font-bold flex-1 ${
+                className={`text-xs font-bold truncate w-24 shrink-0 ${
                   isHidden ? 'text-slate-400 dark:text-slate-600 line-through' : 'text-slate-600 dark:text-slate-300'
                 }`}
               >
                 {budget.name}
               </label>
               
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 ml-auto shrink-0">
                 <div className="flex items-center gap-2 w-32 justify-end">
                   {!isHidden ? (
                     <>
@@ -107,7 +107,7 @@ const BudgetLimitsSection: React.FC<BudgetLimitsSectionProps> = ({
                   <button
                     type="button"
                     onClick={() => onToggleHideCategory(budget.id)}
-                    className={`p-1.5 rounded-lg transition-all active:scale-90 ${
+                    className={`p-1.5 rounded-lg transition-all active:scale-90 shrink-0 ${
                       isHidden
                         ? 'text-slate-400 dark:text-slate-600 hover:text-emerald-500'
                         : 'text-slate-300 dark:text-slate-600 hover:text-slate-500'

@@ -6,6 +6,7 @@ interface BudgetFlowChartProps {
   budgets: BudgetCategory[];
   transactions: Transaction[];
   isTutorialMode?: boolean;
+  theme?: 'light' | 'dark';
 }
 
 interface MonthlyBudgetData {
@@ -46,7 +47,7 @@ function formatMonthLabel(key: string): string {
   return `${months[parseInt(month, 10) - 1]} ${year}`;
 }
 
-const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions, isTutorialMode = false }) => {
+const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions, isTutorialMode = false, theme = 'dark' }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -258,14 +259,17 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .attr('width', width)
       .attr('height', height - budgetYBottom);
 
-    // Dark corridor background (safe zone)
+    // Use theme from props
+    const isDarkTheme = theme === 'dark';
+
+    // Corridor background (safe zone)
     svg
       .append('rect')
       .attr('x', 0)
       .attr('y', budgetYTop)
       .attr('width', width)
       .attr('height', budgetYBottom - budgetYTop)
-      .attr('fill', '#0f172a');
+      .attr('fill', isDarkTheme ? '#0f172a' : '#f1f5f9');
 
     const area = d3
       .area<d3.SeriesPoint<MonthlyBudgetData>>()
@@ -293,6 +297,9 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .attr('clip-path', 'url(#bfc-clip-bottom)')
       .attr('filter', 'url(#bfc-frost)');
 
+    // Spillover color: white in dark theme, coral/red in light theme
+    const spillColor = isDarkTheme ? '#ffffff' : '#ef4444';
+
     [spillTop, spillBottom].forEach((group) => {
       group
         .selectAll('.bfc-spill')
@@ -301,18 +308,19 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         .append('path')
         .attr('class', 'bfc-spill')
         .attr('d', area)
-        .attr('fill', '#ffffff')
+        .attr('fill', spillColor)
         .attr('fill-opacity', 1.0);
     });
 
     // Glass panels over the danger zones
+    const glassColor = isDarkTheme ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.04)';
     svg
       .append('rect')
       .attr('x', 0)
       .attr('y', 0)
       .attr('width', width)
       .attr('height', budgetYTop)
-      .attr('fill', 'rgba(255, 255, 255, 0.08)');
+      .attr('fill', glassColor);
 
     svg
       .append('rect')
@@ -320,9 +328,10 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .attr('y', budgetYBottom)
       .attr('width', width)
       .attr('height', height - budgetYBottom)
-      .attr('fill', 'rgba(255, 255, 255, 0.08)');
+      .attr('fill', glassColor);
 
     // Dashed budget threshold lines
+    const thresholdColor = isDarkTheme ? '#6ee7b7' : '#059669';
     [budgetYTop, budgetYBottom].forEach((yPos) => {
       svg
         .append('line')
@@ -330,10 +339,10 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         .attr('x2', width)
         .attr('y1', yPos)
         .attr('y2', yPos)
-        .attr('stroke', '#6ee7b7')
+        .attr('stroke', thresholdColor)
         .attr('stroke-width', 1.5)
         .attr('stroke-dasharray', '6 10')
-        .attr('opacity', 0.5);
+        .attr('opacity', 0.7);
     });
 
     // Scrubber line
@@ -341,7 +350,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .append('line')
       .attr('y1', 0)
       .attr('y2', height)
-      .attr('stroke', '#ffffff')
+      .attr('stroke', isDarkTheme ? '#ffffff' : '#334155')
       .attr('stroke-width', 1.5)
       .style('opacity', 0);
 
@@ -408,7 +417,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     return () => {
       svgElement.on('mousemove touchmove', null).on('mouseleave touchend', null);
     };
-  }, [chartData, categoryNames, totalBudgetLimit]);
+  }, [chartData, categoryNames, totalBudgetLimit, theme]);
 
   const activeMonthData = hoveredMonthIdx !== null ? chartData[hoveredMonthIdx] : null;
   const activeCatAmount =
@@ -524,7 +533,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         {/* Chart container */}
         <div ref={containerRef} className="w-full">
           <div className="bg-white/[0.03] dark:bg-white/[0.02] rounded-[2.5rem] p-0.5 shadow-xl border border-slate-200/30 dark:border-white/10 overflow-hidden">
-            <div className="bg-slate-900 rounded-[2.4rem] overflow-hidden border border-slate-200/20 dark:border-white/10 relative">
+            <div className="bg-slate-100 dark:bg-slate-900 rounded-[2.4rem] overflow-hidden border border-slate-200/20 dark:border-white/10 relative">
               <svg
                 ref={svgRef}
                 className="w-full h-auto overflow-visible cursor-crosshair relative z-10 select-none"
