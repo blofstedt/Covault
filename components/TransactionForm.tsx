@@ -398,60 +398,64 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
               )}
             </div>
 
-            <div id="tutorial-budget-grid" className="grid grid-cols-3 gap-2">
-              {budgets.map(b => {
-                const isSelected = selectedIds.has(b.id);
-                const isMaxSelected = selectedIds.size >= 2;
-                const share = isSelected ? (splits[b.id] || 0) : 0;
-                const percentage = amount > 0 ? (share / amount) * 100 : 0;
-                const isSliding = activeSlideId === b.id;
+            <div id="tutorial-budget-grid" className="flex flex-col gap-2">
+              {[budgets.slice(0, 3), budgets.slice(3)].map((row, rowIdx) => (
+                <div key={rowIdx} className="flex justify-center gap-2">
+                  {row.map(b => {
+                    const isSelected = selectedIds.has(b.id);
+                    const isMaxSelected = selectedIds.size >= 2;
+                    const share = isSelected ? (splits[b.id] || 0) : 0;
+                    const percentage = amount > 0 ? (share / amount) * 100 : 0;
+                    const isSliding = activeSlideId === b.id;
 
-                return (
-                  <button
-                    key={b.id}
-                    ref={el => { if (el) trackRef.current.set(b.id, el); else trackRef.current.delete(b.id); }}
-                    type="button"
-                    onPointerDown={e => handlePointerDown(e, b.id)}
-                    onPointerMove={e => handlePointerMove(e, b.id)}
-                    onPointerUp={e => handlePointerUp(e, b.id)}
-                    onPointerCancel={e => handlePointerUp(e, b.id)}
-                    style={{
-                      background: isSelected
-                        ? `linear-gradient(to right, rgba(16, 185, 129, 0.4) ${percentage}%, transparent ${percentage}%)`
-                        : 'transparent'
-                    }}
-                    className={`
-                      relative group flex flex-col items-center justify-center p-3 rounded-2xl transition-all overflow-hidden border
-                      ${isSelected
-                        ? 'border-emerald-500/50 shadow-lg shadow-emerald-500/10'
-                        : (isMaxSelected ? 'bg-slate-50/50 dark:bg-slate-900/50 border-slate-50 dark:border-slate-900 opacity-40 text-slate-300' : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-400')
-                      }
-                      ${isSliding ? 'scale-[1.05] ring-2 ring-emerald-500/40' : 'active:scale-95'}
-                      touch-none
-                    `}
-                  >
-                    {isSelected && (
-                      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                        <div className={`liquid-edge liquid-active`} style={{ left: `${percentage}%`, transform: 'translateX(-50%)', opacity: 0.4 }} />
-                      </div>
-                    )}
+                    return (
+                      <button
+                        key={b.id}
+                        ref={el => { if (el) trackRef.current.set(b.id, el); else trackRef.current.delete(b.id); }}
+                        type="button"
+                        onPointerDown={e => handlePointerDown(e, b.id)}
+                        onPointerMove={e => handlePointerMove(e, b.id)}
+                        onPointerUp={e => handlePointerUp(e, b.id)}
+                        onPointerCancel={e => handlePointerUp(e, b.id)}
+                        style={{
+                          background: isSelected
+                            ? `linear-gradient(to right, rgba(16, 185, 129, 0.4) ${percentage}%, transparent ${percentage}%)`
+                            : 'transparent'
+                        }}
+                        className={`
+                          relative group flex flex-col items-center justify-center p-3 rounded-2xl transition-all overflow-hidden border w-[calc(25%-6px)]
+                          ${isSelected
+                            ? 'border-emerald-500/50 shadow-lg shadow-emerald-500/10'
+                            : (isMaxSelected ? 'bg-slate-50/50 dark:bg-slate-900/50 border-slate-50 dark:border-slate-900 opacity-40 text-slate-300' : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-400')
+                          }
+                          ${isSliding ? 'scale-[1.05] ring-2 ring-emerald-500/40' : 'active:scale-95'}
+                          touch-none
+                        `}
+                      >
+                        {isSelected && (
+                          <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                            <div className={`liquid-edge liquid-active`} style={{ left: `${percentage}%`, transform: 'translateX(-50%)', opacity: 0.4 }} />
+                          </div>
+                        )}
 
-                    <div className={`relative z-10 flex flex-col items-center transition-transform ${isSliding ? 'scale-110' : ''}`}>
-                      <div className={`w-5 h-5 ${isSelected ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>
-                        {getBudgetIcon(b.name)}
-                      </div>
-                      <span className={`text-[8px] font-black uppercase tracking-tighter mt-1.5 ${isSelected ? 'text-emerald-700 dark:text-emerald-300' : ''}`}>
-                        {b.name}
-                      </span>
-                      {isSelected && (
-                        <span className="text-[10px] font-black text-emerald-800 dark:text-emerald-200 mt-0.5">
-                          ${share.toFixed(selectedIds.size > 1 ? 2 : 0)}
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
+                        <div className={`relative z-10 flex flex-col items-center transition-transform ${isSliding ? 'scale-110' : ''}`}>
+                          <div className={`w-5 h-5 ${isSelected ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>
+                            {getBudgetIcon(b.name)}
+                          </div>
+                          <span className={`text-[8px] font-black uppercase tracking-tighter mt-1.5 ${isSelected ? 'text-emerald-700 dark:text-emerald-300' : ''}`}>
+                            {b.name}
+                          </span>
+                          {isSelected && (
+                            <span className="text-[10px] font-black text-emerald-800 dark:text-emerald-200 mt-0.5">
+                              ${share.toFixed(selectedIds.size > 1 ? 2 : 0)}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
           </div>
 
