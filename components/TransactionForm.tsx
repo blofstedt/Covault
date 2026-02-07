@@ -311,7 +311,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
   return (
     <div className={`fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-xl transition-opacity duration-250 ${isClosing ? 'opacity-0' : 'animate-in fade-in duration-300'}`}>
-      <div className={`w-full max-w-sm bg-white dark:bg-slate-900 rounded-[3rem] p-8 space-y-6 shadow-2xl border border-slate-100 dark:border-slate-800/60 max-h-[90vh] overflow-y-auto no-scrollbar transition-all duration-250 ${isClosing ? 'opacity-0 scale-95' : 'animate-in zoom-in-95 duration-300'}`}>
+      <div id="tutorial-transaction-form" className={`w-full max-w-sm bg-white dark:bg-slate-900 rounded-[3rem] p-8 space-y-6 shadow-2xl border border-slate-100 dark:border-slate-800/60 max-h-[90vh] overflow-y-auto no-scrollbar transition-all duration-250 ${isClosing ? 'opacity-0 scale-95' : 'animate-in zoom-in-95 duration-300'}`}>
         <div className="flex items-center justify-between">
           <div className="flex flex-col">
             <h2 className="text-2xl font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">
@@ -501,7 +501,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             disabled={!isFormValid}
             className={`w-full py-4 rounded-2xl font-black text-sm shadow-xl active:scale-95 transition-all uppercase tracking-[0.2em] mt-2 ${isFormValid ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 opacity-50 cursor-not-allowed'}`}
           >
-            Confirm Entry
+            {initialTransaction ? 'Update Transaction' : 'Confirm Entry'}
           </button>
 
           {/* Delete button only shown when editing an existing transaction */}

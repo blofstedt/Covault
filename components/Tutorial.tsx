@@ -104,7 +104,8 @@ const Tutorial: React.FC<TutorialProps> = ({
     {
       title: "Transaction Details",
       content: "Tapping a transaction opens its details. From here you can edit any field — the amount, vendor, category, date, and recurrence are all editable. Use the Update Transaction button to save changes, or the Delete Transaction button to remove it entirely.",
-      target: "first-budget-card",
+      target: "tutorial-transaction-form",
+      animation: "close-transaction-demo",
     },
     {
       title: "Quick Navigation",
@@ -233,21 +234,13 @@ const Tutorial: React.FC<TutorialProps> = ({
         if (cancelled) return;
         onShowTransactionModal?.(true);
 
-        // Step 4: After showing the modal, close it
+        // Step 4: Leave the modal open and advance to the next step
         setTimeout(() => {
           if (cancelled) return;
-          onShowTransactionModal?.(false);
-
-          // Step 5: Collapse the budget and clean up
-          setTimeout(() => {
-            if (cancelled) return;
-            onShowPlaceholderTransaction?.(false);
-            onExpandBudget?.(null);
-            setIsAnimating(false);
-            animationCleanupRef.current = null;
-            advanceToNextStep();
-          }, 600);
-        }, 2000);
+          setIsAnimating(false);
+          animationCleanupRef.current = cleanup;
+          advanceToNextStep();
+        }, 800);
       }, 1000);
     }, 800);
   }, [firstBudgetId, onExpandBudget, onShowPlaceholderTransaction, onShowTransactionModal, advanceToNextStep]);
@@ -297,6 +290,37 @@ const Tutorial: React.FC<TutorialProps> = ({
       advanceToNextStep();
     }, 500);
   }, [onOpenTransactionForm, advanceToNextStep]);
+
+  // Run the close transaction demo animation (cleans up the open transaction modal)
+  const runCloseTransactionDemoAnimation = useCallback(() => {
+    setIsAnimating(true);
+    let cancelled = false;
+
+    const cleanup = () => {
+      cancelled = true;
+      onShowTransactionModal?.(false);
+      onShowPlaceholderTransaction?.(false);
+      onExpandBudget?.(null);
+      setIsAnimating(false);
+    };
+    animationCleanupRef.current = cleanup;
+
+    // Close modal, then collapse the vial
+    onShowTransactionModal?.(false);
+
+    setTimeout(() => {
+      if (cancelled) return;
+      onShowPlaceholderTransaction?.(false);
+      onExpandBudget?.(null);
+
+      setTimeout(() => {
+        if (cancelled) return;
+        setIsAnimating(false);
+        animationCleanupRef.current = null;
+        advanceToNextStep();
+      }, 400);
+    }, 300);
+  }, [onShowTransactionModal, onShowPlaceholderTransaction, onExpandBudget, advanceToNextStep]);
 
   // Run the split demo animation
   const SPLIT_DEMO_DURATION_MS = 2500;
@@ -378,6 +402,10 @@ const Tutorial: React.FC<TutorialProps> = ({
     }
     if (currentStepData.animation === 'close-transaction-form') {
       runCloseTransactionFormAnimation();
+      return;
+    }
+    if (currentStepData.animation === 'close-transaction-demo') {
+      runCloseTransactionDemoAnimation();
       return;
     }
     if (currentStepData.animation === 'demo-transaction-tap') {
