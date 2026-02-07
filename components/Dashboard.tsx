@@ -449,8 +449,8 @@ const Dashboard: React.FC<DashboardProps> = ({
   if (showParsing) {
     return (
       <TransactionParsing
-        enabled={(state.settings as any).notificationsEnabled || false}
-        onToggle={(v: boolean) => updateSettings('notificationsEnabled' as any, v)}
+        enabled={state.settings.notificationsEnabled || false}
+        onToggle={(v: boolean) => updateSettings('notificationsEnabled', v)}
         onBack={() => setShowParsing(false)}
         onAddTransaction={() => setIsAddingTx(true)}
         onGoHome={() => {

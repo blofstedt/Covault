@@ -15,6 +15,7 @@ export interface DashboardSettings {
   theme: string;
   rolloverEnabled: boolean;
   useLeisureAsBuffer: boolean;
+  notificationsEnabled?: boolean;
   app_notifications_enabled?: boolean; // <-- Correct key
   [key: string]: any;
 }
@@ -159,7 +160,7 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
 
           {/* Bank Notification Listener */}
           <NotificationSettingsSection
-            enabled={!!(settings as any).notificationsEnabled}
+            enabled={!!settings.notificationsEnabled}
             onToggle={(v) => onUpdateSettings('notificationsEnabled', v)}
           />
 
