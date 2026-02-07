@@ -57,6 +57,13 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
           const hiddenCategories: string[] = (settings as any).hiddenCategories || [];
           return !hiddenCategories.includes(budget.id);
         })
+        .sort((a, b) => {
+          const aIsOther = a.name.toLowerCase() === 'other';
+          const bIsOther = b.name.toLowerCase() === 'other';
+          if (aIsOther && !bIsOther) return 1;
+          if (!aIsOther && bIsOther) return -1;
+          return 0;
+        })
         .map((budget, index) => {
           const budgetTxs = transactions.filter(
             (t) =>

@@ -109,11 +109,20 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     // Group spending by "YYYY-MM" and category name
     const monthMap = new Map<string, Map<string, number>>();
 
+    // Determine current month key
+    const now = new Date();
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
     for (const tx of safeTransactions) {
-      if (tx.is_projected) continue;
       const rawDate = tx.date;
       const date = rawDate ? new Date(rawDate) : null;
       if (!date || isNaN(date.getTime())) continue;
+
+      // Include projected transactions only for the current month
+      if (tx.is_projected) {
+        const txMonthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        if (txMonthKey !== currentMonthKey) continue;
+      }
 
       const amount = Number(tx.amount) || 0;
       if (amount === 0) continue;
@@ -161,8 +170,6 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     // If no spending data, create a synthetic current-month entry with zero spending
     // so the chart always renders the budget corridor and threshold lines
     if (data.length === 0) {
-      const now = new Date();
-      const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
       const entry: MonthlyBudgetData = {
         month: formatMonthLabel(currentMonthKey),
         total: 0,
@@ -174,11 +181,36 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       data.push(entry);
     }
 
-    // If only one month of data, duplicate it so the chart renders a flat band
+    // If only one month of data, prepend a synthetic prior month with zero spending
+    // so the chart renders a flat band without mislabeling the actual month
     if (data.length === 1) {
-      const original = data[0];
-      const duplicate: MonthlyBudgetData = { ...original, month: original.month + ' ' };
-      data.push(duplicate);
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const parts = data[0].month.split(' ');
+      const labelMonth = parts[0];
+      const labelYear = parts[1];
+      const mIdx = monthNames.indexOf(labelMonth);
+
+      let priorLabel: string;
+      if (mIdx >= 0 && labelYear && !isNaN(parseInt(labelYear, 10))) {
+        const prevMonth = mIdx === 0 ? 11 : mIdx - 1;
+        const prevYear = mIdx === 0 ? String(parseInt(labelYear, 10) - 1) : labelYear;
+        priorLabel = `${monthNames[prevMonth]} ${prevYear}`;
+      } else {
+        // Fallback: compute prior month from current date
+        const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const prevKey = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+        priorLabel = formatMonthLabel(prevKey);
+      }
+
+      const priorEntry: MonthlyBudgetData = {
+        month: priorLabel,
+        total: 0,
+        budgetLimit: totalBudgetLimit,
+      };
+      for (const name of categoryNames) {
+        priorEntry[name] = 0;
+      }
+      data.unshift(priorEntry);
     }
 
     return data;
