@@ -158,7 +158,10 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           />
 
           {/* Bank Notification Listener */}
-          <NotificationSettingsSection />
+          <NotificationSettingsSection
+            enabled={!!(settings as any).notificationsEnabled}
+            onToggle={(v) => onUpdateSettings('notificationsEnabled', v)}
+          />
 
           {/* App Notifications */}
           <AppNotificationsSection

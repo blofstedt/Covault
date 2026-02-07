@@ -75,9 +75,13 @@ const KNOWN_BANKING_APPS: Record<string, string> = {
   'com.schwab.mobile': 'Schwab',
 };
 
-const NotificationSettingsSection: React.FC = () => {
+interface NotificationSettingsSectionProps {
+  enabled: boolean;
+  onToggle: (enabled: boolean) => void;
+}
+
+const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = ({ enabled, onToggle }) => {
   const isNative = Capacitor.isNativePlatform();
-  const [enabled, setEnabled] = useState(false);
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [installedBankApps, setInstalledBankApps] = useState<
     Array<{ packageName: string; name: string }>
@@ -102,7 +106,10 @@ const NotificationSettingsSection: React.FC = () => {
     try {
       const { enabled: granted } = await plugin.isEnabled();
       setPermissionGranted(granted);
-      setEnabled(granted);
+      // Sync enabled state with actual permission
+      if (granted && !enabled) {
+        onToggle(true);
+      }
 
       if (granted) {
         const { apps: installed } = await plugin.getInstalledApps();
@@ -130,7 +137,7 @@ const NotificationSettingsSection: React.FC = () => {
     } catch (e) {
       console.warn('[NotificationSettingsSection] checkStatus error:', e);
     }
-  }, [plugin]);
+  }, [plugin, enabled, onToggle]);
 
   useEffect(() => {
     checkStatus();
@@ -155,7 +162,7 @@ const NotificationSettingsSection: React.FC = () => {
         const { enabled: granted } = await plugin.isEnabled();
         if (granted) {
           setPermissionGranted(true);
-          setEnabled(true);
+          onToggle(true);
           checkStatus();
           return;
         }
@@ -170,7 +177,7 @@ const NotificationSettingsSection: React.FC = () => {
 
     if (enabled) {
       // Logical off (we still can't revoke OS permission from here)
-      setEnabled(false);
+      onToggle(false);
       return;
     }
 
