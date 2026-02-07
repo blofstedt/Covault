@@ -490,6 +490,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             budgets={visibleBudgets}
             transactions={state.transactions}
             isTutorialMode={showTutorial}
+            theme={state.settings.theme as 'light' | 'dark'}
           />
         )}
 

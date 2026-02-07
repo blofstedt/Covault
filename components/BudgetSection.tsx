@@ -158,46 +158,52 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
         </div>
 
         {/* RIGHT SIDE: SPENT / LIMIT */}
-        <div className="text-right flex flex-col items-end">
-          <div className="flex items-baseline space-x-1">
-            {isExpanded && (
-              <div className="flex flex-col items-end">
-                <span
-                  className="text-sm font-black mr-2 tracking-tight transition-colors duration-300 text-slate-500"
-                >
-                  ${spent.toFixed(0)}
+        <div className="text-right flex flex-col items-end justify-center">
+          {isExpanded ? (
+            <>
+              <div className="flex items-baseline space-x-1">
+                <div className="flex flex-col items-end">
+                  <span
+                    className="text-sm font-black mr-2 tracking-tight transition-colors duration-300 text-slate-500"
+                  >
+                    ${spent.toFixed(0)}
+                    {external > 0 && (
+                      <span className="text-amber-500 dark:text-amber-400">
+                        {' '}+${external.toFixed(0)}
+                      </span>
+                    )}
+                    <span className="mx-1.5 opacity-30 font-medium text-slate-400">
+                      /
+                    </span>
+                  </span>
                   {external > 0 && (
-                    <span className="text-amber-500 dark:text-amber-400">
-                      {' '}+${external.toFixed(0)}
+                    <span className="text-[8px] font-bold uppercase tracking-wider text-amber-500 dark:text-amber-400 mr-2">
+                      Shield Active
                     </span>
                   )}
-                  <span className="mx-1.5 opacity-30 font-medium text-slate-400">
-                    /
-                  </span>
-                </span>
-                {external > 0 && (
-                  <span className="text-[8px] font-bold uppercase tracking-wider text-amber-500 dark:text-amber-400 mr-2">
-                    Shield Active
-                  </span>
-                )}
-              </div>
-            )}
+                </div>
 
-            <span className="text-xl font-black tracking-tighter leading-none transition-colors duration-300 text-slate-500 dark:text-slate-100">
+                <span className="text-xl font-black tracking-tighter leading-none transition-colors duration-300 text-slate-500 dark:text-slate-100">
+                  ${budget.totalLimit}
+                </span>
+              </div>
+
+              <span
+                className="text-[10px] font-bold uppercase tracking-widest mt-0.5 transition-colors duration-300 text-slate-400 dark:text-slate-500"
+              >
+                Vault Capacity
+              </span>
+            </>
+          ) : (
+            <span
+              className="text-sm font-black tracking-tight transition-colors duration-300 text-slate-500 dark:text-slate-100"
+              aria-label={`${total.toFixed(0)} dollars spent of ${budget.totalLimit} dollar limit`}
+            >
+              ${total.toFixed(0)}
+              <span className="mx-1 opacity-30 font-medium text-slate-400">/</span>
               ${budget.totalLimit}
             </span>
-          </div>
-
-          {/* TEXT BELOW LIMIT ("My Target" / "Our Target") */}
-          <span
-            className="text-[10px] font-bold uppercase tracking-widest mt-0.5 transition-colors duration-300 text-slate-400 dark:text-slate-500"
-          >
-            {isExpanded
-              ? 'Vault Capacity'
-              : isSharedView
-              ? 'Our Target'
-              : 'My Target'}
-          </span>
+          )}
         </div>
       </div>
 
