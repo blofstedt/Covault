@@ -90,16 +90,22 @@ const Tutorial: React.FC<TutorialProps> = ({
     {
       // Step 8: Close form, then move on
       title: "Splitting Budgets",
-      content: "When two categories are selected, drag to adjust how the amount is split between them. This is great for shared expenses like groceries and dining.",
+      content: "Splitting is great when a single expense belongs to more than one category, allowing you to divide it up as roughly or precisely as you like.",
       target: "tutorial-budget-grid",
       animation: "close-transaction-form",
     },
     {
       // Step 9: Transaction demo - will trigger animation
       title: "View Your Transactions",
-      content: "Tap any budget vial to expand it and see your transactions. Let's see how it works.",
+      content: "Tap any budget vial to open it and reveal your transactions inside. Each vial houses all the entries for that category. Watch as we tap one open now.",
       target: "first-budget-card",
       animation: "demo-transaction-tap",
+    },
+    {
+      title: "Transaction Details",
+      content: "Tapping a transaction opens its details. From here you can edit any field — the amount, vendor, category, date, and recurrence are all editable. Use the Update Transaction button to save changes, or the Delete Transaction button to remove it entirely.",
+      target: "tutorial-transaction-form",
+      animation: "close-transaction-demo",
     },
     {
       title: "Quick Navigation",
@@ -121,6 +127,11 @@ const Tutorial: React.FC<TutorialProps> = ({
     {
       title: "Budget Limits",
       content: "Set the spending cap for each category. These limits define how full each vial can get before it overflows.",
+      target: "settings-budget-limits-container",
+    },
+    {
+      title: "Hide Categories",
+      content: "Use the eye icon next to each budget to hide categories you don't need. Hidden categories won't appear on your dashboard or chart, keeping your view focused on what matters.",
       target: "settings-budget-limits-container",
     },
     {
@@ -223,21 +234,13 @@ const Tutorial: React.FC<TutorialProps> = ({
         if (cancelled) return;
         onShowTransactionModal?.(true);
 
-        // Step 4: After showing the modal, close it
+        // Step 4: Leave the modal open and advance to the next step
         setTimeout(() => {
           if (cancelled) return;
-          onShowTransactionModal?.(false);
-
-          // Step 5: Collapse the budget and clean up
-          setTimeout(() => {
-            if (cancelled) return;
-            onShowPlaceholderTransaction?.(false);
-            onExpandBudget?.(null);
-            setIsAnimating(false);
-            animationCleanupRef.current = null;
-            advanceToNextStep();
-          }, 600);
-        }, 2000);
+          setIsAnimating(false);
+          animationCleanupRef.current = cleanup;
+          advanceToNextStep();
+        }, 800);
       }, 1000);
     }, 800);
   }, [firstBudgetId, onExpandBudget, onShowPlaceholderTransaction, onShowTransactionModal, advanceToNextStep]);
@@ -287,6 +290,37 @@ const Tutorial: React.FC<TutorialProps> = ({
       advanceToNextStep();
     }, 500);
   }, [onOpenTransactionForm, advanceToNextStep]);
+
+  // Run the close transaction demo animation (cleans up the open transaction modal)
+  const runCloseTransactionDemoAnimation = useCallback(() => {
+    setIsAnimating(true);
+    let cancelled = false;
+
+    const cleanup = () => {
+      cancelled = true;
+      onShowTransactionModal?.(false);
+      onShowPlaceholderTransaction?.(false);
+      onExpandBudget?.(null);
+      setIsAnimating(false);
+    };
+    animationCleanupRef.current = cleanup;
+
+    // Close modal, then collapse the vial
+    onShowTransactionModal?.(false);
+
+    setTimeout(() => {
+      if (cancelled) return;
+      onShowPlaceholderTransaction?.(false);
+      onExpandBudget?.(null);
+
+      setTimeout(() => {
+        if (cancelled) return;
+        setIsAnimating(false);
+        animationCleanupRef.current = null;
+        advanceToNextStep();
+      }, 400);
+    }, 300);
+  }, [onShowTransactionModal, onShowPlaceholderTransaction, onExpandBudget, advanceToNextStep]);
 
   // Run the split demo animation
   const SPLIT_DEMO_DURATION_MS = 2500;
@@ -368,6 +402,10 @@ const Tutorial: React.FC<TutorialProps> = ({
     }
     if (currentStepData.animation === 'close-transaction-form') {
       runCloseTransactionFormAnimation();
+      return;
+    }
+    if (currentStepData.animation === 'close-transaction-demo') {
+      runCloseTransactionDemoAnimation();
       return;
     }
     if (currentStepData.animation === 'demo-transaction-tap') {

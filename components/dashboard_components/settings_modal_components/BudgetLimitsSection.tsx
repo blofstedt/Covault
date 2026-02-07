@@ -83,22 +83,26 @@ const BudgetLimitsSection: React.FC<BudgetLimitsSectionProps> = ({
               </label>
               
               <div className="flex items-center gap-2">
-                {!isHidden && (
-                  <>
-                    <span className="text-xs font-bold text-slate-400">$</span>
-                    <input
-                      id={`budget-${budget.id}`}
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      value={displayValue}
-                      onChange={(e) => handleInputChange(budget.id, e.target.value)}
-                      onBlur={() => handleSave(budget)}
-                      onKeyDown={(e) => handleKeyDown(e, budget)}
-                      className="w-24 px-3 py-2 text-sm font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:border-emerald-500 dark:focus:border-emerald-400 transition-colors"
-                    />
-                  </>
-                )}
+                <div className="flex items-center gap-2 w-32 justify-end">
+                  {!isHidden ? (
+                    <>
+                      <span className="text-xs font-bold text-slate-400">$</span>
+                      <input
+                        id={`budget-${budget.id}`}
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={displayValue}
+                        onChange={(e) => handleInputChange(budget.id, e.target.value)}
+                        onBlur={() => handleSave(budget)}
+                        onKeyDown={(e) => handleKeyDown(e, budget)}
+                        className="w-24 px-3 py-2 text-sm font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:border-emerald-500 dark:focus:border-emerald-400 transition-colors"
+                      />
+                    </>
+                  ) : (
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-wider">Hidden</span>
+                  )}
+                </div>
                 {onToggleHideCategory && (
                   <button
                     type="button"
