@@ -188,7 +188,7 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           />
 
           {/* Export Transactions */}
-          <ExportTransactionsSection transactions={transactions} />
+          <ExportTransactionsSection transactions={transactions} budgets={budgets} />
 
           {/* Support & Feedback */}
           <SupportFeedbackSection />

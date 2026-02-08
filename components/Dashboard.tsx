@@ -15,8 +15,6 @@ import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import DashboardSettingsModal from './dashboard_components/DashboardSettingsModal';
 import SearchResults from './dashboard_components/SearchResults';
 import BudgetFlowChart from './dashboard_components/BudgetFlowChart';
-import FeatureRequestModal from './dashboard_components/FeatureRequestModal';
-import { useFeatureRequests } from '../lib/useFeatureRequests';
 
 // Notifications helper
 import { checkAndTriggerAppNotifications } from '../lib/appNotifications';
@@ -69,7 +67,6 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [showParsing, setShowParsing] = useState(false);
-  const [showFeatureRequests, setShowFeatureRequests] = useState(false);
   const [isLinkingPartner, setIsLinkingPartner] = useState(false);
   const [partnerLinkEmail, setPartnerLinkEmail] = useState('');
   const [showTutorial, setShowTutorial] = useState(!state.settings.hasSeenTutorial);
@@ -79,16 +76,6 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [tutorialShowTxModal, setTutorialShowTxModal] = useState(false);
   const [tutorialFormOpen, setTutorialFormOpen] = useState(false);
   const [demoSplitTrigger, setDemoSplitTrigger] = useState(0);
-
-  // Feature requests
-  const {
-    requests: featureRequests,
-    loading: featureRequestsLoading,
-    submitRequest: submitFeatureRequest,
-    toggleVote: toggleFeatureVote,
-    updateStatus: updateFeatureStatus,
-    searchRequests: searchFeatureRequests,
-  } = useFeatureRequests(state.user?.id);
 
   // Scroll refs shared with child components
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -104,7 +91,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   // Lock body scroll when overlays are open
   useEffect(() => {
     const shouldLock =
-      showSettings || isAddingTx || !!selectedTx || showTutorial || showFeatureRequests;
+      showSettings || isAddingTx || !!selectedTx || showTutorial;
     if (shouldLock) {
       if (bodyOverflowRef.current === null) {
         bodyOverflowRef.current = document.body.style.overflow || '';
@@ -114,7 +101,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       document.body.style.overflow = bodyOverflowRef.current;
       bodyOverflowRef.current = null;
     }
-  }, [showSettings, isAddingTx, selectedTx, showTutorial, showFeatureRequests]);
+  }, [showSettings, isAddingTx, selectedTx, showTutorial]);
 
   useEffect(() => {
     return () => {
@@ -532,7 +519,6 @@ const Dashboard: React.FC<DashboardProps> = ({
       >
         <DashboardHeader
           onOpenSettings={() => setShowSettings(true)}
-          onOpenFeatureRequests={() => setShowFeatureRequests(true)}
         />
       </header>
 
@@ -622,20 +608,6 @@ const Dashboard: React.FC<DashboardProps> = ({
           onSignOut={onSignOut}
           onSaveBudgetLimit={saveBudgetLimit}
           saveBudgetVisibility={saveBudgetVisibility}
-        />
-      )}
-
-      {showFeatureRequests && (
-        <FeatureRequestModal
-          onClose={() => setShowFeatureRequests(false)}
-          requests={featureRequests}
-          loading={featureRequestsLoading}
-          userId={state.user?.id}
-          userEmail={state.user?.email}
-          onSubmit={submitFeatureRequest}
-          onToggleVote={toggleFeatureVote}
-          onUpdateStatus={updateFeatureStatus}
-          searchRequests={searchFeatureRequests}
         />
       )}
 
