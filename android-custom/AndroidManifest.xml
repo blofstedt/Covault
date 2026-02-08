@@ -16,9 +16,9 @@
     -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- Storage permissions for CSV file downloads -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <!-- Storage permissions for CSV file downloads (only needed for Android 9 and below) -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
 
     <!-- For keeping the app running in background -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
