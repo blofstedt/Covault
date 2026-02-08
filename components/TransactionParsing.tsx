@@ -15,6 +15,7 @@ interface TransactionParsingProps {
   budgets?: BudgetCategory[];
   onApprovePending?: (pendingId: string, categoryId: string) => void;
   onRejectPending?: (pendingId: string) => void;
+  onRefreshNotifications?: () => Promise<void>;
 }
 
 const TransactionParsing: React.FC<TransactionParsingProps> = ({
@@ -29,9 +30,11 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   budgets = [],
   onApprovePending,
   onRejectPending,
+  onRefreshNotifications,
 }) => {
   // Track which pending transaction is expanded for category selection
   const [expandedPendingId, setExpandedPendingId] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const pendingCount = pendingTransactions.length;
 
@@ -201,7 +204,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                       <line x1="16" y1="17" x2="8" y2="17" />
                     </svg>
                   </div>
-                  <div>
+                  <div className="flex-1">
                     <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                       Captured Transactions
                     </h3>
@@ -209,6 +212,36 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                       Auto-detected from bank notifications
                     </p>
                   </div>
+                  {onRefreshNotifications && (
+                    <button
+                      onClick={async () => {
+                        if (isRefreshing) return;
+                        setIsRefreshing(true);
+                        try {
+                          await onRefreshNotifications();
+                        } finally {
+                          setIsRefreshing(false);
+                        }
+                      }}
+                      disabled={isRefreshing}
+                      className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 transition-all active:scale-95 hover:bg-emerald-100 dark:hover:bg-emerald-900/40"
+                      title="Scan notifications"
+                    >
+                      <svg
+                        className={`w-4 h-4 text-emerald-600 dark:text-emerald-400 ${isRefreshing ? 'animate-spin' : ''}`}
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <polyline points="23 4 23 10 17 10" />
+                        <polyline points="1 20 1 14 7 14" />
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
 
                 {autoDetectedTransactions.length > 0 ? (

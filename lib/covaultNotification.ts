@@ -39,6 +39,14 @@ export interface CovaultNotificationPlugin {
   saveMonitoredApps(options: { apps: any }): Promise<void>;
   getMonitoredApps(): Promise<{ apps: string[] }>;
 
+  /**
+   * Scan all currently active (visible) notifications in the Android notification
+   * shade and re-process any that come from monitored banking apps.
+   * Each matching notification will fire a 'transactionDetected' event
+   * through the normal pipeline (which includes fingerprint deduplication).
+   */
+  scanActiveNotifications(): Promise<void>;
+
   // Our event: emits whenever a transaction notification is detected
   addListener(
     eventName: 'transactionDetected',
