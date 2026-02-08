@@ -39,6 +39,13 @@ interface DashboardProps {
   saveTheme: (theme: 'light' | 'dark') => void;
   saveBudgetVisibility: (categoryId: string, visible: boolean) => void;
   isLoadingData: boolean;
+  // Dev mode section overrides
+  devShowSettings?: boolean;
+  devShowTutorial?: boolean;
+  devShowAddTx?: boolean;
+  onDevResetShowSettings?: () => void;
+  onDevResetShowTutorial?: () => void;
+  onDevResetShowAddTx?: () => void;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({
@@ -60,6 +67,12 @@ const Dashboard: React.FC<DashboardProps> = ({
   saveTheme,
   saveBudgetVisibility,
   isLoadingData,
+  devShowSettings,
+  devShowTutorial,
+  devShowAddTx,
+  onDevResetShowSettings,
+  onDevResetShowTutorial,
+  onDevResetShowAddTx,
 }) => {
   const [isAddingTx, setIsAddingTx] = useState(false);
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
@@ -81,6 +94,17 @@ const Dashboard: React.FC<DashboardProps> = ({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const budgetRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const bodyOverflowRef = useRef<string | null>(null);
+
+  // Dev mode: respond to external section navigation
+  useEffect(() => {
+    if (devShowSettings) setShowSettings(true);
+  }, [devShowSettings]);
+  useEffect(() => {
+    if (devShowTutorial) setShowTutorial(true);
+  }, [devShowTutorial]);
+  useEffect(() => {
+    if (devShowAddTx) setIsAddingTx(true);
+  }, [devShowAddTx]);
 
   // Track initial mount for animation purposes
   useEffect(() => {
@@ -386,6 +410,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     setIsAddingTx(false);
     setSelectedTx(null);
     updateSettings('hasSeenTutorial', true);
+    onDevResetShowTutorial?.();
   };
 
   const handleTutorialStepChange = (step: number) => {
@@ -598,6 +623,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           onClose={() => {
             setShowSettings(false);
             setIsLinkingPartner(false);
+            onDevResetShowSettings?.();
           }}
           onRunTutorial={handleRunTutorialFromSettings}
           onUpdateSettings={updateSettings}
@@ -616,6 +642,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           onClose={() => {
             setIsAddingTx(false);
             setTutorialFormOpen(false);
+            onDevResetShowAddTx?.();
           }}
           onSave={tutorialFormOpen ? (_tx: Transaction) => { /* no-op: saves disabled during tutorial */ } : onAddTransaction}
           budgets={visibleBudgets}

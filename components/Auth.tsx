@@ -3,14 +3,27 @@ import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 import { supabase } from '../lib/supabase';
 import CovaultIcon from './CovaultIcon';
+import { DEV_USERNAME, DEV_PASSWORD } from '../lib/devMode';
 
 interface AuthProps {
   onSignIn: () => void;
+  onDevLogin?: () => void;
 }
 
-const Auth: React.FC<AuthProps> = ({ onSignIn }) => {
+const Auth: React.FC<AuthProps> = ({ onSignIn, onDevLogin }) => {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [loginField, setLoginField] = useState('');
+  const [passwordField, setPasswordField] = useState('');
+  const [showDevFields, setShowDevFields] = useState(false);
+
+  const handleDevLogin = () => {
+    if (loginField === DEV_USERNAME && passwordField === DEV_PASSWORD) {
+      onDevLogin?.();
+    } else {
+      setAuthError('Invalid dev credentials.');
+    }
+  };
 
   const handleGoogleLogin = async () => {
     try {
@@ -168,6 +181,47 @@ const Auth: React.FC<AuthProps> = ({ onSignIn }) => {
         <p className="text-center text-[10px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest max-w-[240px] mx-auto">
           Secured by Supabase • AES-256
         </p>
+
+        {/* Dev mode login */}
+        {!isLoggingIn && (
+          <div className="w-full max-w-xs">
+            {!showDevFields ? (
+              <button
+                onClick={() => setShowDevFields(true)}
+                className="w-full text-center text-[9px] text-slate-300 dark:text-slate-700 font-bold uppercase tracking-widest hover:text-slate-400 dark:hover:text-slate-600 transition-colors py-1"
+              >
+                Dev Login
+              </button>
+            ) : (
+              <div className="space-y-2.5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="h-px bg-slate-100 dark:bg-slate-800 mb-3" />
+                <input
+                  type="text"
+                  value={loginField}
+                  onChange={(e) => setLoginField(e.target.value)}
+                  placeholder="Login"
+                  autoComplete="off"
+                  className="w-full px-4 py-3 text-sm bg-white dark:bg-slate-900 border-2 border-slate-100 dark:border-slate-800 rounded-xl text-slate-700 dark:text-slate-200 placeholder-slate-300 dark:placeholder-slate-700 focus:outline-none focus:border-amber-500/50 transition-colors font-bold"
+                />
+                <input
+                  type="password"
+                  value={passwordField}
+                  onChange={(e) => setPasswordField(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleDevLogin()}
+                  placeholder="Password"
+                  autoComplete="off"
+                  className="w-full px-4 py-3 text-sm bg-white dark:bg-slate-900 border-2 border-slate-100 dark:border-slate-800 rounded-xl text-slate-700 dark:text-slate-200 placeholder-slate-300 dark:placeholder-slate-700 focus:outline-none focus:border-amber-500/50 transition-colors font-bold"
+                />
+                <button
+                  onClick={handleDevLogin}
+                  className="w-full py-3 bg-amber-500/10 border-2 border-amber-500/30 rounded-xl text-amber-600 dark:text-amber-400 text-[11px] font-black uppercase tracking-widest hover:bg-amber-500/20 active:scale-95 transition-all"
+                >
+                  🛠 Enter Dev Mode
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
