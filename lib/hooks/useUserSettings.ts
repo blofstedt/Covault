@@ -347,6 +347,7 @@ export const useUserSettings = ({
               category: categoryName,
               limit_amount: category.totalLimit,
               visible,
+              is_household: !appState.user?.budgetingSolo,
             }),
           },
         );
