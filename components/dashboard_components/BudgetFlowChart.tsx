@@ -386,23 +386,9 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .attr('stroke-width', 1.5)
       .style('opacity', 0);
 
-    // Interaction handler
-    const handleInteraction = (event: any) => {
-      const [mx, my] = d3.pointer(event, svg.node());
-      const domain = x.domain();
-      if (domain.length < 2) {
-        // Single-point: always select index 0
-        setHoveredMonthIdx(0);
-        setActiveCategory(categoryNames[0] || null);
-        const xPos = x(chartData[0].month) || 0;
-        setMouseCoords({ x: xPos, y: my });
-        scrubber.attr('x1', xPos).attr('x2', xPos).style('opacity', 0.6);
-        return;
-      }
-
-      const step = width / (domain.length - 1);
-      const index = Math.round(mx / step);
-      const monthIdx = Math.max(0, Math.min(chartData.length - 1, index));
+    // Shared update function for month/category selection
+    const updateSelection = (monthIdx: number, my: number) => {
+      const xPos = x(chartData[monthIdx].month) || 0;
 
       let foundCat: string | null = null;
       for (const layer of stackedData) {
@@ -415,7 +401,22 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         }
       }
 
-      const xPos = x(chartData[monthIdx].month) || 0;
+      // If finger is outside all bands, find the closest category by vertical distance
+      if (!foundCat) {
+        let minDist = Infinity;
+        for (const layer of stackedData) {
+          const point = layer[monthIdx];
+          const y0 = y(point[0]);
+          const y1 = y(point[1]);
+          const mid = (y0 + y1) / 2;
+          const dist = Math.abs(my - mid);
+          if (dist < minDist) {
+            minDist = dist;
+            foundCat = layer.key;
+          }
+        }
+      }
+
       setActiveCategory(foundCat);
       setHoveredMonthIdx(monthIdx);
       setMouseCoords({ x: xPos, y: my });
@@ -435,6 +436,58 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         .attr('fill-opacity', (d: any) => (foundCat && d.key === foundCat ? 1.0 : 0.1));
     };
 
+    // Interaction handler for mouse events
+    const handleInteraction = (event: any) => {
+      const [mx, my] = d3.pointer(event, svg.node());
+      const domain = x.domain();
+      if (domain.length < 2) {
+        setHoveredMonthIdx(0);
+        setActiveCategory(categoryNames[0] || null);
+        const xPos = x(chartData[0].month) || 0;
+        setMouseCoords({ x: xPos, y: my });
+        scrubber.attr('x1', xPos).attr('x2', xPos).style('opacity', 0.6);
+        return;
+      }
+
+      const step = width / (domain.length - 1);
+      const index = Math.round(mx / step);
+      const monthIdx = Math.max(0, Math.min(chartData.length - 1, index));
+
+      updateSelection(monthIdx, my);
+    };
+
+    // Touch event handlers for drag gestures
+    const handleTouchStart = (event: any) => {
+      event.preventDefault();
+      const touch = event.touches[0] || event.changedTouches[0];
+      const [mx, my] = d3.pointer(touch, svg.node());
+      const domain = x.domain();
+      if (domain.length < 2) {
+        setHoveredMonthIdx(0);
+        setActiveCategory(categoryNames[0] || null);
+        const xPos = x(chartData[0].month) || 0;
+        setMouseCoords({ x: xPos, y: my });
+        scrubber.attr('x1', xPos).attr('x2', xPos).style('opacity', 0.6);
+        return;
+      }
+      const step = width / (domain.length - 1);
+      const index = Math.round(mx / step);
+      const monthIdx = Math.max(0, Math.min(chartData.length - 1, index));
+      updateSelection(monthIdx, my);
+    };
+
+    const handleTouchMove = (event: any) => {
+      event.preventDefault();
+      const touch = event.touches[0] || event.changedTouches[0];
+      const [mx, my] = d3.pointer(touch, svg.node());
+      const domain = x.domain();
+      if (domain.length < 2) return;
+      const step = width / (domain.length - 1);
+      const index = Math.round(mx / step);
+      const monthIdx = Math.max(0, Math.min(chartData.length - 1, index));
+      updateSelection(monthIdx, my);
+    };
+
     const handleEnd = () => {
       setActiveCategory(null);
       setHoveredMonthIdx(null);
@@ -444,10 +497,25 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       svg.selectAll('.bfc-spill').transition().duration(300).attr('fill-opacity', 1.0);
     };
 
-    svgElement.on('mousemove touchmove', handleInteraction).on('mouseleave touchend', handleEnd);
+    svgElement.on('mousemove', handleInteraction).on('mouseleave', handleEnd);
+
+    // Attach touch events directly to the SVG DOM node for proper passive: false handling
+    const svgNode = svgRef.current;
+    if (svgNode) {
+      svgNode.addEventListener('touchstart', handleTouchStart, { passive: false });
+      svgNode.addEventListener('touchmove', handleTouchMove, { passive: false });
+      svgNode.addEventListener('touchend', handleEnd);
+      svgNode.addEventListener('touchcancel', handleEnd);
+    }
 
     return () => {
-      svgElement.on('mousemove touchmove', null).on('mouseleave touchend', null);
+      svgElement.on('mousemove', null).on('mouseleave', null);
+      if (svgNode) {
+        svgNode.removeEventListener('touchstart', handleTouchStart, { passive: false } as EventListenerOptions);
+        svgNode.removeEventListener('touchmove', handleTouchMove, { passive: false } as EventListenerOptions);
+        svgNode.removeEventListener('touchend', handleEnd);
+        svgNode.removeEventListener('touchcancel', handleEnd);
+      }
     };
   }, [chartData, categoryNames, totalBudgetLimit, theme]);
 

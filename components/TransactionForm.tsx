@@ -318,10 +318,10 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
   return (
     <div className={`fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-xl transition-opacity duration-250 ${isClosing ? 'opacity-0' : 'animate-in fade-in duration-300'}`}>
-      <div id="tutorial-transaction-form" className={`w-full max-w-sm bg-white dark:bg-slate-900 rounded-[3rem] p-8 space-y-6 shadow-2xl border border-slate-100 dark:border-slate-800/60 max-h-[90vh] overflow-y-auto no-scrollbar transition-all duration-250 ${isClosing ? 'opacity-0 scale-95' : 'animate-in zoom-in-95 duration-300'}`}>
+      <div id="tutorial-transaction-form" className={`w-full max-w-sm bg-white dark:bg-slate-900 rounded-[3rem] p-6 space-y-4 shadow-2xl border border-slate-100 dark:border-slate-800/60 max-h-[90vh] overflow-y-auto no-scrollbar transition-all duration-250 ${isClosing ? 'opacity-0 scale-95' : 'animate-in zoom-in-95 duration-300'}`}>
         <div className="flex items-center justify-between">
           <div className="flex flex-col">
-            <h2 className="text-2xl font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">
+            <h2 className="text-lg font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">
               {initialTransaction ? 'Edit Entry' : 'New Entry'}
             </h2>
             {isSharedAccount && (
@@ -337,9 +337,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="space-y-4">
-            <div id="tutorial-amount-field" className="flex flex-col items-center justify-center py-8 bg-slate-50/50 dark:bg-slate-800/20 rounded-3xl border border-slate-100/50 dark:border-slate-800/30">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-3">
+            <div id="tutorial-amount-field" className="flex flex-col items-center justify-center py-5 bg-slate-50/50 dark:bg-slate-800/20 rounded-3xl border border-slate-100/50 dark:border-slate-800/30">
               <div className="flex items-center justify-center space-x-1">
                 <span className="text-xl font-black text-slate-300 dark:text-slate-700 select-none">$</span>
                 <input
@@ -364,7 +364,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                 onChange={e => { setVendor(e.target.value); setShowSuggestions(true); }}
                 onFocus={() => setShowSuggestions(true)}
                 onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 rounded-2xl py-4 px-6 text-sm font-bold placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500/20 text-slate-500 dark:text-slate-100 text-center shadow-sm"
+                className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 rounded-2xl py-3 px-6 text-sm font-bold placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500/20 text-slate-500 dark:text-slate-100 text-center shadow-sm"
               />
               {showSuggestions && suggestions.length > 0 && (
                 <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-xl overflow-hidden">
@@ -406,12 +406,13 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
               )}
             </div>
 
-            <div id="tutorial-budget-grid" className="flex flex-col gap-2">
+            <div id="tutorial-budget-grid" className="flex flex-col gap-1.5">
               {[budgets.slice(0, 3), budgets.slice(3)].map((row, rowIdx) => (
-                <div key={rowIdx} className="flex justify-center gap-2">
+                <div key={rowIdx} className="flex justify-center gap-1.5">
                   {row.map(b => {
                     const isSelected = selectedIds.has(b.id);
                     const isMaxSelected = selectedIds.size >= 2;
+                    const isSplit = selectedIds.size > 1;
                     const share = isSelected ? (splits[b.id] || 0) : 0;
                     const percentage = amount > 0 ? (share / amount) * 100 : 0;
                     const isSliding = activeSlideId === b.id;
@@ -431,7 +432,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                             : 'transparent'
                         }}
                         className={`
-                          relative group flex flex-col items-center justify-center p-3 rounded-2xl transition-all overflow-hidden border w-[calc(25%-6px)]
+                          relative group flex items-center justify-center p-2 rounded-2xl transition-all overflow-hidden border w-[calc(25%-5px)] aspect-square
                           ${isSelected
                             ? 'border-emerald-500/50 shadow-lg shadow-emerald-500/10'
                             : (isMaxSelected ? 'bg-slate-50/50 dark:bg-slate-900/50 border-slate-50 dark:border-slate-900 opacity-40 text-slate-300' : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-400')
@@ -446,16 +447,18 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                           </div>
                         )}
 
-                        <div className={`relative z-10 flex flex-col items-center transition-transform ${isSliding ? 'scale-110' : ''}`}>
-                          <div className={`w-5 h-5 ${isSelected ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>
+                        <div className={`relative z-10 flex flex-col items-center justify-center transition-transform ${isSliding ? 'scale-110' : ''}`}>
+                          <div className={`w-4 h-4 ${isSelected ? 'text-emerald-600 dark:text-emerald-400' : ''} ${isSelected && isSplit ? 'opacity-30' : ''}`}>
                             {getBudgetIcon(b.name)}
                           </div>
-                          <span className={`text-[8px] font-black uppercase tracking-tighter mt-1.5 ${isSelected ? 'text-emerald-700 dark:text-emerald-300' : ''}`}>
+                          <span className={`text-[8px] font-black uppercase tracking-tighter mt-1 leading-none ${isSelected ? 'text-emerald-700 dark:text-emerald-300' : ''} ${isSelected && isSplit ? 'opacity-30' : ''}`}>
                             {b.name}
                           </span>
-                          <span className={`text-[10px] font-black mt-0.5 ${isSelected ? 'text-emerald-800 dark:text-emerald-200' : 'invisible'}`}>
-                            {isSelected ? `$${share.toFixed(selectedIds.size > 1 ? 2 : 0)}` : '\u00A0'}
-                          </span>
+                          {isSelected && isSplit && (
+                            <span className="absolute inset-0 flex items-center justify-center text-[10px] font-black text-emerald-800 dark:text-emerald-200">
+                              ${share.toFixed(2)}
+                            </span>
+                          )}
                         </div>
                       </button>
                     );
@@ -465,13 +468,13 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             </div>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-3">
             {/* Styled date picker */}
             <div
               onClick={() => {
                 try { (dateInputRef.current as any)?.showPicker?.(); } catch { dateInputRef.current?.focus(); }
               }}
-              className="relative flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 cursor-pointer active:scale-[0.98] transition-all"
+              className="relative flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 cursor-pointer active:scale-[0.98] transition-all"
             >
               <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Date</span>
               <div className="flex items-center space-x-2">
@@ -497,7 +500,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                     key={r}
                     type="button"
                     onClick={() => setRecurrence(r as Recurrence)}
-                    className={`flex-1 py-3 text-[10px] font-black rounded-xl transition-all uppercase tracking-widest ${recurrence === r ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-slate-400'}`}
+                    className={`flex-1 py-2.5 text-[10px] font-black rounded-xl transition-all uppercase tracking-widest ${recurrence === r ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-slate-400'}`}
                   >
                     {r}
                   </button>
@@ -518,7 +521,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           <button
             type="submit"
             disabled={!isFormValid}
-            className={`w-full py-4 rounded-2xl font-black text-sm shadow-xl active:scale-95 transition-all uppercase tracking-[0.2em] mt-2 ${isFormValid ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 opacity-50 cursor-not-allowed'}`}
+            className={`w-full py-3 rounded-2xl font-black text-[11px] shadow-xl active:scale-95 transition-all uppercase tracking-[0.15em] mt-1 ${isFormValid ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 opacity-50 cursor-not-allowed'}`}
           >
             {initialTransaction ? 'Update Transaction' : 'Confirm Entry'}
           </button>
@@ -528,10 +531,10 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             <button
               type="button"
               onClick={onDelete}
-              className="w-full py-4 bg-rose-500 hover:bg-rose-600 text-white rounded-2xl font-black text-sm shadow-lg shadow-rose-500/20 active:scale-95 transition-all uppercase tracking-widest flex items-center justify-center space-x-2 mt-2"
+              className="w-full py-3 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-500 dark:text-slate-400 rounded-2xl font-black text-[11px] active:scale-95 transition-all uppercase tracking-[0.15em] flex items-center justify-center space-x-2 mt-1"
             >
               <svg
-                className="w-5 h-5"
+                className="w-4 h-4"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"

@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { Transaction, BudgetCategory } from '../../../types';
 
 interface ExportTransactionsSectionProps {
@@ -19,7 +20,7 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
   const [endDate, setEndDate] = useState(today);
   const [exported, setExported] = useState(false);
 
-  const handleExport = () => {
+  const handleExport = async () => {
     const start = new Date(startDate + 'T00:00:00');
     const end = new Date(endDate + 'T23:59:59');
 
@@ -65,10 +66,29 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
     );
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const fileName = `covault-transactions-${startDate}-to-${endDate}.csv`;
+
+    // On native Android, use the Web Share API with a File object
+    // because programmatic blob downloads do not trigger in the WebView.
+    if (Capacitor.isNativePlatform() && navigator.share && navigator.canShare) {
+      const file = new File([blob], fileName, { type: 'text/csv' });
+      if (navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: 'Covault Transactions' });
+        } catch {
+          // User cancelled share – not an error
+        }
+        setExported(true);
+        setTimeout(() => setExported(false), 2000);
+        return;
+      }
+    }
+
+    // Fallback: standard blob download for desktop/web browsers
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `covault-transactions-${startDate}-to-${endDate}.csv`);
+    link.setAttribute('download', fileName);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
