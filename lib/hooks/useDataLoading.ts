@@ -77,6 +77,41 @@ export const useDataLoading = ({
     }
   }, [setAppState, setDbError]);
 
+  // Ensure all default budgets exist in the budgets table for this user
+  const ensureDefaultBudgets = useCallback(
+    async (userId: string, existingCategories: Set<string>) => {
+      try {
+        const headers = await getAuthHeaders();
+        const missing = SYSTEM_CATEGORIES.filter(sc => !existingCategories.has(sc.name));
+        if (missing.length === 0) return;
+
+        const rows = missing.map(sc => ({
+          user_id: userId,
+          category: sc.name,
+          limit_amount: sc.totalLimit,
+          visible: true,
+        }));
+
+        (headers as any)['Prefer'] = 'return=representation';
+        const res = await fetch(`${REST_BASE}/budgets`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(rows),
+        });
+
+        if (!res.ok) {
+          const body = await res.text();
+          console.error('[ensureDefaultBudgets] insert failed:', body.slice(0, 200));
+        } else {
+          console.log('[ensureDefaultBudgets] inserted', missing.length, 'default budgets');
+        }
+      } catch (err: any) {
+        console.error('[ensureDefaultBudgets] exception:', err?.message || err);
+      }
+    },
+    [],
+  );
+
   // Load user budget limits from budgets table
   const loadUserBudgets = useCallback(
     async (userId: string) => {
@@ -100,27 +135,48 @@ export const useDataLoading = ({
 
         const rows = JSON.parse(body);
 
-        // Map category name → limit_amount
+        // Ensure all default budgets exist in the table
+        const existingCategories = new Set<string>(rows.map((r: any) => r.category));
+        await ensureDefaultBudgets(userId, existingCategories);
+
+        // Map category name → limit_amount and hidden categories in a single pass
         const limitsByCategory: Record<string, number> = {};
+        const hiddenCategoryNames = new Set<string>();
         for (const row of rows) {
           limitsByCategory[row.category] = Number(row.limit_amount);
+          if (row.visible === false) {
+            hiddenCategoryNames.add(row.category);
+          }
         }
 
-        // Merge with existing categories in state
-        setAppState(prev => ({
-          ...prev,
-          budgets: prev.budgets.map(b => ({
+        // Merge with existing categories in state and build hidden list
+        setAppState(prev => {
+          const updatedBudgets = prev.budgets.map(b => ({
             ...b,
             totalLimit: limitsByCategory[b.name] ?? b.totalLimit ?? 0,
-          })),
-        }));
+          }));
 
-        console.log('[loadUserBudgets] loaded:', limitsByCategory);
+          // Build hidden categories list by matching names to budget IDs
+          const hiddenCategoryIds = updatedBudgets
+            .filter(b => hiddenCategoryNames.has(b.name))
+            .map(b => b.id);
+
+          return {
+            ...prev,
+            budgets: updatedBudgets,
+            settings: {
+              ...prev.settings,
+              hiddenCategories: hiddenCategoryIds,
+            },
+          };
+        });
+
+        console.log('[loadUserBudgets] loaded:', limitsByCategory, 'hidden:', Array.from(hiddenCategoryNames));
       } catch (err: any) {
         console.error('[loadUserBudgets] exception:', err?.message || err);
       }
     },
-    [setAppState],
+    [setAppState, ensureDefaultBudgets],
   );
 
   // Load user settings from Supabase (monthly_income, etc.)

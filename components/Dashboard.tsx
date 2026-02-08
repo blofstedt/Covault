@@ -36,6 +36,7 @@ interface DashboardProps {
   saveBudgetLimit: (categoryId: string, newLimit: number) => void;
   saveUserIncome: (income: number) => void;
   saveTheme: (theme: 'light' | 'dark') => void;
+  saveBudgetVisibility: (categoryId: string, visible: boolean) => void;
   isLoadingData: boolean;
 }
 
@@ -56,6 +57,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   saveBudgetLimit,
   saveUserIncome,
   saveTheme,
+  saveBudgetVisibility,
   isLoadingData,
 }) => {
   const [isAddingTx, setIsAddingTx] = useState(false);
@@ -214,7 +216,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     if (!state.settings.useLeisureAsBuffer) return 0;
 
     let totalOverspend = 0;
-    state.budgets.forEach((b) => {
+    visibleBudgets.forEach((b) => {
       if (b.name.toLowerCase().includes('leisure')) return;
 
       const bTxs = currentMonthTransactions.filter(
@@ -239,7 +241,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     });
 
     return totalOverspend;
-  }, [state.budgets, currentMonthTransactions, state.settings.useLeisureAsBuffer]);
+  }, [visibleBudgets, currentMonthTransactions, state.settings.useLeisureAsBuffer]);
 
   const toggleExpand = (id: string) => {
     const next = new Set(expandedBudgets);
@@ -564,6 +566,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           onToggleLinkingPartner={setIsLinkingPartner}
           onSignOut={onSignOut}
           onSaveBudgetLimit={saveBudgetLimit}
+          saveBudgetVisibility={saveBudgetVisibility}
         />
       )}
 

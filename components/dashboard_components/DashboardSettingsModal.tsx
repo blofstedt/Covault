@@ -46,6 +46,7 @@ export interface DashboardSettingsModalProps {
   onToggleLinkingPartner: (value: boolean) => void;
   onSignOut: () => void;
   onSaveBudgetLimit: (categoryId: string, newLimit: number) => void;
+  saveBudgetVisibility: (categoryId: string, visible: boolean) => void;
 }
 
 const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
@@ -66,6 +67,7 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
   onToggleLinkingPartner,
   onSignOut,
   onSaveBudgetLimit,
+  saveBudgetVisibility,
 }) => {
   const settingsScrollRef = useRef<HTMLDivElement>(null);
 
@@ -145,10 +147,9 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
             hiddenCategories={(settings as any).hiddenCategories || []}
             onToggleHideCategory={(categoryId: string) => {
               const current: string[] = (settings as any).hiddenCategories || [];
-              const next = current.includes(categoryId)
-                ? current.filter((id: string) => id !== categoryId)
-                : [...current, categoryId];
-              onUpdateSettings('hiddenCategories', next);
+              const isCurrentlyHidden = current.includes(categoryId);
+              // Persist visibility to Supabase
+              saveBudgetVisibility(categoryId, isCurrentlyHidden);
             }}
           />
 

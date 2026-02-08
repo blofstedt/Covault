@@ -333,9 +333,120 @@ export const useUserSettings = ({
     [appState.user, setAppState, setDbError],
   );
 
+  // Save budget visibility to Supabase budgets table
+  const saveBudgetVisibility = useCallback(
+    async (categoryId: string, visible: boolean) => {
+      const userId = appState.user?.id;
+      if (!userId) return;
+
+      // Find the category name from the categoryId
+      const category = appState.budgets.find(b => b.id === categoryId);
+      if (!category) {
+        console.error('[saveBudgetVisibility] Category not found:', categoryId);
+        return;
+      }
+      const categoryName = category.name;
+
+      // Store previous hidden state for rollback
+      const previousHidden: string[] = (appState.settings as any).hiddenCategories || [];
+
+      // Optimistic UI update: toggle hiddenCategories
+      const rollback = () => {
+        setAppState(prev => ({
+          ...prev,
+          settings: { ...prev.settings, hiddenCategories: previousHidden },
+        }));
+      };
+
+      setAppState(prev => {
+        const currentHidden: string[] = (prev.settings as any).hiddenCategories || [];
+        const nextHidden = visible
+          ? currentHidden.filter((id: string) => id !== categoryId)
+          : [...currentHidden, categoryId];
+        return {
+          ...prev,
+          settings: { ...prev.settings, hiddenCategories: nextHidden },
+        };
+      });
+
+      try {
+        const headers = await getAuthHeaders();
+
+        // Check if a record exists for this category
+        const checkRes = await fetch(
+          `${REST_BASE}/budgets?select=id&user_id=eq.${userId}&category=eq.${encodeURIComponent(categoryName)}`,
+          { headers },
+        );
+
+        if (!checkRes.ok) {
+          console.error('[saveBudgetVisibility] check failed:', checkRes.status);
+          rollback();
+          return;
+        }
+
+        const existingRecords = await checkRes.json();
+        const recordExists = existingRecords && existingRecords.length > 0;
+
+        if (recordExists) {
+          const recordId = existingRecords[0].id;
+          (headers as any)['Prefer'] = 'return=representation';
+          const res = await fetch(
+            `${REST_BASE}/budgets?id=eq.${recordId}`,
+            {
+              method: 'PATCH',
+              headers,
+              body: JSON.stringify({ visible }),
+            },
+          );
+
+          if (!res.ok) {
+            const body = await res.text();
+            console.error('[saveBudgetVisibility] update failed:', body.slice(0, 200));
+            setDbError(`[saveBudgetVisibility] update failed (${res.status})`);
+            rollback();
+          } else {
+            console.log(`[saveBudgetVisibility] updated ${categoryName} visible=${visible}`);
+          }
+        } else {
+          // Insert a new record with visibility
+          (headers as any)['Prefer'] = 'return=representation';
+          const res = await fetch(
+            `${REST_BASE}/budgets`,
+            {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({
+                user_id: userId,
+                category: categoryName,
+                limit_amount: category.totalLimit,
+                visible,
+              }),
+            },
+          );
+
+          if (!res.ok) {
+            const body = await res.text();
+            console.error('[saveBudgetVisibility] insert failed:', body.slice(0, 200));
+            setDbError(`[saveBudgetVisibility] insert failed (${res.status})`);
+            rollback();
+          } else {
+            console.log(`[saveBudgetVisibility] inserted ${categoryName} visible=${visible}`);
+          }
+        }
+      } catch (err: any) {
+        const msg = `[saveBudgetVisibility] exception: ${err?.message || err}`;
+        console.error(msg);
+        setDbError(msg);
+        rollback();
+      }
+    },
+    [appState.user, appState.budgets, appState.settings, setAppState, setDbError],
+  );
+
   return {
     saveBudgetLimit,
     saveUserIncome,
     saveTheme,
+    saveBudgetVisibility,
   };
 };
