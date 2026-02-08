@@ -1,10 +1,16 @@
 // lib/hooks/useDataLoading.ts
 import { useCallback, useState } from 'react';
 import { SYSTEM_CATEGORIES } from '../../constants';
-import type { BudgetCategory } from '../../types';
+import type { BudgetCategory, Transaction } from '../../types';
 import { REST_BASE, getAuthHeaders, DEFAULT_BUDGET_LIMIT, DEFAULT_MONTHLY_INCOME } from '../apiHelpers';
 import { useFromSupabaseTransaction } from './transactionMappers';
 import type { UseUserDataParams } from './types';
+
+/** Merge incoming transactions into existing ones, deduplicating by ID. */
+function mergeTransactions(existing: Transaction[], incoming: Transaction[]): Transaction[] {
+  const incomingIds = new Set(incoming.map(t => t.id));
+  return [...existing.filter(t => !incomingIds.has(t.id)), ...incoming];
+}
 
 export const useDataLoading = ({
   setAppState,
@@ -362,7 +368,7 @@ export const useDataLoading = ({
               });
 
               const mergedTransactions = merge
-                ? [...prev.transactions.filter(t => !resolvedTransactions.some((r: any) => r.id === t.id)), ...resolvedTransactions]
+                ? mergeTransactions(prev.transactions, resolvedTransactions)
                 : resolvedTransactions;
               return { ...prev, transactions: mergedTransactions };
             });
@@ -372,7 +378,7 @@ export const useDataLoading = ({
           console.log('[loadTransactions] OK, count:', transactions.length);
           setAppState(prev => {
             const mergedTransactions = merge
-              ? [...prev.transactions.filter(t => !transactions.some((n: any) => n.id === t.id)), ...transactions]
+              ? mergeTransactions(prev.transactions, transactions)
               : transactions;
             return { ...prev, transactions: mergedTransactions };
           });
