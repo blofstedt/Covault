@@ -15,6 +15,8 @@ import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import DashboardSettingsModal from './dashboard_components/DashboardSettingsModal';
 import SearchResults from './dashboard_components/SearchResults';
 import BudgetFlowChart from './dashboard_components/BudgetFlowChart';
+import FeatureRequestModal from './dashboard_components/FeatureRequestModal';
+import { useFeatureRequests } from '../lib/useFeatureRequests';
 
 // Notifications helper
 import { checkAndTriggerAppNotifications } from '../lib/appNotifications';
@@ -67,6 +69,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [showParsing, setShowParsing] = useState(false);
+  const [showFeatureRequests, setShowFeatureRequests] = useState(false);
   const [isLinkingPartner, setIsLinkingPartner] = useState(false);
   const [partnerLinkEmail, setPartnerLinkEmail] = useState('');
   const [showTutorial, setShowTutorial] = useState(!state.settings.hasSeenTutorial);
@@ -76,6 +79,16 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [tutorialShowTxModal, setTutorialShowTxModal] = useState(false);
   const [tutorialFormOpen, setTutorialFormOpen] = useState(false);
   const [demoSplitTrigger, setDemoSplitTrigger] = useState(0);
+
+  // Feature requests
+  const {
+    requests: featureRequests,
+    loading: featureRequestsLoading,
+    submitRequest: submitFeatureRequest,
+    toggleVote: toggleFeatureVote,
+    updateStatus: updateFeatureStatus,
+    searchRequests: searchFeatureRequests,
+  } = useFeatureRequests(state.user?.id);
 
   // Scroll refs shared with child components
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -91,7 +104,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   // Lock body scroll when overlays are open
   useEffect(() => {
     const shouldLock =
-      showSettings || isAddingTx || !!selectedTx || showTutorial;
+      showSettings || isAddingTx || !!selectedTx || showTutorial || showFeatureRequests;
     if (shouldLock) {
       if (bodyOverflowRef.current === null) {
         bodyOverflowRef.current = document.body.style.overflow || '';
@@ -101,7 +114,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       document.body.style.overflow = bodyOverflowRef.current;
       bodyOverflowRef.current = null;
     }
-  }, [showSettings, isAddingTx, selectedTx, showTutorial]);
+  }, [showSettings, isAddingTx, selectedTx, showTutorial, showFeatureRequests]);
 
   useEffect(() => {
     return () => {
@@ -390,8 +403,8 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const handleTutorialStepChange = (step: number) => {
     setTutorialStep(step);
-    // Steps 11 ("Monthly Income") through 22 ("Sign Out") target elements inside the settings modal
-    if (step >= 11 && step <= 22) {
+    // Steps 12 ("Monthly Income") through 24 ("Sign Out") target elements inside the settings modal
+    if (step >= 12 && step <= 24) {
       setShowSettings(true);
     } else {
       setShowSettings(false);
@@ -472,6 +485,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       remainingMoney,
       settings: {
         app_notifications_enabled: (state.settings as any).app_notifications_enabled,
+        notification_rules: (state.settings as any).notification_rules || [],
       },
     });
   }, [
@@ -516,7 +530,10 @@ const Dashboard: React.FC<DashboardProps> = ({
         className="px-6 pt-safe-top pb-0 sticky top-0 z-20 transition-colors bg-transparent border-none backdrop-blur-none relative"
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
-        <DashboardHeader onOpenSettings={() => setShowSettings(true)} />
+        <DashboardHeader
+          onOpenSettings={() => setShowSettings(true)}
+          onOpenFeatureRequests={() => setShowFeatureRequests(true)}
+        />
       </header>
 
       {/* Main content */}
@@ -590,6 +607,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           isLinkingPartner={isLinkingPartner}
           partnerLinkEmail={partnerLinkEmail}
           budgets={state.budgets}
+          transactions={state.transactions}
           onChangePartnerLinkEmail={setPartnerLinkEmail}
           onClose={() => {
             setShowSettings(false);
@@ -604,6 +622,20 @@ const Dashboard: React.FC<DashboardProps> = ({
           onSignOut={onSignOut}
           onSaveBudgetLimit={saveBudgetLimit}
           saveBudgetVisibility={saveBudgetVisibility}
+        />
+      )}
+
+      {showFeatureRequests && (
+        <FeatureRequestModal
+          onClose={() => setShowFeatureRequests(false)}
+          requests={featureRequests}
+          loading={featureRequestsLoading}
+          userId={state.user?.id}
+          userEmail={state.user?.email}
+          onSubmit={submitFeatureRequest}
+          onToggleVote={toggleFeatureVote}
+          onUpdateStatus={updateFeatureStatus}
+          searchRequests={searchFeatureRequests}
         />
       )}
 

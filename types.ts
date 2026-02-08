@@ -141,6 +141,46 @@ export interface Settings {
   hasSeenTutorial?: boolean;
 }
 
+// Notification Rule types
+export type NotificationSubjectType =
+  | 'specific_budget'
+  | 'all_budgets'
+  | 'specific_recurring'
+  | 'all_recurring'
+  | 'remaining_balance';
+
+export type BudgetCondition = 'within' | 'over' | 'under';
+export type BudgetThresholdType = 'dollar' | 'percent';
+export type RecurringTimingCondition = 'days_before' | 'on_due_date' | 'if_missed';
+export type RecurringValueCondition = 'is_over' | 'higher_than_last_month';
+export type BalanceCondition = 'falls_below' | 'is_over';
+export type DeliveryMethod = 'push' | 'email' | 'in_app';
+
+export interface NotificationRule {
+  id: string;
+  subjectType: NotificationSubjectType;
+  subjectId?: string;       // budget or transaction ID for specific selections
+  subjectName?: string;     // display name for the subject
+
+  // Budget conditions
+  budgetCondition?: BudgetCondition;
+  budgetThresholdType?: BudgetThresholdType;
+  budgetThresholdValue?: number;
+
+  // Recurring transaction conditions
+  recurringTimingCondition?: RecurringTimingCondition;
+  recurringTimingDays?: number;
+  recurringValueCondition?: RecurringValueCondition;
+  recurringValueAmount?: number;
+
+  // Balance conditions
+  balanceCondition?: BalanceCondition;
+  balanceThresholdValue?: number;
+
+  delivery: DeliveryMethod;
+  enabled: boolean;
+}
+
 export interface AppState {
   user: User | null;
   budgets: BudgetCategory[];
@@ -155,5 +195,6 @@ export interface AppState {
     hasSeenTutorial: boolean;
     notificationsEnabled: boolean;
     hiddenCategories: string[]; // IDs of hidden budget categories
+    notification_rules: NotificationRule[];
   };
 }

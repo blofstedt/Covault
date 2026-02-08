@@ -1,20 +1,17 @@
 // lib/appNotifications.ts
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import type { BudgetCategory, Transaction } from '../types';
+import type { BudgetCategory, Transaction, NotificationRule } from '../types';
 
-// Settings shape – we only care about app_notifications_enabled
+// Settings shape
 interface NotificationSettingsShape {
   app_notifications_enabled?: boolean;
+  notification_rules?: NotificationRule[];
 }
 
 // LocalStorage keys to avoid spamming notifications
-function makeBudgetKey(userId: string, budgetId: string, level: '75' | '100') {
-  return `covault_alert_budget_${userId}_${budgetId}_${level}`;
-}
-
-function makeRemainingKey(userId: string, level: '25' | '0') {
-  return `covault_alert_remaining_${userId}_${level}`;
+function makeRuleKey(userId: string, ruleId: string) {
+  return `covault_alert_rule_${userId}_${ruleId}`;
 }
 
 async function ensurePermission() {
@@ -76,14 +73,90 @@ interface CheckArgs {
   settings: NotificationSettingsShape;
 }
 
+function evaluateBudgetRule(
+  rule: NotificationRule,
+  budgets: BudgetCategory[],
+  transactions: Transaction[],
+): { triggered: boolean; title: string; body: string } {
+  const targetBudgets =
+    rule.subjectType === 'specific_budget'
+      ? budgets.filter((b) => b.id === rule.subjectId)
+      : budgets;
+
+  for (const budget of targetBudgets) {
+    const limit = Number((budget as any).totalLimit ?? 0);
+    if (!limit || limit <= 0) continue;
+
+    const spent = getSpentForBudget(budget.id, transactions);
+    const ratio = spent / limit;
+
+    const thresholdVal = rule.budgetThresholdValue ?? 0;
+    const isPercent = rule.budgetThresholdType === 'percent';
+    const thresholdRatio = isPercent ? thresholdVal / 100 : thresholdVal / limit;
+    const thresholdLabel = isPercent ? `${thresholdVal}%` : `$${thresholdVal}`;
+
+    switch (rule.budgetCondition) {
+      case 'within':
+        if (ratio >= 1 - thresholdRatio && ratio < 1) {
+          return {
+            triggered: true,
+            title: 'Budget warning',
+            body: `${budget.name} is within ${thresholdLabel} of its limit ($${spent.toFixed(0)} of $${limit.toFixed(0)}).`,
+          };
+        }
+        break;
+      case 'over':
+        if (isPercent ? ratio >= 1 + thresholdRatio : spent >= limit + thresholdVal) {
+          return {
+            triggered: true,
+            title: 'Budget exceeded',
+            body: `${budget.name} is over its limit by ${thresholdLabel} ($${spent.toFixed(0)} of $${limit.toFixed(0)}).`,
+          };
+        }
+        break;
+      case 'under':
+        if (isPercent ? ratio <= thresholdRatio : spent <= thresholdVal) {
+          return {
+            triggered: true,
+            title: 'Budget update',
+            body: `${budget.name} is under ${thresholdLabel} ($${spent.toFixed(0)} spent).`,
+          };
+        }
+        break;
+    }
+  }
+
+  return { triggered: false, title: '', body: '' };
+}
+
+function evaluateBalanceRule(
+  rule: NotificationRule,
+  remainingMoney: number,
+): { triggered: boolean; title: string; body: string } {
+  const threshold = rule.balanceThresholdValue ?? 0;
+
+  if (rule.balanceCondition === 'falls_below' && remainingMoney <= threshold) {
+    return {
+      triggered: true,
+      title: 'Balance alert',
+      body: `Your remaining balance ($${remainingMoney.toFixed(0)}) has fallen below $${threshold}.`,
+    };
+  }
+
+  if (rule.balanceCondition === 'is_over' && remainingMoney >= threshold) {
+    return {
+      triggered: true,
+      title: 'Balance update',
+      body: `Your remaining balance ($${remainingMoney.toFixed(0)}) is over $${threshold}.`,
+    };
+  }
+
+  return { triggered: false, title: '', body: '' };
+}
+
 /**
- * Checks thresholds and fires local notifications if:
- * - A budget crosses 75% used
- * - A budget reaches/exceeds 100% used
- * - Remaining money <= 25% of income
- * - Remaining money <= 0
- *
- * Uses localStorage flags to avoid firing the same alert repeatedly.
+ * Evaluates custom notification rules and fires local notifications.
+ * Uses localStorage flags to avoid firing the same rule alert repeatedly.
  */
 export async function checkAndTriggerAppNotifications({
   userId,
@@ -98,75 +171,28 @@ export async function checkAndTriggerAppNotifications({
     if (!settings?.app_notifications_enabled) return;
     if (!userId) return;
 
-    // ----- Budget alerts -----
-    for (const budget of budgets) {
-      const limit = Number((budget as any).totalLimit ?? 0);
-      if (!limit || limit <= 0) continue;
+    const rules = settings.notification_rules || [];
 
-      const spent = getSpentForBudget(budget.id, transactions);
-      const ratio = spent / limit;
+    for (const rule of rules) {
+      if (!rule.enabled) continue;
 
-      // 75% alert
-      if (ratio >= 0.75 && ratio < 1) {
-        const key75 = makeBudgetKey(userId, budget.id, '75');
-        const already75 = typeof localStorage !== 'undefined' && localStorage.getItem(key75) === '1';
-        if (!already75) {
-          await sendNotification(
-            'Budget warning',
-            `${budget.name} has reached 75% of its limit ($${spent.toFixed(0)} of $${limit.toFixed(0)}).`,
-          );
-          if (typeof localStorage !== 'undefined') {
-            localStorage.setItem(key75, '1');
-          }
-        }
+      let result = { triggered: false, title: '', body: '' };
+
+      if (rule.subjectType === 'specific_budget' || rule.subjectType === 'all_budgets') {
+        result = evaluateBudgetRule(rule, budgets, transactions);
+      } else if (rule.subjectType === 'remaining_balance') {
+        result = evaluateBalanceRule(rule, remainingMoney);
       }
+      // Recurring transaction rules are timing-based and evaluated elsewhere
 
-      // 100% alert (limit reached or exceeded)
-      if (spent >= limit) {
-        const key100 = makeBudgetKey(userId, budget.id, '100');
-        const already100 = typeof localStorage !== 'undefined' && localStorage.getItem(key100) === '1';
-        if (!already100) {
-          await sendNotification(
-            'Budget reached',
-            `${budget.name} is fully used ($${spent.toFixed(0)} of $${limit.toFixed(0)}).`,
-          );
+      if (result.triggered) {
+        const key = makeRuleKey(userId, rule.id);
+        const alreadySent =
+          typeof localStorage !== 'undefined' && localStorage.getItem(key) === '1';
+        if (!alreadySent) {
+          await sendNotification(result.title, result.body);
           if (typeof localStorage !== 'undefined') {
-            localStorage.setItem(key100, '1');
-          }
-        }
-      }
-    }
-
-    // ----- Remaining money alerts -----
-    if (totalIncome > 0) {
-      const threshold25 = totalIncome * 0.25;
-
-      // 25% remaining
-      if (remainingMoney <= threshold25 && remainingMoney > 0) {
-        const key25 = makeRemainingKey(userId, '25');
-        const already25 = typeof localStorage !== 'undefined' && localStorage.getItem(key25) === '1';
-        if (!already25) {
-          await sendNotification(
-            'Spending warning',
-            `Only 25% of your monthly money remains ($${remainingMoney.toFixed(0)}).`,
-          );
-          if (typeof localStorage !== 'undefined') {
-            localStorage.setItem(key25, '1');
-          }
-        }
-      }
-
-      // 0 remaining (or below)
-      if (remainingMoney <= 0) {
-        const key0 = makeRemainingKey(userId, '0');
-        const already0 = typeof localStorage !== 'undefined' && localStorage.getItem(key0) === '1';
-        if (!already0) {
-          await sendNotification(
-            'Spending limit reached',
-            'You have fully used your remaining monthly money.',
-          );
-          if (typeof localStorage !== 'undefined') {
-            localStorage.setItem(key0, '1');
+            localStorage.setItem(key, '1');
           }
         }
       }

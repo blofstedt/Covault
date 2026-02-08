@@ -7,16 +7,18 @@ import VaultSharingSection from './settings_modal_components/VaultSharingSection
 import SupportFeedbackSection from './settings_modal_components/SupportFeedbackSection';
 import SignOutSection from './settings_modal_components/SignOutSection';
 import NotificationSettingsSection from './settings_modal_components/NotificationSettingsSection';
-import AppNotificationsSection from './settings_modal_components/AppNotificationsSection';
+import NotificationRulesSection from './settings_modal_components/NotificationRulesSection';
 import BudgetLimitsSection from './settings_modal_components/BudgetLimitsSection';
-import { BudgetCategory } from '../../types';
+import ExportTransactionsSection from './settings_modal_components/ExportTransactionsSection';
+import { BudgetCategory, Transaction, NotificationRule } from '../../types';
 
 export interface DashboardSettings {
   theme: string;
   rolloverEnabled: boolean;
   useLeisureAsBuffer: boolean;
   notificationsEnabled?: boolean;
-  app_notifications_enabled?: boolean; // <-- Correct key
+  app_notifications_enabled?: boolean;
+  notification_rules?: NotificationRule[];
   [key: string]: any;
 }
 
@@ -36,6 +38,7 @@ export interface DashboardSettingsModalProps {
   isLinkingPartner: boolean;
   partnerLinkEmail: string;
   budgets: BudgetCategory[];
+  transactions: Transaction[];
   onChangePartnerLinkEmail: (value: string) => void;
   onClose: () => void;
   onRunTutorial: () => void;
@@ -57,6 +60,7 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
   isLinkingPartner,
   partnerLinkEmail,
   budgets,
+  transactions,
   onChangePartnerLinkEmail,
   onClose,
   onRunTutorial,
@@ -150,10 +154,14 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
             onToggle={(v) => onUpdateSettings('notificationsEnabled', v)}
           />
 
-          {/* App Notifications */}
-          <AppNotificationsSection
+          {/* Notification Rules */}
+          <NotificationRulesSection
             enabled={!!settings.app_notifications_enabled}
             onToggle={(v) => onUpdateSettings('app_notifications_enabled', v)}
+            rules={settings.notification_rules || []}
+            onUpdateRules={(rules) => onUpdateSettings('notification_rules', rules)}
+            budgets={budgets}
+            transactions={transactions}
           />
 
           {/* Budget rollover */}
@@ -178,6 +186,9 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
             onDisconnectPartner={onDisconnectPartner}
             onToggleLinkingPartner={onToggleLinkingPartner}
           />
+
+          {/* Export Transactions */}
+          <ExportTransactionsSection transactions={transactions} />
 
           {/* Support & Feedback */}
           <SupportFeedbackSection />
