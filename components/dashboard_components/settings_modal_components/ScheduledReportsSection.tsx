@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
-import type { ScheduledReport, ReportFrequency } from '../../../types';
+import type { ScheduledReport, ReportFrequency, BudgetCategory, Transaction } from '../../../types';
+import { supabase } from '../../../lib/supabase';
 
 interface ScheduledReportsSectionProps {
   reports: ScheduledReport[];
   onUpdateReports: (reports: ScheduledReport[]) => void;
+  budgets: BudgetCategory[];
+  transactions: Transaction[];
+  userName?: string;
 }
 
 const FREQUENCY_OPTIONS: { value: ReportFrequency; label: string }[] = [
@@ -41,10 +45,15 @@ function reportToSentence(report: ScheduledReport): string {
 const ScheduledReportsSection: React.FC<ScheduledReportsSectionProps> = ({
   reports,
   onUpdateReports,
+  budgets,
+  transactions,
+  userName,
 }) => {
   const [showBuilder, setShowBuilder] = useState(false);
   const [editingReport, setEditingReport] = useState<ScheduledReport | undefined>(undefined);
   const [deletingReportId, setDeletingReportId] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [isSending, setIsSending] = useState(false);
 
   // Builder state
   const [emails, setEmails] = useState('');
@@ -71,7 +80,59 @@ const ScheduledReportsSection: React.FC<ScheduledReportsSectionProps> = ({
 
   const [oneTimeSent, setOneTimeSent] = useState(false);
 
-  const handleSave = () => {
+  /** Build a budget summary from current budgets + transactions for the report email. */
+  const buildBudgetSummary = () => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    return budgets.map((b) => {
+      const spent = transactions
+        .filter((tx) => {
+          if (tx.is_projected) return false;
+          if (tx.budget_id !== b.id) return false;
+          const txDate = new Date(tx.date);
+          return txDate.getMonth() === currentMonth && txDate.getFullYear() === currentYear;
+        })
+        .reduce((sum, tx) => sum + tx.amount, 0);
+
+      return { name: b.name, limit: b.totalLimit, spent };
+    });
+  };
+
+  const sendReportEmail = async (recipientEmails: string[]) => {
+    setIsSending(true);
+    setSendError(null);
+
+    try {
+      const budgetSummary = buildBudgetSummary();
+
+      const { error } = await supabase.functions.invoke('send-report', {
+        body: {
+          emails: recipientEmails,
+          budgets: budgetSummary,
+          userName,
+        },
+      });
+
+      if (error) {
+        setSendError(error.message || 'Failed to send report.');
+        setTimeout(() => setSendError(null), 4000);
+        return false;
+      }
+
+      return true;
+    } catch (err) {
+      console.error('Failed to send report:', err);
+      setSendError('Failed to send report. Please try again.');
+      setTimeout(() => setSendError(null), 4000);
+      return false;
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleSave = async () => {
     const parsedEmails = emails
       .split(/[,;\s]+/)
       .map((e) => e.trim())
@@ -90,12 +151,13 @@ const ScheduledReportsSection: React.FC<ScheduledReportsSectionProps> = ({
 
     // One-time reports are sent immediately and not persisted in the list
     if (frequency === 'one_time') {
-      // Trigger immediate send (when backend is wired up, this calls the send API).
-      // Do not add to the scheduled reports list since one-time reports should not persist.
-      setOneTimeSent(true);
-      setTimeout(() => setOneTimeSent(false), 2500);
-      setShowBuilder(false);
-      setEditingReport(undefined);
+      const sent = await sendReportEmail(parsedEmails);
+      if (sent) {
+        setOneTimeSent(true);
+        setTimeout(() => setOneTimeSent(false), 2500);
+        setShowBuilder(false);
+        setEditingReport(undefined);
+      }
       return;
     }
 
@@ -228,6 +290,11 @@ const ScheduledReportsSection: React.FC<ScheduledReportsSectionProps> = ({
             ✓ Report sent
           </div>
         )}
+        {sendError && (
+          <div className="mt-2 py-2 rounded-2xl bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 text-[10px] font-black uppercase tracking-wider text-center animate-in fade-in duration-300">
+            ✗ {sendError}
+          </div>
+        )}
       </div>
 
       {/* Builder modal */}
@@ -343,9 +410,16 @@ const ScheduledReportsSection: React.FC<ScheduledReportsSectionProps> = ({
               </button>
               <button
                 onClick={handleSave}
-                className="flex-1 py-3 rounded-2xl text-[11px] font-black uppercase tracking-wider bg-emerald-500 text-white active:scale-95 transition-all shadow-lg shadow-emerald-500/20"
+                disabled={isSending}
+                className={`flex-1 py-3 rounded-2xl text-[11px] font-black uppercase tracking-wider active:scale-95 transition-all shadow-lg shadow-emerald-500/20 ${
+                  isSending
+                    ? 'bg-emerald-400 text-white/70 cursor-wait'
+                    : 'bg-emerald-500 text-white'
+                }`}
               >
-                {editingReport ? 'Update' : frequency === 'one_time' ? 'Send Now' : 'Save'}
+                {isSending
+                  ? 'Sending…'
+                  : editingReport ? 'Update' : frequency === 'one_time' ? 'Send Now' : 'Save'}
               </button>
             </div>
           </div>
