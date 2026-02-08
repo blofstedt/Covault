@@ -92,8 +92,10 @@ export const useDataLoading = ({
           visible: true,
         }));
 
-        (headers as any)['Prefer'] = 'return=representation';
-        const res = await fetch(`${REST_BASE}/budgets`, {
+        // Use upsert with on_conflict to avoid creating duplicate rows
+        // resolution=ignore-duplicates will skip rows that already exist for (user_id, category)
+        (headers as any)['Prefer'] = 'return=representation,resolution=ignore-duplicates';
+        const res = await fetch(`${REST_BASE}/budgets?on_conflict=user_id,category`, {
           method: 'POST',
           headers,
           body: JSON.stringify(rows),

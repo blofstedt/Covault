@@ -352,9 +352,11 @@ CREATE TABLE public.budgets (
   parent_category text,
   icon text,
   color text,
+  visible boolean NOT NULL DEFAULT true,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now(),
-  CONSTRAINT budgets_pkey PRIMARY KEY (id)
+  CONSTRAINT budgets_pkey PRIMARY KEY (id),
+  CONSTRAINT budgets_user_category_unique UNIQUE (user_id, category)
 );
 
 CREATE INDEX idx_budgets_user_id ON public.budgets (user_id);
