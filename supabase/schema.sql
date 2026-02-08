@@ -195,6 +195,7 @@ CREATE TABLE public.transactions (
   label text NOT NULL DEFAULT 'Manual'
     CHECK (label = ANY (ARRAY['Auto-Added','Manual','Auto-Added + Edited'])),
   is_projected boolean NOT NULL DEFAULT false,
+  description text,
   split_group_id uuid,
   source_hash text,
   user_name text,

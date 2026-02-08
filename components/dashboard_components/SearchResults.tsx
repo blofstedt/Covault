@@ -2,80 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import type { Transaction, BudgetCategory } from '../../types';
 import TransactionItem from '../TransactionItem';
-
-/**
- * Helper: add months to a Date
- */
-function addMonths(date: Date, months: number): Date {
-  const d = new Date(date);
-  d.setMonth(d.getMonth() + months);
-  return d;
-}
-
-/**
- * Helper: end of month for a given Date
- */
-function endOfMonth(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth() + 1, 0);
-}
-
-/**
- * Generate projected recurring transactions (Biweekly / Monthly)
- * from existing real transactions, **only in the future**, up to
- * two months after the end of the current month.
- *
- * We never save these to the DB; they're just for UI/search.
- */
-function generateProjectedTransactions(base: Transaction[]): Transaction[] {
-  const today = new Date();
-  const endCurrentMonth = endOfMonth(today);
-  const projectionEnd = endOfMonth(addMonths(endCurrentMonth, 2));
-
-  // Avoid duplicating real transactions
-  const realKeys = new Set(
-    base.map((tx) => {
-      const isoDate = new Date(tx.date).toISOString().slice(0, 10);
-      return `${tx.vendor}|${tx.amount}|${isoDate}|${tx.budget_id}`;
-    }),
-  );
-
-  const projected: Transaction[] = [];
-
-  for (const tx of base) {
-    if (tx.recurrence === 'One-time') continue;
-    if (tx.is_projected) continue; // don't chain off generated ones
-
-    let current = new Date(tx.date);
-
-    // Walk forward in time until we pass the projectionEnd
-    while (current <= projectionEnd) {
-      const isoDate = current.toISOString().slice(0, 10);
-      const key = `${tx.vendor}|${tx.amount}|${isoDate}|${tx.budget_id}`;
-
-      // Only generate future occurrences (today or later),
-      // and skip any that already exist as real transactions.
-      if (current >= today && !realKeys.has(key)) {
-        projected.push({
-          ...tx,
-          id: `projected-${tx.id}-${isoDate}`,
-          date: isoDate,
-          is_projected: true,
-        });
-      }
-
-      // Step by recurrence
-      if (tx.recurrence === 'Biweekly') {
-        current.setDate(current.getDate() + 14);
-      } else if (tx.recurrence === 'Monthly') {
-        current = addMonths(current, 1);
-      } else {
-        break;
-      }
-    }
-  }
-
-  return projected;
-}
+import { generateProjectedTransactions } from '../../lib/projectedTransactions';
 
 interface CollapsibleSectionProps {
   title: string;
@@ -158,6 +85,7 @@ interface SearchResultsProps {
   currentMonthTransactions: Transaction[];
   pastTransactions: Transaction[];
   futureTransactions: Transaction[];
+  allTransactions: Transaction[];
   currentUserName: string;
   isSharedAccount: boolean;
   budgets: BudgetCategory[];
@@ -176,6 +104,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   currentMonthTransactions,
   pastTransactions,
   futureTransactions,
+  allTransactions,
   currentUserName,
   isSharedAccount,
   budgets,
@@ -186,27 +115,16 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   const filterFn = (tx: Transaction) =>
     tx.vendor.toLowerCase().includes(q);
 
-  // Combine all known transactions so we can generate projections.
-  const allBaseTransactions = useMemo(
-    () => [
-      ...pastTransactions,
-      ...currentMonthTransactions,
-      ...futureTransactions,
-    ],
-    [pastTransactions, currentMonthTransactions, futureTransactions],
-  );
-
-  // Generate projected recurring transactions just for UI/search.
+  // Generate projected recurring transactions from ALL transactions (unfiltered).
   const projectedTransactions = useMemo(
-    () => generateProjectedTransactions(allBaseTransactions),
-    [allBaseTransactions],
+    () => generateProjectedTransactions(allTransactions),
+    [allTransactions],
   );
 
   // Split projected ones into "this month" vs "future after this month"
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth();
-  const endCurrentMonth = endOfMonth(now);
 
   const projectedCurrentMonth = useMemo(
     () =>
@@ -224,9 +142,12 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     () =>
       projectedTransactions.filter((tx) => {
         const d = new Date(tx.date);
-        return d > endCurrentMonth;
+        return !(
+          d.getFullYear() === currentYear &&
+          d.getMonth() === currentMonth
+        );
       }),
-    [projectedTransactions, endCurrentMonth],
+    [projectedTransactions, currentYear, currentMonth],
   );
 
   // Augment the existing sets with projected ones
@@ -318,16 +239,31 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           onTransactionTap={onTransactionTap}
         />
 
-        {/* FUTURE SECTION (real + projected) */}
-        <CollapsibleSection
-          title="Future Transactions"
-          subtitle="After this month"
-          transactions={filteredFuture}
-          currentUserName={currentUserName}
-          isSharedAccount={isSharedAccount}
-          budgets={budgets}
-          onTransactionTap={onTransactionTap}
-        />
+        {/* FUTURE SECTION (real future transactions) */}
+        {filteredFuture.filter(tx => !tx.is_projected).length > 0 && (
+          <CollapsibleSection
+            title="Future Transactions"
+            subtitle="Scheduled future entries"
+            transactions={filteredFuture.filter(tx => !tx.is_projected)}
+            currentUserName={currentUserName}
+            isSharedAccount={isSharedAccount}
+            budgets={budgets}
+            onTransactionTap={onTransactionTap}
+          />
+        )}
+
+        {/* PROJECTED SECTION (generated from recurring) */}
+        {filteredFuture.filter(tx => tx.is_projected).length > 0 && (
+          <CollapsibleSection
+            title="Projected Transactions"
+            subtitle="Based on recurring entries"
+            transactions={filteredFuture.filter(tx => tx.is_projected)}
+            currentUserName={currentUserName}
+            isSharedAccount={isSharedAccount}
+            budgets={budgets}
+            onTransactionTap={onTransactionTap}
+          />
+        )}
 
         {/* NO RESULTS STATE */}
         {!hasAnyResults && (
