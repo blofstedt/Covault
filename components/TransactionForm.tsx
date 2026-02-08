@@ -451,7 +451,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                           <div className={`w-4 h-4 ${isSelected ? 'text-emerald-600 dark:text-emerald-400' : ''} ${isSelected && isSplit ? 'opacity-30' : ''}`}>
                             {getBudgetIcon(b.name)}
                           </div>
-                          <span className={`text-[7px] font-black uppercase tracking-tighter mt-1 leading-none ${isSelected ? 'text-emerald-700 dark:text-emerald-300' : ''} ${isSelected && isSplit ? 'opacity-30' : ''}`}>
+                          <span className={`text-[8px] font-black uppercase tracking-tighter mt-1 leading-none ${isSelected ? 'text-emerald-700 dark:text-emerald-300' : ''} ${isSelected && isSplit ? 'opacity-30' : ''}`}>
                             {b.name}
                           </span>
                           {isSelected && isSplit && (

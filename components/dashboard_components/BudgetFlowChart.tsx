@@ -511,8 +511,8 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     return () => {
       svgElement.on('mousemove', null).on('mouseleave', null);
       if (svgNode) {
-        svgNode.removeEventListener('touchstart', handleTouchStart);
-        svgNode.removeEventListener('touchmove', handleTouchMove);
+        svgNode.removeEventListener('touchstart', handleTouchStart, { passive: false } as EventListenerOptions);
+        svgNode.removeEventListener('touchmove', handleTouchMove, { passive: false } as EventListenerOptions);
         svgNode.removeEventListener('touchend', handleEnd);
         svgNode.removeEventListener('touchcancel', handleEnd);
       }

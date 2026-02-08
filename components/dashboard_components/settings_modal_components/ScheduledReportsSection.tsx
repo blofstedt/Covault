@@ -90,12 +90,8 @@ const ScheduledReportsSection: React.FC<ScheduledReportsSectionProps> = ({
 
     // One-time reports are sent immediately and not persisted in the list
     if (frequency === 'one_time') {
-      // Trigger immediate send (when backend is wired up, this calls the send API)
-      onUpdateReports([...reports, { ...report, enabled: true }]);
-      // Remove it from the persisted list right away so it doesn't show as scheduled
-      setTimeout(() => {
-        onUpdateReports(reports.filter((r) => r.id !== report.id));
-      }, 0);
+      // Trigger immediate send (when backend is wired up, this calls the send API).
+      // Do not add to the scheduled reports list since one-time reports should not persist.
       setOneTimeSent(true);
       setTimeout(() => setOneTimeSent(false), 2500);
       setShowBuilder(false);
