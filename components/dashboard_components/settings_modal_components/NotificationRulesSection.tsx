@@ -120,7 +120,7 @@ const NotificationRulesSection: React.FC<NotificationRulesSectionProps> = ({
 
   return (
     <>
-      <div className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60">
+      <div id="settings-notification-rules-container" className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60">
         {/* Header with global toggle */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex flex-col">

@@ -84,7 +84,7 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
   }, [transactions, startDate, endDate]);
 
   return (
-    <div className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl">
+    <div id="settings-export-container" className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl">
       <div className="flex items-center justify-between mb-1">
         <span className="text-[11px] font-black text-slate-800 dark:text-slate-100 uppercase tracking-[0.2em]">
           Export Transactions

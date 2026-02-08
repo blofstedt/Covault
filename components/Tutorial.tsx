@@ -100,6 +100,11 @@ const Tutorial: React.FC<TutorialProps> = ({
       target: "bottom-bar",
     },
     {
+      title: "Feature Requests",
+      content: "Tap the heart icon to vote on features other users have suggested or submit your own ideas. The most popular requests rise to the top of the leaderboard.",
+      target: "feature-request-button",
+    },
+    {
       title: "Your Settings",
       content: "The gear icon opens your vault configuration. Let's walk through each option.",
       target: "settings-button",
@@ -132,9 +137,9 @@ const Tutorial: React.FC<TutorialProps> = ({
       target: "settings-notifications-container",
     },
     {
-      title: "App Notifications",
-      content: "Get notified when you're approaching or exceeding your budget limits. Stay on top of your spending without opening the app.",
-      target: "settings-app-notifications-container",
+      title: "Notification Rules",
+      content: "Build custom alert rules in plain English. Tap the + button to create rules like \"Notify me when Groceries is within 10% of its limit.\" Each rule can be delivered via push, email, or in-app.",
+      target: "settings-notification-rules-container",
     },
     {
       title: "Budget Rollover",
@@ -152,6 +157,11 @@ const Tutorial: React.FC<TutorialProps> = ({
         ? "You're already sharing your vault. You can disconnect or change partners here."
         : "Invite a partner to share your budget. Both of you will see the same vials, transactions, and balances.",
       target: "settings-sharing-container",
+    },
+    {
+      title: "Export Transactions",
+      content: "Download your transactions as a CSV file. Pick a start and end date to generate a report you can open in any spreadsheet app.",
+      target: "settings-export-container",
     },
     {
       title: "Report an Issue",

@@ -10,6 +10,7 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({ onOpenSettings, onOpe
   return (
     <div className="relative flex items-center justify-between h-8">
       <button
+        id="feature-request-button"
         onClick={onOpenFeatureRequests}
         className="p-2.5 transition-colors active:scale-90 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-xl text-slate-400 hover:text-rose-500"
       >
