@@ -863,3 +863,119 @@ export async function processNotification(
     transactionId: autoResult.transactionId,
   };
 }
+
+// ─── Flag & Regenerate (user-reported incorrect parse) ──────────
+
+/**
+ * When the user marks a transaction as incorrectly parsed:
+ * 1) Enforce rate limits via flag_reports (max 1/24h, max 5/7d)
+ * 2) Insert a row into flag_reports
+ * 3) Call Gemini again to regenerate regex for the bank
+ * 4) Update notification_rules with new regex + flagged_count
+ */
+export async function flagAndRegenerateRule(options: {
+  userId: string;
+  notificationRuleId: string;
+  rawNotification: string;
+  expectedVendor?: string;
+  expectedAmount?: number;
+}): Promise<void> {
+  const { userId, notificationRuleId, rawNotification, expectedVendor, expectedAmount } = options;
+
+  const now = new Date();
+  const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+  const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  // 1) Rate limiting: 1 flag per 24 hours
+  const { count: lastDayCount, error: lastDayError } = await supabase
+    .from('flag_reports')
+    .select('*', { head: true, count: 'exact' })
+    .eq('user_id', userId)
+    .gte('created_at', oneDayAgo);
+
+  if (lastDayError) {
+    console.error('[flagAndRegenerate] 24h rate limit error:', lastDayError);
+    throw lastDayError;
+  }
+
+  if ((lastDayCount ?? 0) >= 1) {
+    throw new Error('You can only flag one transaction every 24 hours.');
+  }
+
+  // 2) Rate limiting: max 5 flags per week
+  const { count: lastWeekCount, error: lastWeekError } = await supabase
+    .from('flag_reports')
+    .select('*', { head: true, count: 'exact' })
+    .eq('user_id', userId)
+    .gte('created_at', oneWeekAgo);
+
+  if (lastWeekError) {
+    console.error('[flagAndRegenerate] weekly rate limit error:', lastWeekError);
+    throw lastWeekError;
+  }
+
+  if ((lastWeekCount ?? 0) >= 5) {
+    throw new Error('You can only flag up to 5 transactions per week.');
+  }
+
+  // 3) Insert into flag_reports
+  const { error: flagError } = await supabase
+    .from('flag_reports')
+    .insert({
+      user_id: userId,
+      notification_rule_id: notificationRuleId,
+      raw_notification: rawNotification,
+      expected_vendor: expectedVendor,
+      expected_amount: expectedAmount,
+    });
+
+  if (flagError) {
+    console.error('[flagAndRegenerate] Error inserting flag_reports:', flagError);
+    throw flagError;
+  }
+
+  // 4) Fetch the existing rule so we know bank_name and current flagged_count
+  const { data: rule, error: ruleError } = await supabase
+    .from('notification_rules')
+    .select('*')
+    .eq('id', notificationRuleId)
+    .maybeSingle();
+
+  if (ruleError || !rule) {
+    console.error('[flagAndRegenerate] Error fetching notification_rule:', ruleError);
+    throw ruleError ?? new Error('Notification rule not found');
+  }
+
+  // 5) Call Gemini to regenerate regex
+  const geminiResult = await generateRuleWithGemini(rule.bank_name, rawNotification);
+
+  // Map new category_name to categories table
+  let newDefaultCategoryId: string | null = rule.default_category_id;
+  if (geminiResult.category_name) {
+    const { data: cat } = await supabase
+      .from('categories')
+      .select('id, name')
+      .ilike('name', geminiResult.category_name)
+      .maybeSingle();
+    if (cat) {
+      newDefaultCategoryId = cat.id;
+    }
+  }
+
+  // 6) Update notification_rules with new regex + counters
+  const { error: updateError } = await supabase
+    .from('notification_rules')
+    .update({
+      amount_regex: geminiResult.amount_regex,
+      vendor_regex: geminiResult.vendor_regex,
+      default_category_id: newDefaultCategoryId,
+      flagged_count: (rule.flagged_count ?? 0) + 1,
+      last_flagged_at: new Date().toISOString(),
+    })
+    .eq('id', notificationRuleId);
+
+  if (updateError) {
+    console.error('[flagAndRegenerate] Error updating notification_rule:', updateError);
+    throw updateError;
+  }
+}
