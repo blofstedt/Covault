@@ -145,6 +145,7 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
             onSaveBudgetLimit={onSaveBudgetLimit}
             showTutorial={showTutorial}
             hiddenCategories={(settings as any).hiddenCategories || []}
+            monthlyIncome={user?.monthlyIncome}
             onToggleHideCategory={(categoryId: string) => {
               const current: string[] = (settings as any).hiddenCategories || [];
               const isCurrentlyHidden = current.includes(categoryId);
