@@ -1,12 +1,20 @@
 import React from 'react';
+import { Heart } from 'lucide-react';
 
 interface DashboardHeaderProps {
   onOpenSettings: () => void;
+  onOpenFeatureRequests: () => void;
 }
 
-const DashboardHeader: React.FC<DashboardHeaderProps> = ({ onOpenSettings }) => {
+const DashboardHeader: React.FC<DashboardHeaderProps> = ({ onOpenSettings, onOpenFeatureRequests }) => {
   return (
-    <div className="relative flex items-center justify-end h-8">
+    <div className="relative flex items-center justify-between h-8">
+      <button
+        onClick={onOpenFeatureRequests}
+        className="p-2.5 transition-colors active:scale-90 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-xl text-slate-400 hover:text-rose-500"
+      >
+        <Heart className="w-7 h-7" strokeWidth={2.5} />
+      </button>
       <button
         id="settings-button"
         onClick={onOpenSettings}
