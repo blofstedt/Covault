@@ -65,6 +65,12 @@ const createStubClient = () =>
         }),
       };
     },
+    functions: {
+      async invoke() {
+        console.warn('[supabase] Stub client in use: functions.invoke');
+        return { data: null, error: { message: 'Supabase is not configured.' } };
+      },
+    },
   }) as unknown as ReturnType<typeof createClient>;
 
 // ✅ Create and export the real Supabase client (or stub if misconfigured)

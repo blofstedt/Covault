@@ -196,6 +196,9 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           <ScheduledReportsSection
             reports={settings.scheduled_reports || []}
             onUpdateReports={(reports) => onUpdateSettings('scheduled_reports', reports)}
+            budgets={budgets}
+            transactions={transactions}
+            userName={user?.name}
           />
 
           {/* Support & Feedback */}
