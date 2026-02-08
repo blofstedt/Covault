@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 import { supabase } from '../lib/supabase';
@@ -10,12 +10,30 @@ interface AuthProps {
   onDevLogin?: () => void;
 }
 
+const DEV_TAP_COUNT = 5;
+const DEV_TAP_WINDOW_MS = 3000;
+
 const Auth: React.FC<AuthProps> = ({ onSignIn, onDevLogin }) => {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [loginField, setLoginField] = useState('');
   const [passwordField, setPasswordField] = useState('');
   const [showDevFields, setShowDevFields] = useState(false);
+
+  // Hidden dev-mode activation: tap logo 5 times within 3 seconds
+  const tapTimestamps = useRef<number[]>([]);
+  const handleLogoTap = useCallback(() => {
+    const now = Date.now();
+    // Keep only taps within the window
+    tapTimestamps.current = tapTimestamps.current.filter(
+      (t) => now - t < DEV_TAP_WINDOW_MS,
+    );
+    tapTimestamps.current.push(now);
+    if (tapTimestamps.current.length >= DEV_TAP_COUNT) {
+      tapTimestamps.current = [];
+      setShowDevFields(true);
+    }
+  }, []);
 
   const handleDevLogin = () => {
     if (loginField === DEV_USERNAME && passwordField === DEV_PASSWORD) {
@@ -90,7 +108,9 @@ const Auth: React.FC<AuthProps> = ({ onSignIn, onDevLogin }) => {
 
       <div className="relative flex-1 flex flex-col items-center justify-center space-y-12">
         <div className="flex flex-col items-center space-y-6 animate-nest">
-          <CovaultIcon className="animate-breathe" />
+          <div onClick={handleLogoTap} className="cursor-default select-none">
+            <CovaultIcon className="animate-breathe" />
+          </div>
           <div className="text-center space-y-2">
             <h1 className="text-5xl font-black text-slate-500 dark:text-slate-100 tracking-tighter">
               Covault
@@ -182,20 +202,12 @@ const Auth: React.FC<AuthProps> = ({ onSignIn, onDevLogin }) => {
           Secured by Supabase • AES-256
         </p>
 
-        {/* Dev mode login */}
-        {!isLoggingIn && (
-          <div className="w-full max-w-xs">
-            {!showDevFields ? (
-              <button
-                onClick={() => setShowDevFields(true)}
-                className="w-full text-center text-[9px] text-slate-300 dark:text-slate-700 font-bold uppercase tracking-widest hover:text-slate-400 dark:hover:text-slate-600 transition-colors py-1"
-              >
-                Dev Login
-              </button>
-            ) : (
-              <div className="space-y-2.5 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <div className="h-px bg-slate-100 dark:bg-slate-800 mb-3" />
-                <input
+        {/* Dev mode login — hidden until logo is tapped 5× rapidly */}
+        {!isLoggingIn && showDevFields && (
+          <div className="w-full max-w-xs animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="space-y-2.5">
+              <div className="h-px bg-slate-100 dark:bg-slate-800 mb-3" />
+              <input
                   type="text"
                   value={loginField}
                   onChange={(e) => setLoginField(e.target.value)}
@@ -219,9 +231,8 @@ const Auth: React.FC<AuthProps> = ({ onSignIn, onDevLogin }) => {
                   🛠 Enter Dev Mode
                 </button>
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
       </div>
     </div>
   );
