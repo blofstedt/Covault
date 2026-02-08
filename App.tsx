@@ -252,7 +252,7 @@ const App: React.FC = () => {
 
   const devSaveBudgetVisibility = (categoryId: string, visible: boolean) => {
     addPingLog(`DB WRITE intercepted: UPDATE visibility category=${categoryId} visible=${visible}`);
-    const currentHidden: string[] = (appState.settings as any).hiddenCategories || [];
+    const currentHidden: string[] = appState.settings.hiddenCategories || [];
     const nextHidden = visible
       ? currentHidden.filter((id: string) => id !== categoryId)
       : [...currentHidden, categoryId];

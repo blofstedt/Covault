@@ -9,6 +9,10 @@ import { supabaseUrl, supabaseAnonKey } from './supabase';
 export const DEV_USERNAME = 'dev';
 export const DEV_PASSWORD = 'shazbot2020';
 
+// Hidden activation: number of rapid taps on logo and time window
+export const DEV_TAP_COUNT = 5;
+export const DEV_TAP_WINDOW_MS = 3000;
+
 // ─── Context ─────────────────────────────────────────────────────────────────
 export interface DevModeContextValue {
   isDevMode: boolean;
@@ -48,9 +52,19 @@ export const createDevUser = (solo: boolean): User => ({
       }),
 });
 
+const DEV_BUDGET_LIMITS: Record<string, number> = {
+  Housing: 1800,
+  Groceries: 600,
+  Transport: 300,
+  Utilities: 250,
+  Leisure: 400,
+  Services: 200,
+};
+const DEFAULT_DEV_LIMIT = 150;
+
 export const DEV_BUDGETS: BudgetCategory[] = SYSTEM_CATEGORIES.map((c) => ({
   ...c,
-  totalLimit: c.name === 'Housing' ? 1800 : c.name === 'Groceries' ? 600 : c.name === 'Transport' ? 300 : c.name === 'Utilities' ? 250 : c.name === 'Leisure' ? 400 : c.name === 'Services' ? 200 : 150,
+  totalLimit: DEV_BUDGET_LIMITS[c.name] ?? DEFAULT_DEV_LIMIT,
 }));
 
 const today = new Date();

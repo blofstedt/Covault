@@ -4,6 +4,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useDevMode, pingDatabase } from '../lib/devMode';
 
+const MAX_VISIBLE_LOG_ENTRIES = 20;
+
 interface DevModeToolbarProps {
   /** Current role */
   isSolo: boolean;
@@ -154,7 +156,7 @@ const DevModeToolbar: React.FC<DevModeToolbarProps> = ({
             </button>
             {showLog && (
               <div className="mt-1 max-h-32 overflow-y-auto bg-slate-950 rounded-lg p-2 space-y-0.5 no-scrollbar">
-                {dbPingLog.slice(-20).map((line, i) => (
+                {dbPingLog.slice(-MAX_VISIBLE_LOG_ENTRIES).map((line, i) => (
                   <p key={i} className="text-[8px] font-mono text-slate-400 leading-tight">{line}</p>
                 ))}
                 <button

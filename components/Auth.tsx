@@ -3,15 +3,12 @@ import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 import { supabase } from '../lib/supabase';
 import CovaultIcon from './CovaultIcon';
-import { DEV_USERNAME, DEV_PASSWORD } from '../lib/devMode';
+import { DEV_USERNAME, DEV_PASSWORD, DEV_TAP_COUNT, DEV_TAP_WINDOW_MS } from '../lib/devMode';
 
 interface AuthProps {
   onSignIn: () => void;
   onDevLogin?: () => void;
 }
-
-const DEV_TAP_COUNT = 5;
-const DEV_TAP_WINDOW_MS = 3000;
 
 const Auth: React.FC<AuthProps> = ({ onSignIn, onDevLogin }) => {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
