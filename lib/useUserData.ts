@@ -39,6 +39,7 @@ export const useUserData = ({
     saveBudgetLimit,
     saveUserIncome,
     saveTheme,
+    saveBudgetVisibility,
   } = useUserSettings({ appState, setAppState, setDbError });
 
   return {
@@ -56,5 +57,6 @@ export const useUserData = ({
     saveBudgetLimit,
     saveUserIncome,
     saveTheme,
+    saveBudgetVisibility,
   };
 };

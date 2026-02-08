@@ -75,6 +75,7 @@ const App: React.FC = () => {
     saveBudgetLimit,
     saveUserIncome,
     saveTheme,
+    saveBudgetVisibility,
   } = useUserData({ appState, setAppState, setDbError });
 
   // Wrapped loadUserData that tracks loading state
@@ -168,6 +169,7 @@ const App: React.FC = () => {
           saveBudgetLimit={saveBudgetLimit}
           saveUserIncome={saveUserIncome}
           saveTheme={saveTheme}
+          saveBudgetVisibility={saveBudgetVisibility}
           onLinkPartner={handleLinkPartner}
           onUnlinkPartner={handleUnlinkPartner}
           onGenerateLinkCode={handleGenerateLinkCode}
