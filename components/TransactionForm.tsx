@@ -203,7 +203,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     } else {
       // When editing an existing transaction with a single budget selected,
       // replace the selection (reassign) rather than entering split mode
-      if (initialTransaction && next.size === 1) {
+      if (initialTransaction && next.size === 1 && !next.has(id)) {
         next.clear();
       }
       if (next.size < 2) {

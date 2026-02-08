@@ -139,11 +139,14 @@ export const useDataLoading = ({
         const existingCategories = new Set<string>(rows.map((r: any) => r.category));
         await ensureDefaultBudgets(userId, existingCategories);
 
-        // Map category name → limit_amount and visibility
+        // Map category name → limit_amount and hidden categories in a single pass
         const limitsByCategory: Record<string, number> = {};
-        const hiddenCategoryIds: string[] = [];
+        const hiddenCategoryNames = new Set<string>();
         for (const row of rows) {
           limitsByCategory[row.category] = Number(row.limit_amount);
+          if (row.visible === false) {
+            hiddenCategoryNames.add(row.category);
+          }
         }
 
         // Merge with existing categories in state and build hidden list
@@ -153,15 +156,10 @@ export const useDataLoading = ({
             totalLimit: limitsByCategory[b.name] ?? b.totalLimit ?? 0,
           }));
 
-          // Build hidden categories list from the visible column
-          for (const row of rows) {
-            if (row.visible === false) {
-              const budget = updatedBudgets.find(b => b.name === row.category);
-              if (budget) {
-                hiddenCategoryIds.push(budget.id);
-              }
-            }
-          }
+          // Build hidden categories list by matching names to budget IDs
+          const hiddenCategoryIds = updatedBudgets
+            .filter(b => hiddenCategoryNames.has(b.name))
+            .map(b => b.id);
 
           return {
             ...prev,
@@ -173,7 +171,7 @@ export const useDataLoading = ({
           };
         });
 
-        console.log('[loadUserBudgets] loaded:', limitsByCategory, 'hidden:', hiddenCategoryIds);
+        console.log('[loadUserBudgets] loaded:', limitsByCategory, 'hidden:', Array.from(hiddenCategoryNames));
       } catch (err: any) {
         console.error('[loadUserBudgets] exception:', err?.message || err);
       }

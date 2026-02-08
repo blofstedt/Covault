@@ -347,7 +347,17 @@ export const useUserSettings = ({
       }
       const categoryName = category.name;
 
+      // Store previous hidden state for rollback
+      const previousHidden: string[] = (appState.settings as any).hiddenCategories || [];
+
       // Optimistic UI update: toggle hiddenCategories
+      const rollback = () => {
+        setAppState(prev => ({
+          ...prev,
+          settings: { ...prev.settings, hiddenCategories: previousHidden },
+        }));
+      };
+
       setAppState(prev => {
         const currentHidden: string[] = (prev.settings as any).hiddenCategories || [];
         const nextHidden = visible
@@ -370,6 +380,7 @@ export const useUserSettings = ({
 
         if (!checkRes.ok) {
           console.error('[saveBudgetVisibility] check failed:', checkRes.status);
+          rollback();
           return;
         }
 
@@ -392,6 +403,7 @@ export const useUserSettings = ({
             const body = await res.text();
             console.error('[saveBudgetVisibility] update failed:', body.slice(0, 200));
             setDbError(`[saveBudgetVisibility] update failed (${res.status})`);
+            rollback();
           } else {
             console.log(`[saveBudgetVisibility] updated ${categoryName} visible=${visible}`);
           }
@@ -416,6 +428,7 @@ export const useUserSettings = ({
             const body = await res.text();
             console.error('[saveBudgetVisibility] insert failed:', body.slice(0, 200));
             setDbError(`[saveBudgetVisibility] insert failed (${res.status})`);
+            rollback();
           } else {
             console.log(`[saveBudgetVisibility] inserted ${categoryName} visible=${visible}`);
           }
@@ -424,9 +437,10 @@ export const useUserSettings = ({
         const msg = `[saveBudgetVisibility] exception: ${err?.message || err}`;
         console.error(msg);
         setDbError(msg);
+        rollback();
       }
     },
-    [appState.user, appState.budgets, setAppState, setDbError],
+    [appState.user, appState.budgets, appState.settings, setAppState, setDbError],
   );
 
   return {
