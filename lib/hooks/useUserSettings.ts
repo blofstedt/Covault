@@ -1,5 +1,5 @@
 // lib/hooks/useUserSettings.ts
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { REST_BASE, getAuthHeaders, DEFAULT_MONTHLY_INCOME } from '../apiHelpers';
 import type { UseUserDataParams } from './types';
 
@@ -8,6 +8,11 @@ export const useUserSettings = ({
   setAppState,
   setDbError,
 }: UseUserDataParams) => {
+
+  // Always-current ref for hiddenCategories, used for rollback in saveBudgetVisibility
+  // to avoid stale closure values when the useCallback captures old appState
+  const hiddenCategoriesRef = useRef<string[]>([]);
+  hiddenCategoriesRef.current = (appState.settings as any).hiddenCategories || [];
 
   // Save a single budget limit for the current user
   const saveBudgetLimit = useCallback(
@@ -309,27 +314,25 @@ export const useUserSettings = ({
       }
       const categoryName = category.name;
 
-      // Store previous hidden state for rollback
-      const previousHidden: string[] = (appState.settings as any).hiddenCategories || [];
-
       // Optimistic UI update: toggle hiddenCategories
+      // Read current hidden state from the always-current ref
+      // to avoid stale closure values causing the rollback to restore wrong state
+      const previousHidden = [...hiddenCategoriesRef.current];
+      const nextHidden = visible
+        ? previousHidden.filter((id: string) => id !== categoryId)
+        : [...previousHidden, categoryId];
+
+      setAppState(prev => ({
+        ...prev,
+        settings: { ...prev.settings, hiddenCategories: nextHidden },
+      }));
+
       const rollback = () => {
         setAppState(prev => ({
           ...prev,
           settings: { ...prev.settings, hiddenCategories: previousHidden },
         }));
       };
-
-      setAppState(prev => {
-        const currentHidden: string[] = (prev.settings as any).hiddenCategories || [];
-        const nextHidden = visible
-          ? currentHidden.filter((id: string) => id !== categoryId)
-          : [...currentHidden, categoryId];
-        return {
-          ...prev,
-          settings: { ...prev.settings, hiddenCategories: nextHidden },
-        };
-      });
 
       try {
         const headers = await getAuthHeaders();
@@ -367,7 +370,7 @@ export const useUserSettings = ({
         rollback();
       }
     },
-    [appState.user, appState.budgets, appState.settings, setAppState, setDbError],
+    [appState.user, appState.budgets, setAppState, setDbError],
   );
 
   return {
