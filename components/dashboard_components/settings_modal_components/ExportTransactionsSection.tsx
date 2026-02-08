@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 import { Transaction, BudgetCategory } from '../../../types';
 
 interface ExportTransactionsSectionProps {
@@ -69,26 +70,32 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const fileName = `covault-transactions-${startDate}-to-${endDate}.csv`;
 
-    // On native Android, write the file to the Downloads directory so the
-    // user gets an actual file saved on the device.
+    // On native platforms, write the CSV to the cache directory then share
+    // it via the system share sheet so the user can save to Downloads or
+    // open directly in another app.  Directory.ExternalStorage is blocked
+    // on Android 11+ due to scoped-storage restrictions, so the
+    // cache + share approach works reliably on all modern API levels.
     if (Capacitor.isNativePlatform()) {
       try {
         await Filesystem.writeFile({
-          path: 'Download/' + fileName,
+          path: fileName,
           data: csvContent,
-          directory: Directory.ExternalStorage,
+          directory: Directory.Cache,
           encoding: Encoding.UTF8,
         });
+
+        const uriResult = await Filesystem.getUri({
+          path: fileName,
+          directory: Directory.Cache,
+        });
+
+        await Share.share({
+          title: 'Covault Transactions',
+          files: [uriResult.uri],
+          dialogTitle: 'Save or share CSV',
+        });
       } catch {
-        // Fallback: try sharing if direct write fails (e.g. missing permissions)
-        try {
-          const file = new File([blob], fileName, { type: 'text/csv' });
-          if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-            await navigator.share({ files: [file], title: 'Covault Transactions' });
-          }
-        } catch {
-          // User cancelled share or share unavailable – not an error
-        }
+        // User cancelled share or an unexpected error – not actionable
       }
       setExported(true);
       setTimeout(() => setExported(false), 2000);
