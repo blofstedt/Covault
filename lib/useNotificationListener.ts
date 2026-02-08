@@ -12,6 +12,10 @@ export interface UseNotificationListenerParams {
   user: User | null;
   onTransactionDetected: (tx: Transaction) => void;
   onPendingTransactionCreated?: (pending: PendingTransaction) => void;
+  /** Called for auto-accepted transactions that are already saved in the DB.
+   *  Unlike onTransactionDetected, this only updates local UI state without
+   *  attempting a duplicate DB insert. */
+  onAutoAcceptedTransaction?: (tx: Transaction) => void;
 }
 
 /**
@@ -25,6 +29,7 @@ export const useNotificationListener = ({
   user,
   onTransactionDetected,
   onPendingTransactionCreated,
+  onAutoAcceptedTransaction,
 }: UseNotificationListenerParams) => {
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
@@ -71,7 +76,8 @@ export const useNotificationListener = ({
                   onPendingTransactionCreated?.(result.pendingTransaction);
                 }
 
-                // If auto-accepted, also notify via the transaction callback
+                // If auto-accepted, notify via the UI-only callback
+                // (transaction is already saved in the DB by processNotification)
                 if (result.autoAccepted && result.transactionId && result.pendingTransaction) {
                   const tx: Transaction = {
                     id: result.transactionId,
@@ -85,7 +91,11 @@ export const useNotificationListener = ({
                     userName: user.name || 'User',
                     created_at: new Date().toISOString(),
                   };
-                  onTransactionDetected(tx);
+                  if (onAutoAcceptedTransaction) {
+                    onAutoAcceptedTransaction(tx);
+                  } else {
+                    onTransactionDetected(tx);
+                  }
                 }
 
                 return;
@@ -133,5 +143,5 @@ export const useNotificationListener = ({
     return () => {
       cleanup?.();
     };
-  }, [user, onTransactionDetected, onPendingTransactionCreated]);
+  }, [user, onTransactionDetected, onPendingTransactionCreated, onAutoAcceptedTransaction]);
 };

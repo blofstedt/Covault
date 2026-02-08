@@ -137,6 +137,13 @@ const App: React.FC = () => {
         pendingTransactions: [pending, ...(prev.pendingTransactions || [])],
       }));
     },
+    onAutoAcceptedTransaction: (tx) => {
+      // Only update local UI state — the transaction is already in the DB
+      setAppState(prev => ({
+        ...prev,
+        transactions: [tx, ...prev.transactions],
+      }));
+    },
   });
 
   // Theme handling
