@@ -545,6 +545,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             currentMonthTransactions={currentMonthTransactions}
             pastTransactions={pastTransactions}
             futureTransactions={futureTransactions}
+            allTransactions={state.transactions}
             currentUserName={state.user?.name || ''}
             isSharedAccount={isSharedAccount}
             budgets={state.budgets}

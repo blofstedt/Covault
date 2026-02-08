@@ -85,6 +85,7 @@ interface SearchResultsProps {
   currentMonthTransactions: Transaction[];
   pastTransactions: Transaction[];
   futureTransactions: Transaction[];
+  allTransactions: Transaction[];
   currentUserName: string;
   isSharedAccount: boolean;
   budgets: BudgetCategory[];
@@ -103,6 +104,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   currentMonthTransactions,
   pastTransactions,
   futureTransactions,
+  allTransactions,
   currentUserName,
   isSharedAccount,
   budgets,
@@ -113,20 +115,10 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   const filterFn = (tx: Transaction) =>
     tx.vendor.toLowerCase().includes(q);
 
-  // Combine all known transactions so we can generate projections.
-  const allBaseTransactions = useMemo(
-    () => [
-      ...pastTransactions,
-      ...currentMonthTransactions,
-      ...futureTransactions,
-    ],
-    [pastTransactions, currentMonthTransactions, futureTransactions],
-  );
-
-  // Generate projected recurring transactions just for UI/search.
+  // Generate projected recurring transactions from ALL transactions (unfiltered).
   const projectedTransactions = useMemo(
-    () => generateProjectedTransactions(allBaseTransactions),
-    [allBaseTransactions],
+    () => generateProjectedTransactions(allTransactions),
+    [allTransactions],
   );
 
   // Split projected ones into "this month" vs "future after this month"

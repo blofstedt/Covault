@@ -43,6 +43,26 @@ export function generateProjectedTransactions(base: Transaction[]): Transaction[
 
     let current = new Date(tx.date);
 
+    // Fast-forward past occurrences to avoid unnecessary iterations for old transactions
+    if (tx.recurrence === 'Biweekly') {
+      const diffMs = today.getTime() - current.getTime();
+      if (diffMs > 0) {
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        const periodsToSkip = Math.max(0, Math.floor(diffDays / 14) - 1);
+        current = new Date(current);
+        current.setDate(current.getDate() + periodsToSkip * 14);
+      }
+    } else if (tx.recurrence === 'Monthly') {
+      if (current < today) {
+        const monthsDiff =
+          (today.getFullYear() - current.getFullYear()) * 12 +
+          (today.getMonth() - current.getMonth());
+        if (monthsDiff > 1) {
+          current = addMonths(current, monthsDiff - 1);
+        }
+      }
+    }
+
     while (count < maxOccurrences) {
       if (tx.recurrence === 'Biweekly') {
         current = new Date(current);
