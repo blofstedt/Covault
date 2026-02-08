@@ -15,8 +15,6 @@ import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import DashboardSettingsModal from './dashboard_components/DashboardSettingsModal';
 import SearchResults from './dashboard_components/SearchResults';
 import BudgetFlowChart from './dashboard_components/BudgetFlowChart';
-import FeatureRequestModal from './dashboard_components/FeatureRequestModal';
-import { useFeatureRequests } from '../lib/useFeatureRequests';
 
 // Notifications helper
 import { checkAndTriggerAppNotifications } from '../lib/appNotifications';
@@ -41,6 +39,13 @@ interface DashboardProps {
   saveTheme: (theme: 'light' | 'dark') => void;
   saveBudgetVisibility: (categoryId: string, visible: boolean) => void;
   isLoadingData: boolean;
+  // Dev mode section overrides
+  devShowSettings?: boolean;
+  devShowTutorial?: boolean;
+  devShowAddTx?: boolean;
+  onDevResetShowSettings?: () => void;
+  onDevResetShowTutorial?: () => void;
+  onDevResetShowAddTx?: () => void;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({
@@ -62,6 +67,12 @@ const Dashboard: React.FC<DashboardProps> = ({
   saveTheme,
   saveBudgetVisibility,
   isLoadingData,
+  devShowSettings,
+  devShowTutorial,
+  devShowAddTx,
+  onDevResetShowSettings,
+  onDevResetShowTutorial,
+  onDevResetShowAddTx,
 }) => {
   const [isAddingTx, setIsAddingTx] = useState(false);
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
@@ -69,7 +80,6 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [showParsing, setShowParsing] = useState(false);
-  const [showFeatureRequests, setShowFeatureRequests] = useState(false);
   const [isLinkingPartner, setIsLinkingPartner] = useState(false);
   const [partnerLinkEmail, setPartnerLinkEmail] = useState('');
   const [showTutorial, setShowTutorial] = useState(!state.settings.hasSeenTutorial);
@@ -80,20 +90,21 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [tutorialFormOpen, setTutorialFormOpen] = useState(false);
   const [demoSplitTrigger, setDemoSplitTrigger] = useState(0);
 
-  // Feature requests
-  const {
-    requests: featureRequests,
-    loading: featureRequestsLoading,
-    submitRequest: submitFeatureRequest,
-    toggleVote: toggleFeatureVote,
-    updateStatus: updateFeatureStatus,
-    searchRequests: searchFeatureRequests,
-  } = useFeatureRequests(state.user?.id);
-
   // Scroll refs shared with child components
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const budgetRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const bodyOverflowRef = useRef<string | null>(null);
+
+  // Dev mode: respond to external section navigation
+  useEffect(() => {
+    if (devShowSettings) setShowSettings(true);
+  }, [devShowSettings]);
+  useEffect(() => {
+    if (devShowTutorial) setShowTutorial(true);
+  }, [devShowTutorial]);
+  useEffect(() => {
+    if (devShowAddTx) setIsAddingTx(true);
+  }, [devShowAddTx]);
 
   // Track initial mount for animation purposes
   useEffect(() => {
@@ -104,7 +115,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   // Lock body scroll when overlays are open
   useEffect(() => {
     const shouldLock =
-      showSettings || isAddingTx || !!selectedTx || showTutorial || showFeatureRequests;
+      showSettings || isAddingTx || !!selectedTx || showTutorial;
     if (shouldLock) {
       if (bodyOverflowRef.current === null) {
         bodyOverflowRef.current = document.body.style.overflow || '';
@@ -114,7 +125,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       document.body.style.overflow = bodyOverflowRef.current;
       bodyOverflowRef.current = null;
     }
-  }, [showSettings, isAddingTx, selectedTx, showTutorial, showFeatureRequests]);
+  }, [showSettings, isAddingTx, selectedTx, showTutorial]);
 
   useEffect(() => {
     return () => {
@@ -399,6 +410,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     setIsAddingTx(false);
     setSelectedTx(null);
     updateSettings('hasSeenTutorial', true);
+    onDevResetShowTutorial?.();
   };
 
   const handleTutorialStepChange = (step: number) => {
@@ -532,7 +544,6 @@ const Dashboard: React.FC<DashboardProps> = ({
       >
         <DashboardHeader
           onOpenSettings={() => setShowSettings(true)}
-          onOpenFeatureRequests={() => setShowFeatureRequests(true)}
         />
       </header>
 
@@ -612,6 +623,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           onClose={() => {
             setShowSettings(false);
             setIsLinkingPartner(false);
+            onDevResetShowSettings?.();
           }}
           onRunTutorial={handleRunTutorialFromSettings}
           onUpdateSettings={updateSettings}
@@ -625,25 +637,12 @@ const Dashboard: React.FC<DashboardProps> = ({
         />
       )}
 
-      {showFeatureRequests && (
-        <FeatureRequestModal
-          onClose={() => setShowFeatureRequests(false)}
-          requests={featureRequests}
-          loading={featureRequestsLoading}
-          userId={state.user?.id}
-          userEmail={state.user?.email}
-          onSubmit={submitFeatureRequest}
-          onToggleVote={toggleFeatureVote}
-          onUpdateStatus={updateFeatureStatus}
-          searchRequests={searchFeatureRequests}
-        />
-      )}
-
       {isAddingTx && (
         <TransactionForm
           onClose={() => {
             setIsAddingTx(false);
             setTutorialFormOpen(false);
+            onDevResetShowAddTx?.();
           }}
           onSave={tutorialFormOpen ? (_tx: Transaction) => { /* no-op: saves disabled during tutorial */ } : onAddTransaction}
           budgets={visibleBudgets}

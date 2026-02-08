@@ -10,7 +10,8 @@ import NotificationSettingsSection from './settings_modal_components/Notificatio
 import NotificationRulesSection from './settings_modal_components/NotificationRulesSection';
 import BudgetLimitsSection from './settings_modal_components/BudgetLimitsSection';
 import ExportTransactionsSection from './settings_modal_components/ExportTransactionsSection';
-import { BudgetCategory, Transaction, NotificationRule } from '../../types';
+import ScheduledReportsSection from './settings_modal_components/ScheduledReportsSection';
+import { BudgetCategory, Transaction, NotificationRule, ScheduledReport } from '../../types';
 
 export interface DashboardSettings {
   theme: string;
@@ -19,6 +20,7 @@ export interface DashboardSettings {
   notificationsEnabled?: boolean;
   app_notifications_enabled?: boolean;
   notification_rules?: NotificationRule[];
+  scheduled_reports?: ScheduledReport[];
   [key: string]: any;
 }
 
@@ -188,7 +190,13 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           />
 
           {/* Export Transactions */}
-          <ExportTransactionsSection transactions={transactions} />
+          <ExportTransactionsSection transactions={transactions} budgets={budgets} />
+
+          {/* Scheduled Reports */}
+          <ScheduledReportsSection
+            reports={settings.scheduled_reports || []}
+            onUpdateReports={(reports) => onUpdateSettings('scheduled_reports', reports)}
+          />
 
           {/* Support & Feedback */}
           <SupportFeedbackSection />

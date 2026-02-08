@@ -204,8 +204,6 @@ const NotificationRuleBuilder: React.FC<NotificationRuleBuilderProps> = ({
   };
 
   const getSubjectLabel = () => {
-    if (subjectType === 'specific_budget') return subjectName || 'select budget';
-    if (subjectType === 'specific_recurring') return subjectName || 'select transaction';
     return SUBJECT_OPTIONS.find((s) => s.value === subjectType)?.label || subjectType;
   };
 

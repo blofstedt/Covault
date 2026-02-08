@@ -1,12 +1,14 @@
 import React, { useState, useMemo } from 'react';
-import { Transaction } from '../../../types';
+import { Transaction, BudgetCategory } from '../../../types';
 
 interface ExportTransactionsSectionProps {
   transactions: Transaction[];
+  budgets: BudgetCategory[];
 }
 
 const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
   transactions,
+  budgets,
 }) => {
   const today = new Date().toISOString().split('T')[0];
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
@@ -46,25 +48,28 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
       return value;
     };
 
+    const budgetMap = new Map(budgets.map((b) => [b.id, b.name]));
+
     const headers = ['Date', 'Vendor', 'Amount', 'Category', 'Recurrence', 'Label'];
     const rows = filtered.map((tx) => [
       escapeCSV(new Date(tx.date).toLocaleDateString()),
       escapeCSV(tx.vendor),
       escapeCSV(tx.amount.toFixed(2)),
-      escapeCSV(tx.budget_id || ''),
+      escapeCSV(tx.budget_id ? (budgetMap.get(tx.budget_id) || tx.budget_id) : ''),
       escapeCSV(tx.recurrence || 'One-time'),
       escapeCSV(tx.label || ''),
     ]);
 
-    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join(
-      '\n',
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join(
+      '\r\n',
     );
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = url;
-    link.download = `covault-transactions-${startDate}-to-${endDate}.csv`;
+    link.setAttribute('href', url);
+    link.setAttribute('download', `covault-transactions-${startDate}-to-${endDate}.csv`);
+    link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
