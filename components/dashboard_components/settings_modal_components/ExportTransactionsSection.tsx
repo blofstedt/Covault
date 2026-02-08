@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Transaction, BudgetCategory } from '../../../types';
 
 interface ExportTransactionsSectionProps {
@@ -68,20 +69,30 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const fileName = `covault-transactions-${startDate}-to-${endDate}.csv`;
 
-    // On native Android, use the Web Share API with a File object
-    // because programmatic blob downloads do not trigger in the WebView.
-    if (Capacitor.isNativePlatform() && navigator.share && navigator.canShare) {
-      const file = new File([blob], fileName, { type: 'text/csv' });
-      if (navigator.canShare({ files: [file] })) {
+    // On native Android, write the file to the Downloads directory so the
+    // user gets an actual file saved on the device.
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await Filesystem.writeFile({
+          path: 'Download/' + fileName,
+          data: csvContent,
+          directory: Directory.ExternalStorage,
+          encoding: Encoding.UTF8,
+        });
+      } catch {
+        // Fallback: try sharing if direct write fails (e.g. missing permissions)
         try {
-          await navigator.share({ files: [file], title: 'Covault Transactions' });
+          const file = new File([blob], fileName, { type: 'text/csv' });
+          if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({ files: [file], title: 'Covault Transactions' });
+          }
         } catch {
-          // User cancelled share – not an error
+          // User cancelled share or share unavailable – not an error
         }
-        setExported(true);
-        setTimeout(() => setExported(false), 2000);
-        return;
       }
+      setExported(true);
+      setTimeout(() => setExported(false), 2000);
+      return;
     }
 
     // Fallback: standard blob download for desktop/web browsers
