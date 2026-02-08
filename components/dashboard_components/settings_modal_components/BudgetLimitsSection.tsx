@@ -7,6 +7,7 @@ interface BudgetLimitsSectionProps {
   showTutorial?: boolean;
   hiddenCategories?: string[];
   onToggleHideCategory?: (categoryId: string) => void;
+  monthlyIncome?: number;
 }
 
 const BudgetLimitsSection: React.FC<BudgetLimitsSectionProps> = ({
@@ -15,10 +16,13 @@ const BudgetLimitsSection: React.FC<BudgetLimitsSectionProps> = ({
   showTutorial,
   hiddenCategories = [],
   onToggleHideCategory,
+  monthlyIncome,
 }) => {
   const [editingBudgets, setEditingBudgets] = useState<Record<string, string>>({});
+  const [overAllocatedMessage, setOverAllocatedMessage] = useState<string | null>(null);
 
   const handleInputChange = (budgetId: string, value: string) => {
+    setOverAllocatedMessage(null);
     setEditingBudgets(prev => ({ ...prev, [budgetId]: value }));
   };
 
@@ -27,6 +31,28 @@ const BudgetLimitsSection: React.FC<BudgetLimitsSectionProps> = ({
     if (newValue !== undefined && newValue !== '') {
       const newLimit = parseFloat(newValue);
       if (!isNaN(newLimit) && newLimit > 0) {
+        // Check if total allocations would exceed monthly income
+        if (monthlyIncome !== undefined && monthlyIncome > 0) {
+          const totalOtherBudgets = budgets
+            .filter(b => b.id !== budget.id && !hiddenCategories.includes(b.id))
+            .reduce((sum, b) => sum + b.totalLimit, 0);
+          const newTotal = totalOtherBudgets + newLimit;
+
+          if (newTotal > monthlyIncome) {
+            setOverAllocatedMessage(
+              `Budget total ($${newTotal.toFixed(2)}) exceeds your income ($${monthlyIncome.toFixed(2)}). To allocate more, increase your monthly income.`
+            );
+            // Revert input to the previous value
+            setEditingBudgets(prev => {
+              const updated = { ...prev };
+              delete updated[budget.id];
+              return updated;
+            });
+            return;
+          }
+        }
+
+        setOverAllocatedMessage(null);
         onSaveBudgetLimit(budget.id, newLimit);
         // Clear the editing state for this budget
         setEditingBudgets(prev => {
@@ -55,6 +81,14 @@ const BudgetLimitsSection: React.FC<BudgetLimitsSectionProps> = ({
       <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
         Set your monthly budget limit for each category. Tap the eye icon to hide categories you don't use.
       </p>
+
+      {overAllocatedMessage && (
+        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 rounded-xl">
+          <p className="text-[11px] font-bold text-red-600 dark:text-red-400 leading-relaxed">
+            {overAllocatedMessage}
+          </p>
+        </div>
+      )}
 
       <div className="space-y-3">
         {(showTutorial ? budgets.slice(0, 1) : budgets).map((budget) => {
