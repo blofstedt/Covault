@@ -37,65 +37,27 @@ export const useUserSettings = ({
       try {
         const headers = await getAuthHeaders();
         
-        // First, check if a record exists
-        const checkRes = await fetch(
-          `${REST_BASE}/budgets?select=id&user_id=eq.${userId}&category=eq.${encodeURIComponent(categoryName)}`,
-          { headers },
+        // Use upsert with on_conflict to handle both insert and update in one call
+        // resolution=merge-duplicates will update existing row if (user_id, category) already exists
+        (headers as any)['Prefer'] = 'return=representation,resolution=merge-duplicates';
+        const res = await fetch(
+          `${REST_BASE}/budgets?on_conflict=user_id,category`,
+          {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              user_id: userId,
+              category: categoryName,
+              limit_amount: newLimit,
+              is_household: !appState.user?.budgetingSolo,
+            }),
+          },
         );
-        
-        if (!checkRes.ok) {
-          const msg = `[saveBudgetLimit] check failed (${checkRes.status})`;
-          console.error(msg);
-          setDbError(msg);
-          
-          // Rollback optimistic update
-          setAppState(prev => ({
-            ...prev,
-            budgets: prev.budgets.map(b =>
-              b.id === categoryId ? { ...b, totalLimit: previousLimit } : b,
-            ),
-          }));
-          return;
-        }
-        
-        const existingRecords = await checkRes.json();
-        const recordExists = existingRecords && existingRecords.length > 0;
-
-        let res;
-        if (recordExists) {
-          // Update existing record
-          const recordId = existingRecords[0].id;
-          (headers as any)['Prefer'] = 'return=representation';
-          res = await fetch(
-            `${REST_BASE}/budgets?id=eq.${recordId}`,
-            {
-              method: 'PATCH',
-              headers,
-              body: JSON.stringify({ limit_amount: newLimit }),
-            },
-          );
-        } else {
-          // Insert new record
-          (headers as any)['Prefer'] = 'return=representation';
-          res = await fetch(
-            `${REST_BASE}/budgets`,
-            {
-              method: 'POST',
-              headers,
-              body: JSON.stringify({
-                user_id: userId,
-                category: categoryName,
-                limit_amount: newLimit,
-                is_household: !appState.user?.budgetingSolo,
-              }),
-            },
-          );
-        }
         
         const body = await res.text();
 
         if (!res.ok) {
-          const msg = `[saveBudgetLimit] ${recordExists ? 'update' : 'insert'} failed (${res.status}): ${body.slice(
+          const msg = `[saveBudgetLimit] upsert failed (${res.status}): ${body.slice(
             0,
             200,
           )}`;
@@ -130,7 +92,7 @@ export const useUserSettings = ({
           }
           
           if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
-            const msg = `[saveBudgetLimit] no rows ${recordExists ? 'updated' : 'inserted'} - operation failed silently`;
+            const msg = `[saveBudgetLimit] no rows upserted - operation failed silently`;
             console.error(msg);
             setDbError(msg);
             
@@ -142,7 +104,7 @@ export const useUserSettings = ({
               ),
             }));
           } else {
-            console.log(`[saveBudgetLimit] ${recordExists ? 'updated' : 'inserted'} OK`);
+            console.log(`[saveBudgetLimit] upserted OK`);
           }
         }
       } catch (err: any) {
@@ -372,66 +334,31 @@ export const useUserSettings = ({
       try {
         const headers = await getAuthHeaders();
 
-        // Check if a record exists for this category
-        const checkRes = await fetch(
-          `${REST_BASE}/budgets?select=id&user_id=eq.${userId}&category=eq.${encodeURIComponent(categoryName)}`,
-          { headers },
+        // Use upsert with on_conflict to handle both insert and update in one call
+        // resolution=merge-duplicates will update existing row if (user_id, category) already exists
+        (headers as any)['Prefer'] = 'return=representation,resolution=merge-duplicates';
+        const res = await fetch(
+          `${REST_BASE}/budgets?on_conflict=user_id,category`,
+          {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              user_id: userId,
+              category: categoryName,
+              limit_amount: category.totalLimit,
+              visible,
+              is_household: !appState.user?.budgetingSolo,
+            }),
+          },
         );
 
-        if (!checkRes.ok) {
-          console.error('[saveBudgetVisibility] check failed:', checkRes.status);
+        if (!res.ok) {
+          const body = await res.text();
+          console.error('[saveBudgetVisibility] upsert failed:', body.slice(0, 200));
+          setDbError(`[saveBudgetVisibility] upsert failed (${res.status})`);
           rollback();
-          return;
-        }
-
-        const existingRecords = await checkRes.json();
-        const recordExists = existingRecords && existingRecords.length > 0;
-
-        if (recordExists) {
-          const recordId = existingRecords[0].id;
-          (headers as any)['Prefer'] = 'return=representation';
-          const res = await fetch(
-            `${REST_BASE}/budgets?id=eq.${recordId}`,
-            {
-              method: 'PATCH',
-              headers,
-              body: JSON.stringify({ visible }),
-            },
-          );
-
-          if (!res.ok) {
-            const body = await res.text();
-            console.error('[saveBudgetVisibility] update failed:', body.slice(0, 200));
-            setDbError(`[saveBudgetVisibility] update failed (${res.status})`);
-            rollback();
-          } else {
-            console.log(`[saveBudgetVisibility] updated ${categoryName} visible=${visible}`);
-          }
         } else {
-          // Insert a new record with visibility
-          (headers as any)['Prefer'] = 'return=representation';
-          const res = await fetch(
-            `${REST_BASE}/budgets`,
-            {
-              method: 'POST',
-              headers,
-              body: JSON.stringify({
-                user_id: userId,
-                category: categoryName,
-                limit_amount: category.totalLimit,
-                visible,
-              }),
-            },
-          );
-
-          if (!res.ok) {
-            const body = await res.text();
-            console.error('[saveBudgetVisibility] insert failed:', body.slice(0, 200));
-            setDbError(`[saveBudgetVisibility] insert failed (${res.status})`);
-            rollback();
-          } else {
-            console.log(`[saveBudgetVisibility] inserted ${categoryName} visible=${visible}`);
-          }
+          console.log(`[saveBudgetVisibility] upserted ${categoryName} visible=${visible}`);
         }
       } catch (err: any) {
         const msg = `[saveBudgetVisibility] exception: ${err?.message || err}`;
