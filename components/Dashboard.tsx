@@ -523,6 +523,10 @@ const Dashboard: React.FC<DashboardProps> = ({
         }}
         autoDetectedTransactions={autoDetectedTransactions}
         onTransactionTap={(tx) => setSelectedTx(tx)}
+        pendingTransactions={state.pendingTransactions || []}
+        budgets={visibleBudgets}
+        onApprovePending={onApprovePendingTransaction}
+        onRejectPending={onRejectPendingTransaction}
       />
     );
   }
@@ -607,6 +611,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         onOpenParsing={() => setShowParsing(true)}
         activeView="home"
         shouldAnimate={shouldAnimateBottomBarRef.current}
+        pendingCount={(state.pendingTransactions || []).length}
       />
 
       {showSettings && (

@@ -4,6 +4,8 @@
 -- ============================================================
 
 -- 1. DROP ALL EXISTING TABLES
+DROP TABLE IF EXISTS public.ignored_transactions CASCADE;
+DROP TABLE IF EXISTS public.notification_fingerprints CASCADE;
 DROP TABLE IF EXISTS public.transactions  CASCADE;
 DROP TABLE IF EXISTS public.transaction_budget_splits CASCADE;
 DROP TABLE IF EXISTS public.pending_transactions CASCADE;
@@ -522,4 +524,68 @@ CREATE POLICY "Users can view own flag reports"
   USING (auth.uid() = user_id);
 CREATE POLICY "Users can insert own flag reports"
   ON public.flag_reports FOR INSERT TO authenticated
+  WITH CHECK (auth.uid() = user_id);
+
+-- ============================================================
+-- 14. IGNORED TRANSACTIONS
+-- Persist user rules to ignore known non-expense notifications
+-- (e.g. pre-authorizations, holds)
+-- Checked before inserting into pending_transactions
+-- ============================================================
+CREATE TABLE public.ignored_transactions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  vendor_name text NOT NULL,
+  amount numeric(12,2),
+  bank_app_id text,
+  expires_at timestamptz,
+  reason text NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  CONSTRAINT ignored_transactions_pkey PRIMARY KEY (id)
+);
+
+CREATE INDEX idx_ignored_transactions_user_id ON public.ignored_transactions (user_id);
+CREATE INDEX idx_ignored_transactions_vendor ON public.ignored_transactions (user_id, vendor_name);
+
+ALTER TABLE public.ignored_transactions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own ignored transactions"
+  ON public.ignored_transactions FOR SELECT TO authenticated
+  USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own ignored transactions"
+  ON public.ignored_transactions FOR INSERT TO authenticated
+  WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own ignored transactions"
+  ON public.ignored_transactions FOR UPDATE TO authenticated
+  USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete own ignored transactions"
+  ON public.ignored_transactions FOR DELETE TO authenticated
+  USING (auth.uid() = user_id);
+
+-- ============================================================
+-- 15. NOTIFICATION FINGERPRINTS
+-- Prevent duplicate transaction creation caused by
+-- shared bank accounts, multiple notifications, OS resend
+-- Fingerprinting happens before any parsing
+-- ============================================================
+CREATE TABLE public.notification_fingerprints (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  fingerprint_hash text NOT NULL,
+  bank_app_id text NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  CONSTRAINT notification_fingerprints_pkey PRIMARY KEY (id),
+  CONSTRAINT notification_fingerprints_unique UNIQUE (user_id, fingerprint_hash)
+);
+
+CREATE INDEX idx_notification_fingerprints_user_id ON public.notification_fingerprints (user_id);
+CREATE INDEX idx_notification_fingerprints_hash ON public.notification_fingerprints (user_id, fingerprint_hash);
+
+ALTER TABLE public.notification_fingerprints ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own notification fingerprints"
+  ON public.notification_fingerprints FOR SELECT TO authenticated
+  USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own notification fingerprints"
+  ON public.notification_fingerprints FOR INSERT TO authenticated
   WITH CHECK (auth.uid() = user_id);

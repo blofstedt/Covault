@@ -220,7 +220,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     }
 
     e.preventDefault();
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     setActiveSlideId(id);
     hasMovedRef.current = false;
     slideStartRef.current = { x: e.clientX, initialSplit: splits[id] || 0 };
