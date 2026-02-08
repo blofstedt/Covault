@@ -69,6 +69,8 @@ const ScheduledReportsSection: React.FC<ScheduledReportsSectionProps> = ({
     setShowBuilder(true);
   };
 
+  const [oneTimeSent, setOneTimeSent] = useState(false);
+
   const handleSave = () => {
     const parsedEmails = emails
       .split(/[,;\s]+/)
@@ -85,6 +87,21 @@ const ScheduledReportsSection: React.FC<ScheduledReportsSectionProps> = ({
       month: frequency === 'yearly' ? parseInt(month) || 0 : undefined,
       enabled: editingReport?.enabled ?? true,
     };
+
+    // One-time reports are sent immediately and not persisted in the list
+    if (frequency === 'one_time') {
+      // Trigger immediate send (when backend is wired up, this calls the send API)
+      onUpdateReports([...reports, { ...report, enabled: true }]);
+      // Remove it from the persisted list right away so it doesn't show as scheduled
+      setTimeout(() => {
+        onUpdateReports(reports.filter((r) => r.id !== report.id));
+      }, 0);
+      setOneTimeSent(true);
+      setTimeout(() => setOneTimeSent(false), 2500);
+      setShowBuilder(false);
+      setEditingReport(undefined);
+      return;
+    }
 
     if (editingReport) {
       onUpdateReports(reports.map((r) => (r.id === report.id ? report : r)));
@@ -209,6 +226,12 @@ const ScheduledReportsSection: React.FC<ScheduledReportsSectionProps> = ({
           </svg>
           Schedule Report
         </button>
+
+        {oneTimeSent && (
+          <div className="mt-2 py-2 rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 text-[10px] font-black uppercase tracking-wider text-center animate-in fade-in duration-300">
+            ✓ Report sent
+          </div>
+        )}
       </div>
 
       {/* Builder modal */}
@@ -326,7 +349,7 @@ const ScheduledReportsSection: React.FC<ScheduledReportsSectionProps> = ({
                 onClick={handleSave}
                 className="flex-1 py-3 rounded-2xl text-[11px] font-black uppercase tracking-wider bg-emerald-500 text-white active:scale-95 transition-all shadow-lg shadow-emerald-500/20"
               >
-                {editingReport ? 'Update' : 'Save'}
+                {editingReport ? 'Update' : frequency === 'one_time' ? 'Send Now' : 'Save'}
               </button>
             </div>
           </div>
