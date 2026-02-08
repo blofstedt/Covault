@@ -417,9 +417,9 @@ export const useNotificationListener = ({
                 }
 
                 // If auto-accepted, also notify via the transaction callback
-                if (result.autoAccepted && result.pendingTransaction) {
+                if (result.autoAccepted && result.transactionId && result.pendingTransaction) {
                   const tx: Transaction = {
-                    id: result.transactionId || crypto.randomUUID(),
+                    id: result.transactionId,
                     user_id: user.id,
                     vendor: result.pendingTransaction.extracted_vendor,
                     amount: result.pendingTransaction.extracted_amount,

@@ -23,6 +23,9 @@ const DEFAULT_CONFIDENCE_THRESHOLD = 70;
 /** Timestamp bucket size for fingerprinting (± 3 minutes) */
 const FINGERPRINT_TIME_BUCKET_MS = 3 * 60 * 1000;
 
+/** Tolerance for comparing monetary amounts */
+const AMOUNT_TOLERANCE = 0.01;
+
 // ─── Types ───────────────────────────────────────────────────────
 
 export interface NotificationInput {
@@ -446,15 +449,14 @@ async function getOrCreateRule(
     }
 
     if (rule) {
-      // Update existing rule with new regex
+      // Update existing rule with new regex (don't increment flagged_count;
+      // that tracks user-reported flags, not automated regeneration)
       const { data: updated, error } = await supabase
         .from('notification_rules')
         .update({
           amount_regex: geminiResult.amount_regex,
           vendor_regex: geminiResult.vendor_regex,
           default_category_id: defaultCategoryId,
-          flagged_count: (rule.flagged_count ?? 0) + 1,
-          last_flagged_at: new Date().toISOString(),
         })
         .eq('id', rule.id)
         .select()
@@ -535,7 +537,7 @@ async function shouldIgnore(
 
     // Check amount match (if specified)
     if (rule.amount != null && amount != null) {
-      if (Math.abs(rule.amount - amount) > 0.01) {
+      if (Math.abs(rule.amount - amount) > AMOUNT_TOLERANCE) {
         continue; // Amount doesn't match
       }
     }
@@ -633,7 +635,7 @@ async function tryAutoAccept(
   if (existing && existing.length > 0) {
     // Check for a transaction with the same amount already today
     const hasDuplicate = existing.some(
-      (tx) => Math.abs(tx.amount - pending.extracted_amount) < 0.01,
+      (tx) => Math.abs(tx.amount - pending.extracted_amount) < AMOUNT_TOLERANCE,
     );
     if (hasDuplicate) {
       // Mark as needs_review due to potential duplicate
@@ -641,7 +643,7 @@ async function tryAutoAccept(
         .from('pending_transactions')
         .update({
           needs_review: true,
-          validation_reasons: pending.validation_reasons + '; Potential duplicate of existing transaction',
+          validation_reasons: (pending.validation_reasons || 'OK') + '; Potential duplicate of existing transaction',
         })
         .eq('id', pending.id);
       return { accepted: false };
