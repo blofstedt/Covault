@@ -567,19 +567,33 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
             }}
           >
             <div
-              className={`absolute p-2.5 w-[150px] bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-[0_20px_50px_-10px_rgba(0,0,0,0.9)] flex flex-col gap-2 ${
-                mouseCoords.x > chartWidth / 2 ? '-translate-x-[110%]' : 'translate-x-[12%]'
+              className={`absolute p-2.5 w-[150px] backdrop-blur-xl rounded-xl flex flex-col gap-2 ${
+                theme === 'dark'
+                  ? 'bg-slate-900/95 border border-white/20 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.9)]'
+                  : 'bg-white/95 border border-slate-200 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.15)]'
+              } ${
+                mouseCoords.x > chartWidth * 0.7
+                  ? '-translate-x-[115%]'
+                  : mouseCoords.x < chartWidth * 0.3
+                    ? 'translate-x-[20%]'
+                    : mouseCoords.x > chartWidth / 2
+                      ? '-translate-x-[110%]'
+                      : 'translate-x-[12%]'
               }`}
             >
               <div className="flex justify-between items-center">
-                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">
+                <span className={`text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-emerald-400' : 'text-emerald-600'}`}>
                   {activeMonthData.month}
                 </span>
                 <div
                   className={`px-2 py-0.5 rounded-full border text-[8px] font-black uppercase tracking-widest ${
                     activeMonthData.total > totalBudgetLimit
-                      ? 'bg-white text-[#030a08] border-white'
-                      : 'text-white/60 border-white/20'
+                      ? theme === 'dark'
+                        ? 'bg-white text-[#030a08] border-white'
+                        : 'bg-slate-900 text-white border-slate-900'
+                      : theme === 'dark'
+                        ? 'text-white/60 border-white/20'
+                        : 'text-slate-400 border-slate-200'
                   }`}
                 >
                   {activeMonthData.total > totalBudgetLimit ? 'Over' : 'Safe'}
@@ -588,14 +602,14 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
               <div className="flex items-center gap-2">
                 <div className="flex-1 min-w-0">
-                  <h4 className="text-[8px] font-bold tracking-widest uppercase text-white/40 truncate mb-0.5">
+                  <h4 className={`text-[8px] font-bold tracking-widest uppercase truncate mb-0.5 ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'}`}>
                     {activeCategory}
                   </h4>
-                  <div className="text-base font-black tracking-tighter text-white leading-tight">
+                  <div className={`text-base font-black tracking-tighter leading-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
                     ${activeCatAmount.toFixed(0)}
                   </div>
                 </div>
-                <div className="w-1 h-8 bg-white/10 rounded-full relative overflow-hidden shrink-0">
+                <div className={`w-1 h-8 rounded-full relative overflow-hidden shrink-0 ${theme === 'dark' ? 'bg-white/10' : 'bg-slate-200'}`}>
                   <div
                     className="absolute bottom-0 left-0 w-full rounded-full transition-all duration-500 ease-out"
                     style={{
@@ -608,17 +622,19 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
                 </div>
               </div>
 
-              <div className="pt-1.5 border-t border-white/10 grid grid-cols-2 gap-2">
+              <div className={`pt-1.5 border-t grid grid-cols-2 gap-2 ${theme === 'dark' ? 'border-white/10' : 'border-slate-200'}`}>
                 <div className="flex flex-col">
-                  <span className="text-[7px] font-black uppercase tracking-tighter text-white/30 mb-0.5">Part</span>
-                  <span className="text-[11px] font-black text-white">{categoryPercentage}%</span>
+                  <span className={`text-[7px] font-black uppercase tracking-tighter mb-0.5 ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'}`}>Part</span>
+                  <span className={`text-[11px] font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{categoryPercentage}%</span>
                 </div>
                 <div className="flex flex-col text-right">
-                  <span className="text-[7px] font-black uppercase tracking-tighter text-white/30 mb-0.5">Total</span>
+                  <span className={`text-[7px] font-black uppercase tracking-tighter mb-0.5 ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'}`}>Total</span>
                   <span
                     className={`text-[11px] font-black ${
                       activeMonthData.total > totalBudgetLimit
-                        ? 'text-white underline decoration-white/40 underline-offset-4'
+                        ? theme === 'dark'
+                          ? 'text-white underline decoration-white/40 underline-offset-4'
+                          : 'text-slate-900 underline decoration-slate-300 underline-offset-4'
                         : 'text-emerald-400'
                     }`}
                   >
