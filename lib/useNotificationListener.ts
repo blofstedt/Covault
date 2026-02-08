@@ -1,9 +1,10 @@
 // lib/useNotificationListener.ts
 import { useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
-import type { Transaction, User } from '../types';
+import type { Transaction, User, PendingTransaction } from '../types';
 import { supabase } from './supabase';
 import { covaultNotification } from './covaultNotification';
+import { processNotification } from './notificationProcessor';
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
@@ -343,9 +344,10 @@ export async function flagNotificationAndRegenerateRule(options: {
   }
 }
 
-interface UseNotificationListenerParams {
+export interface UseNotificationListenerParams {
   user: User | null;
   onTransactionDetected: (tx: Transaction) => void;
+  onPendingTransactionCreated?: (pending: PendingTransaction) => void;
 }
 
 /**
@@ -360,13 +362,14 @@ interface UseNotificationListenerParams {
  *     amount?: number;          // optional fallback
  *   }
  *
- * 👉 If rawNotification/bankAppId/bankName are missing,
- *    we fall back to event.vendor and event.amount (old behavior),
- *    so this is backwards compatible while you update the plugin.
+ * 👉 If rawNotification/bankAppId/bankName are present,
+ *    we use the full processing pipeline (dedup → regex → validate → pending → auto-accept).
+ *    Otherwise, we fall back to event.vendor and event.amount (old behavior).
  */
 export const useNotificationListener = ({
   user,
   onTransactionDetected,
+  onPendingTransactionCreated,
 }: UseNotificationListenerParams) => {
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
@@ -390,12 +393,62 @@ export const useNotificationListener = ({
               return;
             }
 
+            // ── Full processing pipeline (new path) ──
+            if (event.rawNotification && event.bankAppId && event.bankName) {
+              try {
+                const result = await processNotification(user.id, {
+                  rawNotification: event.rawNotification,
+                  bankAppId: event.bankAppId,
+                  bankName: event.bankName,
+                  fallbackVendor: event.vendor,
+                  fallbackAmount: event.amount,
+                });
+
+                if (!result.processed) {
+                  console.log(
+                    `[notification] Skipped: ${result.skipReason}`,
+                  );
+                  return;
+                }
+
+                // Notify about pending transaction for UI update
+                if (result.pendingTransaction) {
+                  onPendingTransactionCreated?.(result.pendingTransaction);
+                }
+
+                // If auto-accepted, also notify via the transaction callback
+                if (result.autoAccepted && result.pendingTransaction) {
+                  const tx: Transaction = {
+                    id: result.transactionId || crypto.randomUUID(),
+                    user_id: user.id,
+                    vendor: result.pendingTransaction.extracted_vendor,
+                    amount: result.pendingTransaction.extracted_amount,
+                    date: new Date().toISOString().slice(0, 10),
+                    budget_id: null,
+                    is_projected: false,
+                    label: 'Auto-Added',
+                    userName: user.name || 'User',
+                    created_at: new Date().toISOString(),
+                  };
+                  onTransactionDetected(tx);
+                }
+
+                return;
+              } catch (err) {
+                console.error(
+                  '[notification] Pipeline error, falling back to legacy:',
+                  err,
+                );
+                // Fall through to legacy path
+              }
+            }
+
+            // ── Legacy fallback (no raw notification data) ──
             let vendor = event.vendor || 'Unknown Merchant';
             let amount = event.amount || 0;
             let notificationRuleId: string | undefined;
             let rawNotification: string | undefined;
 
-            // If the plugin sends raw notification info, use our regex pipeline
             if (event.rawNotification && event.bankAppId && event.bankName) {
               rawNotification = event.rawNotification;
 
@@ -466,5 +519,5 @@ export const useNotificationListener = ({
     return () => {
       cleanup?.();
     };
-  }, [user, onTransactionDetected]);
+  }, [user, onTransactionDetected, onPendingTransactionCreated]);
 };

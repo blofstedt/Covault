@@ -91,6 +91,27 @@ export interface ValidationBaseline {
   updated_at: string;
 }
 
+// Ignored transaction rule (user-defined ignore patterns)
+export interface IgnoredTransaction {
+  id: string;
+  user_id: string;
+  vendor_name: string;
+  amount?: number;
+  bank_app_id?: string;
+  expires_at?: string;
+  reason: string;
+  created_at: string;
+}
+
+// Notification fingerprint for deduplication
+export interface NotificationFingerprint {
+  id: string;
+  user_id: string;
+  fingerprint_hash: string;
+  bank_app_id: string;
+  created_at: string;
+}
+
 export enum Recurrence {
   ONE_TIME = 'One-time',
   BIWEEKLY = 'Biweekly',

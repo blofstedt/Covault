@@ -131,6 +131,12 @@ const App: React.FC = () => {
   useNotificationListener({
     user: appState.user,
     onTransactionDetected: handleAddTransaction,
+    onPendingTransactionCreated: (pending) => {
+      setAppState(prev => ({
+        ...prev,
+        pendingTransactions: [pending, ...(prev.pendingTransactions || [])],
+      }));
+    },
   });
 
   // Theme handling
