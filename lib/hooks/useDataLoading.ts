@@ -301,8 +301,9 @@ export const useDataLoading = ({
   );
 
   // Load transactions from Supabase via raw fetch
+  // When merge is true, new transactions are appended to existing ones (used for partner data)
   const loadTransactions = useCallback(
-    async (userId: string) => {
+    async (userId: string, { merge = false }: { merge?: boolean } = {}) => {
       try {
         const headers = await getAuthHeaders();
         const res = await fetch(
@@ -360,13 +361,21 @@ export const useDataLoading = ({
                 return tx;
               });
 
-              return { ...prev, transactions: resolvedTransactions };
+              const mergedTransactions = merge
+                ? [...prev.transactions.filter(t => !resolvedTransactions.some((r: any) => r.id === t.id)), ...resolvedTransactions]
+                : resolvedTransactions;
+              return { ...prev, transactions: mergedTransactions };
             });
             return; // setAppState already called above
           }
 
           console.log('[loadTransactions] OK, count:', transactions.length);
-          setAppState(prev => ({ ...prev, transactions }));
+          setAppState(prev => {
+            const mergedTransactions = merge
+              ? [...prev.transactions.filter(t => !transactions.some((n: any) => n.id === t.id)), ...transactions]
+              : transactions;
+            return { ...prev, transactions: mergedTransactions };
+          });
         } else {
           console.log('[loadTransactions] no transactions found');
         }
@@ -460,8 +469,8 @@ export const useDataLoading = ({
               : null,
           }));
 
-          // Load partner's transactions
-          await loadTransactions(partnerId);
+          // Load partner's transactions and merge with existing user transactions
+          await loadTransactions(partnerId, { merge: true });
         }
       } catch (err: any) {
         console.error('[loadHouseholdLink]', err?.message || err);

@@ -79,7 +79,7 @@ export const useNotificationListener = ({
                     vendor: result.pendingTransaction.extracted_vendor,
                     amount: result.pendingTransaction.extracted_amount,
                     date: new Date().toISOString().slice(0, 10),
-                    budget_id: null,
+                    budget_id: result.categoryId || null,
                     is_projected: false,
                     label: 'Auto-Added',
                     userName: user.name || 'User',
