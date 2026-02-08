@@ -454,7 +454,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                             {b.name}
                           </span>
                           <span className={`text-[10px] font-black mt-0.5 ${isSelected ? 'text-emerald-800 dark:text-emerald-200' : 'invisible'}`}>
-                            {isSelected ? `$${share.toFixed(selectedIds.size > 1 ? 2 : 0)}` : '$0'}
+                            {isSelected ? `$${share.toFixed(selectedIds.size > 1 ? 2 : 0)}` : '\u00A0'}
                           </span>
                         </div>
                       </button>

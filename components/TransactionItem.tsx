@@ -39,6 +39,11 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
     return budgets.find(b => b.id === budgetId);
   }, [budgets, transaction, showBudgetIcon]);
 
+  const isFutureTransaction = useMemo(() => {
+    if (transaction.is_projected) return false;
+    return new Date(transaction.date) > new Date();
+  }, [transaction.date, transaction.is_projected]);
+
   const isOtherUser = isSharedView && transaction.userName !== currentUserName;
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -106,7 +111,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
                   </span>
                 )}
 
-                {!transaction.is_projected && new Date(transaction.date) > new Date() && (
+                {isFutureTransaction && (
                   <span className="text-[8px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-[0.15em] bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded-md">
                     Future
                   </span>

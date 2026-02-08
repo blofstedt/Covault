@@ -45,6 +45,7 @@ export function generateProjectedTransactions(base: Transaction[]): Transaction[
 
     while (count < maxOccurrences) {
       if (tx.recurrence === 'Biweekly') {
+        current = new Date(current);
         current.setDate(current.getDate() + 14);
       } else if (tx.recurrence === 'Monthly') {
         current = addMonths(current, 1);
