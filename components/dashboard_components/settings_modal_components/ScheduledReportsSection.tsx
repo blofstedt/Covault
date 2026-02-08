@@ -23,9 +23,10 @@ function reportToSentence(report: ScheduledReport): string {
     : `${report.emails.length} recipients`;
   const day = report.dayOfMonth;
   const suffix =
-    day === 1 || day === 21 ? 'st' :
-    day === 2 || day === 22 ? 'nd' :
-    day === 3 || day === 23 ? 'rd' : 'th';
+    (day >= 11 && day <= 13) ? 'th' :
+    day % 10 === 1 ? 'st' :
+    day % 10 === 2 ? 'nd' :
+    day % 10 === 3 ? 'rd' : 'th';
 
   if (report.frequency === 'monthly') {
     return `Send report to ${emailStr} on the ${day}${suffix} of each month.`;
