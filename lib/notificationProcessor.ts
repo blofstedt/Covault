@@ -51,6 +51,8 @@ export interface ProcessingResult {
   autoAccepted?: boolean;
   /** The transaction ID if auto-accepted */
   transactionId?: string;
+  /** The category ID assigned when auto-accepted */
+  categoryId?: string;
 }
 
 interface NotificationRuleRow {
@@ -611,7 +613,7 @@ async function tryAutoAccept(
   pending: PendingTransaction,
   defaultCategoryId: string | null,
   confidenceThreshold: number,
-): Promise<{ accepted: boolean; transactionId?: string }> {
+): Promise<{ accepted: boolean; transactionId?: string; categoryId?: string }> {
   // Must meet confidence threshold
   if (pending.confidence < confidenceThreshold) {
     return { accepted: false };
@@ -710,7 +712,7 @@ async function tryAutoAccept(
     })
     .eq('id', pending.id);
 
-  return { accepted: true, transactionId };
+  return { accepted: true, transactionId, categoryId };
 }
 
 // ─── Main Pipeline ──────────────────────────────────────────────
@@ -861,6 +863,7 @@ export async function processNotification(
     pendingTransaction: pending,
     autoAccepted: autoResult.accepted,
     transactionId: autoResult.transactionId,
+    categoryId: autoResult.categoryId,
   };
 }
 

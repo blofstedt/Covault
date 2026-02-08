@@ -1,10 +1,16 @@
 // lib/hooks/useDataLoading.ts
 import { useCallback, useState } from 'react';
 import { SYSTEM_CATEGORIES } from '../../constants';
-import type { BudgetCategory } from '../../types';
+import type { BudgetCategory, Transaction } from '../../types';
 import { REST_BASE, getAuthHeaders, DEFAULT_BUDGET_LIMIT, DEFAULT_MONTHLY_INCOME } from '../apiHelpers';
 import { useFromSupabaseTransaction } from './transactionMappers';
 import type { UseUserDataParams } from './types';
+
+/** Merge incoming transactions into existing ones, deduplicating by ID. */
+function mergeTransactions(existing: Transaction[], incoming: Transaction[]): Transaction[] {
+  const incomingIds = new Set(incoming.map(t => t.id));
+  return [...existing.filter(t => !incomingIds.has(t.id)), ...incoming];
+}
 
 export const useDataLoading = ({
   setAppState,
@@ -301,8 +307,9 @@ export const useDataLoading = ({
   );
 
   // Load transactions from Supabase via raw fetch
+  // When merge is true, new transactions are appended to existing ones (used for partner data)
   const loadTransactions = useCallback(
-    async (userId: string) => {
+    async (userId: string, { merge = false }: { merge?: boolean } = {}) => {
       try {
         const headers = await getAuthHeaders();
         const res = await fetch(
@@ -360,13 +367,21 @@ export const useDataLoading = ({
                 return tx;
               });
 
-              return { ...prev, transactions: resolvedTransactions };
+              const mergedTransactions = merge
+                ? mergeTransactions(prev.transactions, resolvedTransactions)
+                : resolvedTransactions;
+              return { ...prev, transactions: mergedTransactions };
             });
             return; // setAppState already called above
           }
 
           console.log('[loadTransactions] OK, count:', transactions.length);
-          setAppState(prev => ({ ...prev, transactions }));
+          setAppState(prev => {
+            const mergedTransactions = merge
+              ? mergeTransactions(prev.transactions, transactions)
+              : transactions;
+            return { ...prev, transactions: mergedTransactions };
+          });
         } else {
           console.log('[loadTransactions] no transactions found');
         }
@@ -460,8 +475,8 @@ export const useDataLoading = ({
               : null,
           }));
 
-          // Load partner's transactions
-          await loadTransactions(partnerId);
+          // Load partner's transactions and merge with existing user transactions
+          await loadTransactions(partnerId, { merge: true });
         }
       } catch (err: any) {
         console.error('[loadHouseholdLink]', err?.message || err);
