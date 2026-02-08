@@ -83,22 +83,6 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
             Vault Settings
           </h2>
           <div className="flex items-center space-x-2">
-            {/* Three-dots menu for advanced options */}
-            <button
-              onClick={() => onUpdateSettings('advancedMode', !(settings as any).advancedMode)}
-              className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-full transition-transform active:scale-90"
-              aria-label="Advanced options"
-            >
-              <svg
-                className="w-6 h-6 text-slate-500"
-                fill="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <circle cx="12" cy="5" r="2" />
-                <circle cx="12" cy="12" r="2" />
-                <circle cx="12" cy="19" r="2" />
-              </svg>
-            </button>
             <button
               disabled={showTutorial}
               onClick={onClose}
