@@ -606,6 +606,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           isLinkingPartner={isLinkingPartner}
           partnerLinkEmail={partnerLinkEmail}
           budgets={state.budgets}
+          transactions={state.transactions}
           onChangePartnerLinkEmail={setPartnerLinkEmail}
           onClose={() => {
             setShowSettings(false);

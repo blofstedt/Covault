@@ -9,7 +9,8 @@ import SignOutSection from './settings_modal_components/SignOutSection';
 import NotificationSettingsSection from './settings_modal_components/NotificationSettingsSection';
 import AppNotificationsSection from './settings_modal_components/AppNotificationsSection';
 import BudgetLimitsSection from './settings_modal_components/BudgetLimitsSection';
-import { BudgetCategory } from '../../types';
+import ExportTransactionsSection from './settings_modal_components/ExportTransactionsSection';
+import { BudgetCategory, Transaction } from '../../types';
 
 export interface DashboardSettings {
   theme: string;
@@ -36,6 +37,7 @@ export interface DashboardSettingsModalProps {
   isLinkingPartner: boolean;
   partnerLinkEmail: string;
   budgets: BudgetCategory[];
+  transactions: Transaction[];
   onChangePartnerLinkEmail: (value: string) => void;
   onClose: () => void;
   onRunTutorial: () => void;
@@ -57,6 +59,7 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
   isLinkingPartner,
   partnerLinkEmail,
   budgets,
+  transactions,
   onChangePartnerLinkEmail,
   onClose,
   onRunTutorial,
@@ -178,6 +181,9 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
             onDisconnectPartner={onDisconnectPartner}
             onToggleLinkingPartner={onToggleLinkingPartner}
           />
+
+          {/* Export Transactions */}
+          <ExportTransactionsSection transactions={transactions} />
 
           {/* Support & Feedback */}
           <SupportFeedbackSection />
