@@ -56,6 +56,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   );
 
   const [recurrence, setRecurrence] = useState<Recurrence>(initialTransaction?.recurrence || 'One-time');
+  const [description, setDescription] = useState(initialTransaction?.description || '');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
 
@@ -303,8 +304,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       label: initialTransaction ? TransactionLabel.EDITED : TransactionLabel.MANUAL,
       user_id: userId,
       userName,
-      is_projected: recurrence !== Recurrence.ONE_TIME && new Date(date + 'T12:00:00') > new Date(),
+      is_projected: false,
       splits: finalSplits.length > 1 ? finalSplits : undefined,
+      description: description.trim() || undefined,
       created_at: initialTransaction?.created_at || new Date().toISOString()
     };
 
@@ -389,6 +391,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                 </div>
               )}
             </div>
+
           </div>
 
           <div className="space-y-3">
@@ -450,11 +453,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                           <span className={`text-[8px] font-black uppercase tracking-tighter mt-1.5 ${isSelected ? 'text-emerald-700 dark:text-emerald-300' : ''}`}>
                             {b.name}
                           </span>
-                          {isSelected && (
-                            <span className="text-[10px] font-black text-emerald-800 dark:text-emerald-200 mt-0.5">
-                              ${share.toFixed(selectedIds.size > 1 ? 2 : 0)}
-                            </span>
-                          )}
+                          <span className={`text-[10px] font-black mt-0.5 ${isSelected ? 'text-emerald-800 dark:text-emerald-200' : 'invisible'}`}>
+                            {isSelected ? `$${share.toFixed(selectedIds.size > 1 ? 2 : 0)}` : '$0'}
+                          </span>
                         </div>
                       </button>
                     );
@@ -503,6 +504,15 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                 ))}
               </div>
             </div>
+
+            {/* Description input */}
+            <input
+              type="text"
+              placeholder="Add a description (optional)"
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 rounded-2xl py-3 px-6 text-sm font-bold placeholder-slate-300 dark:placeholder-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20 text-slate-500 dark:text-slate-100 text-center shadow-sm"
+            />
           </div>
 
           <button

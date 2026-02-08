@@ -18,6 +18,7 @@ import BudgetFlowChart from './dashboard_components/BudgetFlowChart';
 
 // Notifications helper
 import { checkAndTriggerAppNotifications } from '../lib/appNotifications';
+import { generateProjectedTransactions } from '../lib/projectedTransactions';
 
 interface DashboardProps {
   state: AppState;
@@ -157,6 +158,17 @@ const Dashboard: React.FC<DashboardProps> = ({
     };
   }, []); // Empty dependency array - only calculate once per component mount
 
+  // Unfiltered current month transactions (used for balance calculation)
+  const currentMonthTransactionsAll = useMemo(
+    () =>
+      state.transactions.filter((tx) => {
+        const d = new Date(tx.date);
+        return d.getUTCFullYear() === currentYear && d.getUTCMonth() === currentMonth;
+      }),
+    [state.transactions, currentYear, currentMonth],
+  );
+
+  // Search-filtered current month transactions (used for display only)
   const currentMonthTransactions = useMemo(
     () =>
       filteredTransactions.filter((tx) => {
@@ -191,26 +203,50 @@ const Dashboard: React.FC<DashboardProps> = ({
     [state.transactions, currentYear, currentMonth],
   );
 
+  // Generate projected transactions from recurring entries (display-only, not saved to DB)
+  const projectedTransactions = useMemo(
+    () => generateProjectedTransactions(state.transactions),
+    [state.transactions],
+  );
+
+  // Projected transactions falling in the current month
+  const projectedCurrentMonth = useMemo(
+    () =>
+      projectedTransactions.filter((tx) => {
+        const d = new Date(tx.date);
+        return d.getUTCFullYear() === currentYear && d.getUTCMonth() === currentMonth;
+      }),
+    [projectedTransactions, currentYear, currentMonth],
+  );
+
+  // Current month transactions augmented with projected entries (for display in budget sections)
+  const currentMonthWithProjected = useMemo(
+    () => [...currentMonthTransactionsAll, ...projectedCurrentMonth],
+    [currentMonthTransactionsAll, projectedCurrentMonth],
+  );
+
   // Total income (currently just user's income, partner to be added later)
   const totalIncome = useMemo(() => {
     const userIncome = state.user?.monthlyIncome || 0;
     return userIncome;
   }, [state.user?.monthlyIncome]);
 
-  // Remaining money (this month only, spent vs projected)
+  // Remaining money (this month only, spent vs projected) — always uses unfiltered transactions
   const remainingMoney = useMemo(() => {
-    const totalSpent = currentMonthTransactions.reduce(
+    const allCurrentMonth = [...currentMonthTransactionsAll, ...projectedCurrentMonth];
+
+    const totalSpent = allCurrentMonth.reduce(
       (acc, tx) => acc + (tx.is_projected ? 0 : tx.amount),
       0,
     );
 
-    const totalProjected = currentMonthTransactions.reduce(
+    const totalProjected = allCurrentMonth.reduce(
       (acc, tx) => acc + (tx.is_projected ? tx.amount : 0),
       0,
     );
 
     return totalIncome - (totalSpent + totalProjected);
-  }, [totalIncome, currentMonthTransactions]);
+  }, [totalIncome, currentMonthTransactionsAll, projectedCurrentMonth]);
 
   const leisureAdjustments = useMemo(() => {
     if (!state.settings.useLeisureAsBuffer) return 0;
@@ -219,7 +255,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     visibleBudgets.forEach((b) => {
       if (b.name.toLowerCase().includes('leisure')) return;
 
-      const bTxs = currentMonthTransactions.filter(
+      const bTxs = currentMonthTransactionsAll.filter(
         (tx) =>
           tx.budget_id === b.id ||
           tx.splits?.some((s) => s.budget_id === b.id),
@@ -241,7 +277,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     });
 
     return totalOverspend;
-  }, [visibleBudgets, currentMonthTransactions, state.settings.useLeisureAsBuffer]);
+  }, [visibleBudgets, currentMonthTransactionsAll, state.settings.useLeisureAsBuffer]);
 
   const toggleExpand = (id: string) => {
     const next = new Set(expandedBudgets);
@@ -431,7 +467,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     checkAndTriggerAppNotifications({
       userId: state.user.id,
       budgets: state.budgets,
-      transactions: currentMonthTransactions,
+      transactions: currentMonthTransactionsAll,
       totalIncome,
       remainingMoney,
       settings: {
@@ -441,7 +477,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   }, [
     state.user?.id,
     state.budgets,
-    currentMonthTransactions,
+    currentMonthTransactionsAll,
     totalIncome,
     remainingMoney,
     (state.settings as any).app_notifications_enabled,
@@ -518,8 +554,8 @@ const Dashboard: React.FC<DashboardProps> = ({
           <DashboardBudgetSectionsList
             budgets={state.budgets}
             transactions={tutorialPlaceholderTransaction
-              ? [...currentMonthTransactions, tutorialPlaceholderTransaction]
-              : currentMonthTransactions}
+              ? [...currentMonthWithProjected, tutorialPlaceholderTransaction]
+              : currentMonthWithProjected}
             expandedBudgets={expandedBudgets}
             isFocusMode={isFocusMode}
             focusedBudgetId={focusedBudgetId}

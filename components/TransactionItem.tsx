@@ -105,7 +105,20 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
                     Projected
                   </span>
                 )}
+
+                {!transaction.is_projected && new Date(transaction.date) > new Date() && (
+                  <span className="text-[8px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-[0.15em] bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded-md">
+                    Future
+                  </span>
+                )}
               </div>
+
+              {/* Description */}
+              {transaction.description && (
+                <span className="text-[9px] font-medium text-slate-400 dark:text-slate-500 italic truncate max-w-[200px]">
+                  {transaction.description}
+                </span>
+              )}
 
               {/* "This looks wrong" button (only for auto‑added + parsed notifications) */}
               {transaction.label === 'Auto-Added' &&

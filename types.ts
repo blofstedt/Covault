@@ -115,6 +115,7 @@ export interface Transaction {
   is_projected: boolean;
   userName?: string;
   splits?: TransactionSplit[];
+  description?: string;
   created_at: string;
 
   // 🔽 New: used only on the client for notification correction / flagging
