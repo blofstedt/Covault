@@ -7,17 +7,18 @@ import VaultSharingSection from './settings_modal_components/VaultSharingSection
 import SupportFeedbackSection from './settings_modal_components/SupportFeedbackSection';
 import SignOutSection from './settings_modal_components/SignOutSection';
 import NotificationSettingsSection from './settings_modal_components/NotificationSettingsSection';
-import AppNotificationsSection from './settings_modal_components/AppNotificationsSection';
+import NotificationRulesSection from './settings_modal_components/NotificationRulesSection';
 import BudgetLimitsSection from './settings_modal_components/BudgetLimitsSection';
 import ExportTransactionsSection from './settings_modal_components/ExportTransactionsSection';
-import { BudgetCategory, Transaction } from '../../types';
+import { BudgetCategory, Transaction, NotificationRule } from '../../types';
 
 export interface DashboardSettings {
   theme: string;
   rolloverEnabled: boolean;
   useLeisureAsBuffer: boolean;
   notificationsEnabled?: boolean;
-  app_notifications_enabled?: boolean; // <-- Correct key
+  app_notifications_enabled?: boolean;
+  notification_rules?: NotificationRule[];
   [key: string]: any;
 }
 
@@ -153,10 +154,14 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
             onToggle={(v) => onUpdateSettings('notificationsEnabled', v)}
           />
 
-          {/* App Notifications */}
-          <AppNotificationsSection
+          {/* Notification Rules */}
+          <NotificationRulesSection
             enabled={!!settings.app_notifications_enabled}
             onToggle={(v) => onUpdateSettings('app_notifications_enabled', v)}
+            rules={settings.notification_rules || []}
+            onUpdateRules={(rules) => onUpdateSettings('notification_rules', rules)}
+            budgets={budgets}
+            transactions={transactions}
           />
 
           {/* Budget rollover */}

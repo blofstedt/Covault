@@ -485,6 +485,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       remainingMoney,
       settings: {
         app_notifications_enabled: (state.settings as any).app_notifications_enabled,
+        notification_rules: (state.settings as any).notification_rules || [],
       },
     });
   }, [
