@@ -840,7 +840,7 @@ export async function processNotification(
       false, // regex didn't work, but we have fallback data
     );
     // If fallback values are reasonable, improve confidence and adjust reasons
-    if (finalVendor !== 'Unknown Merchant' && finalAmount > 0) {
+    if (finalVendor !== 'Unknown Merchant' && finalAmount != null) {
       validation.reasons = validation.reasons.filter(r => r !== 'Regex extraction failed');
       validation.reasons.push('Used fallback extraction (regex unavailable)');
       // Give moderate confidence for fallback values

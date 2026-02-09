@@ -342,12 +342,15 @@ export const useTransactionOps = ({
         try {
           const overrideHeaders = await getAuthHeaders();
           (overrideHeaders as any)['Prefer'] = 'return=representation';
-          // Upsert: if an override for this vendor already exists, update it
-          await fetch(
+          // Upsert: if an override for this vendor already exists, delete then re-insert
+          const deleteRes = await fetch(
             `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(pending.extracted_vendor)}`,
             { method: 'DELETE', headers: overrideHeaders },
           );
-          await fetch(`${REST_BASE}/vendor_overrides`, {
+          if (!deleteRes.ok) {
+            console.warn('[approvePending] vendor_override DELETE failed:', deleteRes.status);
+          }
+          const postRes = await fetch(`${REST_BASE}/vendor_overrides`, {
             method: 'POST',
             headers: overrideHeaders,
             body: JSON.stringify({
@@ -356,7 +359,12 @@ export const useTransactionOps = ({
               category_id: categoryId,
             }),
           });
-          console.log('[approvePending] vendor_override saved for', pending.extracted_vendor);
+          if (!postRes.ok) {
+            const postBody = await postRes.text();
+            console.warn('[approvePending] vendor_override POST failed:', postRes.status, postBody.slice(0, 200));
+          } else {
+            console.log('[approvePending] vendor_override saved for', pending.extracted_vendor);
+          }
         } catch (overrideErr: any) {
           // Non-critical: log but don't fail the approval
           console.warn('[approvePending] vendor_override save failed:', overrideErr?.message || overrideErr);
