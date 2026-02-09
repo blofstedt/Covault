@@ -1,12 +1,20 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import NotificationSettings from './NotificationSettings';
 import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import RegexSetupModal from './RegexSetupModal';
 import { PendingTransaction, BudgetCategory, Transaction } from '../types';
+import { supabase } from '../lib/supabase';
 import {
   saveNotificationRule,
   reprocessUnconfiguredCaptures,
+  type NotificationRuleRow,
 } from '../lib/notificationProcessor';
+
+interface VendorOverride {
+  id: string;
+  vendor_name: string;
+  category_id: string;
+}
 
 interface TransactionParsingProps {
   enabled: boolean;
@@ -21,8 +29,8 @@ interface TransactionParsingProps {
   onApprovePending?: (pendingId: string, categoryId: string) => void;
   onRejectPending?: (pendingId: string) => void;
   onRefreshNotifications?: () => Promise<void>;
+  onReloadPendingTransactions?: (userId: string) => Promise<void>;
   userId?: string;
-  onPendingTransactionsUpdated?: (updated: PendingTransaction[]) => void;
 }
 
 const TransactionParsing: React.FC<TransactionParsingProps> = ({
@@ -38,15 +46,58 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   onApprovePending,
   onRejectPending,
   onRefreshNotifications,
+  onReloadPendingTransactions,
   userId,
-  onPendingTransactionsUpdated,
 }) => {
   const [expandedPendingId, setExpandedPendingId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [setupNotification, setSetupNotification] = useState<PendingTransaction | null>(null);
   const [savingRule, setSavingRule] = useState(false);
 
-  // ── Categorize pending transactions into three sections ──
+  // ── Loaded data from Supabase ──
+  const [savedRules, setSavedRules] = useState<NotificationRuleRow[]>([]);
+  const [vendorOverrides, setVendorOverrides] = useState<VendorOverride[]>([]);
+
+  // ── Load saved notification rules from Supabase ──
+  const loadRules = useCallback(async () => {
+    if (!userId) return;
+    const { data, error } = await supabase
+      .from('notification_rules')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('[TransactionParsing] Error loading rules:', error);
+      return;
+    }
+    setSavedRules((data || []) as NotificationRuleRow[]);
+  }, [userId]);
+
+  // ── Load vendor overrides (default categories) from Supabase ──
+  const loadVendorOverrides = useCallback(async () => {
+    if (!userId) return;
+    const { data, error } = await supabase
+      .from('vendor_overrides')
+      .select('id, vendor_name, category_id')
+      .eq('user_id', userId)
+      .order('vendor_name');
+
+    if (error) {
+      console.error('[TransactionParsing] Error loading vendor overrides:', error);
+      return;
+    }
+    setVendorOverrides((data || []) as VendorOverride[]);
+  }, [userId]);
+
+  // Load rules and vendor overrides on mount + when userId changes
+  useEffect(() => {
+    loadRules();
+    loadVendorOverrides();
+  }, [loadRules, loadVendorOverrides]);
+
+  // ── Categorize pending transactions into sections ──
 
   // 1. Captured: no rule configured (pattern_id is null)
   const capturedNotifications = useMemo(
@@ -56,9 +107,8 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     [pendingTransactions],
   );
 
-  // 2. Set Category: rule matched, vendor/amount extracted, but needs category
-  //    These have a pattern_id and needs_review=true and validation_reasons='OK'
-  const needsCategoryTransactions = useMemo(
+  // 2. To Review: rule matched, vendor/amount extracted, needs category + approval
+  const toReviewTransactions = useMemo(
     () => pendingTransactions.filter(
       (pt) =>
         pt.pattern_id &&
@@ -67,12 +117,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     ),
     [pendingTransactions],
   );
-
-  // 3. Pending Approval: has everything, user can approve or auto-approve is pending
-  //    For now, these show in the same "Set Category" flow since the user picks a category
-  //    and approves in one step. The "Pending Approval" section is for transactions
-  //    that already have a vendor_override (category is known).
-  //    We'll show them together in Set Category for the approval + category assignment.
 
   // Group captured notifications by bank app
   const capturedByBank = useMemo(() => {
@@ -85,10 +129,19 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     return groups;
   }, [capturedNotifications]);
 
-  const totalPendingCount = needsCategoryTransactions.length;
-  const totalCapturedCount = capturedNotifications.length;
+  // Build a lookup: category_id → category name
+  const categoryNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const b of budgets) {
+      map.set(b.id, b.name);
+    }
+    return map;
+  }, [budgets]);
 
-  // Handle saving a regex rule from the setup modal
+  const toReviewCount = toReviewTransactions.length;
+  const capturedCount = capturedNotifications.length;
+
+  // ── Handle saving a regex rule from the setup modal ──
   const handleSaveRule = useCallback(
     async (amountRegex: string, vendorRegex: string) => {
       if (!setupNotification || !userId) return;
@@ -108,10 +161,13 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
           // Re-process all unconfigured captures for this bank
           await reprocessUnconfiguredCaptures(userId, setupNotification.app_package, rule);
 
-          // Notify parent to refresh pending transactions
-          if (onRefreshNotifications) {
-            await onRefreshNotifications();
+          // Reload pending transactions from DB (state was updated in Supabase)
+          if (onReloadPendingTransactions) {
+            await onReloadPendingTransactions(userId);
           }
+
+          // Refresh the rules list
+          await loadRules();
         }
 
         setSetupNotification(null);
@@ -121,7 +177,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         setSavingRule(false);
       }
     },
-    [setupNotification, userId, onRefreshNotifications],
+    [setupNotification, userId, onReloadPendingTransactions, loadRules],
   );
 
   return (
@@ -158,9 +214,110 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               </div>
 
               {/* ──────────────────────────────────────────────────── */}
+              {/* RULES: Saved Bank Notification Rules */}
+              {/* ──────────────────────────────────────────────────── */}
+              {savedRules.length > 0 && (
+                <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-emerald-200 dark:border-emerald-800/40 space-y-3">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
+                      <svg className="w-5 h-5 text-emerald-600 dark:text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="16 18 22 12 16 6" />
+                        <polyline points="8 6 2 12 8 18" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                        Parsing Rules
+                      </h3>
+                      <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
+                        How Covault reads transactions from each bank
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-black bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 px-2.5 py-1 rounded-full">
+                      {savedRules.length}
+                    </span>
+                  </div>
+
+                  {savedRules.map((rule) => (
+                    <div
+                      key={rule.id}
+                      className="flex items-center justify-between p-3 bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl border border-emerald-100 dark:border-emerald-800/30"
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center shrink-0">
+                          <svg className="w-4 h-4 text-emerald-600 dark:text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                            {rule.bank_name}
+                          </p>
+                          <p className="text-[8px] text-slate-400 dark:text-slate-500 mt-0.5 font-mono truncate max-w-[200px]">
+                            vendor: /{rule.vendor_regex}/
+                          </p>
+                          <p className="text-[8px] text-slate-400 dark:text-slate-500 font-mono truncate max-w-[200px]">
+                            amount: /{rule.amount_regex}/
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-[8px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 shrink-0">
+                        Active
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* ──────────────────────────────────────────────────── */}
+              {/* VENDOR DEFAULTS: Saved vendor → category mappings */}
+              {/* ──────────────────────────────────────────────────── */}
+              {vendorOverrides.length > 0 && (
+                <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-violet-200 dark:border-violet-800/40 space-y-3">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-violet-50 dark:bg-violet-900/20 rounded-xl">
+                      <svg className="w-5 h-5 text-violet-600 dark:text-violet-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                        Vendor Defaults
+                      </h3>
+                      <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
+                        Default budget categories for known vendors
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-black bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 px-2.5 py-1 rounded-full">
+                      {vendorOverrides.length}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {vendorOverrides.map((vo) => (
+                      <div
+                        key={vo.id}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 bg-violet-50 dark:bg-violet-900/10 rounded-xl border border-violet-100 dark:border-violet-800/30"
+                      >
+                        <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200">
+                          {vo.vendor_name}
+                        </span>
+                        <svg className="w-3 h-3 text-slate-300 dark:text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                          <polyline points="9 18 15 12 9 6" />
+                        </svg>
+                        <span className="text-[10px] font-bold text-violet-600 dark:text-violet-400">
+                          {categoryNameById.get(vo.category_id) || 'Unknown'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ──────────────────────────────────────────────────── */}
               {/* SECTION 1: Captured Notifications (needs rule setup) */}
               {/* ──────────────────────────────────────────────────── */}
-              {totalCapturedCount > 0 && (
+              {capturedCount > 0 && (
                 <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-blue-200 dark:border-blue-800/40 space-y-4">
                   <div className="flex items-center space-x-3">
                     <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
@@ -177,7 +334,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                       </p>
                     </div>
                     <span className="text-[10px] font-black bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2.5 py-1 rounded-full">
-                      {totalCapturedCount}
+                      {capturedCount}
                     </span>
                   </div>
 
@@ -226,9 +383,9 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               )}
 
               {/* ──────────────────────────────────────────────────── */}
-              {/* SECTION 2: Set Category (regex matched, needs category) */}
+              {/* SECTION 2: To Review (regex matched, needs category + approval) */}
               {/* ──────────────────────────────────────────────────── */}
-              {totalPendingCount > 0 && (
+              {toReviewCount > 0 && (
                 <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-amber-200 dark:border-amber-800/40 space-y-4">
                   <div className="flex items-center space-x-3">
                     <div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-xl">
@@ -238,19 +395,19 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                     </div>
                     <div className="flex-1">
                       <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-                        Set Category
+                        To Review
                       </h3>
                       <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
                         Assign a budget category to approve these transactions
                       </p>
                     </div>
                     <span className="text-[10px] font-black bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-2.5 py-1 rounded-full">
-                      {totalPendingCount}
+                      {toReviewCount}
                     </span>
                   </div>
 
                   <div className="space-y-2">
-                    {needsCategoryTransactions.map((pt) => {
+                    {toReviewTransactions.map((pt) => {
                       const isExpanded = expandedPendingId === pt.id;
 
                       return (
@@ -306,6 +463,8 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                                       onClick={() => {
                                         onApprovePending?.(pt.id, b.id);
                                         setExpandedPendingId(null);
+                                        // Reload vendor overrides since approval may create one
+                                        loadVendorOverrides();
                                       }}
                                       className="px-3 py-1.5 text-[10px] font-bold rounded-full border transition-all active:scale-95 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40"
                                     >
@@ -522,7 +681,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         onAddTransaction={onAddTransaction}
         onOpenParsing={onBack}
         activeView="parsing"
-        pendingCount={totalPendingCount + totalCapturedCount}
+        pendingCount={toReviewCount + capturedCount}
       />
 
       {/* Regex Setup Modal */}
