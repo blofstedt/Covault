@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Transaction, BudgetCategory, Recurrence, TransactionLabel, TransactionSplit } from '../types';
 import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
+import { formatVendorName } from '../lib/formatVendorName';
 
 interface VendorHistoryItem {
   vendor: string;
@@ -296,7 +297,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
     const tx: Transaction = {
       id: initialTransaction?.id || generateUUID(),
-      vendor: vendor || 'Untitled Vendor',
+      vendor: formatVendorName(vendor || 'Untitled Vendor'),
       amount: amount,
       date: new Date(date + 'T12:00:00').toISOString(),
       budget_id: (Array.from(selectedIds) as string[])[0],

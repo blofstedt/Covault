@@ -14,6 +14,7 @@ interface VendorOverride {
   id: string;
   vendor_name: string;
   category_id: string;
+  auto_accept: boolean;
 }
 
 interface TransactionParsingProps {
@@ -53,6 +54,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [setupNotification, setSetupNotification] = useState<PendingTransaction | null>(null);
   const [savingRule, setSavingRule] = useState(false);
+  const [rejectConfirmId, setRejectConfirmId] = useState<string | null>(null);
 
   // ── Loaded data from Supabase ──
   const [savedRules, setSavedRules] = useState<NotificationRuleRow[]>([]);
@@ -80,7 +82,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     if (!userId) return;
     const { data, error } = await supabase
       .from('vendor_overrides')
-      .select('id, vendor_name, category_id')
+      .select('id, vendor_name, category_id, auto_accept')
       .eq('user_id', userId)
       .order('vendor_name');
 
@@ -95,7 +97,49 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   useEffect(() => {
     loadRules();
     loadVendorOverrides();
+    loadAutoAcceptedTransactions();
   }, [loadRules, loadVendorOverrides]);
+
+  // ── Toggle auto_accept on a vendor override ──
+  const handleToggleAutoAccept = useCallback(
+    async (overrideId: string, currentValue: boolean) => {
+      if (!userId) return;
+      const { error } = await supabase
+        .from('vendor_overrides')
+        .update({ auto_accept: !currentValue })
+        .eq('id', overrideId)
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('[TransactionParsing] Error toggling auto_accept:', error);
+        return;
+      }
+      // Refresh overrides
+      await loadVendorOverrides();
+    },
+    [userId, loadVendorOverrides],
+  );
+
+  // ── Load auto-accepted pending transactions (approved=true, label Auto-Added) ──
+  const [autoAcceptedPending, setAutoAcceptedPending] = useState<PendingTransaction[]>([]);
+
+  const loadAutoAcceptedTransactions = useCallback(async () => {
+    if (!userId) return;
+    const { data, error } = await supabase
+      .from('pending_transactions')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('needs_review', false)
+      .eq('approved', true)
+      .order('reviewed_at', { ascending: false })
+      .limit(20);
+
+    if (error) {
+      console.error('[TransactionParsing] Error loading auto-accepted:', error);
+      return;
+    }
+    setAutoAcceptedPending((data || []) as PendingTransaction[]);
+  }, [userId]);
 
   // ── Categorize pending transactions into sections ──
 
@@ -282,7 +326,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                     </div>
                     <div className="flex-1">
                       <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-                        Vendor Defaults
+                        Assigned Categories
                       </h3>
                       <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
                         Default budget categories for known vendors
@@ -293,20 +337,91 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                     </span>
                   </div>
 
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="space-y-2">
                     {vendorOverrides.map((vo) => (
                       <div
                         key={vo.id}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 bg-violet-50 dark:bg-violet-900/10 rounded-xl border border-violet-100 dark:border-violet-800/30"
+                        className="flex items-center justify-between p-3 bg-violet-50 dark:bg-violet-900/10 rounded-2xl border border-violet-100 dark:border-violet-800/30"
                       >
-                        <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200">
-                          {vo.vendor_name}
-                        </span>
-                        <svg className="w-3 h-3 text-slate-300 dark:text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                          <polyline points="9 18 15 12 9 6" />
-                        </svg>
-                        <span className="text-[10px] font-bold text-violet-600 dark:text-violet-400">
-                          {categoryNameById.get(vo.category_id) || 'Unknown'}
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200 truncate">
+                            {vo.vendor_name}
+                          </span>
+                          <svg className="w-3 h-3 text-slate-300 dark:text-slate-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                            <polyline points="9 18 15 12 9 6" />
+                          </svg>
+                          <span className="text-[10px] font-bold text-violet-600 dark:text-violet-400 truncate">
+                            {categoryNameById.get(vo.category_id) || 'Unknown'}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => handleToggleAutoAccept(vo.id, vo.auto_accept)}
+                          className={`shrink-0 ml-2 flex items-center gap-1 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-wider transition-all active:scale-95 ${
+                            vo.auto_accept
+                              ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700'
+                          }`}
+                          title={vo.auto_accept ? 'Auto-accept is on' : 'Auto-accept is off'}
+                        >
+                          <div className={`w-6 h-3.5 rounded-full relative transition-colors ${vo.auto_accept ? 'bg-emerald-400 dark:bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
+                            <div className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white shadow-sm transition-all ${vo.auto_accept ? 'left-3' : 'left-0.5'}`} />
+                          </div>
+                          <span>Auto</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ──────────────────────────────────────────────────── */}
+              {/* AUTO ACCEPTED: Transactions auto-approved by vendor toggle */}
+              {/* ──────────────────────────────────────────────────── */}
+              {autoAcceptedPending.length > 0 && (
+                <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-cyan-200 dark:border-cyan-800/40 space-y-3">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-cyan-50 dark:bg-cyan-900/20 rounded-xl">
+                      <svg className="w-5 h-5 text-cyan-600 dark:text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
+                        <polyline points="22 4 12 14.01 9 11.01" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                        Auto Accepted
+                      </h3>
+                      <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
+                        Automatically approved via vendor auto-accept
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-black bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 px-2.5 py-1 rounded-full">
+                      {autoAcceptedPending.length}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {autoAcceptedPending.map((pt) => (
+                      <div
+                        key={pt.id}
+                        className="flex items-center justify-between p-3 bg-cyan-50 dark:bg-cyan-900/10 rounded-2xl border border-cyan-100 dark:border-cyan-800/30"
+                      >
+                        <div className="flex items-center space-x-3 min-w-0">
+                          <div className="w-8 h-8 bg-cyan-100 dark:bg-cyan-900/30 rounded-full flex items-center justify-center shrink-0">
+                            <svg className="w-4 h-4 text-cyan-600 dark:text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate max-w-[140px]">
+                              {pt.extracted_vendor}
+                            </p>
+                            <p className="text-[8px] text-slate-400 dark:text-slate-500 mt-0.5">
+                              {pt.app_name} — {pt.reviewed_at ? new Date(pt.reviewed_at).toLocaleDateString() : ''}
+                            </p>
+                          </div>
+                        </div>
+                        <span className="text-sm font-black text-slate-700 dark:text-slate-200 shrink-0">
+                          ${pt.extracted_amount.toFixed(2)}
                         </span>
                       </div>
                     ))}
@@ -477,8 +592,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                               {/* Reject button */}
                               <button
                                 onClick={() => {
-                                  onRejectPending?.(pt.id);
-                                  setExpandedPendingId(null);
+                                  setRejectConfirmId(pt.id);
                                 }}
                                 className="w-full py-2 text-[10px] font-bold uppercase tracking-wider text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/10 rounded-xl border border-red-200 dark:border-red-800/30 transition-all active:scale-[0.98] hover:bg-red-100 dark:hover:bg-red-900/20"
                               >
@@ -691,6 +805,47 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
           onSave={handleSaveRule}
           onClose={() => setSetupNotification(null)}
         />
+      )}
+
+      {/* Reject Confirmation Modal */}
+      {rejectConfirmId && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-xl animate-in fade-in duration-200">
+          <div className="w-full max-w-xs bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl border border-slate-100 dark:border-slate-800/60 space-y-4">
+            <div className="text-center space-y-2">
+              <div className="w-12 h-12 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto">
+                <svg className="w-6 h-6 text-red-500 dark:text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="15" y1="9" x2="9" y2="15" />
+                  <line x1="9" y1="9" x2="15" y2="15" />
+                </svg>
+              </div>
+              <h3 className="text-sm font-black text-slate-700 dark:text-slate-200 uppercase tracking-wider">
+                Reject Transaction?
+              </h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                This transaction will be permanently dismissed and won't appear in your review list.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setRejectConfirmId(null)}
+                className="flex-1 py-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 transition-all active:scale-[0.98]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  onRejectPending?.(rejectConfirmId);
+                  setExpandedPendingId(null);
+                  setRejectConfirmId(null);
+                }}
+                className="flex-1 py-2.5 text-[10px] font-bold uppercase tracking-wider text-white bg-red-500 dark:bg-red-600 rounded-xl border border-red-600 dark:border-red-700 transition-all active:scale-[0.98]"
+              >
+                Reject
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

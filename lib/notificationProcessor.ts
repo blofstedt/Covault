@@ -14,6 +14,7 @@
 //   6. Auto-approve if vendor has a category and auto_approve is enabled
 
 import { supabase } from './supabase';
+import { formatVendorName } from './formatVendorName';
 import type { PendingTransaction } from '../types';
 
 // ─── Constants ───────────────────────────────────────────────────
@@ -162,7 +163,7 @@ export function applyRuleToNotification(
       return null;
     }
 
-    const vendor = vendorMatch[1].trim();
+    const vendor = formatVendorName(vendorMatch[1].trim());
     return { vendor, amount };
   } catch {
     return null;
@@ -303,20 +304,27 @@ async function tryAutoApprove(
 ): Promise<{ accepted: boolean; transactionId?: string; categoryId?: string }> {
   // Look up category: vendor override > rule default > none
   let categoryId = defaultCategoryId;
+  let autoAcceptEnabled = false;
 
   const { data: override } = await supabase
     .from('vendor_overrides')
-    .select('category_id')
+    .select('category_id, auto_accept')
     .eq('user_id', userId)
     .ilike('vendor_name', pending.extracted_vendor)
     .maybeSingle();
 
   if (override) {
     categoryId = override.category_id;
+    autoAcceptEnabled = override.auto_accept === true;
   }
 
   // Can't auto-approve without a category
   if (!categoryId) {
+    return { accepted: false };
+  }
+
+  // Only auto-approve if auto_accept is toggled on for this vendor
+  if (!autoAcceptEnabled) {
     return { accepted: false };
   }
 
@@ -352,7 +360,7 @@ async function tryAutoApprove(
     .insert({
       id: transactionId,
       user_id: userId,
-      vendor: pending.extracted_vendor,
+      vendor: formatVendorName(pending.extracted_vendor),
       amount: pending.extracted_amount,
       date: new Date().toISOString().slice(0, 10),
       category_id: categoryId,

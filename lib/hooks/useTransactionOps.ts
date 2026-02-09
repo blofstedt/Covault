@@ -2,6 +2,7 @@
 import { useCallback } from 'react';
 import type { Transaction } from '../../types';
 import { REST_BASE, getAuthHeaders } from '../apiHelpers';
+import { formatVendorName } from '../formatVendorName';
 import { useToSupabaseTransaction, useFromSupabaseTransaction } from './transactionMappers';
 import type { UseUserDataParams } from './types';
 
@@ -280,7 +281,7 @@ export const useTransactionOps = ({
         const dateStr = new Date(pending.extracted_timestamp || pending.posted_at || new Date()).toISOString().split('T')[0];
         const transactionRow = {
           user_id: userId,
-          vendor: pending.extracted_vendor,
+          vendor: formatVendorName(pending.extracted_vendor),
           amount: Number(pending.extracted_amount),
           date: dateStr,
           category_id: categoryId,
@@ -344,7 +345,7 @@ export const useTransactionOps = ({
           (overrideHeaders as any)['Prefer'] = 'return=representation';
           // Upsert: if an override for this vendor already exists, delete then re-insert
           const deleteRes = await fetch(
-            `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(pending.extracted_vendor)}`,
+            `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(formatVendorName(pending.extracted_vendor))}`,
             { method: 'DELETE', headers: overrideHeaders },
           );
           if (!deleteRes.ok) {
@@ -355,7 +356,7 @@ export const useTransactionOps = ({
             headers: overrideHeaders,
             body: JSON.stringify({
               user_id: userId,
-              vendor_name: pending.extracted_vendor,
+              vendor_name: formatVendorName(pending.extracted_vendor),
               category_id: categoryId,
             }),
           });

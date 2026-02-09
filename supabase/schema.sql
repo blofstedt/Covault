@@ -484,6 +484,7 @@ CREATE TABLE IF NOT EXISTS public.vendor_overrides (
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   vendor_name text NOT NULL,
   category_id uuid NOT NULL REFERENCES public.categories(id),
+  auto_accept boolean NOT NULL DEFAULT false,
   created_at timestamptz DEFAULT now(),
   CONSTRAINT vendor_overrides_pkey PRIMARY KEY (id),
   CONSTRAINT vendor_overrides_unique UNIQUE (user_id, vendor_name)
