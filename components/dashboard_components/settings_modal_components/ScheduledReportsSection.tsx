@@ -165,7 +165,11 @@ const ScheduledReportsSection: React.FC<ScheduledReportsSectionProps> = ({
       .map((e) => e.trim())
       .filter((e) => e.includes('@'));
 
-    if (parsedEmails.length === 0) return;
+    if (parsedEmails.length === 0) {
+      setSendError('Please enter at least one valid email address.');
+      setTimeout(() => setSendError(null), 4000);
+      return;
+    }
 
     const report: ScheduledReport = {
       id: editingReport?.id || crypto.randomUUID(),
@@ -458,6 +462,13 @@ const ScheduledReportsSection: React.FC<ScheduledReportsSectionProps> = ({
                     </option>
                   ))}
                 </select>
+              </div>
+            )}
+
+            {/* Inline error/success feedback (visible inside modal) */}
+            {sendError && (
+              <div className="mt-4 py-2 rounded-2xl bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 text-[10px] font-black uppercase tracking-wider text-center animate-in fade-in duration-300">
+                ✗ {sendError}
               </div>
             )}
 
