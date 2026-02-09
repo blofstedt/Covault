@@ -298,6 +298,13 @@ export function buildHtmlReport(
 }
 
 // ── Direct Resend API call (client-side fallback) ──────────────────────────────
+//
+// ⚠️  SECURITY NOTE: The VITE_RESEND_API_KEY is embedded in the frontend bundle
+// and visible to anyone who inspects the page source. For production, deploy the
+// Supabase Edge Function (supabase/functions/send-report) and set the
+// RESEND_API_KEY as a server-side secret instead. The client-side fallback is
+// provided so that email sending works immediately during development and for
+// users who haven't deployed the edge function yet.
 
 async function sendViaResendDirect(payload: ReportPayload): Promise<void> {
   const apiKey = import.meta.env.VITE_RESEND_API_KEY as string | undefined;

@@ -81,8 +81,9 @@ BEGIN
   END IF;
 END $$;
 
--- Auto-update the updated_at column on changes
--- (re-uses the update_updated_at_column() function from budgets table)
+-- Ensure the update_updated_at_column() function exists.
+-- This may already be defined by the budgets table migration;
+-- CREATE OR REPLACE is safe to run multiple times.
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
