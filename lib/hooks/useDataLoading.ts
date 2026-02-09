@@ -384,6 +384,9 @@ export const useDataLoading = ({
           });
         } else {
           console.log('[loadTransactions] no transactions found');
+          if (!merge) {
+            setAppState(prev => ({ ...prev, transactions: [] }));
+          }
         }
       } catch (err: any) {
         const msg = `Load transactions exception: ${err?.message || err}`;

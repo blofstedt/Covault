@@ -29,6 +29,12 @@ export interface TransactionDetectedEvent {
    * Optional fallback amount parsed natively (you can keep this for now).
    */
   amount?: number;
+
+  /** Alternative field name for rawNotification sent by the native Android broadcast. */
+  raw_text?: string;
+
+  /** Alternative field name for bankAppId sent by the native Android broadcast. */
+  source_app?: string;
 }
 
 export interface CovaultNotificationPlugin {

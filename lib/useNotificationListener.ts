@@ -53,13 +53,19 @@ export const useNotificationListener = ({
               return;
             }
 
+            // Normalize field names from native broadcast
+            // Java sends raw_text/source_app; TS expects rawNotification/bankAppId/bankName
+            const rawNotification = event.rawNotification || event.raw_text;
+            const bankAppId = event.bankAppId || event.source_app;
+            const bankName = event.bankName || event.source_app;
+
             // ── Full processing pipeline (new path) ──
-            if (event.rawNotification && event.bankAppId && event.bankName) {
+            if (rawNotification && bankAppId && bankName) {
               try {
                 const result = await processNotification(user.id, {
-                  rawNotification: event.rawNotification,
-                  bankAppId: event.bankAppId,
-                  bankName: event.bankName,
+                  rawNotification,
+                  bankAppId,
+                  bankName,
                   fallbackVendor: event.vendor,
                   fallbackAmount: event.amount,
                 });
