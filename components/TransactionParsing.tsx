@@ -51,10 +51,12 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   userId,
 }) => {
   const [expandedPendingId, setExpandedPendingId] = useState<string | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [expandedAutoAcceptedId, setExpandedAutoAcceptedId] = useState<string | null>(null);
+  const [expandedVendorCategory, setExpandedVendorCategory] = useState<string | null>(null);
   const [setupNotification, setSetupNotification] = useState<PendingTransaction | null>(null);
   const [savingRule, setSavingRule] = useState(false);
   const [rejectConfirmId, setRejectConfirmId] = useState<string | null>(null);
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
 
   // ── Loaded data from Supabase ──
   const [savedRules, setSavedRules] = useState<NotificationRuleRow[]>([]);
@@ -141,6 +143,154 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     [userId, loadVendorOverrides],
   );
 
+  // ── Handle tapping a saved parsing rule to edit it ──
+  const handleEditRule = useCallback(
+    async (rule: NotificationRuleRow) => {
+      if (!userId) return;
+      // Find the most recent notification from this bank app to use as a sample
+      const { data, error } = await supabase
+        .from('pending_transactions')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('app_package', rule.bank_app_id)
+        .order('posted_at', { ascending: false })
+        .limit(1);
+
+      if (error || !data || data.length === 0) {
+        console.warn('[TransactionParsing] No notification found for rule editing');
+        return;
+      }
+
+      const notification = data[0] as PendingTransaction;
+      setEditingRuleId(rule.id);
+      setSetupNotification(notification);
+    },
+    [userId],
+  );
+
+  // ── Handle saving an edited rule (updates existing rule) ──
+  const handleSaveEditedRule = useCallback(
+    async (amountRegex: string, vendorRegex: string) => {
+      if (!editingRuleId || !userId) return;
+
+      setSavingRule(true);
+      try {
+        const { error } = await supabase
+          .from('notification_rules')
+          .update({
+            amount_regex: amountRegex,
+            vendor_regex: vendorRegex,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', editingRuleId)
+          .eq('user_id', userId);
+
+        if (error) {
+          console.error('[TransactionParsing] Error updating rule:', error);
+          return;
+        }
+
+        // Refresh the rules list
+        await loadRules();
+
+        setSetupNotification(null);
+        setEditingRuleId(null);
+      } catch (err) {
+        console.error('[TransactionParsing] Error saving edited rule:', err);
+      } finally {
+        setSavingRule(false);
+      }
+    },
+    [editingRuleId, userId, loadRules],
+  );
+
+  // ── Toggle auto-accept for a vendor by vendor name ──
+  const handleToggleAutoAcceptByVendor = useCallback(
+    async (vendorName: string) => {
+      if (!userId) return;
+      const { data: override } = await supabase
+        .from('vendor_overrides')
+        .select('id, auto_accept')
+        .eq('user_id', userId)
+        .ilike('vendor_name', vendorName)
+        .maybeSingle();
+
+      if (!override) return;
+
+      const { error } = await supabase
+        .from('vendor_overrides')
+        .update({ auto_accept: !override.auto_accept })
+        .eq('id', override.id)
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('[TransactionParsing] Error toggling auto_accept:', error);
+        return;
+      }
+      await loadVendorOverrides();
+    },
+    [userId, loadVendorOverrides],
+  );
+
+  // ── Find the corresponding Transaction for an auto-accepted pending transaction ──
+  const handleTapAutoAccepted = useCallback(
+    (pt: PendingTransaction) => {
+      // Find the matching auto-detected transaction
+      const match = autoDetectedTransactions.find(
+        (tx) =>
+          tx.vendor.toLowerCase() === pt.extracted_vendor.toLowerCase() &&
+          Math.abs(tx.amount - pt.extracted_amount) < 0.01,
+      );
+      if (match && onTransactionTap) {
+        onTransactionTap(match);
+      }
+    },
+    [autoDetectedTransactions, onTransactionTap],
+  );
+
+  // ── Set or update a vendor's default category ──
+  const handleSetVendorCategory = useCallback(
+    async (vendorName: string, categoryId: string) => {
+      if (!userId) return;
+      const existing = vendorOverrides.find(
+        (vo) => vo.vendor_name.toLowerCase() === vendorName.toLowerCase(),
+      );
+
+      if (existing) {
+        // Update existing override
+        const { error } = await supabase
+          .from('vendor_overrides')
+          .update({ category_id: categoryId })
+          .eq('id', existing.id)
+          .eq('user_id', userId);
+
+        if (error) {
+          console.error('[TransactionParsing] Error updating vendor category:', error);
+          return;
+        }
+      } else {
+        // Insert new override
+        const { error } = await supabase
+          .from('vendor_overrides')
+          .insert({
+            user_id: userId,
+            vendor_name: vendorName,
+            category_id: categoryId,
+            auto_accept: false,
+          });
+
+        if (error) {
+          console.error('[TransactionParsing] Error inserting vendor override:', error);
+          return;
+        }
+      }
+
+      await loadVendorOverrides();
+      setExpandedVendorCategory(null);
+    },
+    [userId, vendorOverrides, loadVendorOverrides],
+  );
+
   // ── Categorize pending transactions into sections ──
 
   // 1. Captured: no rule configured (pattern_id is null)
@@ -181,6 +331,29 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     }
     return map;
   }, [budgets]);
+
+  // Build a lookup: vendor name → vendor override
+  const vendorOverrideByName = useMemo(() => {
+    const map = new Map<string, VendorOverride>();
+    for (const vo of vendorOverrides) {
+      map.set(vo.vendor_name.toLowerCase(), vo);
+    }
+    return map;
+  }, [vendorOverrides]);
+
+  // All unique vendor names from auto-detected transactions and vendor overrides
+  const allVendors = useMemo(() => {
+    const vendorSet = new Map<string, string>(); // lowercase → display name
+    for (const tx of autoDetectedTransactions) {
+      const key = tx.vendor.toLowerCase();
+      if (!vendorSet.has(key)) vendorSet.set(key, tx.vendor);
+    }
+    for (const vo of vendorOverrides) {
+      const key = vo.vendor_name.toLowerCase();
+      if (!vendorSet.has(key)) vendorSet.set(key, vo.vendor_name);
+    }
+    return Array.from(vendorSet.values()).sort((a, b) => a.localeCompare(b));
+  }, [autoDetectedTransactions, vendorOverrides]);
 
   const toReviewCount = toReviewTransactions.length;
   const capturedCount = capturedNotifications.length;
@@ -283,9 +456,10 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                   </div>
 
                   {savedRules.map((rule) => (
-                    <div
+                    <button
                       key={rule.id}
-                      className="flex items-center justify-between p-3 bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl border border-emerald-100 dark:border-emerald-800/30"
+                      onClick={() => handleEditRule(rule)}
+                      className="w-full flex items-center justify-between p-3 bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl border border-emerald-100 dark:border-emerald-800/30 transition-all active:scale-[0.98]"
                     >
                       <div className="flex items-center space-x-3">
                         <div className="w-8 h-8 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center shrink-0">
@@ -293,7 +467,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                             <polyline points="20 6 9 17 4 12" />
                           </svg>
                         </div>
-                        <div className="min-w-0">
+                        <div className="min-w-0 text-left">
                           <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
                             {rule.bank_name}
                           </p>
@@ -306,17 +480,17 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                         </div>
                       </div>
                       <span className="text-[8px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 shrink-0">
-                        Active
+                        Tap to edit
                       </span>
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
 
               {/* ──────────────────────────────────────────────────── */}
-              {/* VENDOR DEFAULTS: Saved vendor → category mappings */}
+              {/* VENDOR CATEGORY RULES: Default categories per vendor */}
               {/* ──────────────────────────────────────────────────── */}
-              {vendorOverrides.length > 0 && (
+              {allVendors.length > 0 && (
                 <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-violet-200 dark:border-violet-800/40 space-y-3">
                   <div className="flex items-center space-x-3">
                     <div className="p-2 bg-violet-50 dark:bg-violet-900/20 rounded-xl">
@@ -326,50 +500,93 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                     </div>
                     <div className="flex-1">
                       <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-                        Assigned Categories
+                        Vendor Category Rules
                       </h3>
                       <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
-                        Default budget categories for known vendors
+                        Default budget categories for each vendor
                       </p>
                     </div>
                     <span className="text-[10px] font-black bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 px-2.5 py-1 rounded-full">
-                      {vendorOverrides.length}
+                      {allVendors.length}
                     </span>
                   </div>
 
                   <div className="space-y-2">
-                    {vendorOverrides.map((vo) => (
-                      <div
-                        key={vo.id}
-                        className="flex items-center justify-between p-3 bg-violet-50 dark:bg-violet-900/10 rounded-2xl border border-violet-100 dark:border-violet-800/30"
-                      >
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200 truncate">
-                            {vo.vendor_name}
-                          </span>
-                          <svg className="w-3 h-3 text-slate-300 dark:text-slate-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                            <polyline points="9 18 15 12 9 6" />
-                          </svg>
-                          <span className="text-[10px] font-bold text-violet-600 dark:text-violet-400 truncate">
-                            {categoryNameById.get(vo.category_id) || 'Unknown'}
-                          </span>
+                    {allVendors.map((vendorName) => {
+                      const vo = vendorOverrideByName.get(vendorName.toLowerCase());
+                      const hasCategory = vo && vo.category_id;
+                      const isExpanded = expandedVendorCategory === vendorName;
+
+                      return (
+                        <div key={vendorName} className="bg-violet-50 dark:bg-violet-900/10 rounded-2xl border border-violet-100 dark:border-violet-800/30 overflow-hidden">
+                          <button
+                            onClick={() => setExpandedVendorCategory(isExpanded ? null : vendorName)}
+                            className="w-full flex items-center justify-between p-3 transition-all active:scale-[0.99]"
+                          >
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200 truncate">
+                                {vendorName}
+                              </span>
+                              <svg className="w-3 h-3 text-slate-300 dark:text-slate-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                <polyline points="9 18 15 12 9 6" />
+                              </svg>
+                              <span className={`text-[10px] font-bold truncate ${
+                                hasCategory
+                                  ? 'text-violet-600 dark:text-violet-400'
+                                  : 'text-slate-400 dark:text-slate-500 italic'
+                              }`}>
+                                {hasCategory ? categoryNameById.get(vo!.category_id) || 'Unknown' : 'None Selected'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0 ml-2">
+                              {vo && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleToggleAutoAccept(vo.id, vo.auto_accept);
+                                  }}
+                                  className={`flex items-center gap-1 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-wider transition-all active:scale-95 ${
+                                    vo.auto_accept
+                                      ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40'
+                                      : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700'
+                                  }`}
+                                  title={vo.auto_accept ? 'Auto-accept is on' : 'Auto-accept is off'}
+                                >
+                                  <div className={`w-6 h-3.5 rounded-full relative transition-colors ${vo.auto_accept ? 'bg-emerald-400 dark:bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
+                                    <div className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white shadow-sm transition-all ${vo.auto_accept ? 'left-3' : 'left-0.5'}`} />
+                                  </div>
+                                  <span>Auto</span>
+                                </button>
+                              )}
+                            </div>
+                          </button>
+
+                          {/* Expanded: category picker */}
+                          {isExpanded && (
+                            <div className="px-3 pb-3 space-y-2 border-t border-violet-100 dark:border-violet-800/30 pt-2">
+                              <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                Select Default Category
+                              </p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {budgets.map((b) => (
+                                  <button
+                                    key={b.id}
+                                    onClick={() => handleSetVendorCategory(vendorName, b.id)}
+                                    className={`px-3 py-1.5 text-[10px] font-bold rounded-full border transition-all active:scale-95 ${
+                                      vo?.category_id === b.id
+                                        ? 'bg-violet-500 text-white border-violet-600'
+                                        : 'bg-violet-50 dark:bg-violet-900/20 border-violet-200 dark:border-violet-800/40 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40'
+                                    }`}
+                                  >
+                                    {b.name}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        <button
-                          onClick={() => handleToggleAutoAccept(vo.id, vo.auto_accept)}
-                          className={`shrink-0 ml-2 flex items-center gap-1 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-wider transition-all active:scale-95 ${
-                            vo.auto_accept
-                              ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40'
-                              : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700'
-                          }`}
-                          title={vo.auto_accept ? 'Auto-accept is on' : 'Auto-accept is off'}
-                        >
-                          <div className={`w-6 h-3.5 rounded-full relative transition-colors ${vo.auto_accept ? 'bg-emerald-400 dark:bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
-                            <div className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white shadow-sm transition-all ${vo.auto_accept ? 'left-3' : 'left-0.5'}`} />
-                          </div>
-                          <span>Auto</span>
-                        </button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -400,31 +617,76 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                   </div>
 
                   <div className="space-y-2">
-                    {autoAcceptedPending.map((pt) => (
-                      <div
-                        key={pt.id}
-                        className="flex items-center justify-between p-3 bg-cyan-50 dark:bg-cyan-900/10 rounded-2xl border border-cyan-100 dark:border-cyan-800/30"
-                      >
-                        <div className="flex items-center space-x-3 min-w-0">
-                          <div className="w-8 h-8 bg-cyan-100 dark:bg-cyan-900/30 rounded-full flex items-center justify-center shrink-0">
-                            <svg className="w-4 h-4 text-cyan-600 dark:text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                              <polyline points="20 6 9 17 4 12" />
-                            </svg>
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate max-w-[140px]">
-                              {pt.extracted_vendor}
-                            </p>
-                            <p className="text-[8px] text-slate-400 dark:text-slate-500 mt-0.5">
-                              {pt.app_name}{pt.reviewed_at ? ` — ${new Date(pt.reviewed_at).toLocaleDateString()}` : ''}
-                            </p>
-                          </div>
+                    {autoAcceptedPending.map((pt) => {
+                      const isExpanded = expandedAutoAcceptedId === pt.id;
+                      const vendorOverride = vendorOverrides.find(
+                        (vo) => vo.vendor_name.toLowerCase() === pt.extracted_vendor.toLowerCase(),
+                      );
+
+                      return (
+                        <div key={pt.id} className="bg-cyan-50 dark:bg-cyan-900/10 rounded-2xl border border-cyan-100 dark:border-cyan-800/30 overflow-hidden">
+                          <button
+                            onClick={() => setExpandedAutoAcceptedId(isExpanded ? null : pt.id)}
+                            className="w-full flex items-center justify-between p-3 transition-all active:scale-[0.99]"
+                          >
+                            <div className="flex items-center space-x-3 min-w-0">
+                              <div className="w-8 h-8 bg-cyan-100 dark:bg-cyan-900/30 rounded-full flex items-center justify-center shrink-0">
+                                <svg className="w-4 h-4 text-cyan-600 dark:text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                  <polyline points="20 6 9 17 4 12" />
+                                </svg>
+                              </div>
+                              <div className="min-w-0 text-left">
+                                <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate max-w-[140px]">
+                                  {pt.extracted_vendor}
+                                </p>
+                                <p className="text-[8px] text-slate-400 dark:text-slate-500 mt-0.5">
+                                  {pt.app_name}{pt.reviewed_at ? ` — ${new Date(pt.reviewed_at).toLocaleDateString()}` : ''}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <span className="text-sm font-black text-slate-700 dark:text-slate-200">
+                                ${pt.extracted_amount.toFixed(2)}
+                              </span>
+                              <p className="text-[8px] font-bold uppercase tracking-wider text-cyan-500 dark:text-cyan-400 mt-0.5">
+                                {isExpanded ? 'Collapse' : 'Tap to edit'}
+                              </p>
+                            </div>
+                          </button>
+
+                          {isExpanded && (
+                            <div className="px-3 pb-3 space-y-2 border-t border-cyan-100 dark:border-cyan-800/30 pt-2">
+                              {/* Edit transaction button */}
+                              <button
+                                onClick={() => handleTapAutoAccepted(pt)}
+                                className="w-full py-2 text-[10px] font-bold uppercase tracking-wider text-cyan-700 dark:text-cyan-300 bg-cyan-100 dark:bg-cyan-900/30 rounded-xl border border-cyan-200 dark:border-cyan-800/40 transition-all active:scale-[0.98]"
+                              >
+                                Edit Transaction
+                              </button>
+
+                              {/* Auto-accept toggle */}
+                              <div className="flex items-center justify-between p-2">
+                                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                                  Auto-accept future transactions from {pt.extracted_vendor}
+                                </span>
+                                <button
+                                  onClick={() => handleToggleAutoAcceptByVendor(pt.extracted_vendor)}
+                                  className="shrink-0 ml-2"
+                                >
+                                  <div className={`w-8 h-5 rounded-full relative transition-colors ${
+                                    vendorOverride?.auto_accept ? 'bg-emerald-400 dark:bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
+                                  }`}>
+                                    <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-all ${
+                                      vendorOverride?.auto_accept ? 'left-3.5' : 'left-0.5'
+                                    }`} />
+                                  </div>
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        <span className="text-sm font-black text-slate-700 dark:text-slate-200 shrink-0">
-                          ${pt.extracted_amount.toFixed(2)}
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -628,36 +890,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                       Auto-detected and approved from bank notifications
                     </p>
                   </div>
-                  {onRefreshNotifications && (
-                    <button
-                      onClick={async () => {
-                        if (isRefreshing) return;
-                        setIsRefreshing(true);
-                        try {
-                          await onRefreshNotifications();
-                        } finally {
-                          setIsRefreshing(false);
-                        }
-                      }}
-                      disabled={isRefreshing}
-                      className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 transition-all active:scale-95 hover:bg-emerald-100 dark:hover:bg-emerald-900/40"
-                      title="Scan notifications"
-                    >
-                      <svg
-                        className={`w-4 h-4 text-emerald-600 dark:text-emerald-400 ${isRefreshing ? 'animate-spin' : ''}`}
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <polyline points="23 4 23 10 17 10" />
-                        <polyline points="1 20 1 14 7 14" />
-                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-                      </svg>
-                    </button>
-                  )}
+
                 </div>
 
                 {autoDetectedTransactions.length > 0 ? (
@@ -802,8 +1035,11 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       {setupNotification && (
         <RegexSetupModal
           notification={setupNotification}
-          onSave={handleSaveRule}
-          onClose={() => setSetupNotification(null)}
+          onSave={editingRuleId ? handleSaveEditedRule : handleSaveRule}
+          onClose={() => {
+            setSetupNotification(null);
+            setEditingRuleId(null);
+          }}
         />
       )}
 
