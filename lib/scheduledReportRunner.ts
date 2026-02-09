@@ -1,6 +1,6 @@
 // lib/scheduledReportRunner.ts
 // Client-side runner that checks whether any scheduled reports are due and
-// sends them via the send-report edge function.
+// sends them via the centralized report email sender.
 //
 // Because Covault stores scheduled reports in localStorage (not in a server-
 // side cron), this runner is evaluated each time the app loads.  It compares
@@ -8,7 +8,7 @@
 // to decide whether a report should fire.
 
 import type { ScheduledReport, BudgetCategory, Transaction } from '../types';
-import { supabase } from './supabase';
+import { sendReportEmail } from './reportEmailSender';
 
 /** Build a budget summary suitable for the send-report edge function. */
 function buildBudgetSummary(
@@ -144,17 +144,15 @@ export async function runDueReports(
     if (!isReportDue(report)) continue;
 
     try {
-      const { error } = await supabase.functions.invoke('send-report', {
-        body: {
-          emails: report.emails,
-          budgets: budgetSummary,
-          transactions: transactionList,
-          totalIncome: totalIncome ?? 0,
-          userName,
-        },
+      const result = await sendReportEmail({
+        emails: report.emails,
+        budgets: budgetSummary,
+        transactions: transactionList,
+        totalIncome: totalIncome ?? 0,
+        userName,
       });
 
-      if (!error) {
+      if (result.success) {
         updatedReports[i] = {
           ...report,
           lastSentAt: new Date().toISOString(),
@@ -163,7 +161,7 @@ export async function runDueReports(
       } else {
         console.error(
           `[scheduledReportRunner] failed to send report ${report.id}:`,
-          error,
+          result.error,
         );
       }
     } catch (err) {

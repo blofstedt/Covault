@@ -300,9 +300,7 @@ export function buildHtmlReport(
 // ── Direct Resend API call (client-side fallback) ──────────────────────────────
 
 async function sendViaResendDirect(payload: ReportPayload): Promise<void> {
-  const apiKey = (import.meta as any).env?.VITE_RESEND_API_KEY as
-    | string
-    | undefined;
+  const apiKey = import.meta.env.VITE_RESEND_API_KEY as string | undefined;
 
   if (!apiKey) {
     throw new Error(
@@ -311,7 +309,7 @@ async function sendViaResendDirect(payload: ReportPayload): Promise<void> {
   }
 
   const senderEmail =
-    ((import.meta as any).env?.VITE_SENDER_EMAIL as string | undefined) ||
+    (import.meta.env.VITE_SENDER_EMAIL as string | undefined) ||
     'Covault Reports <reports@covault.app>';
 
   const html = buildHtmlReport(

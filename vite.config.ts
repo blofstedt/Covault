@@ -97,6 +97,13 @@ export default defineConfig(({ mode }) => {
       'import.meta.env.VITE_SUPABASE_ANON_KEY': env.VITE_SUPABASE_ANON_KEY 
         ? JSON.stringify(env.VITE_SUPABASE_ANON_KEY) 
         : undefined,
+      // Resend API key for client-side fallback email sending
+      'import.meta.env.VITE_RESEND_API_KEY': env.VITE_RESEND_API_KEY
+        ? JSON.stringify(env.VITE_RESEND_API_KEY)
+        : undefined,
+      'import.meta.env.VITE_SENDER_EMAIL': env.VITE_SENDER_EMAIL
+        ? JSON.stringify(env.VITE_SENDER_EMAIL)
+        : undefined,
     },
 
     resolve: {

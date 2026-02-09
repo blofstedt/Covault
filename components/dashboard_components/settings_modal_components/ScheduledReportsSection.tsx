@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { ScheduledReport, ReportFrequency, BudgetCategory, Transaction } from '../../../types';
-import { supabase } from '../../../lib/supabase';
+import { sendReportEmail as sendReportEmailApi } from '../../../lib/reportEmailSender';
+import type { BudgetSummary, TransactionSummary } from '../../../lib/reportEmailSender';
 
 interface ScheduledReportsSectionProps {
   reports: ScheduledReport[];
@@ -83,7 +84,7 @@ const ScheduledReportsSection: React.FC<ScheduledReportsSectionProps> = ({
   const [oneTimeSent, setOneTimeSent] = useState(false);
 
   /** Build a budget summary from current budgets + transactions for the report email. */
-  const buildBudgetSummary = () => {
+  const buildBudgetSummary = (): BudgetSummary[] => {
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
@@ -103,7 +104,7 @@ const ScheduledReportsSection: React.FC<ScheduledReportsSectionProps> = ({
   };
 
   /** Build a transaction list for the current month for the report email. */
-  const buildTransactionList = () => {
+  const buildTransactionList = (): TransactionSummary[] => {
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
@@ -129,21 +130,16 @@ const ScheduledReportsSection: React.FC<ScheduledReportsSectionProps> = ({
     setSendError(null);
 
     try {
-      const budgetSummary = buildBudgetSummary();
-      const transactionList = buildTransactionList();
-
-      const { error } = await supabase.functions.invoke('send-report', {
-        body: {
-          emails: recipientEmails,
-          budgets: budgetSummary,
-          transactions: transactionList,
-          totalIncome: totalIncome ?? 0,
-          userName,
-        },
+      const result = await sendReportEmailApi({
+        emails: recipientEmails,
+        budgets: buildBudgetSummary(),
+        transactions: buildTransactionList(),
+        totalIncome: totalIncome ?? 0,
+        userName,
       });
 
-      if (error) {
-        setSendError(error.message || 'Failed to send report.');
+      if (!result.success) {
+        setSendError(result.error || 'Failed to send report.');
         setTimeout(() => setSendError(null), 4000);
         return false;
       }

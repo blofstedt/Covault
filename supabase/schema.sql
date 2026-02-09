@@ -4,6 +4,7 @@
 -- ============================================================
 
 -- 1. DROP ALL EXISTING TABLES
+DROP TABLE IF EXISTS public.scheduled_reports CASCADE;
 DROP TABLE IF EXISTS public.ignored_transactions CASCADE;
 DROP TABLE IF EXISTS public.notification_fingerprints CASCADE;
 DROP TABLE IF EXISTS public.transactions  CASCADE;
@@ -589,3 +590,44 @@ CREATE POLICY "Users can view own notification fingerprints"
 CREATE POLICY "Users can insert own notification fingerprints"
   ON public.notification_fingerprints FOR INSERT TO authenticated
   WITH CHECK (auth.uid() = user_id);
+
+-- ============================================================
+-- 16. SCHEDULED REPORTS
+-- Persists recurring report schedules per user.
+-- One-time reports are sent immediately and NOT stored here.
+-- ============================================================
+CREATE TABLE public.scheduled_reports (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  emails text[] NOT NULL,
+  frequency text NOT NULL CHECK (frequency = ANY (ARRAY['monthly','yearly'])),
+  day_of_month integer NOT NULL CHECK (day_of_month >= 1 AND day_of_month <= 28),
+  month integer CHECK (month IS NULL OR (month >= 0 AND month <= 11)),
+  enabled boolean NOT NULL DEFAULT true,
+  last_sent_at timestamptz,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now(),
+  CONSTRAINT scheduled_reports_pkey PRIMARY KEY (id)
+);
+
+CREATE INDEX idx_scheduled_reports_user_id ON public.scheduled_reports (user_id);
+
+ALTER TABLE public.scheduled_reports ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own scheduled reports"
+  ON public.scheduled_reports FOR SELECT TO authenticated
+  USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own scheduled reports"
+  ON public.scheduled_reports FOR INSERT TO authenticated
+  WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own scheduled reports"
+  ON public.scheduled_reports FOR UPDATE TO authenticated
+  USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete own scheduled reports"
+  ON public.scheduled_reports FOR DELETE TO authenticated
+  USING (auth.uid() = user_id);
+
+CREATE TRIGGER update_scheduled_reports_updated_at
+  BEFORE UPDATE ON public.scheduled_reports
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
