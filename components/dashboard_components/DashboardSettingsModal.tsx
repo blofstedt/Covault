@@ -199,6 +199,7 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
             budgets={budgets}
             transactions={transactions}
             userName={user?.name}
+            totalIncome={user?.monthlyIncome}
           />
 
           {/* Support & Feedback */}

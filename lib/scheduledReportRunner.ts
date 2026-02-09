@@ -36,6 +36,34 @@ function buildBudgetSummary(
   });
 }
 
+/** Build a transaction list for the current month suitable for the report email. */
+function buildTransactionList(
+  budgets: BudgetCategory[],
+  transactions: Transaction[],
+) {
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+
+  const budgetNameById = new Map(budgets.map((b) => [b.id, b.name]));
+
+  return transactions
+    .filter((tx) => {
+      if (tx.is_projected) return false;
+      const txDate = new Date(tx.date);
+      return (
+        txDate.getMonth() === currentMonth &&
+        txDate.getFullYear() === currentYear
+      );
+    })
+    .map((tx) => ({
+      vendor: tx.vendor,
+      amount: tx.amount,
+      date: tx.date,
+      category: tx.budget_id ? budgetNameById.get(tx.budget_id) || 'Other' : 'Other',
+    }));
+}
+
 /**
  * Determine whether `report` is due to be sent right now.
  *
@@ -104,8 +132,10 @@ export async function runDueReports(
   budgets: BudgetCategory[],
   transactions: Transaction[],
   userName?: string,
+  totalIncome?: number,
 ): Promise<{ updatedReports: ScheduledReport[]; sentCount: number }> {
   const budgetSummary = buildBudgetSummary(budgets, transactions);
+  const transactionList = buildTransactionList(budgets, transactions);
   let sentCount = 0;
   const updatedReports = [...reports];
 
@@ -118,6 +148,8 @@ export async function runDueReports(
         body: {
           emails: report.emails,
           budgets: budgetSummary,
+          transactions: transactionList,
+          totalIncome: totalIncome ?? 0,
           userName,
         },
       });
