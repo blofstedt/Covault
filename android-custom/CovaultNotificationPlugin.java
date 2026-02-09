@@ -42,7 +42,9 @@ public class CovaultNotificationPlugin extends Plugin {
                         try {
                             JSONObject json = new JSONObject(data);
                             JSObject event = new JSObject();
-                            event.put("amount", json.optDouble("amount", 0));
+                            if (json.has("amount")) {
+                                event.put("amount", json.optDouble("amount", 0));
+                            }
                             event.put("vendor", json.optString("vendor", "Unknown Merchant"));
                             event.put("source_app", json.optString("source_app", ""));
                             event.put("raw_text", json.optString("raw_text", ""));
@@ -50,7 +52,7 @@ public class CovaultNotificationPlugin extends Plugin {
 
                             // Send to JavaScript listeners
                             notifyListeners("transactionDetected", event);
-                            Log.i(TAG, "Forwarded transaction to JS: $" + event.optDouble("amount", 0) + " at " + event.optString("vendor"));
+                            Log.i(TAG, "Forwarded transaction to JS: " + (event.has("amount") ? "$" + event.optDouble("amount", 0) : "amount pending") + " at " + event.optString("vendor"));
                         } catch (Exception e) {
                             Log.e(TAG, "Error parsing transaction broadcast", e);
                         }
