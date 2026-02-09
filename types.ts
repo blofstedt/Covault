@@ -217,18 +217,7 @@ export interface AppState {
     notificationsEnabled: boolean;
     hiddenCategories: string[]; // IDs of hidden budget categories
     notification_rules: NotificationRule[];
-    scheduled_reports?: ScheduledReport[];
   };
 }
 
-export type ReportFrequency = 'monthly' | 'yearly' | 'one_time';
 
-export interface ScheduledReport {
-  id: string;
-  emails: string[];
-  frequency: ReportFrequency;
-  dayOfMonth: number;     // 1-28 for monthly/yearly
-  month?: number;         // 0-11 for yearly frequency
-  enabled: boolean;
-  lastSentAt?: string;    // ISO timestamp of the last successful send
-}
