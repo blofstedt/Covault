@@ -72,8 +72,13 @@ export function isReportDue(report: ScheduledReport): boolean {
 
   if (report.frequency === 'yearly') {
     const scheduledMonth = report.month ?? 0;
-    if (currentMonth < scheduledMonth) return false;
-    if (currentMonth === scheduledMonth && today < report.dayOfMonth) return false;
+    // Not yet reached the scheduled month/day this year
+    if (
+      currentMonth < scheduledMonth ||
+      (currentMonth === scheduledMonth && today < report.dayOfMonth)
+    ) {
+      return false;
+    }
 
     // Has it already been sent this year?
     if (report.lastSentAt) {

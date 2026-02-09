@@ -83,9 +83,10 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
           directory: Directory.Documents,
           encoding: Encoding.UTF8,
         });
-      } catch {
+      } catch (docErr) {
         // Directory.Documents may not be available on all devices – fall
         // back to writing to Cache and opening the system share sheet.
+        console.warn('[ExportCSV] Documents write failed, falling back to share:', docErr);
         try {
           await Filesystem.writeFile({
             path: fileName,
@@ -104,8 +105,9 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
             files: [uriResult.uri],
             dialogTitle: 'Save or share CSV',
           });
-        } catch {
-          // User cancelled share or an unexpected error – not actionable
+        } catch (shareErr) {
+          // User cancelled share or an unexpected error
+          console.warn('[ExportCSV] Share fallback failed:', shareErr);
         }
       }
       setExported(true);
