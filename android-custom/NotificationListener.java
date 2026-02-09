@@ -198,7 +198,7 @@ public class NotificationListener extends NotificationListenerService {
         Double amount = extractAmount(fullText);
         String vendor = extractVendor(fullText);
 
-        Log.i(TAG, "Transaction detected: $" + (amount != null ? amount : "?") + " at " + (vendor != null ? vendor : "Unknown"));
+        Log.i(TAG, "Transaction detected: " + (amount != null ? "$" + amount : "[amount pending]") + " at " + (vendor != null ? vendor : "Unknown"));
 
         // Always broadcast to the TypeScript pipeline so Gemini can generate
         // or regenerate regex patterns even when native extraction fails
