@@ -94,6 +94,7 @@ const App: React.FC = () => {
 
   const {
     loadUserData,
+    loadPendingTransactions,
     handleAddTransaction,
     handleUpdateTransaction,
     handleDeleteTransaction,
@@ -386,6 +387,7 @@ const App: React.FC = () => {
             onApprovePendingTransaction={isDevMode ? devApprovePending : handleApprovePendingTransaction}
             onRejectPendingTransaction={isDevMode ? devRejectPending : handleRejectPendingTransaction}
             onRefreshNotifications={refreshNotifications}
+            onReloadPendingTransactions={loadPendingTransactions}
             isLoadingData={isLoadingData}
             devShowSettings={isDevMode ? devShowSettings : undefined}
             devShowTutorial={isDevMode ? devShowTutorial : undefined}
