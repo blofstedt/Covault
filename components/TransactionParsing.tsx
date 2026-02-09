@@ -93,12 +93,33 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     setVendorOverrides((data || []) as VendorOverride[]);
   }, [userId]);
 
+  // ── Load auto-accepted pending transactions (approved=true) ──
+  const [autoAcceptedPending, setAutoAcceptedPending] = useState<PendingTransaction[]>([]);
+
+  const loadAutoAcceptedTransactions = useCallback(async () => {
+    if (!userId) return;
+    const { data, error } = await supabase
+      .from('pending_transactions')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('needs_review', false)
+      .eq('approved', true)
+      .order('reviewed_at', { ascending: false })
+      .limit(20);
+
+    if (error) {
+      console.error('[TransactionParsing] Error loading auto-accepted:', error);
+      return;
+    }
+    setAutoAcceptedPending((data || []) as PendingTransaction[]);
+  }, [userId]);
+
   // Load rules and vendor overrides on mount + when userId changes
   useEffect(() => {
     loadRules();
     loadVendorOverrides();
     loadAutoAcceptedTransactions();
-  }, [loadRules, loadVendorOverrides]);
+  }, [loadRules, loadVendorOverrides, loadAutoAcceptedTransactions]);
 
   // ── Toggle auto_accept on a vendor override ──
   const handleToggleAutoAccept = useCallback(
@@ -119,27 +140,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     },
     [userId, loadVendorOverrides],
   );
-
-  // ── Load auto-accepted pending transactions (approved=true, label Auto-Added) ──
-  const [autoAcceptedPending, setAutoAcceptedPending] = useState<PendingTransaction[]>([]);
-
-  const loadAutoAcceptedTransactions = useCallback(async () => {
-    if (!userId) return;
-    const { data, error } = await supabase
-      .from('pending_transactions')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('needs_review', false)
-      .eq('approved', true)
-      .order('reviewed_at', { ascending: false })
-      .limit(20);
-
-    if (error) {
-      console.error('[TransactionParsing] Error loading auto-accepted:', error);
-      return;
-    }
-    setAutoAcceptedPending((data || []) as PendingTransaction[]);
-  }, [userId]);
 
   // ── Categorize pending transactions into sections ──
 
@@ -416,7 +416,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                               {pt.extracted_vendor}
                             </p>
                             <p className="text-[8px] text-slate-400 dark:text-slate-500 mt-0.5">
-                              {pt.app_name} — {pt.reviewed_at ? new Date(pt.reviewed_at).toLocaleDateString() : ''}
+                              {pt.app_name}{pt.reviewed_at ? ` — ${new Date(pt.reviewed_at).toLocaleDateString()}` : ''}
                             </p>
                           </div>
                         </div>

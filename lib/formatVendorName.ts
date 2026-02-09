@@ -3,7 +3,7 @@
  * E.g., "AMAZON" → "Amazon", "amazon" → "Amazon", "mCdOnAlDs" → "Mcdonalds"
  */
 export function formatVendorName(name: string): string {
-  if (!name || !name.trim()) return name;
+  if (!name || !name.trim()) return name.trim();
   return name
     .trim()
     .split(/\s+/)
