@@ -34,6 +34,7 @@ interface DashboardProps {
   onJoinWithCode?: (code: string) => void;
   onApprovePendingTransaction?: (pendingId: string, categoryId: string) => void;
   onRejectPendingTransaction?: (pendingId: string) => void;
+  onRefreshNotifications?: () => Promise<void>;
   saveBudgetLimit: (categoryId: string, newLimit: number) => void;
   saveUserIncome: (income: number) => void;
   saveTheme: (theme: 'light' | 'dark') => void;
@@ -62,6 +63,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   onJoinWithCode,
   onApprovePendingTransaction,
   onRejectPendingTransaction,
+  onRefreshNotifications,
   saveBudgetLimit,
   saveUserIncome,
   saveTheme,
@@ -527,6 +529,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         budgets={visibleBudgets}
         onApprovePending={onApprovePendingTransaction}
         onRejectPending={onRejectPendingTransaction}
+        onRefreshNotifications={onRefreshNotifications}
       />
     );
   }

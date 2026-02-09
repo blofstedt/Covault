@@ -23,6 +23,47 @@ public class NotificationListener extends NotificationListenerService {
 
     private static final String TAG = "CovaultNotificationListener";
 
+    private static volatile NotificationListener instance;
+
+    public static NotificationListener getInstance() {
+        return instance;
+    }
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        instance = this;
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        if (instance == this) {
+            instance = null;
+        }
+    }
+
+    /**
+     * Re-process all active (currently visible) notifications from banking apps.
+     * Called by the CovaultNotificationPlugin when the user taps the refresh button.
+     */
+    public void scanActiveNotifications() {
+        try {
+            StatusBarNotification[] activeNotifications = getActiveNotifications();
+            if (activeNotifications == null) {
+                Log.w(TAG, "scanActiveNotifications: no active notifications available");
+                return;
+            }
+            Log.i(TAG, "scanActiveNotifications: scanning " + activeNotifications.length + " active notifications");
+            for (StatusBarNotification sbn : activeNotifications) {
+                // Re-use the same logic as onNotificationPosted
+                onNotificationPosted(sbn);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error scanning active notifications", e);
+        }
+    }
+
     // Banking app package names to listen for
     // Users can configure which apps to monitor in the app
     private static final Set<String> BANKING_APPS = new HashSet<>(Arrays.asList(

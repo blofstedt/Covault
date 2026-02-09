@@ -9,6 +9,7 @@ import { supabase } from './lib/supabase';
 import { useAuthState, AuthStatus } from './lib/useAuthState';
 import { useDeepLinks } from './lib/useDeepLinks';
 import { useNotificationListener } from './lib/useNotificationListener';
+import { covaultNotification } from './lib/covaultNotification';
 import { useAppTheme } from './lib/useAppTheme';
 import { useUserData } from './lib/useUserData';
 import {
@@ -145,6 +146,13 @@ const App: React.FC = () => {
       }));
     },
   });
+
+  // Refresh notifications: scan currently visible Android notifications
+  const refreshNotifications = useCallback(async () => {
+    if (covaultNotification) {
+      await covaultNotification.scanActiveNotifications();
+    }
+  }, []);
 
   // Theme handling
   useAppTheme(appState.settings.theme);
@@ -377,6 +385,7 @@ const App: React.FC = () => {
             onJoinWithCode={isDevMode ? devJoinWithCode : handleJoinWithCode}
             onApprovePendingTransaction={isDevMode ? devApprovePending : handleApprovePendingTransaction}
             onRejectPendingTransaction={isDevMode ? devRejectPending : handleRejectPendingTransaction}
+            onRefreshNotifications={refreshNotifications}
             isLoadingData={isLoadingData}
             devShowSettings={isDevMode ? devShowSettings : undefined}
             devShowTutorial={isDevMode ? devShowTutorial : undefined}

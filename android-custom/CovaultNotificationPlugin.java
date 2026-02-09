@@ -143,4 +143,16 @@ public class CovaultNotificationPlugin extends Plugin {
         }
         call.resolve(ret);
     }
+
+    @PluginMethod
+    public void scanActiveNotifications(PluginCall call) {
+        NotificationListener listener = NotificationListener.getInstance();
+        if (listener != null) {
+            listener.scanActiveNotifications();
+            Log.i(TAG, "scanActiveNotifications: triggered scan of active notifications");
+        } else {
+            Log.w(TAG, "scanActiveNotifications: NotificationListener service is not running");
+        }
+        call.resolve();
+    }
 }
