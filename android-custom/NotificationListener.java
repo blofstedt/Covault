@@ -160,7 +160,8 @@ public class NotificationListener extends NotificationListenerService {
     private static final String[] TRANSACTION_KEYWORDS = {
         "purchase", "transaction", "charged", "spent", "paid", "payment",
         "withdrew", "withdrawal", "deposit", "transfer", "sent", "received",
-        "debit", "credit", "authorized", "pending", "completed"
+        "debit", "credit", "authorized", "pending", "completed",
+        "cost", "charge"
     };
 
     @Override
@@ -192,16 +193,16 @@ public class NotificationListener extends NotificationListenerService {
             return;
         }
 
-        // Extract transaction data
+        // Extract transaction data (best-effort; the TypeScript pipeline + Gemini
+        // will handle extraction when native regex doesn't match)
         Double amount = extractAmount(fullText);
         String vendor = extractVendor(fullText);
 
-        if (amount != null && amount > 0) {
-            Log.i(TAG, "Transaction detected: $" + amount + " at " + (vendor != null ? vendor : "Unknown"));
+        Log.i(TAG, "Transaction detected: $" + (amount != null ? amount : "?") + " at " + (vendor != null ? vendor : "Unknown"));
 
-            // Send to the web app via broadcast
-            broadcastTransaction(packageName, amount, vendor, fullText);
-        }
+        // Always broadcast to the TypeScript pipeline so Gemini can generate
+        // or regenerate regex patterns even when native extraction fails
+        broadcastTransaction(packageName, amount, vendor, fullText);
     }
 
     @Override
@@ -253,7 +254,9 @@ public class NotificationListener extends NotificationListenerService {
         try {
             JSONObject transaction = new JSONObject();
             transaction.put("source_app", sourceApp);
-            transaction.put("amount", amount);
+            if (amount != null) {
+                transaction.put("amount", amount);
+            }
             transaction.put("vendor", vendor != null ? vendor : "Unknown Merchant");
             transaction.put("raw_text", rawText);
             transaction.put("timestamp", System.currentTimeMillis());
