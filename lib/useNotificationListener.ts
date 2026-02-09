@@ -3,27 +3,21 @@ import { useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import type { Transaction, User, PendingTransaction } from '../types';
 import { covaultNotification } from './covaultNotification';
-import { processNotification, flagAndRegenerateRule } from './notificationProcessor';
-
-// Re-export for backward compatibility (used by FlagTransactionButton)
-export const flagNotificationAndRegenerateRule = flagAndRegenerateRule;
+import { processNotification } from './notificationProcessor';
 
 export interface UseNotificationListenerParams {
   user: User | null;
   onTransactionDetected: (tx: Transaction) => void;
   onPendingTransactionCreated?: (pending: PendingTransaction) => void;
-  /** Called for auto-accepted transactions that are already saved in the DB.
-   *  Unlike onTransactionDetected, this only updates local UI state without
-   *  attempting a duplicate DB insert. */
+  /** Called for auto-accepted transactions that are already saved in the DB. */
   onAutoAcceptedTransaction?: (tx: Transaction) => void;
 }
 
 /**
  * Hook that listens for transactionDetected events from the native CovaultNotification plugin.
  *
- * When rawNotification + bankAppId + bankName are present, uses the full
- * processing pipeline (dedup → regex → validate → pending → auto-accept).
- * Otherwise falls back to event.vendor / event.amount (legacy).
+ * Uses the manual-regex processing pipeline:
+ *   dedup → rule lookup → regex apply → pending insert → auto-approve
  */
 export const useNotificationListener = ({
   user,
@@ -54,12 +48,11 @@ export const useNotificationListener = ({
             }
 
             // Normalize field names from native broadcast
-            // Java sends raw_text/source_app; TS expects rawNotification/bankAppId/bankName
             const rawNotification = event.rawNotification || event.raw_text;
             const bankAppId = event.bankAppId || event.source_app;
             const bankName = event.bankName || event.source_app;
 
-            // ── Full processing pipeline (new path) ──
+            // ── Processing pipeline ──
             if (rawNotification && bankAppId && bankName) {
               try {
                 const result = await processNotification(user.id, {
@@ -83,7 +76,6 @@ export const useNotificationListener = ({
                 }
 
                 // If auto-accepted, notify via the UI-only callback
-                // (transaction is already saved in the DB by processNotification)
                 if (result.autoAccepted && result.transactionId && result.pendingTransaction) {
                   const tx: Transaction = {
                     id: result.transactionId,
@@ -110,7 +102,6 @@ export const useNotificationListener = ({
                   '[notification] Pipeline error, falling back to legacy:',
                   err,
                 );
-                // Fall through to legacy path below
               }
             }
 

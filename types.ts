@@ -72,24 +72,6 @@ export interface PendingTransaction {
   approved?: boolean;
 }
 
-// New: Validation baseline for notification parsing
-export interface ValidationBaseline {
-  id: string;
-  app_package: string;
-  user_id: string;
-  vendor_length_min: number;
-  vendor_length_max: number;
-  vendor_character_classes: string;
-  vendor_case_style: 'title' | 'lower' | 'upper' | 'mixed';
-  vendor_forbidden_patterns: string;
-  amount_range_min: number;
-  amount_range_max: number;
-  amount_decimal_places: number;
-  confidence_threshold: number;
-  sample_count: number;
-  created_at: string;
-  updated_at: string;
-}
 
 // Ignored transaction rule (user-defined ignore patterns)
 export interface IgnoredTransaction {

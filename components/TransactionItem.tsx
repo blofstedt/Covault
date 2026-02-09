@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Transaction, BudgetCategory } from '../types';
-import { FlagTransactionButton } from './FlagTransactionButton';
+
 import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
 
 interface TransactionItemProps {
@@ -125,22 +125,6 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
                 </span>
               )}
 
-              {/* "This looks wrong" button (only for auto‑added + parsed notifications) */}
-              {transaction.label === 'Auto-Added' &&
-                transaction.notification_rule_id &&
-                transaction.raw_notification && (
-                  <FlagTransactionButton
-                    user={{
-                      id: transaction.user_id,
-                      name: transaction.userName ?? '',
-                      email: '',
-                      hasJointAccounts: false,
-                      budgetingSolo: true,
-                      monthlyIncome: 0,
-                    }}
-                    transaction={transaction}
-                  />
-                )}
             </div>
           </div>
 
