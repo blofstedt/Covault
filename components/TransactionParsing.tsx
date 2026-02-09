@@ -27,7 +27,7 @@ interface TransactionParsingProps {
   onTransactionTap?: (tx: Transaction) => void;
   pendingTransactions?: PendingTransaction[];
   budgets?: BudgetCategory[];
-  onApprovePending?: (pendingId: string, categoryId: string) => void;
+  onApprovePending?: (pendingId: string, categoryId: string) => void | Promise<void>;
   onRejectPending?: (pendingId: string) => void;
   onRefreshNotifications?: () => Promise<void>;
   onReloadPendingTransactions?: (userId: string) => Promise<void>;
@@ -787,6 +787,10 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                   <div className="space-y-2">
                     {toReviewTransactions.map((pt) => {
                       const isExpanded = expandedPendingId === pt.id;
+                      const vendorOverride = vendorOverrideByName.get(pt.extracted_vendor.toLowerCase());
+                      const defaultCategoryName = vendorOverride?.category_id
+                        ? categoryNameById.get(vendorOverride.category_id)
+                        : undefined;
 
                       return (
                         <div key={pt.id} className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800/60 overflow-hidden">
@@ -814,9 +818,15 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                               <span className="text-sm font-black text-slate-700 dark:text-slate-200">
                                 ${pt.extracted_amount.toFixed(2)}
                               </span>
-                              <p className="text-[8px] font-bold uppercase tracking-wider text-amber-500 dark:text-amber-400 mt-0.5">
-                                {isExpanded ? 'Collapse' : 'Tap to categorize'}
-                              </p>
+                              {defaultCategoryName ? (
+                                <p className="text-[8px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mt-0.5">
+                                  {defaultCategoryName}
+                                </p>
+                              ) : (
+                                <p className="text-[8px] font-bold uppercase tracking-wider text-amber-500 dark:text-amber-400 mt-0.5">
+                                  {isExpanded ? 'Collapse' : 'Tap to categorize'}
+                                </p>
+                              )}
                             </div>
                           </button>
 
@@ -838,13 +848,17 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                                   {budgets.map((b) => (
                                     <button
                                       key={b.id}
-                                      onClick={() => {
-                                        onApprovePending?.(pt.id, b.id);
+                                      onClick={async () => {
+                                        await onApprovePending?.(pt.id, b.id);
                                         setExpandedPendingId(null);
                                         // Reload vendor overrides since approval may create one
-                                        loadVendorOverrides();
+                                        await loadVendorOverrides();
                                       }}
-                                      className="px-3 py-1.5 text-[10px] font-bold rounded-full border transition-all active:scale-95 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40"
+                                      className={`px-3 py-1.5 text-[10px] font-bold rounded-full border transition-all active:scale-95 ${
+                                        vendorOverride?.category_id === b.id
+                                          ? 'bg-emerald-500 text-white border-emerald-600'
+                                          : 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
+                                      }`}
                                     >
                                       {b.name}
                                     </button>
