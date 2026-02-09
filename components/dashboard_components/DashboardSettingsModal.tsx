@@ -193,12 +193,7 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           <ExportTransactionsSection transactions={transactions} budgets={budgets} />
 
           {/* Budget Report */}
-          <ReportSection
-            budgets={budgets}
-            transactions={transactions}
-            userName={user?.name}
-            totalIncome={user?.monthlyIncome}
-          />
+          <ReportSection />
 
           {/* Support & Feedback */}
           <SupportFeedbackSection />

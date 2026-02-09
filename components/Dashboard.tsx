@@ -530,6 +530,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         onApprovePending={onApprovePendingTransaction}
         onRejectPending={onRejectPendingTransaction}
         onRefreshNotifications={onRefreshNotifications}
+        userId={state.user?.id}
       />
     );
   }
