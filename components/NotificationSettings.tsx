@@ -124,6 +124,13 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
           // Default: select all banking apps found
           setSelectedApps(new Set(named.map(a => a.packageName)));
         }
+
+        // Immediately scan for active notifications in the notification shade
+        try {
+          await plugin.scanActiveNotifications();
+        } catch {
+          // scanActiveNotifications may not be available on all versions
+        }
       }
     } catch (e) {
       console.warn('[NotificationSettings] checkStatus error:', e);
@@ -263,7 +270,7 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
 
           {installedBankApps.length === 0 ? (
             <p className="text-[10px] text-slate-400 text-center py-3">
-              No banking app notifications received yet. Once a notification arrives from a supported app, it will appear here automatically.
+              Scanning for banking apps… If none appear, ensure your banking apps are installed and have sent at least one notification.
             </p>
           ) : (
             <div className="grid grid-cols-2 gap-2">

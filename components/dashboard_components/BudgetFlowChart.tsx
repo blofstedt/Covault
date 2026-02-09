@@ -556,14 +556,14 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
   return (
     <div id="spending-flow-chart" className="w-full mb-1 shrink-0">
       <div className="relative">
-        {/* Tooltip card */}
+        {/* Tooltip card — positioned well above the chart so the user's thumb never obscures it */}
         {activeCategory && mouseCoords && activeMonthData && (
           <div
             className="absolute z-50 pointer-events-none transition-all duration-200 ease-out"
             style={{
-              transform: `translate(${mouseCoords.x}px, ${mouseCoords.y - 80}px)`,
+              transform: `translate(${mouseCoords.x}px, 0px)`,
               left: 0,
-              top: 0,
+              top: '-70px',
             }}
           >
             <div
