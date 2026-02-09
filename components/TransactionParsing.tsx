@@ -535,7 +535,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                                   ? 'text-violet-600 dark:text-violet-400'
                                   : 'text-slate-400 dark:text-slate-500 italic'
                               }`}>
-                                {hasCategory ? categoryNameById.get(vo!.category_id) || 'Unknown' : 'None Selected'}
+                                {hasCategory ? categoryNameById.get(vo?.category_id ?? '') || 'Unknown' : 'None Selected'}
                               </span>
                             </div>
                             <div className="flex items-center gap-2 shrink-0 ml-2">
@@ -672,6 +672,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                                 <button
                                   onClick={() => handleToggleAutoAcceptByVendor(pt.extracted_vendor)}
                                   className="shrink-0 ml-2"
+                                  aria-label={`Toggle auto-accept for ${pt.extracted_vendor}`}
                                 >
                                   <div className={`w-8 h-5 rounded-full relative transition-colors ${
                                     vendorOverride?.auto_accept ? 'bg-emerald-400 dark:bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
