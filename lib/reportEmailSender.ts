@@ -1,13 +1,7 @@
 // lib/reportEmailSender.ts
-// Client-side report email sender.
+// Client-side report builder.
 //
-// Provides two mechanisms to send budget report emails:
-//   1. Via Supabase Edge Function (preferred – keeps API key server-side)
-//   2. Direct call to the Resend API (fallback – uses VITE_RESEND_API_KEY)
-//
-// The `sendReportEmail` function tries (1) first, then falls back to (2).
-
-import { supabase } from './supabase';
+// Generates HTML budget reports that can be opened in Gmail for the user to send.
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -22,14 +16,6 @@ export interface TransactionSummary {
   amount: number;
   date: string;
   category: string;
-}
-
-export interface ReportPayload {
-  emails: string[];
-  budgets: BudgetSummary[];
-  transactions: TransactionSummary[];
-  totalIncome: number;
-  userName?: string;
 }
 
 // ── Colours (match app palette) ────────────────────────────────────────────────
@@ -295,99 +281,4 @@ export function buildHtmlReport(
   </div>
 </body>
 </html>`;
-}
-
-// ── Direct Resend API call (client-side fallback) ──────────────────────────────
-//
-// ⚠️  SECURITY NOTE: The VITE_RESEND_API_KEY is embedded in the frontend bundle
-// and visible to anyone who inspects the page source. For production, deploy the
-// Supabase Edge Function (supabase/functions/send-report) and set the
-// RESEND_API_KEY as a server-side secret instead. The client-side fallback is
-// provided so that email sending works immediately during development and for
-// users who haven't deployed the edge function yet.
-
-async function sendViaResendDirect(payload: ReportPayload): Promise<void> {
-  const apiKey = import.meta.env.VITE_RESEND_API_KEY as string | undefined;
-
-  if (!apiKey) {
-    throw new Error(
-      'VITE_RESEND_API_KEY is not configured. Add it to your .env file to enable email sending.',
-    );
-  }
-
-  const senderEmail =
-    (import.meta.env.VITE_SENDER_EMAIL as string | undefined) ||
-    'Covault Reports <reports@covault.app>';
-
-  const html = buildHtmlReport(
-    payload.budgets,
-    payload.transactions,
-    payload.totalIncome,
-    payload.userName,
-  );
-
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      from: senderEmail,
-      to: payload.emails,
-      subject: `Your Covault Budget Report – ${new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`,
-      html,
-    }),
-  });
-
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(
-      (data as any)?.message || `Resend API error (${res.status})`,
-    );
-  }
-}
-
-// ── Public API ─────────────────────────────────────────────────────────────────
-
-/**
- * Send a budget report email.
- *
- * Tries the Supabase Edge Function first (keeps API key server-side).
- * If that fails, falls back to calling the Resend API directly from the
- * client using the VITE_RESEND_API_KEY env var.
- */
-export async function sendReportEmail(
-  payload: ReportPayload,
-): Promise<{ success: boolean; error?: string }> {
-  // ── Attempt 1: Supabase Edge Function ──
-  try {
-    const { error } = await supabase.functions.invoke('send-report', {
-      body: payload,
-    });
-    if (!error) {
-      return { success: true };
-    }
-    console.warn(
-      '[reportEmailSender] Edge function failed, trying direct Resend:',
-      error,
-    );
-  } catch (edgeErr) {
-    console.warn(
-      '[reportEmailSender] Edge function unavailable, trying direct Resend:',
-      edgeErr,
-    );
-  }
-
-  // ── Attempt 2: Direct Resend API call ──
-  try {
-    await sendViaResendDirect(payload);
-    return { success: true };
-  } catch (directErr: any) {
-    console.error('[reportEmailSender] Direct Resend also failed:', directErr);
-    return {
-      success: false,
-      error: directErr?.message || 'Failed to send report.',
-    };
-  }
 }

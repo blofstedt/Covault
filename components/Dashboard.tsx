@@ -19,7 +19,6 @@ import BudgetFlowChart from './dashboard_components/BudgetFlowChart';
 // Notifications helper
 import { checkAndTriggerAppNotifications } from '../lib/appNotifications';
 import { generateProjectedTransactions } from '../lib/projectedTransactions';
-import { runDueReports } from '../lib/scheduledReportRunner';
 
 interface DashboardProps {
   state: AppState;
@@ -511,34 +510,6 @@ const Dashboard: React.FC<DashboardProps> = ({
     remainingMoney,
     (state.settings as any).app_notifications_enabled,
   ]);
-
-  // 📧 Scheduled report runner: send any reports that are due on app load
-  useEffect(() => {
-    const reports: import('../types').ScheduledReport[] =
-      (state.settings as any).scheduled_reports || [];
-    if (reports.length === 0 || !state.user?.id) return;
-
-    let cancelled = false;
-    runDueReports(
-      reports,
-      state.budgets,
-      state.transactions,
-      state.user?.name,
-      state.user?.monthlyIncome,
-    ).then(({ updatedReports, sentCount }) => {
-      if (cancelled || sentCount === 0) return;
-      setState((prev) => ({
-        ...prev,
-        settings: { ...prev.settings, scheduled_reports: updatedReports },
-      }));
-    });
-
-    return () => {
-      cancelled = true;
-    };
-    // Only run on mount / when user id changes – not on every transaction update
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.user?.id]);
 
   // If showing parsing view, render that instead of the main dashboard
   if (showParsing) {
