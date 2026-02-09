@@ -230,4 +230,5 @@ export interface ScheduledReport {
   dayOfMonth: number;     // 1-28 for monthly/yearly
   month?: number;         // 0-11 for yearly frequency
   enabled: boolean;
+  lastSentAt?: string;    // ISO timestamp of the last successful send
 }

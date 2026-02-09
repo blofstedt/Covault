@@ -70,32 +70,43 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const fileName = `covault-transactions-${startDate}-to-${endDate}.csv`;
 
-    // On native platforms, write the CSV to the cache directory then share
-    // it via the system share sheet so the user can save to Downloads or
-    // open directly in another app.  Directory.ExternalStorage is blocked
-    // on Android 11+ due to scoped-storage restrictions, so the
-    // cache + share approach works reliably on all modern API levels.
+    // On native platforms, save the CSV directly to the Documents folder so
+    // the user can find it in their device's file manager without going
+    // through the share sheet.  Falls back to the cache + share approach
+    // if the direct write fails (e.g. on devices where Documents is
+    // unavailable).
     if (Capacitor.isNativePlatform()) {
       try {
         await Filesystem.writeFile({
           path: fileName,
           data: csvContent,
-          directory: Directory.Cache,
+          directory: Directory.Documents,
           encoding: Encoding.UTF8,
         });
-
-        const uriResult = await Filesystem.getUri({
-          path: fileName,
-          directory: Directory.Cache,
-        });
-
-        await Share.share({
-          title: 'Covault Transactions',
-          files: [uriResult.uri],
-          dialogTitle: 'Save or share CSV',
-        });
       } catch {
-        // User cancelled share or an unexpected error – not actionable
+        // Directory.Documents may not be available on all devices – fall
+        // back to writing to Cache and opening the system share sheet.
+        try {
+          await Filesystem.writeFile({
+            path: fileName,
+            data: csvContent,
+            directory: Directory.Cache,
+            encoding: Encoding.UTF8,
+          });
+
+          const uriResult = await Filesystem.getUri({
+            path: fileName,
+            directory: Directory.Cache,
+          });
+
+          await Share.share({
+            title: 'Covault Transactions',
+            files: [uriResult.uri],
+            dialogTitle: 'Save or share CSV',
+          });
+        } catch {
+          // User cancelled share or an unexpected error – not actionable
+        }
       }
       setExported(true);
       setTimeout(() => setExported(false), 2000);
