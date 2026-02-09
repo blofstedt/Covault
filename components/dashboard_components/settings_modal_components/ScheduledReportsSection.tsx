@@ -8,6 +8,7 @@ interface ScheduledReportsSectionProps {
   budgets: BudgetCategory[];
   transactions: Transaction[];
   userName?: string;
+  totalIncome?: number;
 }
 
 const FREQUENCY_OPTIONS: { value: ReportFrequency; label: string }[] = [
@@ -48,6 +49,7 @@ const ScheduledReportsSection: React.FC<ScheduledReportsSectionProps> = ({
   budgets,
   transactions,
   userName,
+  totalIncome,
 }) => {
   const [showBuilder, setShowBuilder] = useState(false);
   const [editingReport, setEditingReport] = useState<ScheduledReport | undefined>(undefined);
@@ -100,17 +102,42 @@ const ScheduledReportsSection: React.FC<ScheduledReportsSectionProps> = ({
     });
   };
 
+  /** Build a transaction list for the current month for the report email. */
+  const buildTransactionList = () => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    const budgetNameById = new Map(budgets.map((b) => [b.id, b.name]));
+
+    return transactions
+      .filter((tx) => {
+        if (tx.is_projected) return false;
+        const txDate = new Date(tx.date);
+        return txDate.getMonth() === currentMonth && txDate.getFullYear() === currentYear;
+      })
+      .map((tx) => ({
+        vendor: tx.vendor,
+        amount: tx.amount,
+        date: tx.date,
+        category: tx.budget_id ? budgetNameById.get(tx.budget_id) || 'Other' : 'Other',
+      }));
+  };
+
   const sendReportEmail = async (recipientEmails: string[]) => {
     setIsSending(true);
     setSendError(null);
 
     try {
       const budgetSummary = buildBudgetSummary();
+      const transactionList = buildTransactionList();
 
       const { error } = await supabase.functions.invoke('send-report', {
         body: {
           emails: recipientEmails,
           budgets: budgetSummary,
+          transactions: transactionList,
+          totalIncome: totalIncome ?? 0,
           userName,
         },
       });

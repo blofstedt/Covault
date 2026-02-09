@@ -524,6 +524,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       state.budgets,
       state.transactions,
       state.user?.name,
+      state.user?.monthlyIncome,
     ).then(({ updatedReports, sentCount }) => {
       if (cancelled || sentCount === 0) return;
       setState((prev) => ({
