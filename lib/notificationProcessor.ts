@@ -795,12 +795,15 @@ export async function processNotification(
   const needsGemini = !rule || regexFailed || validation.confidence < confidenceThreshold;
 
   if (needsGemini) {
+    // Pass true for regexFailed when confidence is below threshold,
+    // so getOrCreateRule calls Gemini to regenerate patterns
+    const shouldRegenerate = regexFailed || validation.confidence < confidenceThreshold;
     const updatedRule = await getOrCreateRule(
       userId,
       input.bankAppId,
       input.bankName,
       input.rawNotification,
-      regexFailed,
+      shouldRegenerate,
     );
 
     if (updatedRule && updatedRule !== rule) {
@@ -825,6 +828,26 @@ export async function processNotification(
   // Final vendor/amount (use fallbacks if regex still failed)
   const finalVendor = parsed?.vendor || input.fallbackVendor || 'Unknown Merchant';
   const finalAmount = parsed?.amount ?? input.fallbackAmount ?? 0;
+
+  // If regex failed but we have usable fallback values, re-validate with those
+  // so the user sees reasonable confidence instead of "Regex extraction failed"
+  if (!parsed && (input.fallbackVendor || input.fallbackAmount != null)) {
+    validation = await validateExtraction(
+      userId,
+      input.bankAppId,
+      finalVendor,
+      finalAmount,
+      false, // regex didn't work, but we have fallback data
+    );
+    // If fallback values are reasonable, improve confidence and adjust reasons
+    if (finalVendor !== 'Unknown Merchant' && finalAmount > 0) {
+      validation.reasons = validation.reasons.filter(r => r !== 'Regex extraction failed');
+      validation.reasons.push('Used fallback extraction (regex unavailable)');
+      // Give moderate confidence for fallback values
+      validation.confidence = Math.max(validation.confidence, 50);
+      validation.needsReview = true; // Always review fallback-based transactions
+    }
+  }
 
   // ── Step 5: Ignore Rule Check ──
   const ignored = await shouldIgnore(userId, finalVendor, finalAmount, input.bankAppId);

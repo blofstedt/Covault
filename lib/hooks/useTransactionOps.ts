@@ -276,27 +276,55 @@ export const useTransactionOps = ({
           return;
         }
 
-        // Create the actual transaction
-        const newTransaction: Partial<Transaction> = {
-          id: pendingId, // Use same ID for tracking
+        // 1) Insert the actual transaction directly into Supabase
+        const dateStr = new Date(pending.extracted_timestamp || pending.posted_at || new Date()).toISOString().split('T')[0];
+        const transactionRow = {
           user_id: userId,
           vendor: pending.extracted_vendor,
-          amount: pending.extracted_amount,
-          date: pending.extracted_timestamp,
-          budget_id: categoryId,
+          amount: Number(pending.extracted_amount),
+          date: dateStr,
+          category_id: categoryId,
           recurrence: 'One-time',
           label: 'Auto-Added',
           is_projected: false,
         };
 
-        await handleAddTransaction(newTransaction as Transaction);
+        const insertHeaders = await getAuthHeaders();
+        (insertHeaders as any)['Prefer'] = 'return=representation';
+        const insertRes = await fetch(`${REST_BASE}/transactions`, {
+          method: 'POST',
+          headers: insertHeaders,
+          body: JSON.stringify(transactionRow),
+        });
+        const insertBody = await insertRes.text();
 
-        // Mark pending transaction as reviewed and approved
-        const headers = await getAuthHeaders();
-        (headers as any)['Prefer'] = 'return=representation';
-        const res = await fetch(`${REST_BASE}/pending_transactions?id=eq.${pendingId}`, {
+        if (!insertRes.ok) {
+          const msg = `[approvePending] INSERT transaction failed (${insertRes.status}): ${insertBody.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
+
+        let savedRow: any;
+        try {
+          const parsed = JSON.parse(insertBody);
+          savedRow = Array.isArray(parsed) ? parsed[0] : parsed;
+        } catch {
+          const msg = `[approvePending] failed to parse INSERT response: ${insertBody.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
+
+        const savedTransaction = fromSupabaseTransaction(savedRow);
+        console.log('[approvePending] transaction inserted, id:', savedTransaction.id);
+
+        // 2) Mark pending transaction as reviewed and approved
+        const patchHeaders = await getAuthHeaders();
+        (patchHeaders as any)['Prefer'] = 'return=representation';
+        const patchRes = await fetch(`${REST_BASE}/pending_transactions?id=eq.${pendingId}`, {
           method: 'PATCH',
-          headers,
+          headers: patchHeaders,
           body: JSON.stringify({
             needs_review: false,
             reviewed_at: new Date().toISOString(),
@@ -304,35 +332,40 @@ export const useTransactionOps = ({
           }),
         });
 
-        if (!res.ok) {
-          const body = await res.text();
-          const msg = `[approvePending] PATCH failed (${res.status}): ${body.slice(0, 200)}`;
-          console.error(msg);
-          setDbError(msg);
-          return;
+        if (!patchRes.ok) {
+          const body = await patchRes.text();
+          console.error(`[approvePending] PATCH pending failed (${patchRes.status}): ${body.slice(0, 200)}`);
+          // Transaction was created, so continue even if PATCH fails
         }
 
-        const body = await res.text();
-        let updatedRows: any[] = [];
+        // 3) Save vendor_override so future transactions from this vendor auto-categorize
         try {
-          updatedRows = body ? JSON.parse(body) : [];
-        } catch (parseErr) {
-          const msg = `[approvePending] failed to parse response: ${body.slice(0, 200)}`;
-          console.error(msg);
-          setDbError(msg);
-          return;
-        }
-        
-        if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
-          const msg = `[approvePending] no rows updated for pending transaction ${pendingId}`;
-          console.error(msg);
-          setDbError(msg);
-          return;
+          const overrideHeaders = await getAuthHeaders();
+          (overrideHeaders as any)['Prefer'] = 'return=representation';
+          // Upsert: if an override for this vendor already exists, update it
+          await fetch(
+            `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(pending.extracted_vendor)}`,
+            { method: 'DELETE', headers: overrideHeaders },
+          );
+          await fetch(`${REST_BASE}/vendor_overrides`, {
+            method: 'POST',
+            headers: overrideHeaders,
+            body: JSON.stringify({
+              user_id: userId,
+              vendor_name: pending.extracted_vendor,
+              category_id: categoryId,
+            }),
+          });
+          console.log('[approvePending] vendor_override saved for', pending.extracted_vendor);
+        } catch (overrideErr: any) {
+          // Non-critical: log but don't fail the approval
+          console.warn('[approvePending] vendor_override save failed:', overrideErr?.message || overrideErr);
         }
 
-        // Remove from pending list in UI
+        // 4) Update UI state: add transaction + remove from pending list
         setAppState(prev => ({
           ...prev,
+          transactions: [savedTransaction, ...prev.transactions],
           pendingTransactions: prev.pendingTransactions?.filter(p => p.id !== pendingId) || [],
         }));
 
@@ -343,7 +376,7 @@ export const useTransactionOps = ({
         setDbError(msg);
       }
     },
-    [appState.user, appState.pendingTransactions, handleAddTransaction, setAppState, setDbError],
+    [appState.user, appState.pendingTransactions, fromSupabaseTransaction, setAppState, setDbError],
   );
 
   // Reject a pending transaction
