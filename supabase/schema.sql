@@ -72,6 +72,10 @@ CREATE TABLE public.settings (
   theme text DEFAULT 'light' CHECK (theme = ANY (ARRAY['light','dark'])),
   has_seen_tutorial boolean DEFAULT false,
   app_notifications_enabled boolean DEFAULT false,
+  trial_started_at timestamptz,
+  trial_ends_at timestamptz,
+  trial_consumed boolean DEFAULT false,
+  subscription_status text DEFAULT 'none' CHECK (subscription_status = ANY (ARRAY['none','active','expired'])),
   CONSTRAINT settings_pkey PRIMARY KEY (user_id),
   CONSTRAINT settings_email_key UNIQUE (email)
 );
@@ -92,17 +96,22 @@ CREATE POLICY "Users can update own settings"
   WITH CHECK (auth.uid() = user_id);
 
 -- Auto-create a settings row when a new user signs up
+-- trial_consumed = true means the one-time trial slot has been used (prevents trial reset)
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 BEGIN
-  INSERT INTO public.settings (user_id, name, email, monthly_income)
+  INSERT INTO public.settings (user_id, name, email, monthly_income, trial_started_at, trial_ends_at, trial_consumed, subscription_status)
   VALUES (
     NEW.id,
     COALESCE(NEW.raw_user_meta_data ->> 'full_name',
              split_part(NEW.email, '@', 1),
              'User'),
     NEW.email,
-    5000
+    5000,
+    now(),
+    now() + interval '14 days',
+    true,   -- trial slot consumed on first signup (cannot be reset)
+    'none'
   );
   RETURN NEW;
 END;

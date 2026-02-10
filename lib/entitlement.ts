@@ -26,9 +26,11 @@ export const hasPremiumAccess = (user: User | null): boolean => {
 
 /**
  * Returns the number of days remaining in the trial, or 0 if expired / not started.
+ * Returns 0 if the user has an active subscription (no need for trial countdown).
  */
 export const trialDaysRemaining = (user: User | null): number => {
   if (!user?.trial_ends_at) return 0;
+  if (user.subscription_status === 'active') return 0;
   const ms = new Date(user.trial_ends_at).getTime() - Date.now();
   return Math.max(0, Math.ceil(ms / (1000 * 60 * 60 * 24)));
 };
