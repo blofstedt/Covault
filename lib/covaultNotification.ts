@@ -62,9 +62,10 @@ export interface CovaultNotificationPlugin {
 
 /**
  * Safe way to access the native CovaultNotification plugin.
+ * Uses registerPlugin for proper event listener support.
  * Returns null on web / non-native platforms.
  */
 export const covaultNotification: CovaultNotificationPlugin | null =
   Capacitor.isNativePlatform()
-    ? ((Capacitor as any).Plugins?.CovaultNotification as CovaultNotificationPlugin | null)
+    ? registerPlugin<CovaultNotificationPlugin>('CovaultNotification')
     : null;
