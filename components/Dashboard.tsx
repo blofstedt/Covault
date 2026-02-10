@@ -21,7 +21,7 @@ import BudgetFlowChart from './dashboard_components/BudgetFlowChart';
 // Notifications helper
 import { checkAndTriggerAppNotifications } from '../lib/appNotifications';
 import { generateProjectedTransactions } from '../lib/projectedTransactions';
-import { hasPremiumAccess } from '../lib/entitlement';
+import { hasPremiumAccess, shouldShowUpgradePrompt } from '../lib/entitlement';
 
 interface DashboardProps {
   state: AppState;
@@ -94,6 +94,13 @@ const Dashboard: React.FC<DashboardProps> = ({
     console.log('[Dashboard] Subscribe tapped — Google Play Billing integration pending');
     setShowSubscribeModal(false);
   };
+
+  // Show "Upgrade now!" modal on every app open when the trial has expired
+  useEffect(() => {
+    if (shouldShowUpgradePrompt(state.user)) {
+      setShowSubscribeModal(true);
+    }
+  }, [state.user]);
 
   // Scroll refs shared with child components
   const scrollContainerRef = useRef<HTMLDivElement>(null);

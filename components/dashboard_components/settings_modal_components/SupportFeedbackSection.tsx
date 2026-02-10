@@ -1,6 +1,15 @@
 import React from 'react';
+import PremiumGate from '../../PremiumGate';
 
-const SupportFeedbackSection: React.FC = () => {
+interface SupportFeedbackSectionProps {
+  hasPremium: boolean;
+  onSubscribe: () => void;
+}
+
+const SupportFeedbackSection: React.FC<SupportFeedbackSectionProps> = ({
+  hasPremium,
+  onSubscribe,
+}) => {
   return (
     <div className="pt-8 space-y-6">
       <div className="flex items-center justify-between px-2">
@@ -11,6 +20,7 @@ const SupportFeedbackSection: React.FC = () => {
         <div className="h-px flex-1 bg-slate-100 dark:bg-slate-800" />
       </div>
       <div className="space-y-3">
+        {/* Report a Problem — always available (free) */}
         <a
           id="report-problem-button"
           href="mailto:itsjustmyemail@gmail.com?subject=Covault: Problem Report"
@@ -49,14 +59,33 @@ const SupportFeedbackSection: React.FC = () => {
           </svg>
         </a>
 
-        <a
-          id="request-feature-button"
-          href="mailto:itsjustmyemail@gmail.com?subject=Covault: Feature Request"
-          className="flex items-center p-5 bg-slate-50 dark:bg-slate-800/30 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm active:scale-[0.98] transition-all group"
-        >
-          <div className="w-10 h-10 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl flex items-center justify-center mr-4 group-hover:scale-110 transition-transform">
+        {/* Request a Feature — premium only */}
+        <PremiumGate hasPremium={hasPremium} onSubscribe={onSubscribe}>
+          <a
+            id="request-feature-button"
+            href="mailto:itsjustmyemail@gmail.com?subject=Covault: Feature Request"
+            className="flex items-center p-5 bg-slate-50 dark:bg-slate-800/30 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm active:scale-[0.98] transition-all group"
+          >
+            <div className="w-10 h-10 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl flex items-center justify-center mr-4 group-hover:scale-110 transition-transform">
+              <svg
+                className="w-5 h-5 text-emerald-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2.5}
+                  d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-7.714 2.143L11 21l-2.286-6.857L1 12l7.714-2.143L11 3z"
+                />
+              </svg>
+            </div>
+            <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest whitespace-nowrap">
+              Request a Feature
+            </span>
             <svg
-              className="w-5 h-5 text-emerald-500"
+              className="w-4 h-4 ml-auto text-slate-300 dark:text-slate-700 group-hover:translate-x-1 transition-transform"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -64,28 +93,12 @@ const SupportFeedbackSection: React.FC = () => {
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth={2.5}
-                d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-7.714 2.143L11 21l-2.286-6.857L1 12l7.714-2.143L11 3z"
+                strokeWidth={3}
+                d="M9 5l7 7-7 7"
               />
             </svg>
-          </div>
-          <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest whitespace-nowrap">
-            Request a Feature
-          </span>
-          <svg
-            className="w-4 h-4 ml-auto text-slate-300 dark:text-slate-700 group-hover:translate-x-1 transition-transform"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={3}
-              d="M9 5l7 7-7 7"
-            />
-          </svg>
-        </a>
+          </a>
+        </PremiumGate>
       </div>
     </div>
   );

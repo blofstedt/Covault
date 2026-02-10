@@ -181,11 +181,13 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
             onUpdateSettings={onUpdateSettings}
           />
 
-          {/* Discretionary Shield */}
-          <DiscretionaryShieldSection
-            useLeisureAsBuffer={settings.useLeisureAsBuffer}
-            onUpdateSettings={onUpdateSettings}
-          />
+          {/* Discretionary Shield — Premium */}
+          <PremiumGate hasPremium={hasPremium} onSubscribe={onSubscribe}>
+            <DiscretionaryShieldSection
+              useLeisureAsBuffer={settings.useLeisureAsBuffer}
+              onUpdateSettings={onUpdateSettings}
+            />
+          </PremiumGate>
 
           {/* Vault sharing */}
           <VaultSharingSection
@@ -204,10 +206,8 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           {/* Budget Report */}
           <ReportSection />
 
-          {/* Support & Feedback — Feature requests are premium */}
-          <PremiumGate hasPremium={hasPremium} onSubscribe={onSubscribe}>
-            <SupportFeedbackSection />
-          </PremiumGate>
+          {/* Support & Feedback — only feature requests are premium */}
+          <SupportFeedbackSection hasPremium={hasPremium} onSubscribe={onSubscribe} />
 
           {/* Sign out */}
           <SignOutSection onSignOut={onSignOut} />
