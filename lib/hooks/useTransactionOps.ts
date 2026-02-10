@@ -356,7 +356,8 @@ export const useTransactionOps = ({
           let patchedRows: any[] = [];
           try {
             patchedRows = patchOverrideBody ? JSON.parse(patchOverrideBody) : [];
-          } catch {
+          } catch (parseErr) {
+            console.warn('[approvePending] vendor_override PATCH response parse error:', parseErr);
             patchedRows = [];
           }
           if (!patchOverrideRes.ok || !Array.isArray(patchedRows) || patchedRows.length === 0) {
