@@ -343,28 +343,42 @@ export const useTransactionOps = ({
         try {
           const overrideHeaders = await getAuthHeaders();
           (overrideHeaders as any)['Prefer'] = 'return=representation';
-          // Upsert: if an override for this vendor already exists, delete then re-insert
-          const deleteRes = await fetch(
+          // Try to update existing override (preserves auto_accept)
+          const patchOverrideRes = await fetch(
             `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(formatVendorName(pending.extracted_vendor))}`,
-            { method: 'DELETE', headers: overrideHeaders },
+            {
+              method: 'PATCH',
+              headers: overrideHeaders,
+              body: JSON.stringify({ category_id: categoryId }),
+            },
           );
-          if (!deleteRes.ok) {
-            console.warn('[approvePending] vendor_override DELETE failed:', deleteRes.status);
+          const patchOverrideBody = await patchOverrideRes.text();
+          let patchedRows: any[] = [];
+          try {
+            patchedRows = patchOverrideBody ? JSON.parse(patchOverrideBody) : [];
+          } catch (parseErr) {
+            console.warn('[approvePending] vendor_override PATCH response parse error:', parseErr);
+            patchedRows = [];
           }
-          const postRes = await fetch(`${REST_BASE}/vendor_overrides`, {
-            method: 'POST',
-            headers: overrideHeaders,
-            body: JSON.stringify({
-              user_id: userId,
-              vendor_name: formatVendorName(pending.extracted_vendor),
-              category_id: categoryId,
-            }),
-          });
-          if (!postRes.ok) {
-            const postBody = await postRes.text();
-            console.warn('[approvePending] vendor_override POST failed:', postRes.status, postBody.slice(0, 200));
+          if (!patchOverrideRes.ok || !Array.isArray(patchedRows) || patchedRows.length === 0) {
+            // No existing override found, insert a new one
+            const postRes = await fetch(`${REST_BASE}/vendor_overrides`, {
+              method: 'POST',
+              headers: overrideHeaders,
+              body: JSON.stringify({
+                user_id: userId,
+                vendor_name: formatVendorName(pending.extracted_vendor),
+                category_id: categoryId,
+              }),
+            });
+            if (!postRes.ok) {
+              const postBody = await postRes.text();
+              console.warn('[approvePending] vendor_override POST failed:', postRes.status, postBody.slice(0, 200));
+            } else {
+              console.log('[approvePending] vendor_override saved for', pending.extracted_vendor);
+            }
           } else {
-            console.log('[approvePending] vendor_override saved for', pending.extracted_vendor);
+            console.log('[approvePending] vendor_override updated for', pending.extracted_vendor);
           }
         } catch (overrideErr: any) {
           // Non-critical: log but don't fail the approval

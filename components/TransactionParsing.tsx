@@ -86,7 +86,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
 
     const { data, error } = await supabase
       .from('vendor_overrides')
-      .select('*')
+      .select('id, vendor_name, category_id, auto_accept, created_at')
       .eq('user_id', userId)
       .order('vendor_name');
 
@@ -607,7 +607,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                                   <div className={`w-6 h-3.5 rounded-full relative transition-colors ${vo.auto_accept ? 'bg-emerald-400 dark:bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
                                     <div className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white shadow-sm transition-all ${vo.auto_accept ? 'left-3' : 'left-0.5'}`} />
                                   </div>
-                                  <span>Auto</span>
+                                  <span>Auto Approve</span>
                                 </button>
                               )}
                             </div>
