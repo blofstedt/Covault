@@ -96,9 +96,12 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     }
 
     // Load all categories to resolve names (vendor_overrides may lack FK to categories)
-    const { data: cats } = await supabase
+    const { data: cats, error: catsError } = await supabase
       .from('categories')
       .select('id, name');
+    if (catsError) {
+      console.error('[TransactionParsing] Error loading categories for name resolution:', catsError);
+    }
     const catNameById = new Map<string, string>();
     for (const c of cats || []) {
       catNameById.set(c.id, c.name);
@@ -299,7 +302,8 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
           });
 
         // Retry without auto_accept if column doesn't exist yet
-        if (error) {
+        if (error && error.message && error.message.includes('auto_accept')) {
+          console.warn('[TransactionParsing] auto_accept column missing, retrying without it:', error.message);
           const retry = await supabase
             .from('vendor_overrides')
             .insert({
