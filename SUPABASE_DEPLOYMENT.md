@@ -2,14 +2,14 @@
 
 ## Overview
 
-The Covault application uses **12 tables** in the Supabase database. The schema file (`supabase/schema.sql`) contains the complete definition with Row Level Security (RLS) policies.
+The Covault application uses **14 tables** in the Supabase database. The schema file (`supabase/schema.sql`) contains a safe, idempotent migration that can be run on an existing database without data loss.
 
 ## Database Tables
 
-### Core Tables (12 total)
+### Core Tables (14 total)
 
 1. **categories** - Budget categories (Housing, Groceries, Transport, Utilities, Leisure, Other)
-2. **settings** - User settings and preferences (including `app_notifications_enabled`)
+2. **settings** - User settings, preferences, and trial/subscription status
 3. **household_links** - Links two users as household partners
 4. **link_codes** - Temporary invitation codes for household linking
 5. **transactions** - Financial transactions with categories and recurrence
@@ -20,6 +20,8 @@ The Covault application uses **12 tables** in the Supabase database. The schema 
 10. **notification_rules** - Bank notification parsing rules per user
 11. **vendor_overrides** - User-specific vendor-to-category mappings
 12. **flag_reports** - Reports for incorrect notification parsing
+13. **ignored_transactions** - User rules to ignore known non-expense notifications
+14. **notification_fingerprints** - Deduplication hashes for notifications
 
 ## Key Changes from Problem Statement
 
@@ -34,14 +36,21 @@ The problem statement included tables that were **mismatched** with the actual a
 
 ## Deployment
 
-### Full Schema Deployment
+### Safe Migration (Existing Database)
 
 1. Open your Supabase project dashboard
 2. Navigate to the SQL Editor
 3. Copy and paste the entire contents of `supabase/schema.sql`
 4. Click "Run" to execute
 
-**⚠️ WARNING**: This will DROP all existing tables and recreate them. Backup your data first!
+✅ **Safe**: Uses `IF NOT EXISTS` guards throughout. Will not drop tables, delete data, or duplicate rows.
+
+### Fresh Install (Empty Database)
+
+1. Use `supabase/schema_fresh_install.sql` instead
+2. This drops all tables and recreates them from scratch
+
+**⚠️ WARNING**: The fresh install script will DROP all existing tables. Only use on an empty/new database.
 
 ## Schema Structure
 

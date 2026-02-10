@@ -1,34 +1,16 @@
 -- ============================================================
--- COVAULT DATABASE SCHEMA  (paste into Supabase SQL Editor)
--- Drops everything and rebuilds with RLS policies
+-- COVAULT DATABASE SCHEMA — SAFE MIGRATION
+-- Idempotent: can be run on an existing database without data loss.
+-- Uses IF NOT EXISTS / IF EXISTS guards throughout.
+--
+-- For a BRAND-NEW database, see schema_fresh_install.sql instead.
 -- ============================================================
 
--- 1. DROP ALL EXISTING TABLES
-DROP TABLE IF EXISTS public.ignored_transactions CASCADE;
-DROP TABLE IF EXISTS public.notification_fingerprints CASCADE;
-DROP TABLE IF EXISTS public.transactions  CASCADE;
-DROP TABLE IF EXISTS public.transaction_budget_splits CASCADE;
-DROP TABLE IF EXISTS public.pending_transactions CASCADE;
-DROP TABLE IF EXISTS public.budgets CASCADE;
-DROP TABLE IF EXISTS public.user_budgets   CASCADE;
-DROP TABLE IF EXISTS public.household_links CASCADE;
-DROP TABLE IF EXISTS public.link_codes CASCADE;
-DROP TABLE IF EXISTS public.linked_partners CASCADE;
-DROP TABLE IF EXISTS public.partners       CASCADE;
-DROP TABLE IF EXISTS public.settings       CASCADE;
-DROP TABLE IF EXISTS public.user_profiles  CASCADE;
-DROP TABLE IF EXISTS public.primary_categories CASCADE;
-DROP TABLE IF EXISTS public.categories     CASCADE;
-DROP TABLE IF EXISTS public.validation_baselines CASCADE;
-
--- Drop old trigger/function if they exist
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-DROP FUNCTION IF EXISTS public.handle_new_user();
 
 -- ============================================================
--- 2. CATEGORIES  (read-only for all authenticated users)
+-- 1. CATEGORIES  (read-only seed data)
 -- ============================================================
-CREATE TABLE public.categories (
+CREATE TABLE IF NOT EXISTS public.categories (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   name text NOT NULL,
   display_order integer NOT NULL,
@@ -37,25 +19,32 @@ CREATE TABLE public.categories (
   CONSTRAINT categories_name_key UNIQUE (name)
 );
 
+-- Seed rows (skip duplicates via ON CONFLICT)
 INSERT INTO public.categories (name, display_order) VALUES
   ('Housing',   1),
   ('Groceries', 2),
   ('Transport', 3),
   ('Utilities', 4),
   ('Leisure',   5),
-  ('Other',     6);
+  ('Other',     6)
+ON CONFLICT (name) DO NOTHING;
 
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Anyone can read categories"
-  ON public.categories FOR SELECT
-  TO authenticated
-  USING (true);
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'categories' AND policyname = 'Anyone can read categories'
+  ) THEN
+    CREATE POLICY "Anyone can read categories"
+      ON public.categories FOR SELECT TO authenticated USING (true);
+  END IF;
+END $$;
+
 
 -- ============================================================
--- 3. SETTINGS  (one row per user, keyed by user_id)
+-- 2. SETTINGS  (one row per user)
 -- ============================================================
-CREATE TABLE public.settings (
+CREATE TABLE IF NOT EXISTS public.settings (
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   name text NOT NULL,
   email text NOT NULL,
@@ -72,28 +61,61 @@ CREATE TABLE public.settings (
   theme text DEFAULT 'light' CHECK (theme = ANY (ARRAY['light','dark'])),
   has_seen_tutorial boolean DEFAULT false,
   app_notifications_enabled boolean DEFAULT false,
-  trial_started_at timestamptz,
-  trial_ends_at timestamptz,
-  trial_consumed boolean DEFAULT false,
-  subscription_status text DEFAULT 'none' CHECK (subscription_status = ANY (ARRAY['none','active','expired'])),
   CONSTRAINT settings_pkey PRIMARY KEY (user_id),
   CONSTRAINT settings_email_key UNIQUE (email)
 );
 
+-- Add trial & subscription columns (safe for existing databases)
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'settings' AND column_name = 'trial_started_at'
+  ) THEN
+    ALTER TABLE public.settings ADD COLUMN trial_started_at timestamptz;
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'settings' AND column_name = 'trial_ends_at'
+  ) THEN
+    ALTER TABLE public.settings ADD COLUMN trial_ends_at timestamptz;
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'settings' AND column_name = 'trial_consumed'
+  ) THEN
+    ALTER TABLE public.settings ADD COLUMN trial_consumed boolean DEFAULT false;
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'settings' AND column_name = 'subscription_status'
+  ) THEN
+    ALTER TABLE public.settings ADD COLUMN subscription_status text DEFAULT 'none'
+      CHECK (subscription_status = ANY (ARRAY['none','active','expired']));
+  END IF;
+END $$;
+
 ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view own settings"
-  ON public.settings FOR SELECT TO authenticated
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert own settings"
-  ON public.settings FOR INSERT TO authenticated
-  WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own settings"
-  ON public.settings FOR UPDATE TO authenticated
-  USING (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'settings' AND policyname = 'Users can view own settings') THEN
+    CREATE POLICY "Users can view own settings" ON public.settings FOR SELECT TO authenticated USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'settings' AND policyname = 'Users can insert own settings') THEN
+    CREATE POLICY "Users can insert own settings" ON public.settings FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'settings' AND policyname = 'Users can update own settings') THEN
+    CREATE POLICY "Users can update own settings" ON public.settings FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+  END IF;
+END $$;
 
 -- Auto-create a settings row when a new user signs up
 -- trial_consumed = true means the one-time trial slot has been used (prevents trial reset)
@@ -117,52 +139,83 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- Re-create trigger (DROP + CREATE is safe — it doesn't affect data)
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
+-- Backfill existing users who don't have trial data yet
+UPDATE public.settings
+SET
+  trial_started_at = COALESCE(trial_started_at, now()),
+  trial_ends_at    = COALESCE(trial_ends_at,    now() + interval '14 days'),
+  trial_consumed   = COALESCE(trial_consumed,   true),
+  subscription_status = COALESCE(subscription_status, 'none')
+WHERE trial_started_at IS NULL;
+
+
 -- ============================================================
--- 4. HOUSEHOLD LINKS (replaces linked_partners)
--- Links two users together as household partners
--- Shows "Our Remaining Balance" when linked
+-- 3. HOUSEHOLD LINKS
 -- ============================================================
-CREATE TABLE public.household_links (
+CREATE TABLE IF NOT EXISTS public.household_links (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   user1_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   user2_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   created_at timestamptz DEFAULT now(),
   user1_name text,
   user2_name text,
-  CONSTRAINT household_links_pkey PRIMARY KEY (id),
-  CONSTRAINT household_links_no_self CHECK (user1_id <> user2_id),
-  CONSTRAINT household_links_unique UNIQUE (user1_id, user2_id)
+  CONSTRAINT household_links_pkey PRIMARY KEY (id)
 );
 
-CREATE INDEX idx_household_links_user1_id ON public.household_links (user1_id);
-CREATE INDEX idx_household_links_user2_id ON public.household_links (user2_id);
+-- Add missing constraints (safe: will no-op if they already exist)
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'household_links_no_self' AND table_name = 'household_links'
+  ) THEN
+    ALTER TABLE public.household_links ADD CONSTRAINT household_links_no_self CHECK (user1_id <> user2_id);
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'household_links_unique' AND table_name = 'household_links'
+  ) THEN
+    ALTER TABLE public.household_links ADD CONSTRAINT household_links_unique UNIQUE (user1_id, user2_id);
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_household_links_user1_id ON public.household_links (user1_id);
+CREATE INDEX IF NOT EXISTS idx_household_links_user2_id ON public.household_links (user2_id);
 
 ALTER TABLE public.household_links ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view own household links"
-  ON public.household_links FOR SELECT TO authenticated
-  USING (auth.uid() = user1_id OR auth.uid() = user2_id);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'household_links' AND policyname = 'Users can view own household links') THEN
+    CREATE POLICY "Users can view own household links" ON public.household_links FOR SELECT TO authenticated
+      USING (auth.uid() = user1_id OR auth.uid() = user2_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'household_links' AND policyname = 'Users can create household links') THEN
+    CREATE POLICY "Users can create household links" ON public.household_links FOR INSERT TO authenticated
+      WITH CHECK (auth.uid() = user1_id OR auth.uid() = user2_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'household_links' AND policyname = 'Users can update household links they''re part of') THEN
+    CREATE POLICY "Users can update household links they're part of" ON public.household_links FOR UPDATE TO authenticated
+      USING (auth.uid() = user1_id OR auth.uid() = user2_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'household_links' AND policyname = 'Users can delete own household links') THEN
+    CREATE POLICY "Users can delete own household links" ON public.household_links FOR DELETE TO authenticated
+      USING (auth.uid() = user1_id OR auth.uid() = user2_id);
+  END IF;
+END $$;
 
-CREATE POLICY "Users can create household links"
-  ON public.household_links FOR INSERT TO authenticated
-  WITH CHECK (auth.uid() = user1_id OR auth.uid() = user2_id);
-
-CREATE POLICY "Users can update household links they're part of"
-  ON public.household_links FOR UPDATE TO authenticated
-  USING (auth.uid() = user1_id OR auth.uid() = user2_id);
-
-CREATE POLICY "Users can delete own household links"
-  ON public.household_links FOR DELETE TO authenticated
-  USING (auth.uid() = user1_id OR auth.uid() = user2_id);
 
 -- ============================================================
--- 5. LINK CODES (for joining households via code)
+-- 4. LINK CODES
 -- ============================================================
-CREATE TABLE public.link_codes (
+CREATE TABLE IF NOT EXISTS public.link_codes (
   code text NOT NULL,
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   expires_at timestamptz NOT NULL,
@@ -170,31 +223,31 @@ CREATE TABLE public.link_codes (
   CONSTRAINT link_codes_pkey PRIMARY KEY (code)
 );
 
-CREATE INDEX idx_link_codes_user_id ON public.link_codes (user_id);
-CREATE INDEX idx_link_codes_expires_at ON public.link_codes (expires_at);
+CREATE INDEX IF NOT EXISTS idx_link_codes_user_id ON public.link_codes (user_id);
+CREATE INDEX IF NOT EXISTS idx_link_codes_expires_at ON public.link_codes (expires_at);
 
 ALTER TABLE public.link_codes ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view own link codes"
-  ON public.link_codes FOR SELECT TO authenticated
-  USING (auth.uid() = user_id);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'link_codes' AND policyname = 'Users can view own link codes') THEN
+    CREATE POLICY "Users can view own link codes" ON public.link_codes FOR SELECT TO authenticated USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'link_codes' AND policyname = 'Users can create own link codes') THEN
+    CREATE POLICY "Users can create own link codes" ON public.link_codes FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'link_codes' AND policyname = 'Users can delete own link codes') THEN
+    CREATE POLICY "Users can delete own link codes" ON public.link_codes FOR DELETE TO authenticated USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'link_codes' AND policyname = 'Anyone can read valid link codes') THEN
+    CREATE POLICY "Anyone can read valid link codes" ON public.link_codes FOR SELECT TO authenticated USING (expires_at > now());
+  END IF;
+END $$;
 
-CREATE POLICY "Users can create own link codes"
-  ON public.link_codes FOR INSERT TO authenticated
-  WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete own link codes"
-  ON public.link_codes FOR DELETE TO authenticated
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Anyone can read valid link codes"
-  ON public.link_codes FOR SELECT TO authenticated
-  USING (expires_at > now());
 
 -- ============================================================
--- 6. TRANSACTIONS
+-- 5. TRANSACTIONS
 -- ============================================================
-CREATE TABLE public.transactions (
+CREATE TABLE IF NOT EXISTS public.transactions (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   vendor text NOT NULL,
@@ -215,50 +268,78 @@ CREATE TABLE public.transactions (
   CONSTRAINT transactions_pkey PRIMARY KEY (id)
 );
 
-CREATE INDEX idx_transactions_user_id     ON public.transactions (user_id);
-CREATE INDEX idx_transactions_date        ON public.transactions (date);
-CREATE INDEX idx_transactions_category_id ON public.transactions (category_id);
-CREATE INDEX idx_transactions_split_group ON public.transactions (split_group_id)
-  WHERE split_group_id IS NOT NULL;
-CREATE INDEX idx_transactions_source_hash ON public.transactions (source_hash)
-  WHERE source_hash IS NOT NULL;
-CREATE INDEX idx_transactions_user_vendor ON public.transactions (user_id, vendor);
+-- Rename "Description" (capital D) → "description" if the old column exists
+-- PostgreSQL stores unquoted identifiers as lowercase, but quoted "Description"
+-- would be stored with capital D. This handles both cases safely.
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'transactions' AND column_name = 'Description'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'transactions' AND column_name = 'description'
+  ) THEN
+    ALTER TABLE public.transactions RENAME COLUMN "Description" TO description;
+  END IF;
+END $$;
+
+-- Add description column if it doesn't exist at all
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'transactions' AND column_name = 'description'
+  ) THEN
+    ALTER TABLE public.transactions ADD COLUMN description text;
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_transactions_user_id     ON public.transactions (user_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_date        ON public.transactions (date);
+CREATE INDEX IF NOT EXISTS idx_transactions_category_id ON public.transactions (category_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_user_vendor ON public.transactions (user_id, vendor);
+
+-- Partial indexes (IF NOT EXISTS works for these too)
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_transactions_split_group') THEN
+    CREATE INDEX idx_transactions_split_group ON public.transactions (split_group_id) WHERE split_group_id IS NOT NULL;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_transactions_source_hash') THEN
+    CREATE INDEX idx_transactions_source_hash ON public.transactions (source_hash) WHERE source_hash IS NOT NULL;
+  END IF;
+END $$;
 
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view own transactions"
-  ON public.transactions FOR SELECT TO authenticated
-  USING (auth.uid() = user_id);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'transactions' AND policyname = 'Users can view own transactions') THEN
+    CREATE POLICY "Users can view own transactions" ON public.transactions FOR SELECT TO authenticated USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'transactions' AND policyname = 'Users can insert own transactions') THEN
+    CREATE POLICY "Users can insert own transactions" ON public.transactions FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'transactions' AND policyname = 'Users can update own transactions') THEN
+    CREATE POLICY "Users can update own transactions" ON public.transactions FOR UPDATE TO authenticated USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'transactions' AND policyname = 'Users can delete own transactions') THEN
+    CREATE POLICY "Users can delete own transactions" ON public.transactions FOR DELETE TO authenticated USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'transactions' AND policyname = 'Users can view partner transactions') THEN
+    CREATE POLICY "Users can view partner transactions" ON public.transactions FOR SELECT TO authenticated
+      USING (
+        user_id IN (
+          SELECT hl.user2_id FROM public.household_links hl WHERE hl.user1_id = auth.uid()
+          UNION
+          SELECT hl.user1_id FROM public.household_links hl WHERE hl.user2_id = auth.uid()
+        )
+      );
+  END IF;
+END $$;
 
-CREATE POLICY "Users can insert own transactions"
-  ON public.transactions FOR INSERT TO authenticated
-  WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own transactions"
-  ON public.transactions FOR UPDATE TO authenticated
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete own transactions"
-  ON public.transactions FOR DELETE TO authenticated
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can view partner transactions"
-  ON public.transactions FOR SELECT TO authenticated
-  USING (
-    user_id IN (
-      SELECT hl.user2_id FROM public.household_links hl
-       WHERE hl.user1_id = auth.uid()
-      UNION
-      SELECT hl.user1_id FROM public.household_links hl
-       WHERE hl.user2_id = auth.uid()
-    )
-  );
 
 -- ============================================================
--- 7. TRANSACTION BUDGET SPLITS
--- Used when a transaction is split across multiple categories
+-- 6. TRANSACTION BUDGET SPLITS
 -- ============================================================
-CREATE TABLE public.transaction_budget_splits (
+CREATE TABLE IF NOT EXISTS public.transaction_budget_splits (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   transaction_id uuid NOT NULL REFERENCES public.transactions(id) ON DELETE CASCADE,
   budget_category text NOT NULL,
@@ -268,48 +349,34 @@ CREATE TABLE public.transaction_budget_splits (
   CONSTRAINT transaction_budget_splits_pkey PRIMARY KEY (id)
 );
 
-CREATE INDEX idx_transaction_budget_splits_transaction_id ON public.transaction_budget_splits (transaction_id);
+CREATE INDEX IF NOT EXISTS idx_transaction_budget_splits_transaction_id ON public.transaction_budget_splits (transaction_id);
 
 ALTER TABLE public.transaction_budget_splits ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view splits for own transactions"
-  ON public.transaction_budget_splits FOR SELECT TO authenticated
-  USING (
-    transaction_id IN (
-      SELECT id FROM public.transactions WHERE user_id = auth.uid()
-    )
-  );
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'transaction_budget_splits' AND policyname = 'Users can view splits for own transactions') THEN
+    CREATE POLICY "Users can view splits for own transactions" ON public.transaction_budget_splits FOR SELECT TO authenticated
+      USING (transaction_id IN (SELECT id FROM public.transactions WHERE user_id = auth.uid()));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'transaction_budget_splits' AND policyname = 'Users can insert splits for own transactions') THEN
+    CREATE POLICY "Users can insert splits for own transactions" ON public.transaction_budget_splits FOR INSERT TO authenticated
+      WITH CHECK (transaction_id IN (SELECT id FROM public.transactions WHERE user_id = auth.uid()));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'transaction_budget_splits' AND policyname = 'Users can update splits for own transactions') THEN
+    CREATE POLICY "Users can update splits for own transactions" ON public.transaction_budget_splits FOR UPDATE TO authenticated
+      USING (transaction_id IN (SELECT id FROM public.transactions WHERE user_id = auth.uid()));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'transaction_budget_splits' AND policyname = 'Users can delete splits for own transactions') THEN
+    CREATE POLICY "Users can delete splits for own transactions" ON public.transaction_budget_splits FOR DELETE TO authenticated
+      USING (transaction_id IN (SELECT id FROM public.transactions WHERE user_id = auth.uid()));
+  END IF;
+END $$;
 
-CREATE POLICY "Users can insert splits for own transactions"
-  ON public.transaction_budget_splits FOR INSERT TO authenticated
-  WITH CHECK (
-    transaction_id IN (
-      SELECT id FROM public.transactions WHERE user_id = auth.uid()
-    )
-  );
-
-CREATE POLICY "Users can update splits for own transactions"
-  ON public.transaction_budget_splits FOR UPDATE TO authenticated
-  USING (
-    transaction_id IN (
-      SELECT id FROM public.transactions WHERE user_id = auth.uid()
-    )
-  );
-
-CREATE POLICY "Users can delete splits for own transactions"
-  ON public.transaction_budget_splits FOR DELETE TO authenticated
-  USING (
-    transaction_id IN (
-      SELECT id FROM public.transactions WHERE user_id = auth.uid()
-    )
-  );
 
 -- ============================================================
--- 8. PENDING TRANSACTIONS
--- Auto-parsed transactions awaiting user approval
--- Sits in "purgatory" in dashboard until reviewed
+-- 7. PENDING TRANSACTIONS
 -- ============================================================
-CREATE TABLE public.pending_transactions (
+CREATE TABLE IF NOT EXISTS public.pending_transactions (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   app_package text NOT NULL,
@@ -331,31 +398,31 @@ CREATE TABLE public.pending_transactions (
   CONSTRAINT pending_transactions_pkey PRIMARY KEY (id)
 );
 
-CREATE INDEX idx_pending_transactions_user_id ON public.pending_transactions (user_id);
-CREATE INDEX idx_pending_transactions_needs_review ON public.pending_transactions (needs_review);
+CREATE INDEX IF NOT EXISTS idx_pending_transactions_user_id ON public.pending_transactions (user_id);
+CREATE INDEX IF NOT EXISTS idx_pending_transactions_needs_review ON public.pending_transactions (needs_review);
 
 ALTER TABLE public.pending_transactions ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view own pending transactions"
-  ON public.pending_transactions FOR SELECT TO authenticated
-  USING (auth.uid() = user_id);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'pending_transactions' AND policyname = 'Users can view own pending transactions') THEN
+    CREATE POLICY "Users can view own pending transactions" ON public.pending_transactions FOR SELECT TO authenticated USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'pending_transactions' AND policyname = 'Users can insert own pending transactions') THEN
+    CREATE POLICY "Users can insert own pending transactions" ON public.pending_transactions FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'pending_transactions' AND policyname = 'Users can update own pending transactions') THEN
+    CREATE POLICY "Users can update own pending transactions" ON public.pending_transactions FOR UPDATE TO authenticated USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'pending_transactions' AND policyname = 'Users can delete own pending transactions') THEN
+    CREATE POLICY "Users can delete own pending transactions" ON public.pending_transactions FOR DELETE TO authenticated USING (auth.uid() = user_id);
+  END IF;
+END $$;
 
-CREATE POLICY "Users can insert own pending transactions"
-  ON public.pending_transactions FOR INSERT TO authenticated
-  WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own pending transactions"
-  ON public.pending_transactions FOR UPDATE TO authenticated
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete own pending transactions"
-  ON public.pending_transactions FOR DELETE TO authenticated
-  USING (auth.uid() = user_id);
 
 -- ============================================================
--- 9. BUDGETS  (per-user category spending limits)
+-- 8. BUDGETS  (per-user category spending limits)
 -- ============================================================
-CREATE TABLE public.budgets (
+CREATE TABLE IF NOT EXISTS public.budgets (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   category text NOT NULL,
   limit_amount numeric NOT NULL,
@@ -367,32 +434,40 @@ CREATE TABLE public.budgets (
   visible boolean NOT NULL DEFAULT true,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now(),
-  CONSTRAINT budgets_pkey PRIMARY KEY (id),
-  CONSTRAINT budgets_user_category_unique UNIQUE (user_id, category)
+  CONSTRAINT budgets_pkey PRIMARY KEY (id)
 );
 
-CREATE INDEX idx_budgets_user_id ON public.budgets (user_id);
-CREATE INDEX idx_budgets_category ON public.budgets (category);
+-- Add missing UNIQUE constraint
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'budgets_user_category_unique' AND table_name = 'budgets'
+  ) THEN
+    ALTER TABLE public.budgets ADD CONSTRAINT budgets_user_category_unique UNIQUE (user_id, category);
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_budgets_user_id ON public.budgets (user_id);
+CREATE INDEX IF NOT EXISTS idx_budgets_category ON public.budgets (category);
 
 ALTER TABLE public.budgets ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view own budgets"
-  ON public.budgets FOR SELECT TO authenticated
-  USING (auth.uid() = user_id);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'budgets' AND policyname = 'Users can view own budgets') THEN
+    CREATE POLICY "Users can view own budgets" ON public.budgets FOR SELECT TO authenticated USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'budgets' AND policyname = 'Users can insert own budgets') THEN
+    CREATE POLICY "Users can insert own budgets" ON public.budgets FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'budgets' AND policyname = 'Users can update own budgets') THEN
+    CREATE POLICY "Users can update own budgets" ON public.budgets FOR UPDATE TO authenticated USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'budgets' AND policyname = 'Users can delete own budgets') THEN
+    CREATE POLICY "Users can delete own budgets" ON public.budgets FOR DELETE TO authenticated USING (auth.uid() = user_id);
+  END IF;
+END $$;
 
-CREATE POLICY "Users can insert own budgets"
-  ON public.budgets FOR INSERT TO authenticated
-  WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own budgets"
-  ON public.budgets FOR UPDATE TO authenticated
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete own budgets"
-  ON public.budgets FOR DELETE TO authenticated
-  USING (auth.uid() = user_id);
-
--- Trigger to automatically update updated_at timestamp
+-- Auto-update updated_at on budgets
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -401,16 +476,16 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_budgets_updated_at ON public.budgets;
 CREATE TRIGGER update_budgets_updated_at
   BEFORE UPDATE ON public.budgets
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 
 -- ============================================================
--- 10. VALIDATION BASELINES
--- REGEX patterns for notification parsing validation
+-- 9. VALIDATION BASELINES  (new table)
 -- ============================================================
-CREATE TABLE public.validation_baselines (
+CREATE TABLE IF NOT EXISTS public.validation_baselines (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   app_package text NOT NULL,
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -429,29 +504,29 @@ CREATE TABLE public.validation_baselines (
   CONSTRAINT validation_baselines_pkey PRIMARY KEY (id)
 );
 
-CREATE INDEX idx_validation_baselines_user_id ON public.validation_baselines (user_id);
-CREATE INDEX idx_validation_baselines_app_package ON public.validation_baselines (app_package);
+CREATE INDEX IF NOT EXISTS idx_validation_baselines_user_id ON public.validation_baselines (user_id);
+CREATE INDEX IF NOT EXISTS idx_validation_baselines_app_package ON public.validation_baselines (app_package);
 
 ALTER TABLE public.validation_baselines ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view own validation baselines"
-  ON public.validation_baselines FOR SELECT TO authenticated
-  USING (auth.uid() = user_id);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'validation_baselines' AND policyname = 'Users can view own validation baselines') THEN
+    CREATE POLICY "Users can view own validation baselines" ON public.validation_baselines FOR SELECT TO authenticated USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'validation_baselines' AND policyname = 'Users can insert own validation baselines') THEN
+    CREATE POLICY "Users can insert own validation baselines" ON public.validation_baselines FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'validation_baselines' AND policyname = 'Users can update own validation baselines') THEN
+    CREATE POLICY "Users can update own validation baselines" ON public.validation_baselines FOR UPDATE TO authenticated USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'validation_baselines' AND policyname = 'Users can delete own validation baselines') THEN
+    CREATE POLICY "Users can delete own validation baselines" ON public.validation_baselines FOR DELETE TO authenticated USING (auth.uid() = user_id);
+  END IF;
+END $$;
 
-CREATE POLICY "Users can insert own validation baselines"
-  ON public.validation_baselines FOR INSERT TO authenticated
-  WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own validation baselines"
-  ON public.validation_baselines FOR UPDATE TO authenticated
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete own validation baselines"
-  ON public.validation_baselines FOR DELETE TO authenticated
-  USING (auth.uid() = user_id);
 
 -- ============================================================
--- 11. NOTIFICATION RULES  (bank regex patterns per user)
+-- 10. NOTIFICATION RULES
 -- ============================================================
 CREATE TABLE IF NOT EXISTS public.notification_rules (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -466,27 +541,39 @@ CREATE TABLE IF NOT EXISTS public.notification_rules (
   last_flagged_at timestamptz,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now(),
-  CONSTRAINT notification_rules_pkey PRIMARY KEY (id),
-  CONSTRAINT notification_rules_unique UNIQUE (user_id, bank_app_id)
+  CONSTRAINT notification_rules_pkey PRIMARY KEY (id)
 );
+
+-- Add missing UNIQUE constraint
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'notification_rules_unique' AND table_name = 'notification_rules'
+  ) THEN
+    ALTER TABLE public.notification_rules ADD CONSTRAINT notification_rules_unique UNIQUE (user_id, bank_app_id);
+  END IF;
+END $$;
 
 ALTER TABLE public.notification_rules ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view own notification rules"
-  ON public.notification_rules FOR SELECT TO authenticated
-  USING (auth.uid() = user_id);
-CREATE POLICY "Users can insert own notification rules"
-  ON public.notification_rules FOR INSERT TO authenticated
-  WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Users can update own notification rules"
-  ON public.notification_rules FOR UPDATE TO authenticated
-  USING (auth.uid() = user_id);
-CREATE POLICY "Users can delete own notification rules"
-  ON public.notification_rules FOR DELETE TO authenticated
-  USING (auth.uid() = user_id);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'notification_rules' AND policyname = 'Users can view own notification rules') THEN
+    CREATE POLICY "Users can view own notification rules" ON public.notification_rules FOR SELECT TO authenticated USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'notification_rules' AND policyname = 'Users can insert own notification rules') THEN
+    CREATE POLICY "Users can insert own notification rules" ON public.notification_rules FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'notification_rules' AND policyname = 'Users can update own notification rules') THEN
+    CREATE POLICY "Users can update own notification rules" ON public.notification_rules FOR UPDATE TO authenticated USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'notification_rules' AND policyname = 'Users can delete own notification rules') THEN
+    CREATE POLICY "Users can delete own notification rules" ON public.notification_rules FOR DELETE TO authenticated USING (auth.uid() = user_id);
+  END IF;
+END $$;
+
 
 -- ============================================================
--- 12. VENDOR CATEGORY OVERRIDES  (reclassification memory)
+-- 11. VENDOR CATEGORY OVERRIDES
 -- ============================================================
 CREATE TABLE IF NOT EXISTS public.vendor_overrides (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -495,25 +582,46 @@ CREATE TABLE IF NOT EXISTS public.vendor_overrides (
   category_id uuid NOT NULL REFERENCES public.categories(id),
   auto_accept boolean NOT NULL DEFAULT false,
   created_at timestamptz DEFAULT now(),
-  CONSTRAINT vendor_overrides_pkey PRIMARY KEY (id),
-  CONSTRAINT vendor_overrides_unique UNIQUE (user_id, vendor_name)
+  CONSTRAINT vendor_overrides_pkey PRIMARY KEY (id)
 );
+
+-- Add auto_accept column if missing
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'vendor_overrides' AND column_name = 'auto_accept'
+  ) THEN
+    ALTER TABLE public.vendor_overrides ADD COLUMN auto_accept boolean NOT NULL DEFAULT false;
+  END IF;
+END $$;
+
+-- Add missing UNIQUE constraint
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'vendor_overrides_unique' AND table_name = 'vendor_overrides'
+  ) THEN
+    ALTER TABLE public.vendor_overrides ADD CONSTRAINT vendor_overrides_unique UNIQUE (user_id, vendor_name);
+  END IF;
+END $$;
 
 ALTER TABLE public.vendor_overrides ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view own vendor overrides"
-  ON public.vendor_overrides FOR SELECT TO authenticated
-  USING (auth.uid() = user_id);
-CREATE POLICY "Users can upsert own vendor overrides"
-  ON public.vendor_overrides FOR INSERT TO authenticated
-  WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Users can update own vendor overrides"
-  ON public.vendor_overrides FOR UPDATE TO authenticated
-  USING (auth.uid() = user_id);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'vendor_overrides' AND policyname = 'Users can view own vendor overrides') THEN
+    CREATE POLICY "Users can view own vendor overrides" ON public.vendor_overrides FOR SELECT TO authenticated USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'vendor_overrides' AND policyname = 'Users can upsert own vendor overrides') THEN
+    CREATE POLICY "Users can upsert own vendor overrides" ON public.vendor_overrides FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'vendor_overrides' AND policyname = 'Users can update own vendor overrides') THEN
+    CREATE POLICY "Users can update own vendor overrides" ON public.vendor_overrides FOR UPDATE TO authenticated USING (auth.uid() = user_id);
+  END IF;
+END $$;
+
 
 -- ============================================================
--- 13. FLAG REPORTS  (rate-limited Gemini correction requests)
---    Max 5 per 24h, 1h cooldown between reports
+-- 12. FLAG REPORTS  (new table)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS public.flag_reports (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -529,20 +637,20 @@ CREATE TABLE IF NOT EXISTS public.flag_reports (
 
 ALTER TABLE public.flag_reports ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view own flag reports"
-  ON public.flag_reports FOR SELECT TO authenticated
-  USING (auth.uid() = user_id);
-CREATE POLICY "Users can insert own flag reports"
-  ON public.flag_reports FOR INSERT TO authenticated
-  WITH CHECK (auth.uid() = user_id);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'flag_reports' AND policyname = 'Users can view own flag reports') THEN
+    CREATE POLICY "Users can view own flag reports" ON public.flag_reports FOR SELECT TO authenticated USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'flag_reports' AND policyname = 'Users can insert own flag reports') THEN
+    CREATE POLICY "Users can insert own flag reports" ON public.flag_reports FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+  END IF;
+END $$;
+
 
 -- ============================================================
--- 14. IGNORED TRANSACTIONS
--- Persist user rules to ignore known non-expense notifications
--- (e.g. pre-authorizations, holds)
--- Checked before inserting into pending_transactions
+-- 13. IGNORED TRANSACTIONS
 -- ============================================================
-CREATE TABLE public.ignored_transactions (
+CREATE TABLE IF NOT EXISTS public.ignored_transactions (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   vendor_name text NOT NULL,
@@ -554,48 +662,73 @@ CREATE TABLE public.ignored_transactions (
   CONSTRAINT ignored_transactions_pkey PRIMARY KEY (id)
 );
 
-CREATE INDEX idx_ignored_transactions_user_id ON public.ignored_transactions (user_id);
-CREATE INDEX idx_ignored_transactions_vendor ON public.ignored_transactions (user_id, vendor_name);
+-- Backfill NULL reason values before adding NOT NULL (if column already exists as nullable)
+UPDATE public.ignored_transactions SET reason = 'No reason provided' WHERE reason IS NULL;
+
+-- If the column existed as nullable, alter it to NOT NULL (safe after backfill)
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'ignored_transactions'
+      AND column_name = 'reason' AND is_nullable = 'YES'
+  ) THEN
+    ALTER TABLE public.ignored_transactions ALTER COLUMN reason SET NOT NULL;
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_ignored_transactions_user_id ON public.ignored_transactions (user_id);
+CREATE INDEX IF NOT EXISTS idx_ignored_transactions_vendor ON public.ignored_transactions (user_id, vendor_name);
 
 ALTER TABLE public.ignored_transactions ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view own ignored transactions"
-  ON public.ignored_transactions FOR SELECT TO authenticated
-  USING (auth.uid() = user_id);
-CREATE POLICY "Users can insert own ignored transactions"
-  ON public.ignored_transactions FOR INSERT TO authenticated
-  WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Users can update own ignored transactions"
-  ON public.ignored_transactions FOR UPDATE TO authenticated
-  USING (auth.uid() = user_id);
-CREATE POLICY "Users can delete own ignored transactions"
-  ON public.ignored_transactions FOR DELETE TO authenticated
-  USING (auth.uid() = user_id);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'ignored_transactions' AND policyname = 'Users can view own ignored transactions') THEN
+    CREATE POLICY "Users can view own ignored transactions" ON public.ignored_transactions FOR SELECT TO authenticated USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'ignored_transactions' AND policyname = 'Users can insert own ignored transactions') THEN
+    CREATE POLICY "Users can insert own ignored transactions" ON public.ignored_transactions FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'ignored_transactions' AND policyname = 'Users can update own ignored transactions') THEN
+    CREATE POLICY "Users can update own ignored transactions" ON public.ignored_transactions FOR UPDATE TO authenticated USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'ignored_transactions' AND policyname = 'Users can delete own ignored transactions') THEN
+    CREATE POLICY "Users can delete own ignored transactions" ON public.ignored_transactions FOR DELETE TO authenticated USING (auth.uid() = user_id);
+  END IF;
+END $$;
+
 
 -- ============================================================
--- 15. NOTIFICATION FINGERPRINTS
--- Prevent duplicate transaction creation caused by
--- shared bank accounts, multiple notifications, OS resend
--- Fingerprinting happens before any parsing
+-- 14. NOTIFICATION FINGERPRINTS
 -- ============================================================
-CREATE TABLE public.notification_fingerprints (
+CREATE TABLE IF NOT EXISTS public.notification_fingerprints (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   fingerprint_hash text NOT NULL,
   bank_app_id text NOT NULL,
   created_at timestamptz DEFAULT now(),
-  CONSTRAINT notification_fingerprints_pkey PRIMARY KEY (id),
-  CONSTRAINT notification_fingerprints_unique UNIQUE (user_id, fingerprint_hash)
+  CONSTRAINT notification_fingerprints_pkey PRIMARY KEY (id)
 );
 
-CREATE INDEX idx_notification_fingerprints_user_id ON public.notification_fingerprints (user_id);
-CREATE INDEX idx_notification_fingerprints_hash ON public.notification_fingerprints (user_id, fingerprint_hash);
+-- Add missing UNIQUE constraint
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'notification_fingerprints_unique' AND table_name = 'notification_fingerprints'
+  ) THEN
+    ALTER TABLE public.notification_fingerprints ADD CONSTRAINT notification_fingerprints_unique UNIQUE (user_id, fingerprint_hash);
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_notification_fingerprints_user_id ON public.notification_fingerprints (user_id);
+CREATE INDEX IF NOT EXISTS idx_notification_fingerprints_hash ON public.notification_fingerprints (user_id, fingerprint_hash);
 
 ALTER TABLE public.notification_fingerprints ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view own notification fingerprints"
-  ON public.notification_fingerprints FOR SELECT TO authenticated
-  USING (auth.uid() = user_id);
-CREATE POLICY "Users can insert own notification fingerprints"
-  ON public.notification_fingerprints FOR INSERT TO authenticated
-  WITH CHECK (auth.uid() = user_id);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'notification_fingerprints' AND policyname = 'Users can view own notification fingerprints') THEN
+    CREATE POLICY "Users can view own notification fingerprints" ON public.notification_fingerprints FOR SELECT TO authenticated USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'notification_fingerprints' AND policyname = 'Users can insert own notification fingerprints') THEN
+    CREATE POLICY "Users can insert own notification fingerprints" ON public.notification_fingerprints FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+  END IF;
+END $$;

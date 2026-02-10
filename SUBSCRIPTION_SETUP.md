@@ -6,95 +6,15 @@ This guide covers the SQL migration for the 14-day free trial system and the ste
 
 ## 1. SQL Migration (Existing Databases)
 
-If you already have a running Supabase instance, run this migration in the **Supabase SQL Editor** to add the trial and subscription columns to the `settings` table.
+Run `supabase/schema.sql` in the **Supabase SQL Editor**. It is fully idempotent — safe to run on an existing database with data:
 
-> **For new installs**, these columns are already in `supabase/schema.sql` — no migration needed.
+- Uses `CREATE TABLE IF NOT EXISTS` (never drops tables)
+- Uses `ALTER TABLE ... ADD COLUMN` with `IF NOT EXISTS` guards
+- Uses `CREATE INDEX IF NOT EXISTS`
+- RLS policies are wrapped in existence checks
+- Existing users are backfilled with trial data via `COALESCE` (won't overwrite)
 
-```sql
--- ============================================================
--- MIGRATION: Add trial & subscription columns to settings table
--- Safe to run multiple times (uses IF NOT EXISTS pattern)
--- ============================================================
-
--- Add trial_started_at column
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'settings' AND column_name = 'trial_started_at'
-  ) THEN
-    ALTER TABLE public.settings ADD COLUMN trial_started_at timestamptz;
-  END IF;
-END $$;
-
--- Add trial_ends_at column
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'settings' AND column_name = 'trial_ends_at'
-  ) THEN
-    ALTER TABLE public.settings ADD COLUMN trial_ends_at timestamptz;
-  END IF;
-END $$;
-
--- Add trial_consumed column
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'settings' AND column_name = 'trial_consumed'
-  ) THEN
-    ALTER TABLE public.settings ADD COLUMN trial_consumed boolean DEFAULT false;
-  END IF;
-END $$;
-
--- Add subscription_status column
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'settings' AND column_name = 'subscription_status'
-  ) THEN
-    ALTER TABLE public.settings ADD COLUMN subscription_status text DEFAULT 'none'
-      CHECK (subscription_status = ANY (ARRAY['none','active','expired']));
-  END IF;
-END $$;
-
--- Update the handle_new_user() trigger to initialize trial for new signups
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS trigger AS $$
-BEGIN
-  INSERT INTO public.settings (user_id, name, email, monthly_income, trial_started_at, trial_ends_at, trial_consumed, subscription_status)
-  VALUES (
-    NEW.id,
-    COALESCE(NEW.raw_user_meta_data ->> 'full_name',
-             split_part(NEW.email, '@', 1),
-             'User'),
-    NEW.email,
-    5000,
-    now(),
-    now() + interval '14 days',
-    true,
-    'none'
-  );
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- Backfill existing users who don't have trial data yet.
--- This gives existing users a 14-day trial starting NOW.
--- trial_consumed = true means the trial slot is used (cannot be reset).
--- Adjust trial_ends_at as needed (e.g., set to now() to skip trial for
--- existing users who have already been using the app for free).
-UPDATE public.settings
-SET
-  trial_started_at = now(),
-  trial_ends_at = now() + interval '14 days',
-  trial_consumed = true,
-  subscription_status = 'none'
-WHERE trial_consumed IS NULL OR trial_consumed = false;
-```
+> **For brand-new databases** with no data, you can alternatively use `supabase/schema_fresh_install.sql`, which drops and recreates everything cleanly.
 
 ---
 
