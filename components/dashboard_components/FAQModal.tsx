@@ -88,11 +88,7 @@ const FAQ_ITEMS: FAQItem[] = [
   },
   {
     question: "How do I suggest a new feature?",
-    answer: "Tap the heart icon on the dashboard header to vote on features or submit your own ideas. The most popular requests rise to the top."
-  },
-  {
-    question: "What does the expanded chart view show?",
-    answer: "Tap the expand button on the top corner of the Spending Flow chart to see a fullscreen horizontal view with detailed category labels and month markers for a more in-depth look at your spending trends."
+    answer: "Open Vault Settings via the gear icon and find the 'Support & Feedback' section. Tap 'Request a Feature' to vote on features or submit your own ideas. The most popular requests rise to the top."
   },
   {
     question: "How is my remaining balance calculated?",
