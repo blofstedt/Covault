@@ -683,12 +683,13 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     });
 
     // Category labels at the last data point
+    const MIN_LABEL_BAND_HEIGHT = 12;
     const lastIdx = chartData.length - 1;
     stackedData.forEach((layer, i) => {
       const point = layer[lastIdx];
       const midY = (y(point[0]) + y(point[1])) / 2;
       const bandHeight = Math.abs(y(point[0]) - y(point[1]));
-      if (bandHeight < 12) return; // skip tiny bands
+      if (bandHeight < MIN_LABEL_BAND_HEIGHT) return; // skip tiny bands
       const [, c1] = getGradient(layer.key, i);
       svg
         .append('text')
