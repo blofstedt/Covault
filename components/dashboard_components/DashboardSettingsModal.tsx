@@ -12,6 +12,7 @@ import BudgetLimitsSection from './settings_modal_components/BudgetLimitsSection
 import ExportTransactionsSection from './settings_modal_components/ExportTransactionsSection';
 import ReportSection from './settings_modal_components/ReportSection';
 import { BudgetCategory, Transaction, NotificationRule } from '../../types';
+import PremiumGate from '../PremiumGate';
 
 export interface DashboardSettings {
   theme: string;
@@ -52,6 +53,8 @@ export interface DashboardSettingsModalProps {
   onSignOut: () => void;
   onSaveBudgetLimit: (categoryId: string, newLimit: number) => void;
   saveBudgetVisibility: (categoryId: string, visible: boolean) => void;
+  hasPremium: boolean;
+  onSubscribe: () => void;
 }
 
 const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
@@ -74,6 +77,8 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
   onSignOut,
   onSaveBudgetLimit,
   saveBudgetVisibility,
+  hasPremium,
+  onSubscribe,
 }) => {
   const settingsScrollRef = useRef<HTMLDivElement>(null);
 
@@ -150,21 +155,25 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
             onUpdateSettings={onUpdateSettings}
           />
 
-          {/* Bank Notification Listener */}
-          <NotificationSettingsSection
-            enabled={!!settings.notificationsEnabled}
-            onToggle={(v) => onUpdateSettings('notificationsEnabled', v)}
-          />
+          {/* Bank Notification Listener — Premium */}
+          <PremiumGate hasPremium={hasPremium} onSubscribe={onSubscribe}>
+            <NotificationSettingsSection
+              enabled={!!settings.notificationsEnabled}
+              onToggle={(v) => onUpdateSettings('notificationsEnabled', v)}
+            />
+          </PremiumGate>
 
-          {/* Notification Rules */}
-          <NotificationRulesSection
-            enabled={!!settings.app_notifications_enabled}
-            onToggle={(v) => onUpdateSettings('app_notifications_enabled', v)}
-            rules={settings.notification_rules || []}
-            onUpdateRules={(rules) => onUpdateSettings('notification_rules', rules)}
-            budgets={budgets}
-            transactions={transactions}
-          />
+          {/* Notification Rules — Premium */}
+          <PremiumGate hasPremium={hasPremium} onSubscribe={onSubscribe}>
+            <NotificationRulesSection
+              enabled={!!settings.app_notifications_enabled}
+              onToggle={(v) => onUpdateSettings('app_notifications_enabled', v)}
+              rules={settings.notification_rules || []}
+              onUpdateRules={(rules) => onUpdateSettings('notification_rules', rules)}
+              budgets={budgets}
+              transactions={transactions}
+            />
+          </PremiumGate>
 
           {/* Budget rollover */}
           <RolloverSection
@@ -195,8 +204,10 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           {/* Budget Report */}
           <ReportSection />
 
-          {/* Support & Feedback */}
-          <SupportFeedbackSection />
+          {/* Support & Feedback — Feature requests are premium */}
+          <PremiumGate hasPremium={hasPremium} onSubscribe={onSubscribe}>
+            <SupportFeedbackSection />
+          </PremiumGate>
 
           {/* Sign out */}
           <SignOutSection onSignOut={onSignOut} />
