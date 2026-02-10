@@ -71,7 +71,7 @@ export default defineConfig(({ mode }) => {
           if (fs.existsSync(htmlPath)) {
             let html = fs.readFileSync(htmlPath, 'utf-8');
             html = html.replace(
-              /href="\.?\/assets\/manifest-[^"]+\.json"/,
+              /href="\/assets\/manifest-[^"]+\.json"/,
               'href="/manifest.json"'
             );
             fs.writeFileSync(htmlPath, html);
