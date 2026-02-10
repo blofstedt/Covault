@@ -106,10 +106,6 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
     try {
       const { enabled: granted } = await plugin.isEnabled();
       setPermissionGranted(granted);
-      // Sync enabled state with actual permission
-      if (granted && !enabled) {
-        onToggle(true);
-      }
 
       if (granted) {
         const { apps: installed } = await plugin.getInstalledApps();
@@ -137,7 +133,7 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
     } catch (e) {
       console.warn('[NotificationSettingsSection] checkStatus error:', e);
     }
-  }, [plugin, enabled, onToggle]);
+  }, [plugin]);
 
   useEffect(() => {
     checkStatus();
