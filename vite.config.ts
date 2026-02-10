@@ -35,9 +35,10 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
-    // 1. SET BASE TO RELATIVE: This is the most common fix for the "White Screen" 
-    // in PWA wrappers and Vercel. It ensures scripts load from ./assets instead of /assets.
-    base: './',
+    // 1. SET BASE PATH: Use absolute '/' for web (Vercel) so SPA routes like /terms
+    // and /privacy resolve assets correctly. Capacitor (androidScheme: 'https') also
+    // works with absolute paths since it serves from a local HTTPS origin.
+    base: '/',
 
     server: {
       port: 3000,
@@ -70,11 +71,11 @@ export default defineConfig(({ mode }) => {
           if (fs.existsSync(htmlPath)) {
             let html = fs.readFileSync(htmlPath, 'utf-8');
             html = html.replace(
-              /href="\.\/assets\/manifest-[^"]+\.json"/,
-              'href="./manifest.json"'
+              /href="\/assets\/manifest-[^"]+\.json"/,
+              'href="/manifest.json"'
             );
             fs.writeFileSync(htmlPath, html);
-            console.log('✓ Fixed manifest path to ./manifest.json');
+            console.log('✓ Fixed manifest path to /manifest.json');
           }
         }
       }
