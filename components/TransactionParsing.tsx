@@ -18,6 +18,9 @@ interface VendorOverride {
   category_name?: string;
 }
 
+/** Delay before reloading pending transactions after a scan, to allow the notification pipeline to finish processing. */
+const SCAN_PROCESSING_DELAY_MS = 2000;
+
 interface TransactionParsingProps {
   enabled: boolean;
   onToggle: (enabled: boolean) => void;
@@ -58,6 +61,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   const [savingRule, setSavingRule] = useState(false);
   const [rejectConfirmId, setRejectConfirmId] = useState<string | null>(null);
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
 
   // ── Loaded data from Supabase ──
   const [savedRules, setSavedRules] = useState<NotificationRuleRow[]>([]);
@@ -449,6 +453,25 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     [setupNotification, userId, onReloadPendingTransactions, loadRules],
   );
 
+  // ── Handle manual scan for transactions ──
+  const handleScanForTransactions = useCallback(async () => {
+    setIsScanning(true);
+    try {
+      if (onRefreshNotifications) {
+        await onRefreshNotifications();
+      }
+      // Allow time for the notification pipeline to process before reloading
+      await new Promise((resolve) => setTimeout(resolve, SCAN_PROCESSING_DELAY_MS));
+      if (onReloadPendingTransactions && userId) {
+        await onReloadPendingTransactions(userId);
+      }
+    } catch (err) {
+      console.error('[TransactionParsing] Error scanning for transactions:', err);
+    } finally {
+      setIsScanning(false);
+    }
+  }, [onRefreshNotifications, onReloadPendingTransactions, userId]);
+
   return (
     <div className="flex-1 flex flex-col h-screen relative overflow-hidden transition-colors duration-700 bg-slate-50 dark:bg-slate-950">
       {/* Background glow */}
@@ -813,29 +836,33 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               )}
 
               {/* ──────────────────────────────────────────────────── */}
-              {/* SECTION 2: To Review (regex matched, needs category + approval) */}
+              {/* SECTION 2: To Be Reviewed (always visible) */}
               {/* ──────────────────────────────────────────────────── */}
-              {toReviewCount > 0 && (
-                <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-amber-200 dark:border-amber-800/40 space-y-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-xl">
-                      <svg className="w-5 h-5 text-amber-600 dark:text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                      </svg>
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-                        To Review
-                      </h3>
-                      <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
-                        Assign a budget category to approve these transactions
-                      </p>
-                    </div>
+              <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-amber-200 dark:border-amber-800/40 space-y-4">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-xl">
+                    <svg className="w-5 h-5 text-amber-600 dark:text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                      To Be Reviewed
+                    </h3>
+                    <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
+                      {toReviewCount > 0
+                        ? 'Assign a budget category to approve these transactions'
+                        : 'No transactions to review'}
+                    </p>
+                  </div>
+                  {toReviewCount > 0 && (
                     <span className="text-[10px] font-black bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-2.5 py-1 rounded-full">
                       {toReviewCount}
                     </span>
-                  </div>
+                  )}
+                </div>
 
+                {toReviewCount > 0 ? (
                   <div className="space-y-2">
                     {toReviewTransactions.map((pt) => {
                       const isExpanded = expandedPendingId === pt.id;
@@ -933,8 +960,28 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                       );
                     })}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="py-6 text-center">
+                    <div className="w-10 h-10 bg-amber-50 dark:bg-amber-900/20 rounded-full flex items-center justify-center mx-auto mb-2">
+                      <svg className="w-5 h-5 text-amber-400 dark:text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    </div>
+                    <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                      No Transactions to Review
+                    </p>
+                  </div>
+                )}
+
+                {/* Scan for Transactions button */}
+                <button
+                  onClick={handleScanForTransactions}
+                  disabled={isScanning}
+                  className="w-full py-2.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800/40 transition-all active:scale-[0.98] hover:bg-amber-100 dark:hover:bg-amber-900/30 disabled:opacity-50"
+                >
+                  {isScanning ? 'Scanning…' : 'Scan for Transactions'}
+                </button>
+              </div>
 
               {/* ──────────────────────────────────────────────────── */}
               {/* SECTION 3: Approved Transactions (history) */}
