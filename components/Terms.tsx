@@ -115,7 +115,7 @@ const Terms: React.FC = () => {
             <p>
               If you have any questions about these Terms of Service, please contact us at{' '}
               <a href="mailto:support@covaultbudgeting.vercel.app" className="text-emerald-600 dark:text-emerald-400 underline">
-                support@covaultbudgeting.vercel.app
+                mostlydecentdev@gmail.com
               </a>.
             </p>
           </div>
