@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { ThumbsUp, X } from 'lucide-react';
 import { FeatureRequest } from '../../lib/useFeatureRequests';
 
-const ADMIN_EMAIL = 'itsjustmyemail@gmail.com';
+const ADMIN_EMAIL = 'mostlydecentdev@gmail.com';
 
 interface FeatureRequestModalProps {
   onClose: () => void;
