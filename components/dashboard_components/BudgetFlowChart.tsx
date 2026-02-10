@@ -41,6 +41,10 @@ function getGradient(name: string, index: number): [string, string] {
   return CATEGORY_GRADIENTS[name] || FALLBACK_GRADIENTS[index % FALLBACK_GRADIENTS.length];
 }
 
+// Tooltip vertical positioning: base offset above chart + extra shift when thumb is near the top
+const TOOLTIP_BASE_OFFSET = 70;
+const TOOLTIP_MAX_THUMB_OFFSET = 40;
+
 function formatMonthLabel(key: string): string {
   const [year, month] = key.split('-');
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -54,6 +58,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
   const [hoveredMonthIdx, setHoveredMonthIdx] = useState<number | null>(null);
   const [mouseCoords, setMouseCoords] = useState<{ x: number; y: number } | null>(null);
   const [chartWidth, setChartWidth] = useState(0);
+  const [chartHeight, setChartHeight] = useState(0);
   const safeBudgets = Array.isArray(budgets) ? budgets : [];
   const safeTransactions = useMemo(() => {
     const txs = Array.isArray(transactions) ? transactions : [];
@@ -223,6 +228,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     const width = container.clientWidth;
     const height = Math.min(150, width * 0.35);
     setChartWidth(width);
+    setChartHeight(height);
 
     const svgElement = d3.select(svgRef.current);
     svgElement.selectAll('*').remove();
@@ -555,14 +561,14 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
   return (
     <div id="spending-flow-chart" className="w-full mb-1 shrink-0">
       <div className="relative">
-        {/* Tooltip card — positioned well above the chart so the user's thumb never obscures it */}
+        {/* Tooltip card — moves up as the user's thumb moves up so it never obscures the card */}
         {activeCategory && mouseCoords && activeMonthData && (
           <div
             className="absolute z-50 pointer-events-none transition-all duration-200 ease-out"
             style={{
               transform: `translate(${mouseCoords.x}px, 0px)`,
               left: 0,
-              top: '-70px',
+              top: `${-TOOLTIP_BASE_OFFSET - (chartHeight > 0 ? (1 - mouseCoords.y / chartHeight) * TOOLTIP_MAX_THUMB_OFFSET : 0)}px`,
             }}
           >
             <div
