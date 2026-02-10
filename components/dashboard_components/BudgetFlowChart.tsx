@@ -49,11 +49,14 @@ function formatMonthLabel(key: string): string {
 
 const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions, isTutorialMode = false, theme = 'dark' }) => {
   const svgRef = useRef<SVGSVGElement>(null);
+  const expandedSvgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const expandedContainerRef = useRef<HTMLDivElement>(null);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [hoveredMonthIdx, setHoveredMonthIdx] = useState<number | null>(null);
   const [mouseCoords, setMouseCoords] = useState<{ x: number; y: number } | null>(null);
   const [chartWidth, setChartWidth] = useState(0);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const safeBudgets = Array.isArray(budgets) ? budgets : [];
   const safeTransactions = useMemo(() => {
@@ -519,6 +522,201 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     };
   }, [chartData, categoryNames, totalBudgetLimit, theme]);
 
+  // Draw the expanded fullscreen D3 streamgraph with detailed labels
+  useEffect(() => {
+    if (!isExpanded || !expandedSvgRef.current || !expandedContainerRef.current || chartData.length === 0 || categoryNames.length === 0) return;
+
+    const container = expandedContainerRef.current;
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+
+    const isDarkTheme = theme === 'dark';
+
+    const svgElement = d3.select(expandedSvgRef.current);
+    svgElement.selectAll('*').remove();
+
+    const margin = { top: 30, right: 20, bottom: 40, left: 20 };
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+
+    const defs = svgElement.append('defs');
+
+    categoryNames.forEach((name, i) => {
+      const [c0, c1] = getGradient(name, i);
+      const grad = defs
+        .append('linearGradient')
+        .attr('id', `bfc-exp-grad-${i}`)
+        .attr('x1', '0%')
+        .attr('y1', '0%')
+        .attr('x2', '0%')
+        .attr('y2', '100%');
+      grad.append('stop').attr('offset', '0%').attr('stop-color', c0);
+      grad.append('stop').attr('offset', '100%').attr('stop-color', c1);
+    });
+
+    defs
+      .append('filter')
+      .attr('id', 'bfc-exp-frost')
+      .append('feGaussianBlur')
+      .attr('in', 'SourceGraphic')
+      .attr('stdDeviation', '8');
+
+    const svg = svgElement
+      .attr('viewBox', `0 0 ${width} ${height}`)
+      .append('g')
+      .attr('transform', `translate(${margin.left},${margin.top})`);
+
+    const stack = d3
+      .stack<MonthlyBudgetData>()
+      .keys(categoryNames)
+      .value((d, key) => (typeof d[key] === 'number' ? (d[key] as number) : 0))
+      .offset(d3.stackOffsetSilhouette)
+      .order(d3.stackOrderInsideOut);
+
+    const stackedData = stack(chartData);
+
+    const x = d3.scalePoint().domain(chartData.map((d) => d.month)).range([0, innerWidth]);
+
+    const maxTotal = d3.max(chartData, (d) => d.total) || 1;
+    const baseView = Math.max(maxTotal, totalBudgetLimit) * 1.3;
+    const maxViewForVisibility = maxTotal * 8;
+    const viewLimit = Math.min(baseView, maxViewForVisibility);
+
+    const y = d3
+      .scaleLinear()
+      .domain([-viewLimit / 2, viewLimit / 2])
+      .range([innerHeight, 0]);
+
+    const budgetYTop = y(totalBudgetLimit / 2);
+    const budgetYBottom = y(-totalBudgetLimit / 2);
+
+    // Corridor background
+    svg
+      .append('rect')
+      .attr('x', 0)
+      .attr('y', budgetYTop)
+      .attr('width', innerWidth)
+      .attr('height', budgetYBottom - budgetYTop)
+      .attr('fill', isDarkTheme ? '#0f172a' : '#f1f5f9');
+
+    const area = d3
+      .area<d3.SeriesPoint<MonthlyBudgetData>>()
+      .x((d) => x(d.data.month) || 0)
+      .y0((d) => y(d[0]))
+      .y1((d) => y(d[1]))
+      .curve(d3.curveMonotoneX);
+
+    // Clip paths
+    const clipTop = defs.append('clipPath').attr('id', 'bfc-exp-clip-top');
+    clipTop.append('rect').attr('x', -margin.left).attr('y', -margin.top).attr('width', width).attr('height', budgetYTop + margin.top);
+
+    const clipBottom = defs.append('clipPath').attr('id', 'bfc-exp-clip-bottom');
+    clipBottom
+      .append('rect')
+      .attr('x', -margin.left)
+      .attr('y', budgetYBottom)
+      .attr('width', width)
+      .attr('height', innerHeight - budgetYBottom + margin.bottom);
+
+    // Main bands
+    const layerGroup = svg.selectAll('.bfc-exp-layer').data(stackedData).enter().append('g').attr('class', 'bfc-exp-layer');
+
+    layerGroup
+      .append('path')
+      .attr('class', 'bfc-exp-band')
+      .attr('d', area)
+      .style('fill', (_d, i) => `url(#bfc-exp-grad-${i})`)
+      .attr('stroke', 'rgba(255, 255, 255, 0.05)')
+      .attr('stroke-width', '0.5px')
+      .attr('fill-opacity', 0.95);
+
+    // Spillover bands
+    const spillColor = isDarkTheme ? '#ffffff' : '#ef4444';
+    const spillTop = svg.append('g').attr('clip-path', 'url(#bfc-exp-clip-top)').attr('filter', 'url(#bfc-exp-frost)');
+    const spillBottom = svg.append('g').attr('clip-path', 'url(#bfc-exp-clip-bottom)').attr('filter', 'url(#bfc-exp-frost)');
+
+    [spillTop, spillBottom].forEach((group) => {
+      group
+        .selectAll('.bfc-exp-spill')
+        .data(stackedData)
+        .enter()
+        .append('path')
+        .attr('class', 'bfc-exp-spill')
+        .attr('d', area)
+        .attr('fill', spillColor)
+        .attr('fill-opacity', 1.0);
+    });
+
+    // Glass panels
+    const glassColor = isDarkTheme ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.04)';
+    svg.append('rect').attr('x', 0).attr('y', -margin.top).attr('width', innerWidth).attr('height', budgetYTop + margin.top).attr('fill', glassColor);
+    svg.append('rect').attr('x', 0).attr('y', budgetYBottom).attr('width', innerWidth).attr('height', innerHeight - budgetYBottom + margin.bottom).attr('fill', glassColor);
+
+    // Dashed threshold lines
+    const thresholdColor = isDarkTheme ? '#6ee7b7' : '#059669';
+    [budgetYTop, budgetYBottom].forEach((yPos) => {
+      svg
+        .append('line')
+        .attr('x1', 0)
+        .attr('x2', innerWidth)
+        .attr('y1', yPos)
+        .attr('y2', yPos)
+        .attr('stroke', thresholdColor)
+        .attr('stroke-width', 1.5)
+        .attr('stroke-dasharray', '6 10')
+        .attr('opacity', 0.7);
+    });
+
+    // Month labels along the bottom
+    const monthLabelColor = isDarkTheme ? '#94a3b8' : '#64748b';
+    chartData.forEach((d) => {
+      const xPos = x(d.month) || 0;
+      svg
+        .append('text')
+        .attr('x', xPos)
+        .attr('y', innerHeight + 24)
+        .attr('text-anchor', 'middle')
+        .attr('fill', monthLabelColor)
+        .attr('font-size', '11px')
+        .attr('font-weight', '800')
+        .text(d.month);
+    });
+
+    // Category labels at the last data point
+    const lastIdx = chartData.length - 1;
+    stackedData.forEach((layer, i) => {
+      const point = layer[lastIdx];
+      const midY = (y(point[0]) + y(point[1])) / 2;
+      const bandHeight = Math.abs(y(point[0]) - y(point[1]));
+      if (bandHeight < 12) return; // skip tiny bands
+      const [, c1] = getGradient(layer.key, i);
+      svg
+        .append('text')
+        .attr('x', innerWidth + 6)
+        .attr('y', midY)
+        .attr('dy', '0.35em')
+        .attr('fill', c1)
+        .attr('font-size', '10px')
+        .attr('font-weight', '800')
+        .attr('text-transform', 'uppercase')
+        .text(layer.key);
+    });
+
+    // Budget limit label
+    const limitLabelColor = isDarkTheme ? '#6ee7b7' : '#059669';
+    svg
+      .append('text')
+      .attr('x', 4)
+      .attr('y', budgetYTop - 6)
+      .attr('fill', limitLabelColor)
+      .attr('font-size', '9px')
+      .attr('font-weight', '800')
+      .attr('text-transform', 'uppercase')
+      .attr('letter-spacing', '0.1em')
+      .text(`Budget Limit: $${totalBudgetLimit.toLocaleString()}`);
+
+  }, [isExpanded, chartData, categoryNames, totalBudgetLimit, theme]);
+
   const activeMonthData = hoveredMonthIdx !== null ? chartData[hoveredMonthIdx] : null;
   const activeCatAmount =
     activeCategory && activeMonthData && typeof activeMonthData[activeCategory] === 'number'
@@ -647,7 +845,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         )}
 
         {/* Chart container */}
-        <div ref={containerRef} className="w-full">
+        <div ref={containerRef} className="w-full relative">
           <div className="bg-white/[0.03] dark:bg-white/[0.02] rounded-[2.5rem] p-0.5 shadow-xl border border-slate-200/30 dark:border-white/10 overflow-hidden">
             <div className="bg-slate-100 dark:bg-slate-900 rounded-[2.4rem] overflow-hidden border border-slate-200/20 dark:border-white/10 relative">
               <svg
@@ -657,8 +855,71 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
               />
             </div>
           </div>
+
+          {/* Expand button */}
+          <button
+            id="expand-chart-button"
+            onClick={() => setIsExpanded(true)}
+            className="absolute top-2 right-2 z-20 p-2 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md rounded-xl border border-slate-200/50 dark:border-slate-700/50 shadow-lg active:scale-90 transition-all"
+            aria-label="Expand chart"
+          >
+            <svg
+              className="w-4 h-4 text-slate-500 dark:text-slate-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              strokeWidth={2.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="15 3 21 3 21 9" />
+              <polyline points="9 21 3 21 3 15" />
+              <line x1="21" y1="3" x2="14" y2="10" />
+              <line x1="3" y1="21" x2="10" y2="14" />
+            </svg>
+          </button>
         </div>
       </div>
+
+      {/* Expanded fullscreen overlay */}
+      {isExpanded && (
+        <div className="fixed inset-0 z-[200] bg-slate-950/95 backdrop-blur-xl flex flex-col animate-in fade-in duration-300">
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 pt-6 pb-2" style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 1.5rem)' }}>
+            <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
+              Spending Flow
+            </h3>
+            <button
+              onClick={() => setIsExpanded(false)}
+              className="p-2.5 bg-slate-800 rounded-full transition-transform active:scale-90"
+              aria-label="Close expanded chart"
+            >
+              <svg
+                className="w-5 h-5 text-slate-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                strokeWidth={2.5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Expanded chart */}
+          <div ref={expandedContainerRef} className="flex-1 px-4 pb-6" style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 1.5rem)' }}>
+            <div className="w-full h-full bg-slate-900 rounded-[2rem] overflow-hidden border border-slate-800/60 p-2">
+              <svg
+                ref={expandedSvgRef}
+                className="w-full h-full select-none"
+                preserveAspectRatio="xMidYMid meet"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

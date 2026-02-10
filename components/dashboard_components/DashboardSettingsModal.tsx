@@ -1,5 +1,6 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import IncomeSection from './settings_modal_components/IncomeSection';
+import FAQModal from './FAQModal';
 import ThemeToggleSection from './settings_modal_components/ThemeToggleSection';
 import RolloverSection from './settings_modal_components/RolloverSection';
 import DiscretionaryShieldSection from './settings_modal_components/DiscretionaryShieldSection';
@@ -81,6 +82,7 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
   onSubscribe,
 }) => {
   const settingsScrollRef = useRef<HTMLDivElement>(null);
+  const [showFAQ, setShowFAQ] = useState(false);
 
   return (
     <div className="fixed inset-0 z-[110] bg-slate-900/40 backdrop-blur-lg flex items-center justify-center p-6 animate-in fade-in duration-300">
@@ -121,10 +123,20 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
         <div className="space-y-4">
           {/* Run Tutorial */}
           <button
+            id="run-tutorial-button"
             onClick={onRunTutorial}
             className="w-full py-5 bg-emerald-50 dark:bg-emerald-900/20 border-2 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[11px] font-black rounded-2xl hover:bg-emerald-100 transition-colors uppercase tracking-[0.2em] shadow-sm active:scale-95"
           >
             Run Tutorial
+          </button>
+
+          {/* Frequently Asked */}
+          <button
+            id="faq-button"
+            onClick={() => setShowFAQ(true)}
+            className="w-full py-5 bg-slate-50 dark:bg-slate-800/30 border-2 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 text-[11px] font-black rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors uppercase tracking-[0.2em] shadow-sm active:scale-95"
+          >
+            Frequently Asked
           </button>
 
           {/* Income */}
@@ -220,6 +232,8 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           </div>
         </div>
       </div>
+
+      {showFAQ && <FAQModal onClose={() => setShowFAQ(false)} />}
     </div>
   );
 };
