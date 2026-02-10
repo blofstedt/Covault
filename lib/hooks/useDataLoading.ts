@@ -193,7 +193,7 @@ export const useDataLoading = ({
       try {
         const headers = await getAuthHeaders();
         const res = await fetch(
-          `${REST_BASE}/settings?select=monthly_income,theme&user_id=eq.${userId}`,
+          `${REST_BASE}/settings?select=monthly_income,theme,trial_started_at,trial_ends_at,trial_consumed,subscription_status&user_id=eq.${userId}`,
           { 
             headers,
             cache: 'no-store' // Prevent caching to always get fresh data
@@ -222,10 +222,23 @@ export const useDataLoading = ({
           // Load theme from database
           const theme = rows[0].theme || 'light';
 
+          // Load trial/subscription fields
+          const trial_started_at = rows[0].trial_started_at || null;
+          const trial_ends_at = rows[0].trial_ends_at || null;
+          const trial_consumed = rows[0].trial_consumed ?? false;
+          const subscription_status = rows[0].subscription_status || 'none';
+
           setAppState(prev => ({
             ...prev,
             user: prev.user
-              ? { ...prev.user, monthlyIncome }
+              ? {
+                  ...prev.user,
+                  monthlyIncome,
+                  trial_started_at,
+                  trial_ends_at,
+                  trial_consumed,
+                  subscription_status,
+                }
               : null,
             settings: {
               ...prev.settings,

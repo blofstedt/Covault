@@ -8,6 +8,10 @@ export interface User {
   hasJointAccounts: boolean;
   budgetingSolo: boolean;
   monthlyIncome: number;
+  trial_started_at?: string | null;
+  trial_ends_at?: string | null;
+  trial_consumed?: boolean;
+  subscription_status?: 'none' | 'active' | 'expired';
 }
 
 export interface BudgetCategory {

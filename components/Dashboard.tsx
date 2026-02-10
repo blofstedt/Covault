@@ -6,6 +6,8 @@ import ConfirmDeleteModal from './ConfirmDeleteModal';
 import Tutorial from './Tutorial';
 import TransactionActionModal from './TransactionActionModal';
 import TransactionParsing from './TransactionParsing';
+import PremiumGate from './PremiumGate';
+import SubscribeModal from './SubscribeModal';
 
 // New dashboard components
 import DashboardHeader from './dashboard_components/DashboardHeader';
@@ -19,6 +21,7 @@ import BudgetFlowChart from './dashboard_components/BudgetFlowChart';
 // Notifications helper
 import { checkAndTriggerAppNotifications } from '../lib/appNotifications';
 import { generateProjectedTransactions } from '../lib/projectedTransactions';
+import { hasPremiumAccess } from '../lib/entitlement';
 
 interface DashboardProps {
   state: AppState;
@@ -41,13 +44,6 @@ interface DashboardProps {
   saveTheme: (theme: 'light' | 'dark') => void;
   saveBudgetVisibility: (categoryId: string, visible: boolean) => void;
   isLoadingData: boolean;
-  // Dev mode section overrides
-  devShowSettings?: boolean;
-  devShowTutorial?: boolean;
-  devShowAddTx?: boolean;
-  onDevResetShowSettings?: () => void;
-  onDevResetShowTutorial?: () => void;
-  onDevResetShowAddTx?: () => void;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({
@@ -71,12 +67,6 @@ const Dashboard: React.FC<DashboardProps> = ({
   saveTheme,
   saveBudgetVisibility,
   isLoadingData,
-  devShowSettings,
-  devShowTutorial,
-  devShowAddTx,
-  onDevResetShowSettings,
-  onDevResetShowTutorial,
-  onDevResetShowAddTx,
 }) => {
   const [isAddingTx, setIsAddingTx] = useState(false);
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
@@ -93,22 +83,22 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [tutorialShowTxModal, setTutorialShowTxModal] = useState(false);
   const [tutorialFormOpen, setTutorialFormOpen] = useState(false);
   const [demoSplitTrigger, setDemoSplitTrigger] = useState(0);
+  const [showSubscribeModal, setShowSubscribeModal] = useState(false);
+
+  // Premium access check (single source of truth)
+  const hasPremium = hasPremiumAccess(state.user);
+
+  const handleSubscribe = () => {
+    // TODO: Integrate Google Play Billing flow here.
+    // For now, open a placeholder or log the intent.
+    console.log('[Dashboard] Subscribe tapped — Google Play Billing integration pending');
+    setShowSubscribeModal(false);
+  };
 
   // Scroll refs shared with child components
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const budgetRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const bodyOverflowRef = useRef<string | null>(null);
-
-  // Dev mode: respond to external section navigation
-  useEffect(() => {
-    if (devShowSettings) setShowSettings(true);
-  }, [devShowSettings]);
-  useEffect(() => {
-    if (devShowTutorial) setShowTutorial(true);
-  }, [devShowTutorial]);
-  useEffect(() => {
-    if (devShowAddTx) setIsAddingTx(true);
-  }, [devShowAddTx]);
 
   // Track initial mount for animation purposes
   useEffect(() => {
@@ -414,7 +404,6 @@ const Dashboard: React.FC<DashboardProps> = ({
     setIsAddingTx(false);
     setSelectedTx(null);
     updateSettings('hasSeenTutorial', true);
-    onDevResetShowTutorial?.();
   };
 
   const handleTutorialStepChange = (step: number) => {
@@ -515,6 +504,17 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   // If showing parsing view, render that instead of the main dashboard
   if (showParsing) {
+    if (!hasPremium) {
+      return (
+        <SubscribeModal
+          onClose={() => setShowParsing(false)}
+          onSubscribe={() => {
+            setShowParsing(false);
+            handleSubscribe();
+          }}
+        />
+      );
+    }
     return (
       <TransactionParsing
         enabled={state.settings.notificationsEnabled || false}
@@ -570,12 +570,14 @@ const Dashboard: React.FC<DashboardProps> = ({
         )}
 
         {!isFocusMode && !searchQuery && (
-          <BudgetFlowChart
-            budgets={visibleBudgets}
-            transactions={state.transactions}
-            isTutorialMode={showTutorial}
-            theme={state.settings.theme as 'light' | 'dark'}
-          />
+          <PremiumGate hasPremium={hasPremium} onSubscribe={handleSubscribe}>
+            <BudgetFlowChart
+              budgets={visibleBudgets}
+              transactions={state.transactions}
+              isTutorialMode={showTutorial}
+              theme={state.settings.theme as 'light' | 'dark'}
+            />
+          </PremiumGate>
         )}
 
         {searchQuery ? (
@@ -635,7 +637,6 @@ const Dashboard: React.FC<DashboardProps> = ({
           onClose={() => {
             setShowSettings(false);
             setIsLinkingPartner(false);
-            onDevResetShowSettings?.();
           }}
           onRunTutorial={handleRunTutorialFromSettings}
           onUpdateSettings={updateSettings}
@@ -646,6 +647,8 @@ const Dashboard: React.FC<DashboardProps> = ({
           onSignOut={onSignOut}
           onSaveBudgetLimit={saveBudgetLimit}
           saveBudgetVisibility={saveBudgetVisibility}
+          hasPremium={hasPremium}
+          onSubscribe={handleSubscribe}
         />
       )}
 
@@ -654,7 +657,6 @@ const Dashboard: React.FC<DashboardProps> = ({
           onClose={() => {
             setIsAddingTx(false);
             setTutorialFormOpen(false);
-            onDevResetShowAddTx?.();
           }}
           onSave={tutorialFormOpen ? (_tx: Transaction) => { /* no-op: saves disabled during tutorial */ } : onAddTransaction}
           budgets={visibleBudgets}
@@ -707,6 +709,16 @@ const Dashboard: React.FC<DashboardProps> = ({
           onOpenTransactionForm={handleTutorialOpenForm}
           onDemoSplit={handleTutorialDemoSplit}
           firstBudgetId={state.budgets.length > 0 ? state.budgets[0].id : undefined}
+        />
+      )}
+
+      {showSubscribeModal && (
+        <SubscribeModal
+          onClose={() => setShowSubscribeModal(false)}
+          onSubscribe={() => {
+            setShowSubscribeModal(false);
+            handleSubscribe();
+          }}
         />
       )}
     </div>
