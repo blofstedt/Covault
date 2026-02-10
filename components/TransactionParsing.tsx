@@ -15,6 +15,7 @@ interface VendorOverride {
   vendor_name: string;
   category_id: string;
   auto_accept: boolean;
+  category_name?: string;
 }
 
 interface TransactionParsingProps {
@@ -84,7 +85,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     if (!userId) return;
     const { data, error } = await supabase
       .from('vendor_overrides')
-      .select('id, vendor_name, category_id, auto_accept')
+      .select('id, vendor_name, category_id, auto_accept, categories(name)')
       .eq('user_id', userId)
       .order('vendor_name');
 
@@ -92,7 +93,14 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       console.error('[TransactionParsing] Error loading vendor overrides:', error);
       return;
     }
-    setVendorOverrides((data || []) as VendorOverride[]);
+    const overrides: VendorOverride[] = (data || []).map((row: any) => ({
+      id: row.id,
+      vendor_name: row.vendor_name,
+      category_id: row.category_id,
+      auto_accept: row.auto_accept,
+      category_name: row.categories?.name ?? undefined,
+    }));
+    setVendorOverrides(overrides);
   }, [userId]);
 
   // ── Load auto-accepted pending transactions (approved=true) ──
@@ -535,7 +543,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                                   ? 'text-violet-600 dark:text-violet-400'
                                   : 'text-slate-400 dark:text-slate-500 italic'
                               }`}>
-                                {hasCategory ? categoryNameById.get(vo?.category_id ?? '') || 'Unknown' : 'None Selected'}
+                                {hasCategory ? (vo?.category_name || categoryNameById.get(vo?.category_id ?? '') || 'Unknown') : 'None Selected'}
                               </span>
                             </div>
                             <div className="flex items-center gap-2 shrink-0 ml-2">
@@ -789,7 +797,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                       const isExpanded = expandedPendingId === pt.id;
                       const vendorOverride = vendorOverrideByName.get(pt.extracted_vendor.toLowerCase());
                       const defaultCategoryName = vendorOverride?.category_id
-                        ? categoryNameById.get(vendorOverride.category_id)
+                        ? (vendorOverride.category_name || categoryNameById.get(vendorOverride.category_id))
                         : undefined;
 
                       return (
