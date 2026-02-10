@@ -338,7 +338,7 @@ const Tutorial: React.FC<TutorialProps> = ({
         return prev;
       });
     } else {
-      // Keep the previous targetRect to avoid a flash when transitioning between steps
+      // Keep the previous targetRect when target element is not found to avoid flickering
     }
     if (isActiveRef.current) {
       requestRef.current = requestAnimationFrame(updateTargetRect);
