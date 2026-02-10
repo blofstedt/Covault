@@ -83,6 +83,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [tutorialShowTxModal, setTutorialShowTxModal] = useState(false);
   const [tutorialFormOpen, setTutorialFormOpen] = useState(false);
   const [demoSplitTrigger, setDemoSplitTrigger] = useState(0);
+  const [tutorialParsingDemo, setTutorialParsingDemo] = useState(false);
   const [showSubscribeModal, setShowSubscribeModal] = useState(false);
 
   // Premium access check (single source of truth)
@@ -403,6 +404,8 @@ const Dashboard: React.FC<DashboardProps> = ({
   const handleTutorialComplete = () => {
     setShowTutorial(false);
     setShowSettings(false);
+    setShowParsing(false);
+    setTutorialParsingDemo(false);
     // Clean up any tutorial state
     setTutorialPlaceholderTx(false);
     setTutorialShowTxModal(false);
@@ -415,10 +418,20 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const handleTutorialStepChange = (step: number) => {
     setTutorialStep(step);
-    // Steps 12 ("Re-run Tutorial") through 27 ("Sign Out") target elements inside the settings modal
-    if (step >= 12 && step <= 27) {
+    // Steps 10-14 target elements in the Transaction Parsing dashboard
+    if (step >= 10 && step <= 14) {
+      setShowParsing(true);
+      // Steps 11-14 show demo/placeholder data in the parsing dashboard
+      setTutorialParsingDemo(step >= 11);
+      setShowSettings(false);
+    // Steps 16 ("Re-run Tutorial") through 31 ("Sign Out") target elements inside the settings modal
+    } else if (step >= 16 && step <= 31) {
+      setShowParsing(false);
+      setTutorialParsingDemo(false);
       setShowSettings(true);
     } else {
+      setShowParsing(false);
+      setTutorialParsingDemo(false);
       setShowSettings(false);
     }
   };
@@ -511,7 +524,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   // If showing parsing view, render that instead of the main dashboard
   if (showParsing) {
-    if (!hasPremium) {
+    if (!hasPremium && !showTutorial) {
       return (
         <SubscribeModal
           onClose={() => setShowParsing(false)}
@@ -523,25 +536,42 @@ const Dashboard: React.FC<DashboardProps> = ({
       );
     }
     return (
-      <TransactionParsing
-        enabled={state.settings.notificationsEnabled || false}
-        onToggle={(v: boolean) => updateSettings('notificationsEnabled', v)}
-        onBack={() => setShowParsing(false)}
-        onAddTransaction={() => setIsAddingTx(true)}
-        onGoHome={() => {
-          setShowParsing(false);
-          handleGoHome();
-        }}
-        autoDetectedTransactions={autoDetectedTransactions}
-        onTransactionTap={(tx) => setSelectedTx(tx)}
-        pendingTransactions={state.pendingTransactions || []}
-        budgets={visibleBudgets}
-        onApprovePending={onApprovePendingTransaction}
-        onRejectPending={onRejectPendingTransaction}
-        onRefreshNotifications={onRefreshNotifications}
-        onReloadPendingTransactions={onReloadPendingTransactions}
-        userId={state.user?.id}
-      />
+      <>
+        <TransactionParsing
+          enabled={state.settings.notificationsEnabled || false}
+          onToggle={(v: boolean) => updateSettings('notificationsEnabled', v)}
+          onBack={() => setShowParsing(false)}
+          onAddTransaction={() => setIsAddingTx(true)}
+          onGoHome={() => {
+            setShowParsing(false);
+            handleGoHome();
+          }}
+          autoDetectedTransactions={autoDetectedTransactions}
+          onTransactionTap={(tx) => setSelectedTx(tx)}
+          pendingTransactions={state.pendingTransactions || []}
+          budgets={visibleBudgets}
+          onApprovePending={onApprovePendingTransaction}
+          onRejectPending={onRejectPendingTransaction}
+          onRefreshNotifications={onRefreshNotifications}
+          onReloadPendingTransactions={onReloadPendingTransactions}
+          userId={state.user?.id}
+          isTutorialMode={showTutorial}
+          showDemoData={tutorialParsingDemo}
+        />
+        {showTutorial && (
+          <Tutorial
+            isShared={isSharedAccount}
+            onComplete={handleTutorialComplete}
+            onStepChange={handleTutorialStepChange}
+            onExpandBudget={handleTutorialExpandBudget}
+            onShowPlaceholderTransaction={handleTutorialShowPlaceholder}
+            onShowTransactionModal={handleTutorialShowTxModal}
+            onOpenTransactionForm={handleTutorialOpenForm}
+            onDemoSplit={handleTutorialDemoSplit}
+            firstBudgetId={state.budgets.length > 0 ? state.budgets[0].id : undefined}
+          />
+        )}
+      </>
     );
   }
 
