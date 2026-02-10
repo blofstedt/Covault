@@ -110,6 +110,16 @@ const Tutorial: React.FC<TutorialProps> = ({
       target: "settings-button",
     },
     {
+      title: "Re-run This Tutorial",
+      content: "You can always restart this walkthrough by tapping the 'Run Tutorial' button at the top of your settings.",
+      target: "run-tutorial-button",
+    },
+    {
+      title: "Frequently Asked",
+      content: "Have a quick question? Tap 'Frequently Asked' to browse and search a list of common questions and answers about Covault.",
+      target: "faq-button",
+    },
+    {
       title: "Monthly Income",
       content: isShared
         ? "Enter your income contribution here. Your partner's income will be added to the total automatically."
@@ -162,6 +172,11 @@ const Tutorial: React.FC<TutorialProps> = ({
       title: "Export Transactions",
       content: "Download your transactions as a CSV file. Pick a start and end date to generate a report you can open in any spreadsheet app.",
       target: "settings-export-container",
+    },
+    {
+      title: "Budget Report",
+      content: "Once available, you'll be able to send a monthly budget summary to your email. Stay tuned — this feature is coming soon.",
+      target: "settings-reports-container",
     },
     {
       title: "Report an Issue",
