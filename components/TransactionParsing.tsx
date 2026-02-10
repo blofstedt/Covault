@@ -149,20 +149,29 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   const handleToggleAutoAccept = useCallback(
     async (overrideId: string, currentValue: boolean) => {
       if (!userId) return;
+      const newValue = !currentValue;
+
+      // Optimistically update local state for immediate UI feedback
+      setVendorOverrides((prev) =>
+        prev.map((vo) => (vo.id === overrideId ? { ...vo, auto_accept: newValue } : vo)),
+      );
+
       const { error } = await supabase
         .from('vendor_overrides')
-        .update({ auto_accept: !currentValue })
+        .update({ auto_accept: newValue })
         .eq('id', overrideId)
         .eq('user_id', userId);
 
       if (error) {
         console.error('[TransactionParsing] Error toggling auto_accept:', error);
+        // Revert optimistic update on failure
+        setVendorOverrides((prev) =>
+          prev.map((vo) => (vo.id === overrideId ? { ...vo, auto_accept: currentValue } : vo)),
+        );
         return;
       }
-      // Refresh overrides
-      await loadVendorOverrides();
     },
-    [userId, loadVendorOverrides],
+    [userId],
   );
 
   // ── Handle tapping a saved parsing rule to edit it ──
@@ -230,28 +239,36 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   const handleToggleAutoAcceptByVendor = useCallback(
     async (vendorName: string) => {
       if (!userId) return;
-      const { data: override } = await supabase
-        .from('vendor_overrides')
-        .select('*')
-        .eq('user_id', userId)
-        .ilike('vendor_name', vendorName)
-        .maybeSingle();
+      const override = vendorOverrides.find(
+        (vo) => vo.vendor_name.toLowerCase() === vendorName.toLowerCase(),
+      );
 
       if (!override) return;
 
+      const currentValue = override.auto_accept;
+      const newValue = !currentValue;
+
+      // Optimistically update local state for immediate UI feedback
+      setVendorOverrides((prev) =>
+        prev.map((vo) => (vo.id === override.id ? { ...vo, auto_accept: newValue } : vo)),
+      );
+
       const { error } = await supabase
         .from('vendor_overrides')
-        .update({ auto_accept: !override.auto_accept })
+        .update({ auto_accept: newValue })
         .eq('id', override.id)
         .eq('user_id', userId);
 
       if (error) {
         console.error('[TransactionParsing] Error toggling auto_accept:', error);
+        // Revert optimistic update on failure
+        setVendorOverrides((prev) =>
+          prev.map((vo) => (vo.id === override.id ? { ...vo, auto_accept: currentValue } : vo)),
+        );
         return;
       }
-      await loadVendorOverrides();
     },
-    [userId, loadVendorOverrides],
+    [userId, vendorOverrides],
   );
 
   // ── Find the corresponding Transaction for an auto-accepted pending transaction ──
