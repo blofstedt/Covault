@@ -418,14 +418,14 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const handleTutorialStepChange = (step: number) => {
     setTutorialStep(step);
-    // Steps 10-14 target elements in the Transaction Parsing dashboard
-    if (step >= 10 && step <= 14) {
+    // Steps 11-15 target elements in the Transaction Parsing dashboard
+    if (step >= 11 && step <= 15) {
       setShowParsing(true);
-      // Steps 11-14 show demo/placeholder data in the parsing dashboard
-      setTutorialParsingDemo(step >= 11);
+      // Steps 12-15 show demo/placeholder data in the parsing dashboard
+      setTutorialParsingDemo(step >= 12);
       setShowSettings(false);
-    // Steps 16 ("Re-run Tutorial") through 31 ("Sign Out") target elements inside the settings modal
-    } else if (step >= 16 && step <= 31) {
+    // Steps 17 ("Re-run Tutorial") through 32 ("Sign Out") target elements inside the settings modal
+    } else if (step >= 17 && step <= 32) {
       setShowParsing(false);
       setTutorialParsingDemo(false);
       setShowSettings(true);
@@ -522,60 +522,44 @@ const Dashboard: React.FC<DashboardProps> = ({
     (state.settings as any).app_notifications_enabled,
   ]);
 
-  // If showing parsing view, render that instead of the main dashboard
-  if (showParsing) {
-    if (!hasPremium && !showTutorial) {
-      return (
-        <SubscribeModal
-          onClose={() => setShowParsing(false)}
-          onSubscribe={() => {
-            setShowParsing(false);
-            handleSubscribe();
-          }}
-        />
-      );
-    }
+  // If showing parsing view without premium (and not in tutorial), show subscribe modal
+  if (showParsing && !hasPremium && !showTutorial) {
     return (
-      <>
-        <TransactionParsing
-          enabled={state.settings.notificationsEnabled || false}
-          onToggle={(v: boolean) => updateSettings('notificationsEnabled', v)}
-          onBack={() => setShowParsing(false)}
-          onAddTransaction={() => setIsAddingTx(true)}
-          onGoHome={() => {
-            setShowParsing(false);
-            handleGoHome();
-          }}
-          autoDetectedTransactions={autoDetectedTransactions}
-          onTransactionTap={(tx) => setSelectedTx(tx)}
-          pendingTransactions={state.pendingTransactions || []}
-          budgets={visibleBudgets}
-          onApprovePending={onApprovePendingTransaction}
-          onRejectPending={onRejectPendingTransaction}
-          onRefreshNotifications={onRefreshNotifications}
-          onReloadPendingTransactions={onReloadPendingTransactions}
-          userId={state.user?.id}
-          isTutorialMode={showTutorial}
-          showDemoData={tutorialParsingDemo}
-        />
-        {showTutorial && (
-          <Tutorial
-            isShared={isSharedAccount}
-            onComplete={handleTutorialComplete}
-            onStepChange={handleTutorialStepChange}
-            onExpandBudget={handleTutorialExpandBudget}
-            onShowPlaceholderTransaction={handleTutorialShowPlaceholder}
-            onShowTransactionModal={handleTutorialShowTxModal}
-            onOpenTransactionForm={handleTutorialOpenForm}
-            onDemoSplit={handleTutorialDemoSplit}
-            firstBudgetId={state.budgets.length > 0 ? state.budgets[0].id : undefined}
-          />
-        )}
-      </>
+      <SubscribeModal
+        onClose={() => setShowParsing(false)}
+        onSubscribe={() => {
+          setShowParsing(false);
+          handleSubscribe();
+        }}
+      />
     );
   }
 
   return (
+    <>
+    {showParsing ? (
+      <TransactionParsing
+        enabled={state.settings.notificationsEnabled || false}
+        onToggle={(v: boolean) => updateSettings('notificationsEnabled', v)}
+        onBack={() => setShowParsing(false)}
+        onAddTransaction={() => setIsAddingTx(true)}
+        onGoHome={() => {
+          setShowParsing(false);
+          handleGoHome();
+        }}
+        autoDetectedTransactions={autoDetectedTransactions}
+        onTransactionTap={(tx) => setSelectedTx(tx)}
+        pendingTransactions={state.pendingTransactions || []}
+        budgets={visibleBudgets}
+        onApprovePending={onApprovePendingTransaction}
+        onRejectPending={onRejectPendingTransaction}
+        onRefreshNotifications={onRefreshNotifications}
+        onReloadPendingTransactions={onReloadPendingTransactions}
+        userId={state.user?.id}
+        isTutorialMode={showTutorial}
+        showDemoData={tutorialParsingDemo}
+      />
+    ) : (
     <div className="flex-1 flex flex-col h-screen relative overflow-hidden transition-colors duration-700 bg-slate-50 dark:bg-slate-950">
       {/* Background glow (only when not in focus mode) */}
       {!isFocusMode && (
@@ -735,6 +719,18 @@ const Dashboard: React.FC<DashboardProps> = ({
         />
       )}
 
+      {showSubscribeModal && (
+        <SubscribeModal
+          onClose={() => setShowSubscribeModal(false)}
+          onSubscribe={() => {
+            setShowSubscribeModal(false);
+            handleSubscribe();
+          }}
+        />
+      )}
+    </div>
+    )}
+
       {showTutorial && (
         <Tutorial
           isShared={isSharedAccount}
@@ -748,17 +744,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           firstBudgetId={state.budgets.length > 0 ? state.budgets[0].id : undefined}
         />
       )}
-
-      {showSubscribeModal && (
-        <SubscribeModal
-          onClose={() => setShowSubscribeModal(false)}
-          onSubscribe={() => {
-            setShowSubscribeModal(false);
-            handleSubscribe();
-          }}
-        />
-      )}
-    </div>
+    </>
   );
 };
 

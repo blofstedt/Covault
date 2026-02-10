@@ -44,6 +44,11 @@ const Tutorial: React.FC<TutorialProps> = ({
       target: "balance-header",
     },
     {
+      title: "Search Transactions",
+      content: "Use this search field to quickly find transactions by vendor name. Just type a keyword and matching entries will appear instantly.",
+      target: "search-field",
+    },
+    {
       title: "Spending Flow",
       content: "This chart visualizes your spending across categories over time. Each colored band represents a budget category. Touch and hold to explore individual months.",
       target: "spending-flow-chart",
@@ -54,7 +59,7 @@ const Tutorial: React.FC<TutorialProps> = ({
       target: "first-budget-card",
     },
     {
-      // Step 3: Add a Transaction - will trigger animation
+      // Step 4: Add a Transaction - will trigger animation
       title: "Add a Transaction",
       content: isShared
         ? "Tap the + button to record a purchase. Let's walk through the transaction entry form."
@@ -63,32 +68,32 @@ const Tutorial: React.FC<TutorialProps> = ({
       animation: "open-transaction-form",
     },
     {
-      // Step 4: $ amount field (inside open form)
+      // Step 5: $ amount field (inside open form)
       title: "Enter the Amount",
       content: "Start by typing the dollar amount of your expense. This is the total cost of the transaction.",
       target: "tutorial-amount-field",
     },
     {
-      // Step 5: Vendor field
+      // Step 6: Vendor field
       title: "Name the Vendor",
       content: "Enter where you made the purchase. This helps you track spending by store or service.",
       target: "tutorial-vendor-field",
     },
     {
-      // Step 6: Budget selection
+      // Step 7: Budget selection
       title: "Choose a Budget",
       content: "Select which budget category this expense belongs to. You can pick up to two categories to split the transaction between them.",
       target: "tutorial-budget-grid",
     },
     {
-      // Step 7: Split demo - visually demonstrate split transactions
+      // Step 8: Split demo - visually demonstrate split transactions
       title: "Splitting in Action",
       content: "Watch how selecting two budgets lets you split a transaction. The colored fill on each card shows how the amount is divided — drag left or right to adjust the split in real time.",
       target: "tutorial-budget-grid",
       animation: "demo-split",
     },
     {
-      // Step 8: Close form, then move on
+      // Step 9: Close form, then move on
       title: "Splitting Budgets",
       content: "Splitting is great when a single expense belongs to more than one category, allowing you to divide it up as roughly or precisely as you like. You can also edit or delete any transaction by tapping it in the main dashboard under the budget it belongs to.",
       target: "tutorial-budget-grid",
@@ -333,7 +338,7 @@ const Tutorial: React.FC<TutorialProps> = ({
         return prev;
       });
     } else {
-      setTargetRect(null);
+      // Keep the previous targetRect to avoid a flash when transitioning between steps
     }
     if (isActiveRef.current) {
       requestRef.current = requestAnimationFrame(updateTargetRect);

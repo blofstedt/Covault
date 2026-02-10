@@ -39,6 +39,7 @@ const DashboardBalanceSection: React.FC<DashboardBalanceSectionProps> = ({
       </div>
 
       <div
+        id="search-field"
         className="relative mt-2 w-full max-w-[200px] z-10 animate-nest"
         style={{ animationDelay: '0.1s' }}
       >
