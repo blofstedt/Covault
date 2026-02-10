@@ -36,6 +36,8 @@ interface TransactionParsingProps {
   onRefreshNotifications?: () => Promise<void>;
   onReloadPendingTransactions?: (userId: string) => Promise<void>;
   userId?: string;
+  isTutorialMode?: boolean;
+  showDemoData?: boolean;
 }
 
 const TransactionParsing: React.FC<TransactionParsingProps> = ({
@@ -53,6 +55,8 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   onRefreshNotifications,
   onReloadPendingTransactions,
   userId,
+  isTutorialMode = false,
+  showDemoData = false,
 }) => {
   const [expandedPendingId, setExpandedPendingId] = useState<string | null>(null);
   const [expandedAutoAcceptedId, setExpandedAutoAcceptedId] = useState<string | null>(null);
@@ -495,10 +499,10 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       {/* Main content */}
       <main className="flex-1 flex flex-col p-4 pb-24 overflow-y-auto relative z-10">
         <div className="max-w-2xl mx-auto w-full space-y-4">
-          {enabled ? (
+          {enabled || isTutorialMode ? (
             <>
               {/* Active state: toggle + app picker */}
-              <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-slate-100 dark:border-slate-800/60 space-y-4">
+              <div id="parsing-notification-toggle" className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-slate-100 dark:border-slate-800/60 space-y-4">
                 <NotificationSettings
                   enabled={enabled}
                   onToggle={onToggle}
@@ -508,8 +512,8 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               {/* ──────────────────────────────────────────────────── */}
               {/* RULES: Saved Bank Notification Rules */}
               {/* ──────────────────────────────────────────────────── */}
-              {savedRules.length > 0 && (
-                <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-emerald-200 dark:border-emerald-800/40 space-y-3">
+              {(savedRules.length > 0 || showDemoData) && (
+                <div id="parsing-rules-section" className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-emerald-200 dark:border-emerald-800/40 space-y-3">
                   <div className="flex items-center space-x-3">
                     <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
                       <svg className="w-5 h-5 text-emerald-600 dark:text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -526,11 +530,11 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                       </p>
                     </div>
                     <span className="text-[10px] font-black bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 px-2.5 py-1 rounded-full">
-                      {savedRules.length}
+                      {showDemoData && savedRules.length === 0 ? 1 : savedRules.length}
                     </span>
                   </div>
 
-                  {savedRules.map((rule) => (
+                  {savedRules.length > 0 ? savedRules.map((rule) => (
                     <button
                       key={rule.id}
                       onClick={() => handleEditRule(rule)}
@@ -558,15 +562,39 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                         Tap to edit
                       </span>
                     </button>
-                  ))}
+                  )) : showDemoData && (
+                    <div className="w-full flex items-center justify-between p-3 bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl border border-emerald-100 dark:border-emerald-800/30">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center shrink-0">
+                          <svg className="w-4 h-4 text-emerald-600 dark:text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        </div>
+                        <div className="min-w-0 text-left">
+                          <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                            Example Bank
+                          </p>
+                          <p className="text-[8px] text-slate-400 dark:text-slate-500 mt-0.5 font-mono truncate max-w-[200px]">
+                            vendor: /Purchase at (.+?) on/
+                          </p>
+                          <p className="text-[8px] text-slate-400 dark:text-slate-500 font-mono truncate max-w-[200px]">
+                            amount: /\$(\d+\.\d{'{2}'})/
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-[8px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 shrink-0">
+                        Demo
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* ──────────────────────────────────────────────────── */}
               {/* VENDOR CATEGORY RULES: Default categories per vendor */}
               {/* ──────────────────────────────────────────────────── */}
-              {allVendors.length > 0 && (
-                <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-violet-200 dark:border-violet-800/40 space-y-3">
+              {(allVendors.length > 0 || showDemoData) && (
+                <div id="parsing-vendor-rules-section" className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-violet-200 dark:border-violet-800/40 space-y-3">
                   <div className="flex items-center space-x-3">
                     <div className="p-2 bg-violet-50 dark:bg-violet-900/20 rounded-xl">
                       <svg className="w-5 h-5 text-violet-600 dark:text-violet-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -582,7 +610,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                       </p>
                     </div>
                     <span className="text-[10px] font-black bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 px-2.5 py-1 rounded-full">
-                      {allVendors.length}
+                      {showDemoData && allVendors.length === 0 ? 2 : allVendors.length}
                     </span>
                   </div>
 
@@ -662,12 +690,33 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                         </div>
                       );
                     })}
+                    {allVendors.length === 0 && showDemoData && (
+                      <>
+                        <div className="bg-violet-50 dark:bg-violet-900/10 rounded-2xl border border-violet-100 dark:border-violet-800/30 overflow-hidden">
+                          <div className="w-full flex items-center justify-between p-3">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200 truncate">Coffee Shop</span>
+                              <svg className="w-3 h-3 text-slate-300 dark:text-slate-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="9 18 15 12 9 6" /></svg>
+                              <span className="text-[10px] font-bold truncate text-violet-600 dark:text-violet-400">Leisure</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="bg-violet-50 dark:bg-violet-900/10 rounded-2xl border border-violet-100 dark:border-violet-800/30 overflow-hidden">
+                          <div className="w-full flex items-center justify-between p-3">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200 truncate">Grocery Mart</span>
+                              <svg className="w-3 h-3 text-slate-300 dark:text-slate-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="9 18 15 12 9 6" /></svg>
+                              <span className="text-[10px] font-bold truncate text-violet-600 dark:text-violet-400">Groceries</span>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               )}
 
               {/* ──────────────────────────────────────────────────── */}
-              {/* AUTO ACCEPTED: Transactions auto-approved by vendor toggle */}
               {/* ──────────────────────────────────────────────────── */}
               {autoAcceptedPending.length > 0 && (
                 <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-cyan-200 dark:border-cyan-800/40 space-y-3">
@@ -838,7 +887,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               {/* ──────────────────────────────────────────────────── */}
               {/* SECTION 2: To Be Reviewed (always visible) */}
               {/* ──────────────────────────────────────────────────── */}
-              <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-amber-200 dark:border-amber-800/40 space-y-4">
+              <div id="parsing-to-review-section" className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-amber-200 dark:border-amber-800/40 space-y-4">
                 <div className="flex items-center space-x-3">
                   <div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-xl">
                     <svg className="w-5 h-5 text-amber-600 dark:text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -862,9 +911,9 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                   )}
                 </div>
 
-                {toReviewCount > 0 ? (
+                {(toReviewCount > 0 || (showDemoData && toReviewCount === 0)) ? (
                   <div className="space-y-2">
-                    {toReviewTransactions.map((pt) => {
+                    {toReviewCount > 0 ? toReviewTransactions.map((pt) => {
                       const isExpanded = expandedPendingId === pt.id;
                       const vendorOverride = vendorOverrideByName.get(pt.extracted_vendor.toLowerCase());
                       const defaultCategoryName = vendorOverride?.category_id
@@ -958,7 +1007,35 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                           )}
                         </div>
                       );
-                    })}
+                    }) : showDemoData && (
+                      <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800/60 overflow-hidden">
+                        <div className="w-full flex items-center justify-between p-4">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-8 h-8 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center shrink-0">
+                              <svg className="w-4 h-4 text-amber-600 dark:text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                              </svg>
+                            </div>
+                            <div className="text-left min-w-0">
+                              <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate max-w-[160px]">
+                                Gas Station
+                              </p>
+                              <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
+                                Example Bank
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <span className="text-sm font-black text-slate-700 dark:text-slate-200">
+                              $45.00
+                            </span>
+                            <p className="text-[8px] font-bold uppercase tracking-wider text-amber-500 dark:text-amber-400 mt-0.5">
+                              Demo
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="py-6 text-center">
@@ -986,7 +1063,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               {/* ──────────────────────────────────────────────────── */}
               {/* SECTION 3: Approved Transactions (history) */}
               {/* ──────────────────────────────────────────────────── */}
-              <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-slate-100 dark:border-slate-800/60 space-y-4">
+              <div id="parsing-approved-section" className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-slate-100 dark:border-slate-800/60 space-y-4">
                 <div className="flex items-center space-x-3">
                   <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
                     <svg className="w-5 h-5 text-emerald-600 dark:text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -1007,7 +1084,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
 
                 </div>
 
-                {autoDetectedTransactions.length > 0 ? (
+                {(autoDetectedTransactions.length > 0 || showDemoData) ? (
                   <div className="space-y-2">
                     {autoDetectedTransactions.map((tx) => (
                       <button
@@ -1037,6 +1114,30 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                         </div>
                       </button>
                     ))}
+                    {autoDetectedTransactions.length === 0 && showDemoData && (
+                      <div className="w-full flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800/60">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center">
+                            <svg className="w-4 h-4 text-emerald-600 dark:text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          </div>
+                          <div className="text-left">
+                            <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate max-w-[160px]">
+                              Coffee Shop
+                            </p>
+                            <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
+                              Jan 15, 2026 — Added automatically
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-sm font-black text-slate-700 dark:text-slate-200">
+                            $5.75
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="py-8 text-center">

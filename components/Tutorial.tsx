@@ -100,9 +100,29 @@ const Tutorial: React.FC<TutorialProps> = ({
       target: "bottom-bar",
     },
     {
-      title: "Feature Requests",
-      content: "Tap the heart icon to vote on features other users have suggested or submit your own ideas. The most popular requests rise to the top of the leaderboard.",
-      target: "feature-request-button",
+      title: "Transaction Parsing",
+      content: "This is the transaction parsing dashboard. On Android, Covault can read your banking notifications and automatically log transactions for you. Use this toggle to enable or disable the Bank Notification Listener.",
+      target: "parsing-notification-toggle",
+    },
+    {
+      title: "Let's Look at an Example",
+      content: "Here's what the parsing dashboard looks like with some data. Parsing Rules tell Covault how to read notifications from each bank — you set them up once per bank by highlighting the vendor and amount in a sample notification.",
+      target: "parsing-rules-section",
+    },
+    {
+      title: "Vendor Category Rules",
+      content: "Once Covault detects a vendor, you can assign a default budget category for future transactions from that vendor. You can also enable auto-accept so those transactions are approved automatically.",
+      target: "parsing-vendor-rules-section",
+    },
+    {
+      title: "To Be Reviewed",
+      content: "Parsed transactions appear here for your review. Tap one to assign it a budget category and approve it, or reject it if it doesn't belong.",
+      target: "parsing-to-review-section",
+    },
+    {
+      title: "Approved Transactions",
+      content: "All auto-detected transactions that have been approved appear here. You can tap any entry to view or edit its details.",
+      target: "parsing-approved-section",
     },
     {
       title: "Your Settings",
