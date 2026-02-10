@@ -83,9 +83,10 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   // ── Load vendor overrides (default categories) from Supabase ──
   const loadVendorOverrides = useCallback(async () => {
     if (!userId) return;
+
     const { data, error } = await supabase
       .from('vendor_overrides')
-      .select('id, vendor_name, category_id, auto_accept, categories(name)')
+      .select('*')
       .eq('user_id', userId)
       .order('vendor_name');
 
@@ -93,12 +94,22 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       console.error('[TransactionParsing] Error loading vendor overrides:', error);
       return;
     }
+
+    // Load all categories to resolve names (vendor_overrides may lack FK to categories)
+    const { data: cats } = await supabase
+      .from('categories')
+      .select('id, name');
+    const catNameById = new Map<string, string>();
+    for (const c of cats || []) {
+      catNameById.set(c.id, c.name);
+    }
+
     const overrides: VendorOverride[] = (data || []).map((row: any) => ({
       id: row.id,
       vendor_name: row.vendor_name,
       category_id: row.category_id,
-      auto_accept: row.auto_accept,
-      category_name: row.categories?.name ?? undefined,
+      auto_accept: row.auto_accept ?? false,
+      category_name: catNameById.get(row.category_id) ?? undefined,
     }));
     setVendorOverrides(overrides);
   }, [userId]);
@@ -218,7 +229,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       if (!userId) return;
       const { data: override } = await supabase
         .from('vendor_overrides')
-        .select('id, auto_accept')
+        .select('*')
         .eq('user_id', userId)
         .ilike('vendor_name', vendorName)
         .maybeSingle();
@@ -278,7 +289,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         }
       } else {
         // Insert new override
-        const { error } = await supabase
+        let { error } = await supabase
           .from('vendor_overrides')
           .insert({
             user_id: userId,
@@ -286,6 +297,18 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
             category_id: categoryId,
             auto_accept: false,
           });
+
+        // Retry without auto_accept if column doesn't exist yet
+        if (error) {
+          const retry = await supabase
+            .from('vendor_overrides')
+            .insert({
+              user_id: userId,
+              vendor_name: vendorName,
+              category_id: categoryId,
+            });
+          error = retry.error;
+        }
 
         if (error) {
           console.error('[TransactionParsing] Error inserting vendor override:', error);
