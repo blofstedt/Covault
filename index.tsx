@@ -1,6 +1,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import PrivacyPolicy from './components/PrivacyPolicy';
+import Terms from './components/Terms';
 import './index.css';
 
 const rootElement = document.getElementById('root');
@@ -22,9 +24,17 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// Simple path-based routing for static pages
+const getPageComponent = () => {
+  const path = window.location.pathname;
+  if (path === '/privacy') return <PrivacyPolicy />;
+  if (path === '/terms') return <Terms />;
+  return <App />;
+};
+
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <App />
+    {getPageComponent()}
   </React.StrictMode>
 );
