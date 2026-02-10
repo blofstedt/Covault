@@ -18,6 +18,9 @@ interface VendorOverride {
   category_name?: string;
 }
 
+/** Delay before reloading pending transactions after a scan, to allow the notification pipeline to finish processing. */
+const SCAN_PROCESSING_DELAY_MS = 2000;
+
 interface TransactionParsingProps {
   enabled: boolean;
   onToggle: (enabled: boolean) => void;
@@ -458,7 +461,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         await onRefreshNotifications();
       }
       // Allow time for the notification pipeline to process before reloading
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, SCAN_PROCESSING_DELAY_MS));
       if (onReloadPendingTransactions && userId) {
         await onReloadPendingTransactions(userId);
       }
