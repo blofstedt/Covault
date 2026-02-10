@@ -308,7 +308,7 @@ async function tryAutoApprove(
 
   const { data: override } = await supabase
     .from('vendor_overrides')
-    .select('category_id, auto_accept')
+    .select('*')
     .eq('user_id', userId)
     .ilike('vendor_name', pending.extracted_vendor)
     .maybeSingle();
