@@ -170,6 +170,25 @@ const Auth: React.FC<AuthProps> = ({ onSignIn }) => {
         <p className="text-center text-[10px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest max-w-[240px] mx-auto">
           Secured by Supabase • AES-256
         </p>
+        <nav aria-label="Legal" className="flex items-center space-x-3">
+          <a
+            href="https://covaultbudgeting.vercel.app/privacy"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[10px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest hover:text-emerald-500 transition-colors"
+          >
+            Privacy
+          </a>
+          <span className="text-[10px] text-slate-400 dark:text-slate-600">•</span>
+          <a
+            href="https://covaultbudgeting.vercel.app/terms"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[10px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest hover:text-emerald-500 transition-colors"
+          >
+            Terms
+          </a>
+        </nav>
       </div>
     </div>
   );
