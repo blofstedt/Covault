@@ -12,6 +12,7 @@ const PREMIUM_FEATURES: PremiumFeature[] = [
   'spending_chart',
   'priority_help',
   'feature_requests',
+  'discretionary_shield',
 ];
 
 const SubscribeModal: React.FC<SubscribeModalProps> = ({ onClose, onSubscribe }) => {
@@ -59,7 +60,7 @@ const SubscribeModal: React.FC<SubscribeModalProps> = ({ onClose, onSubscribe })
             onClick={onSubscribe}
             className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl text-sm font-black uppercase tracking-widest shadow-lg shadow-emerald-500/30 active:scale-95 transition-all"
           >
-            Subscribe
+            Upgrade Now!
           </button>
           <button
             onClick={onClose}
