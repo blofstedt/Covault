@@ -19,9 +19,6 @@ import type { PendingTransaction } from '../types';
 
 // ─── Constants ───────────────────────────────────────────────────
 
-/** Timestamp bucket size for fingerprinting (± 3 minutes) */
-const FINGERPRINT_TIME_BUCKET_MS = 3 * 60 * 1000;
-
 /** Tolerance for comparing monetary amounts */
 const AMOUNT_TOLERANCE = 0.01;
 
@@ -73,18 +70,18 @@ export interface NotificationRuleRow {
 
 /**
  * Generate a fingerprint hash from notification content.
- * Uses: bank_app_id + normalized text + timestamp bucket.
+ * Uses: bank_app_id + normalized text + amount.
+ * Deterministic — the same notification always produces the same hash
+ * regardless of when it is processed, preventing duplicate captures.
  */
 function generateFingerprintHash(
   bankAppId: string,
   rawNotification: string,
   detectedAmount: number | null,
-  timestamp: number,
 ): string {
   const normalizedText = rawNotification.toLowerCase().replace(/\s+/g, ' ').trim();
-  const timeBucket = Math.floor(timestamp / FINGERPRINT_TIME_BUCKET_MS);
   const amountStr = detectedAmount != null ? detectedAmount.toFixed(2) : '';
-  const raw = `${bankAppId}|${normalizedText}|${amountStr}|${timeBucket}`;
+  const raw = `${bankAppId}|${normalizedText}|${amountStr}`;
 
   // Simple hash (djb2)
   let hash = 5381;
@@ -102,9 +99,8 @@ async function checkAndInsertFingerprint(
   bankAppId: string,
   rawNotification: string,
   detectedAmount: number | null,
-  timestamp: number,
 ): Promise<boolean> {
-  const hash = generateFingerprintHash(bankAppId, rawNotification, detectedAmount, timestamp);
+  const hash = generateFingerprintHash(bankAppId, rawNotification, detectedAmount);
 
   const { data: existing } = await supabase
     .from('notification_fingerprints')
@@ -405,8 +401,6 @@ export async function processNotification(
   userId: string,
   input: NotificationInput,
 ): Promise<ProcessingResult> {
-  const timestamp = input.notificationTimestamp || Date.now();
-
   // ── Step 1: Fingerprint Deduplication ──
   let quickAmount: number | null = null;
   const quickAmountMatch = input.rawNotification.match(/\$?([\d,]+\.?\d{0,2})/);
@@ -419,7 +413,6 @@ export async function processNotification(
     input.bankAppId,
     input.rawNotification,
     quickAmount,
-    timestamp,
   );
 
   if (isDuplicate) {
