@@ -62,7 +62,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   showDemoData = false,
 }) => {
   const [expandedPendingId, setExpandedPendingId] = useState<string | null>(null);
-  const [expandedAutoAcceptedId, setExpandedAutoAcceptedId] = useState<string | null>(null);
   const [expandedVendorCategory, setExpandedVendorCategory] = useState<string | null>(null);
   const [setupNotification, setSetupNotification] = useState<PendingTransaction | null>(null);
   const [savingRule, setSavingRule] = useState(false);
@@ -128,33 +127,11 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     setVendorOverrides(overrides);
   }, [userId]);
 
-  // ── Load auto-accepted pending transactions (approved=true) ──
-  const [autoAcceptedPending, setAutoAcceptedPending] = useState<PendingTransaction[]>([]);
-
-  const loadAutoAcceptedTransactions = useCallback(async () => {
-    if (!userId) return;
-    const { data, error } = await supabase
-      .from('pending_transactions')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('needs_review', false)
-      .eq('approved', true)
-      .order('reviewed_at', { ascending: false })
-      .limit(20);
-
-    if (error) {
-      console.error('[TransactionParsing] Error loading auto-accepted:', error);
-      return;
-    }
-    setAutoAcceptedPending((data || []) as PendingTransaction[]);
-  }, [userId]);
-
   // Load rules and vendor overrides on mount + when userId changes
   useEffect(() => {
     loadRules();
     loadVendorOverrides();
-    loadAutoAcceptedTransactions();
-  }, [loadRules, loadVendorOverrides, loadAutoAcceptedTransactions]);
+  }, [loadRules, loadVendorOverrides]);
 
   // ── Toggle auto_accept on a vendor override ──
   const handleToggleAutoAccept = useCallback(
@@ -167,14 +144,15 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         prev.map((vo) => (vo.id === overrideId ? { ...vo, auto_accept: newValue } : vo)),
       );
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('vendor_overrides')
         .update({ auto_accept: newValue })
         .eq('id', overrideId)
-        .eq('user_id', userId);
+        .eq('user_id', userId)
+        .select();
 
-      if (error) {
-        console.error('[TransactionParsing] Error toggling auto_accept:', error);
+      if (error || !data || data.length === 0) {
+        console.error('[TransactionParsing] Error toggling auto_accept:', error || 'No rows updated');
         // Revert optimistic update on failure
         setVendorOverrides((prev) =>
           prev.map((vo) => (vo.id === overrideId ? { ...vo, auto_accept: currentValue } : vo)),
@@ -264,14 +242,15 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         prev.map((vo) => (vo.id === override.id ? { ...vo, auto_accept: newValue } : vo)),
       );
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('vendor_overrides')
         .update({ auto_accept: newValue })
         .eq('id', override.id)
-        .eq('user_id', userId);
+        .eq('user_id', userId)
+        .select();
 
-      if (error) {
-        console.error('[TransactionParsing] Error toggling auto_accept:', error);
+      if (error || !data || data.length === 0) {
+        console.error('[TransactionParsing] Error toggling auto_accept:', error || 'No rows updated');
         // Revert optimistic update on failure
         setVendorOverrides((prev) =>
           prev.map((vo) => (vo.id === override.id ? { ...vo, auto_accept: currentValue } : vo)),
@@ -280,22 +259,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       }
     },
     [userId, vendorOverrides],
-  );
-
-  // ── Find the corresponding Transaction for an auto-accepted pending transaction ──
-  const handleTapAutoAccepted = useCallback(
-    (pt: PendingTransaction) => {
-      // Find the matching auto-detected transaction
-      const match = autoDetectedTransactions.find(
-        (tx) =>
-          tx.vendor.toLowerCase() === (pt.extracted_vendor || '').toLowerCase() &&
-          Math.abs(tx.amount - pt.extracted_amount) < AMOUNT_MATCH_TOLERANCE,
-      );
-      if (match && onTransactionTap) {
-        onTransactionTap(match);
-      }
-    },
-    [autoDetectedTransactions, onTransactionTap],
   );
 
   // ── Set or update a vendor's default category ──
@@ -737,106 +700,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               )}
 
               {/* ──────────────────────────────────────────────────── */}
-              {/* ──────────────────────────────────────────────────── */}
-              {autoAcceptedPending.length > 0 && (
-                <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-cyan-200 dark:border-cyan-800/40 space-y-3">
-                  <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-cyan-50 dark:bg-cyan-900/20 rounded-xl">
-                      <svg className="w-5 h-5 text-cyan-600 dark:text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
-                        <polyline points="22 4 12 14.01 9 11.01" />
-                      </svg>
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-                        Auto Accepted
-                      </h3>
-                      <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
-                        Automatically approved via vendor auto-accept
-                      </p>
-                    </div>
-                    <span className="text-[10px] font-black bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 px-2.5 py-1 rounded-full">
-                      {autoAcceptedPending.length}
-                    </span>
-                  </div>
-
-                  <div className="space-y-2">
-                    {autoAcceptedPending.map((pt) => {
-                      const isExpanded = expandedAutoAcceptedId === pt.id;
-                      const vendorOverride = vendorOverrides.find(
-                        (vo) => vo.vendor_name.toLowerCase() === pt.extracted_vendor.toLowerCase(),
-                      );
-
-                      return (
-                        <div key={pt.id} className="bg-cyan-50 dark:bg-cyan-900/10 rounded-2xl border border-cyan-100 dark:border-cyan-800/30 overflow-hidden">
-                          <button
-                            onClick={() => setExpandedAutoAcceptedId(isExpanded ? null : pt.id)}
-                            className="w-full flex items-center justify-between p-3 transition-all active:scale-[0.99]"
-                          >
-                            <div className="flex items-center space-x-3 min-w-0">
-                              <div className="w-8 h-8 bg-cyan-100 dark:bg-cyan-900/30 rounded-full flex items-center justify-center shrink-0">
-                                <svg className="w-4 h-4 text-cyan-600 dark:text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                                  <polyline points="20 6 9 17 4 12" />
-                                </svg>
-                              </div>
-                              <div className="min-w-0 text-left">
-                                <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate max-w-[140px]">
-                                  {pt.extracted_vendor}
-                                </p>
-                                <p className="text-[8px] text-slate-400 dark:text-slate-500 mt-0.5">
-                                  {pt.app_name}{pt.reviewed_at ? ` — ${new Date(pt.reviewed_at).toLocaleDateString()}` : ''}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="text-right shrink-0">
-                              <span className="text-sm font-black text-slate-700 dark:text-slate-200">
-                                ${pt.extracted_amount.toFixed(2)}
-                              </span>
-                              <p className="text-[8px] font-bold uppercase tracking-wider text-cyan-500 dark:text-cyan-400 mt-0.5">
-                                {isExpanded ? 'Collapse' : 'Tap to edit'}
-                              </p>
-                            </div>
-                          </button>
-
-                          {isExpanded && (
-                            <div className="px-3 pb-3 space-y-2 border-t border-cyan-100 dark:border-cyan-800/30 pt-2">
-                              {/* Edit transaction button */}
-                              <button
-                                onClick={() => handleTapAutoAccepted(pt)}
-                                className="w-full py-2 text-[10px] font-bold uppercase tracking-wider text-cyan-700 dark:text-cyan-300 bg-cyan-100 dark:bg-cyan-900/30 rounded-xl border border-cyan-200 dark:border-cyan-800/40 transition-all active:scale-[0.98]"
-                              >
-                                Edit Transaction
-                              </button>
-
-                              {/* Auto-accept toggle */}
-                              <div className="flex items-center justify-between p-2">
-                                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
-                                  Auto-accept future transactions from {pt.extracted_vendor}
-                                </span>
-                                <button
-                                  onClick={() => handleToggleAutoAcceptByVendor(pt.extracted_vendor)}
-                                  className="shrink-0 ml-2"
-                                  aria-label={`Toggle auto-accept for ${pt.extracted_vendor}`}
-                                >
-                                  <div className={`w-8 h-5 rounded-full relative transition-colors ${
-                                    vendorOverride?.auto_accept ? 'bg-emerald-400 dark:bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
-                                  }`}>
-                                    <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-all ${
-                                      vendorOverride?.auto_accept ? 'left-3.5' : 'left-0.5'
-                                    }`} />
-                                  </div>
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* ──────────────────────────────────────────────────── */}
               {/* SECTION 1: Captured Notifications (needs rule setup) */}
               {/* ──────────────────────────────────────────────────── */}
               {capturedCount > 0 && (
@@ -1106,7 +969,13 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
 
                 {(autoDetectedTransactions.length > 0 || showDemoData) ? (
                   <div className="space-y-2">
-                    {autoDetectedTransactions.map((tx) => (
+                    {autoDetectedTransactions.map((tx) => {
+                      const vo = vendorOverrideByName.get(tx.vendor.toLowerCase());
+                      const approvalLabel = vo?.auto_accept
+                        ? '- approved automatically'
+                        : '- approved manually';
+
+                      return (
                       <button
                         key={tx.id}
                         onClick={() => onTransactionTap?.(tx)}
@@ -1123,7 +992,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                               {tx.vendor}
                             </p>
                             <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
-                              {new Date(tx.date).toLocaleDateString()} — Added automatically
+                              {new Date(tx.date).toLocaleDateString()} {approvalLabel}
                             </p>
                           </div>
                         </div>
@@ -1133,7 +1002,8 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                           </span>
                         </div>
                       </button>
-                    ))}
+                      );
+                    })}
                     {autoDetectedTransactions.length === 0 && showDemoData && (
                       <div className="w-full flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800/60">
                         <div className="flex items-center space-x-3">
@@ -1147,7 +1017,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                               Coffee Shop
                             </p>
                             <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
-                              Jan 15, 2026 — Added automatically
+                              Jan 15, 2026 - approved manually
                             </p>
                           </div>
                         </div>
