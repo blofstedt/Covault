@@ -1,5 +1,5 @@
 // components/dashboard_components/SearchResults.tsx
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { Transaction, BudgetCategory } from '../../types';
 import TransactionItem from '../TransactionItem';
 import { generateProjectedTransactions } from '../../lib/projectedTransactions';
@@ -99,6 +99,15 @@ interface SearchResultsProps {
  * - NOW also includes PROJECTED recurring transactions (biweekly/monthly)
  *   up to 2 months after the end of the current month.
  */
+
+// Helper: get the current year-month string
+const getCurrentYearMonth = () => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
+};
+
 const SearchResults: React.FC<SearchResultsProps> = ({
   searchQuery,
   currentMonthTransactions,
@@ -125,12 +134,32 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   // Extract year-month from date strings directly to avoid timezone-related
   // month shifts that occur when parsing through the Date constructor.
   const txYearMonth = (dateStr: string) => dateStr.slice(0, 7); // "YYYY-MM"
-  const currentYearMonth = useMemo(() => {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, '0');
-    return `${y}-${m}`;
-  }, []);
+
+  // State to track the current month for transaction filtering
+  // This ensures that if the app is left open across a month boundary,
+  // the current month will update and transactions will be filtered correctly
+  const [currentYearMonth, setCurrentYearMonth] = useState(getCurrentYearMonth);
+
+  // Set up an interval to check if the month has changed
+  // Only update state when the month actually changes to avoid unnecessary re-renders
+  useEffect(() => {
+    const checkMonth = () => {
+      setCurrentYearMonth((prev) => {
+        const newYearMonth = getCurrentYearMonth();
+        // Only update if the month actually changed
+        return prev !== newYearMonth ? newYearMonth : prev;
+      });
+    };
+
+    // Check immediately on mount in case the month changed since initialization
+    checkMonth();
+
+    // Check every minute to catch month changes promptly
+    // This is still inexpensive as it only updates state when the month actually changes
+    const interval = setInterval(checkMonth, 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, []); // Empty dependency array - the interval should run continuously
 
   const projectedCurrentMonth = useMemo(
     () =>

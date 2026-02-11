@@ -46,6 +46,14 @@ interface DashboardProps {
   isLoadingData: boolean;
 }
 
+// Helper: get the current year-month string
+const getCurrentYearMonth = () => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
+};
+
 const Dashboard: React.FC<DashboardProps> = ({
   state,
   setState,
@@ -183,13 +191,31 @@ const Dashboard: React.FC<DashboardProps> = ({
   // avoids this.
   const txYearMonth = (dateStr: string) => dateStr.slice(0, 7); // "YYYY-MM"
 
-  // Helper to identify the current month - memoized to prevent recalculation
-  const currentYearMonth = useMemo(() => {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, '0');
-    return `${y}-${m}`;
-  }, []); // Empty dependency array - only calculate once per component mount
+  // State to track the current month for transaction filtering
+  // This ensures that if the app is left open across a month boundary,
+  // the current month will update and transactions will be filtered correctly
+  const [currentYearMonth, setCurrentYearMonth] = useState(getCurrentYearMonth);
+
+  // Set up an interval to check if the month has changed
+  // Only update state when the month actually changes to avoid unnecessary re-renders
+  useEffect(() => {
+    const checkMonth = () => {
+      setCurrentYearMonth((prev) => {
+        const newYearMonth = getCurrentYearMonth();
+        // Only update if the month actually changed
+        return prev !== newYearMonth ? newYearMonth : prev;
+      });
+    };
+
+    // Check immediately on mount in case the month changed since initialization
+    checkMonth();
+
+    // Check every minute to catch month changes promptly
+    // This is still inexpensive as it only updates state when the month actually changes
+    const interval = setInterval(checkMonth, 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, []); // Empty dependency array - the interval should run continuously
 
   // Unfiltered current month transactions (used for balance calculation)
   const currentMonthTransactionsAll = useMemo(
