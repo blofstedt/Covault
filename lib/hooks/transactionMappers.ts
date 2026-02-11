@@ -7,13 +7,25 @@ export const useToSupabaseTransaction = () =>
   useCallback((tx: Transaction) => {
     const dateStr = new Date(tx.date).toISOString().split('T')[0];
 
+    // Validate required fields
+    if (!tx.budget_id) {
+      throw new Error(`Transaction must have a valid budget_id (category_id). Got: ${tx.budget_id}`);
+    }
+
+    // Ensure recurrence is one of the valid values
+    const validRecurrences = ['One-time', 'Biweekly', 'Monthly'];
+    const recurrence = tx.recurrence || 'One-time';
+    if (!validRecurrences.includes(recurrence)) {
+      console.warn(`Invalid recurrence value "${recurrence}", defaulting to "One-time"`);
+    }
+
     const row: Record<string, any> = {
       user_id: tx.user_id,
       vendor: tx.vendor,
       amount: Number(tx.amount),
       date: dateStr,
       category_id: tx.budget_id,
-      recurrence: tx.recurrence || 'One-time',
+      recurrence: validRecurrences.includes(recurrence) ? recurrence : 'One-time',
       label: tx.label || 'Manual',
       is_projected: tx.is_projected ?? false,
     };
@@ -28,6 +40,14 @@ export const useToSupabaseTransaction = () =>
 // Convert Supabase transaction to app format
 export const useFromSupabaseTransaction = () =>
   useCallback((row: any): Transaction => {
+    // Validate recurrence value from database
+    const validRecurrences = ['One-time', 'Biweekly', 'Monthly'];
+    const recurrence = validRecurrences.includes(row.recurrence) ? row.recurrence : 'One-time';
+    
+    if (row.recurrence && !validRecurrences.includes(row.recurrence)) {
+      console.warn(`Invalid recurrence value "${row.recurrence}" from database, using "One-time"`);
+    }
+
     return {
       id: row.id,
       user_id: row.user_id,
@@ -35,7 +55,7 @@ export const useFromSupabaseTransaction = () =>
       amount: parseFloat(row.amount),
       date: new Date(row.date).toISOString(),
       budget_id: row.category_id,
-      recurrence: row.recurrence,
+      recurrence: recurrence,
       label: row.label,
       is_projected: row.is_projected,
       userName: row.user_name || '',
