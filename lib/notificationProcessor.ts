@@ -157,10 +157,12 @@ async function checkAndInsertFingerprint(
  * and time down to the second).
  */
 function extractedDedupKey(pt: PendingTransaction): string {
-  const vendor = pt.extracted_vendor.toLowerCase().trim();
-  const amount = Number(pt.extracted_amount).toFixed(2);
+  const vendor = (pt.extracted_vendor || '').toLowerCase().trim();
+  const amt = Number(pt.extracted_amount);
+  const amount = Number.isFinite(amt) ? amt.toFixed(2) : '0.00';
   // Truncate extracted_timestamp to the second
-  const tsSec = Math.floor(new Date(pt.extracted_timestamp).getTime() / 1000);
+  const tsMs = pt.extracted_timestamp ? new Date(pt.extracted_timestamp).getTime() : 0;
+  const tsSec = Math.floor(tsMs / 1000);
   return `${vendor}|${amount}|${tsSec}`;
 }
 
