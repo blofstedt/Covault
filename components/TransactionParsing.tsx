@@ -21,6 +21,9 @@ interface VendorOverride {
 /** Delay before reloading pending transactions after a scan, to allow the notification pipeline to finish processing. */
 const SCAN_PROCESSING_DELAY_MS = 2000;
 
+/** Tolerance for comparing monetary amounts (e.g., vendor+amount matching). */
+const AMOUNT_MATCH_TOLERANCE = 0.01;
+
 interface TransactionParsingProps {
   enabled: boolean;
   onToggle: (enabled: boolean) => void;
@@ -285,8 +288,8 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       // Find the matching auto-detected transaction
       const match = autoDetectedTransactions.find(
         (tx) =>
-          tx.vendor.toLowerCase() === pt.extracted_vendor.toLowerCase() &&
-          Math.abs(tx.amount - pt.extracted_amount) < 0.01,
+          tx.vendor.toLowerCase() === (pt.extracted_vendor || '').toLowerCase() &&
+          Math.abs(tx.amount - pt.extracted_amount) < AMOUNT_MATCH_TOLERANCE,
       );
       if (match && onTransactionTap) {
         onTransactionTap(match);
@@ -316,31 +319,37 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
           return;
         }
       } else {
-        // Insert new override
+        // Upsert: insert or update if already exists (handles stale local state)
         let { error } = await supabase
           .from('vendor_overrides')
-          .insert({
-            user_id: userId,
-            vendor_name: vendorName,
-            category_id: categoryId,
-            auto_accept: false,
-          });
+          .upsert(
+            {
+              user_id: userId,
+              vendor_name: vendorName,
+              category_id: categoryId,
+              auto_accept: false,
+            },
+            { onConflict: 'user_id,vendor_name' },
+          );
 
         // Retry without auto_accept if column doesn't exist yet
         if (error && error.message && error.message.includes('auto_accept')) {
           console.warn('[TransactionParsing] auto_accept column missing, retrying without it:', error.message);
           const retry = await supabase
             .from('vendor_overrides')
-            .insert({
-              user_id: userId,
-              vendor_name: vendorName,
-              category_id: categoryId,
-            });
+            .upsert(
+              {
+                user_id: userId,
+                vendor_name: vendorName,
+                category_id: categoryId,
+              },
+              { onConflict: 'user_id,vendor_name' },
+            );
           error = retry.error;
         }
 
         if (error) {
-          console.error('[TransactionParsing] Error inserting vendor override:', error);
+          console.error('[TransactionParsing] Error upserting vendor override:', error);
           return;
         }
       }
@@ -364,13 +373,23 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   // 2. To Review: rule exists, needs category + approval
   //    Includes both successfully parsed (OK) and regex-failed notifications
   //    so the user can see everything that came from a configured bank.
+  //    Excludes pending transactions that already have a matching approved
+  //    transaction (same vendor + amount) in the main dashboard.
   const toReviewTransactions = useMemo(
     () => pendingTransactions.filter(
-      (pt) =>
-        pt.pattern_id &&
-        pt.needs_review,
+      (pt) => {
+        if (!pt.pattern_id || !pt.needs_review) return false;
+        // Check if an approved transaction already exists with the same vendor + amount
+        const vendor = (pt.extracted_vendor || '').toLowerCase();
+        const alreadyApproved = autoDetectedTransactions.some(
+          (tx) =>
+            tx.vendor.toLowerCase() === vendor &&
+            Math.abs(tx.amount - pt.extracted_amount) < AMOUNT_MATCH_TOLERANCE,
+        );
+        return !alreadyApproved;
+      },
     ),
-    [pendingTransactions],
+    [pendingTransactions, autoDetectedTransactions],
   );
 
   // Group captured notifications by bank app
