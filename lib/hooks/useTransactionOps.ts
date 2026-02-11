@@ -67,6 +67,15 @@ export const useTransactionOps = ({
         return;
       }
 
+      // Log transaction details for debugging
+      console.log('[insert] Creating transaction:', {
+        vendor: tx.vendor,
+        amount: tx.amount,
+        budget_id: tx.budget_id,
+        recurrence: tx.recurrence,
+        date: tx.date
+      });
+
       // Optimistic update
       setAppState(prev => ({
         ...prev,
@@ -96,6 +105,11 @@ export const useTransactionOps = ({
         if (!res.ok) {
           const msg = `Insert failed (${res.status}): ${body.slice(0, 200)}`;
           console.error(msg);
+          console.error('[insert] Failed transaction details:', {
+            vendor: tx.vendor,
+            recurrence: tx.recurrence,
+            budget_id: tx.budget_id
+          });
           setDbError(msg);
           setAppState(prev => ({
             ...prev,
