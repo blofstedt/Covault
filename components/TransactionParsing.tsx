@@ -704,7 +704,9 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                             </div>
                           )}
 
-                          {bankRules.map((rule) => (
+                          {bankRules.map((rule) => {
+                            const onlyParseKeywordCount = parseOnlyParseKeywords(rule.only_parse).length;
+                            return (
                             <div key={rule.id} className="bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl border border-emerald-100 dark:border-emerald-800/30 overflow-hidden">
                               <button
                                 onClick={() => handleEditRule(rule)}
@@ -745,9 +747,9 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                                     Only Parse…
                                   </span>
                                   <div className="flex items-center gap-1">
-                                    {parseOnlyParseKeywords(rule.only_parse).length > 0 && (
+                                    {onlyParseKeywordCount > 0 && (
                                       <span className="text-[8px] font-bold text-emerald-600 dark:text-emerald-400">
-                                        {parseOnlyParseKeywords(rule.only_parse).length} keyword{parseOnlyParseKeywords(rule.only_parse).length !== 1 ? 's' : ''}
+                                        {onlyParseKeywordCount} keyword{onlyParseKeywordCount !== 1 ? 's' : ''}
                                       </span>
                                     )}
                                     <svg className={`w-3 h-3 text-slate-400 transition-transform ${keywordEditRuleId === rule.id ? 'rotate-90' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -815,7 +817,8 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                                 )}
                               </div>
                             </div>
-                          ))}
+                          );
+                          })}
                         </div>
                       ))}
                     </>
