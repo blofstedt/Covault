@@ -98,6 +98,11 @@ function generateFingerprintHash(
 
 /**
  * Check if this notification has already been processed (deduplication).
+ *
+ * Uses an upsert with onConflict to atomically check-and-insert.
+ * If the fingerprint already exists the upsert is a no-op and we
+ * detect the duplicate via the `ignoreDuplicates` flag (status 200
+ * with empty data or the existing row).
  */
 async function checkAndInsertFingerprint(
   userId: string,
@@ -108,33 +113,38 @@ async function checkAndInsertFingerprint(
 ): Promise<boolean> {
   const hash = generateFingerprintHash(bankAppId, detectedAmount, vendor, timestampMs);
 
-  const { data: existing } = await supabase
+  // Atomic upsert — the UNIQUE(user_id, fingerprint_hash) constraint
+  // guarantees at most one row per fingerprint.  `ignoreDuplicates`
+  // makes it a no-op when the row already exists (Postgres ON CONFLICT
+  // DO NOTHING).
+  const { data, error } = await supabase
     .from('notification_fingerprints')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('fingerprint_hash', hash)
-    .maybeSingle();
-
-  if (existing) {
-    return true;
-  }
-
-  const { error } = await supabase
-    .from('notification_fingerprints')
-    .insert({
-      user_id: userId,
-      fingerprint_hash: hash,
-      bank_app_id: bankAppId,
-    });
+    .upsert(
+      {
+        user_id: userId,
+        fingerprint_hash: hash,
+        bank_app_id: bankAppId,
+      },
+      { onConflict: 'user_id,fingerprint_hash', ignoreDuplicates: true },
+    )
+    .select('id');
 
   if (error) {
+    // If we still somehow hit a constraint violation, treat as duplicate
     if (error.code === '23505') {
       return true;
     }
-    console.error('[fingerprint] Error inserting fingerprint:', error);
+    console.error('[fingerprint] Error upserting fingerprint:', error);
+    return false;
   }
 
-  return false;
+  // When ignoreDuplicates is true and the row already existed, the
+  // upsert returns an empty array (no row was inserted).
+  if (!data || data.length === 0) {
+    return true; // duplicate
+  }
+
+  return false; // new fingerprint — not a duplicate
 }
 
 // ─── Step 1b: Second-Phase Deduplication ────────────────────────
@@ -318,6 +328,12 @@ async function shouldIgnore(
 
 /**
  * Insert a parsed notification into pending_transactions.
+ *
+ * Before inserting, checks whether a pending transaction with the same
+ * app_package, notification_timestamp and extracted_amount already exists
+ * for this user.  This acts as a second safety net in case the fingerprint
+ * dedup didn't catch a repeat (e.g. when a rescan uses slightly different
+ * raw text or fallback vendor).
  */
 async function insertPendingTransaction(
   userId: string,
@@ -328,6 +344,24 @@ async function insertPendingTransaction(
   ruleId?: string,
   validationReasons?: string,
 ): Promise<PendingTransaction | null> {
+  const notifTimestamp = input.notificationTimestamp || Date.now();
+
+  // ── Guard: skip if an identical pending transaction already exists ──
+  const { data: existing } = await supabase
+    .from('pending_transactions')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('app_package', input.bankAppId)
+    .eq('notification_timestamp', notifTimestamp)
+    .eq('extracted_amount', amount)
+    .limit(1)
+    .maybeSingle();
+
+  if (existing) {
+    console.log('[insertPending] Duplicate pending transaction detected, skipping insert');
+    return null;
+  }
+
   const now = new Date();
 
   const record = {
@@ -336,7 +370,7 @@ async function insertPendingTransaction(
     app_name: input.bankName,
     notification_title: input.notificationTitle || input.bankName,
     notification_text: input.rawNotification,
-    notification_timestamp: input.notificationTimestamp || Date.now(),
+    notification_timestamp: notifTimestamp,
     posted_at: now.toISOString(),
     extracted_vendor: vendor,
     extracted_amount: amount,
