@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 
 interface CalendarPickerProps {
   value: string; // YYYY-MM-DD
@@ -8,14 +8,27 @@ interface CalendarPickerProps {
 
 const DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
+function parseDate(value: string): Date {
+  const parts = value.split('-').map(Number);
+  if (parts.length === 3 && parts.every(n => !isNaN(n))) {
+    return new Date(parts[0], parts[1] - 1, parts[2]);
+  }
+  return new Date();
+}
+
 const CalendarPicker: React.FC<CalendarPickerProps> = ({ value, onChange, onClose }) => {
-  const selected = useMemo(() => {
-    const [y, m, d] = value.split('-').map(Number);
-    return new Date(y, m - 1, d);
-  }, [value]);
+  const selected = useMemo(() => parseDate(value), [value]);
 
   const [viewYear, setViewYear] = useState(selected.getFullYear());
   const [viewMonth, setViewMonth] = useState(selected.getMonth());
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
 
   const today = useMemo(() => {
     const d = new Date();
@@ -71,7 +84,7 @@ const CalendarPicker: React.FC<CalendarPickerProps> = ({ value, onChange, onClos
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-xl animate-in fade-in duration-200">
+    <div role="dialog" aria-modal="true" aria-label="Choose a date" className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-xl animate-in fade-in duration-200">
       <div className="w-full max-w-xs bg-white dark:bg-slate-900 rounded-[2rem] p-5 shadow-2xl border border-slate-100 dark:border-slate-800/60 animate-in zoom-in-95 duration-200">
         {/* Month navigation */}
         <div className="flex items-center justify-between mb-4">
