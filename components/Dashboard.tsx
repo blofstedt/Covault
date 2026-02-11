@@ -183,13 +183,28 @@ const Dashboard: React.FC<DashboardProps> = ({
   // avoids this.
   const txYearMonth = (dateStr: string) => dateStr.slice(0, 7); // "YYYY-MM"
 
-  // Helper to identify the current month - memoized to prevent recalculation
+  // State to track when to recalculate the current month
+  // This ensures that if the app is left open across a month boundary,
+  // the current month will update and transactions will be filtered correctly
+  const [monthCheckTrigger, setMonthCheckTrigger] = useState(0);
+
+  // Set up an interval to check if the month has changed
+  // Check every hour to catch month changes without excessive overhead
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setMonthCheckTrigger(prev => prev + 1);
+    }, 60 * 60 * 1000); // Check every hour
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Helper to identify the current month - recalculates when monthCheckTrigger changes
   const currentYearMonth = useMemo(() => {
     const now = new Date();
     const y = now.getFullYear();
     const m = String(now.getMonth() + 1).padStart(2, '0');
     return `${y}-${m}`;
-  }, []); // Empty dependency array - only calculate once per component mount
+  }, [monthCheckTrigger]); // Recalculate when monthCheckTrigger changes
 
   // Unfiltered current month transactions (used for balance calculation)
   const currentMonthTransactionsAll = useMemo(
