@@ -154,8 +154,9 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     // Check immediately on mount in case the month changed since initialization
     checkMonth();
 
-    // Check every hour to catch month changes
-    const interval = setInterval(checkMonth, 60 * 60 * 1000);
+    // Check every minute to catch month changes promptly
+    // This is still inexpensive as it only updates state when the month actually changes
+    const interval = setInterval(checkMonth, 60 * 1000);
 
     return () => clearInterval(interval);
   }, []); // Empty dependency array - the interval should run continuously
