@@ -465,10 +465,13 @@ CREATE TABLE IF NOT EXISTS public.notification_rules (
   is_active boolean NOT NULL DEFAULT true,
   flagged_count integer NOT NULL DEFAULT 0,
   last_flagged_at timestamptz,
+  filter_keywords text[] DEFAULT '{}',
+  filter_mode text DEFAULT 'one' CHECK (filter_mode = ANY (ARRAY['all'::text, 'some'::text, 'one'::text])),
+  notification_type text DEFAULT 'default',
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now(),
   CONSTRAINT notification_rules_pkey PRIMARY KEY (id),
-  CONSTRAINT notification_rules_unique UNIQUE (user_id, bank_app_id)
+  CONSTRAINT notification_rules_unique_v2 UNIQUE (user_id, bank_app_id, notification_type)
 );
 
 ALTER TABLE public.notification_rules ENABLE ROW LEVEL SECURITY;
