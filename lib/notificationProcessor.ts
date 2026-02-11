@@ -594,6 +594,9 @@ export async function processNotification(
   userId: string,
   input: NotificationInput,
 ): Promise<ProcessingResult> {
+  // Normalize bank identifiers to lowercase for case-insensitive matching
+  input = { ...input, bankAppId: (input.bankAppId || '').toLowerCase(), bankName: (input.bankName || '').toLowerCase() };
+
   // ── Step 1: Fingerprint Deduplication ──
   // Extract a quick amount from the raw text for fingerprinting
   let quickAmount: number | null = null;
@@ -807,7 +810,9 @@ export async function saveNotificationRule(options: {
   vendorRegex: string;
   sampleNotification: string;
 }): Promise<NotificationRuleRow | null> {
-  const { userId, bankAppId, bankName, amountRegex, vendorRegex } = options;
+  const { userId, bankAppId: rawBankAppId, bankName: rawBankName, amountRegex, vendorRegex } = options;
+  const bankAppId = (rawBankAppId || '').toLowerCase();
+  const bankName = (rawBankName || '').toLowerCase();
 
   // Validate regex syntax
   try {
@@ -872,12 +877,13 @@ export async function reprocessUnconfiguredCaptures(
   bankAppId: string,
   rule: NotificationRuleRow,
 ): Promise<void> {
+  const normalizedBankAppId = bankAppId.toLowerCase();
   // Get all unconfigured captures for this bank
   const { data: captures, error } = await supabase
     .from('pending_transactions')
     .select('*')
     .eq('user_id', userId)
-    .eq('app_package', bankAppId)
+    .eq('app_package', normalizedBankAppId)
     .is('pattern_id', null)
     .eq('needs_review', true);
 
