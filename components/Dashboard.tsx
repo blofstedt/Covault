@@ -202,9 +202,10 @@ const Dashboard: React.FC<DashboardProps> = ({
       const m = String(now.getMonth() + 1).padStart(2, '0');
       const newYearMonth = `${y}-${m}`;
       
-      if (newYearMonth !== currentYearMonth) {
-        setCurrentYearMonth(newYearMonth);
-      }
+      setCurrentYearMonth((prev) => {
+        // Only update if the month actually changed
+        return prev !== newYearMonth ? newYearMonth : prev;
+      });
     };
 
     // Check immediately on mount in case the month changed since initialization
@@ -214,7 +215,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     const interval = setInterval(checkMonth, 60 * 60 * 1000);
 
     return () => clearInterval(interval);
-  }, [currentYearMonth]);
+  }, []); // Empty dependency array - the interval should run continuously
 
   // Unfiltered current month transactions (used for balance calculation)
   const currentMonthTransactionsAll = useMemo(

@@ -145,9 +145,10 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       const m = String(now.getMonth() + 1).padStart(2, '0');
       const newYearMonth = `${y}-${m}`;
       
-      if (newYearMonth !== currentYearMonth) {
-        setCurrentYearMonth(newYearMonth);
-      }
+      setCurrentYearMonth((prev) => {
+        // Only update if the month actually changed
+        return prev !== newYearMonth ? newYearMonth : prev;
+      });
     };
 
     // Check immediately on mount in case the month changed since initialization
@@ -157,7 +158,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     const interval = setInterval(checkMonth, 60 * 60 * 1000);
 
     return () => clearInterval(interval);
-  }, [currentYearMonth]);
+  }, []); // Empty dependency array - the interval should run continuously
 
   const projectedCurrentMonth = useMemo(
     () =>
