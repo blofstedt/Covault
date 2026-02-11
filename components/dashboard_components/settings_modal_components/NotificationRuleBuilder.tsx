@@ -425,7 +425,7 @@ const NotificationRuleBuilder: React.FC<NotificationRuleBuilderProps> = ({
 
         {/* Delivery method */}
         <div className="mb-5">
-          <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-2">
+          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-2">
             Deliver via
           </span>
           <div className="flex gap-2">
@@ -433,7 +433,7 @@ const NotificationRuleBuilder: React.FC<NotificationRuleBuilderProps> = ({
               <button
                 key={opt.value}
                 onClick={() => setDelivery(opt.value)}
-                className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+                className={`flex-1 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${
                   delivery === opt.value
                     ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 border-2 border-emerald-500/30'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-2 border-transparent'
@@ -449,13 +449,13 @@ const NotificationRuleBuilder: React.FC<NotificationRuleBuilderProps> = ({
         <div className="flex gap-3">
           <button
             onClick={onCancel}
-            className="flex-1 py-3 rounded-2xl text-[11px] font-black uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 active:scale-95 transition-all"
+            className="flex-1 py-3 rounded-2xl text-xs font-black uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 active:scale-95 transition-all"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
-            className="flex-1 py-3 rounded-2xl text-[11px] font-black uppercase tracking-wider bg-emerald-500 text-white active:scale-95 transition-all shadow-lg shadow-emerald-500/20"
+            className="flex-1 py-3 rounded-2xl text-xs font-black uppercase tracking-wider bg-emerald-500 text-white active:scale-95 transition-all shadow-lg shadow-emerald-500/20"
           >
             {existingRule ? 'Update' : 'Save Rule'}
           </button>

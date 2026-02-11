@@ -73,18 +73,18 @@ const BudgetLimitsSection: React.FC<BudgetLimitsSectionProps> = ({
   return (
     <div id="settings-budget-limits-container" className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60 space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+        <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
           Budget Limits
         </h3>
       </div>
 
-      <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
+      <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
         Set your monthly budget limit for each category. Tap the eye icon to hide categories you don't use.
       </p>
 
       {overAllocatedMessage && (
         <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 rounded-xl">
-          <p className="text-[11px] font-bold text-red-600 dark:text-red-400 leading-relaxed">
+          <p className="text-xs font-bold text-red-600 dark:text-red-400 leading-relaxed">
             {overAllocatedMessage}
           </p>
         </div>
@@ -133,7 +133,7 @@ const BudgetLimitsSection: React.FC<BudgetLimitsSectionProps> = ({
                     />
                   </>
                 ) : (
-                  <span className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-wider">Hidden</span>
+                  <span className="text-[11px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-wider">Hidden</span>
                 )}
                 {onToggleHideCategory && (
                   <button

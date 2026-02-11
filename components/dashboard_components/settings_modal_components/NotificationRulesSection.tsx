@@ -126,10 +126,10 @@ const NotificationRulesSection: React.FC<NotificationRulesSectionProps> = ({
         {/* Header with global toggle */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex flex-col">
-            <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+            <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
               Notification Rules
             </span>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 leading-relaxed">
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 leading-relaxed">
               Custom alerts in plain English.
             </p>
           </div>
@@ -183,10 +183,10 @@ const NotificationRulesSection: React.FC<NotificationRulesSectionProps> = ({
                         onClick={() => handleEditRule(rule)}
                         className="flex-1 text-left"
                       >
-                        <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                        <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
                           {ruleToSentence(rule)}
                         </p>
-                        <span className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5 block">
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 block">
                           {deliveryIcon(rule.delivery)}{' '}
                           {rule.delivery === 'push'
                             ? 'Push'
@@ -222,7 +222,7 @@ const NotificationRulesSection: React.FC<NotificationRulesSectionProps> = ({
             )}
 
             {rules.length === 0 && (
-              <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center py-3 mb-2">
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center py-3 mb-2">
                 No rules yet. Tap + to create one.
               </p>
             )}
@@ -233,7 +233,7 @@ const NotificationRulesSection: React.FC<NotificationRulesSectionProps> = ({
                 setEditingRule(undefined);
                 setShowBuilder(true);
               }}
-              className="w-full py-3 rounded-2xl border-2 border-dashed border-emerald-300 dark:border-emerald-700 text-emerald-500 dark:text-emerald-400 text-[11px] font-black uppercase tracking-[0.15em] hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors active:scale-[0.98] flex items-center justify-center gap-1.5"
+              className="w-full py-3 rounded-2xl border-2 border-dashed border-emerald-300 dark:border-emerald-700 text-emerald-500 dark:text-emerald-400 text-xs font-black uppercase tracking-[0.15em] hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors active:scale-[0.98] flex items-center justify-center gap-1.5"
             >
               <svg
                 className="w-4 h-4"

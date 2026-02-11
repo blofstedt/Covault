@@ -60,10 +60,10 @@ const IncomeSection: React.FC<IncomeSectionProps> = ({
       className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60"
     >
       <div className="flex flex-col mb-4">
-        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+        <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
           {isSharedAccount ? 'My Monthly Income' : 'Monthly Income'}
         </span>
-        <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium mt-1 leading-relaxed">
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium mt-1 leading-relaxed">
           {isSharedAccount
             ? "Your income contribution. Your partner's income will be added automatically."
             : 'This defines your total cash flow for the month.'}
