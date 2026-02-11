@@ -180,6 +180,12 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         );
         return;
       }
+
+      // Sync local state with the actual value returned from Supabase
+      const actualValue = data[0].auto_accept ?? false;
+      setVendorOverrides((prev) =>
+        prev.map((vo) => (vo.id === overrideId ? { ...vo, auto_accept: actualValue } : vo)),
+      );
     },
     [userId],
   );
@@ -381,6 +387,12 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         );
         return;
       }
+
+      // Sync local state with the actual value returned from Supabase
+      const actualValue = data[0].auto_accept ?? false;
+      setVendorOverrides((prev) =>
+        prev.map((vo) => (vo.id === override.id ? { ...vo, auto_accept: actualValue } : vo)),
+      );
     },
     [userId, vendorOverrides],
   );
