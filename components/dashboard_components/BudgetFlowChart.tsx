@@ -119,19 +119,20 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
     for (const tx of safeTransactions) {
       const rawDate = tx.date;
-      const date = rawDate ? new Date(rawDate) : null;
-      if (!date || isNaN(date.getTime())) continue;
+      if (!rawDate || rawDate.length < 7) continue;
+
+      // Extract YYYY-MM directly from the date string to avoid timezone shifts
+      const txMonthKey = rawDate.slice(0, 7);
 
       // Include projected transactions only for the current month
       if (tx.is_projected) {
-        const txMonthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
         if (txMonthKey !== currentMonthKey) continue;
       }
 
       const amount = Number(tx.amount) || 0;
       if (amount === 0) continue;
 
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const monthKey = txMonthKey;
 
       if (!monthMap.has(monthKey)) {
         monthMap.set(monthKey, new Map<string, number>());

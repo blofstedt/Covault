@@ -175,58 +175,46 @@ const Dashboard: React.FC<DashboardProps> = ({
     return Array.from(vendorMap.values());
   }, [state.transactions]);
 
+  // Helper: extract "YYYY-MM" from a date string without timezone conversion.
+  // Transaction dates originate as date-only values (e.g. "2025-02-11") and are
+  // stored as ISO strings ("2025-02-11T00:00:00.000Z"). Parsing them through the
+  // Date constructor and calling getMonth()/getUTCMonth() can shift the calendar
+  // month depending on the user's timezone. Extracting directly from the string
+  // avoids this.
+  const txYearMonth = (dateStr: string) => dateStr.slice(0, 7); // "YYYY-MM"
+
   // Helper to identify the current month - memoized to prevent recalculation
-  const { currentYear, currentMonth } = useMemo(() => {
+  const currentYearMonth = useMemo(() => {
     const now = new Date();
-    return {
-      currentYear: now.getUTCFullYear(),
-      currentMonth: now.getUTCMonth(), // 0-based
-    };
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
   }, []); // Empty dependency array - only calculate once per component mount
 
   // Unfiltered current month transactions (used for balance calculation)
   const currentMonthTransactionsAll = useMemo(
     () =>
-      state.transactions.filter((tx) => {
-        const d = new Date(tx.date);
-        return d.getUTCFullYear() === currentYear && d.getUTCMonth() === currentMonth;
-      }),
-    [state.transactions, currentYear, currentMonth],
+      state.transactions.filter((tx) => txYearMonth(tx.date) === currentYearMonth),
+    [state.transactions, currentYearMonth],
   );
 
   // Search-filtered current month transactions (used for display only)
   const currentMonthTransactions = useMemo(
     () =>
-      filteredTransactions.filter((tx) => {
-        const d = new Date(tx.date);
-        // Use UTC methods to avoid timezone shift issues with ISO date strings
-        return d.getUTCFullYear() === currentYear && d.getUTCMonth() === currentMonth;
-      }),
-    [filteredTransactions, currentYear, currentMonth],
+      filteredTransactions.filter((tx) => txYearMonth(tx.date) === currentYearMonth),
+    [filteredTransactions, currentYearMonth],
   );
 
   const pastTransactions = useMemo(
     () =>
-      state.transactions.filter((tx) => {
-        const d = new Date(tx.date);
-        return (
-          d.getUTCFullYear() < currentYear ||
-          (d.getUTCFullYear() === currentYear && d.getUTCMonth() < currentMonth)
-        );
-      }),
-    [state.transactions, currentYear, currentMonth],
+      state.transactions.filter((tx) => txYearMonth(tx.date) < currentYearMonth),
+    [state.transactions, currentYearMonth],
   );
 
   const futureTransactions = useMemo(
     () =>
-      state.transactions.filter((tx) => {
-        const d = new Date(tx.date);
-        return (
-          d.getUTCFullYear() > currentYear ||
-          (d.getUTCFullYear() === currentYear && d.getUTCMonth() > currentMonth)
-        );
-      }),
-    [state.transactions, currentYear, currentMonth],
+      state.transactions.filter((tx) => txYearMonth(tx.date) > currentYearMonth),
+    [state.transactions, currentYearMonth],
   );
 
   // Generate projected transactions from recurring entries (display-only, not saved to DB)
@@ -238,11 +226,8 @@ const Dashboard: React.FC<DashboardProps> = ({
   // Projected transactions falling in the current month
   const projectedCurrentMonth = useMemo(
     () =>
-      projectedTransactions.filter((tx) => {
-        const d = new Date(tx.date);
-        return d.getUTCFullYear() === currentYear && d.getUTCMonth() === currentMonth;
-      }),
-    [projectedTransactions, currentYear, currentMonth],
+      projectedTransactions.filter((tx) => txYearMonth(tx.date) === currentYearMonth),
+    [projectedTransactions, currentYearMonth],
   );
 
   // Current month transactions augmented with projected entries (for display in budget sections)

@@ -121,33 +121,27 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     [allTransactions],
   );
 
-  // Split projected ones into "this month" vs "future after this month"
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth();
+  // Split projected ones into "this month" vs "future after this month".
+  // Extract year-month from date strings directly to avoid timezone-related
+  // month shifts that occur when parsing through the Date constructor.
+  const txYearMonth = (dateStr: string) => dateStr.slice(0, 7); // "YYYY-MM"
+  const currentYearMonth = useMemo(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+  }, []);
 
   const projectedCurrentMonth = useMemo(
     () =>
-      projectedTransactions.filter((tx) => {
-        const d = new Date(tx.date);
-        return (
-          d.getFullYear() === currentYear &&
-          d.getMonth() === currentMonth
-        );
-      }),
-    [projectedTransactions, currentYear, currentMonth],
+      projectedTransactions.filter((tx) => txYearMonth(tx.date) === currentYearMonth),
+    [projectedTransactions, currentYearMonth],
   );
 
   const projectedFuture = useMemo(
     () =>
-      projectedTransactions.filter((tx) => {
-        const d = new Date(tx.date);
-        return !(
-          d.getFullYear() === currentYear &&
-          d.getMonth() === currentMonth
-        );
-      }),
-    [projectedTransactions, currentYear, currentMonth],
+      projectedTransactions.filter((tx) => txYearMonth(tx.date) !== currentYearMonth),
+    [projectedTransactions, currentYearMonth],
   );
 
   // Augment the existing sets with projected ones
