@@ -1,9 +1,14 @@
 // lib/hooks/transactionMappers.ts
 import { useCallback } from 'react';
 import type { Transaction } from '../../types';
+import { Recurrence } from '../../types';
 
 // Valid recurrence values that must match the database CHECK constraint
-const VALID_RECURRENCES = ['One-time', 'Biweekly', 'Monthly'];
+const VALID_RECURRENCES = [
+  Recurrence.ONE_TIME,
+  Recurrence.BIWEEKLY,
+  Recurrence.MONTHLY,
+];
 
 // Build the object Supabase expects — only columns that exist in the table
 export const useToSupabaseTransaction = () =>
@@ -16,12 +21,12 @@ export const useToSupabaseTransaction = () =>
     }
 
     // Validate and set recurrence value
-    let recurrence: string = 'One-time';
+    let recurrence: string = Recurrence.ONE_TIME;
     if (tx.recurrence) {
       if (VALID_RECURRENCES.includes(tx.recurrence)) {
         recurrence = tx.recurrence;
       } else {
-        console.warn(`Invalid recurrence value "${tx.recurrence}", defaulting to "One-time"`);
+        console.warn(`Invalid recurrence value "${tx.recurrence}", defaulting to "${Recurrence.ONE_TIME}"`);
       }
     }
 
@@ -47,12 +52,12 @@ export const useToSupabaseTransaction = () =>
 export const useFromSupabaseTransaction = () =>
   useCallback((row: any): Transaction => {
     // Validate recurrence value from database
-    let recurrence: string = 'One-time';
+    let recurrence: string = Recurrence.ONE_TIME;
     if (row.recurrence) {
       if (VALID_RECURRENCES.includes(row.recurrence)) {
         recurrence = row.recurrence;
       } else {
-        console.warn(`Invalid recurrence value "${row.recurrence}" from database, using "One-time"`);
+        console.warn(`Invalid recurrence value "${row.recurrence}" from database, using "${Recurrence.ONE_TIME}"`);
       }
     }
 
