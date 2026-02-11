@@ -183,28 +183,35 @@ const Dashboard: React.FC<DashboardProps> = ({
   // avoids this.
   const txYearMonth = (dateStr: string) => dateStr.slice(0, 7); // "YYYY-MM"
 
-  // State to track when to recalculate the current month
+  // State to track the current month for transaction filtering
   // This ensures that if the app is left open across a month boundary,
   // the current month will update and transactions will be filtered correctly
-  const [monthCheckTrigger, setMonthCheckTrigger] = useState(0);
-
-  // Set up an interval to check if the month has changed
-  // Check every hour to catch month changes without excessive overhead
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setMonthCheckTrigger(prev => prev + 1);
-    }, 60 * 60 * 1000); // Check every hour
-
-    return () => clearInterval(interval);
-  }, []);
-
-  // Helper to identify the current month - recalculates when monthCheckTrigger changes
-  const currentYearMonth = useMemo(() => {
+  const [currentYearMonth, setCurrentYearMonth] = useState(() => {
     const now = new Date();
     const y = now.getFullYear();
     const m = String(now.getMonth() + 1).padStart(2, '0');
     return `${y}-${m}`;
-  }, [monthCheckTrigger]); // Recalculate when monthCheckTrigger changes
+  });
+
+  // Set up an interval to check if the month has changed
+  // Only update state when the month actually changes to avoid unnecessary re-renders
+  useEffect(() => {
+    const checkMonth = () => {
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const newYearMonth = `${y}-${m}`;
+      
+      if (newYearMonth !== currentYearMonth) {
+        setCurrentYearMonth(newYearMonth);
+      }
+    };
+
+    // Check every hour to catch month changes
+    const interval = setInterval(checkMonth, 60 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, [currentYearMonth]);
 
   // Unfiltered current month transactions (used for balance calculation)
   const currentMonthTransactionsAll = useMemo(
