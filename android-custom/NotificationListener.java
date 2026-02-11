@@ -217,6 +217,14 @@ public class NotificationListener extends NotificationListenerService {
                 return true;
             }
         }
+        // Also treat as a transaction if the notification contains a dollar amount.
+        // Banking app notifications with dollar amounts are almost certainly transactions,
+        // even without explicit keywords (e.g. Wealthsimple: "$12.34 at Tim Hortons").
+        for (Pattern pattern : AMOUNT_PATTERNS) {
+            if (pattern.matcher(text).find()) {
+                return true;
+            }
+        }
         return false;
     }
 

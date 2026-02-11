@@ -458,10 +458,24 @@ export async function processNotification(
   );
 
   if (!parsed) {
-    // Regex didn't match — this notification format doesn't match the rule.
-    // Mark as ignored (not a transaction notification from this bank).
-    console.log('[processNotification] Regex did not match, ignoring notification');
-    return { processed: false, skipReason: 'no_match' };
+    // Regex didn't match — store as pending with fallback data so the user
+    // can see the notification and adjust their rule if needed.
+    console.log('[processNotification] Regex did not match, storing with fallback data');
+    const pending = await insertPendingTransaction(
+      userId,
+      input,
+      input.fallbackVendor || 'Unknown',
+      input.fallbackAmount ?? 0,
+      true,
+      undefined,
+      'Regex did not match notification format',
+    );
+
+    return {
+      processed: true,
+      skipReason: 'no_match',
+      pendingTransaction: pending || undefined,
+    };
   }
 
   // ── Step 4: Ignore rule check ──
