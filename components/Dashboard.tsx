@@ -168,7 +168,9 @@ const Dashboard: React.FC<DashboardProps> = ({
   // Build vendor history for autocomplete (most recent transaction per vendor)
   const vendorHistory = useMemo(() => {
     const vendorMap = new Map<string, { vendor: string; budget_id: string; splits?: { budget_id: string; amount: number }[]; date: string }>();
-    const sorted = [...state.transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const sorted = [...state.transactions].sort((a, b) => {
+      return b.date.localeCompare(a.date);
+    });
     for (const tx of sorted) {
       const key = tx.vendor.toLowerCase();
       if (!vendorMap.has(key)) {

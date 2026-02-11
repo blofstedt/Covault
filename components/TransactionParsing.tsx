@@ -4,6 +4,7 @@ import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import RegexSetupModal from './RegexSetupModal';
 import { PendingTransaction, BudgetCategory, Transaction } from '../types';
 import { supabase } from '../lib/supabase';
+import { parseLocalDate } from '../lib/dateUtils';
 import {
   saveNotificationRule,
   reprocessUnconfiguredCaptures,
@@ -198,17 +199,23 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       // Optimistically remove from local state for immediate UI feedback
       setVendorOverrides((prev) => prev.filter((vo) => vo.id !== overrideId));
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('vendor_overrides')
         .delete()
         .eq('id', overrideId)
-        .eq('user_id', userId);
+        .eq('user_id', userId)
+        .select();
 
       if (error) {
         console.error('[TransactionParsing] Error deleting vendor override:', error);
         // Reload to ensure state consistency on failure
         await loadVendorOverrides();
         return;
+      }
+
+      if (!data || data.length === 0) {
+        console.warn('[TransactionParsing] Vendor override not found for deletion, reloading');
+        await loadVendorOverrides();
       }
     },
     [userId, loadVendorOverrides],
@@ -1423,7 +1430,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                               {tx.vendor}
                             </p>
                             <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
-                              {new Date(tx.date).toLocaleDateString()} {approvalLabel}
+                              {parseLocalDate(tx.date).toLocaleDateString()} {approvalLabel}
                             </p>
                           </div>
                         </div>

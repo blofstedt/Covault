@@ -58,12 +58,8 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
     100,
     budget.totalLimit > 0 ? (spent / budget.totalLimit) * 100 : 0,
   );
-  const externalWidth = Math.min(
-    100 - spentWidth,
-    budget.totalLimit > 0 ? (external / budget.totalLimit) * 100 : 0,
-  );
   const projectedWidth = Math.min(
-    100 - spentWidth - externalWidth,
+    100 - spentWidth,
     budget.totalLimit > 0 ? (projected / budget.totalLimit) * 100 : 0,
   );
 
@@ -82,14 +78,6 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           style={{ width: `${spentWidth}%` }}
           className="h-full bg-emerald-400/30 dark:bg-emerald-500/40 transition-all duration-300"
         />
-
-        {/* External */}
-        {external > 0 && (
-          <div
-            style={{ width: `${externalWidth}%` }}
-            className="h-full bg-amber-400/30 dark:bg-amber-500/40 transition-all duration-300"
-          />
-        )}
 
         {/* Projected - with fine slanted lines /// */}
         <div
