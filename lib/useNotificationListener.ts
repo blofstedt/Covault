@@ -49,8 +49,8 @@ export const useNotificationListener = ({
 
             // Normalize field names from native broadcast
             const rawNotification = event.rawNotification || event.raw_text;
-            const bankAppId = event.bankAppId || event.source_app;
-            const bankName = event.bankName || event.source_app;
+            const bankAppId = (event.bankAppId || event.source_app)?.toLowerCase();
+            const bankName = (event.bankName || event.source_app)?.toLowerCase();
 
             // ── Processing pipeline ──
             if (rawNotification && bankAppId && bankName) {
