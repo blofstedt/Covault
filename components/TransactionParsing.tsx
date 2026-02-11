@@ -705,7 +705,8 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                           )}
 
                           {bankRules.map((rule) => {
-                            const onlyParseKeywordCount = parseOnlyParseKeywords(rule.only_parse).length;
+                            const effectiveOnlyParse = rule.only_parse || (rule.filter_keywords || []).join(', ');
+                            const onlyParseKeywordCount = parseOnlyParseKeywords(effectiveOnlyParse).length;
                             return (
                             <div key={rule.id} className="bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl border border-emerald-100 dark:border-emerald-800/30 overflow-hidden">
                               <button
@@ -759,9 +760,9 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                                 </button>
 
                                 {/* Show saved keywords summary when editor is closed */}
-                                {keywordEditRuleId !== rule.id && rule.only_parse && rule.only_parse.trim() && (
+                                {keywordEditRuleId !== rule.id && effectiveOnlyParse && effectiveOnlyParse.trim() && (
                                   <p className="text-[8px] text-slate-400 dark:text-slate-500 font-mono truncate mt-0.5 px-1">
-                                    {rule.only_parse}
+                                    {effectiveOnlyParse}
                                   </p>
                                 )}
 
