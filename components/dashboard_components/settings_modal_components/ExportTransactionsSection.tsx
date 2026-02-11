@@ -142,17 +142,17 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
   return (
     <div id="settings-export-container" className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl">
       <div className="flex items-center justify-between mb-1">
-        <span className="text-[11px] font-black text-slate-800 dark:text-slate-100 uppercase tracking-[0.2em]">
+        <span className="text-xs font-black text-slate-800 dark:text-slate-100 uppercase tracking-[0.2em]">
           Export Transactions
         </span>
       </div>
-      <span className="text-[10px] text-slate-400 dark:text-slate-500 block mb-4">
+      <span className="text-[11px] text-slate-400 dark:text-slate-500 block mb-4">
         Download a CSV report for a date range.
       </span>
 
       <div className="flex gap-3 mb-4">
         <div className="flex-1">
-          <label className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
             From
           </label>
           <input
@@ -163,7 +163,7 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
           />
         </div>
         <div className="flex-1">
-          <label className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
             To
           </label>
           <input
@@ -178,7 +178,7 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
       <button
         onClick={handleExport}
         disabled={filteredCount === 0}
-        className={`w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl text-[11px] font-black uppercase tracking-[0.15em] transition-all active:scale-[0.97] ${
+        className={`w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl text-xs font-black uppercase tracking-[0.15em] transition-all active:scale-[0.97] ${
           exported
             ? 'bg-emerald-500 text-white'
             : filteredCount === 0

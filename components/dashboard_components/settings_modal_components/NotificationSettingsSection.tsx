@@ -234,10 +234,10 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
       <div id="settings-notifications-container" className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex-1 mr-3">
-            <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 block">
+            <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 block">
               Bank Notification Listener
             </span>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 leading-relaxed">
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 leading-relaxed">
               Auto-log transactions from supported banking apps.
             </p>
             
@@ -245,7 +245,7 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
             <div className="mt-2">
               <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700">
                 <span className="w-2 h-2 rounded-full bg-slate-400 mr-2" />
-                <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300">
+                <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">
                   Available on Android app only
                 </span>
               </span>
@@ -261,7 +261,7 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
           </button>
         </div>
         
-        <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-tight">
+        <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-tight">
           Install the Covault Android app and enable notification access to auto-log your banking transactions.
         </p>
       </div>
@@ -276,10 +276,10 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
       {/* TOGGLE + STATUS */}
       <div className="flex items-center justify-between">
         <div className="flex-1 mr-3">
-          <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 block">
+          <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 block">
             Bank Notification Listener
           </span>
-          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 leading-relaxed">
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 leading-relaxed">
             Auto-log transactions from supported banking apps.
           </p>
 
@@ -288,7 +288,7 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
             {autoAddActive && (
               <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-700">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 mr-2" />
-                <span className="text-[9px] font-semibold text-emerald-700 dark:text-emerald-300">
+                <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
                   Auto-adding from {selectedApps.size} app
                   {selectedApps.size === 1 ? '' : 's'}
                 </span>
@@ -298,7 +298,7 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
             {!permissionGranted && enabled && (
               <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700">
                 <span className="w-2 h-2 rounded-full bg-amber-500 mr-2" />
-                <span className="text-[9px] font-semibold text-amber-700 dark:text-amber-300">
+                <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-300">
                   Permission not granted in system settings
                 </span>
               </span>
@@ -307,7 +307,7 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
             {enabled && permissionGranted && selectedApps.size === 0 && (
               <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700">
                 <span className="w-2 h-2 rounded-full bg-slate-400 mr-2" />
-                <span className="text-[9px] font-semibold text-slate-600 dark:text-slate-300">
+                <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">
                   No banking apps selected
                 </span>
               </span>
@@ -333,19 +333,19 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
       {enabled && permissionGranted && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+            <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
               Your Banking Apps ({installedBankApps.length} found)
             </span>
             <div className="flex space-x-2">
               <button
                 onClick={selectAll}
-                className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase"
+                className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase"
               >
                 All
               </button>
               <button
                 onClick={selectNone}
-                className="text-[9px] font-bold text-slate-400 uppercase"
+                className="text-[10px] font-bold text-slate-400 uppercase"
               >
                 None
               </button>
@@ -353,7 +353,7 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
           </div>
 
           {installedBankApps.length === 0 ? (
-            <p className="text-[10px] text-slate-400 text-center py-3">
+            <p className="text-[11px] text-slate-400 text-center py-3">
               No banking app notifications received yet. Once a notification arrives from a supported app, it will appear here automatically.
             </p>
           ) : (
@@ -392,7 +392,7 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
                       )}
                     </span>
                     <span
-                      className={`text-[10px] font-bold truncate ${
+                      className={`text-[11px] font-bold truncate ${
                         selected
                           ? 'text-emerald-700 dark:text-emerald-300'
                           : 'text-slate-500 dark:text-slate-400'
@@ -406,7 +406,7 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
             </div>
           )}
 
-          <p className="text-[9px] text-slate-400 dark:text-slate-500 text-center leading-tight">
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center leading-tight">
             Covault reads notifications from selected apps to auto-log your transactions.
           </p>
         </div>
