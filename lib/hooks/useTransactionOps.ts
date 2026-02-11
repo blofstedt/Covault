@@ -326,7 +326,7 @@ export const useTransactionOps = ({
           return;
         }
 
-        const savedTransaction = fromSupabaseTransaction(savedRow);
+        const savedTransaction = { ...fromSupabaseTransaction(savedRow), label: 'Auto-Added' as const };
         console.log('[approvePending] transaction inserted, id:', savedTransaction.id);
 
         // 2) Mark pending transaction as reviewed and approved

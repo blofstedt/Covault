@@ -382,7 +382,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   // Auto-detected transactions (from bank notification listener)
   const autoDetectedTransactions = useMemo(
-    () => state.transactions.filter((tx) => tx.label === 'Auto-Added'),
+    () => state.transactions.filter((tx) => tx.label === 'Auto-Added' || tx.label === 'Auto-Added + Edited'),
     [state.transactions],
   );
 
