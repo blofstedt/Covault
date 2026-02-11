@@ -1,5 +1,5 @@
 // components/dashboard_components/SearchResults.tsx
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { Transaction, BudgetCategory } from '../../types';
 import TransactionItem from '../TransactionItem';
 import { generateProjectedTransactions } from '../../lib/projectedTransactions';
@@ -125,12 +125,28 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   // Extract year-month from date strings directly to avoid timezone-related
   // month shifts that occur when parsing through the Date constructor.
   const txYearMonth = (dateStr: string) => dateStr.slice(0, 7); // "YYYY-MM"
+
+  // State to track when to recalculate the current month
+  // This ensures that if the app is left open across a month boundary,
+  // the current month will update and transactions will be filtered correctly
+  const [monthCheckTrigger, setMonthCheckTrigger] = useState(0);
+
+  // Set up an interval to check if the month has changed
+  // Check every hour to catch month changes without excessive overhead
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setMonthCheckTrigger(prev => prev + 1);
+    }, 60 * 60 * 1000); // Check every hour
+
+    return () => clearInterval(interval);
+  }, []);
+
   const currentYearMonth = useMemo(() => {
     const now = new Date();
     const y = now.getFullYear();
     const m = String(now.getMonth() + 1).padStart(2, '0');
     return `${y}-${m}`;
-  }, []);
+  }, [monthCheckTrigger]); // Recalculate when monthCheckTrigger changes
 
   const projectedCurrentMonth = useMemo(
     () =>
