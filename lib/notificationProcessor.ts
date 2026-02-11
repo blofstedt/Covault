@@ -719,12 +719,19 @@ export async function processNotification(
 /** Pattern to match emoji characters for stripping from regex anchors */
 const EMOJI_PATTERN = /[\u{1F300}-\u{1FFFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu;
 
+/** How many characters of surrounding text to consider when building anchors */
+const CONTEXT_WINDOW = 40;
+
+/** Strip emoji and split `text` into non-empty words. */
+function anchorWords(text: string): string[] {
+  return text.replace(EMOJI_PATTERN, '').trim().split(/\s+/).filter(Boolean);
+}
+
 /**
  * Extract up to `maxWords` words from the END of `text`, stripping emoji.
  */
 function cleanAnchorEnd(text: string, maxWords = 3): string {
-  const cleaned = text.replace(EMOJI_PATTERN, '').trim();
-  const words = cleaned.split(/\s+/).filter(Boolean);
+  const words = anchorWords(text);
   return (words.length > maxWords ? words.slice(-maxWords) : words).join(' ');
 }
 
@@ -732,8 +739,7 @@ function cleanAnchorEnd(text: string, maxWords = 3): string {
  * Extract up to `maxWords` words from the START of `text`, stripping emoji.
  */
 function cleanAnchorStart(text: string, maxWords = 3): string {
-  const cleaned = text.replace(EMOJI_PATTERN, '').trim();
-  const words = cleaned.split(/\s+/).filter(Boolean);
+  const words = anchorWords(text);
   return (words.length > maxWords ? words.slice(0, maxWords) : words).join(' ');
 }
 
@@ -775,6 +781,7 @@ export function buildRegexFromSelection(
   const amountEnd = amountIdx + selectedAmount.length;
 
   const amountCapture = '\\$?([\\d,]+\\.\\d{2})';
+  // Non-greedy: stops at the first anchor match to avoid over-consuming
   const vendorCapture = '(.+?)';
 
   let amountRegex: string;
@@ -782,9 +789,9 @@ export function buildRegexFromSelection(
 
   if (vendorIdx < amountIdx) {
     // Layout: [beforeVendor] VENDOR [between] AMOUNT [afterAmount]
-    const beforeVendor = notificationText.slice(Math.max(0, vendorIdx - 40), vendorIdx);
+    const beforeVendor = notificationText.slice(Math.max(0, vendorIdx - CONTEXT_WINDOW), vendorIdx);
     const between = notificationText.slice(vendorEnd, amountIdx);
-    const afterAmount = notificationText.slice(amountEnd, Math.min(notificationText.length, amountEnd + 40));
+    const afterAmount = notificationText.slice(amountEnd, Math.min(notificationText.length, amountEnd + CONTEXT_WINDOW));
 
     const beforeVendorAnchor = cleanAnchorEnd(beforeVendor);
     const betweenClean = between.replace(EMOJI_PATTERN, '').trim();
@@ -803,9 +810,9 @@ export function buildRegexFromSelection(
     amountRegex = amountCapture + aAfter;
   } else {
     // Layout: [beforeAmount] AMOUNT [between] VENDOR [afterVendor]
-    const beforeAmount = notificationText.slice(Math.max(0, amountIdx - 40), amountIdx);
+    const beforeAmount = notificationText.slice(Math.max(0, amountIdx - CONTEXT_WINDOW), amountIdx);
     const between = notificationText.slice(amountEnd, vendorIdx);
-    const afterVendor = notificationText.slice(vendorEnd, Math.min(notificationText.length, vendorEnd + 40));
+    const afterVendor = notificationText.slice(vendorEnd, Math.min(notificationText.length, vendorEnd + CONTEXT_WINDOW));
 
     const beforeAmountAnchor = cleanAnchorEnd(beforeAmount);
     const betweenClean = between.replace(EMOJI_PATTERN, '').trim();
