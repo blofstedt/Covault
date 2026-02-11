@@ -27,7 +27,8 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
     const end = new Date(endDate + 'T23:59:59');
 
     const filtered = transactions.filter((tx) => {
-      const txDate = new Date(tx.date);
+      const [y, m, d] = tx.date.slice(0, 10).split('-').map(Number);
+      const txDate = new Date(y, m - 1, d);
       return txDate >= start && txDate <= end && !tx.is_projected;
     });
 
@@ -37,7 +38,11 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
 
     // Sort by date ascending
     filtered.sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+      (a, b) => {
+        const [ay, am, ad] = a.date.slice(0, 10).split('-').map(Number);
+        const [by, bm, bd] = b.date.slice(0, 10).split('-').map(Number);
+        return new Date(ay, am - 1, ad).getTime() - new Date(by, bm - 1, bd).getTime();
+      },
     );
 
     const escapeCSV = (value: string): string => {
@@ -55,7 +60,7 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
 
     const headers = ['Date', 'Vendor', 'Amount', 'Category', 'Recurrence', 'Label'];
     const rows = filtered.map((tx) => [
-      escapeCSV(new Date(tx.date).toLocaleDateString()),
+      escapeCSV((() => { const [y, m, d] = tx.date.slice(0, 10).split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString(); })()),
       escapeCSV(tx.vendor),
       escapeCSV(tx.amount.toFixed(2)),
       escapeCSV(tx.budget_id ? (budgetMap.get(tx.budget_id) || tx.budget_id) : ''),
@@ -134,7 +139,8 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
     const start = new Date(startDate + 'T00:00:00');
     const end = new Date(endDate + 'T23:59:59');
     return transactions.filter((tx) => {
-      const txDate = new Date(tx.date);
+      const [y, m, d] = tx.date.slice(0, 10).split('-').map(Number);
+      const txDate = new Date(y, m - 1, d);
       return txDate >= start && txDate <= end && !tx.is_projected;
     }).length;
   }, [transactions, startDate, endDate]);

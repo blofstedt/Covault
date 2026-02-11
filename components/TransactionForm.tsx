@@ -53,7 +53,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const [amountStr, setAmountStr] = useState(initialTransaction?.amount.toString() || '');
   const [date, setDate] = useState(
     initialTransaction?.date
-      ? new Date(initialTransaction.date).toISOString().split('T')[0]
+      ? initialTransaction.date.slice(0, 10)
       : new Date().toISOString().split('T')[0]
   );
 

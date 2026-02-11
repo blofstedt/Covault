@@ -198,17 +198,23 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       // Optimistically remove from local state for immediate UI feedback
       setVendorOverrides((prev) => prev.filter((vo) => vo.id !== overrideId));
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('vendor_overrides')
         .delete()
         .eq('id', overrideId)
-        .eq('user_id', userId);
+        .eq('user_id', userId)
+        .select();
 
       if (error) {
         console.error('[TransactionParsing] Error deleting vendor override:', error);
         // Reload to ensure state consistency on failure
         await loadVendorOverrides();
         return;
+      }
+
+      if (!data || data.length === 0) {
+        console.warn('[TransactionParsing] Vendor override not found for deletion, reloading');
+        await loadVendorOverrides();
       }
     },
     [userId, loadVendorOverrides],
@@ -1423,7 +1429,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                               {tx.vendor}
                             </p>
                             <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
-                              {new Date(tx.date).toLocaleDateString()} {approvalLabel}
+                              {(() => { const [y, m, d] = tx.date.slice(0, 10).split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString(); })()} {approvalLabel}
                             </p>
                           </div>
                         </div>
