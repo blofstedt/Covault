@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase';
 import {
   saveNotificationRule,
   reprocessUnconfiguredCaptures,
+  updateRuleKeywordFilter,
   type NotificationRuleRow,
 } from '../lib/notificationProcessor';
 
@@ -68,6 +69,13 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   const [rejectConfirmId, setRejectConfirmId] = useState<string | null>(null);
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
+  const [keywordEditRuleId, setKeywordEditRuleId] = useState<string | null>(null);
+  const [keywordInput, setKeywordInput] = useState('');
+  const [keywordList, setKeywordList] = useState<string[]>([]);
+  const [keywordMode, setKeywordMode] = useState<'all' | 'some' | 'one'>('one');
+  const [savingKeywords, setSavingKeywords] = useState(false);
+  const [addingRuleForBank, setAddingRuleForBank] = useState<string | null>(null);
+  const [newRuleType, setNewRuleType] = useState('');
 
   // ── Loaded data from Supabase ──
   const [savedRules, setSavedRules] = useState<NotificationRuleRow[]>([]);
@@ -224,6 +232,123 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     [editingRuleId, userId, loadRules],
   );
 
+  // ── Handle opening keyword editing for a rule ──
+  const handleOpenKeywordEdit = useCallback(
+    (rule: NotificationRuleRow) => {
+      setKeywordEditRuleId(rule.id);
+      setKeywordList(rule.filter_keywords || []);
+      setKeywordMode(rule.filter_mode || 'one');
+      setKeywordInput('');
+    },
+    [],
+  );
+
+  // ── Handle saving keyword filter for a rule ──
+  const handleSaveKeywords = useCallback(
+    async (ruleId: string) => {
+      if (!userId) return;
+      setSavingKeywords(true);
+      try {
+        const success = await updateRuleKeywordFilter(ruleId, userId, keywordList, keywordMode);
+        if (success) {
+          await loadRules();
+          setKeywordEditRuleId(null);
+        }
+      } catch (err) {
+        console.error('[TransactionParsing] Error saving keywords:', err);
+      } finally {
+        setSavingKeywords(false);
+      }
+    },
+    [userId, keywordList, keywordMode, loadRules],
+  );
+
+  // ── Handle adding a keyword to the list ──
+  const handleAddKeyword = useCallback(() => {
+    const trimmed = keywordInput.trim();
+    if (trimmed && !keywordList.includes(trimmed)) {
+      setKeywordList((prev) => [...prev, trimmed]);
+    }
+    setKeywordInput('');
+  }, [keywordInput, keywordList]);
+
+  // ── Handle removing a keyword from the list ──
+  const handleRemoveKeyword = useCallback((keyword: string) => {
+    setKeywordList((prev) => prev.filter((kw) => kw !== keyword));
+  }, []);
+
+  // ── Handle adding a new rule for an existing bank (multi-regex) ──
+  const handleStartAddRuleForBank = useCallback(
+    (bankAppId: string) => {
+      setAddingRuleForBank(bankAppId);
+      setNewRuleType('');
+    },
+    [],
+  );
+
+  // ── Handle saving new rule type for a bank ──
+  const handleConfirmNewRuleType = useCallback(
+    async (bankAppId: string) => {
+      if (!userId || !newRuleType.trim()) return;
+      // Find an existing notification from this bank for the regex setup
+      const { data, error } = await supabase
+        .from('pending_transactions')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('app_package', bankAppId)
+        .order('posted_at', { ascending: false })
+        .limit(1);
+
+      if (error || !data || data.length === 0) {
+        console.warn('[TransactionParsing] No notification found for new rule type');
+        setAddingRuleForBank(null);
+        return;
+      }
+
+      const notification = data[0] as PendingTransaction;
+      setEditingRuleId(null); // not editing, creating new
+      setSetupNotification(notification);
+      setAddingRuleForBank(null);
+    },
+    [userId, newRuleType],
+  );
+
+  // ── Handle saving a new rule with a notification type ──
+  const handleSaveNewTypedRule = useCallback(
+    async (amountRegex: string, vendorRegex: string) => {
+      if (!setupNotification || !userId) return;
+
+      setSavingRule(true);
+      try {
+        const rule = await saveNotificationRule({
+          userId,
+          bankAppId: setupNotification.app_package,
+          bankName: setupNotification.app_name,
+          amountRegex,
+          vendorRegex,
+          sampleNotification: setupNotification.notification_text,
+          notificationType: newRuleType.trim() || 'default',
+        });
+
+        if (rule) {
+          await reprocessUnconfiguredCaptures(userId, setupNotification.app_package, rule);
+          if (onReloadPendingTransactions) {
+            await onReloadPendingTransactions(userId);
+          }
+          await loadRules();
+        }
+
+        setSetupNotification(null);
+        setNewRuleType('');
+      } catch (err) {
+        console.error('[TransactionParsing] Error saving typed rule:', err);
+      } finally {
+        setSavingRule(false);
+      }
+    },
+    [setupNotification, userId, newRuleType, onReloadPendingTransactions, loadRules],
+  );
+
   // ── Toggle auto-accept for a vendor by vendor name ──
   const handleToggleAutoAcceptByVendor = useCallback(
     async (vendorName: string) => {
@@ -333,15 +458,24 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     [pendingTransactions],
   );
 
+  // 1b. Keyword-ignored: filtered out by keyword rules
+  const keywordIgnoredNotifications = useMemo(
+    () => pendingTransactions.filter(
+      (pt) => pt.pattern_id === 'keyword-ignored' && pt.needs_review,
+    ),
+    [pendingTransactions],
+  );
+
   // 2. To Review: rule exists, needs category + approval
   //    Includes both successfully parsed (OK) and regex-failed notifications
   //    so the user can see everything that came from a configured bank.
   //    Excludes pending transactions that already have a matching approved
   //    transaction (same vendor + amount) in the main dashboard.
+  //    Also excludes keyword-ignored notifications.
   const toReviewTransactions = useMemo(
     () => pendingTransactions.filter(
       (pt) => {
-        if (!pt.pattern_id || !pt.needs_review) return false;
+        if (!pt.pattern_id || pt.pattern_id === 'keyword-ignored' || !pt.needs_review) return false;
         // Check if an approved transaction already exists with the same vendor + amount
         const vendor = (pt.extracted_vendor || '').toLowerCase();
         const alreadyApproved = autoDetectedTransactions.some(
@@ -400,6 +534,18 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
 
   const toReviewCount = toReviewTransactions.length;
   const capturedCount = capturedNotifications.length;
+  const ignoredCount = keywordIgnoredNotifications.length;
+
+  // Group saved rules by bank for multi-regex display
+  const rulesByBank = useMemo(() => {
+    const groups = new Map<string, NotificationRuleRow[]>();
+    for (const rule of savedRules) {
+      const key = rule.bank_app_id;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(rule);
+    }
+    return groups;
+  }, [savedRules]);
 
   // ── Handle saving a regex rule from the setup modal ──
   const handleSaveRule = useCallback(
@@ -517,35 +663,202 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                     </span>
                   </div>
 
-                  {savedRules.length > 0 ? savedRules.map((rule) => (
-                    <button
-                      key={rule.id}
-                      onClick={() => handleEditRule(rule)}
-                      className="w-full flex items-center justify-between p-3 bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl border border-emerald-100 dark:border-emerald-800/30 transition-all active:scale-[0.98]"
-                    >
-                      <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center shrink-0">
-                          <svg className="w-4 h-4 text-emerald-600 dark:text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                            <polyline points="20 6 9 17 4 12" />
-                          </svg>
+                  {savedRules.length > 0 ? (
+                    <>
+                      {Array.from(rulesByBank.entries()).map(([bankAppId, bankRules]) => (
+                        <div key={bankAppId} className="space-y-2">
+                          <div className="flex items-center justify-between px-1">
+                            <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                              {bankRules[0].bank_name}
+                              {bankRules.length > 1 && (
+                                <span className="ml-1 text-emerald-500">
+                                  — {bankRules.length} rules
+                                </span>
+                              )}
+                            </p>
+                            <button
+                              onClick={() => handleStartAddRuleForBank(bankAppId)}
+                              className="text-[8px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/30 transition-all active:scale-95"
+                            >
+                              + Add Rule
+                            </button>
+                          </div>
+
+                          {/* Add new rule type input */}
+                          {addingRuleForBank === bankAppId && (
+                            <div className="p-3 bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl border border-emerald-200 dark:border-emerald-800/30 space-y-2">
+                              <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                New Notification Type
+                              </p>
+                              <p className="text-[8px] text-slate-400 dark:text-slate-500 leading-relaxed">
+                                Add a label for this notification type (e.g. "Purchase", "Transfer", "Payment")
+                              </p>
+                              <input
+                                type="text"
+                                value={newRuleType}
+                                onChange={(e) => setNewRuleType(e.target.value)}
+                                placeholder="e.g. Purchase, Transfer..."
+                                className="w-full px-3 py-2 text-[11px] rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
+                              />
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => setAddingRuleForBank(null)}
+                                  className="flex-1 py-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-500 bg-slate-100 dark:bg-slate-800 rounded-xl transition-all active:scale-[0.98]"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  onClick={() => handleConfirmNewRuleType(bankAppId)}
+                                  disabled={!newRuleType.trim()}
+                                  className="flex-1 py-1.5 text-[9px] font-bold uppercase tracking-wider text-white bg-emerald-500 disabled:bg-slate-300 dark:disabled:bg-slate-700 rounded-xl transition-all active:scale-[0.98]"
+                                >
+                                  Set Up Regex
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {bankRules.map((rule) => (
+                            <div key={rule.id} className="bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl border border-emerald-100 dark:border-emerald-800/30 overflow-hidden">
+                              <button
+                                onClick={() => handleEditRule(rule)}
+                                className="w-full flex items-center justify-between p-3 transition-all active:scale-[0.98]"
+                              >
+                                <div className="flex items-center space-x-3">
+                                  <div className="w-8 h-8 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center shrink-0">
+                                    <svg className="w-4 h-4 text-emerald-600 dark:text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                      <polyline points="20 6 9 17 4 12" />
+                                    </svg>
+                                  </div>
+                                  <div className="min-w-0 text-left">
+                                    {rule.notification_type && rule.notification_type !== 'default' && (
+                                      <p className="text-[8px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-0.5">
+                                        {rule.notification_type}
+                                      </p>
+                                    )}
+                                    <p className="text-[8px] text-slate-400 dark:text-slate-500 font-mono truncate max-w-[200px]">
+                                      vendor: /{rule.vendor_regex}/
+                                    </p>
+                                    <p className="text-[8px] text-slate-400 dark:text-slate-500 font-mono truncate max-w-[200px]">
+                                      amount: /{rule.amount_regex}/
+                                    </p>
+                                  </div>
+                                </div>
+                                <span className="text-[8px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 shrink-0">
+                                  Tap to edit
+                                </span>
+                              </button>
+
+                              {/* Only Parse (keyword filter) section */}
+                              <div className="px-3 pb-3 border-t border-emerald-100 dark:border-emerald-800/30 pt-2">
+                                <button
+                                  onClick={() => keywordEditRuleId === rule.id ? setKeywordEditRuleId(null) : handleOpenKeywordEdit(rule)}
+                                  className="w-full flex items-center justify-between py-1"
+                                >
+                                  <span className="text-[8px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                    Only Parse…
+                                  </span>
+                                  <div className="flex items-center gap-1">
+                                    {rule.filter_keywords && rule.filter_keywords.length > 0 && (
+                                      <span className="text-[8px] font-bold text-emerald-600 dark:text-emerald-400">
+                                        {rule.filter_keywords.length} keyword{rule.filter_keywords.length !== 1 ? 's' : ''}
+                                      </span>
+                                    )}
+                                    <svg className={`w-3 h-3 text-slate-400 transition-transform ${keywordEditRuleId === rule.id ? 'rotate-90' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                      <polyline points="9 18 15 12 9 6" />
+                                    </svg>
+                                  </div>
+                                </button>
+
+                                {keywordEditRuleId === rule.id && (
+                                  <div className="mt-2 space-y-2">
+                                    <p className="text-[8px] text-slate-400 dark:text-slate-500 leading-relaxed">
+                                      Only parse notifications that contain these keywords. Others will be ignored.
+                                    </p>
+
+                                    {/* Filter mode selector */}
+                                    <div className="flex items-center gap-1 flex-wrap">
+                                      <span className="text-[8px] font-bold text-slate-500 dark:text-slate-400">Must contain</span>
+                                      {(['all', 'some', 'one'] as const).map((mode) => (
+                                        <button
+                                          key={mode}
+                                          onClick={() => setKeywordMode(mode)}
+                                          className={`px-2 py-0.5 text-[8px] font-bold rounded-full border transition-all active:scale-95 ${
+                                            keywordMode === mode
+                                              ? 'bg-emerald-500 text-white border-emerald-600'
+                                              : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700'
+                                          }`}
+                                        >
+                                          {mode}
+                                        </button>
+                                      ))}
+                                      <span className="text-[8px] font-bold text-slate-500 dark:text-slate-400">of the words</span>
+                                    </div>
+
+                                    {/* Keyword chips */}
+                                    {keywordList.length > 0 && (
+                                      <div className="flex flex-wrap gap-1">
+                                        {keywordList.map((kw) => (
+                                          <span
+                                            key={kw}
+                                            className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 rounded-full border border-emerald-200 dark:border-emerald-800/30"
+                                          >
+                                            {kw}
+                                            <button
+                                              onClick={() => handleRemoveKeyword(kw)}
+                                              className="text-emerald-500 hover:text-red-500 transition-colors"
+                                            >
+                                              ×
+                                            </button>
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+
+                                    {/* Add keyword input */}
+                                    <div className="flex gap-1">
+                                      <input
+                                        type="text"
+                                        value={keywordInput}
+                                        onChange={(e) => setKeywordInput(e.target.value)}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') handleAddKeyword(); }}
+                                        placeholder="Add keyword..."
+                                        className="flex-1 px-2 py-1.5 text-[10px] rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-400/50"
+                                      />
+                                      <button
+                                        onClick={handleAddKeyword}
+                                        disabled={!keywordInput.trim()}
+                                        className="px-3 py-1.5 text-[9px] font-bold text-white bg-emerald-500 disabled:bg-slate-300 dark:disabled:bg-slate-700 rounded-lg transition-all active:scale-95"
+                                      >
+                                        Add
+                                      </button>
+                                    </div>
+
+                                    {/* Save/Cancel buttons */}
+                                    <div className="flex gap-2 pt-1">
+                                      <button
+                                        onClick={() => setKeywordEditRuleId(null)}
+                                        className="flex-1 py-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-500 bg-slate-100 dark:bg-slate-800 rounded-xl transition-all active:scale-[0.98]"
+                                      >
+                                        Cancel
+                                      </button>
+                                      <button
+                                        onClick={() => handleSaveKeywords(rule.id)}
+                                        disabled={savingKeywords}
+                                        className="flex-1 py-1.5 text-[9px] font-bold uppercase tracking-wider text-white bg-emerald-500 disabled:bg-slate-300 dark:disabled:bg-slate-700 rounded-xl transition-all active:scale-[0.98]"
+                                      >
+                                        {savingKeywords ? 'Saving…' : 'Save Keywords'}
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                        <div className="min-w-0 text-left">
-                          <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
-                            {rule.bank_name}
-                          </p>
-                          <p className="text-[8px] text-slate-400 dark:text-slate-500 mt-0.5 font-mono truncate max-w-[200px]">
-                            vendor: /{rule.vendor_regex}/
-                          </p>
-                          <p className="text-[8px] text-slate-400 dark:text-slate-500 font-mono truncate max-w-[200px]">
-                            amount: /{rule.amount_regex}/
-                          </p>
-                        </div>
-                      </div>
-                      <span className="text-[8px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 shrink-0">
-                        Tap to edit
-                      </span>
-                    </button>
-                  )) : showDemoData && (
+                      ))}
+                    </>
+                  ) : showDemoData && (
                     <div className="w-full flex items-center justify-between p-3 bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl border border-emerald-100 dark:border-emerald-800/30">
                       <div className="flex items-center space-x-3">
                         <div className="w-8 h-8 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center shrink-0">
@@ -695,6 +1008,62 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                         </div>
                       </>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {/* ──────────────────────────────────────────────────── */}
+              {/* IGNORED NOTIFICATIONS: Keyword-filtered out */}
+              {/* ──────────────────────────────────────────────────── */}
+              {ignoredCount > 0 && (
+                <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-slate-300 dark:border-slate-700/40 space-y-3">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-slate-100 dark:bg-slate-800/50 rounded-xl">
+                      <svg className="w-5 h-5 text-slate-400 dark:text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                        Ignored Notifications
+                      </h3>
+                      <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
+                        Filtered out by keyword rules
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-black bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2.5 py-1 rounded-full">
+                      {ignoredCount}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {keywordIgnoredNotifications.map((pt) => (
+                      <div
+                        key={pt.id}
+                        className="w-full flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700/30"
+                      >
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 bg-slate-200 dark:bg-slate-700 rounded-full flex items-center justify-center shrink-0">
+                            <svg className="w-4 h-4 text-slate-400 dark:text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                              <circle cx="12" cy="12" r="10" />
+                              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+                            </svg>
+                          </div>
+                          <div className="text-left min-w-0">
+                            <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed line-clamp-2">
+                              {pt.notification_text}
+                            </p>
+                            <p className="text-[8px] text-slate-400 dark:text-slate-500 mt-0.5">
+                              {pt.app_name} · {new Date(pt.posted_at).toLocaleString()}
+                            </p>
+                          </div>
+                        </div>
+                        <span className="text-[8px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 shrink-0 ml-2">
+                          Ignored
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
@@ -1140,10 +1509,11 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       {setupNotification && (
         <RegexSetupModal
           notification={setupNotification}
-          onSave={editingRuleId ? handleSaveEditedRule : handleSaveRule}
+          onSave={editingRuleId ? handleSaveEditedRule : (newRuleType ? handleSaveNewTypedRule : handleSaveRule)}
           onClose={() => {
             setSetupNotification(null);
             setEditingRuleId(null);
+            setNewRuleType('');
           }}
         />
       )}

@@ -62,6 +62,9 @@ export interface NotificationRuleRow {
   is_active: boolean;
   flagged_count: number;
   last_flagged_at: string | null;
+  filter_keywords: string[];
+  filter_mode: 'all' | 'some' | 'one';
+  notification_type: string;
   created_at: string;
   updated_at: string;
 }
@@ -299,6 +302,36 @@ export async function deduplicatePendingTransactions(
   return pendingTransactions.filter(pt => keepSet.has(pt.id));
 }
 
+// ─── Keyword Filtering ──────────────────────────────────────────
+
+/**
+ * Check if a notification text matches the keyword filter for a rule.
+ * Returns true if the notification passes the filter (should be parsed),
+ * false if it should be ignored.
+ *
+ * If no keywords are configured, the notification always passes.
+ */
+export function matchesKeywordFilter(
+  notificationText: string,
+  keywords: string[],
+  mode: 'all' | 'some' | 'one',
+): boolean {
+  if (!keywords || keywords.length === 0) return true;
+
+  const lowerText = notificationText.toLowerCase();
+  const matches = keywords.filter((kw) => lowerText.includes(kw.toLowerCase()));
+
+  switch (mode) {
+    case 'all':
+      return matches.length === keywords.length;
+    case 'some':
+      return matches.length > 1 || (matches.length === 1 && keywords.length === 1);
+    case 'one':
+    default:
+      return matches.length >= 1;
+  }
+}
+
 // ─── Step 2: Rule Lookup ────────────────────────────────────────
 
 /**
@@ -337,10 +370,13 @@ export function applyRuleToNotification(
 
 /**
  * Get an existing active notification rule for (user, bank_app_id).
+ * Returns the first rule whose keyword filter matches the notification,
+ * or null if no matching rule is found.
  */
 export async function getActiveRule(
   userId: string,
   bankAppId: string,
+  notificationText?: string,
 ): Promise<NotificationRuleRow | null> {
   const { data, error } = await supabase
     .from('notification_rules')
@@ -348,15 +384,90 @@ export async function getActiveRule(
     .eq('user_id', userId)
     .eq('bank_app_id', bankAppId)
     .eq('is_active', true)
-    .order('created_at', { ascending: false })
-    .maybeSingle();
+    .order('created_at', { ascending: false });
 
   if (error) {
     console.error('[getActiveRule] Error:', error);
     return null;
   }
 
-  return data as NotificationRuleRow | null;
+  if (!data || data.length === 0) return null;
+
+  const rules = data as NotificationRuleRow[];
+
+  // If no notification text provided, return the first rule (backward compat)
+  if (!notificationText) {
+    return rules[0];
+  }
+
+  // Find the first rule whose keyword filter matches
+  for (const rule of rules) {
+    const keywords = rule.filter_keywords || [];
+    const mode = rule.filter_mode || 'one';
+    if (matchesKeywordFilter(notificationText, keywords, mode)) {
+      return rule;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Get all active notification rules for (user, bank_app_id).
+ */
+export async function getActiveRulesForBank(
+  userId: string,
+  bankAppId: string,
+): Promise<NotificationRuleRow[]> {
+  const { data, error } = await supabase
+    .from('notification_rules')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('bank_app_id', bankAppId)
+    .eq('is_active', true)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('[getActiveRulesForBank] Error:', error);
+    return [];
+  }
+
+  return (data || []) as NotificationRuleRow[];
+}
+
+/**
+ * Check if a notification is ignored by keyword filters.
+ * Returns true if there ARE rules for this bank but NONE of them
+ * match the notification text (i.e., the notification should be ignored).
+ * Returns false if there are no rules or at least one rule matches.
+ */
+export async function isKeywordIgnored(
+  userId: string,
+  bankAppId: string,
+  notificationText: string,
+): Promise<boolean> {
+  const rules = await getActiveRulesForBank(userId, bankAppId);
+
+  // No rules at all → not ignored (it's unconfigured)
+  if (rules.length === 0) return false;
+
+  // Check if any rule has keywords configured
+  const rulesWithKeywords = rules.filter(
+    (r) => r.filter_keywords && r.filter_keywords.length > 0,
+  );
+
+  // No rules have keywords → not ignored
+  if (rulesWithKeywords.length === 0) return false;
+
+  // If any rule with keywords matches, not ignored
+  for (const rule of rulesWithKeywords) {
+    if (matchesKeywordFilter(notificationText, rule.filter_keywords, rule.filter_mode)) {
+      return false;
+    }
+  }
+
+  // All keyword-configured rules failed → ignored
+  return true;
 }
 
 // ─── Step 3: Ignore Rule Check ──────────────────────────────────
@@ -624,7 +735,30 @@ export async function processNotification(
   }
 
   // ── Step 2: Look up notification rule ──
-  const rule = await getActiveRule(userId, input.bankAppId);
+  // First check if the notification is ignored by keyword filters
+  const keywordIgnored = await isKeywordIgnored(userId, input.bankAppId, input.rawNotification);
+
+  if (keywordIgnored) {
+    // Store as keyword-ignored so it shows in the "Ignored Notifications" card
+    console.log('[processNotification] Notification ignored by keyword filter');
+    const pending = await insertPendingTransaction(
+      userId,
+      input,
+      input.fallbackVendor || 'Unknown',
+      input.fallbackAmount ?? 0,
+      true,
+      'keyword-ignored',
+      'Ignored by keyword filter',
+    );
+
+    return {
+      processed: true,
+      skipReason: 'ignored',
+      pendingTransaction: pending || undefined,
+    };
+  }
+
+  const rule = await getActiveRule(userId, input.bankAppId, input.rawNotification);
 
   if (!rule) {
     // No rule configured for this bank — store as unconfigured capture
@@ -851,8 +985,20 @@ export async function saveNotificationRule(options: {
   amountRegex: string;
   vendorRegex: string;
   sampleNotification: string;
+  filterKeywords?: string[];
+  filterMode?: 'all' | 'some' | 'one';
+  notificationType?: string;
 }): Promise<NotificationRuleRow | null> {
-  const { userId, bankAppId: rawBankAppId, bankName: rawBankName, amountRegex, vendorRegex } = options;
+  const {
+    userId,
+    bankAppId: rawBankAppId,
+    bankName: rawBankName,
+    amountRegex,
+    vendorRegex,
+    filterKeywords = [],
+    filterMode = 'one',
+    notificationType = 'default',
+  } = options;
   const bankAppId = (rawBankAppId || '').toLowerCase();
   const bankName = (rawBankName || '').toLowerCase();
 
@@ -865,8 +1011,17 @@ export async function saveNotificationRule(options: {
     return null;
   }
 
-  // Check if an active rule already exists for this bank
-  const existing = await getActiveRule(userId, bankAppId);
+  // Check if an active rule already exists for this bank + notification type
+  const { data: existingData } = await supabase
+    .from('notification_rules')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('bank_app_id', bankAppId)
+    .eq('notification_type', notificationType)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  const existing = existingData as NotificationRuleRow | null;
 
   if (existing) {
     // Update existing rule
@@ -875,6 +1030,8 @@ export async function saveNotificationRule(options: {
       .update({
         amount_regex: amountRegex,
         vendor_regex: vendorRegex,
+        filter_keywords: filterKeywords,
+        filter_mode: filterMode,
         updated_at: new Date().toISOString(),
       })
       .eq('id', existing.id)
@@ -897,6 +1054,9 @@ export async function saveNotificationRule(options: {
       bank_name: bankName,
       amount_regex: amountRegex,
       vendor_regex: vendorRegex,
+      filter_keywords: filterKeywords,
+      filter_mode: filterMode,
+      notification_type: notificationType,
     })
     .select()
     .single();
@@ -965,4 +1125,30 @@ export async function reprocessUnconfiguredCaptures(
         .eq('id', capture.id);
     }
   }
+}
+
+/**
+ * Update keyword filter settings for an existing notification rule.
+ */
+export async function updateRuleKeywordFilter(
+  ruleId: string,
+  userId: string,
+  filterKeywords: string[],
+  filterMode: 'all' | 'some' | 'one',
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('notification_rules')
+    .update({
+      filter_keywords: filterKeywords,
+      filter_mode: filterMode,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', ruleId)
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('[updateRuleKeywordFilter] Error:', error);
+    return false;
+  }
+  return true;
 }
