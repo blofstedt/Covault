@@ -196,12 +196,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       if (!userId) return;
 
       // Optimistically remove from local state for immediate UI feedback
-      setVendorOverrides((prev) => {
-        const backup = prev.filter((vo) => vo.id === overrideId);
-        if (backup.length === 0) return prev; // Item not found, no change
-        
-        return prev.filter((vo) => vo.id !== overrideId);
-      });
+      setVendorOverrides((prev) => prev.filter((vo) => vo.id !== overrideId));
 
       const { error } = await supabase
         .from('vendor_overrides')
