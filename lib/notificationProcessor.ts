@@ -63,9 +63,9 @@ export interface NotificationRuleRow {
   flagged_count: number;
   last_flagged_at: string | null;
   only_parse: string;
-  filter_keywords: string[];
-  filter_mode: 'all' | 'some' | 'one';
-  notification_type: string;
+  filter_keywords?: string[];
+  filter_mode?: 'all' | 'some' | 'one';
+  notification_type?: string;
   created_at: string;
   updated_at: string;
 }
@@ -425,7 +425,7 @@ export async function getActiveRule(
 
   // Find the first rule whose keyword filter matches
   for (const rule of rules) {
-    const keywords = rule.filter_keywords || [];
+    const keywords = rule.filter_keywords || parseOnlyParseKeywords(rule.only_parse);
     const mode = rule.filter_mode || 'one';
     if (matchesKeywordFilter(notificationText, keywords, mode)) {
       return rule;
@@ -476,7 +476,7 @@ export async function isKeywordIgnored(
 
   // Check if any rule has keywords configured
   const rulesWithKeywords = rules.filter(
-    (r) => r.filter_keywords && r.filter_keywords.length > 0,
+    (r) => (r.filter_keywords && r.filter_keywords.length > 0) || (r.only_parse && r.only_parse.trim()),
   );
 
   // No rules have keywords → not ignored
@@ -484,7 +484,8 @@ export async function isKeywordIgnored(
 
   // If any rule with keywords matches, not ignored
   for (const rule of rulesWithKeywords) {
-    if (matchesKeywordFilter(notificationText, rule.filter_keywords, rule.filter_mode)) {
+    const keywords = rule.filter_keywords || parseOnlyParseKeywords(rule.only_parse);
+    if (matchesKeywordFilter(notificationText, keywords, rule.filter_mode || 'one')) {
       return false;
     }
   }
