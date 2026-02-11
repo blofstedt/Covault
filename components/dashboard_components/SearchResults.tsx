@@ -99,6 +99,15 @@ interface SearchResultsProps {
  * - NOW also includes PROJECTED recurring transactions (biweekly/monthly)
  *   up to 2 months after the end of the current month.
  */
+
+// Helper: get the current year-month string
+const getCurrentYearMonth = () => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
+};
+
 const SearchResults: React.FC<SearchResultsProps> = ({
   searchQuery,
   currentMonthTransactions,
@@ -125,14 +134,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   // Extract year-month from date strings directly to avoid timezone-related
   // month shifts that occur when parsing through the Date constructor.
   const txYearMonth = (dateStr: string) => dateStr.slice(0, 7); // "YYYY-MM"
-
-  // Helper: get the current year-month string
-  const getCurrentYearMonth = () => {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, '0');
-    return `${y}-${m}`;
-  };
 
   // State to track the current month for transaction filtering
   // This ensures that if the app is left open across a month boundary,

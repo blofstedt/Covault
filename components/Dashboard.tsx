@@ -46,6 +46,14 @@ interface DashboardProps {
   isLoadingData: boolean;
 }
 
+// Helper: get the current year-month string
+const getCurrentYearMonth = () => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
+};
+
 const Dashboard: React.FC<DashboardProps> = ({
   state,
   setState,
@@ -182,14 +190,6 @@ const Dashboard: React.FC<DashboardProps> = ({
   // month depending on the user's timezone. Extracting directly from the string
   // avoids this.
   const txYearMonth = (dateStr: string) => dateStr.slice(0, 7); // "YYYY-MM"
-
-  // Helper: get the current year-month string
-  const getCurrentYearMonth = () => {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, '0');
-    return `${y}-${m}`;
-  };
 
   // State to track the current month for transaction filtering
   // This ensures that if the app is left open across a month boundary,
