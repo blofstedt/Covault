@@ -116,12 +116,21 @@ export const useTransactionOps = ({
         }
 
         console.log('[insert] OK, id:', saved.id);
-        setAppState(prev => ({
-          ...prev,
-          transactions: prev.transactions.map(t =>
-            t.id === tx.id ? saved : t,
-          ),
-        }));
+        setAppState(prev => {
+          const hasOptimistic = prev.transactions.some(t => t.id === tx.id);
+          if (hasOptimistic) {
+            return {
+              ...prev,
+              transactions: prev.transactions.map(t =>
+                t.id === tx.id ? saved : t,
+              ),
+            };
+          }
+          // Optimistic entry was removed (e.g., by a concurrent data reload).
+          // Add the saved transaction if it isn't already present.
+          if (prev.transactions.some(t => t.id === saved.id)) return prev;
+          return { ...prev, transactions: [saved, ...prev.transactions] };
+        });
       } catch (err: any) {
         const msg = `Insert exception: ${err?.message || err}`;
         console.error(msg);

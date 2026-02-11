@@ -124,13 +124,6 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
           // Default: select all banking apps found
           setSelectedApps(new Set(named.map(a => a.packageName)));
         }
-
-        // Immediately scan for active notifications in the notification shade
-        try {
-          await plugin.scanActiveNotifications();
-        } catch {
-          // scanActiveNotifications may not be available on all versions
-        }
       }
     } catch (e) {
       console.warn('[NotificationSettings] checkStatus error:', e);
