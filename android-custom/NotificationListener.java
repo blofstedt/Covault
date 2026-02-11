@@ -202,7 +202,7 @@ public class NotificationListener extends NotificationListenerService {
 
         // Always broadcast to the TypeScript pipeline so Gemini can generate
         // or regenerate regex patterns even when native extraction fails
-        broadcastTransaction(packageName, amount, vendor, fullText);
+        broadcastTransaction(packageName, amount, vendor, fullText, sbn.getPostTime());
     }
 
     @Override
@@ -258,7 +258,7 @@ public class NotificationListener extends NotificationListenerService {
         return null;
     }
 
-    private void broadcastTransaction(String sourceApp, Double amount, String vendor, String rawText) {
+    private void broadcastTransaction(String sourceApp, Double amount, String vendor, String rawText, long postTime) {
         try {
             JSONObject transaction = new JSONObject();
             transaction.put("source_app", sourceApp);
@@ -267,7 +267,9 @@ public class NotificationListener extends NotificationListenerService {
             }
             transaction.put("vendor", vendor != null ? vendor : "Unknown Merchant");
             transaction.put("raw_text", rawText);
-            transaction.put("timestamp", System.currentTimeMillis());
+            // Use the notification's original post time (stable across rescans)
+            // instead of System.currentTimeMillis() which changes each time
+            transaction.put("timestamp", postTime);
 
             // Broadcast to the app
             Intent intent = new Intent("com.covault.app.TRANSACTION_DETECTED");

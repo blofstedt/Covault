@@ -70,18 +70,23 @@ export interface NotificationRuleRow {
 
 /**
  * Generate a fingerprint hash from notification content.
- * Uses: bank_app_id + normalized text + amount.
- * Deterministic — the same notification always produces the same hash
- * regardless of when it is processed, preventing duplicate captures.
+ * Uses: bank_app_id | amount | vendor | timestamp (to the second).
+ * The timestamp comes from the notification's original post time, which
+ * is stable across rescans.  Two genuinely different transactions at the
+ * same vendor for the same amount will have different post-times and
+ * therefore different fingerprints.
  */
 function generateFingerprintHash(
   bankAppId: string,
-  rawNotification: string,
   detectedAmount: number | null,
+  vendor: string,
+  timestampMs: number,
 ): string {
-  const normalizedText = rawNotification.toLowerCase().replace(/\s+/g, ' ').trim();
   const amountStr = detectedAmount != null ? detectedAmount.toFixed(2) : '';
-  const raw = `${bankAppId}|${normalizedText}|${amountStr}`;
+  const normalizedVendor = vendor.toLowerCase().trim();
+  // Truncate to the second so minor sub-second jitter doesn't matter
+  const timestampSec = Math.floor(timestampMs / 1000);
+  const raw = `${bankAppId}|${amountStr}|${normalizedVendor}|${timestampSec}`;
 
   // Simple hash (djb2)
   let hash = 5381;
@@ -97,10 +102,11 @@ function generateFingerprintHash(
 async function checkAndInsertFingerprint(
   userId: string,
   bankAppId: string,
-  rawNotification: string,
   detectedAmount: number | null,
+  vendor: string,
+  timestampMs: number,
 ): Promise<boolean> {
-  const hash = generateFingerprintHash(bankAppId, rawNotification, detectedAmount);
+  const hash = generateFingerprintHash(bankAppId, detectedAmount, vendor, timestampMs);
 
   const { data: existing } = await supabase
     .from('notification_fingerprints')
@@ -129,6 +135,77 @@ async function checkAndInsertFingerprint(
   }
 
   return false;
+}
+
+// ─── Step 1b: Second-Phase Deduplication ────────────────────────
+
+/**
+ * Deduplicate pending transactions that already exist in the database.
+ *
+ * Groups pending transactions by fingerprint (app_package + amount +
+ * vendor + notification_timestamp to the second).  When duplicates are
+ * found within a group, the oldest entry (by created_at) is kept and
+ * the rest are deleted.
+ *
+ * Returns the deduplicated list of pending transactions.
+ */
+export async function deduplicatePendingTransactions(
+  userId: string,
+  pendingTransactions: PendingTransaction[],
+): Promise<PendingTransaction[]> {
+  if (pendingTransactions.length <= 1) return pendingTransactions;
+
+  // Build fingerprint → list of pending transactions
+  const groups = new Map<string, PendingTransaction[]>();
+
+  for (const pt of pendingTransactions) {
+    const hash = generateFingerprintHash(
+      pt.app_package,
+      pt.extracted_amount,
+      pt.extracted_vendor,
+      pt.notification_timestamp || 0,
+    );
+    const group = groups.get(hash);
+    if (group) {
+      group.push(pt);
+    } else {
+      groups.set(hash, [pt]);
+    }
+  }
+
+  // Collect IDs to delete (keep the oldest in each group)
+  const idsToDelete: string[] = [];
+  const keepSet = new Set<string>();
+
+  for (const group of groups.values()) {
+    if (group.length <= 1) {
+      keepSet.add(group[0].id);
+      continue;
+    }
+
+    // Sort ascending by created_at so the oldest is first
+    group.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    keepSet.add(group[0].id);
+    for (let i = 1; i < group.length; i++) {
+      idsToDelete.push(group[i].id);
+    }
+  }
+
+  // Delete duplicates from the database
+  if (idsToDelete.length > 0) {
+    console.log(`[dedup] Removing ${idsToDelete.length} duplicate pending transaction(s)`);
+    const { error } = await supabase
+      .from('pending_transactions')
+      .delete()
+      .in('id', idsToDelete);
+
+    if (error) {
+      console.error('[dedup] Error deleting duplicates:', error);
+      // Even on error, still return the deduplicated list for the UI
+    }
+  }
+
+  return pendingTransactions.filter(pt => keepSet.has(pt.id));
 }
 
 // ─── Step 2: Rule Lookup ────────────────────────────────────────
@@ -402,17 +479,23 @@ export async function processNotification(
   input: NotificationInput,
 ): Promise<ProcessingResult> {
   // ── Step 1: Fingerprint Deduplication ──
+  // Extract a quick amount from the raw text for fingerprinting
   let quickAmount: number | null = null;
   const quickAmountMatch = input.rawNotification.match(/\$?([\d,]+\.?\d{0,2})/);
   if (quickAmountMatch) {
     quickAmount = parseFloat(quickAmountMatch[1].replace(',', ''));
   }
 
+  // Use the notification's original post time (from Android) for a stable
+  // fingerprint. Falls back to Date.now() only on non-native platforms.
+  const notifTimestamp = input.notificationTimestamp || Date.now();
+
   const isDuplicate = await checkAndInsertFingerprint(
     userId,
     input.bankAppId,
-    input.rawNotification,
     quickAmount,
+    input.fallbackVendor || input.rawNotification,
+    notifTimestamp,
   );
 
   if (isDuplicate) {

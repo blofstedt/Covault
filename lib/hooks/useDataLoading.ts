@@ -1,9 +1,10 @@
 // lib/hooks/useDataLoading.ts
 import { useCallback, useState } from 'react';
 import { SYSTEM_CATEGORIES } from '../../constants';
-import type { BudgetCategory, Transaction } from '../../types';
+import type { BudgetCategory, Transaction, PendingTransaction } from '../../types';
 import { REST_BASE, getAuthHeaders, DEFAULT_BUDGET_LIMIT, DEFAULT_MONTHLY_INCOME } from '../apiHelpers';
 import { useFromSupabaseTransaction } from './transactionMappers';
+import { deduplicatePendingTransactions } from '../notificationProcessor';
 import type { UseUserDataParams } from './types';
 
 /** Merge incoming transactions into existing ones, deduplicating by ID. */
@@ -432,10 +433,12 @@ export const useDataLoading = ({
           return;
         }
 
-        const data = JSON.parse(await res.text());
+        const data: PendingTransaction[] = JSON.parse(await res.text());
         if (data && data.length > 0) {
-          console.log('[loadPendingTransactions] OK, count:', data.length);
-          setAppState(prev => ({ ...prev, pendingTransactions: data }));
+          // Second-phase dedup: remove any duplicates that slipped through
+          const deduped = await deduplicatePendingTransactions(userId, data);
+          console.log('[loadPendingTransactions] OK, count:', deduped.length);
+          setAppState(prev => ({ ...prev, pendingTransactions: deduped }));
         } else {
           console.log('[loadPendingTransactions] no pending transactions');
           setAppState(prev => ({ ...prev, pendingTransactions: [] }));
