@@ -63,9 +63,9 @@ export interface NotificationRuleRow {
   flagged_count: number;
   last_flagged_at: string | null;
   only_parse: string;
-  filter_keywords: string[];
-  filter_mode: 'all' | 'some' | 'one';
-  notification_type: string;
+  filter_keywords?: string[];
+  filter_mode?: 'all' | 'some' | 'one';
+  notification_type?: string;
   created_at: string;
   updated_at: string;
 }
@@ -425,7 +425,7 @@ export async function getActiveRule(
 
   // Find the first rule whose keyword filter matches
   for (const rule of rules) {
-    const keywords = rule.filter_keywords || [];
+    const keywords = rule.filter_keywords || parseOnlyParseKeywords(rule.only_parse);
     const mode = rule.filter_mode || 'one';
     if (matchesKeywordFilter(notificationText, keywords, mode)) {
       return rule;
@@ -476,7 +476,7 @@ export async function isKeywordIgnored(
 
   // Check if any rule has keywords configured
   const rulesWithKeywords = rules.filter(
-    (r) => r.filter_keywords && r.filter_keywords.length > 0,
+    (r) => (r.filter_keywords && r.filter_keywords.length > 0) || (r.only_parse && r.only_parse.trim()),
   );
 
   // No rules have keywords → not ignored
@@ -484,7 +484,8 @@ export async function isKeywordIgnored(
 
   // If any rule with keywords matches, not ignored
   for (const rule of rulesWithKeywords) {
-    if (matchesKeywordFilter(notificationText, rule.filter_keywords, rule.filter_mode)) {
+    const keywords = rule.filter_keywords || parseOnlyParseKeywords(rule.only_parse);
+    if (matchesKeywordFilter(notificationText, keywords, rule.filter_mode || 'one')) {
       return false;
     }
   }
@@ -1052,15 +1053,20 @@ export async function saveNotificationRule(options: {
   const existing = existingData as NotificationRuleRow | null;
 
   if (existing) {
-    // Update existing rule
+    // Update existing rule — preserve only_parse / filter_keywords when
+    // the caller didn't supply them (avoids wiping saved keywords).
+    const effectiveOnlyParse = onlyParse || existing.only_parse || '';
+    const effectiveKeywords = filterKeywords ?? parseOnlyParseKeywords(effectiveOnlyParse);
+    const effectiveFilterMode = options.filterMode ?? existing.filter_mode ?? 'one';
+
     const { data, error } = await supabase
       .from('notification_rules')
       .update({
         amount_regex: amountRegex,
         vendor_regex: vendorRegex,
-        only_parse: onlyParse,
-        filter_keywords: derivedKeywords,
-        filter_mode: filterMode,
+        only_parse: effectiveOnlyParse,
+        filter_keywords: effectiveKeywords,
+        filter_mode: effectiveFilterMode,
         updated_at: new Date().toISOString(),
       })
       .eq('id', existing.id)
@@ -1168,7 +1174,7 @@ export async function updateRuleKeywordFilter(
   filterMode: 'all' | 'some' | 'one',
 ): Promise<boolean> {
   const filterKeywords = parseOnlyParseKeywords(onlyParse);
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('notification_rules')
     .update({
       only_parse: onlyParse,
@@ -1177,10 +1183,16 @@ export async function updateRuleKeywordFilter(
       updated_at: new Date().toISOString(),
     })
     .eq('id', ruleId)
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .select()
+    .single();
 
   if (error) {
     console.error('[updateRuleKeywordFilter] Error:', error);
+    return false;
+  }
+  if (!data) {
+    console.error('[updateRuleKeywordFilter] No rows updated for rule', ruleId);
     return false;
   }
   return true;
