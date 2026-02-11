@@ -21,6 +21,9 @@ interface VendorOverride {
 /** Delay before reloading pending transactions after a scan, to allow the notification pipeline to finish processing. */
 const SCAN_PROCESSING_DELAY_MS = 2000;
 
+/** Tolerance for comparing monetary amounts (e.g., vendor+amount matching). */
+const AMOUNT_MATCH_TOLERANCE = 0.01;
+
 interface TransactionParsingProps {
   enabled: boolean;
   onToggle: (enabled: boolean) => void;
@@ -285,8 +288,8 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       // Find the matching auto-detected transaction
       const match = autoDetectedTransactions.find(
         (tx) =>
-          tx.vendor.toLowerCase() === pt.extracted_vendor.toLowerCase() &&
-          Math.abs(tx.amount - pt.extracted_amount) < 0.01,
+          tx.vendor.toLowerCase() === (pt.extracted_vendor || '').toLowerCase() &&
+          Math.abs(tx.amount - pt.extracted_amount) < AMOUNT_MATCH_TOLERANCE,
       );
       if (match && onTransactionTap) {
         onTransactionTap(match);
@@ -377,10 +380,11 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       (pt) => {
         if (!pt.pattern_id || !pt.needs_review) return false;
         // Check if an approved transaction already exists with the same vendor + amount
+        const vendor = (pt.extracted_vendor || '').toLowerCase();
         const alreadyApproved = autoDetectedTransactions.some(
           (tx) =>
-            tx.vendor.toLowerCase() === pt.extracted_vendor.toLowerCase() &&
-            Math.abs(tx.amount - pt.extracted_amount) < 0.01,
+            tx.vendor.toLowerCase() === vendor &&
+            Math.abs(tx.amount - pt.extracted_amount) < AMOUNT_MATCH_TOLERANCE,
         );
         return !alreadyApproved;
       },
