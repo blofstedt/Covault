@@ -327,7 +327,8 @@ export function applyRuleToNotification(
       return null;
     }
 
-    const vendor = formatVendorName(vendorMatch[1].trim());
+    const cleanVendor = vendorMatch[1].replace(EMOJI_PATTERN, '').trim();
+    const vendor = formatVendorName(cleanVendor);
     return { vendor, amount };
   } catch {
     return null;
@@ -655,6 +656,7 @@ export async function processNotification(
   if (!parsed) {
     // Regex didn't match — store as pending with fallback data so the user
     // can see the notification and adjust their rule if needed.
+    // Include the rule.id so the UI knows a rule exists (avoids "needs setup").
     console.log('[processNotification] Regex did not match, storing with fallback data');
     const pending = await insertPendingTransaction(
       userId,
@@ -662,7 +664,7 @@ export async function processNotification(
       input.fallbackVendor || 'Unknown',
       input.fallbackAmount ?? 0,
       true,
-      undefined,
+      rule.id,
       'Regex did not match notification format',
     );
 
@@ -714,85 +716,125 @@ export async function processNotification(
 
 // ─── Rule Management (for manual setup UI) ──────────────────────
 
+/** Pattern to match emoji characters for stripping from regex anchors */
+const EMOJI_PATTERN = /[\u{1F300}-\u{1FFFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu;
+
+/** How many characters of surrounding text to consider when building anchors */
+const CONTEXT_WINDOW = 40;
+
+/** Strip emoji and split `text` into non-empty words. */
+function anchorWords(text: string): string[] {
+  return text.replace(EMOJI_PATTERN, '').trim().split(/\s+/).filter(Boolean);
+}
+
+/**
+ * Extract up to `maxWords` words from the END of `text`, stripping emoji.
+ */
+function cleanAnchorEnd(text: string, maxWords = 3): string {
+  const words = anchorWords(text);
+  return (words.length > maxWords ? words.slice(-maxWords) : words).join(' ');
+}
+
+/**
+ * Extract up to `maxWords` words from the START of `text`, stripping emoji.
+ */
+function cleanAnchorStart(text: string, maxWords = 3): string {
+  const words = anchorWords(text);
+  return (words.length > maxWords ? words.slice(0, maxWords) : words).join(' ');
+}
+
 /**
  * Build regex patterns from a user's manual text selection.
  *
  * Given a notification text and the selected vendor/amount substrings,
- * generates regex patterns that capture those values using surrounding
- * context as anchors.
+ * generates regex patterns that capture those values using the
+ * structural text BETWEEN and AROUND the two selections as anchors.
+ *
+ * Key design decisions:
+ *   - Uses a non-greedy vendor capture (.+?) to avoid over-consuming.
+ *   - Uses only the FIRST word of the between-text as the vendor
+ *     stop-anchor.  This keeps the pattern general enough to handle
+ *     different transaction types from the same bank (e.g. "You spent"
+ *     vs "You made a recurring payment for" both share "You").
+ *   - For the amount, skips the between-text anchor entirely and
+ *     relies on the text AFTER the amount (e.g. "with your credit").
+ *   - Strips emoji from anchor text so patterns don't break when
+ *     the bank app uses different emoji per category.
  */
 export function buildRegexFromSelection(
   notificationText: string,
   selectedVendor: string,
   selectedAmount: string,
 ): { vendorRegex: string; amountRegex: string } {
-  // Build amount regex: escape the surrounding context, capture the number pattern
-  const amountRegex = buildCaptureRegex(notificationText, selectedAmount, true);
-  const vendorRegex = buildCaptureRegex(notificationText, selectedVendor, false);
+  const vendorIdx = notificationText.indexOf(selectedVendor);
+  const amountIdx = notificationText.indexOf(selectedAmount);
+
+  if (vendorIdx === -1 || amountIdx === -1) {
+    // Fallback: generic patterns
+    return {
+      amountRegex: '\\$?([\\d,]+\\.\\d{2})',
+      vendorRegex: `(${escapeRegex(selectedVendor)})`,
+    };
+  }
+
+  const vendorEnd = vendorIdx + selectedVendor.length;
+  const amountEnd = amountIdx + selectedAmount.length;
+
+  const amountCapture = '\\$?([\\d,]+\\.\\d{2})';
+  // Non-greedy: stops at the first anchor match to avoid over-consuming
+  const vendorCapture = '(.+?)';
+
+  let amountRegex: string;
+  let vendorRegex: string;
+
+  if (vendorIdx < amountIdx) {
+    // Layout: [beforeVendor] VENDOR [between] AMOUNT [afterAmount]
+    const beforeVendor = notificationText.slice(Math.max(0, vendorIdx - CONTEXT_WINDOW), vendorIdx);
+    const between = notificationText.slice(vendorEnd, amountIdx);
+    const afterAmount = notificationText.slice(amountEnd, Math.min(notificationText.length, amountEnd + CONTEXT_WINDOW));
+
+    const beforeVendorAnchor = cleanAnchorEnd(beforeVendor);
+    const betweenClean = between.replace(EMOJI_PATTERN, '').trim();
+    const afterAmountAnchor = cleanAnchorStart(afterAmount);
+    const betweenWords = betweenClean.split(/\s+/).filter(Boolean);
+
+    // Vendor regex: use first word of between-text as stop-anchor
+    const vBefore = beforeVendorAnchor ? escapeRegex(beforeVendorAnchor) + '\\s*' : '';
+    const vAfter = betweenWords.length > 0
+      ? '\\s*' + escapeRegex(betweenWords[0])
+      : '';
+    vendorRegex = vBefore + vendorCapture + vAfter;
+
+    // Amount regex: skip between-text, rely on after-amount anchor
+    const aAfter = afterAmountAnchor ? '\\s*' + escapeRegex(afterAmountAnchor) : '';
+    amountRegex = amountCapture + aAfter;
+  } else {
+    // Layout: [beforeAmount] AMOUNT [between] VENDOR [afterVendor]
+    const beforeAmount = notificationText.slice(Math.max(0, amountIdx - CONTEXT_WINDOW), amountIdx);
+    const between = notificationText.slice(amountEnd, vendorIdx);
+    const afterVendor = notificationText.slice(vendorEnd, Math.min(notificationText.length, vendorEnd + CONTEXT_WINDOW));
+
+    const beforeAmountAnchor = cleanAnchorEnd(beforeAmount);
+    const betweenClean = between.replace(EMOJI_PATTERN, '').trim();
+    const afterVendorAnchor = cleanAnchorStart(afterVendor);
+    const betweenWords = betweenClean.split(/\s+/).filter(Boolean);
+
+    // Amount regex: use before-amount text + first word of between
+    const aBefore = beforeAmountAnchor ? escapeRegex(beforeAmountAnchor) + '\\s*' : '';
+    const aAfter = betweenWords.length > 0
+      ? '\\s*' + escapeRegex(betweenWords[0])
+      : '';
+    amountRegex = aBefore + amountCapture + aAfter;
+
+    // Vendor regex: use last word of between + after-vendor text
+    const vBefore = betweenWords.length > 0
+      ? escapeRegex(betweenWords[betweenWords.length - 1]) + '\\s*'
+      : '';
+    const vAfter = afterVendorAnchor ? '\\s*' + escapeRegex(afterVendorAnchor) : '';
+    vendorRegex = vBefore + vendorCapture + vAfter;
+  }
 
   return { vendorRegex, amountRegex };
-}
-
-/**
- * Build a regex that captures the selected text using surrounding context.
- */
-function buildCaptureRegex(
-  fullText: string,
-  selected: string,
-  isAmount: boolean,
-): string {
-  const idx = fullText.indexOf(selected);
-  if (idx === -1) {
-    // Fallback: just match the literal
-    return isAmount
-      ? `(\\$?[\\d,]+\\.\\d{2})`
-      : `(${escapeRegex(selected)})`;
-  }
-
-  // Get surrounding context (up to 20 chars before and after)
-  const beforeStart = Math.max(0, idx - 20);
-  const afterEnd = Math.min(fullText.length, idx + selected.length + 20);
-
-  let before = fullText.slice(beforeStart, idx);
-  let after = fullText.slice(idx + selected.length, afterEnd);
-
-  // Trim to word boundaries for cleaner patterns
-  const beforeWordMatch = before.match(/(\s\S+\s?)$/);
-  if (beforeWordMatch) {
-    before = beforeWordMatch[1];
-  }
-  const afterWordMatch = after.match(/^(\s?\S+\s)/);
-  if (afterWordMatch) {
-    after = afterWordMatch[1];
-  }
-
-  // Trim whitespace edges and escape
-  before = before.trimStart();
-  after = after.trimEnd();
-
-  const escapedBefore = escapeRegex(before);
-  const escapedAfter = escapeRegex(after);
-
-  // Build capture group
-  let captureGroup: string;
-  if (isAmount) {
-    // Match dollar amounts: $1,234.56 or 1234.56
-    captureGroup = '\\$?([\\d,]+\\.\\d{2})';
-  } else {
-    // Match vendor text: word characters, spaces, common punctuation
-    captureGroup = '([A-Za-z0-9][A-Za-z0-9\\s&\'.,-]*)';
-  }
-
-  // Combine: before + capture + after
-  if (escapedBefore && escapedAfter) {
-    return `${escapedBefore}${captureGroup}${escapedAfter}`;
-  } else if (escapedBefore) {
-    return `${escapedBefore}${captureGroup}`;
-  } else if (escapedAfter) {
-    return `${captureGroup}${escapedAfter}`;
-  }
-
-  return captureGroup;
 }
 
 function escapeRegex(str: string): string {
@@ -912,13 +954,13 @@ export async function reprocessUnconfiguredCaptures(
         })
         .eq('id', capture.id);
     } else {
-      // Doesn't match — mark as ignored (not a transaction notification)
+      // Doesn't match — link to the rule so the UI knows a rule exists,
+      // but keep needs_review true so the user can still see it.
       await supabase
         .from('pending_transactions')
         .update({
-          needs_review: false,
-          approved: false,
-          validation_reasons: 'Ignored - does not match transaction format',
+          pattern_id: rule.id,
+          validation_reasons: 'Regex did not match notification format',
         })
         .eq('id', capture.id);
     }
