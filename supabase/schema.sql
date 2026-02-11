@@ -566,6 +566,16 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- Add only_parse column (simple text field for "Only Parse" keywords, comma-separated)
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'notification_rules' AND column_name = 'only_parse'
+  ) THEN
+    ALTER TABLE public.notification_rules ADD COLUMN only_parse text DEFAULT '';
+  END IF;
+END $$;
+
 -- Add filter_keywords column (array of keywords for "Only Parse" feature)
 DO $$ BEGIN
   IF NOT EXISTS (

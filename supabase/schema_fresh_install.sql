@@ -465,6 +465,7 @@ CREATE TABLE IF NOT EXISTS public.notification_rules (
   is_active boolean NOT NULL DEFAULT true,
   flagged_count integer NOT NULL DEFAULT 0,
   last_flagged_at timestamptz,
+  only_parse text DEFAULT '',
   filter_keywords text[] DEFAULT '{}',
   filter_mode text DEFAULT 'one' CHECK (filter_mode = ANY (ARRAY['all'::text, 'some'::text, 'one'::text])),
   notification_type text DEFAULT 'default',

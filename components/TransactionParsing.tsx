@@ -8,6 +8,7 @@ import {
   saveNotificationRule,
   reprocessUnconfiguredCaptures,
   updateRuleKeywordFilter,
+  parseOnlyParseKeywords,
   KEYWORD_IGNORED_PATTERN_ID,
   type NotificationRuleRow,
 } from '../lib/notificationProcessor';
@@ -71,8 +72,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [keywordEditRuleId, setKeywordEditRuleId] = useState<string | null>(null);
-  const [keywordInput, setKeywordInput] = useState('');
-  const [keywordList, setKeywordList] = useState<string[]>([]);
+  const [onlyParseText, setOnlyParseText] = useState('');
   const [keywordMode, setKeywordMode] = useState<'all' | 'some' | 'one'>('one');
   const [savingKeywords, setSavingKeywords] = useState(false);
   const [addingRuleForBank, setAddingRuleForBank] = useState<string | null>(null);
@@ -237,9 +237,8 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   const handleOpenKeywordEdit = useCallback(
     (rule: NotificationRuleRow) => {
       setKeywordEditRuleId(rule.id);
-      setKeywordList(rule.filter_keywords || []);
+      setOnlyParseText(rule.only_parse || (rule.filter_keywords || []).join(', '));
       setKeywordMode(rule.filter_mode || 'one');
-      setKeywordInput('');
     },
     [],
   );
@@ -250,7 +249,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       if (!userId) return;
       setSavingKeywords(true);
       try {
-        const success = await updateRuleKeywordFilter(ruleId, userId, keywordList, keywordMode);
+        const success = await updateRuleKeywordFilter(ruleId, userId, onlyParseText, keywordMode);
         if (success) {
           await loadRules();
           setKeywordEditRuleId(null);
@@ -261,22 +260,8 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         setSavingKeywords(false);
       }
     },
-    [userId, keywordList, keywordMode, loadRules],
+    [userId, onlyParseText, keywordMode, loadRules],
   );
-
-  // ── Handle adding a keyword to the list ──
-  const handleAddKeyword = useCallback(() => {
-    const trimmed = keywordInput.trim();
-    if (trimmed && !keywordList.includes(trimmed)) {
-      setKeywordList((prev) => [...prev, trimmed]);
-    }
-    setKeywordInput('');
-  }, [keywordInput, keywordList]);
-
-  // ── Handle removing a keyword from the list ──
-  const handleRemoveKeyword = useCallback((keyword: string) => {
-    setKeywordList((prev) => prev.filter((kw) => kw !== keyword));
-  }, []);
 
   // ── Handle adding a new rule for an existing bank (multi-regex) ──
   const handleStartAddRuleForBank = useCallback(
@@ -760,9 +745,9 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                                     Only Parse…
                                   </span>
                                   <div className="flex items-center gap-1">
-                                    {rule.filter_keywords && rule.filter_keywords.length > 0 && (
+                                    {parseOnlyParseKeywords(rule.only_parse).length > 0 && (
                                       <span className="text-[8px] font-bold text-emerald-600 dark:text-emerald-400">
-                                        {rule.filter_keywords.length} keyword{rule.filter_keywords.length !== 1 ? 's' : ''}
+                                        {parseOnlyParseKeywords(rule.only_parse).length} keyword{parseOnlyParseKeywords(rule.only_parse).length !== 1 ? 's' : ''}
                                       </span>
                                     )}
                                     <svg className={`w-3 h-3 text-slate-400 transition-transform ${keywordEditRuleId === rule.id ? 'rotate-90' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -796,43 +781,18 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                                       <span className="text-[8px] font-bold text-slate-500 dark:text-slate-400">of the words</span>
                                     </div>
 
-                                    {/* Keyword chips */}
-                                    {keywordList.length > 0 && (
-                                      <div className="flex flex-wrap gap-1">
-                                        {keywordList.map((kw) => (
-                                          <span
-                                            key={kw}
-                                            className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 rounded-full border border-emerald-200 dark:border-emerald-800/30"
-                                          >
-                                            {kw}
-                                            <button
-                                              onClick={() => handleRemoveKeyword(kw)}
-                                              className="text-emerald-500 hover:text-red-500 transition-colors"
-                                            >
-                                              ×
-                                            </button>
-                                          </span>
-                                        ))}
-                                      </div>
-                                    )}
-
-                                    {/* Add keyword input */}
-                                    <div className="flex gap-1">
+                                    {/* Only Parse text input */}
+                                    <div>
                                       <input
                                         type="text"
-                                        value={keywordInput}
-                                        onChange={(e) => setKeywordInput(e.target.value)}
-                                        onKeyDown={(e) => { if (e.key === 'Enter') handleAddKeyword(); }}
-                                        placeholder="Add keyword..."
-                                        className="flex-1 px-2 py-1.5 text-[10px] rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-400/50"
+                                        value={onlyParseText}
+                                        onChange={(e) => setOnlyParseText(e.target.value)}
+                                        placeholder="e.g. debit, purchase, withdrawal"
+                                        className="w-full px-2 py-1.5 text-[10px] rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-400/50"
                                       />
-                                      <button
-                                        onClick={handleAddKeyword}
-                                        disabled={!keywordInput.trim()}
-                                        className="px-3 py-1.5 text-[9px] font-bold text-white bg-emerald-500 disabled:bg-slate-300 dark:disabled:bg-slate-700 rounded-lg transition-all active:scale-95"
-                                      >
-                                        Add
-                                      </button>
+                                      <p className="text-[7px] text-slate-400 dark:text-slate-500 mt-1">
+                                        Separate keywords with commas
+                                      </p>
                                     </div>
 
                                     {/* Save/Cancel buttons */}
