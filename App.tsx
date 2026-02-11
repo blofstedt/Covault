@@ -3,7 +3,7 @@ import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
 import Onboarding from './components/Onboarding';
 import FullScreenLoader from './components/FullScreenLoader';
-import type { AppState, BudgetCategory, Transaction } from './types';
+import type { AppState, BudgetCategory, Transaction, PendingTransaction } from './types';
 import { supabase } from './lib/supabase';
 import { useAuthState, AuthStatus } from './lib/useAuthState';
 import { useDeepLinks } from './lib/useDeepLinks';
@@ -100,23 +100,28 @@ const App: React.FC = () => {
   // Native deep link handling (OAuth callback)
   useDeepLinks();
 
+  // Stable callbacks for the native notification listener
+  const handlePendingTransactionCreated = useCallback((pending: PendingTransaction) => {
+    setAppState(prev => {
+      const existing = prev.pendingTransactions || [];
+      if (existing.some(p => p.id === pending.id)) return prev;
+      return { ...prev, pendingTransactions: [pending, ...existing] };
+    });
+  }, [setAppState]);
+
+  const handleAutoAcceptedTransaction = useCallback((tx: Transaction) => {
+    setAppState(prev => {
+      if (prev.transactions.some(t => t.id === tx.id)) return prev;
+      return { ...prev, transactions: [tx, ...prev.transactions] };
+    });
+  }, [setAppState]);
+
   // Native notification → auto transaction listener
   useNotificationListener({
     user: appState.user,
     onTransactionDetected: handleAddTransaction,
-    onPendingTransactionCreated: (pending) => {
-      setAppState(prev => {
-        const existing = prev.pendingTransactions || [];
-        if (existing.some(p => p.id === pending.id)) return prev;
-        return { ...prev, pendingTransactions: [pending, ...existing] };
-      });
-    },
-    onAutoAcceptedTransaction: (tx) => {
-      setAppState(prev => {
-        if (prev.transactions.some(t => t.id === tx.id)) return prev;
-        return { ...prev, transactions: [tx, ...prev.transactions] };
-      });
-    },
+    onPendingTransactionCreated: handlePendingTransactionCreated,
+    onAutoAcceptedTransaction: handleAutoAcceptedTransaction,
   });
 
   // Refresh notifications: scan currently visible Android notifications
