@@ -167,17 +167,30 @@ function extractedDedupKey(pt: PendingTransaction): string {
 }
 
 /**
+ * Build a dedup key from notification_text and notification_timestamp.
+ * Two records sharing the same notification text and timestamp are
+ * considered duplicates.
+ */
+function notificationDedupKey(pt: PendingTransaction): string {
+  const text = (pt.notification_text || '').trim();
+  const ts = pt.notification_timestamp || 0;
+  return `${text}|${ts}`;
+}
+
+/**
  * Deduplicate pending transactions that already exist in the database.
  *
- * Runs two dedup passes:
- *   1. Fingerprint-based (app_package + amount + vendor +
+ * Runs three dedup passes:
+ *   1. Notification-text-based (notification_text + notification_timestamp)
+ *      — the primary dedup as required by issue: if both match, it's a dupe.
+ *   2. Fingerprint-based (app_package + amount + vendor +
  *      notification_timestamp) — the original approach.
- *   2. Extracted-field-based (extracted_vendor + extracted_amount +
+ *   3. Extracted-field-based (extracted_vendor + extracted_amount +
  *      extracted_timestamp to the second) — catches duplicates where
  *      the exact same vendor, amount, and time appear more than once
  *      regardless of source app or notification metadata.
  *
- * In both passes the oldest entry (by created_at) is kept and the
+ * In all passes the oldest entry (by created_at) is kept and the
  * rest are deleted from Supabase.
  *
  * Returns the deduplicated list of pending transactions.
@@ -191,10 +204,36 @@ export async function deduplicatePendingTransactions(
   const idsToDelete: string[] = [];
   const keepSet = new Set<string>();
 
-  // ── Pass 1: fingerprint-based dedup ──
-  const fpGroups = new Map<string, PendingTransaction[]>();
+  // ── Pass 1: notification_text + notification_timestamp dedup ──
+  const notifGroups = new Map<string, PendingTransaction[]>();
 
   for (const pt of pendingTransactions) {
+    const key = notificationDedupKey(pt);
+    const group = notifGroups.get(key);
+    if (group) {
+      group.push(pt);
+    } else {
+      notifGroups.set(key, [pt]);
+    }
+  }
+
+  for (const group of notifGroups.values()) {
+    if (group.length <= 1) {
+      keepSet.add(group[0].id);
+      continue;
+    }
+    group.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    keepSet.add(group[0].id);
+    for (let i = 1; i < group.length; i++) {
+      idsToDelete.push(group[i].id);
+    }
+  }
+
+  // ── Pass 2: fingerprint-based dedup ──
+  let survivors = pendingTransactions.filter(pt => keepSet.has(pt.id));
+  const fpGroups = new Map<string, PendingTransaction[]>();
+
+  for (const pt of survivors) {
     const hash = generateFingerprintHash(
       pt.app_package,
       pt.extracted_amount,
@@ -210,19 +249,16 @@ export async function deduplicatePendingTransactions(
   }
 
   for (const group of fpGroups.values()) {
-    if (group.length <= 1) {
-      keepSet.add(group[0].id);
-      continue;
-    }
+    if (group.length <= 1) continue;
     group.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-    keepSet.add(group[0].id);
     for (let i = 1; i < group.length; i++) {
+      keepSet.delete(group[i].id);
       idsToDelete.push(group[i].id);
     }
   }
 
-  // ── Pass 2: extracted-field dedup (vendor + amount + timestamp to the second) ──
-  const survivors = pendingTransactions.filter(pt => keepSet.has(pt.id));
+  // ── Pass 3: extracted-field dedup (vendor + amount + timestamp to the second) ──
+  survivors = pendingTransactions.filter(pt => keepSet.has(pt.id));
   const extGroups = new Map<string, PendingTransaction[]>();
 
   for (const pt of survivors) {
@@ -374,10 +410,10 @@ async function shouldIgnore(
  * Insert a parsed notification into pending_transactions.
  *
  * Before inserting, checks whether a pending transaction with the same
- * app_package, notification_timestamp and extracted_amount already exists
- * for this user.  This acts as a second safety net in case the fingerprint
- * dedup didn't catch a repeat (e.g. when a rescan uses slightly different
- * raw text or fallback vendor).
+ * notification_text and notification_timestamp already exists for this
+ * user.  This acts as a second safety net in case the fingerprint dedup
+ * didn't catch a repeat.  If both fields match, the notification is
+ * considered a duplicate and the insert is skipped.
  */
 async function insertPendingTransaction(
   userId: string,
@@ -391,16 +427,14 @@ async function insertPendingTransaction(
   const notifTimestamp = input.notificationTimestamp || Date.now();
 
   // ── Guard: skip if an identical pending transaction already exists ──
-  // Matches on vendor + amount + notification_timestamp to prevent
-  // inserting duplicates with the exact same extracted fields.
+  // Matches on notification_text + notification_timestamp to prevent
+  // inserting duplicates of the same notification.
   const { data: existing } = await supabase
     .from('pending_transactions')
     .select('id')
     .eq('user_id', userId)
-    .eq('app_package', input.bankAppId)
+    .eq('notification_text', input.rawNotification)
     .eq('notification_timestamp', notifTimestamp)
-    .eq('extracted_amount', amount)
-    .eq('extracted_vendor', vendor)
     .limit(1)
     .maybeSingle();
 
