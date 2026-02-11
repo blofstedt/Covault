@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { Transaction, BudgetCategory } from '../types';
+import { parseLocalDate } from '../lib/dateUtils';
 
 import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
 
@@ -41,8 +42,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
 
   const isFutureTransaction = useMemo(() => {
     if (transaction.is_projected) return false;
-    const [y, m, d] = transaction.date.slice(0, 10).split('-').map(Number);
-    return new Date(y, m - 1, d) > new Date();
+    return parseLocalDate(transaction.date) > new Date();
   }, [transaction.date, transaction.is_projected]);
 
   const isOtherUser = isSharedView && transaction.userName !== currentUserName;
@@ -61,7 +61,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
         onClick={() => onTap(transaction)}
         onKeyDown={handleKeyDown}
         className="relative z-10 p-5 rounded-[2rem] backdrop-blur-xl border shadow-sm bg-white/80 dark:bg-slate-900/80 border-slate-200/40 dark:border-slate-700/40 cursor-pointer hover:bg-white/90 dark:hover:bg-slate-900/90 active:scale-[0.98] transition-all w-full text-left"
-        aria-label={`Transaction: ${transaction.vendor}, ${transaction.amount.toFixed(2)} dollars on ${(() => { const [y, m, d] = transaction.date.slice(0, 10).split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString(); })()}`}
+        aria-label={`Transaction: ${transaction.vendor}, ${transaction.amount.toFixed(2)} dollars on ${parseLocalDate(transaction.date).toLocaleDateString()}`}
       >
         <div className="flex items-center justify-between">
           {/* Budget icon on the left for search results */}
@@ -94,13 +94,10 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
               {/* Date + recurrence + projected */}
               <div className="flex items-center space-x-2">
                 <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tight">
-                  {(() => {
-                    const [y, m, d] = transaction.date.slice(0, 10).split('-').map(Number);
-                    return new Date(y, m - 1, d).toLocaleDateString(undefined, {
-                      month: 'short',
-                      day: 'numeric',
-                    });
-                  })()}
+                  {parseLocalDate(transaction.date).toLocaleDateString(undefined, {
+                    month: 'short',
+                    day: 'numeric',
+                  })}
                 </span>
 
                 {transaction.recurrence !== 'One-time' && (

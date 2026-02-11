@@ -4,6 +4,7 @@ import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import RegexSetupModal from './RegexSetupModal';
 import { PendingTransaction, BudgetCategory, Transaction } from '../types';
 import { supabase } from '../lib/supabase';
+import { parseLocalDate } from '../lib/dateUtils';
 import {
   saveNotificationRule,
   reprocessUnconfiguredCaptures,
@@ -1429,7 +1430,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                               {tx.vendor}
                             </p>
                             <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
-                              {(() => { const [y, m, d] = tx.date.slice(0, 10).split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString(); })()} {approvalLabel}
+                              {parseLocalDate(tx.date).toLocaleDateString()} {approvalLabel}
                             </p>
                           </div>
                         </div>
