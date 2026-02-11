@@ -401,6 +401,7 @@ CREATE TABLE IF NOT EXISTS public.pending_transactions (
 CREATE INDEX IF NOT EXISTS idx_pending_transactions_user_id ON public.pending_transactions (user_id);
 CREATE INDEX IF NOT EXISTS idx_pending_transactions_needs_review ON public.pending_transactions (needs_review);
 CREATE INDEX IF NOT EXISTS idx_pending_transactions_dedup ON public.pending_transactions (user_id, app_package, notification_timestamp, extracted_amount);
+CREATE INDEX IF NOT EXISTS idx_pending_transactions_extracted_dedup ON public.pending_transactions (user_id, extracted_vendor, extracted_amount, extracted_timestamp);
 
 ALTER TABLE public.pending_transactions ENABLE ROW LEVEL SECURITY;
 

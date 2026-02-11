@@ -333,6 +333,7 @@ CREATE TABLE public.pending_transactions (
 
 CREATE INDEX idx_pending_transactions_user_id ON public.pending_transactions (user_id);
 CREATE INDEX idx_pending_transactions_needs_review ON public.pending_transactions (needs_review);
+CREATE INDEX idx_pending_transactions_extracted_dedup ON public.pending_transactions (user_id, extracted_vendor, extracted_amount, extracted_timestamp);
 
 ALTER TABLE public.pending_transactions ENABLE ROW LEVEL SECURITY;
 
