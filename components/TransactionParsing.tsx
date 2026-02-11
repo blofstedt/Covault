@@ -403,7 +403,12 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       if (!userId) return;
       
       // Get category name for optimistic update
-      const categoryName = budgets.find((b) => b.id === categoryId)?.name;
+      const category = budgets.find((b) => b.id === categoryId);
+      if (!category) {
+        console.error('[TransactionParsing] Invalid category ID:', categoryId);
+        return;
+      }
+      const categoryName = category.name;
       
       const existing = vendorOverrides.find(
         (vo) => vo.vendor_name.toLowerCase() === vendorName.toLowerCase(),
@@ -440,12 +445,13 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         }
       } else {
         // Optimistically add new override to local state for immediate UI feedback
-        const tempId = `temp-${Date.now()}`;
+        // Using crypto.randomUUID() for a unique temporary ID
+        const tempId = `temp-${crypto.randomUUID()}`;
         const newOverride: VendorOverride = {
           id: tempId,
           vendor_name: vendorName,
           category_id: categoryId,
-          auto_accept: false,
+          auto_accept: false, // Database default for new records
           category_name: categoryName,
         };
         setVendorOverrides((prev) => [...prev, newOverride]);
