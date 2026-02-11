@@ -184,8 +184,11 @@ public class NotificationListener extends NotificationListenerService {
         String text = extras.getString(Notification.EXTRA_TEXT, "");
         String bigText = extras.getString(Notification.EXTRA_BIG_TEXT, "");
 
-        // Combine all text for parsing
-        String fullText = title + " " + text + " " + bigText;
+        // Prefer bigText (expanded view) when available, otherwise use the
+        // short text.  Concatenating both would duplicate content because
+        // bigText typically contains the same message as text.
+        String body = (bigText != null && !bigText.isEmpty()) ? bigText : text;
+        String fullText = title + " " + body;
 
         // Check if this looks like a transaction notification
         if (!isTransactionNotification(fullText)) {
