@@ -105,16 +105,17 @@ const App: React.FC = () => {
     user: appState.user,
     onTransactionDetected: handleAddTransaction,
     onPendingTransactionCreated: (pending) => {
-      setAppState(prev => ({
-        ...prev,
-        pendingTransactions: [pending, ...(prev.pendingTransactions || [])],
-      }));
+      setAppState(prev => {
+        const existing = prev.pendingTransactions || [];
+        if (existing.some(p => p.id === pending.id)) return prev;
+        return { ...prev, pendingTransactions: [pending, ...existing] };
+      });
     },
     onAutoAcceptedTransaction: (tx) => {
-      setAppState(prev => ({
-        ...prev,
-        transactions: [tx, ...prev.transactions],
-      }));
+      setAppState(prev => {
+        if (prev.transactions.some(t => t.id === tx.id)) return prev;
+        return { ...prev, transactions: [tx, ...prev.transactions] };
+      });
     },
   });
 

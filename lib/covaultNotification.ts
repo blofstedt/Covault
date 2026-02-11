@@ -35,6 +35,12 @@ export interface TransactionDetectedEvent {
 
   /** Alternative field name for bankAppId sent by the native Android broadcast. */
   source_app?: string;
+
+  /**
+   * Original notification post time (epoch millis) from Android.
+   * Stable across rescans — used for fingerprint deduplication.
+   */
+  timestamp?: number;
 }
 
 export interface CovaultNotificationPlugin {

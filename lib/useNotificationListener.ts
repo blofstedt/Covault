@@ -59,6 +59,7 @@ export const useNotificationListener = ({
                   rawNotification,
                   bankAppId,
                   bankName,
+                  notificationTimestamp: event.timestamp,
                   fallbackVendor: event.vendor,
                   fallbackAmount: event.amount,
                 });
