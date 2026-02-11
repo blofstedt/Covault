@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Transaction, BudgetCategory, Recurrence, TransactionLabel, TransactionSplit } from '../types';
 import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
 import { formatVendorName } from '../lib/formatVendorName';
+import CalendarPicker from './CalendarPicker';
 
 interface VendorHistoryItem {
   vendor: string;
@@ -60,9 +61,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const [description, setDescription] = useState(initialTransaction?.description || '');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
 
   const amountInputRef = useRef<HTMLInputElement>(null);
-  const dateInputRef = useRef<HTMLInputElement>(null);
 
   const CLOSE_ANIMATION_MS = 250;
 
@@ -472,9 +473,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           <div className="space-y-3">
             {/* Styled date picker */}
             <div
-              onClick={() => {
-                try { (dateInputRef.current as any)?.showPicker?.(); } catch { dateInputRef.current?.focus(); }
-              }}
+              onClick={() => setShowCalendar(true)}
               className="relative flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 cursor-pointer active:scale-[0.98] transition-all"
             >
               <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Date</span>
@@ -484,13 +483,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                   <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
                 </svg>
               </div>
-              <input
-                ref={dateInputRef}
-                type="date"
-                value={date}
-                onChange={e => setDate(e.target.value)}
-                className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-              />
             </div>
 
             <div className="space-y-3">
@@ -552,6 +544,14 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           )}
         </form>
       </div>
+
+      {showCalendar && (
+        <CalendarPicker
+          value={date}
+          onChange={setDate}
+          onClose={() => setShowCalendar(false)}
+        />
+      )}
     </div>
   );
 };
