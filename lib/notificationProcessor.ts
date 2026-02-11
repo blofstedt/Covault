@@ -62,6 +62,7 @@ export interface NotificationRuleRow {
   is_active: boolean;
   flagged_count: number;
   last_flagged_at: string | null;
+  only_parse: string;
   filter_keywords: string[];
   filter_mode: 'all' | 'some' | 'one';
   notification_type: string;
@@ -306,6 +307,19 @@ export async function deduplicatePendingTransactions(
 
 /** Sentinel pattern_id value for notifications ignored by keyword filters */
 export const KEYWORD_IGNORED_PATTERN_ID = 'keyword-ignored';
+
+/**
+ * Parse keywords from the `only_parse` text field.
+ * Keywords are comma-separated; each keyword is trimmed and empty entries
+ * are filtered out.
+ */
+export function parseOnlyParseKeywords(onlyParse: string | null | undefined): string[] {
+  if (!onlyParse || !onlyParse.trim()) return [];
+  return onlyParse
+    .split(',')
+    .map((kw) => kw.trim())
+    .filter((kw) => kw.length > 0);
+}
 
 /**
  * Check if a notification text matches the keyword filter for a rule.
@@ -994,6 +1008,7 @@ export async function saveNotificationRule(options: {
   amountRegex: string;
   vendorRegex: string;
   sampleNotification: string;
+  onlyParse?: string;
   filterKeywords?: string[];
   filterMode?: 'all' | 'some' | 'one';
   notificationType?: string;
@@ -1004,12 +1019,16 @@ export async function saveNotificationRule(options: {
     bankName: rawBankName,
     amountRegex,
     vendorRegex,
-    filterKeywords = [],
+    onlyParse = '',
+    filterKeywords,
     filterMode = 'one',
     notificationType = 'default',
   } = options;
   const bankAppId = (rawBankAppId || '').toLowerCase();
   const bankName = (rawBankName || '').toLowerCase();
+
+  // Derive filter_keywords from only_parse text field
+  const derivedKeywords = filterKeywords ?? parseOnlyParseKeywords(onlyParse);
 
   // Validate regex syntax
   try {
@@ -1039,7 +1058,8 @@ export async function saveNotificationRule(options: {
       .update({
         amount_regex: amountRegex,
         vendor_regex: vendorRegex,
-        filter_keywords: filterKeywords,
+        only_parse: onlyParse,
+        filter_keywords: derivedKeywords,
         filter_mode: filterMode,
         updated_at: new Date().toISOString(),
       })
@@ -1063,7 +1083,8 @@ export async function saveNotificationRule(options: {
       bank_name: bankName,
       amount_regex: amountRegex,
       vendor_regex: vendorRegex,
-      filter_keywords: filterKeywords,
+      only_parse: onlyParse,
+      filter_keywords: derivedKeywords,
       filter_mode: filterMode,
       notification_type: notificationType,
     })
@@ -1138,16 +1159,19 @@ export async function reprocessUnconfiguredCaptures(
 
 /**
  * Update keyword filter settings for an existing notification rule.
+ * Accepts the `onlyParse` text field, derives `filter_keywords` from it.
  */
 export async function updateRuleKeywordFilter(
   ruleId: string,
   userId: string,
-  filterKeywords: string[],
+  onlyParse: string,
   filterMode: 'all' | 'some' | 'one',
 ): Promise<boolean> {
+  const filterKeywords = parseOnlyParseKeywords(onlyParse);
   const { error } = await supabase
     .from('notification_rules')
     .update({
+      only_parse: onlyParse,
       filter_keywords: filterKeywords,
       filter_mode: filterMode,
       updated_at: new Date().toISOString(),
