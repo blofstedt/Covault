@@ -142,6 +142,18 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     loadVendorOverrides();
   }, [loadRules, loadVendorOverrides]);
 
+  // Refresh rules and vendor overrides when the page/app regains visibility
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadRules();
+        loadVendorOverrides();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [loadRules, loadVendorOverrides]);
+
   // ── Toggle auto_accept on a vendor override ──
   const handleToggleAutoAccept = useCallback(
     async (overrideId: string, currentValue: boolean) => {
@@ -322,6 +334,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
             await onReloadPendingTransactions(userId);
           }
           await loadRules();
+          await loadVendorOverrides();
         }
 
         setSetupNotification(null);
@@ -332,7 +345,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         setSavingRule(false);
       }
     },
-    [setupNotification, userId, newRuleType, onReloadPendingTransactions, loadRules],
+    [setupNotification, userId, newRuleType, onReloadPendingTransactions, loadRules, loadVendorOverrides],
   );
 
   // ── Toggle auto-accept for a vendor by vendor name ──
@@ -558,8 +571,9 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
             await onReloadPendingTransactions(userId);
           }
 
-          // Refresh the rules list
+          // Refresh the rules list and vendor overrides (reprocessing may create overrides)
           await loadRules();
+          await loadVendorOverrides();
         }
 
         setSetupNotification(null);
@@ -569,7 +583,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         setSavingRule(false);
       }
     },
-    [setupNotification, userId, onReloadPendingTransactions, loadRules],
+    [setupNotification, userId, onReloadPendingTransactions, loadRules, loadVendorOverrides],
   );
 
   // ── Handle manual scan for transactions ──
@@ -584,12 +598,15 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       if (onReloadPendingTransactions && userId) {
         await onReloadPendingTransactions(userId);
       }
+      // Reload rules and vendor overrides so UI reflects any backend changes
+      await loadRules();
+      await loadVendorOverrides();
     } catch (err) {
       console.error('[TransactionParsing] Error scanning for transactions:', err);
     } finally {
       setIsScanning(false);
     }
-  }, [onRefreshNotifications, onReloadPendingTransactions, userId]);
+  }, [onRefreshNotifications, onReloadPendingTransactions, userId, loadRules, loadVendorOverrides]);
 
   return (
     <div className="flex-1 flex flex-col h-screen relative overflow-hidden transition-colors duration-700 bg-slate-50 dark:bg-slate-950">
