@@ -669,6 +669,9 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'vendor_overrides' AND policyname = 'Users can update own vendor overrides') THEN
     CREATE POLICY "Users can update own vendor overrides" ON public.vendor_overrides FOR UPDATE TO authenticated USING (auth.uid() = user_id);
   END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'vendor_overrides' AND policyname = 'Users can delete own vendor overrides') THEN
+    CREATE POLICY "Users can delete own vendor overrides" ON public.vendor_overrides FOR DELETE TO authenticated USING (auth.uid() = user_id);
+  END IF;
 END $$;
 
 

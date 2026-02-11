@@ -515,6 +515,9 @@ CREATE POLICY "Users can upsert own vendor overrides"
 CREATE POLICY "Users can update own vendor overrides"
   ON public.vendor_overrides FOR UPDATE TO authenticated
   USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete own vendor overrides"
+  ON public.vendor_overrides FOR DELETE TO authenticated
+  USING (auth.uid() = user_id);
 
 -- ============================================================
 -- 13. FLAG REPORTS  (rate-limited Gemini correction requests)
