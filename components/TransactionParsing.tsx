@@ -361,13 +361,14 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     [pendingTransactions],
   );
 
-  // 2. To Review: rule matched, vendor/amount extracted, needs category + approval
+  // 2. To Review: rule exists, needs category + approval
+  //    Includes both successfully parsed (OK) and regex-failed notifications
+  //    so the user can see everything that came from a configured bank.
   const toReviewTransactions = useMemo(
     () => pendingTransactions.filter(
       (pt) =>
         pt.pattern_id &&
-        pt.needs_review &&
-        pt.validation_reasons === 'OK',
+        pt.needs_review,
     ),
     [pendingTransactions],
   );
