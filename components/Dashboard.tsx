@@ -207,6 +207,9 @@ const Dashboard: React.FC<DashboardProps> = ({
       }
     };
 
+    // Check immediately on mount in case the month changed since initialization
+    checkMonth();
+
     // Check every hour to catch month changes
     const interval = setInterval(checkMonth, 60 * 60 * 1000);
 
