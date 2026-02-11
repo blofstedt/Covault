@@ -401,11 +401,29 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   const handleSetVendorCategory = useCallback(
     async (vendorName: string, categoryId: string) => {
       if (!userId) return;
+      
+      // Get category name for optimistic update
+      const category = budgets.find((b) => b.id === categoryId);
+      if (!category) {
+        console.error('[TransactionParsing] Invalid category ID:', categoryId);
+        return;
+      }
+      const categoryName = category.name;
+      
       const existing = vendorOverrides.find(
         (vo) => vo.vendor_name.toLowerCase() === vendorName.toLowerCase(),
       );
 
       if (existing) {
+        // Optimistically update local state for immediate UI feedback
+        setVendorOverrides((prev) =>
+          prev.map((vo) =>
+            vo.id === existing.id
+              ? { ...vo, category_id: categoryId, category_name: categoryName }
+              : vo
+          )
+        );
+
         // Update existing override
         const { error } = await supabase
           .from('vendor_overrides')
@@ -415,48 +433,55 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
 
         if (error) {
           console.error('[TransactionParsing] Error updating vendor category:', error);
+          // Revert optimistic update on failure
+          setVendorOverrides((prev) =>
+            prev.map((vo) =>
+              vo.id === existing.id
+                ? { ...vo, category_id: existing.category_id, category_name: existing.category_name }
+                : vo
+            )
+          );
           return;
         }
       } else {
+        // Optimistically add new override to local state for immediate UI feedback
+        // Using crypto.randomUUID() for a unique temporary ID
+        const tempId = `temp-${crypto.randomUUID()}`;
+        const newOverride: VendorOverride = {
+          id: tempId,
+          vendor_name: vendorName,
+          category_id: categoryId,
+          auto_accept: false, // Database default for new records
+          category_name: categoryName,
+        };
+        setVendorOverrides((prev) => [...prev, newOverride]);
+
         // Upsert: insert or update if already exists (handles stale local state)
-        let { error } = await supabase
+        // Note: We don't include auto_accept here to preserve existing value if record exists
+        const { error } = await supabase
           .from('vendor_overrides')
           .upsert(
             {
               user_id: userId,
               vendor_name: vendorName,
               category_id: categoryId,
-              auto_accept: false,
             },
             { onConflict: 'user_id,vendor_name' },
           );
 
-        // Retry without auto_accept if column doesn't exist yet
-        if (error && error.message && error.message.includes('auto_accept')) {
-          console.warn('[TransactionParsing] auto_accept column missing, retrying without it:', error.message);
-          const retry = await supabase
-            .from('vendor_overrides')
-            .upsert(
-              {
-                user_id: userId,
-                vendor_name: vendorName,
-                category_id: categoryId,
-              },
-              { onConflict: 'user_id,vendor_name' },
-            );
-          error = retry.error;
-        }
-
         if (error) {
           console.error('[TransactionParsing] Error upserting vendor override:', error);
+          // Revert optimistic update on failure
+          setVendorOverrides((prev) => prev.filter((vo) => vo.id !== tempId));
           return;
         }
       }
 
+      // Reload to get the actual data from database (including real IDs for new records)
       await loadVendorOverrides();
       setExpandedVendorCategory(null);
     },
-    [userId, vendorOverrides, loadVendorOverrides],
+    [userId, vendorOverrides, budgets, loadVendorOverrides],
   );
 
   // ── Categorize pending transactions into sections ──
