@@ -304,12 +304,21 @@ export async function deduplicatePendingTransactions(
 
 // ─── Keyword Filtering ──────────────────────────────────────────
 
+/** Sentinel pattern_id value for notifications ignored by keyword filters */
+export const KEYWORD_IGNORED_PATTERN_ID = 'keyword-ignored';
+
 /**
  * Check if a notification text matches the keyword filter for a rule.
  * Returns true if the notification passes the filter (should be parsed),
  * false if it should be ignored.
  *
  * If no keywords are configured, the notification always passes.
+ *
+ * Modes:
+ *   - 'all':  Every keyword must appear in the notification.
+ *   - 'some': At least two keywords must match (or the single keyword
+ *             if only one is configured).
+ *   - 'one':  At least one keyword must appear.
  */
 export function matchesKeywordFilter(
   notificationText: string,
@@ -747,7 +756,7 @@ export async function processNotification(
       input.fallbackVendor || 'Unknown',
       input.fallbackAmount ?? 0,
       true,
-      'keyword-ignored',
+      KEYWORD_IGNORED_PATTERN_ID,
       'Ignored by keyword filter',
     );
 

@@ -8,6 +8,7 @@ import {
   saveNotificationRule,
   reprocessUnconfiguredCaptures,
   updateRuleKeywordFilter,
+  KEYWORD_IGNORED_PATTERN_ID,
   type NotificationRuleRow,
 } from '../lib/notificationProcessor';
 
@@ -461,7 +462,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   // 1b. Keyword-ignored: filtered out by keyword rules
   const keywordIgnoredNotifications = useMemo(
     () => pendingTransactions.filter(
-      (pt) => pt.pattern_id === 'keyword-ignored' && pt.needs_review,
+      (pt) => pt.pattern_id === KEYWORD_IGNORED_PATTERN_ID && pt.needs_review,
     ),
     [pendingTransactions],
   );
@@ -475,7 +476,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   const toReviewTransactions = useMemo(
     () => pendingTransactions.filter(
       (pt) => {
-        if (!pt.pattern_id || pt.pattern_id === 'keyword-ignored' || !pt.needs_review) return false;
+        if (!pt.pattern_id || pt.pattern_id === KEYWORD_IGNORED_PATTERN_ID || !pt.needs_review) return false;
         // Check if an approved transaction already exists with the same vendor + amount
         const vendor = (pt.extracted_vendor || '').toLowerCase();
         const alreadyApproved = autoDetectedTransactions.some(
