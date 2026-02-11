@@ -758,6 +758,13 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                                   </div>
                                 </button>
 
+                                {/* Show saved keywords summary when editor is closed */}
+                                {keywordEditRuleId !== rule.id && rule.only_parse && rule.only_parse.trim() && (
+                                  <p className="text-[8px] text-slate-400 dark:text-slate-500 font-mono truncate mt-0.5 px-1">
+                                    {rule.only_parse}
+                                  </p>
+                                )}
+
                                 {keywordEditRuleId === rule.id && (
                                   <div className="mt-2 space-y-2">
                                     <p className="text-[8px] text-slate-400 dark:text-slate-500 leading-relaxed">

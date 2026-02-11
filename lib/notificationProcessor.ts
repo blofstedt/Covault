@@ -1052,15 +1052,20 @@ export async function saveNotificationRule(options: {
   const existing = existingData as NotificationRuleRow | null;
 
   if (existing) {
-    // Update existing rule
+    // Update existing rule — preserve only_parse / filter_keywords when
+    // the caller didn't supply them (avoids wiping saved keywords).
+    const effectiveOnlyParse = onlyParse || existing.only_parse || '';
+    const effectiveKeywords = filterKeywords ?? parseOnlyParseKeywords(effectiveOnlyParse);
+    const effectiveFilterMode = options.filterMode ?? existing.filter_mode ?? 'one';
+
     const { data, error } = await supabase
       .from('notification_rules')
       .update({
         amount_regex: amountRegex,
         vendor_regex: vendorRegex,
-        only_parse: onlyParse,
-        filter_keywords: derivedKeywords,
-        filter_mode: filterMode,
+        only_parse: effectiveOnlyParse,
+        filter_keywords: effectiveKeywords,
+        filter_mode: effectiveFilterMode,
         updated_at: new Date().toISOString(),
       })
       .eq('id', existing.id)
@@ -1168,7 +1173,7 @@ export async function updateRuleKeywordFilter(
   filterMode: 'all' | 'some' | 'one',
 ): Promise<boolean> {
   const filterKeywords = parseOnlyParseKeywords(onlyParse);
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('notification_rules')
     .update({
       only_parse: onlyParse,
@@ -1177,10 +1182,16 @@ export async function updateRuleKeywordFilter(
       updated_at: new Date().toISOString(),
     })
     .eq('id', ruleId)
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .select()
+    .single();
 
   if (error) {
     console.error('[updateRuleKeywordFilter] Error:', error);
+    return false;
+  }
+  if (!data) {
+    console.error('[updateRuleKeywordFilter] No rows updated for rule', ruleId);
     return false;
   }
   return true;
