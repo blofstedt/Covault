@@ -2,6 +2,9 @@
 import { useCallback } from 'react';
 import type { Transaction } from '../../types';
 
+// Valid recurrence values that must match the database CHECK constraint
+const VALID_RECURRENCES = ['One-time', 'Biweekly', 'Monthly'];
+
 // Build the object Supabase expects — only columns that exist in the table
 export const useToSupabaseTransaction = () =>
   useCallback((tx: Transaction) => {
@@ -12,11 +15,14 @@ export const useToSupabaseTransaction = () =>
       throw new Error(`Transaction must have a valid budget_id (category_id). Got: ${tx.budget_id}`);
     }
 
-    // Ensure recurrence is one of the valid values
-    const validRecurrences = ['One-time', 'Biweekly', 'Monthly'];
-    const recurrence = tx.recurrence || 'One-time';
-    if (!validRecurrences.includes(recurrence)) {
-      console.warn(`Invalid recurrence value "${recurrence}", defaulting to "One-time"`);
+    // Validate and set recurrence value
+    let recurrence: string = 'One-time';
+    if (tx.recurrence) {
+      if (VALID_RECURRENCES.includes(tx.recurrence)) {
+        recurrence = tx.recurrence;
+      } else {
+        console.warn(`Invalid recurrence value "${tx.recurrence}", defaulting to "One-time"`);
+      }
     }
 
     const row: Record<string, any> = {
@@ -25,7 +31,7 @@ export const useToSupabaseTransaction = () =>
       amount: Number(tx.amount),
       date: dateStr,
       category_id: tx.budget_id,
-      recurrence: validRecurrences.includes(recurrence) ? recurrence : 'One-time',
+      recurrence: recurrence,
       label: tx.label || 'Manual',
       is_projected: tx.is_projected ?? false,
     };
@@ -41,11 +47,13 @@ export const useToSupabaseTransaction = () =>
 export const useFromSupabaseTransaction = () =>
   useCallback((row: any): Transaction => {
     // Validate recurrence value from database
-    const validRecurrences = ['One-time', 'Biweekly', 'Monthly'];
-    const recurrence = validRecurrences.includes(row.recurrence) ? row.recurrence : 'One-time';
-    
-    if (row.recurrence && !validRecurrences.includes(row.recurrence)) {
-      console.warn(`Invalid recurrence value "${row.recurrence}" from database, using "One-time"`);
+    let recurrence: string = 'One-time';
+    if (row.recurrence) {
+      if (VALID_RECURRENCES.includes(row.recurrence)) {
+        recurrence = row.recurrence;
+      } else {
+        console.warn(`Invalid recurrence value "${row.recurrence}" from database, using "One-time"`);
+      }
     }
 
     return {
