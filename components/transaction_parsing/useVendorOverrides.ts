@@ -138,7 +138,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
         const res = await fetch(url, { method: 'DELETE', headers });
         const body = await res.text();
         let deletedRows: any[] = [];
-        try { deletedRows = body ? JSON.parse(body) : []; } catch { deletedRows = []; }
+        try { deletedRows = body ? JSON.parse(body) : []; } catch (e) { console.warn('[TransactionParsing] Failed to parse delete response:', e); deletedRows = []; }
 
         if (!res.ok) {
           console.error('[TransactionParsing] Error deleting vendor override:', res.status, body.slice(0, 200));
@@ -281,7 +281,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
             // Replace temp ID with real ID from server response
             const insertBody = await insertRes.text();
             let insertedRows: any[] = [];
-            try { insertedRows = insertBody ? JSON.parse(insertBody) : []; } catch { insertedRows = []; }
+            try { insertedRows = insertBody ? JSON.parse(insertBody) : []; } catch (e) { console.warn('[TransactionParsing] Failed to parse insert response:', e); insertedRows = []; }
             if (Array.isArray(insertedRows) && insertedRows.length > 0) {
               const realId = insertedRows[0].id;
               setVendorOverrides((prev) =>
@@ -298,7 +298,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
               // Replace temp override with the real data from the update response
               const updateBody = await updateRes.text();
               let updatedRows: any[] = [];
-              try { updatedRows = updateBody ? JSON.parse(updateBody) : []; } catch { updatedRows = []; }
+              try { updatedRows = updateBody ? JSON.parse(updateBody) : []; } catch (e) { console.warn('[TransactionParsing] Failed to parse update response:', e); updatedRows = []; }
               if (Array.isArray(updatedRows) && updatedRows.length > 0) {
                 const realId = updatedRows[0].id;
                 setVendorOverrides((prev) =>
