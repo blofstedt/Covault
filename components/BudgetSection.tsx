@@ -3,7 +3,6 @@ import React from 'react';
 import { BudgetCategory, Transaction } from '../types';
 import TransactionItem from './TransactionItem';
 import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
-import { Shield } from 'lucide-react';
 
 interface ExtendedBudgetCategory extends BudgetCategory {
   externalDeduction?: number;
@@ -52,19 +51,17 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
   );
 
   const external = budget.externalDeduction || 0;
-  const total = spent + external + projected;
+  // Include external (shield) deduction directly in the consumed total
+  const spentWithExternal = spent + external;
+  const total = spentWithExternal + projected;
   const isDanger = total > budget.totalLimit;
 
   const spentWidth = Math.min(
     100,
-    budget.totalLimit > 0 ? (spent / budget.totalLimit) * 100 : 0,
-  );
-  const externalWidth = Math.min(
-    100 - spentWidth,
-    budget.totalLimit > 0 ? (external / budget.totalLimit) * 100 : 0,
+    budget.totalLimit > 0 ? (spentWithExternal / budget.totalLimit) * 100 : 0,
   );
   const projectedWidth = Math.min(
-    100 - spentWidth - externalWidth,
+    100 - spentWidth,
     budget.totalLimit > 0 ? (projected / budget.totalLimit) * 100 : 0,
   );
 
@@ -78,25 +75,11 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
     >
       {/* CLEAN BACKGROUND BARS (NO WAVES / ANIMATIONS) */}
       <div className="absolute inset-0 z-0 pointer-events-none flex">
-        {/* Spent */}
+        {/* Spent (includes shield/external deduction) */}
         <div
           style={{ width: `${spentWidth}%` }}
           className="h-full bg-emerald-400/30 dark:bg-emerald-500/40 transition-all duration-300"
         />
-
-        {/* Shield (External Deduction) - Dark Green */}
-        {external > 0 && (
-          <div
-            style={{ width: `${externalWidth}%` }}
-            className="h-full bg-emerald-800/50 dark:bg-emerald-900/60 transition-all duration-300 relative flex items-center justify-center"
-          >
-            <Shield 
-              className="text-emerald-900/40 dark:text-emerald-700/50 absolute" 
-              size={isExpanded ? 28 : 16}
-              strokeWidth={2.5}
-            />
-          </div>
-        )}
 
         {/* Projected - with fine slanted lines /// */}
         <div
@@ -162,45 +145,6 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           {isExpanded ? (
             <>
               <div className="flex items-baseline space-x-1">
-                <div className="flex flex-col items-end">
-                  <span
-                    className="text-sm font-black mr-2 tracking-tight transition-colors duration-300 text-slate-500"
-                  >
-                    ${spent.toFixed(0)}
-                    {projected > 0 && (
-                      <span className="text-emerald-600 dark:text-emerald-400">
-                        {' '}+${projected.toFixed(0)}
-                      </span>
-                    )}
-                    {external > 0 && (
-                      <span className="text-amber-500 dark:text-amber-400">
-                        {' '}+${external.toFixed(0)}
-                      </span>
-                    )}
-                    <span className="mx-1.5 opacity-30 font-medium text-slate-400">
-                      /
-                    </span>
-                  </span>
-                  {(projected > 0 || external > 0) && (
-                    <span className="text-[8px] font-bold uppercase tracking-wider mr-2">
-                      {projected > 0 && (
-                        <span className="text-emerald-600 dark:text-emerald-400">
-                          Projected
-                        </span>
-                      )}
-                      {projected > 0 && external > 0 && (
-                        <span className="text-slate-400 dark:text-slate-500">
-                          {' + '}
-                        </span>
-                      )}
-                      {external > 0 && (
-                        <span className="text-amber-500 dark:text-amber-400">
-                          Shield Active
-                        </span>
-                      )}
-                    </span>
-                  )}
-                </div>
                 <span
                   className="text-sm font-black mr-2 tracking-tight transition-colors duration-300 text-slate-500"
                 >

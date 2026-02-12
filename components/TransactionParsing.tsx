@@ -196,29 +196,41 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     async (overrideId: string) => {
       if (!userId) return;
 
+      // Find the vendor name before removing so we can fall back to name-based delete
+      const vendorName = vendorOverrides.find((vo) => vo.id === overrideId)?.vendor_name;
+
       // Optimistically remove from local state for immediate UI feedback
       setVendorOverrides((prev) => prev.filter((vo) => vo.id !== overrideId));
+      // Collapse the expanded vendor panel so the deleted rule disappears from view
+      setExpandedVendorCategory(null);
 
-      const { data, error } = await supabase
-        .from('vendor_overrides')
-        .delete()
-        .eq('id', overrideId)
-        .eq('user_id', userId)
-        .select();
+      // If the ID is a temporary optimistic ID, delete by vendor name instead
+      if (overrideId.startsWith('temp-') && vendorName) {
+        const { error } = await supabase
+          .from('vendor_overrides')
+          .delete()
+          .eq('user_id', userId)
+          .eq('vendor_name', vendorName);
 
-      if (error) {
-        console.error('[TransactionParsing] Error deleting vendor override:', error);
-        // Reload to ensure state consistency on failure
-        await loadVendorOverrides();
-        return;
+        if (error) {
+          console.error('[TransactionParsing] Error deleting vendor override by name:', error);
+        }
+      } else {
+        const { error } = await supabase
+          .from('vendor_overrides')
+          .delete()
+          .eq('id', overrideId)
+          .eq('user_id', userId);
+
+        if (error) {
+          console.error('[TransactionParsing] Error deleting vendor override:', error);
+        }
       }
 
-      if (!data || data.length === 0) {
-        console.warn('[TransactionParsing] Vendor override not found for deletion, reloading');
-        await loadVendorOverrides();
-      }
+      // Reload to ensure local state matches the database
+      await loadVendorOverrides();
     },
-    [userId, loadVendorOverrides],
+    [userId, vendorOverrides, loadVendorOverrides],
   );
 
   // ── Handle tapping a saved parsing rule to edit it ──
