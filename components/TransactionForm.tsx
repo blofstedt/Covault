@@ -51,11 +51,18 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 }) => {
   const [vendor, setVendor] = useState(initialTransaction?.vendor || '');
   const [amountStr, setAmountStr] = useState(initialTransaction?.amount.toString() || '');
-  const [date, setDate] = useState(
-    initialTransaction?.date
-      ? initialTransaction.date.slice(0, 10)
-      : new Date().toISOString().split('T')[0]
-  );
+  const [date, setDate] = useState(() => {
+    if (initialTransaction?.date) {
+      return initialTransaction.date.slice(0, 10);
+    }
+    // Use local date (not UTC) so the transaction lands in the correct month
+    // relative to the dashboard's local-time month filter.
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  });
 
   const [recurrence, setRecurrence] = useState<Recurrence>(initialTransaction?.recurrence || 'One-time');
   const [description, setDescription] = useState(initialTransaction?.description || '');

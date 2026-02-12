@@ -348,7 +348,8 @@ export const useTransactionOps = ({
           });
 
           // Update the recurring transaction date in local state
-          const todayStr = new Date().toISOString().split('T')[0];
+          const now = new Date();
+          const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
           setAppState(prev => ({
             ...prev,
             transactions: prev.transactions.map(t =>
