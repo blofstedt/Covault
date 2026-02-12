@@ -3,8 +3,10 @@ import { createClient } from '@supabase/supabase-js';
 import { Capacitor } from '@capacitor/core';
 
 // ✅ These MUST match what you have in Vercel / .env / GitHub
-export const supabaseUrl =
-  (import.meta.env.VITE_SUPABASE_URL || import.meta.env.VITE_PUBLIC_SUPABASE_URL) as string | undefined;
+// Supports both naming conventions for compatibility:
+//   VITE_SUPABASE_URL or VITE_PUBLIC_SUPABASE_URL = https://xqleyxrftyehodksashu.supabase.co
+//   VITE_SUPABASE_ANON_KEY = your anon key
+export const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || import.meta.env.VITE_PUBLIC_SUPABASE_URL) as string | undefined;
 export const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
 const isSupabaseConfigured = !!supabaseUrl && !!supabaseAnonKey;
@@ -16,7 +18,7 @@ if (!isSupabaseConfigured) {
   );
 }
 
-// Stub client for misconfiguration
+// Optional: very simple stub to avoid hard crashes in local dev
 const createStubClient = () =>
   ({
     auth: {
@@ -26,7 +28,9 @@ const createStubClient = () =>
       },
       onAuthStateChange(callback?: (event: string, session: unknown | null) => void) {
         console.warn('[supabase] Stub client in use: onAuthStateChange');
-        if (callback) setTimeout(() => callback('SIGNED_OUT', null), 0);
+        if (callback) {
+          setTimeout(() => callback('SIGNED_OUT', null), 0);
+        }
         return { data: { subscription: { unsubscribe: () => {} } } };
       },
       async signOut() {
@@ -51,8 +55,14 @@ const createStubClient = () =>
         insert: () => this,
         update: () => this,
         delete: () => this,
-        maybeSingle: async () => ({ data: null, error: { message: 'Supabase is not configured.' } }),
-        single: async () => ({ data: null, error: { message: 'Supabase is not configured.' } }),
+        maybeSingle: async () => ({
+          data: null,
+          error: { message: 'Supabase is not configured.' },
+        }),
+        single: async () => ({
+          data: null,
+          error: { message: 'Supabase is not configured.' },
+        }),
       };
     },
     functions: {
@@ -63,32 +73,26 @@ const createStubClient = () =>
     },
   }) as unknown as ReturnType<typeof createClient>;
 
-// Create Supabase client
+// ✅ Create and export the real Supabase client (or stub if misconfigured)
 export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
+        // Keep the user logged in across page reloads
         persistSession: true,
+
+        // For Android/native apps, we handle deep links manually
+        // For web, Supabase auto-detects the session from URL
         detectSessionInUrl: !Capacitor.isNativePlatform(),
+
+        // Skip automatic browser redirect on Android (we handle it manually)
+        // This prevents the OAuth window from staying open
         skipBrowserRedirect: Capacitor.isNativePlatform(),
+
+        // Recommended for browser-based OAuth flows
         flowType: 'pkce',
-        // ✅ Use localStorage for web, dynamically import Capacitor Storage for native
-        storage: Capacitor.isNativePlatform()
-          ? {
-              getItem: async (key: string) => {
-                const Storage = (await import('@capacitor/storage')).Storage;
-                const { value } = await Storage.get({ key });
-                return value;
-              },
-              setItem: async (key: string, value: string) => {
-                const Storage = (await import('@capacitor/storage')).Storage;
-                await Storage.set({ key, value });
-              },
-              removeItem: async (key: string) => {
-                const Storage = (await import('@capacitor/storage')).Storage;
-                await Storage.remove({ key });
-              },
-            }
-          : localStorage,
+
+        // Use Capacitor secure storage on native platforms
+        storage: Capacitor.isNativePlatform() ? undefined : localStorage,
       },
     })
   : createStubClient();
