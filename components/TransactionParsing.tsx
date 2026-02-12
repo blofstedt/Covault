@@ -515,10 +515,20 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
           });
 
         if (error) {
-          console.error('[TransactionParsing] Error inserting vendor override:', error);
-          // Revert optimistic update on failure
-          setVendorOverrides((prev) => prev.filter((vo) => vo.id !== tempId));
-          return;
+          // If insert failed (e.g. unique constraint violation from a race condition),
+          // fall back to updating the existing row by vendor name
+          const { error: updateError } = await supabase
+            .from('vendor_overrides')
+            .update({ category_id: categoryId })
+            .eq('user_id', userId)
+            .eq('vendor_name', vendorName);
+
+          if (updateError) {
+            console.error('[TransactionParsing] Error inserting/updating vendor override:', updateError);
+            // Revert optimistic update on failure
+            setVendorOverrides((prev) => prev.filter((vo) => vo.id !== tempId));
+            return;
+          }
         }
       }
 
