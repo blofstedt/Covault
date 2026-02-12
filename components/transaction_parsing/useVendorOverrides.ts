@@ -126,6 +126,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
 
       try {
         const headers = await getAuthHeaders();
+        (headers as any)['Prefer'] = 'return=representation';
         let url: string;
 
         if (overrideId.startsWith('temp-') && vendorName) {
@@ -135,26 +136,32 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
         }
 
         const res = await fetch(url, { method: 'DELETE', headers });
+        const body = await res.text();
+        let deletedRows: any[] = [];
+        try { deletedRows = body ? JSON.parse(body) : []; } catch { deletedRows = []; }
 
         if (!res.ok) {
-          const body = await res.text();
           console.error('[TransactionParsing] Error deleting vendor override:', res.status, body.slice(0, 200));
           if (deletedOverride) {
             setVendorOverrides((prev) => [...prev, deletedOverride]);
           }
           return;
         }
+
+        if (!Array.isArray(deletedRows) || deletedRows.length === 0) {
+          console.warn('[TransactionParsing] Delete matched 0 rows for override:', overrideId);
+          // Still keep the optimistic removal — the row may not exist in DB (temp/stale id)
+        }
+
+        console.log('[TransactionParsing] Vendor override deleted:', overrideId);
       } catch (err: any) {
         console.error('[TransactionParsing] Exception deleting vendor override:', err?.message || err);
         if (deletedOverride) {
           setVendorOverrides((prev) => [...prev, deletedOverride]);
         }
-        return;
       }
-
-      await loadVendorOverrides();
     },
-    [userId, vendorOverrides, loadVendorOverrides],
+    [userId, vendorOverrides],
   );
 
   // ── Toggle auto-accept for a vendor by vendor name ──
@@ -225,6 +232,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
 
       try {
         const headers = await getAuthHeaders();
+        (headers as any)['Prefer'] = 'return=representation';
 
         if (existing) {
           setVendorOverrides((prev) =>
@@ -269,13 +277,35 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
             body: JSON.stringify({ user_id: userId, vendor_name: vendorName, category_id: categoryId }),
           });
 
-          if (!insertRes.ok) {
+          if (insertRes.ok) {
+            // Replace temp ID with real ID from server response
+            const insertBody = await insertRes.text();
+            let insertedRows: any[] = [];
+            try { insertedRows = insertBody ? JSON.parse(insertBody) : []; } catch { insertedRows = []; }
+            if (Array.isArray(insertedRows) && insertedRows.length > 0) {
+              const realId = insertedRows[0].id;
+              setVendorOverrides((prev) =>
+                prev.map((vo) => vo.id === tempId ? { ...vo, id: realId } : vo)
+              );
+            }
+          } else {
             const updateRes = await fetch(
               `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(vendorName)}`,
               { method: 'PATCH', headers, body: JSON.stringify({ category_id: categoryId }) },
             );
 
-            if (!updateRes.ok) {
+            if (updateRes.ok) {
+              // Replace temp override with the real data from the update response
+              const updateBody = await updateRes.text();
+              let updatedRows: any[] = [];
+              try { updatedRows = updateBody ? JSON.parse(updateBody) : []; } catch { updatedRows = []; }
+              if (Array.isArray(updatedRows) && updatedRows.length > 0) {
+                const realId = updatedRows[0].id;
+                setVendorOverrides((prev) =>
+                  prev.map((vo) => vo.id === tempId ? { ...vo, id: realId } : vo)
+                );
+              }
+            } else {
               const insertBody = await insertRes.text();
               const updateBody = await updateRes.text();
               console.error('[TransactionParsing] Error setting vendor override (insert failed:', insertBody.slice(0, 200), ', update failed:', updateBody.slice(0, 200), ')');
@@ -288,10 +318,9 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
         console.error('[TransactionParsing] Exception setting vendor category:', err?.message || err);
       }
 
-      await loadVendorOverrides();
       setExpandedVendorCategory(null);
     },
-    [userId, vendorOverrides, budgets, loadVendorOverrides],
+    [userId, vendorOverrides, budgets],
   );
 
   return {
