@@ -145,28 +145,6 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           {isExpanded ? (
             <>
               <div className="flex items-baseline space-x-1">
-                <div className="flex flex-col items-end">
-                  <span
-                    className="text-sm font-black mr-2 tracking-tight transition-colors duration-300 text-slate-500"
-                  >
-                    ${spentWithExternal.toFixed(0)}
-                    {projected > 0 && (
-                      <span className="text-emerald-600 dark:text-emerald-400">
-                        {' '}+${projected.toFixed(0)}
-                      </span>
-                    )}
-                    <span className="mx-1.5 opacity-30 font-medium text-slate-400">
-                      /
-                    </span>
-                  </span>
-                  {projected > 0 && (
-                    <span className="text-[8px] font-bold uppercase tracking-wider mr-2">
-                      <span className="text-emerald-600 dark:text-emerald-400">
-                        Projected
-                      </span>
-                    </span>
-                  )}
-                </div>
                 <span
                   className="text-sm font-black mr-2 tracking-tight transition-colors duration-300 text-slate-500"
                 >
