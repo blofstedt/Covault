@@ -173,12 +173,17 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                     <span className="text-[8px] font-bold uppercase tracking-wider mr-2">
                       {projected > 0 && (
                         <span className="text-emerald-600 dark:text-emerald-400">
-                          Projected{external > 0 && ' + '}
+                          Projected
+                        </span>
+                      )}
+                      {projected > 0 && external > 0 && (
+                        <span className="text-slate-400 dark:text-slate-500">
+                          {' + '}
                         </span>
                       )}
                       {external > 0 && (
                         <span className="text-amber-500 dark:text-amber-400">
-                          Shield
+                          Shield Active
                         </span>
                       )}
                     </span>
