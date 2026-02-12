@@ -3,6 +3,7 @@ import React from 'react';
 import { BudgetCategory, Transaction } from '../types';
 import TransactionItem from './TransactionItem';
 import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
+import { Shield } from 'lucide-react';
 
 interface ExtendedBudgetCategory extends BudgetCategory {
   externalDeduction?: number;
@@ -58,8 +59,12 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
     100,
     budget.totalLimit > 0 ? (spent / budget.totalLimit) * 100 : 0,
   );
-  const projectedWidth = Math.min(
+  const externalWidth = Math.min(
     100 - spentWidth,
+    budget.totalLimit > 0 ? (external / budget.totalLimit) * 100 : 0,
+  );
+  const projectedWidth = Math.min(
+    100 - spentWidth - externalWidth,
     budget.totalLimit > 0 ? (projected / budget.totalLimit) * 100 : 0,
   );
 
@@ -78,6 +83,20 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           style={{ width: `${spentWidth}%` }}
           className="h-full bg-emerald-400/30 dark:bg-emerald-500/40 transition-all duration-300"
         />
+
+        {/* Shield (External Deduction) - Dark Green */}
+        {external > 0 && (
+          <div
+            style={{ width: `${externalWidth}%` }}
+            className="h-full bg-emerald-800/50 dark:bg-emerald-900/60 transition-all duration-300 relative flex items-center justify-center"
+          >
+            <Shield 
+              className="text-emerald-900/40 dark:text-emerald-700/50 absolute" 
+              size={isExpanded ? 28 : 16}
+              strokeWidth={2.5}
+            />
+          </div>
+        )}
 
         {/* Projected - with fine slanted lines /// */}
         <div
@@ -127,20 +146,13 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
             </h3>
 
             {!isExpanded && (
-              <div className="flex flex-col">
-                <span
-                  className="text-[10px] font-black uppercase tracking-[0.15em] mt-1 transition-colors duration-300 text-slate-400 dark:text-slate-500"
-                >
-                  {isDanger
-                    ? `Over: $${Math.max(0, total - budget.totalLimit).toFixed(0)}`
-                    : `$${Math.max(0, budget.totalLimit - total).toFixed(0)} left`}
-                </span>
-                {external > 0 && (
-                  <span className="text-[9px] font-bold uppercase tracking-wider mt-0.5 text-amber-500 dark:text-amber-400">
-                    +${external.toFixed(0)} Shield
-                  </span>
-                )}
-              </div>
+              <span
+                className="text-[10px] font-black uppercase tracking-[0.15em] mt-1 transition-colors duration-300 text-slate-400 dark:text-slate-500"
+              >
+                {isDanger
+                  ? `Over: $${Math.max(0, total - budget.totalLimit).toFixed(0)}`
+                  : `$${Math.max(0, budget.totalLimit - total).toFixed(0)} left`}
+              </span>
             )}
           </div>
         </div>
@@ -189,6 +201,14 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                     </span>
                   )}
                 </div>
+                <span
+                  className="text-sm font-black mr-2 tracking-tight transition-colors duration-300 text-slate-500"
+                >
+                  ${total.toFixed(0)}
+                  <span className="mx-1.5 opacity-30 font-medium text-slate-400">
+                    /
+                  </span>
+                </span>
 
                 <span className="text-xl font-black tracking-tighter leading-none transition-colors duration-300 text-slate-500 dark:text-slate-100">
                   ${budget.totalLimit}
@@ -224,22 +244,6 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           }}
         >
           <div className="py-6 space-y-4">
-            {external > 0 && (
-              <div className="px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-2xl">
-                <div className="flex items-start space-x-2">
-                  <span className="text-amber-500 dark:text-amber-400 text-lg">🛡️</span>
-                  <div className="flex-1">
-                    <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider">
-                      Discretionary Shield Active
-                    </p>
-                    <p className="text-[9px] text-amber-600 dark:text-amber-500 mt-1 leading-relaxed">
-                      ${external.toFixed(0)} from other budgets' overspending is being covered by this category.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-            
             <div className="flex items-center justify-between px-2">
               <span className="text-[10px] font-black uppercase tracking-[0.2em] transition-colors duration-300 text-slate-400 dark:text-slate-500">
                 {isSharedView ? 'Our Activity History' : 'Activity History'}

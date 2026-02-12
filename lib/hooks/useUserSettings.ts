@@ -31,6 +31,10 @@ export const useUserSettings = ({
       // Store previous value for rollback
       const previousLimit = category.totalLimit;
 
+      // Get current visibility state (true if NOT in hiddenCategories)
+      const hiddenCategories = appState.settings.hiddenCategories || [];
+      const visible = !hiddenCategories.includes(categoryId);
+
       // Optimistic UI update
       setAppState(prev => ({
         ...prev,
@@ -54,6 +58,7 @@ export const useUserSettings = ({
               user_id: userId,
               category: categoryName,
               limit_amount: newLimit,
+              visible,
               is_household: !appState.user?.budgetingSolo,
             }),
           },
@@ -126,7 +131,7 @@ export const useUserSettings = ({
         }));
       }
     },
-    [appState.user, appState.budgets, setAppState, setDbError],
+    [appState.user, appState.budgets, appState.settings, setAppState, setDbError],
   );
 
   // Save user monthly income to Supabase settings table
