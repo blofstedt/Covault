@@ -74,6 +74,7 @@ export interface PendingTransaction {
   created_at: string;
   reviewed_at?: string;
   approved?: boolean;
+  rejection_reason?: string;
 }
 
 

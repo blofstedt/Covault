@@ -395,6 +395,7 @@ CREATE TABLE IF NOT EXISTS public.pending_transactions (
   created_at timestamptz DEFAULT now(),
   reviewed_at timestamptz,
   approved boolean,
+  rejection_reason text,
   CONSTRAINT pending_transactions_pkey PRIMARY KEY (id)
 );
 
@@ -402,6 +403,16 @@ CREATE INDEX IF NOT EXISTS idx_pending_transactions_user_id ON public.pending_tr
 CREATE INDEX IF NOT EXISTS idx_pending_transactions_needs_review ON public.pending_transactions (needs_review);
 CREATE INDEX IF NOT EXISTS idx_pending_transactions_dedup ON public.pending_transactions (user_id, app_package, notification_timestamp, extracted_amount);
 CREATE INDEX IF NOT EXISTS idx_pending_transactions_extracted_dedup ON public.pending_transactions (user_id, extracted_vendor, extracted_amount, extracted_timestamp);
+
+-- Add rejection_reason column if it doesn't exist (migration for existing databases)
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'pending_transactions' AND column_name = 'rejection_reason'
+  ) THEN
+    ALTER TABLE public.pending_transactions ADD COLUMN rejection_reason text;
+  END IF;
+END $$;
 
 ALTER TABLE public.pending_transactions ENABLE ROW LEVEL SECURITY;
 
