@@ -1,14 +1,7 @@
 import React from 'react';
 import { Transaction } from '../../types';
 import { parseLocalDate } from '../../lib/dateUtils';
-
-interface VendorOverride {
-  id: string;
-  vendor_name: string;
-  category_id: string;
-  auto_accept: boolean;
-  category_name?: string;
-}
+import type { VendorOverride } from './useVendorOverrides';
 
 interface ApprovedTransactionsCardProps {
   approvedTransactions: Transaction[];

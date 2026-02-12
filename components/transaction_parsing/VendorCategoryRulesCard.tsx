@@ -1,13 +1,6 @@
 import React from 'react';
 import { BudgetCategory } from '../../types';
-
-interface VendorOverride {
-  id: string;
-  vendor_name: string;
-  category_id: string;
-  auto_accept: boolean;
-  category_name?: string;
-}
+import type { VendorOverride } from './useVendorOverrides';
 
 interface VendorCategoryRulesCardProps {
   allVendors: string[];
