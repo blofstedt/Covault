@@ -98,9 +98,11 @@ export function useTransactionCategories({
     return Array.from(vendorSet.values()).sort((a, b) => a.localeCompare(b));
   }, [autoDetectedTransactions, vendorOverrides]);
 
-  // Approved transactions: auto-detected with a valid budget category
+  // Approved transactions: auto-detected from captured notifications, with a valid budget category, not projected
   const approvedTransactions = useMemo(
-    () => autoDetectedTransactions.filter((tx) => tx.budget_id),
+    () => autoDetectedTransactions.filter(
+      (tx) => tx.budget_id && !tx.is_projected && (tx.label === 'Auto-Added' || tx.label === 'Auto-Added + Edited'),
+    ),
     [autoDetectedTransactions],
   );
 
