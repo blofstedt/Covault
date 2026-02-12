@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { supabase } from '../../lib/supabase';
 import { REST_BASE, getAuthHeaders } from '../../lib/apiHelpers';
 import { BudgetCategory } from '../../types';
 
@@ -20,35 +21,35 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
   const [expandedVendorCategory, setExpandedVendorCategory] = useState<string | null>(null);
 
   // ── Load vendor overrides (default categories) from Supabase ──
+  // Uses supabase.from() instead of raw fetch() to ensure the auth token
+  // is automatically refreshed before the request, preventing stale-token
+  // reads that return empty results due to RLS.
   const loadVendorOverrides = useCallback(async () => {
     if (!userId) return;
 
     try {
-      const headers = await getAuthHeaders();
+      const { data, error } = await supabase
+        .from('vendor_overrides')
+        .select('*')
+        .eq('user_id', userId)
+        .order('vendor_name');
 
-      const overridesRes = await fetch(
-        `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&order=vendor_name`,
-        { headers, cache: 'no-store' },
-      );
-      if (!overridesRes.ok) {
-        console.error('[TransactionParsing] Error loading vendor overrides:', overridesRes.status, await overridesRes.text());
+      if (error) {
+        console.error('[TransactionParsing] Error loading vendor overrides:', error.message);
         return;
       }
-      const data = await overridesRes.json();
 
-      // Load all categories to resolve names (vendor_overrides may lack FK to categories)
-      const catsRes = await fetch(
-        `${REST_BASE}/categories?select=id,name`,
-        { headers },
-      );
-      let cats: any[] = [];
-      if (catsRes.ok) {
-        cats = await catsRes.json();
-      } else {
-        console.error('[TransactionParsing] Error loading categories for name resolution:', catsRes.status);
+      // Load all categories to resolve names
+      const { data: cats, error: catsError } = await supabase
+        .from('categories')
+        .select('id,name');
+
+      if (catsError) {
+        console.error('[TransactionParsing] Error loading categories for name resolution:', catsError.message);
       }
+
       const catNameById = new Map<string, string>();
-      for (const c of cats) {
+      for (const c of (cats || [])) {
         catNameById.set(c.id, c.name);
       }
 
