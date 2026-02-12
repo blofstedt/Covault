@@ -32,7 +32,7 @@ export const useUserSettings = ({
       const previousLimit = category.totalLimit;
 
       // Get current visibility state (true if NOT in hiddenCategories)
-      const hiddenCategories = (appState.settings as any).hiddenCategories || [];
+      const hiddenCategories = appState.settings.hiddenCategories || [];
       const visible = !hiddenCategories.includes(categoryId);
 
       // Optimistic UI update
