@@ -14,6 +14,7 @@
 //   6. Auto-approve if vendor has a category and auto_approve is enabled
 
 import { supabase } from './supabase';
+import { REST_BASE, getAuthHeaders } from './apiHelpers';
 import { formatVendorName } from './formatVendorName';
 import type { PendingTransaction } from '../types';
 
@@ -631,12 +632,20 @@ async function tryAutoApprove(
   let categoryId = defaultCategoryId;
   let autoAcceptEnabled = false;
 
-  const { data: override } = await supabase
-    .from('vendor_overrides')
-    .select('*')
-    .eq('user_id', userId)
-    .ilike('vendor_name', pending.extracted_vendor)
-    .maybeSingle();
+  const { data: override } = await (async () => {
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(
+        `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=ilike.${encodeURIComponent(pending.extracted_vendor)}&limit=1`,
+        { headers },
+      );
+      if (!res.ok) return { data: null };
+      const rows = await res.json();
+      return { data: Array.isArray(rows) && rows.length > 0 ? rows[0] : null };
+    } catch {
+      return { data: null };
+    }
+  })();
 
   if (override) {
     categoryId = override.category_id;
