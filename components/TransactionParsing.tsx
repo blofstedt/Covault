@@ -206,6 +206,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       setExpandedVendorCategory(null);
 
       let error: any = null;
+      let deletedData: any[] | null = null;
 
       // If the ID is a temporary optimistic ID, delete by vendor name instead
       if (overrideId.startsWith('temp-') && vendorName) {
@@ -213,15 +214,19 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
           .from('vendor_overrides')
           .delete()
           .eq('user_id', userId)
-          .eq('vendor_name', vendorName);
+          .eq('vendor_name', vendorName)
+          .select();
         error = result.error;
+        deletedData = result.data;
       } else {
         const result = await supabase
           .from('vendor_overrides')
           .delete()
           .eq('id', overrideId)
-          .eq('user_id', userId);
+          .eq('user_id', userId)
+          .select();
         error = result.error;
+        deletedData = result.data;
       }
 
       if (error) {
@@ -231,6 +236,11 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
           setVendorOverrides((prev) => [...prev, deletedOverride]);
         }
         return;
+      }
+
+      // Verify that rows were actually deleted; if not, the record may have already been removed
+      if (!deletedData || deletedData.length === 0) {
+        console.warn('[TransactionParsing] No rows deleted for vendor override:', overrideId, vendorName);
       }
 
       // Reload to ensure local state matches the database
@@ -993,9 +1003,12 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
 
                       return (
                         <div key={vendorName} className="bg-violet-50 dark:bg-violet-900/10 rounded-2xl border border-violet-100 dark:border-violet-800/30 overflow-hidden">
-                          <button
+                          <div
+                            role="button"
+                            tabIndex={0}
                             onClick={() => setExpandedVendorCategory(isExpanded ? null : vendorName)}
-                            className="w-full flex items-center justify-between p-3 transition-all active:scale-[0.99]"
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedVendorCategory(isExpanded ? null : vendorName); } }}
+                            className="w-full flex items-center justify-between p-3 transition-all active:scale-[0.99] cursor-pointer"
                           >
                             <div className="flex items-center gap-1.5 min-w-0">
                               <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200 truncate">
@@ -1033,7 +1046,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                                 </button>
                               )}
                             </div>
-                          </button>
+                          </div>
 
                           {/* Expanded: category picker */}
                           {isExpanded && (
