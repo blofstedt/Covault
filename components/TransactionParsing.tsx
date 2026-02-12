@@ -668,7 +668,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   // duplicate detection or other reasons.
   const rejectedTransactions = useMemo(
     () => pendingTransactions.filter(
-      (pt) => !pt.needs_review && pt.approved === false && pt.rejection_reason,
+      (pt) => !pt.needs_review && pt.approved === false && pt.rejection_reason != null,
     ),
     [pendingTransactions],
   );

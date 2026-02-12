@@ -26,6 +26,9 @@ const AMOUNT_TOLERANCE = 0.01;
 /** Number of days tolerance for recurring transaction date matching */
 const RECURRING_DATE_TOLERANCE_DAYS = 3;
 
+/** Milliseconds per day */
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
 // ─── Types ───────────────────────────────────────────────────────
 
 export interface NotificationInput {
@@ -672,7 +675,7 @@ export async function checkDuplicateTransaction(
 
   // Rule 1: Recurring transactions (Monthly/Biweekly) — same vendor + amount within ±3 days
   const todayMs = new Date(today).getTime();
-  const toleranceMs = RECURRING_DATE_TOLERANCE_DAYS * 24 * 60 * 60 * 1000;
+  const toleranceMs = RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY;
 
   for (const tx of amountMatches) {
     const recurrence = (tx.recurrence || '').toLowerCase();
