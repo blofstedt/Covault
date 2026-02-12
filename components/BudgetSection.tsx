@@ -162,6 +162,45 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           {isExpanded ? (
             <>
               <div className="flex items-baseline space-x-1">
+                <div className="flex flex-col items-end">
+                  <span
+                    className="text-sm font-black mr-2 tracking-tight transition-colors duration-300 text-slate-500"
+                  >
+                    ${spent.toFixed(0)}
+                    {projected > 0 && (
+                      <span className="text-emerald-600 dark:text-emerald-400">
+                        {' '}+${projected.toFixed(0)}
+                      </span>
+                    )}
+                    {external > 0 && (
+                      <span className="text-amber-500 dark:text-amber-400">
+                        {' '}+${external.toFixed(0)}
+                      </span>
+                    )}
+                    <span className="mx-1.5 opacity-30 font-medium text-slate-400">
+                      /
+                    </span>
+                  </span>
+                  {(projected > 0 || external > 0) && (
+                    <span className="text-[8px] font-bold uppercase tracking-wider mr-2">
+                      {projected > 0 && (
+                        <span className="text-emerald-600 dark:text-emerald-400">
+                          Projected
+                        </span>
+                      )}
+                      {projected > 0 && external > 0 && (
+                        <span className="text-slate-400 dark:text-slate-500">
+                          {' + '}
+                        </span>
+                      )}
+                      {external > 0 && (
+                        <span className="text-amber-500 dark:text-amber-400">
+                          Shield Active
+                        </span>
+                      )}
+                    </span>
+                  )}
+                </div>
                 <span
                   className="text-sm font-black mr-2 tracking-tight transition-colors duration-300 text-slate-500"
                 >
