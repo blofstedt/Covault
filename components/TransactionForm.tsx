@@ -204,9 +204,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     if (next.has(id)) {
       next.delete(id);
     } else {
-      // When editing an existing transaction with a single budget selected,
+      // When a single budget is already selected and the user taps a different one,
       // replace the selection (reassign) rather than entering split mode
-      if (initialTransaction && next.size === 1 && !next.has(id)) {
+      if (next.size === 1) {
         next.clear();
       }
       if (next.size < 2) {

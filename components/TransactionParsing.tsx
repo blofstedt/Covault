@@ -196,35 +196,41 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     async (overrideId: string) => {
       if (!userId) return;
 
-      // Find the vendor name before removing so we can fall back to name-based delete
-      const vendorName = vendorOverrides.find((vo) => vo.id === overrideId)?.vendor_name;
+      // Find the override before removing so we can revert on error or fall back to name-based delete
+      const deletedOverride = vendorOverrides.find((vo) => vo.id === overrideId);
+      const vendorName = deletedOverride?.vendor_name;
 
       // Optimistically remove from local state for immediate UI feedback
       setVendorOverrides((prev) => prev.filter((vo) => vo.id !== overrideId));
       // Collapse the expanded vendor panel so the deleted rule disappears from view
       setExpandedVendorCategory(null);
 
+      let error: any = null;
+
       // If the ID is a temporary optimistic ID, delete by vendor name instead
       if (overrideId.startsWith('temp-') && vendorName) {
-        const { error } = await supabase
+        const result = await supabase
           .from('vendor_overrides')
           .delete()
           .eq('user_id', userId)
           .eq('vendor_name', vendorName);
-
-        if (error) {
-          console.error('[TransactionParsing] Error deleting vendor override by name:', error);
-        }
+        error = result.error;
       } else {
-        const { error } = await supabase
+        const result = await supabase
           .from('vendor_overrides')
           .delete()
           .eq('id', overrideId)
           .eq('user_id', userId);
+        error = result.error;
+      }
 
-        if (error) {
-          console.error('[TransactionParsing] Error deleting vendor override:', error);
+      if (error) {
+        console.error('[TransactionParsing] Error deleting vendor override:', error);
+        // Revert optimistic delete on failure so the UI stays consistent
+        if (deletedOverride) {
+          setVendorOverrides((prev) => [...prev, deletedOverride]);
         }
+        return;
       }
 
       // Reload to ensure local state matches the database
