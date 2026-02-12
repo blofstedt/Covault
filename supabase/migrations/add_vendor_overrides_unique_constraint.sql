@@ -4,8 +4,8 @@
 -- Does NOT delete any existing data or columns.
 
 -- Add unique constraint on (user_id, vendor_name) if missing.
--- This is required for the vendor override upsert and category assignment
--- operations to work correctly.
+-- This constraint prevents duplicate vendor entries per user and ensures
+-- data integrity for vendor override insert and lookup operations.
 DO $$ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.table_constraints
