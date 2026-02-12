@@ -206,7 +206,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       setExpandedVendorCategory(null);
 
       let error: any = null;
-      let deletedData: any[] | null = null;
 
       // If the ID is a temporary optimistic ID, delete by vendor name instead
       if (overrideId.startsWith('temp-') && vendorName) {
@@ -214,19 +213,15 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
           .from('vendor_overrides')
           .delete()
           .eq('user_id', userId)
-          .eq('vendor_name', vendorName)
-          .select();
+          .eq('vendor_name', vendorName);
         error = result.error;
-        deletedData = result.data;
       } else {
         const result = await supabase
           .from('vendor_overrides')
           .delete()
           .eq('id', overrideId)
-          .eq('user_id', userId)
-          .select();
+          .eq('user_id', userId);
         error = result.error;
-        deletedData = result.data;
       }
 
       if (error) {
@@ -236,11 +231,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
           setVendorOverrides((prev) => [...prev, deletedOverride]);
         }
         return;
-      }
-
-      // Verify that rows were actually deleted; if not, the record may have already been removed
-      if (!deletedData || deletedData.length === 0) {
-        console.warn('[TransactionParsing] No rows deleted for vendor override:', overrideId, vendorName);
       }
 
       // Reload to ensure local state matches the database
@@ -515,21 +505,17 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         };
         setVendorOverrides((prev) => [...prev, newOverride]);
 
-        // Upsert: insert or update if already exists (handles stale local state)
-        // Note: We don't include auto_accept here to preserve existing value if record exists
+        // Insert a new vendor override
         const { error } = await supabase
           .from('vendor_overrides')
-          .upsert(
-            {
-              user_id: userId,
-              vendor_name: vendorName,
-              category_id: categoryId,
-            },
-            { onConflict: 'user_id,vendor_name' },
-          );
+          .insert({
+            user_id: userId,
+            vendor_name: vendorName,
+            category_id: categoryId,
+          });
 
         if (error) {
-          console.error('[TransactionParsing] Error upserting vendor override:', error);
+          console.error('[TransactionParsing] Error inserting vendor override:', error);
           // Revert optimistic update on failure
           setVendorOverrides((prev) => prev.filter((vo) => vo.id !== tempId));
           return;
@@ -626,6 +612,14 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     }
     return Array.from(vendorSet.values()).sort((a, b) => a.localeCompare(b));
   }, [autoDetectedTransactions, vendorOverrides]);
+
+  // Approved transactions: only auto-detected transactions that have a
+  // valid budget category assigned, meaning they were fully approved
+  // (manually or automatically) from captured notifications.
+  const approvedTransactions = useMemo(
+    () => autoDetectedTransactions.filter((tx) => tx.budget_id),
+    [autoDetectedTransactions],
+  );
 
   const toReviewCount = toReviewTransactions.length;
   const capturedCount = capturedNotifications.length;
@@ -1436,9 +1430,9 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
 
                 </div>
 
-                {(autoDetectedTransactions.length > 0 || showDemoData) ? (
+                {(approvedTransactions.length > 0 || showDemoData) ? (
                   <div className="space-y-2">
-                    {autoDetectedTransactions.map((tx) => {
+                    {approvedTransactions.map((tx) => {
                       const vo = vendorOverrideByName.get(tx.vendor.toLowerCase());
                       const approvalLabel = vo?.auto_accept
                         ? '- approved automatically'
@@ -1473,7 +1467,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                       </button>
                       );
                     })}
-                    {autoDetectedTransactions.length === 0 && showDemoData && (
+                    {approvedTransactions.length === 0 && showDemoData && (
                       <div className="w-full flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800/60">
                         <div className="flex items-center space-x-3">
                           <div className="w-8 h-8 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center">
