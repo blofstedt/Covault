@@ -4,6 +4,7 @@ import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import RegexSetupModal from './RegexSetupModal';
 import { PendingTransaction, BudgetCategory, Transaction } from '../types';
 import { supabase } from '../lib/supabase';
+import { REST_BASE, getAuthHeaders } from '../lib/apiHelpers';
 import { parseLocalDate } from '../lib/dateUtils';
 import {
   saveNotificationRule,
@@ -104,37 +105,46 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   const loadVendorOverrides = useCallback(async () => {
     if (!userId) return;
 
-    const { data, error } = await supabase
-      .from('vendor_overrides')
-      .select('id, vendor_name, category_id, auto_accept, created_at')
-      .eq('user_id', userId)
-      .order('vendor_name');
+    try {
+      const headers = await getAuthHeaders();
 
-    if (error) {
-      console.error('[TransactionParsing] Error loading vendor overrides:', error);
-      return;
-    }
+      const overridesRes = await fetch(
+        `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&order=vendor_name`,
+        { headers },
+      );
+      if (!overridesRes.ok) {
+        console.error('[TransactionParsing] Error loading vendor overrides:', overridesRes.status, await overridesRes.text());
+        return;
+      }
+      const data = await overridesRes.json();
 
-    // Load all categories to resolve names (vendor_overrides may lack FK to categories)
-    const { data: cats, error: catsError } = await supabase
-      .from('categories')
-      .select('id, name');
-    if (catsError) {
-      console.error('[TransactionParsing] Error loading categories for name resolution:', catsError);
-    }
-    const catNameById = new Map<string, string>();
-    for (const c of cats || []) {
-      catNameById.set(c.id, c.name);
-    }
+      // Load all categories to resolve names (vendor_overrides may lack FK to categories)
+      const catsRes = await fetch(
+        `${REST_BASE}/categories?select=id,name`,
+        { headers },
+      );
+      let cats: any[] = [];
+      if (catsRes.ok) {
+        cats = await catsRes.json();
+      } else {
+        console.error('[TransactionParsing] Error loading categories for name resolution:', catsRes.status);
+      }
+      const catNameById = new Map<string, string>();
+      for (const c of cats) {
+        catNameById.set(c.id, c.name);
+      }
 
-    const overrides: VendorOverride[] = (data || []).map((row: any) => ({
-      id: row.id,
-      vendor_name: row.vendor_name,
-      category_id: row.category_id,
-      auto_accept: row.auto_accept ?? false,
-      category_name: catNameById.get(row.category_id) ?? undefined,
-    }));
-    setVendorOverrides(overrides);
+      const overrides: VendorOverride[] = (data || []).map((row: any) => ({
+        id: row.id,
+        vendor_name: row.vendor_name,
+        category_id: row.category_id,
+        auto_accept: row.auto_accept ?? false,
+        category_name: catNameById.get(row.category_id) ?? undefined,
+      }));
+      setVendorOverrides(overrides);
+    } catch (err: any) {
+      console.error('[TransactionParsing] Exception loading vendor overrides:', err?.message || err);
+    }
   }, [userId]);
 
   // Load rules and vendor overrides on mount + when userId changes
@@ -166,27 +176,36 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         prev.map((vo) => (vo.id === overrideId ? { ...vo, auto_accept: newValue } : vo)),
       );
 
-      const { data, error } = await supabase
-        .from('vendor_overrides')
-        .update({ auto_accept: newValue })
-        .eq('id', overrideId)
-        .eq('user_id', userId)
-        .select();
+      try {
+        const headers = await getAuthHeaders();
+        (headers as any)['Prefer'] = 'return=representation';
+        const res = await fetch(
+          `${REST_BASE}/vendor_overrides?id=eq.${overrideId}&user_id=eq.${userId}`,
+          { method: 'PATCH', headers, body: JSON.stringify({ auto_accept: newValue }) },
+        );
+        const body = await res.text();
+        let data: any[] = [];
+        try { data = body ? JSON.parse(body) : []; } catch { data = []; }
 
-      if (error || !data || data.length === 0) {
-        console.error('[TransactionParsing] Error toggling auto_accept:', error || 'No rows updated');
-        // Revert optimistic update on failure
+        if (!res.ok || !Array.isArray(data) || data.length === 0) {
+          console.error('[TransactionParsing] Error toggling auto_accept:', res.status, body.slice(0, 200));
+          setVendorOverrides((prev) =>
+            prev.map((vo) => (vo.id === overrideId ? { ...vo, auto_accept: currentValue } : vo)),
+          );
+          return;
+        }
+
+        // Sync local state with the actual value returned from Supabase
+        const actualValue = data[0].auto_accept ?? false;
+        setVendorOverrides((prev) =>
+          prev.map((vo) => (vo.id === overrideId ? { ...vo, auto_accept: actualValue } : vo)),
+        );
+      } catch (err: any) {
+        console.error('[TransactionParsing] Exception toggling auto_accept:', err?.message || err);
         setVendorOverrides((prev) =>
           prev.map((vo) => (vo.id === overrideId ? { ...vo, auto_accept: currentValue } : vo)),
         );
-        return;
       }
-
-      // Sync local state with the actual value returned from Supabase
-      const actualValue = data[0].auto_accept ?? false;
-      setVendorOverrides((prev) =>
-        prev.map((vo) => (vo.id === overrideId ? { ...vo, auto_accept: actualValue } : vo)),
-      );
     },
     [userId],
   );
@@ -205,28 +224,29 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       // Collapse the expanded vendor panel so the deleted rule disappears from view
       setExpandedVendorCategory(null);
 
-      let error: any = null;
+      try {
+        const headers = await getAuthHeaders();
+        let url: string;
 
-      // If the ID is a temporary optimistic ID, delete by vendor name instead
-      if (overrideId.startsWith('temp-') && vendorName) {
-        const result = await supabase
-          .from('vendor_overrides')
-          .delete()
-          .eq('user_id', userId)
-          .eq('vendor_name', vendorName);
-        error = result.error;
-      } else {
-        const result = await supabase
-          .from('vendor_overrides')
-          .delete()
-          .eq('id', overrideId)
-          .eq('user_id', userId);
-        error = result.error;
-      }
+        // If the ID is a temporary optimistic ID, delete by vendor name instead
+        if (overrideId.startsWith('temp-') && vendorName) {
+          url = `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(vendorName)}`;
+        } else {
+          url = `${REST_BASE}/vendor_overrides?id=eq.${overrideId}&user_id=eq.${userId}`;
+        }
 
-      if (error) {
-        console.error('[TransactionParsing] Error deleting vendor override:', error);
-        // Revert optimistic delete on failure so the UI stays consistent
+        const res = await fetch(url, { method: 'DELETE', headers });
+
+        if (!res.ok) {
+          const body = await res.text();
+          console.error('[TransactionParsing] Error deleting vendor override:', res.status, body.slice(0, 200));
+          if (deletedOverride) {
+            setVendorOverrides((prev) => [...prev, deletedOverride]);
+          }
+          return;
+        }
+      } catch (err: any) {
+        console.error('[TransactionParsing] Exception deleting vendor override:', err?.message || err);
         if (deletedOverride) {
           setVendorOverrides((prev) => [...prev, deletedOverride]);
         }
@@ -421,27 +441,36 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         prev.map((vo) => (vo.id === override.id ? { ...vo, auto_accept: newValue } : vo)),
       );
 
-      const { data, error } = await supabase
-        .from('vendor_overrides')
-        .update({ auto_accept: newValue })
-        .eq('id', override.id)
-        .eq('user_id', userId)
-        .select();
+      try {
+        const headers = await getAuthHeaders();
+        (headers as any)['Prefer'] = 'return=representation';
+        const res = await fetch(
+          `${REST_BASE}/vendor_overrides?id=eq.${override.id}&user_id=eq.${userId}`,
+          { method: 'PATCH', headers, body: JSON.stringify({ auto_accept: newValue }) },
+        );
+        const body = await res.text();
+        let data: any[] = [];
+        try { data = body ? JSON.parse(body) : []; } catch { data = []; }
 
-      if (error || !data || data.length === 0) {
-        console.error('[TransactionParsing] Error toggling auto_accept:', error || 'No rows updated');
-        // Revert optimistic update on failure
+        if (!res.ok || !Array.isArray(data) || data.length === 0) {
+          console.error('[TransactionParsing] Error toggling auto_accept:', res.status, body.slice(0, 200));
+          setVendorOverrides((prev) =>
+            prev.map((vo) => (vo.id === override.id ? { ...vo, auto_accept: currentValue } : vo)),
+          );
+          return;
+        }
+
+        // Sync local state with the actual value returned from Supabase
+        const actualValue = data[0].auto_accept ?? false;
+        setVendorOverrides((prev) =>
+          prev.map((vo) => (vo.id === override.id ? { ...vo, auto_accept: actualValue } : vo)),
+        );
+      } catch (err: any) {
+        console.error('[TransactionParsing] Exception toggling auto_accept:', err?.message || err);
         setVendorOverrides((prev) =>
           prev.map((vo) => (vo.id === override.id ? { ...vo, auto_accept: currentValue } : vo)),
         );
-        return;
       }
-
-      // Sync local state with the actual value returned from Supabase
-      const actualValue = data[0].auto_accept ?? false;
-      setVendorOverrides((prev) =>
-        prev.map((vo) => (vo.id === override.id ? { ...vo, auto_accept: actualValue } : vo)),
-      );
     },
     [userId, vendorOverrides],
   );
@@ -463,73 +492,77 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         (vo) => vo.vendor_name.toLowerCase() === vendorName.toLowerCase(),
       );
 
-      if (existing) {
-        // Optimistically update local state for immediate UI feedback
-        setVendorOverrides((prev) =>
-          prev.map((vo) =>
-            vo.id === existing.id
-              ? { ...vo, category_id: categoryId, category_name: categoryName }
-              : vo
-          )
-        );
+      try {
+        const headers = await getAuthHeaders();
 
-        // Update existing override
-        const { error } = await supabase
-          .from('vendor_overrides')
-          .update({ category_id: categoryId })
-          .eq('id', existing.id)
-          .eq('user_id', userId);
-
-        if (error) {
-          console.error('[TransactionParsing] Error updating vendor category:', error);
-          // Revert optimistic update on failure
+        if (existing) {
+          // Optimistically update local state for immediate UI feedback
           setVendorOverrides((prev) =>
             prev.map((vo) =>
               vo.id === existing.id
-                ? { ...vo, category_id: existing.category_id, category_name: existing.category_name }
+                ? { ...vo, category_id: categoryId, category_name: categoryName }
                 : vo
             )
           );
-          return;
-        }
-      } else {
-        // Optimistically add new override to local state for immediate UI feedback
-        // Using crypto.randomUUID() for a unique temporary ID
-        const tempId = `temp-${crypto.randomUUID()}`;
-        const newOverride: VendorOverride = {
-          id: tempId,
-          vendor_name: vendorName,
-          category_id: categoryId,
-          auto_accept: false, // Database default for new records
-          category_name: categoryName,
-        };
-        setVendorOverrides((prev) => [...prev, newOverride]);
 
-        // Insert a new vendor override
-        const { error } = await supabase
-          .from('vendor_overrides')
-          .insert({
-            user_id: userId,
-            vendor_name: vendorName,
-            category_id: categoryId,
-          });
+          // Update existing override
+          const res = await fetch(
+            `${REST_BASE}/vendor_overrides?id=eq.${existing.id}&user_id=eq.${userId}`,
+            { method: 'PATCH', headers, body: JSON.stringify({ category_id: categoryId }) },
+          );
 
-        if (error) {
-          // If insert failed (e.g. unique constraint violation because the
-          // override already exists in the DB), fall back to updating by name
-          const { error: updateError } = await supabase
-            .from('vendor_overrides')
-            .update({ category_id: categoryId })
-            .eq('user_id', userId)
-            .eq('vendor_name', vendorName);
-
-          if (updateError) {
-            console.error('[TransactionParsing] Error setting vendor override (insert failed:', error.message, ', update failed:', updateError.message, ')');
+          if (!res.ok) {
+            const body = await res.text();
+            console.error('[TransactionParsing] Error updating vendor category:', res.status, body.slice(0, 200));
             // Revert optimistic update on failure
-            setVendorOverrides((prev) => prev.filter((vo) => vo.id !== tempId));
+            setVendorOverrides((prev) =>
+              prev.map((vo) =>
+                vo.id === existing.id
+                  ? { ...vo, category_id: existing.category_id, category_name: existing.category_name }
+                  : vo
+              )
+            );
             return;
           }
+        } else {
+          // Optimistically add new override to local state for immediate UI feedback
+          const tempId = `temp-${crypto.randomUUID()}`;
+          const newOverride: VendorOverride = {
+            id: tempId,
+            vendor_name: vendorName,
+            category_id: categoryId,
+            auto_accept: false, // Database default for new records
+            category_name: categoryName,
+          };
+          setVendorOverrides((prev) => [...prev, newOverride]);
+
+          // Insert a new vendor override
+          const insertRes = await fetch(`${REST_BASE}/vendor_overrides`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ user_id: userId, vendor_name: vendorName, category_id: categoryId }),
+          });
+
+          if (!insertRes.ok) {
+            // If insert failed (e.g. unique constraint violation because the
+            // override already exists in the DB), fall back to updating by name
+            const updateRes = await fetch(
+              `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(vendorName)}`,
+              { method: 'PATCH', headers, body: JSON.stringify({ category_id: categoryId }) },
+            );
+
+            if (!updateRes.ok) {
+              const insertBody = await insertRes.text();
+              const updateBody = await updateRes.text();
+              console.error('[TransactionParsing] Error setting vendor override (insert failed:', insertBody.slice(0, 200), ', update failed:', updateBody.slice(0, 200), ')');
+              // Revert optimistic update on failure
+              setVendorOverrides((prev) => prev.filter((vo) => vo.id !== tempId));
+              return;
+            }
+          }
         }
+      } catch (err: any) {
+        console.error('[TransactionParsing] Exception setting vendor category:', err?.message || err);
       }
 
       // Reload to get the actual data from database (including real IDs for new records)
