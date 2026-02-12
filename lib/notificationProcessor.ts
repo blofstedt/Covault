@@ -23,6 +23,12 @@ import type { PendingTransaction } from '../types';
 /** Tolerance for comparing monetary amounts */
 const AMOUNT_TOLERANCE = 0.01;
 
+/** Number of days tolerance for recurring transaction date matching */
+const RECURRING_DATE_TOLERANCE_DAYS = 3;
+
+/** Milliseconds per day */
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
 // ─── Types ───────────────────────────────────────────────────────
 
 export interface NotificationInput {
@@ -614,6 +620,99 @@ async function insertPendingTransaction(
   return data as PendingTransaction;
 }
 
+// ─── Duplicate Detection Against Existing Transactions ──────────
+
+interface DuplicateCheckResult {
+  /** Whether a duplicate was found that should block a new transaction */
+  isDuplicate: boolean;
+  /** Reason for rejection, if any */
+  reason?: string;
+  /** If a recurring transaction's date was updated, this is its ID */
+  updatedExistingId?: string;
+}
+
+/**
+ * Check if a pending transaction duplicates an existing transaction.
+ *
+ * Two rules:
+ *   1. Recurring (Monthly/Biweekly): same vendor + amount within ±3 days
+ *      → update the existing transaction's date to today and return it.
+ *   2. One-time: same vendor + amount + exact same day
+ *      → reject as duplicate.
+ */
+export async function checkDuplicateTransaction(
+  userId: string,
+  pending: PendingTransaction,
+): Promise<DuplicateCheckResult> {
+  const vendor = formatVendorName(pending.extracted_vendor);
+  const amount = Number(pending.extracted_amount);
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Fetch existing transactions for this vendor and approximate amount
+  const { data: existing, error } = await supabase
+    .from('transactions')
+    .select('id, vendor, amount, date, recurrence')
+    .eq('user_id', userId)
+    .ilike('vendor', vendor);
+
+  if (error) {
+    console.error('[checkDuplicate] Error fetching transactions:', error);
+    return { isDuplicate: false };
+  }
+
+  if (!existing || existing.length === 0) {
+    return { isDuplicate: false };
+  }
+
+  // Filter to matching amounts
+  const amountMatches = existing.filter(
+    (tx) => Math.abs(Number(tx.amount) - amount) < AMOUNT_TOLERANCE,
+  );
+
+  if (amountMatches.length === 0) {
+    return { isDuplicate: false };
+  }
+
+  // Rule 1: Recurring transactions (Monthly/Biweekly) — same vendor + amount within ±3 days
+  const todayMs = new Date(today).getTime();
+  const toleranceMs = RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY;
+
+  for (const tx of amountMatches) {
+    const recurrence = (tx.recurrence || '').toLowerCase();
+    if (recurrence !== 'monthly' && recurrence !== 'biweekly') continue;
+
+    const txDateMs = new Date(tx.date).getTime();
+    if (Math.abs(todayMs - txDateMs) <= toleranceMs) {
+      // Update the existing recurring transaction's date to today
+      const { error: updateError } = await supabase
+        .from('transactions')
+        .update({ date: today })
+        .eq('id', tx.id);
+
+      if (updateError) {
+        console.error('[checkDuplicate] Error updating recurring tx date:', updateError);
+        // Still treat as duplicate even if update fails
+      } else {
+        console.log(`[checkDuplicate] Updated recurring transaction ${tx.id} date to ${today}`);
+      }
+
+      return { isDuplicate: false, updatedExistingId: tx.id };
+    }
+  }
+
+  // Rule 2: One-time transactions — same vendor + amount + exact same day
+  for (const tx of amountMatches) {
+    if (tx.date === today) {
+      return {
+        isDuplicate: true,
+        reason: 'Duplicate transaction found in manually recorded transactions',
+      };
+    }
+  }
+
+  return { isDuplicate: false };
+}
+
 // ─── Step 5: Auto-Approve Logic ─────────────────────────────────
 
 /**
@@ -662,29 +761,36 @@ async function tryAutoApprove(
     return { accepted: false };
   }
 
-  // Check for duplicate transactions today
-  const today = new Date().toISOString().slice(0, 10);
-  const { data: existing } = await supabase
-    .from('transactions')
-    .select('id, amount, vendor')
-    .eq('user_id', userId)
-    .eq('vendor', pending.extracted_vendor)
-    .eq('date', today);
+  // Check for duplicate against existing transactions
+  const dupResult = await checkDuplicateTransaction(userId, pending);
 
-  if (existing && existing.length > 0) {
-    const hasDuplicate = existing.some(
-      (tx) => Math.abs(tx.amount - pending.extracted_amount) < AMOUNT_TOLERANCE,
-    );
-    if (hasDuplicate) {
-      await supabase
-        .from('pending_transactions')
-        .update({
-          needs_review: true,
-          validation_reasons: (pending.validation_reasons || 'OK') + '; Potential duplicate',
-        })
-        .eq('id', pending.id);
-      return { accepted: false };
-    }
+  if (dupResult.isDuplicate) {
+    // Mark as rejected with reason
+    await supabase
+      .from('pending_transactions')
+      .update({
+        needs_review: false,
+        reviewed_at: new Date().toISOString(),
+        approved: false,
+        rejection_reason: dupResult.reason,
+      })
+      .eq('id', pending.id);
+    console.log(`[autoApprove] Duplicate detected: ${dupResult.reason}`);
+    return { accepted: false };
+  }
+
+  if (dupResult.updatedExistingId) {
+    // Recurring transaction date was updated — no new transaction needed
+    await supabase
+      .from('pending_transactions')
+      .update({
+        needs_review: false,
+        reviewed_at: new Date().toISOString(),
+        approved: true,
+      })
+      .eq('id', pending.id);
+    console.log(`[autoApprove] Updated recurring transaction ${dupResult.updatedExistingId} date`);
+    return { accepted: true, transactionId: dupResult.updatedExistingId, categoryId };
   }
 
   // Insert into transactions

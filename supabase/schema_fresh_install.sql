@@ -328,6 +328,7 @@ CREATE TABLE public.pending_transactions (
   created_at timestamptz DEFAULT now(),
   reviewed_at timestamptz,
   approved boolean,
+  rejection_reason text,
   CONSTRAINT pending_transactions_pkey PRIMARY KEY (id)
 );
 

@@ -3,6 +3,7 @@ import { useCallback } from 'react';
 import type { Transaction } from '../../types';
 import { REST_BASE, getAuthHeaders } from '../apiHelpers';
 import { formatVendorName } from '../formatVendorName';
+import { checkDuplicateTransaction } from '../notificationProcessor';
 import { useToSupabaseTransaction, useFromSupabaseTransaction } from './transactionMappers';
 import type { UseUserDataParams } from './types';
 
@@ -297,6 +298,66 @@ export const useTransactionOps = ({
         const pending = appState.pendingTransactions?.find(p => p.id === pendingId);
         if (!pending) {
           setDbError('Pending transaction not found');
+          return;
+        }
+
+        // 0) Check for duplicate against existing transactions
+        const dupResult = await checkDuplicateTransaction(userId, pending);
+
+        if (dupResult.isDuplicate) {
+          // Mark as rejected with reason
+          const rejectHeaders = await getAuthHeaders();
+          (rejectHeaders as any)['Prefer'] = 'return=representation';
+          await fetch(`${REST_BASE}/pending_transactions?id=eq.${pendingId}`, {
+            method: 'PATCH',
+            headers: rejectHeaders,
+            body: JSON.stringify({
+              needs_review: false,
+              reviewed_at: new Date().toISOString(),
+              approved: false,
+              rejection_reason: dupResult.reason,
+            }),
+          });
+
+          // Update UI state: move from pending to show as rejected
+          setAppState(prev => ({
+            ...prev,
+            pendingTransactions: (prev.pendingTransactions || []).map(p =>
+              p.id === pendingId
+                ? { ...p, needs_review: false, approved: false, rejection_reason: dupResult.reason, reviewed_at: new Date().toISOString() }
+                : p,
+            ),
+          }));
+
+          console.log(`[approvePending] Duplicate detected: ${dupResult.reason}`);
+          return;
+        }
+
+        if (dupResult.updatedExistingId) {
+          // Recurring transaction date was updated — mark pending as approved without new insert
+          const patchHeaders = await getAuthHeaders();
+          (patchHeaders as any)['Prefer'] = 'return=representation';
+          await fetch(`${REST_BASE}/pending_transactions?id=eq.${pendingId}`, {
+            method: 'PATCH',
+            headers: patchHeaders,
+            body: JSON.stringify({
+              needs_review: false,
+              reviewed_at: new Date().toISOString(),
+              approved: true,
+            }),
+          });
+
+          // Update the recurring transaction date in local state
+          const todayStr = new Date().toISOString().split('T')[0];
+          setAppState(prev => ({
+            ...prev,
+            transactions: prev.transactions.map(t =>
+              t.id === dupResult.updatedExistingId ? { ...t, date: todayStr } : t,
+            ),
+            pendingTransactions: prev.pendingTransactions?.filter(p => p.id !== pendingId) || [],
+          }));
+
+          console.log(`[approvePending] Updated recurring transaction ${dupResult.updatedExistingId} date`);
           return;
         }
 
