@@ -110,7 +110,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
 
       const overridesRes = await fetch(
         `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&order=vendor_name`,
-        { headers },
+        { headers, cache: 'no-store' },
       );
       if (!overridesRes.ok) {
         console.error('[TransactionParsing] Error loading vendor overrides:', overridesRes.status, await overridesRes.text());
