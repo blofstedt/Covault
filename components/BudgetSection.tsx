@@ -155,6 +155,11 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                     className="text-sm font-black mr-2 tracking-tight transition-colors duration-300 text-slate-500"
                   >
                     ${spent.toFixed(0)}
+                    {projected > 0 && (
+                      <span className="text-emerald-600 dark:text-emerald-400">
+                        {' '}+${projected.toFixed(0)}
+                      </span>
+                    )}
                     {external > 0 && (
                       <span className="text-amber-500 dark:text-amber-400">
                         {' '}+${external.toFixed(0)}
@@ -164,9 +169,18 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                       /
                     </span>
                   </span>
-                  {external > 0 && (
-                    <span className="text-[8px] font-bold uppercase tracking-wider text-amber-500 dark:text-amber-400 mr-2">
-                      Shield Active
+                  {(projected > 0 || external > 0) && (
+                    <span className="text-[8px] font-bold uppercase tracking-wider mr-2">
+                      {projected > 0 && (
+                        <span className="text-emerald-600 dark:text-emerald-400">
+                          Projected{external > 0 && ' + '}
+                        </span>
+                      )}
+                      {external > 0 && (
+                        <span className="text-amber-500 dark:text-amber-400">
+                          Shield
+                        </span>
+                      )}
                     </span>
                   )}
                 </div>
