@@ -303,7 +303,11 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       date: new Date(date + 'T12:00:00').toISOString(),
       budget_id: (Array.from(selectedIds) as string[])[0],
       recurrence,
-      label: initialTransaction ? TransactionLabel.EDITED : TransactionLabel.MANUAL,
+      label: initialTransaction
+        ? (initialTransaction.label === TransactionLabel.AUTO_ADDED || initialTransaction.label === TransactionLabel.EDITED
+          ? TransactionLabel.EDITED
+          : TransactionLabel.MANUAL)
+        : TransactionLabel.MANUAL,
       user_id: userId,
       userName,
       is_projected: false,
