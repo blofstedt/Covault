@@ -11,8 +11,8 @@ interface SplitModalProps {
 
 const SplitModal: React.FC<SplitModalProps> = ({ transaction, budgets, onClose, onSave }) => {
   const [splits, setSplits] = useState<TransactionSplit[]>([
-    { budgetId: transaction.budgetId, amount: transaction.amount },
-    { budgetId: budgets.find(b => b.id !== transaction.budgetId)?.id || budgets[0].id, amount: 0 }
+    { budget_id: transaction.budget_id || (budgets.length > 0 ? budgets[0].id : ''), amount: transaction.amount },
+    { budget_id: budgets.find(b => b.id !== transaction.budget_id)?.id || (budgets.length > 0 ? budgets[0].id : ''), amount: 0 }
   ]);
 
   const totalAllocated = splits.reduce((acc, s) => acc + s.amount, 0);
@@ -35,7 +35,7 @@ const SplitModal: React.FC<SplitModalProps> = ({ transaction, budgets, onClose, 
 
   const addSplit = () => {
     if (splits.length >= 3) return;
-    setSplits([...splits, { budgetId: budgets[0].id, amount: 0 }]);
+    setSplits([...splits, { budget_id: budgets.length > 0 ? budgets[0].id : '', amount: 0 }]);
   };
 
   const removeSplit = (idx: number) => {
@@ -70,10 +70,10 @@ const SplitModal: React.FC<SplitModalProps> = ({ transaction, budgets, onClose, 
               <div key={i} className="space-y-4">
                 <div className="flex items-center justify-between">
                   <select 
-                    value={split.budgetId}
+                    value={split.budget_id}
                     onChange={e => {
                       const next = [...splits];
-                      next[i].budgetId = e.target.value;
+                      next[i].budget_id = e.target.value;
                       setSplits(next);
                     }}
                     className="bg-transparent border-none text-lg font-bold text-slate-800 dark:text-slate-100 p-0 focus:ring-0"

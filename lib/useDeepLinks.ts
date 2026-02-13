@@ -131,7 +131,7 @@ export const useDeepLinks = () => {
 
     return () => {
       console.log('[useDeepLinks] Cleaning up deep link listener');
-      handleAppUrlOpen.then(h => h.remove());
+      handleAppUrlOpen.then(h => h.remove()).catch(() => {});
     };
   }, []);
 };

@@ -202,14 +202,14 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
     const all = new Set(installedBankApps.map(a => a.packageName));
     setSelectedApps(all);
     if (plugin) {
-      try { await plugin.saveMonitoredApps({ apps: Array.from(all) }); } catch {}
+      try { await plugin.saveMonitoredApps({ apps: Array.from(all) }); } catch (e) { console.warn('[NotificationSettings] save error:', e); }
     }
   };
 
   const selectNone = async () => {
     setSelectedApps(new Set());
     if (plugin) {
-      try { await plugin.saveMonitoredApps({ apps: [] }); } catch {}
+      try { await plugin.saveMonitoredApps({ apps: [] }); } catch (e) { console.warn('[NotificationSettings] save error:', e); }
     }
   };
 

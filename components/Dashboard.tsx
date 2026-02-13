@@ -159,7 +159,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   const isSharedAccount = !state.user?.budgetingSolo;
 
   // Filter out hidden budget categories
-  const hiddenCategories: string[] = (state.settings as any).hiddenCategories || [];
+  const hiddenCategories: string[] = state.settings.hiddenCategories || [];
   const visibleBudgets = useMemo(
     () => state.budgets.filter(b => !hiddenCategories.includes(b.id)),
     [state.budgets, hiddenCategories],
@@ -485,7 +485,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       user_id: state.user?.id || '1',
       userName: state.user?.name || 'You',
       is_projected: false,
-      label: 'Manual' as any,
+      label: 'Manual',
       created_at: new Date().toISOString(),
     };
   };
@@ -532,8 +532,8 @@ const Dashboard: React.FC<DashboardProps> = ({
       totalIncome,
       remainingMoney,
       settings: {
-        app_notifications_enabled: (state.settings as any).app_notifications_enabled,
-        notification_rules: (state.settings as any).notification_rules || [],
+        app_notifications_enabled: state.settings.app_notifications_enabled,
+        notification_rules: state.settings.notification_rules || [],
       },
     });
   }, [
@@ -542,7 +542,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     currentMonthTransactionsAll,
     totalIncome,
     remainingMoney,
-    (state.settings as any).app_notifications_enabled,
+    state.settings.app_notifications_enabled,
   ]);
 
   // If showing parsing view without premium (and not in tutorial), show subscribe modal
@@ -663,7 +663,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       {showSettings && (
         <DashboardSettingsModal
           isSharedAccount={isSharedAccount}
-          settings={state.settings as any}
+          settings={state.settings}
           user={state.user}
           showTutorial={showTutorial}
           isLinkingPartner={isLinkingPartner}
