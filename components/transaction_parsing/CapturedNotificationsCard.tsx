@@ -23,21 +23,21 @@ const CapturedNotificationsCard: React.FC<CapturedNotificationsCardProps> = ({
           </svg>
         </div>
         <div className="flex-1">
-          <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+          <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
             Captured Notifications
           </h3>
-          <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
             Tap a notification to teach Covault how to read it
           </p>
         </div>
-        <span className="text-[10px] font-black bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2.5 py-1 rounded-full">
+        <span className="text-xs font-black bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2.5 py-1 rounded-full">
           {capturedCount}
         </span>
       </div>
 
       {Array.from(capturedByBank.entries()).map(([bankName, notifications]) => (
         <div key={bankName} className="space-y-2">
-          <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-1">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-1">
             {bankName}
             {!notifications[0]?.pattern_id && (
               <span className="ml-2 text-blue-500 dark:text-blue-400">
@@ -59,16 +59,16 @@ const CapturedNotificationsCard: React.FC<CapturedNotificationsCardProps> = ({
                   </svg>
                 </div>
                 <div className="text-left min-w-0">
-                  <p className="text-[10px] text-slate-600 dark:text-slate-300 leading-relaxed line-clamp-2">
+                  <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed line-clamp-2">
                     {pt.notification_text}
                   </p>
-                  <p className="text-[8px] text-slate-400 dark:text-slate-500 mt-0.5">
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
                     {new Date(pt.posted_at).toLocaleString()}
                   </p>
                 </div>
               </div>
               <div className="shrink-0 ml-2">
-                <span className="text-[8px] font-black uppercase tracking-wider text-blue-500 dark:text-blue-400">
+                <span className="text-[11px] font-black uppercase tracking-wider text-blue-500 dark:text-blue-400">
                   Set up
                 </span>
               </div>

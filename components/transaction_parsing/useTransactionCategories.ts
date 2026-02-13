@@ -38,6 +38,20 @@ export function useTransactionCategories({
     [pendingTransactions],
   );
 
+  // Rejected transactions: pending transactions rejected due to duplicates etc.
+  const rejectedTransactions = useMemo(
+    () => pendingTransactions.filter(
+      (pt) => !pt.needs_review && pt.approved === false && pt.rejection_reason != null,
+    ),
+    [pendingTransactions],
+  );
+
+  // Combined filtered-out notifications: keyword-ignored + duplicate-rejected
+  const filteredOutNotifications = useMemo(
+    () => [...keywordIgnoredNotifications, ...rejectedTransactions],
+    [keywordIgnoredNotifications, rejectedTransactions],
+  );
+
   // 2. To Review: rule exists, needs category + approval
   const toReviewTransactions = useMemo(
     () => pendingTransactions.filter(
@@ -106,14 +120,6 @@ export function useTransactionCategories({
     [autoDetectedTransactions],
   );
 
-  // Rejected transactions: pending transactions rejected due to duplicates etc.
-  const rejectedTransactions = useMemo(
-    () => pendingTransactions.filter(
-      (pt) => !pt.needs_review && pt.approved === false && pt.rejection_reason != null,
-    ),
-    [pendingTransactions],
-  );
-
   // Group saved rules by bank for multi-regex display
   const rulesByBank = useMemo(() => {
     const groups = new Map<string, NotificationRuleRow[]>();
@@ -127,12 +133,12 @@ export function useTransactionCategories({
 
   const toReviewCount = toReviewTransactions.length;
   const capturedCount = capturedNotifications.length;
-  const ignoredCount = keywordIgnoredNotifications.length;
-  const rejectedCount = rejectedTransactions.length;
+  const filteredOutCount = filteredOutNotifications.length;
 
   return {
     capturedNotifications,
     keywordIgnoredNotifications,
+    filteredOutNotifications,
     toReviewTransactions,
     capturedByBank,
     categoryNameById,
@@ -143,7 +149,6 @@ export function useTransactionCategories({
     rulesByBank,
     toReviewCount,
     capturedCount,
-    ignoredCount,
-    rejectedCount,
+    filteredOutCount,
   };
 }

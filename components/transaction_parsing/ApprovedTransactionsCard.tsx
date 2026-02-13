@@ -27,10 +27,10 @@ const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
         </svg>
       </div>
       <div className="flex-1">
-        <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+        <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
           Approved Transactions
         </h3>
-        <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
           Auto-detected and approved from bank notifications
         </p>
       </div>
@@ -61,7 +61,7 @@ const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
                 <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate max-w-[160px]">
                   {vo?.proper_name || tx.vendor}
                 </p>
-                <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
+                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
                   {parseLocalDate(tx.date).toLocaleDateString()} {approvalLabel}
                 </p>
               </div>
@@ -86,7 +86,7 @@ const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
                 <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate max-w-[160px]">
                   Coffee Shop
                 </p>
-                <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
+                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
                   Jan 15, 2026 - approved manually
                 </p>
               </div>
@@ -106,10 +106,10 @@ const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
           </svg>
         </div>
-        <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+        <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
           No transactions captured yet
         </p>
-        <p className="text-[10px] text-slate-400 dark:text-slate-600 mt-1 leading-relaxed max-w-xs mx-auto">
+        <p className="text-[11px] text-slate-400 dark:text-slate-600 mt-1 leading-relaxed max-w-xs mx-auto">
           When your banking apps send notifications, they'll appear here for review.
         </p>
       </div>

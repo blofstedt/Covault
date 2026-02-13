@@ -56,14 +56,14 @@ const ParsingRulesCard: React.FC<ParsingRulesCardProps> = ({
           </svg>
         </div>
         <div className="flex-1">
-          <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+          <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
             Parsing Rules
           </h3>
-          <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
             How Covault reads transactions from each bank
           </p>
         </div>
-        <span className="text-[10px] font-black bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 px-2.5 py-1 rounded-full">
+        <span className="text-xs font-black bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 px-2.5 py-1 rounded-full">
           {showDemoData && savedRules.length === 0 ? 1 : savedRules.length}
         </span>
       </div>
@@ -73,7 +73,7 @@ const ParsingRulesCard: React.FC<ParsingRulesCardProps> = ({
           {Array.from(rulesByBank.entries()).map(([bankAppId, bankRules]) => (
             <div key={bankAppId} className="space-y-2">
               <div className="flex items-center justify-between px-1">
-                <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                   {bankRules[0].bank_name}
                   {bankRules.length > 1 && (
                     <span className="ml-1 text-emerald-500">
@@ -83,7 +83,7 @@ const ParsingRulesCard: React.FC<ParsingRulesCardProps> = ({
                 </p>
                 <button
                   onClick={() => onStartAddRuleForBank(bankAppId)}
-                  className="text-[8px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/30 transition-all active:scale-95"
+                  className="text-[11px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/30 transition-all active:scale-95"
                 >
                   + Add Rule
                 </button>
@@ -92,10 +92,10 @@ const ParsingRulesCard: React.FC<ParsingRulesCardProps> = ({
               {/* Add new rule type input */}
               {addingRuleForBank === bankAppId && (
                 <div className="p-3 bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl border border-emerald-200 dark:border-emerald-800/30 space-y-2">
-                  <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     New Notification Type
                   </p>
-                  <p className="text-[8px] text-slate-400 dark:text-slate-500 leading-relaxed">
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
                     Add a label for this notification type (e.g. "Purchase", "Transfer", "Payment")
                   </p>
                   <input
@@ -108,14 +108,14 @@ const ParsingRulesCard: React.FC<ParsingRulesCardProps> = ({
                   <div className="flex gap-2">
                     <button
                       onClick={() => onSetAddingRuleForBank(null)}
-                      className="flex-1 py-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-500 bg-slate-100 dark:bg-slate-800 rounded-xl transition-all active:scale-[0.98]"
+                      className="flex-1 py-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500 bg-slate-100 dark:bg-slate-800 rounded-xl transition-all active:scale-[0.98]"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={() => onConfirmNewRuleType(bankAppId)}
                       disabled={!newRuleType.trim()}
-                      className="flex-1 py-1.5 text-[9px] font-bold uppercase tracking-wider text-white bg-emerald-500 disabled:bg-slate-300 dark:disabled:bg-slate-700 rounded-xl transition-all active:scale-[0.98]"
+                      className="flex-1 py-1.5 text-[11px] font-bold uppercase tracking-wider text-white bg-emerald-500 disabled:bg-slate-300 dark:disabled:bg-slate-700 rounded-xl transition-all active:scale-[0.98]"
                     >
                       Set Up Regex
                     </button>
@@ -140,19 +140,19 @@ const ParsingRulesCard: React.FC<ParsingRulesCardProps> = ({
                       </div>
                       <div className="min-w-0 text-left">
                         {rule.notification_type && rule.notification_type !== 'default' && (
-                          <p className="text-[8px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-0.5">
+                          <p className="text-[11px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-0.5">
                             {rule.notification_type}
                           </p>
                         )}
-                        <p className="text-[8px] text-slate-400 dark:text-slate-500 font-mono truncate max-w-[200px]">
+                        <p className="text-[11px] text-slate-400 dark:text-slate-500 font-mono truncate max-w-[200px]">
                           vendor: /{rule.vendor_regex}/
                         </p>
-                        <p className="text-[8px] text-slate-400 dark:text-slate-500 font-mono truncate max-w-[200px]">
+                        <p className="text-[11px] text-slate-400 dark:text-slate-500 font-mono truncate max-w-[200px]">
                           amount: /{rule.amount_regex}/
                         </p>
                       </div>
                     </div>
-                    <span className="text-[8px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 shrink-0">
+                    <span className="text-[11px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 shrink-0">
                       Tap to edit
                     </span>
                   </button>
@@ -163,12 +163,12 @@ const ParsingRulesCard: React.FC<ParsingRulesCardProps> = ({
                       onClick={() => keywordEditRuleId === rule.id ? onSetKeywordEditRuleId(null) : onOpenKeywordEdit(rule)}
                       className="w-full flex items-center justify-between py-1"
                     >
-                      <span className="text-[8px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
                         Only Parse…
                       </span>
                       <div className="flex items-center gap-1">
                         {onlyParseKeywordCount > 0 && (
-                          <span className="text-[8px] font-bold text-emerald-600 dark:text-emerald-400">
+                          <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
                             {onlyParseKeywordCount} keyword{onlyParseKeywordCount !== 1 ? 's' : ''}
                           </span>
                         )}
@@ -180,25 +180,25 @@ const ParsingRulesCard: React.FC<ParsingRulesCardProps> = ({
 
                     {/* Show saved keywords summary when editor is closed */}
                     {keywordEditRuleId !== rule.id && effectiveOnlyParse && effectiveOnlyParse.trim() && (
-                      <p className="text-[8px] text-slate-400 dark:text-slate-500 font-mono truncate mt-0.5 px-1">
+                      <p className="text-[11px] text-slate-400 dark:text-slate-500 font-mono truncate mt-0.5 px-1">
                         {effectiveOnlyParse}
                       </p>
                     )}
 
                     {keywordEditRuleId === rule.id && (
                       <div className="mt-2 space-y-2">
-                        <p className="text-[8px] text-slate-400 dark:text-slate-500 leading-relaxed">
+                        <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
                           Only parse notifications that contain these keywords. Others will be ignored.
                         </p>
 
                         {/* Filter mode selector */}
                         <div className="flex items-center gap-1 flex-wrap">
-                          <span className="text-[8px] font-bold text-slate-500 dark:text-slate-400">Must contain</span>
+                          <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Must contain</span>
                           {(['all', 'some', 'one'] as const).map((mode) => (
                             <button
                               key={mode}
                               onClick={() => onSetKeywordMode(mode)}
-                              className={`px-2 py-0.5 text-[8px] font-bold rounded-full border transition-all active:scale-95 ${
+                              className={`px-2 py-0.5 text-[11px] font-bold rounded-full border transition-all active:scale-95 ${
                                 keywordMode === mode
                                   ? 'bg-emerald-500 text-white border-emerald-600'
                                   : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700'
@@ -207,7 +207,7 @@ const ParsingRulesCard: React.FC<ParsingRulesCardProps> = ({
                               {mode}
                             </button>
                           ))}
-                          <span className="text-[8px] font-bold text-slate-500 dark:text-slate-400">of the words</span>
+                          <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">of the words</span>
                         </div>
 
                         {/* Only Parse text input */}
@@ -228,14 +228,14 @@ const ParsingRulesCard: React.FC<ParsingRulesCardProps> = ({
                         <div className="flex gap-2 pt-1">
                           <button
                             onClick={() => onSetKeywordEditRuleId(null)}
-                            className="flex-1 py-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-500 bg-slate-100 dark:bg-slate-800 rounded-xl transition-all active:scale-[0.98]"
+                            className="flex-1 py-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500 bg-slate-100 dark:bg-slate-800 rounded-xl transition-all active:scale-[0.98]"
                           >
                             Cancel
                           </button>
                           <button
                             onClick={() => onSaveKeywords(rule.id)}
                             disabled={savingKeywords}
-                            className="flex-1 py-1.5 text-[9px] font-bold uppercase tracking-wider text-white bg-emerald-500 disabled:bg-slate-300 dark:disabled:bg-slate-700 rounded-xl transition-all active:scale-[0.98]"
+                            className="flex-1 py-1.5 text-[11px] font-bold uppercase tracking-wider text-white bg-emerald-500 disabled:bg-slate-300 dark:disabled:bg-slate-700 rounded-xl transition-all active:scale-[0.98]"
                           >
                             {savingKeywords ? 'Saving…' : 'Save Keywords'}
                           </button>
@@ -261,15 +261,15 @@ const ParsingRulesCard: React.FC<ParsingRulesCardProps> = ({
               <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
                 Example Bank
               </p>
-              <p className="text-[8px] text-slate-400 dark:text-slate-500 mt-0.5 font-mono truncate max-w-[200px]">
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 font-mono truncate max-w-[200px]">
                 vendor: /Purchase at (.+?) on/
               </p>
-              <p className="text-[8px] text-slate-400 dark:text-slate-500 font-mono truncate max-w-[200px]">
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 font-mono truncate max-w-[200px]">
                 amount: /\$(\d+\.\d{'{2}'})/
               </p>
             </div>
           </div>
-          <span className="text-[8px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 shrink-0">
+          <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 shrink-0">
             Demo
           </span>
         </div>

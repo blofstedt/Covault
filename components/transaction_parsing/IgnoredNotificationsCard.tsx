@@ -1,14 +1,22 @@
 import React from 'react';
 import { PendingTransaction } from '../../types';
+import { KEYWORD_IGNORED_PATTERN_ID } from '../../lib/notificationProcessor';
 
 interface IgnoredNotificationsCardProps {
-  keywordIgnoredNotifications: PendingTransaction[];
+  filteredOutNotifications: PendingTransaction[];
+}
+
+/** Derive the reason label for a filtered-out notification. */
+function getFilterReason(pt: PendingTransaction): string {
+  if (pt.pattern_id === KEYWORD_IGNORED_PATTERN_ID) return 'Keyword filter';
+  if (pt.rejection_reason) return 'Duplicate';
+  return 'Filtered';
 }
 
 const IgnoredNotificationsCard: React.FC<IgnoredNotificationsCardProps> = ({
-  keywordIgnoredNotifications,
+  filteredOutNotifications,
 }) => {
-  if (keywordIgnoredNotifications.length === 0) return null;
+  if (filteredOutNotifications.length === 0) return null;
 
   return (
     <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-slate-300 dark:border-slate-700/40 space-y-3">
@@ -20,20 +28,20 @@ const IgnoredNotificationsCard: React.FC<IgnoredNotificationsCardProps> = ({
           </svg>
         </div>
         <div className="flex-1">
-          <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-            Ignored Notifications
+          <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+            Filtered Notifications
           </h3>
-          <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
-            Filtered out by keyword rules
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+            Filtered out by keywords or duplicates
           </p>
         </div>
-        <span className="text-[10px] font-black bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2.5 py-1 rounded-full">
-          {keywordIgnoredNotifications.length}
+        <span className="text-xs font-black bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2.5 py-1 rounded-full">
+          {filteredOutNotifications.length}
         </span>
       </div>
 
       <div className="space-y-2">
-        {keywordIgnoredNotifications.map((pt) => (
+        {filteredOutNotifications.map((pt) => (
           <div
             key={pt.id}
             className="w-full flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700/30"
@@ -46,16 +54,16 @@ const IgnoredNotificationsCard: React.FC<IgnoredNotificationsCardProps> = ({
                 </svg>
               </div>
               <div className="text-left min-w-0">
-                <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed line-clamp-2">
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed line-clamp-2">
                   {pt.notification_text}
                 </p>
-                <p className="text-[8px] text-slate-400 dark:text-slate-500 mt-0.5">
+                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
                   {pt.app_name} · {new Date(pt.posted_at).toLocaleString()}
                 </p>
               </div>
             </div>
-            <span className="text-[8px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 shrink-0 ml-2">
-              Ignored
+            <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 shrink-0 ml-2">
+              {getFilterReason(pt)}
             </span>
           </div>
         ))}

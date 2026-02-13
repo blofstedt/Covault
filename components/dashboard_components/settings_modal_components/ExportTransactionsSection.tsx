@@ -4,6 +4,7 @@ import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { Transaction, BudgetCategory } from '../../../types';
 import { parseLocalDate } from '../../../lib/dateUtils';
+import CalendarPicker from '../../CalendarPicker';
 
 interface ExportTransactionsSectionProps {
   transactions: Transaction[];
@@ -22,6 +23,7 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
   const [startDate, setStartDate] = useState(thirtyDaysAgo);
   const [endDate, setEndDate] = useState(today);
   const [exported, setExported] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState<'start' | 'end' | null>(null);
 
   const handleExport = async () => {
     const start = new Date(startDate + 'T00:00:00');
@@ -156,25 +158,42 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
           <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
             From
           </label>
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="w-full px-3 py-2.5 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-          />
+          <button
+            type="button"
+            onClick={() => setCalendarOpen('start')}
+            className="w-full px-3 py-2.5 text-xs text-left bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-200 active:scale-[0.98] transition-all"
+          >
+            {new Date(startDate + 'T00:00:00').toLocaleDateString()}
+          </button>
         </div>
         <div className="flex-1">
           <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
             To
           </label>
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className="w-full px-3 py-2.5 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-          />
+          <button
+            type="button"
+            onClick={() => setCalendarOpen('end')}
+            className="w-full px-3 py-2.5 text-xs text-left bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-200 active:scale-[0.98] transition-all"
+          >
+            {new Date(endDate + 'T00:00:00').toLocaleDateString()}
+          </button>
         </div>
       </div>
+
+      {calendarOpen === 'start' && (
+        <CalendarPicker
+          value={startDate}
+          onChange={(date) => setStartDate(date)}
+          onClose={() => setCalendarOpen(null)}
+        />
+      )}
+      {calendarOpen === 'end' && (
+        <CalendarPicker
+          value={endDate}
+          onChange={(date) => setEndDate(date)}
+          onClose={() => setCalendarOpen(null)}
+        />
+      )}
 
       <button
         onClick={handleExport}
