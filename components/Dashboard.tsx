@@ -46,6 +46,7 @@ interface DashboardProps {
   saveTheme: (theme: 'light' | 'dark') => void;
   saveBudgetVisibility: (categoryId: string, visible: boolean) => void;
   isLoadingData: boolean;
+  initialShowParsing?: boolean;
 }
 
 // Helper: get the current year-month string
@@ -77,13 +78,14 @@ const Dashboard: React.FC<DashboardProps> = ({
   saveTheme,
   saveBudgetVisibility,
   isLoadingData,
+  initialShowParsing = false,
 }) => {
   const [isAddingTx, setIsAddingTx] = useState(false);
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [expandedBudgets, setExpandedBudgets] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [showSettings, setShowSettings] = useState(false);
-  const [showParsing, setShowParsing] = useState(false);
+  const [showParsing, setShowParsing] = useState(initialShowParsing);
   const [isLinkingPartner, setIsLinkingPartner] = useState(false);
   const [partnerLinkEmail, setPartnerLinkEmail] = useState('');
   const [showTutorial, setShowTutorial] = useState(!state.settings.hasSeenTutorial);
