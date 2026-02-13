@@ -28,7 +28,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
       const headers = await getAuthHeaders();
 
       const overridesRes = await fetch(
-        `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&order=vendor_name`,
+        `${REST_BASE}/vendor_overrides?select=*&user_id=eq.${userId}&order=vendor_name`,
         { headers, cache: 'no-store' },
       );
       if (!overridesRes.ok) {
