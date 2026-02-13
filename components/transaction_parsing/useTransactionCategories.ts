@@ -98,19 +98,21 @@ export function useTransactionCategories({
     return map;
   }, [vendorOverrides]);
 
-  // All unique vendor names from auto-detected transactions and vendor overrides
+  // All unique vendor names from notification-parsed pending transactions and vendor overrides
   const allVendors = useMemo(() => {
     const vendorSet = new Map<string, string>();
-    for (const tx of autoDetectedTransactions) {
-      const key = tx.vendor.toLowerCase();
-      if (!vendorSet.has(key)) vendorSet.set(key, tx.vendor);
+    for (const pt of pendingTransactions) {
+      const vendor = (pt.extracted_vendor || '').trim();
+      if (!vendor) continue;
+      const key = vendor.toLowerCase();
+      if (!vendorSet.has(key)) vendorSet.set(key, vendor);
     }
     for (const vo of vendorOverrides) {
       const key = vo.vendor_name.toLowerCase();
       if (!vendorSet.has(key)) vendorSet.set(key, vo.vendor_name);
     }
     return Array.from(vendorSet.values()).sort((a, b) => a.localeCompare(b));
-  }, [autoDetectedTransactions, vendorOverrides]);
+  }, [pendingTransactions, vendorOverrides]);
 
   // Approved transactions: auto-detected from captured notifications, with a valid budget category, not projected
   const approvedTransactions = useMemo(
