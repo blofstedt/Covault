@@ -3,6 +3,7 @@ import { Transaction } from '../../types';
 import { parseLocalDate } from '../../lib/dateUtils';
 import type { VendorOverride } from './useVendorOverrides';
 import ParsingCard from '../ui/ParsingCard';
+import { EmptyState } from '../shared';
 
 interface ApprovedTransactionsCardProps {
   approvedTransactions: Transaction[];
