@@ -74,6 +74,9 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200 truncate">
                     {displayName}
+                    {vo?.proper_name && vo.proper_name !== vendorName && (
+                      <span className="text-slate-400 dark:text-slate-500 font-normal ml-1">({vendorName})</span>
+                    )}
                   </span>
                   <svg className="w-3 h-3 text-slate-300 dark:text-slate-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <polyline points="9 18 15 12 9 6" />
