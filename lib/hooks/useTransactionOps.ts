@@ -428,10 +428,10 @@ export const useTransactionOps = ({
         try {
           const overrideHeaders = await getAuthHeaders();
           (overrideHeaders as any)['Prefer'] = 'return=representation';
-          const trimmedPreferred = preferredName?.trim() || null;
+          const trimmedPreferredName = preferredName?.trim() || null;
           const overridePatchBody: Record<string, any> = { category_id: categoryId };
-          if (trimmedPreferred) {
-            overridePatchBody.proper_name = trimmedPreferred;
+          if (trimmedPreferredName) {
+            overridePatchBody.proper_name = trimmedPreferredName;
           }
           // Try to update existing override (preserves auto_accept)
           const patchOverrideRes = await fetch(
@@ -457,8 +457,8 @@ export const useTransactionOps = ({
               vendor_name: formatVendorName(pending.extracted_vendor),
               category_id: categoryId,
             };
-            if (trimmedPreferred) {
-              overrideInsertBody.proper_name = trimmedPreferred;
+            if (trimmedPreferredName) {
+              overrideInsertBody.proper_name = trimmedPreferredName;
             }
             const postRes = await fetch(`${REST_BASE}/vendor_overrides`, {
               method: 'POST',

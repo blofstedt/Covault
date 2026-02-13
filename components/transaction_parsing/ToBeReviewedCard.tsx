@@ -125,7 +125,7 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
                           onClick={async () => {
                             const preferred = preferredNames[pt.id]?.trim() || undefined;
                             await onApprovePending?.(pt.id, b.id, preferred);
-                            setPreferredNames(prev => { const next = { ...prev }; delete next[pt.id]; return next; });
+                            setPreferredNames(prev => { const { [pt.id]: _, ...rest } = prev; return rest; });
                             onSetExpandedPendingId(null);
                             // Reload vendor overrides since approval may create one
                             await onLoadVendorOverrides();
