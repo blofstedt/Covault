@@ -59,7 +59,7 @@ const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
               </div>
               <div className="text-left">
                 <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate max-w-[160px]">
-                  {tx.vendor}
+                  {vo?.proper_name || tx.vendor}
                 </p>
                 <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
                   {parseLocalDate(tx.date).toLocaleDateString()} {approvalLabel}

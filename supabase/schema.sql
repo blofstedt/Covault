@@ -658,6 +658,16 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- Add proper_name column if missing
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'vendor_overrides' AND column_name = 'proper_name'
+  ) THEN
+    ALTER TABLE public.vendor_overrides ADD COLUMN proper_name text DEFAULT NULL;
+  END IF;
+END $$;
+
 -- Add missing UNIQUE constraint
 DO $$ BEGIN
   IF NOT EXISTS (
