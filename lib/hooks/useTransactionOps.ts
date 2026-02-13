@@ -290,7 +290,7 @@ export const useTransactionOps = ({
 
   // Approve a pending transaction (convert to actual transaction)
   const handleApprovePendingTransaction = useCallback(
-    async (pendingId: string, categoryId: string) => {
+    async (pendingId: string, categoryId: string, preferredName?: string) => {
       try {
         const userId = appState.user?.id;
         if (!userId) return;
@@ -428,13 +428,18 @@ export const useTransactionOps = ({
         try {
           const overrideHeaders = await getAuthHeaders();
           (overrideHeaders as any)['Prefer'] = 'return=representation';
+          const trimmedPreferred = preferredName?.trim() || null;
+          const overridePatchBody: Record<string, any> = { category_id: categoryId };
+          if (trimmedPreferred) {
+            overridePatchBody.proper_name = trimmedPreferred;
+          }
           // Try to update existing override (preserves auto_accept)
           const patchOverrideRes = await fetch(
             `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(formatVendorName(pending.extracted_vendor))}`,
             {
               method: 'PATCH',
               headers: overrideHeaders,
-              body: JSON.stringify({ category_id: categoryId }),
+              body: JSON.stringify(overridePatchBody),
             },
           );
           const patchOverrideBody = await patchOverrideRes.text();
@@ -447,14 +452,18 @@ export const useTransactionOps = ({
           }
           if (!patchOverrideRes.ok || !Array.isArray(patchedRows) || patchedRows.length === 0) {
             // No existing override found, insert a new one
+            const overrideInsertBody: Record<string, any> = {
+              user_id: userId,
+              vendor_name: formatVendorName(pending.extracted_vendor),
+              category_id: categoryId,
+            };
+            if (trimmedPreferred) {
+              overrideInsertBody.proper_name = trimmedPreferred;
+            }
             const postRes = await fetch(`${REST_BASE}/vendor_overrides`, {
               method: 'POST',
               headers: overrideHeaders,
-              body: JSON.stringify({
-                user_id: userId,
-                vendor_name: formatVendorName(pending.extracted_vendor),
-                category_id: categoryId,
-              }),
+              body: JSON.stringify(overrideInsertBody),
             });
             if (!postRes.ok) {
               const postBody = await postRes.text();
@@ -502,6 +511,7 @@ export const useTransactionOps = ({
             needs_review: false,
             reviewed_at: new Date().toISOString(),
             approved: false,
+            rejection_reason: 'Manually rejected',
           }),
         });
 
@@ -531,10 +541,14 @@ export const useTransactionOps = ({
           return;
         }
 
-        // Remove from pending list in UI
+        // Update pending transaction in UI state to show as rejected
         setAppState(prev => ({
           ...prev,
-          pendingTransactions: prev.pendingTransactions?.filter(p => p.id !== pendingId) || [],
+          pendingTransactions: (prev.pendingTransactions || []).map(p =>
+            p.id === pendingId
+              ? { ...p, needs_review: false, approved: false, rejection_reason: 'Manually rejected', reviewed_at: new Date().toISOString() }
+              : p,
+          ),
         }));
 
         console.log('[rejectPending] OK, rejected pending transaction', pendingId);

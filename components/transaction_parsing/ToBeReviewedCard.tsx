@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { PendingTransaction, BudgetCategory } from '../../types';
 import type { VendorOverride } from './useVendorOverrides';
 import ParsingCard from '../ui/ParsingCard';
@@ -13,7 +13,7 @@ interface ToBeReviewedCardProps {
   showDemoData: boolean;
   isScanning: boolean;
   onSetExpandedPendingId: (id: string | null) => void;
-  onApprovePending?: (pendingId: string, categoryId: string) => void | Promise<void>;
+  onApprovePending?: (pendingId: string, categoryId: string, preferredName?: string) => void | Promise<void>;
   onRejectConfirm: (id: string) => void;
   onLoadVendorOverrides: () => Promise<void>;
   onScanForTransactions: () => void;
@@ -33,7 +33,10 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
   onRejectConfirm,
   onLoadVendorOverrides,
   onScanForTransactions,
-}) => (
+}) => {
+  const [preferredNames, setPreferredNames] = useState<Record<string, string>>({});
+
+  return (
   <ParsingCard
     id="parsing-to-review-section"
     colorScheme="amber"
@@ -89,7 +92,7 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
                 </div>
               </button>
 
-              {/* Expanded: notification preview + category picker + actions */}
+              {/* Expanded: notification preview + preferred name + category picker + actions */}
               {isExpanded && (
                 <div className="px-4 pb-4 space-y-3 border-t border-slate-100 dark:border-slate-800/60 pt-3">
                   {/* Notification text preview */}
@@ -100,6 +103,18 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
                     </p>
                   </div>
 
+                  {/* Preferred name input */}
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Preferred Name</p>
+                    <input
+                      type="text"
+                      placeholder={pt.extracted_vendor}
+                      value={preferredNames[pt.id] ?? ''}
+                      onChange={(e) => setPreferredNames(prev => ({ ...prev, [pt.id]: e.target.value }))}
+                      className="w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 placeholder-slate-300 dark:placeholder-slate-600 outline-none focus:border-amber-400 dark:focus:border-amber-500 transition-colors"
+                    />
+                  </div>
+
                   {/* Category picker */}
                   <div>
                     <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Assign Category & Approve</p>
@@ -108,7 +123,9 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
                         <button
                           key={b.id}
                           onClick={async () => {
-                            await onApprovePending?.(pt.id, b.id);
+                            const preferred = preferredNames[pt.id]?.trim() || undefined;
+                            await onApprovePending?.(pt.id, b.id, preferred);
+                            setPreferredNames(prev => { const next = { ...prev }; delete next[pt.id]; return next; });
                             onSetExpandedPendingId(null);
                             // Reload vendor overrides since approval may create one
                             await onLoadVendorOverrides();
@@ -188,6 +205,7 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
       {isScanning ? 'Scanning…' : 'Scan for Transactions'}
     </button>
   </ParsingCard>
-);
+  );
+};
 
 export default ToBeReviewedCard;

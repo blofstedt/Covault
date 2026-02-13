@@ -209,7 +209,7 @@ const App: React.FC = () => {
         )}
 
         {devScreen === 'onboarding' && (
-          <Onboarding onComplete={() => {}} />
+          <Onboarding onComplete={() => setDevScreen('dashboard')} />
         )}
 
         {(devScreen === 'dashboard' || devScreen === 'parsing') && (
