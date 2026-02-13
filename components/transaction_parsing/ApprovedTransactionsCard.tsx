@@ -2,6 +2,7 @@ import React from 'react';
 import { Transaction } from '../../types';
 import { parseLocalDate } from '../../lib/dateUtils';
 import type { VendorOverride } from './useVendorOverrides';
+import { CardWrapper, SectionHeader, EmptyState } from '../shared';
 
 interface ApprovedTransactionsCardProps {
   approvedTransactions: Transaction[];
@@ -16,26 +17,20 @@ const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
   showDemoData,
   onTransactionTap,
 }) => (
-  <div id="parsing-approved-section" className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-slate-100 dark:border-slate-800/60 space-y-4">
-    <div className="flex items-center space-x-3">
-      <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
+  <CardWrapper id="parsing-approved-section" color="slate">
+    <SectionHeader
+      icon={
         <svg className="w-5 h-5 text-emerald-600 dark:text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
           <polyline points="14 2 14 8 20 8" />
           <line x1="16" y1="13" x2="8" y2="13" />
           <line x1="16" y1="17" x2="8" y2="17" />
         </svg>
-      </div>
-      <div className="flex-1">
-        <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-          Approved Transactions
-        </h3>
-        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-          Auto-detected and approved from bank notifications
-        </p>
-      </div>
-
-    </div>
+      }
+      title="Approved Transactions"
+      subtitle="Auto-detected and approved from bank notifications"
+      color="emerald"
+    />
 
     {(approvedTransactions.length > 0 || showDemoData) ? (
       <div className="space-y-2">
@@ -100,21 +95,18 @@ const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
         )}
       </div>
     ) : (
-      <div className="py-8 text-center">
-        <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-3">
+      <EmptyState
+        icon={
           <svg className="w-6 h-6 text-slate-300 dark:text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
           </svg>
-        </div>
-        <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-          No transactions captured yet
-        </p>
-        <p className="text-[11px] text-slate-400 dark:text-slate-600 mt-1 leading-relaxed max-w-xs mx-auto">
-          When your banking apps send notifications, they'll appear here for review.
-        </p>
-      </div>
+        }
+        message="No transactions captured yet"
+        description="When your banking apps send notifications, they'll appear here for review."
+        size="md"
+      />
     )}
-  </div>
+  </CardWrapper>
 );
 
 export default ApprovedTransactionsCard;

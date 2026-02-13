@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { NotificationRule, BudgetCategory, Transaction } from '../../../types';
 import NotificationRuleBuilder from './NotificationRuleBuilder';
+import { ToggleSwitch } from '../../shared';
 
 interface NotificationRulesSectionProps {
   enabled: boolean;
@@ -133,18 +134,7 @@ const NotificationRulesSection: React.FC<NotificationRulesSectionProps> = ({
               Custom alerts in plain English.
             </p>
           </div>
-          <button
-            onClick={() => onToggle(!enabled)}
-            className={`relative w-12 h-7 rounded-full transition-colors duration-200 flex-shrink-0 ${
-              enabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
-            }`}
-          >
-            <span
-              className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200 ${
-                enabled ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
-          </button>
+          <ToggleSwitch enabled={enabled} onToggle={() => onToggle(!enabled)} />
         </div>
 
         {enabled && (

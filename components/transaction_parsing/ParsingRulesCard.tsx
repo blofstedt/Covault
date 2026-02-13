@@ -1,5 +1,6 @@
 import React from 'react';
 import { type NotificationRuleRow, parseOnlyParseKeywords } from '../../lib/notificationProcessor';
+import { CardWrapper, SectionHeader } from '../shared';
 
 interface ParsingRulesCardProps {
   savedRules: NotificationRuleRow[];
@@ -47,26 +48,19 @@ const ParsingRulesCard: React.FC<ParsingRulesCardProps> = ({
   if (savedRules.length === 0 && !showDemoData) return null;
 
   return (
-    <div id="parsing-rules-section" className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-emerald-200 dark:border-emerald-800/40 space-y-3">
-      <div className="flex items-center space-x-3">
-        <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
+    <CardWrapper id="parsing-rules-section" color="emerald" spacing="sm">
+      <SectionHeader
+        icon={
           <svg className="w-5 h-5 text-emerald-600 dark:text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
             <polyline points="16 18 22 12 16 6" />
             <polyline points="8 6 2 12 8 18" />
           </svg>
-        </div>
-        <div className="flex-1">
-          <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-            Parsing Rules
-          </h3>
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-            How Covault reads transactions from each bank
-          </p>
-        </div>
-        <span className="text-xs font-black bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 px-2.5 py-1 rounded-full">
-          {showDemoData && savedRules.length === 0 ? 1 : savedRules.length}
-        </span>
-      </div>
+        }
+        title="Parsing Rules"
+        subtitle="How Covault reads transactions from each bank"
+        color="emerald"
+        badge={showDemoData && savedRules.length === 0 ? 1 : savedRules.length}
+      />
 
       {savedRules.length > 0 ? (
         <>
@@ -274,7 +268,7 @@ const ParsingRulesCard: React.FC<ParsingRulesCardProps> = ({
           </span>
         </div>
       )}
-    </div>
+    </CardWrapper>
   );
 };
 

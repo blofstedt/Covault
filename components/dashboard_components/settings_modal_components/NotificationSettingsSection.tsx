@@ -1,6 +1,7 @@
 // components/dashboard_components/settings_modal_components/NotificationSettingsSection.tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
+import { ToggleSwitch } from '../../shared';
 
 interface CovaultNotificationPlugin {
   requestAccess(): Promise<void>;
@@ -252,13 +253,7 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
             </div>
           </div>
 
-          {/* Disabled toggle for browser */}
-          <button
-            disabled
-            className="relative w-12 h-7 rounded-full transition-colors duration-200 flex-shrink-0 bg-slate-300 dark:bg-slate-600 opacity-50 cursor-not-allowed"
-          >
-            <span className="absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200 translate-x-0" />
-          </button>
+          <ToggleSwitch enabled={false} onToggle={() => {}} disabled />
         </div>
         
         <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-tight">
@@ -315,18 +310,7 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
           </div>
         </div>
 
-        <button
-          onClick={handleToggle}
-          className={`relative w-12 h-7 rounded-full transition-colors duration-200 flex-shrink-0 ${
-            enabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
-          }`}
-        >
-          <span
-            className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200 ${
-              enabled ? 'translate-x-5' : 'translate-x-0'
-            }`}
-          />
-        </button>
+        <ToggleSwitch enabled={enabled} onToggle={handleToggle} />
       </div>
 
       {/* Banking app picker */}

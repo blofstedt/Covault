@@ -1,5 +1,6 @@
 import React from 'react';
 import { PendingTransaction } from '../../types';
+import { CardWrapper, SectionHeader } from '../shared';
 
 interface RejectedTransactionsCardProps {
   rejectedTransactions: PendingTransaction[];
@@ -11,27 +12,20 @@ const RejectedTransactionsCard: React.FC<RejectedTransactionsCardProps> = ({
   if (rejectedTransactions.length === 0) return null;
 
   return (
-    <div id="parsing-rejected-section" className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-slate-100 dark:border-slate-800/60 space-y-4">
-      <div className="flex items-center space-x-3">
-        <div className="p-2 bg-red-50 dark:bg-red-900/20 rounded-xl">
+    <CardWrapper id="parsing-rejected-section" color="red">
+      <SectionHeader
+        icon={
           <svg className="w-5 h-5 text-red-600 dark:text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10" />
             <line x1="15" y1="9" x2="9" y2="15" />
             <line x1="9" y1="9" x2="15" y2="15" />
           </svg>
-        </div>
-        <div className="flex-1">
-          <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-            Rejected Transactions
-          </h3>
-          <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
-            Blocked due to duplicate detection
-          </p>
-        </div>
-        <span className="text-[10px] font-black bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 px-2.5 py-1 rounded-full">
-          {rejectedTransactions.length}
-        </span>
-      </div>
+        }
+        title="Rejected Transactions"
+        subtitle="Blocked due to duplicate detection"
+        color="red"
+        badge={rejectedTransactions.length}
+      />
 
       <div className="space-y-2">
         {rejectedTransactions.map((pt) => (
@@ -63,7 +57,7 @@ const RejectedTransactionsCard: React.FC<RejectedTransactionsCardProps> = ({
           </div>
         ))}
       </div>
-    </div>
+    </CardWrapper>
   );
 };
 

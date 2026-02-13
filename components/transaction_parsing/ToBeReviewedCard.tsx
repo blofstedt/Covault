@@ -1,6 +1,7 @@
 import React from 'react';
 import { PendingTransaction, BudgetCategory } from '../../types';
 import type { VendorOverride } from './useVendorOverrides';
+import { CardWrapper, SectionHeader, EmptyState } from '../shared';
 
 interface ToBeReviewedCardProps {
   toReviewTransactions: PendingTransaction[];
@@ -33,29 +34,20 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
   onLoadVendorOverrides,
   onScanForTransactions,
 }) => (
-  <div id="parsing-to-review-section" className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-amber-200 dark:border-amber-800/40 space-y-4">
-    <div className="flex items-center space-x-3">
-      <div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-xl">
+  <CardWrapper id="parsing-to-review-section" color="amber">
+    <SectionHeader
+      icon={
         <svg className="w-5 h-5 text-amber-600 dark:text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
           <path d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
         </svg>
-      </div>
-      <div className="flex-1">
-        <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-          To Be Reviewed
-        </h3>
-        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-          {toReviewCount > 0
-            ? 'Assign a budget category to approve these transactions'
-            : 'No transactions to review'}
-        </p>
-      </div>
-      {toReviewCount > 0 && (
-        <span className="text-xs font-black bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-2.5 py-1 rounded-full">
-          {toReviewCount}
-        </span>
-      )}
-    </div>
+      }
+      title="To Be Reviewed"
+      subtitle={toReviewCount > 0
+        ? 'Assign a budget category to approve these transactions'
+        : 'No transactions to review'}
+      color="amber"
+      badge={toReviewCount}
+    />
 
     {(toReviewCount > 0 || (showDemoData && toReviewCount === 0)) ? (
       <div className="space-y-2">
@@ -184,16 +176,14 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
         )}
       </div>
     ) : (
-      <div className="py-6 text-center">
-        <div className="w-10 h-10 bg-amber-50 dark:bg-amber-900/20 rounded-full flex items-center justify-center mx-auto mb-2">
+      <EmptyState
+        icon={
           <svg className="w-5 h-5 text-amber-400 dark:text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
             <polyline points="20 6 9 17 4 12" />
           </svg>
-        </div>
-        <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-          No Transactions to Review
-        </p>
-      </div>
+        }
+        message="No Transactions to Review"
+      />
     )}
 
     {/* Scan for Transactions button */}
@@ -204,7 +194,7 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
     >
       {isScanning ? 'Scanning…' : 'Scan for Transactions'}
     </button>
-  </div>
+  </CardWrapper>
 );
 
 export default ToBeReviewedCard;

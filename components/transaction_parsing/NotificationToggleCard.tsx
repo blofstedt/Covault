@@ -1,5 +1,6 @@
 import React from 'react';
 import NotificationSettings from '../NotificationSettings';
+import { CardWrapper } from '../shared';
 
 interface NotificationToggleCardProps {
   enabled: boolean;
@@ -7,12 +8,12 @@ interface NotificationToggleCardProps {
 }
 
 const NotificationToggleCard: React.FC<NotificationToggleCardProps> = ({ enabled, onToggle }) => (
-  <div id="parsing-notification-toggle" className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-slate-100 dark:border-slate-800/60 space-y-4">
+  <CardWrapper id="parsing-notification-toggle" color="slate">
     <NotificationSettings
       enabled={enabled}
       onToggle={onToggle}
     />
-  </div>
+  </CardWrapper>
 );
 
 export default NotificationToggleCard;

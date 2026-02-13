@@ -1,4 +1,5 @@
 import React from 'react';
+import { SettingsSection } from '../../shared';
 
 interface DiscretionaryShieldSectionProps {
   useLeisureAsBuffer: boolean;
@@ -8,35 +9,23 @@ interface DiscretionaryShieldSectionProps {
 const DiscretionaryShieldSection: React.FC<DiscretionaryShieldSectionProps> = ({
   useLeisureAsBuffer,
   onUpdateSettings,
-}) => {
-  return (
-    <div
-      id="settings-shield-container"
-      className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60"
+}) => (
+  <SettingsSection
+    id="settings-shield-container"
+    title="Discretionary Shield"
+    description="If a budget overspends, money from your Leisure vault will be automatically reallocated to cover it."
+  >
+    <button
+      onClick={() => onUpdateSettings('useLeisureAsBuffer', !useLeisureAsBuffer)}
+      className={`w-full py-4 text-xs font-black rounded-2xl transition-all border-2 ${
+        useLeisureAsBuffer
+          ? 'bg-emerald-500 border-emerald-500 text-white shadow-lg'
+          : 'border-slate-200 dark:border-slate-700 text-slate-400'
+      }`}
     >
-      <div className="flex flex-col mb-4">
-        <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-          Discretionary Shield
-        </span>
-        <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium mt-1 leading-relaxed">
-          If a budget overspends, money from your Leisure vault will be
-          automatically reallocated to cover it.
-        </p>
-      </div>
-      <button
-        onClick={() =>
-          onUpdateSettings('useLeisureAsBuffer', !useLeisureAsBuffer)
-        }
-        className={`w-full py-4 text-xs font-black rounded-2xl transition-all border-2 ${
-          useLeisureAsBuffer
-            ? 'bg-emerald-500 border-emerald-500 text-white shadow-lg'
-            : 'border-slate-200 dark:border-slate-700 text-slate-400'
-        }`}
-      >
-        {useLeisureAsBuffer ? 'SHIELD ACTIVE' : 'SHIELD OFF'}
-      </button>
-    </div>
-  );
-};
+      {useLeisureAsBuffer ? 'SHIELD ACTIVE' : 'SHIELD OFF'}
+    </button>
+  </SettingsSection>
+);
 
 export default DiscretionaryShieldSection;
