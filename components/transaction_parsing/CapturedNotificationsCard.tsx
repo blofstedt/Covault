@@ -1,5 +1,6 @@
 import React from 'react';
 import { PendingTransaction } from '../../types';
+import ParsingCard from '../ui/ParsingCard';
 
 interface CapturedNotificationsCardProps {
   capturedByBank: Map<string, PendingTransaction[]>;
@@ -15,26 +16,13 @@ const CapturedNotificationsCard: React.FC<CapturedNotificationsCardProps> = ({
   if (capturedCount === 0) return null;
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-blue-200 dark:border-blue-800/40 space-y-4">
-      <div className="flex items-center space-x-3">
-        <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
-          <svg className="w-5 h-5 text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-            <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-          </svg>
-        </div>
-        <div className="flex-1">
-          <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-            Captured Notifications
-          </h3>
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-            Tap a notification to teach Covault how to read it
-          </p>
-        </div>
-        <span className="text-xs font-black bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2.5 py-1 rounded-full">
-          {capturedCount}
-        </span>
-      </div>
-
+    <ParsingCard
+      colorScheme="blue"
+      icon={<path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />}
+      title="Captured Notifications"
+      subtitle="Tap a notification to teach Covault how to read it"
+      count={capturedCount}
+    >
       {Array.from(capturedByBank.entries()).map(([bankName, notifications]) => (
         <div key={bankName} className="space-y-2">
           <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-1">
@@ -76,7 +64,7 @@ const CapturedNotificationsCard: React.FC<CapturedNotificationsCardProps> = ({
           ))}
         </div>
       ))}
-    </div>
+    </ParsingCard>
   );
 };
 

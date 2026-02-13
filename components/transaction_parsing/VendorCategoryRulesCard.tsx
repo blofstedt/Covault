@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { BudgetCategory } from '../../types';
 import type { VendorOverride } from './useVendorOverrides';
+import ParsingCard from '../ui/ParsingCard';
 
 interface VendorCategoryRulesCardProps {
   allVendors: string[];
@@ -35,26 +36,14 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
   if (allVendors.length === 0 && !showDemoData) return null;
 
   return (
-    <div id="parsing-vendor-rules-section" className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-violet-200 dark:border-violet-800/40 space-y-3">
-      <div className="flex items-center space-x-3">
-        <div className="p-2 bg-violet-50 dark:bg-violet-900/20 rounded-xl">
-          <svg className="w-5 h-5 text-violet-600 dark:text-violet-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-            <path d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-          </svg>
-        </div>
-        <div className="flex-1">
-          <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-            Vendor Category Rules
-          </h3>
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-            Default budget categories for each vendor
-          </p>
-        </div>
-        <span className="text-xs font-black bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 px-2.5 py-1 rounded-full">
-          {showDemoData && allVendors.length === 0 ? 2 : allVendors.length}
-        </span>
-      </div>
-
+    <ParsingCard
+      id="parsing-vendor-rules-section"
+      colorScheme="violet"
+      icon={<path d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />}
+      title="Vendor Category Rules"
+      subtitle="Default budget categories for each vendor"
+      count={showDemoData && allVendors.length === 0 ? 2 : allVendors.length}
+    >
       <div className="space-y-2">
         {allVendors.map((vendorName) => {
           const vo = vendorOverrideByName.get(vendorName.toLowerCase());
@@ -233,7 +222,7 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
           </>
         )}
       </div>
-    </div>
+    </ParsingCard>
   );
 };
 
