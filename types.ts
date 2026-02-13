@@ -204,6 +204,7 @@ export interface AppState {
     notificationsEnabled: boolean;
     hiddenCategories: string[]; // IDs of hidden budget categories
     notification_rules: NotificationRule[];
+    app_notifications_enabled: boolean;
   };
 }
 

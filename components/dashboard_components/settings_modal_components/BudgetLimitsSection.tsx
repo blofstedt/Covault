@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { BudgetCategory } from '../../../types';
+import SettingsCard from '../../ui/SettingsCard';
+import SectionHeader from '../../ui/SectionHeader';
 
 interface BudgetLimitsSectionProps {
   budgets: BudgetCategory[];
@@ -71,16 +73,11 @@ const BudgetLimitsSection: React.FC<BudgetLimitsSectionProps> = ({
   };
 
   return (
-    <div id="settings-budget-limits-container" className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60 space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-          Budget Limits
-        </h3>
-      </div>
-
-      <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
-        Set your monthly budget limit for each category. Tap the eye icon to hide categories you don't use.
-      </p>
+    <SettingsCard id="settings-budget-limits-container" className="space-y-4">
+      <SectionHeader
+        title="Budget Limits"
+        subtitle="Set your monthly budget limit for each category. Tap the eye icon to hide categories you don't use."
+      />
 
       {overAllocatedMessage && (
         <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 rounded-xl">
@@ -167,7 +164,7 @@ const BudgetLimitsSection: React.FC<BudgetLimitsSectionProps> = ({
           );
         })}
       </div>
-    </div>
+    </SettingsCard>
   );
 };
 

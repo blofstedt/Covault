@@ -2,6 +2,7 @@ import React from 'react';
 import { Transaction } from '../../types';
 import { parseLocalDate } from '../../lib/dateUtils';
 import type { VendorOverride } from './useVendorOverrides';
+import ParsingCard from '../ui/ParsingCard';
 
 interface ApprovedTransactionsCardProps {
   approvedTransactions: Transaction[];
@@ -16,27 +17,13 @@ const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
   showDemoData,
   onTransactionTap,
 }) => (
-  <div id="parsing-approved-section" className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-slate-100 dark:border-slate-800/60 space-y-4">
-    <div className="flex items-center space-x-3">
-      <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
-        <svg className="w-5 h-5 text-emerald-600 dark:text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-          <polyline points="14 2 14 8 20 8" />
-          <line x1="16" y1="13" x2="8" y2="13" />
-          <line x1="16" y1="17" x2="8" y2="17" />
-        </svg>
-      </div>
-      <div className="flex-1">
-        <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-          Approved Transactions
-        </h3>
-        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-          Auto-detected and approved from bank notifications
-        </p>
-      </div>
-
-    </div>
-
+  <ParsingCard
+    id="parsing-approved-section"
+    colorScheme="emerald"
+    icon={<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></>}
+    title="Approved Transactions"
+    subtitle="Auto-detected and approved from bank notifications"
+  >
     {(approvedTransactions.length > 0 || showDemoData) ? (
       <div className="space-y-2">
         {approvedTransactions.map((tx) => {
@@ -114,7 +101,7 @@ const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
         </p>
       </div>
     )}
-  </div>
+  </ParsingCard>
 );
 
 export default ApprovedTransactionsCard;

@@ -1,16 +1,11 @@
 import React from 'react';
+import SettingsCard from '../../ui/SettingsCard';
+import SectionHeader from '../../ui/SectionHeader';
 
 const ReportSection: React.FC = () => {
   return (
-    <div id="settings-reports-container" className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60 opacity-50">
-      <div className="flex flex-col mb-3">
-        <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-          Budget Report
-        </span>
-        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 leading-relaxed">
-          Send a monthly budget report to your email.
-        </p>
-      </div>
+    <SettingsCard id="settings-reports-container" className="opacity-50">
+      <SectionHeader title="Budget Report" subtitle="Send a monthly budget report to your email." className="mb-3" />
 
       <button
         disabled
@@ -28,7 +23,7 @@ const ReportSection: React.FC = () => {
         </svg>
         Coming Soon
       </button>
-    </div>
+    </SettingsCard>
   );
 };
 

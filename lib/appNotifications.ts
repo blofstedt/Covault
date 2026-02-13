@@ -84,7 +84,7 @@ function evaluateBudgetRule(
       : budgets;
 
   for (const budget of targetBudgets) {
-    const limit = Number((budget as any).totalLimit ?? 0);
+    const limit = Number(budget.totalLimit ?? 0);
     if (!limit || limit <= 0) continue;
 
     const spent = getSpentForBudget(budget.id, transactions);

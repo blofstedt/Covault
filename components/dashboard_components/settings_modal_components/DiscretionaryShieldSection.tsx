@@ -1,4 +1,6 @@
 import React from 'react';
+import SettingsCard from '../../ui/SettingsCard';
+import SectionHeader from '../../ui/SectionHeader';
 
 interface DiscretionaryShieldSectionProps {
   useLeisureAsBuffer: boolean;
@@ -10,19 +12,12 @@ const DiscretionaryShieldSection: React.FC<DiscretionaryShieldSectionProps> = ({
   onUpdateSettings,
 }) => {
   return (
-    <div
-      id="settings-shield-container"
-      className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60"
-    >
-      <div className="flex flex-col mb-4">
-        <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-          Discretionary Shield
-        </span>
-        <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium mt-1 leading-relaxed">
-          If a budget overspends, money from your Leisure vault will be
-          automatically reallocated to cover it.
-        </p>
-      </div>
+    <SettingsCard id="settings-shield-container">
+      <SectionHeader
+        title="Discretionary Shield"
+        subtitle="If a budget overspends, money from your Leisure vault will be automatically reallocated to cover it."
+        className="mb-4"
+      />
       <button
         onClick={() =>
           onUpdateSettings('useLeisureAsBuffer', !useLeisureAsBuffer)
@@ -35,7 +30,7 @@ const DiscretionaryShieldSection: React.FC<DiscretionaryShieldSectionProps> = ({
       >
         {useLeisureAsBuffer ? 'SHIELD ACTIVE' : 'SHIELD OFF'}
       </button>
-    </div>
+    </SettingsCard>
   );
 };
 

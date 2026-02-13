@@ -5,6 +5,8 @@ import { Share } from '@capacitor/share';
 import { Transaction, BudgetCategory } from '../../../types';
 import { parseLocalDate } from '../../../lib/dateUtils';
 import CalendarPicker from '../../CalendarPicker';
+import SettingsCard from '../../ui/SettingsCard';
+import SectionHeader from '../../ui/SectionHeader';
 
 interface ExportTransactionsSectionProps {
   transactions: Transaction[];
@@ -143,15 +145,8 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
   }, [transactions, startDate, endDate]);
 
   return (
-    <div id="settings-export-container" className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl">
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs font-black text-slate-800 dark:text-slate-100 uppercase tracking-[0.2em]">
-          Export Transactions
-        </span>
-      </div>
-      <span className="text-[11px] text-slate-400 dark:text-slate-500 block mb-4">
-        Download a CSV report for a date range.
-      </span>
+    <SettingsCard id="settings-export-container">
+      <SectionHeader title="Export Transactions" subtitle="Download a CSV report for a date range." className="mb-4" />
 
       <div className="flex gap-3 mb-4">
         <div className="flex-1">
@@ -225,7 +220,7 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
             ? 'No Transactions'
             : `Export ${filteredCount} Transaction${filteredCount !== 1 ? 's' : ''}`}
       </button>
-    </div>
+    </SettingsCard>
   );
 };
 

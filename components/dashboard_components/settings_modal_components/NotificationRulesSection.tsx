@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
 import type { NotificationRule, BudgetCategory, Transaction } from '../../../types';
 import NotificationRuleBuilder from './NotificationRuleBuilder';
+import SettingsCard from '../../ui/SettingsCard';
+import SectionHeader from '../../ui/SectionHeader';
+import ToggleSwitch from '../../ui/ToggleSwitch';
+import ConfirmModal from '../../ui/ConfirmModal';
 
 interface NotificationRulesSectionProps {
   enabled: boolean;
@@ -122,29 +126,11 @@ const NotificationRulesSection: React.FC<NotificationRulesSectionProps> = ({
 
   return (
     <>
-      <div id="settings-notification-rules-container" className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60">
+      <SettingsCard id="settings-notification-rules-container">
         {/* Header with global toggle */}
         <div className="flex items-center justify-between mb-3">
-          <div className="flex flex-col">
-            <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-              Notification Rules
-            </span>
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 leading-relaxed">
-              Custom alerts in plain English.
-            </p>
-          </div>
-          <button
-            onClick={() => onToggle(!enabled)}
-            className={`relative w-12 h-7 rounded-full transition-colors duration-200 flex-shrink-0 ${
-              enabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
-            }`}
-          >
-            <span
-              className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200 ${
-                enabled ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
-          </button>
+          <SectionHeader title="Notification Rules" subtitle="Custom alerts in plain English." />
+          <ToggleSwitch enabled={enabled} onToggle={() => onToggle(!enabled)} />
         </div>
 
         {enabled && (
@@ -163,20 +149,9 @@ const NotificationRulesSection: React.FC<NotificationRulesSectionProps> = ({
                   >
                     <div className="flex items-start gap-2">
                       {/* Rule toggle */}
-                      <button
-                        onClick={() => handleToggleRule(rule.id)}
-                        className={`mt-0.5 w-8 h-5 rounded-full transition-colors duration-200 flex-shrink-0 ${
-                          rule.enabled
-                            ? 'bg-emerald-500'
-                            : 'bg-slate-300 dark:bg-slate-600'
-                        }`}
-                      >
-                        <span
-                          className={`block w-4 h-4 mt-0.5 ml-0.5 bg-white rounded-full shadow transition-transform duration-200 ${
-                            rule.enabled ? 'translate-x-3' : 'translate-x-0'
-                          }`}
-                        />
-                      </button>
+                      <div className="mt-0.5">
+                        <ToggleSwitch enabled={rule.enabled} onToggle={() => handleToggleRule(rule.id)} size="sm" />
+                      </div>
 
                       {/* Rule sentence */}
                       <button
@@ -249,9 +224,7 @@ const NotificationRulesSection: React.FC<NotificationRulesSectionProps> = ({
             </button>
           </>
         )}
-      </div>
-
-      {/* Rule builder modal */}
+      </SettingsCard>
       {showBuilder && (
         <NotificationRuleBuilder
           budgets={budgets}
@@ -267,35 +240,14 @@ const NotificationRulesSection: React.FC<NotificationRulesSectionProps> = ({
 
       {/* Delete confirmation modal */}
       {deletingRuleId && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="w-full max-w-[320px] bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 space-y-8 shadow-2xl animate-in zoom-in-95 duration-300 border border-slate-100 dark:border-slate-800/60 text-center">
-            <div className="flex flex-col items-center space-y-4">
-              <div className="w-16 h-16 bg-rose-50 dark:bg-rose-900/20 rounded-2xl flex items-center justify-center">
-                <svg className="w-8 h-8 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-xl font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">Delete Rule?</h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed">This will permanently remove this notification rule.</p>
-              </div>
-            </div>
-            <div className="flex flex-col space-y-3">
-              <button
-                onClick={() => handleDeleteRule(deletingRuleId)}
-                className="w-full py-4 bg-rose-500 hover:bg-rose-600 text-white rounded-2xl font-black text-sm shadow-lg shadow-rose-500/20 active:scale-95 transition-all uppercase tracking-widest"
-              >
-                Confirm Delete
-              </button>
-              <button
-                onClick={() => setDeletingRuleId(null)}
-                className="w-full py-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-2xl font-black text-sm active:scale-95 transition-all uppercase tracking-widest"
-              >
-                Go Back
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          title="Delete Rule?"
+          message="This will permanently remove this notification rule."
+          confirmLabel="Confirm Delete"
+          variant="danger"
+          onConfirm={() => handleDeleteRule(deletingRuleId)}
+          onCancel={() => setDeletingRuleId(null)}
+        />
       )}
     </>
   );

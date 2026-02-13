@@ -1,6 +1,13 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 
+interface TutorialStep {
+  title: string;
+  content: string;
+  target: string;
+  animation?: string;
+}
+
 interface TutorialProps {
   onComplete: () => void;
   onStepChange?: (step: number) => void;
@@ -35,7 +42,7 @@ const Tutorial: React.FC<TutorialProps> = ({
   const [isAnimating, setIsAnimating] = useState(false);
   const animationCleanupRef = useRef<(() => void) | null>(null);
 
-  const steps = [
+  const steps: TutorialStep[] = [
     {
       title: "Your Balance at a Glance",
       content: isShared
@@ -357,7 +364,7 @@ const Tutorial: React.FC<TutorialProps> = ({
   const handleNext = () => {
     if (isAnimating) return;
 
-    const currentStepData = steps[step] as any;
+    const currentStepData = steps[step];
 
     // Check if this step triggers an animation
     if (currentStepData.animation === 'open-transaction-form') {
