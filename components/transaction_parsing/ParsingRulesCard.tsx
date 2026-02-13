@@ -150,6 +150,7 @@ const ParsingRulesCard: React.FC<ParsingRulesCardProps> = ({
                     <button
                       onClick={() => keywordEditRuleId === rule.id ? onSetKeywordEditRuleId(null) : onOpenKeywordEdit(rule)}
                       className="w-full flex items-center justify-between py-1"
+                      aria-label="Edit keyword filters"
                     >
                       <div className="flex items-center gap-1">
                         <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">

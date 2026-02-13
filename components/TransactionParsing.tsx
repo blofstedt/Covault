@@ -128,14 +128,17 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
 
   // ── Handle clear confirmation ──
   const handleClearConfirm = useCallback(async () => {
-    if (clearConfirm === 'filtered' && onClearFilteredNotifications) {
-      const ids = categories.filteredOutNotifications.map((pt) => pt.id);
-      await onClearFilteredNotifications(ids);
-    } else if (clearConfirm === 'approved' && onClearApprovedTransactions) {
-      const ids = categories.approvedTransactions.map((tx) => tx.id);
-      await onClearApprovedTransactions(ids);
+    try {
+      if (clearConfirm === 'filtered' && onClearFilteredNotifications) {
+        const ids = categories.filteredOutNotifications.map((pt) => pt.id);
+        await onClearFilteredNotifications(ids);
+      } else if (clearConfirm === 'approved' && onClearApprovedTransactions) {
+        const ids = categories.approvedTransactions.map((tx) => tx.id);
+        await onClearApprovedTransactions(ids);
+      }
+    } finally {
+      setClearConfirm(null);
     }
-    setClearConfirm(null);
   }, [clearConfirm, onClearFilteredNotifications, onClearApprovedTransactions, categories.filteredOutNotifications, categories.approvedTransactions]);
 
   return (
