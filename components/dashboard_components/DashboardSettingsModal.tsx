@@ -14,6 +14,7 @@ import ExportTransactionsSection from './settings_modal_components/ExportTransac
 import ReportSection from './settings_modal_components/ReportSection';
 import { BudgetCategory, Transaction, NotificationRule } from '../../types';
 import PremiumGate from '../PremiumGate';
+import { CloseButton } from '../shared';
 
 export interface DashboardSettings {
   theme: string;
@@ -96,27 +97,7 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
             Vault Settings
           </h2>
           <div className="flex items-center space-x-2">
-            <button
-              disabled={showTutorial}
-              onClick={onClose}
-              className={`p-2.5 bg-slate-100 dark:bg-slate-800 rounded-full transition-transform active:scale-90 ${
-                showTutorial ? 'opacity-20 cursor-not-allowed' : ''
-              }`}
-            >
-              <svg
-                className="w-6 h-6 text-slate-500"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={3}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
+            <CloseButton onClick={onClose} disabled={showTutorial} />
           </div>
         </div>
 

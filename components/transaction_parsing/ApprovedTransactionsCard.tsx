@@ -87,19 +87,16 @@ const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
         )}
       </div>
     ) : (
-      <div className="py-8 text-center">
-        <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-3">
+      <EmptyState
+        icon={
           <svg className="w-6 h-6 text-slate-300 dark:text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
           </svg>
-        </div>
-        <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-          No transactions captured yet
-        </p>
-        <p className="text-[11px] text-slate-400 dark:text-slate-600 mt-1 leading-relaxed max-w-xs mx-auto">
-          When your banking apps send notifications, they'll appear here for review.
-        </p>
-      </div>
+        }
+        message="No transactions captured yet"
+        description="When your banking apps send notifications, they'll appear here for review."
+        size="md"
+      />
     )}
   </ParsingCard>
 );

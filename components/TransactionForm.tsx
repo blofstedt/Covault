@@ -4,6 +4,7 @@ import { Transaction, BudgetCategory, Recurrence, TransactionLabel, TransactionS
 import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
 import { formatVendorName } from '../lib/formatVendorName';
 import CalendarPicker from './CalendarPicker';
+import { CloseButton } from './shared';
 
 interface VendorHistoryItem {
   vendor: string;
@@ -343,11 +344,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
               </span>
             )}
           </div>
-          <button onClick={handleClose} className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-full transition-transform active:scale-90">
-            <svg className="w-6 h-6 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <CloseButton onClick={handleClose} />
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

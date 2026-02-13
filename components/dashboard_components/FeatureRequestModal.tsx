@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { ThumbsUp, X } from 'lucide-react';
+import { ThumbsUp } from 'lucide-react';
 import { FeatureRequest } from '../../lib/useFeatureRequests';
+import { CloseButton, Spinner } from '../shared';
 
 const ADMIN_EMAIL = 'mostlydecentdev@gmail.com';
 
@@ -65,12 +66,7 @@ const FeatureRequestModal: React.FC<FeatureRequestModalProps> = ({
           <h2 className="text-lg font-black text-slate-700 dark:text-slate-100 tracking-tight uppercase">
             Feature Requests
           </h2>
-          <button
-            onClick={onClose}
-            className="p-2 bg-slate-100 dark:bg-slate-800 rounded-full transition-transform active:scale-90"
-          >
-            <X className="w-5 h-5 text-slate-500" />
-          </button>
+          <CloseButton onClick={onClose} size="sm" />
         </div>
 
         {/* Tabs */}
@@ -101,7 +97,7 @@ const FeatureRequestModal: React.FC<FeatureRequestModalProps> = ({
         <div className="flex-1 overflow-y-auto px-6 pb-2 no-scrollbar">
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+              <Spinner />
             </div>
           ) : activeTab === 'requested' ? (
             <div className="space-y-2">

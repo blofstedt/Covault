@@ -1,5 +1,6 @@
 import React from 'react';
 import NotificationSettings from '../NotificationSettings';
+import { CardWrapper } from '../shared';
 
 interface SetupInfoCardProps {
   enabled: boolean;
@@ -9,7 +10,7 @@ interface SetupInfoCardProps {
 const SetupInfoCard: React.FC<SetupInfoCardProps> = ({ enabled, onToggle }) => (
   <>
     {/* Setup state: info card + toggle + how it works */}
-    <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-slate-100 dark:border-slate-800/60 space-y-4">
+    <CardWrapper color="slate">
       <div className="flex items-start space-x-4">
         <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl">
           <svg
@@ -46,9 +47,7 @@ const SetupInfoCard: React.FC<SetupInfoCardProps> = ({ enabled, onToggle }) => (
           No AI — your data stays on your device. You control exactly how transactions are detected.
         </p>
       </div>
-    </div>
-
-    {/* How it works */}
+    </CardWrapper>
     <div className="bg-slate-100 dark:bg-slate-800/50 rounded-2xl p-4 space-y-3">
       <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
         How it works

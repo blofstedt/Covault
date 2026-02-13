@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { CloseButton } from '../shared';
 
 interface FAQItem {
   question: string;
@@ -126,14 +127,7 @@ const FAQModal: React.FC<FAQModalProps> = ({ onClose }) => {
           <h2 className="text-lg font-black text-slate-700 dark:text-slate-100 tracking-tight uppercase">
             Frequently Asked
           </h2>
-          <button
-            onClick={onClose}
-            className="p-2 bg-slate-100 dark:bg-slate-800 rounded-full transition-transform active:scale-90"
-          >
-            <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
+          <CloseButton onClick={onClose} size="sm" />
         </div>
 
         {/* Search bar */}

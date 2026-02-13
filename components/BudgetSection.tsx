@@ -3,6 +3,7 @@ import React from 'react';
 import { BudgetCategory, Transaction } from '../types';
 import TransactionItem from './TransactionItem';
 import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
+import { EmptyState } from './shared';
 
 interface ExtendedBudgetCategory extends BudgetCategory {
   externalDeduction?: number;
@@ -208,9 +209,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                   />
                 ))
               ) : (
-                <div className="py-16 text-center text-[11px] font-black uppercase tracking-widest text-slate-200 dark:text-slate-800">
-                  No entries found
-                </div>
+                <EmptyState message="No entries found" size="md" />
               )}
             </div>
           </div>
