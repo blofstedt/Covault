@@ -99,9 +99,11 @@ export function useTransactionCategories({
   }, [vendorOverrides]);
 
   // All unique vendor names from notification-parsed pending transactions and vendor overrides
+  // Excludes vendors that only appear in automatically filtered (keyword-ignored) notifications
   const allVendors = useMemo(() => {
     const vendorSet = new Map<string, string>();
     for (const pt of pendingTransactions) {
+      if (pt.pattern_id === KEYWORD_IGNORED_PATTERN_ID) continue;
       const vendor = (pt.extracted_vendor || '').trim();
       if (!vendor) continue;
       const key = vendor.toLowerCase();
