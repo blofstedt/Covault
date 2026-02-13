@@ -601,7 +601,7 @@ export const useTransactionOps = ({
         const res = await fetch(`${REST_BASE}/transactions?id=in.(${idList})`, {
           method: 'PATCH',
           headers,
-          body: JSON.stringify({ label: null }),
+          body: JSON.stringify({ label: 'Manual' }),
         });
         if (!res.ok) {
           const body = await res.text();
@@ -610,12 +610,13 @@ export const useTransactionOps = ({
           setDbError(msg);
           return;
         }
-        // Update UI state: clear label so they no longer appear in "Approved Transactions"
+        // Update UI state: set label to 'Manual' so they no longer appear in "Approved Transactions"
+        // but remain visible on the main transactions page
         const idSet = new Set(ids);
         setAppState(prev => ({
           ...prev,
           transactions: prev.transactions.map(t =>
-            idSet.has(t.id) ? { ...t, label: undefined } : t,
+            idSet.has(t.id) ? { ...t, label: 'Manual' } : t,
           ),
         }));
         console.log('[clearApproved] OK, cleared labels for', ids.length, 'approved transactions');

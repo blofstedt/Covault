@@ -285,7 +285,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
           message={
             clearConfirm === 'filtered'
               ? 'This will permanently remove all filtered notifications from this list.'
-              : 'This will remove the auto-added label from all approved transactions. They will remain in your budget.'
+              : 'This will clear approved transactions from this list. They will remain in your budget.'
           }
           confirmLabel="Clear"
           cancelLabel="Cancel"
