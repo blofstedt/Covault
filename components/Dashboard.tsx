@@ -39,6 +39,8 @@ interface DashboardProps {
   onJoinWithCode?: (code: string) => void;
   onApprovePendingTransaction?: (pendingId: string, categoryId: string, preferredName?: string) => void | Promise<void>;
   onRejectPendingTransaction?: (pendingId: string) => void;
+  onClearFilteredNotifications?: (ids: string[]) => Promise<void>;
+  onClearApprovedTransactions?: (ids: string[]) => Promise<void>;
   onRefreshNotifications?: () => Promise<void>;
   onReloadPendingTransactions?: (userId: string) => Promise<void>;
   saveBudgetLimit: (categoryId: string, newLimit: number) => void;
@@ -71,6 +73,8 @@ const Dashboard: React.FC<DashboardProps> = ({
   onJoinWithCode,
   onApprovePendingTransaction,
   onRejectPendingTransaction,
+  onClearFilteredNotifications,
+  onClearApprovedTransactions,
   onRefreshNotifications,
   onReloadPendingTransactions,
   saveBudgetLimit,
@@ -578,6 +582,8 @@ const Dashboard: React.FC<DashboardProps> = ({
         budgets={visibleBudgets}
         onApprovePending={onApprovePendingTransaction}
         onRejectPending={onRejectPendingTransaction}
+        onClearFilteredNotifications={onClearFilteredNotifications}
+        onClearApprovedTransactions={onClearApprovedTransactions}
         onRefreshNotifications={onRefreshNotifications}
         onReloadPendingTransactions={onReloadPendingTransactions}
         userId={state.user?.id}

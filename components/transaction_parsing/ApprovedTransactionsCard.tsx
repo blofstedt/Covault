@@ -10,6 +10,7 @@ interface ApprovedTransactionsCardProps {
   vendorOverrideByName: Map<string, VendorOverride>;
   showDemoData: boolean;
   onTransactionTap?: (tx: Transaction) => void;
+  onClear?: () => void;
 }
 
 const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
@@ -17,6 +18,7 @@ const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
   vendorOverrideByName,
   showDemoData,
   onTransactionTap,
+  onClear,
 }) => (
   <ParsingCard
     id="parsing-approved-section"
@@ -24,6 +26,19 @@ const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
     icon={<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></>}
     title="Approved Transactions"
     subtitle="Auto-detected and approved from bank notifications"
+    headerAction={approvedTransactions.length > 0 && onClear && (
+      <button
+        onClick={onClear}
+        className="p-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-all active:scale-95"
+        title="Clear all approved transactions"
+      >
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 21h6l-3-6-3 6z" />
+          <path d="M6 15l8.5-8.5a2.12 2.12 0 013 3L9 18" />
+          <path d="M15 7l3 3" />
+        </svg>
+      </button>
+    )}
   >
     {(approvedTransactions.length > 0 || showDemoData) ? (
       <div className="space-y-2">

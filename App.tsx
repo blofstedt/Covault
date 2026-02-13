@@ -79,6 +79,8 @@ const App: React.FC = () => {
     handleJoinWithCode,
     handleApprovePendingTransaction,
     handleRejectPendingTransaction,
+    handleClearFilteredNotifications,
+    handleClearApprovedTransactions,
     saveBudgetLimit,
     saveUserIncome,
     saveTheme,
@@ -238,6 +240,8 @@ const App: React.FC = () => {
             onJoinWithCode={devNoop as any}
             onApprovePendingTransaction={devNoop as any}
             onRejectPendingTransaction={devNoop}
+            onClearFilteredNotifications={devNoopAsync as any}
+            onClearApprovedTransactions={devNoopAsync as any}
             onRefreshNotifications={devNoopAsync}
             onReloadPendingTransactions={devNoopAsync as any}
             isLoadingData={false}
@@ -287,6 +291,8 @@ const App: React.FC = () => {
           onJoinWithCode={handleJoinWithCode}
           onApprovePendingTransaction={handleApprovePendingTransaction}
           onRejectPendingTransaction={handleRejectPendingTransaction}
+          onClearFilteredNotifications={handleClearFilteredNotifications}
+          onClearApprovedTransactions={handleClearApprovedTransactions}
           onRefreshNotifications={refreshNotifications}
           onReloadPendingTransactions={loadPendingTransactions}
           isLoadingData={isLoadingData}

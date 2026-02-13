@@ -41,7 +41,7 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
       colorScheme="violet"
       icon={<path d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />}
       title="Vendor Category Rules"
-      subtitle="Default budget categories for each vendor"
+      subtitle="Toggle each vendor on to auto-approve transactions from that vendor"
       count={showDemoData && allVendors.length === 0 ? 2 : allVendors.length}
     >
       <div className="space-y-2">
@@ -85,17 +85,12 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
                         e.stopPropagation();
                         onToggleAutoAccept(vo.id, vo.auto_accept);
                       }}
-                      className={`flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-black uppercase tracking-wider transition-all active:scale-95 ${
-                        vo.auto_accept
-                          ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700'
-                      }`}
-                      title={vo.auto_accept ? 'Auto-accept is on' : 'Auto-accept is off'}
+                      className="p-1 rounded-full transition-all active:scale-95"
+                      title={vo.auto_accept ? 'Auto-approve is on' : 'Auto-approve is off'}
                     >
-                      <div className={`w-6 h-3.5 rounded-full relative transition-colors ${vo.auto_accept ? 'bg-emerald-400 dark:bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
-                        <div className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white shadow-sm transition-all ${vo.auto_accept ? 'left-3' : 'left-0.5'}`} />
+                      <div className={`w-10 h-6 rounded-full relative transition-colors ${vo.auto_accept ? 'bg-emerald-400 dark:bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
+                        <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm transition-all ${vo.auto_accept ? 'left-5' : 'left-1'}`} />
                       </div>
-                      <span>Auto Approve</span>
                     </button>
                   )}
                 </div>

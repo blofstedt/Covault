@@ -13,6 +13,7 @@ import ApprovedTransactionsCard from './transaction_parsing/ApprovedTransactions
 import RejectedTransactionsCard from './transaction_parsing/RejectedTransactionsCard';
 import SetupInfoCard from './transaction_parsing/SetupInfoCard';
 import RejectConfirmModal from './transaction_parsing/RejectConfirmModal';
+import ConfirmModal from './ui/ConfirmModal';
 import PageShell from './ui/PageShell';
 
 import { useParsingRules } from './transaction_parsing/useParsingRules';
@@ -34,6 +35,8 @@ interface TransactionParsingProps {
   budgets?: BudgetCategory[];
   onApprovePending?: (pendingId: string, categoryId: string, preferredName?: string) => void | Promise<void>;
   onRejectPending?: (pendingId: string) => void;
+  onClearFilteredNotifications?: (ids: string[]) => Promise<void>;
+  onClearApprovedTransactions?: (ids: string[]) => Promise<void>;
   onRefreshNotifications?: () => Promise<void>;
   onReloadPendingTransactions?: (userId: string) => Promise<void>;
   userId?: string;
@@ -53,6 +56,8 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   budgets = [],
   onApprovePending,
   onRejectPending,
+  onClearFilteredNotifications,
+  onClearApprovedTransactions,
   onRefreshNotifications,
   onReloadPendingTransactions,
   userId,
@@ -62,6 +67,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   // ── UI-only state ──
   const [expandedPendingId, setExpandedPendingId] = useState<string | null>(null);
   const [rejectConfirmId, setRejectConfirmId] = useState<string | null>(null);
+  const [clearConfirm, setClearConfirm] = useState<'filtered' | 'approved' | null>(null);
   const [isScanning, setIsScanning] = useState(false);
 
   // ── Vendor overrides (CRUD + state) ──
@@ -119,6 +125,21 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       setIsScanning(false);
     }
   }, [onRefreshNotifications, onReloadPendingTransactions, userId, parsingRulesHook.loadRules, vendorOverridesHook.loadVendorOverrides]);
+
+  // ── Handle clear confirmation ──
+  const handleClearConfirm = useCallback(async () => {
+    try {
+      if (clearConfirm === 'filtered' && onClearFilteredNotifications) {
+        const ids = categories.filteredOutNotifications.map((pt) => pt.id);
+        await onClearFilteredNotifications(ids);
+      } else if (clearConfirm === 'approved' && onClearApprovedTransactions) {
+        const ids = categories.approvedTransactions.map((tx) => tx.id);
+        await onClearApprovedTransactions(ids);
+      }
+    } finally {
+      setClearConfirm(null);
+    }
+  }, [clearConfirm, onClearFilteredNotifications, onClearApprovedTransactions, categories.filteredOutNotifications, categories.approvedTransactions]);
 
   return (
     <PageShell>
@@ -179,6 +200,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
 
               <IgnoredNotificationsCard
                 filteredOutNotifications={categories.filteredOutNotifications}
+                onClear={onClearFilteredNotifications ? () => setClearConfirm('filtered') : undefined}
               />
 
               <CapturedNotificationsCard
@@ -208,6 +230,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                 vendorOverrideByName={categories.vendorOverrideByName}
                 showDemoData={showDemoData}
                 onTransactionTap={onTransactionTap}
+                onClear={onClearApprovedTransactions ? () => setClearConfirm('approved') : undefined}
               />
 
               <RejectedTransactionsCard
@@ -252,6 +275,30 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
             setExpandedPendingId(null);
             setRejectConfirmId(null);
           }}
+        />
+      )}
+
+      {/* Clear Confirmation Modal */}
+      {clearConfirm && (
+        <ConfirmModal
+          title={clearConfirm === 'filtered' ? 'Clear Filtered Notifications?' : 'Clear Approved Transactions?'}
+          message={
+            clearConfirm === 'filtered'
+              ? 'This will permanently remove all filtered notifications from this list.'
+              : 'This will remove the auto-added label from all approved transactions. They will remain in your budget.'
+          }
+          confirmLabel="Clear"
+          cancelLabel="Cancel"
+          variant="danger"
+          icon={
+            <svg className="w-6 h-6 text-rose-500 dark:text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 21h6l-3-6-3 6z" />
+              <path d="M6 15l8.5-8.5a2.12 2.12 0 013 3L9 18" />
+              <path d="M15 7l3 3" />
+            </svg>
+          }
+          onConfirm={handleClearConfirm}
+          onCancel={() => setClearConfirm(null)}
         />
       )}
     </PageShell>

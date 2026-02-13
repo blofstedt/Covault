@@ -541,19 +541,86 @@ export const useTransactionOps = ({
           return;
         }
 
-        // Update pending transaction in UI state to show as rejected
+        // Remove rejected transaction from UI state immediately
         setAppState(prev => ({
           ...prev,
-          pendingTransactions: (prev.pendingTransactions || []).map(p =>
-            p.id === pendingId
-              ? { ...p, needs_review: false, approved: false, rejection_reason: 'Manually rejected', reviewed_at: new Date().toISOString() }
-              : p,
-          ),
+          pendingTransactions: (prev.pendingTransactions || []).filter(p => p.id !== pendingId),
         }));
 
         console.log('[rejectPending] OK, rejected pending transaction', pendingId);
       } catch (err: any) {
         const msg = `Reject pending exception: ${err?.message || err}`;
+        console.error(msg);
+        setDbError(msg);
+      }
+    },
+    [setAppState, setDbError],
+  );
+
+  // Clear filtered (keyword-ignored) pending transactions by deleting from DB
+  const handleClearFilteredNotifications = useCallback(
+    async (ids: string[]) => {
+      if (ids.length === 0) return;
+      try {
+        const headers = await getAuthHeaders();
+        const idList = ids.map(id => `"${id}"`).join(',');
+        const res = await fetch(`${REST_BASE}/pending_transactions?id=in.(${idList})`, {
+          method: 'DELETE',
+          headers,
+        });
+        if (!res.ok) {
+          const body = await res.text();
+          const msg = `[clearFiltered] DELETE failed (${res.status}): ${body.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
+        // Remove from UI state
+        const idSet = new Set(ids);
+        setAppState(prev => ({
+          ...prev,
+          pendingTransactions: (prev.pendingTransactions || []).filter(p => !idSet.has(p.id)),
+        }));
+        console.log('[clearFiltered] OK, cleared', ids.length, 'filtered notifications');
+      } catch (err: any) {
+        const msg = `Clear filtered exception: ${err?.message || err}`;
+        console.error(msg);
+        setDbError(msg);
+      }
+    },
+    [setAppState, setDbError],
+  );
+
+  // Clear approved transactions by removing the Auto-Added label
+  const handleClearApprovedTransactions = useCallback(
+    async (ids: string[]) => {
+      if (ids.length === 0) return;
+      try {
+        const headers = await getAuthHeaders();
+        const idList = ids.map(id => `"${id}"`).join(',');
+        const res = await fetch(`${REST_BASE}/transactions?id=in.(${idList})`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({ label: null }),
+        });
+        if (!res.ok) {
+          const body = await res.text();
+          const msg = `[clearApproved] PATCH failed (${res.status}): ${body.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
+        // Update UI state: clear label so they no longer appear in "Approved Transactions"
+        const idSet = new Set(ids);
+        setAppState(prev => ({
+          ...prev,
+          transactions: prev.transactions.map(t =>
+            idSet.has(t.id) ? { ...t, label: undefined } : t,
+          ),
+        }));
+        console.log('[clearApproved] OK, cleared labels for', ids.length, 'approved transactions');
+      } catch (err: any) {
+        const msg = `Clear approved exception: ${err?.message || err}`;
         console.error(msg);
         setDbError(msg);
       }
@@ -567,5 +634,7 @@ export const useTransactionOps = ({
     handleDeleteTransaction,
     handleApprovePendingTransaction,
     handleRejectPendingTransaction,
+    handleClearFilteredNotifications,
+    handleClearApprovedTransactions,
   };
 };
