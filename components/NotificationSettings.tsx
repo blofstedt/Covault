@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
+import SettingsCard from './ui/SettingsCard';
+import ToggleSwitch from './ui/ToggleSwitch';
 
 interface CovaultNotificationPlugin {
   requestAccess(): Promise<void>;
@@ -213,19 +215,19 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
 
   if (!isNative) {
     return (
-      <div className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60">
+      <SettingsCard>
         <span className="font-black text-xs text-slate-400 uppercase tracking-tight">
           Bank Notification Listener
         </span>
         <p className="text-[11px] text-slate-400 mt-1">
           Available on Android. Install the APK to use this feature.
         </p>
-      </div>
+      </SettingsCard>
     );
   }
 
   return (
-    <div className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60 space-y-4">
+    <SettingsCard className="space-y-4">
       {/* Toggle always visible */}
       <div className="flex items-center justify-between">
         <div className="flex-1 mr-3">
@@ -236,16 +238,7 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
             Auto-log transactions from your banking apps
           </p>
         </div>
-        <button
-          onClick={handleToggle}
-          className={`relative w-12 h-7 rounded-full transition-colors duration-200 flex-shrink-0 ${
-            enabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
-          }`}
-        >
-          <span className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200 ${
-            enabled ? 'translate-x-5' : 'translate-x-0'
-          }`} />
-        </button>
+        <ToggleSwitch enabled={enabled} onToggle={handleToggle} />
       </div>
 
       {/* Banking app picker */}
@@ -308,7 +301,7 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
           </p>
         </div>
       )}
-    </div>
+    </SettingsCard>
   );
 };
 

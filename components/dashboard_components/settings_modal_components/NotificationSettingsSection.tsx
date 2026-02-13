@@ -1,6 +1,9 @@
 // components/dashboard_components/settings_modal_components/NotificationSettingsSection.tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
+import SettingsCard from '../../ui/SettingsCard';
+import SectionHeader from '../../ui/SectionHeader';
+import ToggleSwitch from '../../ui/ToggleSwitch';
 
 interface CovaultNotificationPlugin {
   requestAccess(): Promise<void>;
@@ -231,15 +234,10 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
   // Browser-only info block - now with toggle
   if (!isNative) {
     return (
-      <div id="settings-notifications-container" className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60 space-y-4">
+      <SettingsCard id="settings-notifications-container" className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex-1 mr-3">
-            <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 block">
-              Bank Notification Listener
-            </span>
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 leading-relaxed">
-              Auto-log transactions from supported banking apps.
-            </p>
+            <SectionHeader title="Bank Notification Listener" subtitle="Auto-log transactions from supported banking apps." />
             
             {/* Info message for browser */}
             <div className="mt-2">
@@ -253,18 +251,13 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
           </div>
 
           {/* Disabled toggle for browser */}
-          <button
-            disabled
-            className="relative w-12 h-7 rounded-full transition-colors duration-200 flex-shrink-0 bg-slate-300 dark:bg-slate-600 opacity-50 cursor-not-allowed"
-          >
-            <span className="absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200 translate-x-0" />
-          </button>
+          <ToggleSwitch enabled={false} onToggle={() => {}} disabled />
         </div>
         
         <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-tight">
           Install the Covault Android app and enable notification access to auto-log your banking transactions.
         </p>
-      </div>
+      </SettingsCard>
     );
   }
 
@@ -272,16 +265,11 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
     enabled && permissionGranted && selectedApps.size > 0 && installedBankApps.length > 0;
 
   return (
-    <div id="settings-notifications-container" className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60 space-y-4">
+    <SettingsCard id="settings-notifications-container" className="space-y-4">
       {/* TOGGLE + STATUS */}
       <div className="flex items-center justify-between">
         <div className="flex-1 mr-3">
-          <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 block">
-            Bank Notification Listener
-          </span>
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 leading-relaxed">
-            Auto-log transactions from supported banking apps.
-          </p>
+          <SectionHeader title="Bank Notification Listener" subtitle="Auto-log transactions from supported banking apps." />
 
           {/* STATUS PILL */}
           <div className="mt-2">
@@ -315,18 +303,7 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
           </div>
         </div>
 
-        <button
-          onClick={handleToggle}
-          className={`relative w-12 h-7 rounded-full transition-colors duration-200 flex-shrink-0 ${
-            enabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
-          }`}
-        >
-          <span
-            className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200 ${
-              enabled ? 'translate-x-5' : 'translate-x-0'
-            }`}
-          />
-        </button>
+        <ToggleSwitch enabled={enabled} onToggle={handleToggle} />
       </div>
 
       {/* Banking app picker */}
@@ -411,7 +388,7 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
           </p>
         </div>
       )}
-    </div>
+    </SettingsCard>
   );
 };
 

@@ -1,5 +1,7 @@
 // components/settings_modal_components/AppNotificationsSection.tsx
 import React from 'react';
+import SettingsCard from '../../ui/SettingsCard';
+import ToggleSwitch from '../../ui/ToggleSwitch';
 
 interface AppNotificationsSectionProps {
   enabled: boolean;
@@ -11,7 +13,7 @@ const AppNotificationsSection: React.FC<AppNotificationsSectionProps> = ({
   onToggle,
 }) => {
   return (
-    <div id="settings-app-notifications-container" className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60">
+    <SettingsCard id="settings-app-notifications-container">
       <div className="flex items-center justify-between">
         {/* LEFT TEXT */}
         <div className="flex flex-col">
@@ -25,20 +27,9 @@ const AppNotificationsSection: React.FC<AppNotificationsSectionProps> = ({
         </div>
 
         {/* RIGHT TOGGLE */}
-        <button
-          onClick={() => onToggle(!enabled)}
-          className={`relative w-12 h-7 rounded-full transition-colors duration-200 flex-shrink-0 ${
-            enabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
-          }`}
-        >
-          <span
-            className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200 ${
-              enabled ? 'translate-x-5' : 'translate-x-0'
-            }`}
-          />
-        </button>
+        <ToggleSwitch enabled={enabled} onToggle={() => onToggle(!enabled)} />
       </div>
-    </div>
+    </SettingsCard>
   );
 };
 
