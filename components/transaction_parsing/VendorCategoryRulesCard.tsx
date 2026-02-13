@@ -155,7 +155,7 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
                       ) : (
                         <button
                           onClick={() => {
-                            setProperNameDraft(vo.proper_name || '');
+                            setProperNameDraft(vo.proper_name ?? '');
                             setEditingProperName(vendorName);
                           }}
                           className="w-full flex items-center gap-1.5 px-2 py-1.5 text-[10px] rounded-lg border border-dashed border-violet-200 dark:border-violet-800/40 text-slate-600 dark:text-slate-300 hover:bg-violet-100 dark:hover:bg-violet-900/30 transition-all active:scale-95"
