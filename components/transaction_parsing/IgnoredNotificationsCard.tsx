@@ -5,6 +5,7 @@ import ParsingCard from '../ui/ParsingCard';
 
 interface IgnoredNotificationsCardProps {
   filteredOutNotifications: PendingTransaction[];
+  onClear?: () => void;
 }
 
 /** Derive the reason label for a filtered-out notification. */
@@ -16,6 +17,7 @@ function getFilterReason(pt: PendingTransaction): string {
 
 const IgnoredNotificationsCard: React.FC<IgnoredNotificationsCardProps> = ({
   filteredOutNotifications,
+  onClear,
 }) => {
   if (filteredOutNotifications.length === 0) return null;
 
@@ -26,6 +28,19 @@ const IgnoredNotificationsCard: React.FC<IgnoredNotificationsCardProps> = ({
       title="Filtered Notifications"
       subtitle="Filtered out by keywords or duplicates"
       count={filteredOutNotifications.length}
+      headerAction={onClear && (
+        <button
+          onClick={onClear}
+          className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all active:scale-95"
+          title="Clear all filtered notifications"
+        >
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 21h6l-3-6-3 6z" />
+            <path d="M6 15l8.5-8.5a2.12 2.12 0 013 3L9 18" />
+            <path d="M15 7l3 3" />
+          </svg>
+        </button>
+      )}
     >
       <div className="space-y-2">
         {filteredOutNotifications.map((pt) => (

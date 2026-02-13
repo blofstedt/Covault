@@ -45,6 +45,7 @@ interface ParsingCardProps {
   title: string;
   subtitle: string;
   count?: number;
+  headerAction?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
 }
@@ -60,6 +61,7 @@ const ParsingCard: React.FC<ParsingCardProps> = ({
   title,
   subtitle,
   count,
+  headerAction,
   children,
   className = '',
 }) => (
@@ -94,6 +96,7 @@ const ParsingCard: React.FC<ParsingCardProps> = ({
           {count}
         </span>
       )}
+      {headerAction}
     </div>
     {children}
   </div>

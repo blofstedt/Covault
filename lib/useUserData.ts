@@ -26,6 +26,8 @@ export const useUserData = ({
     handleDeleteTransaction,
     handleApprovePendingTransaction,
     handleRejectPendingTransaction,
+    handleClearFilteredNotifications,
+    handleClearApprovedTransactions,
   } = useTransactionOps({ appState, setAppState, setDbError, categoriesLoaded });
 
   const {
@@ -55,6 +57,8 @@ export const useUserData = ({
     handleJoinWithCode,
     handleApprovePendingTransaction,
     handleRejectPendingTransaction,
+    handleClearFilteredNotifications,
+    handleClearApprovedTransactions,
     saveBudgetLimit,
     saveUserIncome,
     saveTheme,
