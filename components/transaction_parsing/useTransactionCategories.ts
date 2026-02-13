@@ -46,10 +46,10 @@ export function useTransactionCategories({
     [pendingTransactions],
   );
 
-  // Combined filtered-out notifications: keyword-ignored + duplicate-rejected
+  // Combined filtered-out notifications: keyword-ignored only (rejected shown separately)
   const filteredOutNotifications = useMemo(
-    () => [...keywordIgnoredNotifications, ...rejectedTransactions],
-    [keywordIgnoredNotifications, rejectedTransactions],
+    () => [...keywordIgnoredNotifications],
+    [keywordIgnoredNotifications],
   );
 
   // 2. To Review: rule exists, needs category + approval

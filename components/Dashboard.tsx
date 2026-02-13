@@ -37,7 +37,7 @@ interface DashboardProps {
   onUnlinkPartner?: () => void;
   onGenerateLinkCode?: () => Promise<string | null>;
   onJoinWithCode?: (code: string) => void;
-  onApprovePendingTransaction?: (pendingId: string, categoryId: string) => void | Promise<void>;
+  onApprovePendingTransaction?: (pendingId: string, categoryId: string, preferredName?: string) => void | Promise<void>;
   onRejectPendingTransaction?: (pendingId: string) => void;
   onRefreshNotifications?: () => Promise<void>;
   onReloadPendingTransactions?: (userId: string) => Promise<void>;

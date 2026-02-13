@@ -10,6 +10,7 @@ import IgnoredNotificationsCard from './transaction_parsing/IgnoredNotifications
 import CapturedNotificationsCard from './transaction_parsing/CapturedNotificationsCard';
 import ToBeReviewedCard from './transaction_parsing/ToBeReviewedCard';
 import ApprovedTransactionsCard from './transaction_parsing/ApprovedTransactionsCard';
+import RejectedTransactionsCard from './transaction_parsing/RejectedTransactionsCard';
 import SetupInfoCard from './transaction_parsing/SetupInfoCard';
 import RejectConfirmModal from './transaction_parsing/RejectConfirmModal';
 import PageShell from './ui/PageShell';
@@ -31,7 +32,7 @@ interface TransactionParsingProps {
   onTransactionTap?: (tx: Transaction) => void;
   pendingTransactions?: PendingTransaction[];
   budgets?: BudgetCategory[];
-  onApprovePending?: (pendingId: string, categoryId: string) => void | Promise<void>;
+  onApprovePending?: (pendingId: string, categoryId: string, preferredName?: string) => void | Promise<void>;
   onRejectPending?: (pendingId: string) => void;
   onRefreshNotifications?: () => Promise<void>;
   onReloadPendingTransactions?: (userId: string) => Promise<void>;
@@ -207,6 +208,10 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                 vendorOverrideByName={categories.vendorOverrideByName}
                 showDemoData={showDemoData}
                 onTransactionTap={onTransactionTap}
+              />
+
+              <RejectedTransactionsCard
+                rejectedTransactions={categories.rejectedTransactions}
               />
 
             </>
