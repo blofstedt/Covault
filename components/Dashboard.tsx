@@ -22,6 +22,7 @@ import BudgetFlowChart from './dashboard_components/BudgetFlowChart';
 import { checkAndTriggerAppNotifications } from '../lib/appNotifications';
 import { generateProjectedTransactions } from '../lib/projectedTransactions';
 import { hasPremiumAccess, shouldShowUpgradePrompt } from '../lib/entitlement';
+import { KEYWORD_IGNORED_PATTERN_ID } from '../lib/notificationProcessor';
 
 interface DashboardProps {
   state: AppState;
@@ -96,6 +97,14 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   // Premium access check (single source of truth)
   const hasPremium = hasPremiumAccess(state.user);
+
+  // Count only "to be reviewed" transactions for the badge indicator
+  const toReviewCount = useMemo(() => {
+    const pending = state.pendingTransactions || [];
+    return pending.filter(
+      (pt) => pt.pattern_id && pt.pattern_id !== KEYWORD_IGNORED_PATTERN_ID && pt.needs_review,
+    ).length;
+  }, [state.pendingTransactions]);
 
   const handleSubscribe = () => {
     // TODO: Integrate Google Play Billing flow here.
@@ -654,7 +663,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         onOpenParsing={() => setShowParsing(true)}
         activeView="home"
         shouldAnimate={shouldAnimateBottomBarRef.current}
-        pendingCount={(state.pendingTransactions || []).length}
+        pendingCount={toReviewCount}
       />
 
       {showSettings && (

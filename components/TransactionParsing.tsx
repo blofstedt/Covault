@@ -10,7 +10,6 @@ import IgnoredNotificationsCard from './transaction_parsing/IgnoredNotifications
 import CapturedNotificationsCard from './transaction_parsing/CapturedNotificationsCard';
 import ToBeReviewedCard from './transaction_parsing/ToBeReviewedCard';
 import ApprovedTransactionsCard from './transaction_parsing/ApprovedTransactionsCard';
-import RejectedTransactionsCard from './transaction_parsing/RejectedTransactionsCard';
 import SetupInfoCard from './transaction_parsing/SetupInfoCard';
 import RejectConfirmModal from './transaction_parsing/RejectConfirmModal';
 
@@ -183,7 +182,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               />
 
               <IgnoredNotificationsCard
-                keywordIgnoredNotifications={categories.keywordIgnoredNotifications}
+                filteredOutNotifications={categories.filteredOutNotifications}
               />
 
               <CapturedNotificationsCard
@@ -215,9 +214,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                 onTransactionTap={onTransactionTap}
               />
 
-              <RejectedTransactionsCard
-                rejectedTransactions={categories.rejectedTransactions}
-              />
             </>
           ) : (
             <SetupInfoCard enabled={enabled} onToggle={onToggle} />
@@ -230,7 +226,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         onAddTransaction={onAddTransaction}
         onOpenParsing={onBack}
         activeView="parsing"
-        pendingCount={categories.toReviewCount + categories.capturedCount}
+        pendingCount={categories.toReviewCount}
       />
 
       {/* Regex Setup Modal */}

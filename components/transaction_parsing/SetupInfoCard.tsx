@@ -42,7 +42,7 @@ const SetupInfoCard: React.FC<SetupInfoCardProps> = ({ enabled, onToggle }) => (
       />
 
       <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
-        <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-tight text-center">
+        <p className="text-xs text-slate-400 dark:text-slate-500 leading-tight text-center">
           No AI — your data stays on your device. You control exactly how transactions are detected.
         </p>
       </div>
@@ -50,7 +50,7 @@ const SetupInfoCard: React.FC<SetupInfoCardProps> = ({ enabled, onToggle }) => (
 
     {/* How it works */}
     <div className="bg-slate-100 dark:bg-slate-800/50 rounded-2xl p-4 space-y-3">
-      <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+      <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
         How it works
       </h3>
 
