@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { PendingTransaction, BudgetCategory } from '../../types';
 import type { VendorOverride } from './useVendorOverrides';
 import ParsingCard from '../ui/ParsingCard';
+import { EmptyState } from '../shared';
 
 interface ToBeReviewedCardProps {
   toReviewTransactions: PendingTransaction[];
