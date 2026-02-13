@@ -81,7 +81,7 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
                   </div>
                   <div className="text-left min-w-0">
                     <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate max-w-[160px]">
-                      {pt.extracted_vendor}
+                      {vendorOverride?.proper_name || pt.extracted_vendor}
                     </p>
                     <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
                       {pt.app_name}

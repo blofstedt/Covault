@@ -179,6 +179,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                 onToggleAutoAccept={vendorOverridesHook.handleToggleAutoAccept}
                 onSetVendorCategory={vendorOverridesHook.handleSetVendorCategory}
                 onDeleteVendorOverride={vendorOverridesHook.handleDeleteVendorOverride}
+                onSetProperName={vendorOverridesHook.handleSetProperName}
               />
 
               <IgnoredNotificationsCard

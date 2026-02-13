@@ -8,6 +8,7 @@ export interface VendorOverride {
   category_id: string;
   auto_accept: boolean;
   category_name?: string;
+  proper_name?: string;
 }
 
 interface UseVendorOverridesOptions {
@@ -39,7 +40,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
       // Load all categories to resolve names (vendor_overrides may lack FK to categories)
       const catsRes = await fetch(
         `${REST_BASE}/categories?select=id,name`,
-        { headers },
+        { headers, cache: 'no-store' },
       );
       let cats: any[] = [];
       if (catsRes.ok) {
@@ -58,6 +59,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
         category_id: row.category_id,
         auto_accept: row.auto_accept ?? false,
         category_name: catNameById.get(row.category_id) ?? undefined,
+        proper_name: row.proper_name ?? undefined,
       }));
       setVendorOverrides(overrides);
     } catch (err: any) {
@@ -323,6 +325,72 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
     [userId, vendorOverrides, budgets],
   );
 
+  // ── Set or update a vendor's proper (display) name ──
+  const handleSetProperName = useCallback(
+    async (vendorName: string, properName: string) => {
+      if (!userId) return;
+
+      const existing = vendorOverrides.find(
+        (vo) => vo.vendor_name.toLowerCase() === vendorName.toLowerCase(),
+      );
+      if (!existing) return;
+
+      const trimmed = properName.trim();
+      const newProperName = trimmed === '' ? null : trimmed;
+
+      setVendorOverrides((prev) =>
+        prev.map((vo) =>
+          vo.id === existing.id
+            ? { ...vo, proper_name: newProperName ?? undefined }
+            : vo
+        )
+      );
+
+      try {
+        const headers = await getAuthHeaders();
+        (headers as any)['Prefer'] = 'return=representation';
+        const res = await fetch(
+          `${REST_BASE}/vendor_overrides?id=eq.${existing.id}&user_id=eq.${userId}`,
+          { method: 'PATCH', headers, body: JSON.stringify({ proper_name: newProperName }) },
+        );
+        const body = await res.text();
+        let data: any[] = [];
+        try { data = body ? JSON.parse(body) : []; } catch { data = []; }
+
+        if (!res.ok || !Array.isArray(data) || data.length === 0) {
+          console.error('[TransactionParsing] Error setting proper name:', res.status, body.slice(0, 200));
+          setVendorOverrides((prev) =>
+            prev.map((vo) =>
+              vo.id === existing.id
+                ? { ...vo, proper_name: existing.proper_name }
+                : vo
+            )
+          );
+          return;
+        }
+
+        const actualValue = data[0].proper_name ?? undefined;
+        setVendorOverrides((prev) =>
+          prev.map((vo) =>
+            vo.id === existing.id
+              ? { ...vo, proper_name: actualValue }
+              : vo
+          )
+        );
+      } catch (err: any) {
+        console.error('[TransactionParsing] Exception setting proper name:', err?.message || err);
+        setVendorOverrides((prev) =>
+          prev.map((vo) =>
+            vo.id === existing.id
+              ? { ...vo, proper_name: existing.proper_name }
+              : vo
+          )
+        );
+      }
+    },
+    [userId, vendorOverrides],
+  );
+
   return {
     vendorOverrides,
     expandedVendorCategory,
@@ -332,5 +400,6 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
     handleDeleteVendorOverride,
     handleToggleAutoAcceptByVendor,
     handleSetVendorCategory,
+    handleSetProperName,
   };
 }
