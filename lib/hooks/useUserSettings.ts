@@ -12,7 +12,7 @@ export const useUserSettings = ({
   // Always-current ref for hiddenCategories, used for rollback in saveBudgetVisibility
   // to avoid stale closure values when the useCallback captures old appState
   const hiddenCategoriesRef = useRef<string[]>([]);
-  hiddenCategoriesRef.current = (appState.settings as any).hiddenCategories || [];
+  hiddenCategoriesRef.current = appState.settings.hiddenCategories || [];
 
   // Save a single budget limit for the current user
   const saveBudgetLimit = useCallback(

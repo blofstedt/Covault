@@ -1,7 +1,7 @@
 import React from 'react';
 import { PendingTransaction, BudgetCategory } from '../../types';
 import type { VendorOverride } from './useVendorOverrides';
-import { CardWrapper, SectionHeader, EmptyState } from '../shared';
+import ParsingCard from '../ui/ParsingCard';
 
 interface ToBeReviewedCardProps {
   toReviewTransactions: PendingTransaction[];
@@ -34,21 +34,14 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
   onLoadVendorOverrides,
   onScanForTransactions,
 }) => (
-  <CardWrapper id="parsing-to-review-section" color="amber">
-    <SectionHeader
-      icon={
-        <svg className="w-5 h-5 text-amber-600 dark:text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-          <path d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-        </svg>
-      }
-      title="To Be Reviewed"
-      subtitle={toReviewCount > 0
-        ? 'Assign a budget category to approve these transactions'
-        : 'No transactions to review'}
-      color="amber"
-      badge={toReviewCount}
-    />
-
+  <ParsingCard
+    id="parsing-to-review-section"
+    colorScheme="amber"
+    icon={<path d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />}
+    title="To Be Reviewed"
+    subtitle={toReviewCount > 0 ? 'Assign a budget category to approve these transactions' : 'No transactions to review'}
+    count={toReviewCount}
+  >
     {(toReviewCount > 0 || (showDemoData && toReviewCount === 0)) ? (
       <div className="space-y-2">
         {toReviewCount > 0 ? toReviewTransactions.map((pt) => {
@@ -194,7 +187,7 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
     >
       {isScanning ? 'Scanning…' : 'Scan for Transactions'}
     </button>
-  </CardWrapper>
+  </ParsingCard>
 );
 
 export default ToBeReviewedCard;

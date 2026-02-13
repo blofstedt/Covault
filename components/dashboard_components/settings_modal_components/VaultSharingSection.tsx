@@ -1,6 +1,7 @@
 import React from 'react';
 import type { DashboardUser } from '../DashboardSettingsModal';
-import { SettingsSection } from '../../shared';
+import SettingsCard from '../../ui/SettingsCard';
+import SectionHeader from '../../ui/SectionHeader';
 
 interface VaultSharingSectionProps {
   user: DashboardUser | null | undefined;
@@ -22,11 +23,11 @@ const VaultSharingSection: React.FC<VaultSharingSectionProps> = ({
   onToggleLinkingPartner,
 }) => {
   return (
-    <SettingsSection
-      id="settings-sharing-container"
-      title="Vault Sharing"
-      description="Connect with a partner to view and manage your combined budget."
-    >
+    <SettingsCard id="settings-sharing-container" className="space-y-4">
+      <SectionHeader
+        title="Vault Sharing"
+        subtitle="Connect with a partner to view and manage your combined budget."
+      />
 
       {user?.partnerEmail ? (
         <div className="space-y-4 animate-in fade-in duration-300">
@@ -103,7 +104,7 @@ const VaultSharingSection: React.FC<VaultSharingSectionProps> = ({
           )}
         </div>
       )}
-    </SettingsSection>
+    </SettingsCard>
   );
 };
 

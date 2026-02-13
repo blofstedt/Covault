@@ -1,7 +1,7 @@
 import React from 'react';
 import { PendingTransaction } from '../../types';
 import { KEYWORD_IGNORED_PATTERN_ID } from '../../lib/notificationProcessor';
-import { CardWrapper, SectionHeader } from '../shared';
+import ParsingCard from '../ui/ParsingCard';
 
 interface IgnoredNotificationsCardProps {
   filteredOutNotifications: PendingTransaction[];
@@ -20,20 +20,13 @@ const IgnoredNotificationsCard: React.FC<IgnoredNotificationsCardProps> = ({
   if (filteredOutNotifications.length === 0) return null;
 
   return (
-    <CardWrapper color="slate" spacing="sm">
-      <SectionHeader
-        icon={
-          <svg className="w-5 h-5 text-slate-400 dark:text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
-          </svg>
-        }
-        title="Filtered Notifications"
-        subtitle="Filtered out by keywords or duplicates"
-        color="slate"
-        badge={filteredOutNotifications.length}
-      />
-
+    <ParsingCard
+      colorScheme="slate"
+      icon={<><circle cx="12" cy="12" r="10" /><line x1="4.93" y1="4.93" x2="19.07" y2="19.07" /></>}
+      title="Filtered Notifications"
+      subtitle="Filtered out by keywords or duplicates"
+      count={filteredOutNotifications.length}
+    >
       <div className="space-y-2">
         {filteredOutNotifications.map((pt) => (
           <div
@@ -62,7 +55,7 @@ const IgnoredNotificationsCard: React.FC<IgnoredNotificationsCardProps> = ({
           </div>
         ))}
       </div>
-    </CardWrapper>
+    </ParsingCard>
   );
 };
 

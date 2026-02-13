@@ -54,7 +54,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
       {budgets
         .filter((budget) => !isFocusMode || budget.id === focusedBudgetId)
         .filter((budget) => {
-          const hiddenCategories: string[] = (settings as any).hiddenCategories || [];
+          const hiddenCategories: string[] = settings.hiddenCategories || [];
           return !hiddenCategories.includes(budget.id);
         })
         .sort((a, b) => {
@@ -76,7 +76,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
 
           const displayBudget =
             isLeisure && settings.useLeisureAsBuffer
-              ? { ...(budget as any), externalDeduction: leisureAdjustments }
+              ? { ...budget, externalDeduction: leisureAdjustments }
               : budget;
 
           return (
@@ -96,7 +96,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
               style={{ animationDelay: `${index * 40}ms` }}
             >
               <BudgetSection
-                budget={displayBudget as any}
+                budget={displayBudget}
                 transactions={budgetTxs}
                 isExpanded={isExpanded}
                 onToggle={() => onToggleExpand(budget.id)}

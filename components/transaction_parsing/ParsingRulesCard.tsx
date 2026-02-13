@@ -1,6 +1,6 @@
 import React from 'react';
 import { type NotificationRuleRow, parseOnlyParseKeywords } from '../../lib/notificationProcessor';
-import { CardWrapper, SectionHeader } from '../shared';
+import ParsingCard from '../ui/ParsingCard';
 
 interface ParsingRulesCardProps {
   savedRules: NotificationRuleRow[];
@@ -48,20 +48,15 @@ const ParsingRulesCard: React.FC<ParsingRulesCardProps> = ({
   if (savedRules.length === 0 && !showDemoData) return null;
 
   return (
-    <CardWrapper id="parsing-rules-section" color="emerald" spacing="sm">
-      <SectionHeader
-        icon={
-          <svg className="w-5 h-5 text-emerald-600 dark:text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="16 18 22 12 16 6" />
-            <polyline points="8 6 2 12 8 18" />
-          </svg>
-        }
-        title="Parsing Rules"
-        subtitle="How Covault reads transactions from each bank"
-        color="emerald"
-        badge={showDemoData && savedRules.length === 0 ? 1 : savedRules.length}
-      />
-
+    <ParsingCard
+      id="parsing-rules-section"
+      colorScheme="emerald"
+      icon={<><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></>}
+      title="Parsing Rules"
+      subtitle="How Covault reads transactions from each bank"
+      count={showDemoData && savedRules.length === 0 ? 1 : savedRules.length}
+      className="space-y-3"
+    >
       {savedRules.length > 0 ? (
         <>
           {Array.from(rulesByBank.entries()).map(([bankAppId, bankRules]) => (
@@ -268,7 +263,7 @@ const ParsingRulesCard: React.FC<ParsingRulesCardProps> = ({
           </span>
         </div>
       )}
-    </CardWrapper>
+    </ParsingCard>
   );
 };
 

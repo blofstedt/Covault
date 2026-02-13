@@ -2,7 +2,7 @@ import React from 'react';
 import { Transaction } from '../../types';
 import { parseLocalDate } from '../../lib/dateUtils';
 import type { VendorOverride } from './useVendorOverrides';
-import { CardWrapper, SectionHeader, EmptyState } from '../shared';
+import ParsingCard from '../ui/ParsingCard';
 
 interface ApprovedTransactionsCardProps {
   approvedTransactions: Transaction[];
@@ -17,21 +17,13 @@ const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
   showDemoData,
   onTransactionTap,
 }) => (
-  <CardWrapper id="parsing-approved-section" color="slate">
-    <SectionHeader
-      icon={
-        <svg className="w-5 h-5 text-emerald-600 dark:text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-          <polyline points="14 2 14 8 20 8" />
-          <line x1="16" y1="13" x2="8" y2="13" />
-          <line x1="16" y1="17" x2="8" y2="17" />
-        </svg>
-      }
-      title="Approved Transactions"
-      subtitle="Auto-detected and approved from bank notifications"
-      color="emerald"
-    />
-
+  <ParsingCard
+    id="parsing-approved-section"
+    colorScheme="emerald"
+    icon={<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></>}
+    title="Approved Transactions"
+    subtitle="Auto-detected and approved from bank notifications"
+  >
     {(approvedTransactions.length > 0 || showDemoData) ? (
       <div className="space-y-2">
         {approvedTransactions.map((tx) => {
@@ -106,7 +98,7 @@ const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
         size="md"
       />
     )}
-  </CardWrapper>
+  </ParsingCard>
 );
 
 export default ApprovedTransactionsCard;

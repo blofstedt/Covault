@@ -132,10 +132,10 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
             budgets={budgets}
             onSaveBudgetLimit={onSaveBudgetLimit}
             showTutorial={showTutorial}
-            hiddenCategories={(settings as any).hiddenCategories || []}
+            hiddenCategories={settings.hiddenCategories || []}
             monthlyIncome={user?.monthlyIncome}
             onToggleHideCategory={(categoryId: string) => {
-              const current: string[] = (settings as any).hiddenCategories || [];
+              const current: string[] = settings.hiddenCategories || [];
               const isCurrentlyHidden = current.includes(categoryId);
               // Persist visibility to Supabase
               saveBudgetVisibility(categoryId, isCurrentlyHidden);

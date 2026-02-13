@@ -1,7 +1,8 @@
 // components/settings_modal_components/IncomeSection.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import type { DashboardUser } from '../DashboardSettingsModal';
-import { SettingsSection } from '../../shared';
+import SettingsCard from '../../ui/SettingsCard';
+import SectionHeader from '../../ui/SectionHeader';
 
 interface IncomeSectionProps {
   isSharedAccount: boolean;
@@ -56,15 +57,16 @@ const IncomeSection: React.FC<IncomeSectionProps> = ({
   };
 
   return (
-    <SettingsSection
-      id="settings-income-container"
-      title={isSharedAccount ? 'My Monthly Income' : 'Monthly Income'}
-      description={
-        isSharedAccount
+    <SettingsCard id="settings-income-container">
+      <SectionHeader
+        title={isSharedAccount ? 'My Monthly Income' : 'Monthly Income'}
+        subtitle={isSharedAccount
           ? "Your income contribution. Your partner's income will be added automatically."
-          : 'This defines your total cash flow for the month.'
-      }
-    >
+          : 'This defines your total cash flow for the month.'}
+        className="mb-4"
+      />
+
+      {/* Input */}
       <div className="flex items-center space-x-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl px-4 py-3">
         <span className="text-slate-400 font-black">$</span>
         <input
@@ -78,7 +80,7 @@ const IncomeSection: React.FC<IncomeSectionProps> = ({
           placeholder="0"
         />
       </div>
-    </SettingsSection>
+    </SettingsCard>
   );
 };
 
