@@ -33,9 +33,7 @@ const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
         title="Clear all approved transactions"
       >
         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-          <path d="M3 21h6l-3-6-3 6z" />
-          <path d="M6 15l8.5-8.5a2.12 2.12 0 013 3L9 18" />
-          <path d="M15 7l3 3" />
+          <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2M10 11v6M14 11v6" />
         </svg>
       </button>
     )}
