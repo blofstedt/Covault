@@ -10,9 +10,10 @@ interface SplitModalProps {
 }
 
 const SplitModal: React.FC<SplitModalProps> = ({ transaction, budgets, onClose, onSave }) => {
+  const defaultBudgetId = budgets.length > 0 ? budgets[0].id : '';
   const [splits, setSplits] = useState<TransactionSplit[]>([
-    { budget_id: transaction.budget_id || (budgets.length > 0 ? budgets[0].id : ''), amount: transaction.amount },
-    { budget_id: budgets.find(b => b.id !== transaction.budget_id)?.id || (budgets.length > 0 ? budgets[0].id : ''), amount: 0 }
+    { budget_id: transaction.budget_id || defaultBudgetId, amount: transaction.amount },
+    { budget_id: budgets.find(b => b.id !== transaction.budget_id)?.id || defaultBudgetId, amount: 0 }
   ]);
 
   const totalAllocated = splits.reduce((acc, s) => acc + s.amount, 0);
@@ -35,7 +36,7 @@ const SplitModal: React.FC<SplitModalProps> = ({ transaction, budgets, onClose, 
 
   const addSplit = () => {
     if (splits.length >= 3) return;
-    setSplits([...splits, { budget_id: budgets.length > 0 ? budgets[0].id : '', amount: 0 }]);
+    setSplits([...splits, { budget_id: defaultBudgetId, amount: 0 }]);
   };
 
   const removeSplit = (idx: number) => {

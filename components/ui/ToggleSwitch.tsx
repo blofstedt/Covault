@@ -17,7 +17,7 @@ const ToggleSwitch: React.FC<ToggleSwitchProps> = ({
     ? 'w-8 h-5'
     : 'w-12 h-7';
   const thumbClass = size === 'sm'
-    ? 'w-4 h-4 mt-0.5 ml-0.5'
+    ? 'w-4 h-4 top-0.5 left-0.5'
     : 'w-6 h-6 top-0.5 left-0.5';
   const translateClass = size === 'sm'
     ? (enabled ? 'translate-x-3' : 'translate-x-0')
@@ -34,7 +34,7 @@ const ToggleSwitch: React.FC<ToggleSwitchProps> = ({
       }`}
     >
       <span
-        className={`${size === 'sm' ? 'block' : 'absolute'} ${thumbClass} bg-white rounded-full shadow transition-transform duration-200 ${translateClass}`}
+        className={`absolute ${thumbClass} bg-white rounded-full shadow transition-transform duration-200 ${translateClass}`}
       />
     </button>
   );
