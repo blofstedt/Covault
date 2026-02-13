@@ -85,7 +85,7 @@ const DeveloperModeOverlay: React.FC<DeveloperModeOverlayProps> = ({
                 : 'text-emerald-600 dark:text-emerald-400'
             }`}
           >
-            {isSolo ? 'Solo' : 'Joint'}
+            {isSolo ? 'Solo' : 'Couples'}
           </span>
         </button>
 

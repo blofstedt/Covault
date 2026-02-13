@@ -22,8 +22,9 @@ export function useDeveloperMode(): [boolean, () => void] {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignore key presses when the user is typing inside an input/textarea/contenteditable
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) {
+      const target = e.target as HTMLElement;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) {
         return;
       }
 
