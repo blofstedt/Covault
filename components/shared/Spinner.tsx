@@ -1,14 +1,17 @@
 import React from 'react';
 
 interface SpinnerProps {
-  size?: 'sm' | 'md';
+  size?: 'sm' | 'md' | 'lg';
 }
 
-const Spinner: React.FC<SpinnerProps> = ({ size = 'sm' }) => {
-  const sizeClass = size === 'md' ? 'w-8 h-8' : 'w-6 h-6';
-  return (
-    <div className={`${sizeClass} border-2 border-emerald-500 border-t-transparent rounded-full animate-spin`} />
-  );
+const sizeMap = {
+  sm: 'w-6 h-6 border-2',
+  md: 'w-8 h-8 border-2',
+  lg: 'w-12 h-12 border-4',
 };
+
+const Spinner: React.FC<SpinnerProps> = ({ size = 'sm' }) => (
+  <div className={`${sizeMap[size]} border-emerald-500 border-t-transparent rounded-full animate-spin`} />
+);
 
 export default Spinner;

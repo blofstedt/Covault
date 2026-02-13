@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Transaction, BudgetCategory, TransactionSplit } from '../types';
+import { CloseButton } from './shared';
 
 interface SplitModalProps {
   transaction: Transaction;
@@ -54,11 +55,7 @@ const SplitModal: React.FC<SplitModalProps> = ({ transaction, budgets, onClose, 
             <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Split Transaction</h2>
             <p className="text-slate-500 dark:text-slate-400">${transaction.amount.toFixed(2)} at {transaction.vendor}</p>
           </div>
-          <button onClick={onClose} className="p-2 bg-slate-100 dark:bg-slate-800 rounded-full">
-            <svg className="w-6 h-6 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <CloseButton onClick={onClose} />
         </div>
 
         <div className="space-y-8">

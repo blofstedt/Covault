@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import type { Transaction, BudgetCategory } from '../../types';
 import TransactionItem from '../TransactionItem';
 import { generateProjectedTransactions } from '../../lib/projectedTransactions';
+import { EmptyState } from '../shared';
 
 interface CollapsibleSectionProps {
   title: string;
@@ -290,14 +291,10 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 
         {/* NO RESULTS STATE */}
         {!hasAnyResults && (
-          <div className="pt-10 text-center">
-            <p className="text-[11px] font-black uppercase tracking-[0.25em] text-slate-300 dark:text-slate-600">
-              No entries found
-            </p>
-            <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500 mt-2">
-              Try a different vendor name or check another month.
-            </p>
-          </div>
+          <EmptyState
+            message="No entries found"
+            description="Try a different vendor name or check another month."
+          />
         )}
       </div>
     </div>
