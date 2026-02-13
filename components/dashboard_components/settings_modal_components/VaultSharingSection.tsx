@@ -1,5 +1,6 @@
 import React from 'react';
 import type { DashboardUser } from '../DashboardSettingsModal';
+import SettingsCard from '../../ui/SettingsCard';
 
 interface VaultSharingSectionProps {
   user: DashboardUser | null | undefined;
@@ -21,10 +22,7 @@ const VaultSharingSection: React.FC<VaultSharingSectionProps> = ({
   onToggleLinkingPartner,
 }) => {
   return (
-    <div
-      id="settings-sharing-container"
-      className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60 space-y-4"
-    >
+    <SettingsCard id="settings-sharing-container" className="space-y-4">
       <div className="flex flex-col">
         <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
           Vault Sharing
@@ -109,7 +107,7 @@ const VaultSharingSection: React.FC<VaultSharingSectionProps> = ({
           )}
         </div>
       )}
-    </div>
+    </SettingsCard>
   );
 };
 

@@ -1,4 +1,5 @@
 import React from 'react';
+import SettingsCard from '../../ui/SettingsCard';
 
 interface DiscretionaryShieldSectionProps {
   useLeisureAsBuffer: boolean;
@@ -10,10 +11,7 @@ const DiscretionaryShieldSection: React.FC<DiscretionaryShieldSectionProps> = ({
   onUpdateSettings,
 }) => {
   return (
-    <div
-      id="settings-shield-container"
-      className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60"
-    >
+    <SettingsCard id="settings-shield-container">
       <div className="flex flex-col mb-4">
         <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
           Discretionary Shield
@@ -35,7 +33,7 @@ const DiscretionaryShieldSection: React.FC<DiscretionaryShieldSectionProps> = ({
       >
         {useLeisureAsBuffer ? 'SHIELD ACTIVE' : 'SHIELD OFF'}
       </button>
-    </div>
+    </SettingsCard>
   );
 };
 
