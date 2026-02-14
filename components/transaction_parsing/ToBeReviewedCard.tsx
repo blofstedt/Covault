@@ -39,6 +39,7 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
   onScanForTransactions,
 }) => {
   const [preferredNames, setPreferredNames] = useState<Record<string, string>>({});
+  const [selectedCategories, setSelectedCategories] = useState<Record<string, string>>({});
 
   return (
   <ParsingCard
@@ -121,25 +122,20 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
 
                   {/* Category picker */}
                   <div>
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Assign Category & Approve</p>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Assign Category</p>
                     <div className="flex flex-wrap gap-1.5">
                       {budgets.map((b) => (
                         <button
                           key={b.id}
-                          onClick={async () => {
-                            const preferred = preferredNames[pt.id]?.trim() || undefined;
-                            // Optimistically add vendor override so it appears in Vendor Category Rules immediately
-                            onUpsertLocalVendorOverride(formatVendorName(pt.extracted_vendor), b.id, preferred);
-                            await onApprovePending?.(pt.id, b.id, preferred);
-                            setPreferredNames(prev => { const { [pt.id]: _, ...rest } = prev; return rest; });
-                            onSetExpandedPendingId(null);
-                            // Reload vendor overrides to sync with DB (replaces temp ID with real one)
-                            await onLoadVendorOverrides();
+                          onClick={() => {
+                            setSelectedCategories(prev => ({ ...prev, [pt.id]: b.id }));
                           }}
                           className={`px-3 py-1.5 text-[11px] font-bold rounded-full border transition-all active:scale-95 ${
-                            vendorOverride?.category_id === b.id
+                            selectedCategories[pt.id] === b.id
                               ? 'bg-emerald-500 text-white border-emerald-600'
-                              : 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
+                              : vendorOverride?.category_id === b.id
+                                ? 'bg-emerald-100 dark:bg-emerald-900/30 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300'
+                                : 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
                           }`}
                         >
                           {b.name}
@@ -147,6 +143,31 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
                       ))}
                     </div>
                   </div>
+
+                  {/* Submit button */}
+                  <button
+                    disabled={!selectedCategories[pt.id]}
+                    onClick={async () => {
+                      const categoryId = selectedCategories[pt.id];
+                      if (!categoryId) return;
+                      const preferred = preferredNames[pt.id]?.trim() || undefined;
+                      // Create vendor override only on submit (after user confirms)
+                      onUpsertLocalVendorOverride(formatVendorName(pt.extracted_vendor), categoryId, preferred);
+                      await onApprovePending?.(pt.id, categoryId, preferred);
+                      setPreferredNames(prev => { const { [pt.id]: _, ...rest } = prev; return rest; });
+                      setSelectedCategories(prev => { const { [pt.id]: _, ...rest } = prev; return rest; });
+                      onSetExpandedPendingId(null);
+                      // Reload vendor overrides to sync with DB (replaces temp ID with real one)
+                      await onLoadVendorOverrides();
+                    }}
+                    className={`w-full py-2.5 text-[11px] font-bold uppercase tracking-wider rounded-xl border transition-all active:scale-[0.98] ${
+                      selectedCategories[pt.id]
+                        ? 'text-white bg-emerald-500 border-emerald-600 hover:bg-emerald-600 dark:bg-emerald-600 dark:border-emerald-700 dark:hover:bg-emerald-700'
+                        : 'text-slate-400 dark:text-slate-600 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 cursor-not-allowed'
+                    }`}
+                  >
+                    Submit
+                  </button>
 
                   {/* Reject button */}
                   <button
