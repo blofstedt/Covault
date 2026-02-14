@@ -2,6 +2,7 @@ import React from 'react';
 import { PendingTransaction } from '../../types';
 import { KEYWORD_IGNORED_PATTERN_ID } from '../../lib/notificationProcessor';
 import ParsingCard from '../ui/ParsingCard';
+import { EmptyState } from '../shared';
 
 interface IgnoredNotificationsCardProps {
   filteredOutNotifications: PendingTransaction[];
@@ -18,28 +19,26 @@ function getFilterReason(pt: PendingTransaction): string {
 const IgnoredNotificationsCard: React.FC<IgnoredNotificationsCardProps> = ({
   filteredOutNotifications,
   onClear,
-}) => {
-  if (filteredOutNotifications.length === 0) return null;
-
-  return (
-    <ParsingCard
-      colorScheme="slate"
-      icon={<><circle cx="12" cy="12" r="10" /><line x1="4.93" y1="4.93" x2="19.07" y2="19.07" /></>}
-      title="Filtered Notifications"
-      subtitle="Filtered out by keywords or duplicates"
-      count={filteredOutNotifications.length}
-      headerAction={onClear && (
-        <button
-          onClick={onClear}
-          className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all active:scale-95"
-          title="Clear all filtered notifications"
-        >
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2M10 11v6M14 11v6" />
-          </svg>
-        </button>
-      )}
-    >
+}) => (
+  <ParsingCard
+    colorScheme="slate"
+    icon={<><circle cx="12" cy="12" r="10" /><line x1="4.93" y1="4.93" x2="19.07" y2="19.07" /></>}
+    title="Filtered Notifications"
+    subtitle="Filtered out by keywords or duplicates"
+    count={filteredOutNotifications.length}
+    headerAction={filteredOutNotifications.length > 0 && onClear && (
+      <button
+        onClick={onClear}
+        className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all active:scale-95"
+        title="Clear all filtered notifications"
+      >
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2M10 11v6M14 11v6" />
+        </svg>
+      </button>
+    )}
+  >
+    {filteredOutNotifications.length > 0 ? (
       <div className="space-y-2">
         {filteredOutNotifications.map((pt) => (
           <div
@@ -68,8 +67,20 @@ const IgnoredNotificationsCard: React.FC<IgnoredNotificationsCardProps> = ({
           </div>
         ))}
       </div>
-    </ParsingCard>
-  );
-};
+    ) : (
+      <EmptyState
+        icon={
+          <svg className="w-6 h-6 text-slate-300 dark:text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+            <circle cx="12" cy="12" r="10" />
+            <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+          </svg>
+        }
+        message="No filtered notifications"
+        description="Notifications filtered by keywords or duplicates will appear here."
+        size="md"
+      />
+    )}
+  </ParsingCard>
+);
 
 export default IgnoredNotificationsCard;
