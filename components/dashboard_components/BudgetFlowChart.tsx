@@ -299,12 +299,10 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
       svgNode.addEventListener('touchstart', handleTouch, { passive: false });
       svgNode.addEventListener('touchmove', handleTouch, { passive: false });
-      svgNode.addEventListener('touchend', () => {}, { passive: true });
 
       return () => {
         svgNode.removeEventListener('touchstart', handleTouch);
         svgNode.removeEventListener('touchmove', handleTouch);
-        svgNode.removeEventListener('touchend', () => {});
       };
     }
   }, [chartData, categoryNames, totalBudgetLimit, theme]);
