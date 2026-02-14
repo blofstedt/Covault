@@ -275,10 +275,10 @@ const Dashboard: React.FC<DashboardProps> = ({
     [projectedTransactions, currentYearMonth],
   );
 
-  // Current month transactions augmented with projected entries (for display in budget sections)
+  // Current month transactions augmented with projected entries and future transactions (for display in budget sections)
   const currentMonthWithProjected = useMemo(
-    () => [...currentMonthTransactionsAll, ...projectedCurrentMonth],
-    [currentMonthTransactionsAll, projectedCurrentMonth],
+    () => [...currentMonthTransactionsAll, ...projectedCurrentMonth, ...futureTransactions],
+    [currentMonthTransactionsAll, projectedCurrentMonth, futureTransactions],
   );
 
   // Total income (currently just user's income, partner to be added later)
