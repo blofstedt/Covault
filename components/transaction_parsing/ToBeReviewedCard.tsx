@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { PendingTransaction, BudgetCategory } from '../../types';
 import type { VendorOverride } from './useVendorOverrides';
+import { formatVendorName } from '../../lib/formatVendorName';
 import ParsingCard from '../ui/ParsingCard';
 import { EmptyState } from '../shared';
 
@@ -17,6 +18,7 @@ interface ToBeReviewedCardProps {
   onApprovePending?: (pendingId: string, categoryId: string, preferredName?: string) => void | Promise<void>;
   onRejectConfirm: (id: string) => void;
   onLoadVendorOverrides: () => Promise<void>;
+  onUpsertLocalVendorOverride: (vendorName: string, categoryId: string, properName?: string) => void;
   onScanForTransactions: () => void;
 }
 
@@ -33,6 +35,7 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
   onApprovePending,
   onRejectConfirm,
   onLoadVendorOverrides,
+  onUpsertLocalVendorOverride,
   onScanForTransactions,
 }) => {
   const [preferredNames, setPreferredNames] = useState<Record<string, string>>({});
@@ -125,10 +128,12 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
                           key={b.id}
                           onClick={async () => {
                             const preferred = preferredNames[pt.id]?.trim() || undefined;
+                            // Optimistically add vendor override so it appears in Vendor Category Rules immediately
+                            onUpsertLocalVendorOverride(formatVendorName(pt.extracted_vendor), b.id, preferred);
                             await onApprovePending?.(pt.id, b.id, preferred);
                             setPreferredNames(prev => { const { [pt.id]: _, ...rest } = prev; return rest; });
                             onSetExpandedPendingId(null);
-                            // Reload vendor overrides since approval may create one
+                            // Reload vendor overrides to sync with DB (replaces temp ID with real one)
                             await onLoadVendorOverrides();
                           }}
                           className={`px-3 py-1.5 text-[11px] font-bold rounded-full border transition-all active:scale-95 ${
