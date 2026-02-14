@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Transaction, BudgetCategory, Recurrence, TransactionLabel, TransactionSplit } from '../types';
 import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
 import { formatVendorName } from '../lib/formatVendorName';
+import { parseLocalDate } from '../lib/dateUtils';
 import CalendarPicker from './CalendarPicker';
 import { CloseButton } from './shared';
 
@@ -112,8 +113,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     }
   };
 
-  // Format date for styled display
-  const formattedDate = new Date(date + 'T12:00:00').toLocaleDateString(undefined, {
+  // Format date for styled display — use parseLocalDate to avoid timezone shifts
+  const formattedDate = parseLocalDate(date).toLocaleDateString(undefined, {
     weekday: 'short', month: 'short', day: 'numeric'
   });
 
@@ -308,7 +309,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       id: initialTransaction?.id || generateUUID(),
       vendor: formatVendorName(vendor || 'Untitled Vendor'),
       amount: amount,
-      date: new Date(date + 'T12:00:00').toISOString(),
+      date: date + 'T12:00:00.000Z',
       budget_id: (Array.from(selectedIds) as string[])[0],
       recurrence,
       label: initialTransaction
