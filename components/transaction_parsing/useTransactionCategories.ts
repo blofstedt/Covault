@@ -98,23 +98,17 @@ export function useTransactionCategories({
     return map;
   }, [vendorOverrides]);
 
-  // All unique vendor names from notification-parsed pending transactions and vendor overrides
-  // Excludes vendors that only appear in automatically filtered (keyword-ignored) notifications
+  // All unique vendor names from vendor overrides that have a category set.
+  // Vendors only appear in Vendor Rules once they've been assigned a budget category.
   const allVendors = useMemo(() => {
     const vendorSet = new Map<string, string>();
-    for (const pt of pendingTransactions) {
-      if (pt.pattern_id === KEYWORD_IGNORED_PATTERN_ID) continue;
-      const vendor = (pt.extracted_vendor || '').trim();
-      if (!vendor) continue;
-      const key = vendor.toLowerCase();
-      if (!vendorSet.has(key)) vendorSet.set(key, vendor);
-    }
     for (const vo of vendorOverrides) {
+      if (!vo.category_id) continue;
       const key = vo.vendor_name.toLowerCase();
       if (!vendorSet.has(key)) vendorSet.set(key, vo.vendor_name);
     }
     return Array.from(vendorSet.values()).sort((a, b) => a.localeCompare(b));
-  }, [pendingTransactions, vendorOverrides]);
+  }, [vendorOverrides]);
 
   // Approved transactions: auto-detected from captured notifications, with a valid budget category, not projected
   const approvedTransactions = useMemo(
