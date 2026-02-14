@@ -363,7 +363,9 @@ export const useTransactionOps = ({
         }
 
         // 1) Insert the actual transaction directly into Supabase
-        const dateStr = new Date(pending.extracted_timestamp || pending.posted_at || new Date()).toISOString().split('T')[0];
+        // Use local date to avoid UTC conversion shifting the date forward by a day
+        const txDate = new Date(pending.extracted_timestamp || pending.posted_at || new Date());
+        const dateStr = `${txDate.getFullYear()}-${String(txDate.getMonth() + 1).padStart(2, '0')}-${String(txDate.getDate()).padStart(2, '0')}`;
         const transactionRow = {
           user_id: userId,
           vendor: formatVendorName(pending.extracted_vendor),
@@ -597,6 +599,7 @@ export const useTransactionOps = ({
       if (ids.length === 0) return;
       try {
         const headers = await getAuthHeaders();
+        (headers as any)['Prefer'] = 'return=representation';
         const idList = ids.map(id => `"${id}"`).join(',');
         const res = await fetch(`${REST_BASE}/transactions?id=in.(${idList})`, {
           method: 'PATCH',
@@ -616,7 +619,7 @@ export const useTransactionOps = ({
         setAppState(prev => ({
           ...prev,
           transactions: prev.transactions.map(t =>
-            idSet.has(t.id) ? { ...t, label: 'Manual' } : t,
+            idSet.has(t.id) ? { ...t, label: 'Manual' as const } : t,
           ),
         }));
         console.log('[clearApproved] OK, cleared labels for', ids.length, 'approved transactions');
