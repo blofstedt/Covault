@@ -35,6 +35,7 @@ export const useToSupabaseTransaction = () =>
     }
 
     const row: Record<string, any> = {
+      id: tx.id,
       user_id: tx.user_id,
       vendor: tx.vendor,
       amount: Number(tx.amount),
