@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { AppState, Transaction, BudgetCategory } from '../types';
 import BudgetSection from './BudgetSection';
 import TransactionForm from './TransactionForm';
@@ -101,6 +101,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [demoSplitTrigger, setDemoSplitTrigger] = useState(0);
   const [tutorialParsingDemo, setTutorialParsingDemo] = useState(false);
   const [showSubscribeModal, setShowSubscribeModal] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Premium access check (single source of truth)
   const hasPremium = hasPremiumAccess(state.user);
@@ -551,6 +552,30 @@ const Dashboard: React.FC<DashboardProps> = ({
     state.settings.app_notifications_enabled,
   ]);
 
+  // Auto-dismiss toast after 3 seconds
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timer = setTimeout(() => setToastMessage(null), 3000);
+    return () => clearTimeout(timer);
+  }, [toastMessage]);
+
+  // Wrap onAddTransaction to show a confirmation toast based on the transaction date
+  const handleAddTransactionWithToast = useCallback(
+    (tx: Transaction) => {
+      onAddTransaction(tx);
+      const txMonth = tx.date.slice(0, 7); // "YYYY-MM"
+      const current = getCurrentYearMonth();
+      if (txMonth === current) {
+        setToastMessage('Transaction logged!');
+      } else if (txMonth > current) {
+        setToastMessage('Future transaction logged! Use search bar at the top to see it.');
+      } else {
+        setToastMessage('Past transaction logged! Use search bar at the top to see it.');
+      }
+    },
+    [onAddTransaction],
+  );
+
   // If showing parsing view without premium (and not in tutorial), show subscribe modal
   if (showParsing && !hasPremium && !showTutorial) {
     return (
@@ -703,7 +728,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             setIsAddingTx(false);
             setTutorialFormOpen(false);
           }}
-          onSave={tutorialFormOpen ? (_tx: Transaction) => { /* no-op: saves disabled during tutorial */ } : onAddTransaction}
+          onSave={tutorialFormOpen ? (_tx: Transaction) => { /* no-op: saves disabled during tutorial */ } : handleAddTransactionWithToast}
           budgets={visibleBudgets}
           userId={state.user?.id || '1'}
           userName={state.user?.name || 'User'}
@@ -751,6 +776,14 @@ const Dashboard: React.FC<DashboardProps> = ({
             handleSubscribe();
           }}
         />
+      )}
+
+      {toastMessage && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[200] animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="bg-emerald-600 text-white px-6 py-3 rounded-2xl shadow-xl shadow-emerald-500/20 text-xs font-black uppercase tracking-widest text-center max-w-xs">
+            {toastMessage}
+          </div>
+        </div>
       )}
     </PageShell>
     )}
