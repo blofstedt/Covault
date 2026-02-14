@@ -395,7 +395,8 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
   const upsertLocalVendorOverride = useCallback(
     (vendorName: string, categoryId: string, properName?: string) => {
       const category = budgets.find((b) => b.id === categoryId);
-      const categoryName = category?.name;
+      if (!category) return;
+      const categoryName = category.name;
 
       setVendorOverrides((prev) => {
         const existingIdx = prev.findIndex(
