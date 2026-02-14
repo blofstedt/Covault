@@ -16,34 +16,24 @@ interface MonthlyBudgetData {
   [key: string]: number | string;
 }
 
-// Saturated monochromatic teal palette for budget categories
-const CATEGORY_GRADIENTS: Record<string, [string, string]> = {
-  Housing:   ['#064e3b', '#0d9488'],
-  Groceries: ['#1EA078', '#059669'],
-  Transport: ['#059669', '#10b981'],
-  Utilities: ['#34d399', '#10b981'],
-  Leisure:   ['#0d9488', '#1EA078'],
-  Services:  ['#047857', '#34d399'],
-  Other:     ['#10b981', '#6ee7b7'],
+// Monochromatic teal palette for budget categories
+const CATEGORY_COLORS: Record<string, string> = {
+  Housing:   '#064e3b',
+  Groceries: '#059669',
+  Transport: '#10b981',
+  Utilities: '#34d399',
+  Leisure:   '#0d9488',
+  Services:  '#047857',
+  Other:     '#6ee7b7',
 };
 
-// Fallback gradient for unknown category names
-const FALLBACK_GRADIENTS: [string, string][] = [
-  ['#064e3b', '#0d9488'],
-  ['#1EA078', '#059669'],
-  ['#059669', '#10b981'],
-  ['#34d399', '#10b981'],
-  ['#0d9488', '#1EA078'],
-  ['#10b981', '#6ee7b7'],
+const FALLBACK_COLORS: string[] = [
+  '#064e3b', '#059669', '#10b981', '#34d399', '#0d9488', '#6ee7b7',
 ];
 
-function getGradient(name: string, index: number): [string, string] {
-  return CATEGORY_GRADIENTS[name] || FALLBACK_GRADIENTS[index % FALLBACK_GRADIENTS.length];
+function getCategoryColor(name: string, index: number): string {
+  return CATEGORY_COLORS[name] || FALLBACK_COLORS[index % FALLBACK_COLORS.length];
 }
-
-// Tooltip vertical positioning: base offset above chart + extra shift when thumb is near the top
-const TOOLTIP_BASE_OFFSET = 70;
-const TOOLTIP_MAX_THUMB_OFFSET = 40;
 
 function formatMonthLabel(key: string): string {
   const [year, month] = key.split('-');
@@ -51,19 +41,18 @@ function formatMonthLabel(key: string): string {
   return `${months[parseInt(month, 10) - 1]} ${year}`;
 }
 
+function formatShortMonth(label: string): string {
+  return label.split(' ')[0];
+}
+
 const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions, isTutorialMode = false, theme = 'light' }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const [hoveredMonthIdx, setHoveredMonthIdx] = useState<number | null>(null);
-  const [mouseCoords, setMouseCoords] = useState<{ x: number; y: number } | null>(null);
-  const [chartWidth, setChartWidth] = useState(0);
-  const [chartHeight, setChartHeight] = useState(0);
+  const [selectedMonthIdx, setSelectedMonthIdx] = useState<number | null>(null);
   const safeBudgets = Array.isArray(budgets) ? budgets : [];
   const safeTransactions = useMemo(() => {
     const txs = Array.isArray(transactions) ? transactions : [];
     if (isTutorialMode && txs.length === 0 && safeBudgets.length > 0) {
-      // Generate placeholder transactions so the chart renders during tutorial
       const now = new Date();
       const placeholders: Transaction[] = [];
       for (let m = 5; m >= 0; m--) {
@@ -88,32 +77,25 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     return txs;
   }, [transactions, isTutorialMode, safeBudgets]);
 
-  // Build a map from budget id -> budget name
   const budgetNameById = useMemo(() => {
     const map = new Map<string, string>();
     safeBudgets.forEach((b) => map.set(b.id, b.name));
     return map;
   }, [safeBudgets]);
 
-  // Get the ordered list of category names that actually appear in data
   const categoryNames = useMemo(() => {
     const names = safeBudgets.map((b) => b.name);
     return names.length > 0 ? names : [];
   }, [safeBudgets]);
 
-  // Total monthly budget limit (sum of all category limits)
   const totalBudgetLimit = useMemo(() => {
     return safeBudgets.reduce((sum, b) => sum + (b.totalLimit || 0), 0);
   }, [safeBudgets]);
 
-  // Aggregate transactions into monthly data by category
   const chartData: MonthlyBudgetData[] = useMemo(() => {
     if (categoryNames.length === 0) return [];
 
-    // Group spending by "YYYY-MM" and category name
     const monthMap = new Map<string, Map<string, number>>();
-
-    // Determine current month key
     const now = new Date();
     const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
@@ -121,10 +103,8 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       const rawDate = tx.date;
       if (!rawDate || rawDate.length < 7) continue;
 
-      // Extract YYYY-MM directly from the date string to avoid timezone shifts
       const txMonthKey = rawDate.slice(0, 7);
 
-      // Include projected transactions only for the current month
       if (tx.is_projected) {
         if (txMonthKey !== currentMonthKey) continue;
       }
@@ -132,14 +112,11 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       const amount = Number(tx.amount) || 0;
       if (amount === 0) continue;
 
-      const monthKey = txMonthKey;
-
-      if (!monthMap.has(monthKey)) {
-        monthMap.set(monthKey, new Map<string, number>());
+      if (!monthMap.has(txMonthKey)) {
+        monthMap.set(txMonthKey, new Map<string, number>());
       }
-      const catMap = monthMap.get(monthKey)!;
+      const catMap = monthMap.get(txMonthKey)!;
 
-      // Handle splits
       if (tx.splits && tx.splits.length > 0) {
         for (const split of tx.splits) {
           const catName = budgetNameById.get(split.budget_id) || 'Other';
@@ -151,10 +128,8 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       }
     }
 
-    // Sort month keys chronologically
     const sortedMonths = Array.from(monthMap.keys()).sort();
 
-    // Build the data array
     const data = sortedMonths.map((monthKey) => {
       const catMap = monthMap.get(monthKey)!;
       const entry: MonthlyBudgetData = {
@@ -172,8 +147,6 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       return entry;
     });
 
-    // If no spending data, create a synthetic current-month entry with zero spending
-    // so the chart always renders the budget corridor and threshold lines
     if (data.length === 0) {
       const entry: MonthlyBudgetData = {
         month: formatMonthLabel(currentMonthKey),
@@ -186,372 +159,172 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       data.push(entry);
     }
 
-    // If only one month of data, prepend a synthetic prior month with zero spending
-    // so the chart renders a flat band without mislabeling the actual month
-    if (data.length === 1) {
-      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      const parts = data[0].month.split(' ');
-      const labelMonth = parts[0];
-      const labelYear = parts[1];
-      const mIdx = monthNames.indexOf(labelMonth);
-
-      let priorLabel: string;
-      if (mIdx >= 0 && labelYear && !isNaN(parseInt(labelYear, 10))) {
-        const prevMonth = mIdx === 0 ? 11 : mIdx - 1;
-        const prevYear = mIdx === 0 ? String(parseInt(labelYear, 10) - 1) : labelYear;
-        priorLabel = `${monthNames[prevMonth]} ${prevYear}`;
-      } else {
-        // Fallback: compute prior month from current date
-        const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        const prevKey = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
-        priorLabel = formatMonthLabel(prevKey);
-      }
-
-      const priorEntry: MonthlyBudgetData = {
-        month: priorLabel,
-        total: 0,
-        budgetLimit: totalBudgetLimit,
-      };
-      for (const name of categoryNames) {
-        priorEntry[name] = 0;
-      }
-      data.unshift(priorEntry);
-    }
-
     return data;
   }, [safeTransactions, categoryNames, budgetNameById, totalBudgetLimit]);
 
-  // Draw the D3 streamgraph
+  // Draw the D3 stacked bar chart
   useEffect(() => {
     if (!svgRef.current || !containerRef.current || chartData.length === 0 || categoryNames.length === 0) return;
 
     const container = containerRef.current;
     const width = container.clientWidth;
-    const height = Math.min(150, width * 0.35);
-    setChartWidth(width);
-    setChartHeight(height);
+    const height = Math.min(160, width * 0.4);
+    const margin = { top: 8, right: 12, bottom: 22, left: 12 };
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
 
     const svgElement = d3.select(svgRef.current);
     svgElement.selectAll('*').remove();
 
-    const defs = svgElement.append('defs');
+    const isDarkTheme = theme === 'dark';
 
-    // Create gradients for each category
-    categoryNames.forEach((name, i) => {
-      const [c0, c1] = getGradient(name, i);
-      const grad = defs
-        .append('linearGradient')
-        .attr('id', `bfc-grad-${i}`)
-        .attr('x1', '0%')
-        .attr('y1', '0%')
-        .attr('x2', '0%')
-        .attr('y2', '100%');
-      grad.append('stop').attr('offset', '0%').attr('stop-color', c0);
-      grad.append('stop').attr('offset', '100%').attr('stop-color', c1);
-    });
+    const svg = svgElement
+      .attr('viewBox', `0 0 ${width} ${height}`)
+      .append('g')
+      .attr('transform', `translate(${margin.left},${margin.top})`);
 
-    // Frosted blur filter for spillover zones
-    defs
-      .append('filter')
-      .attr('id', 'bfc-frost')
-      .append('feGaussianBlur')
-      .attr('in', 'SourceGraphic')
-      .attr('stdDeviation', '8');
+    // Scales
+    const x = d3
+      .scaleBand()
+      .domain(chartData.map((d) => d.month))
+      .range([0, innerWidth])
+      .padding(0.35);
 
-    const svg = svgElement.attr('viewBox', `0 0 ${width} ${height}`).append('g');
+    const maxVal = Math.max(d3.max(chartData, (d) => d.total) || 1, totalBudgetLimit);
+    const y = d3.scaleLinear().domain([0, maxVal * 1.1]).range([innerHeight, 0]);
 
+    // Stack data
     const stack = d3
       .stack<MonthlyBudgetData>()
       .keys(categoryNames)
       .value((d, key) => (typeof d[key] === 'number' ? (d[key] as number) : 0))
-      .offset(d3.stackOffsetSilhouette)
-      .order(d3.stackOrderInsideOut);
+      .order(d3.stackOrderNone);
 
     const stackedData = stack(chartData);
 
-    const x = d3.scalePoint().domain(chartData.map((d) => d.month)).range([0, width]);
-
-    const maxTotal = d3.max(chartData, (d) => d.total) || 1;
-    // Ensure spending bands are visible: cap so spending is ≥ ~12% of chart height
-    const baseView = Math.max(maxTotal, totalBudgetLimit) * 1.3;
-    const maxViewForVisibility = maxTotal * 8;
-    const viewLimit = Math.min(baseView, maxViewForVisibility);
-
-    const y = d3
-      .scaleLinear()
-      .domain([-viewLimit / 2, viewLimit / 2])
-      .range([height, 0]);
-
-    const budgetYTop = y(totalBudgetLimit / 2);
-    const budgetYBottom = y(-totalBudgetLimit / 2);
-
-    // Clip paths for the "danger zone" (outside budget corridor)
-    const clipTop = defs.append('clipPath').attr('id', 'bfc-clip-top');
-    clipTop.append('rect').attr('x', 0).attr('y', 0).attr('width', width).attr('height', budgetYTop);
-
-    const clipBottom = defs.append('clipPath').attr('id', 'bfc-clip-bottom');
-    clipBottom
-      .append('rect')
-      .attr('x', 0)
-      .attr('y', budgetYBottom)
-      .attr('width', width)
-      .attr('height', height - budgetYBottom);
-
-    // Use theme from props
-    const isDarkTheme = theme === 'dark';
-
-    // Corridor background (safe zone)
+    // Budget limit dashed line
     svg
-      .append('rect')
-      .attr('x', 0)
-      .attr('y', budgetYTop)
-      .attr('width', width)
-      .attr('height', budgetYBottom - budgetYTop)
-      .attr('fill', isDarkTheme ? '#0f172a' : '#f1f5f9');
-
-    const area = d3
-      .area<d3.SeriesPoint<MonthlyBudgetData>>()
-      .x((d) => x(d.data.month) || 0)
-      .y0((d) => y(d[0]))
-      .y1((d) => y(d[1]))
-      .curve(d3.curveMonotoneX);
-
-    // Main budget bands (safe zone)
-    const layerGroup = svg.selectAll('.bfc-layer').data(stackedData).enter().append('g').attr('class', 'bfc-layer');
-
-    layerGroup
-      .append('path')
-      .attr('class', 'bfc-band')
-      .attr('d', area)
-      .style('fill', (_d, i) => `url(#bfc-grad-${i})`)
-      .attr('stroke', 'rgba(255, 255, 255, 0.05)')
-      .attr('stroke-width', '0.5px')
-      .attr('fill-opacity', 0.95);
-
-    // Spillover bands (frosted white in danger zones)
-    const spillTop = svg.append('g').attr('clip-path', 'url(#bfc-clip-top)').attr('filter', 'url(#bfc-frost)');
-    const spillBottom = svg
-      .append('g')
-      .attr('clip-path', 'url(#bfc-clip-bottom)')
-      .attr('filter', 'url(#bfc-frost)');
-
-    // Spillover color: white in dark theme, coral/red in light theme
-    const spillColor = isDarkTheme ? '#ffffff' : '#ef4444';
-
-    [spillTop, spillBottom].forEach((group) => {
-      group
-        .selectAll('.bfc-spill')
-        .data(stackedData)
-        .enter()
-        .append('path')
-        .attr('class', 'bfc-spill')
-        .attr('d', area)
-        .attr('fill', spillColor)
-        .attr('fill-opacity', 1.0);
-    });
-
-    // Glass panels over the danger zones
-    const glassColor = isDarkTheme ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.04)';
-    svg
-      .append('rect')
-      .attr('x', 0)
-      .attr('y', 0)
-      .attr('width', width)
-      .attr('height', budgetYTop)
-      .attr('fill', glassColor);
-
-    svg
-      .append('rect')
-      .attr('x', 0)
-      .attr('y', budgetYBottom)
-      .attr('width', width)
-      .attr('height', height - budgetYBottom)
-      .attr('fill', glassColor);
-
-    // Dashed budget threshold lines
-    const thresholdColor = isDarkTheme ? '#6ee7b7' : '#059669';
-    [budgetYTop, budgetYBottom].forEach((yPos) => {
-      svg
-        .append('line')
-        .attr('x1', 0)
-        .attr('x2', width)
-        .attr('y1', yPos)
-        .attr('y2', yPos)
-        .attr('stroke', thresholdColor)
-        .attr('stroke-width', 1.5)
-        .attr('stroke-dasharray', '6 10')
-        .attr('opacity', 0.7);
-    });
-
-    // Scrubber line
-    const scrubber = svg
       .append('line')
-      .attr('y1', 0)
-      .attr('y2', height)
-      .attr('stroke', isDarkTheme ? '#ffffff' : '#334155')
+      .attr('x1', 0)
+      .attr('x2', innerWidth)
+      .attr('y1', y(totalBudgetLimit))
+      .attr('y2', y(totalBudgetLimit))
+      .attr('stroke', isDarkTheme ? '#6ee7b7' : '#059669')
       .attr('stroke-width', 1.5)
-      .style('opacity', 0);
+      .attr('stroke-dasharray', '6 4')
+      .attr('opacity', 0.5);
 
-    // Shared update function for month/category selection
-    const updateSelection = (monthIdx: number, my: number) => {
-      const xPos = x(chartData[monthIdx].month) || 0;
+    // Bars
+    const barGroups = svg
+      .selectAll('.bfc-bar-group')
+      .data(stackedData)
+      .enter()
+      .append('g')
+      .attr('class', 'bfc-bar-group');
 
-      let foundCat: string | null = null;
-      for (const layer of stackedData) {
-        const point = layer[monthIdx];
-        const y0 = y(point[0]);
-        const y1 = y(point[1]);
-        if (my >= Math.min(y0, y1) && my <= Math.max(y0, y1)) {
-          foundCat = layer.key;
-          break;
-        }
-      }
+    barGroups
+      .selectAll('rect')
+      .data((d) => d)
+      .enter()
+      .append('rect')
+      .attr('class', 'bfc-bar')
+      .attr('x', (d) => x(d.data.month) || 0)
+      .attr('y', (d) => y(d[1]))
+      .attr('height', (d) => Math.max(0, y(d[0]) - y(d[1])))
+      .attr('width', x.bandwidth())
+      .attr('rx', Math.min(6, x.bandwidth() / 2))
+      .attr('ry', Math.min(6, x.bandwidth() / 2))
+      .attr('fill', (_d, _i, nodes) => {
+        const parentData = d3.select(nodes[0].parentNode as Element).datum() as d3.Series<MonthlyBudgetData, string>;
+        const catIdx = categoryNames.indexOf(parentData.key);
+        return getCategoryColor(parentData.key, catIdx);
+      })
+      .attr('fill-opacity', 0.85);
 
-      // If finger is outside all bands, find the closest category by vertical distance
-      if (!foundCat) {
-        let minDist = Infinity;
-        for (const layer of stackedData) {
-          const point = layer[monthIdx];
-          const y0 = y(point[0]);
-          const y1 = y(point[1]);
-          const mid = (y0 + y1) / 2;
-          const dist = Math.abs(my - mid);
-          if (dist < minDist) {
-            minDist = dist;
-            foundCat = layer.key;
-          }
-        }
-      }
+    // Month labels
+    svg
+      .selectAll('.bfc-month-label')
+      .data(chartData)
+      .enter()
+      .append('text')
+      .attr('class', 'bfc-month-label')
+      .attr('x', (d) => (x(d.month) || 0) + x.bandwidth() / 2)
+      .attr('y', innerHeight + 16)
+      .attr('text-anchor', 'middle')
+      .attr('font-size', '9px')
+      .attr('font-weight', '800')
+      .attr('letter-spacing', '0.05em')
+      .attr('fill', isDarkTheme ? '#64748b' : '#94a3b8')
+      .text((d) => formatShortMonth(d.month));
 
-      setActiveCategory(foundCat);
-      setHoveredMonthIdx(monthIdx);
-      setMouseCoords({ x: xPos, y: my });
+    // Interaction: tap/hover on bars to select a month
+    const overlay = svg
+      .selectAll('.bfc-overlay')
+      .data(chartData)
+      .enter()
+      .append('rect')
+      .attr('class', 'bfc-overlay')
+      .attr('x', (d) => (x(d.month) || 0) - x.step() * x.padding() / 2)
+      .attr('y', 0)
+      .attr('width', x.step())
+      .attr('height', innerHeight)
+      .attr('fill', 'transparent')
+      .attr('cursor', 'pointer');
 
-      scrubber.attr('x1', xPos).attr('x2', xPos).style('opacity', 0.6);
+    const handleSelect = (_event: any, _d: MonthlyBudgetData, idx: number) => {
+      setSelectedMonthIdx((prev) => (prev === idx ? null : idx));
 
-      svg
-        .selectAll('.bfc-band')
-        .transition()
-        .duration(100)
-        .attr('fill-opacity', (d: any) => (foundCat && d.key === foundCat ? 1.0 : 0.2));
-
-      svg
-        .selectAll('.bfc-spill')
-        .transition()
-        .duration(100)
-        .attr('fill-opacity', (d: any) => (foundCat && d.key === foundCat ? 1.0 : 0.1));
+      // Highlight selected bar
+      svg.selectAll('.bfc-bar').transition().duration(150).attr('fill-opacity', 0.85);
     };
 
-    // Interaction handler for mouse events
-    const handleInteraction = (event: any) => {
-      const [mx, my] = d3.pointer(event, svg.node());
-      const domain = x.domain();
-      if (domain.length < 2) {
-        setHoveredMonthIdx(0);
-        setActiveCategory(categoryNames[0] || null);
-        const xPos = x(chartData[0].month) || 0;
-        setMouseCoords({ x: xPos, y: my });
-        scrubber.attr('x1', xPos).attr('x2', xPos).style('opacity', 0.6);
-        return;
-      }
+    overlay.on('click', function (_event, d) {
+      const idx = chartData.indexOf(d);
+      handleSelect(_event, d, idx);
+    });
 
-      const step = width / (domain.length - 1);
-      const index = Math.round(mx / step);
-      const monthIdx = Math.max(0, Math.min(chartData.length - 1, index));
-
-      updateSelection(monthIdx, my);
-    };
-
-    // Touch event handlers for drag gestures
-    const handleTouchStart = (event: any) => {
-      event.preventDefault();
-      const touch = event.touches[0] || event.changedTouches[0];
-      const [mx, my] = d3.pointer(touch, svg.node());
-      const domain = x.domain();
-      if (domain.length < 2) {
-        setHoveredMonthIdx(0);
-        setActiveCategory(categoryNames[0] || null);
-        const xPos = x(chartData[0].month) || 0;
-        setMouseCoords({ x: xPos, y: my });
-        scrubber.attr('x1', xPos).attr('x2', xPos).style('opacity', 0.6);
-        return;
-      }
-      const step = width / (domain.length - 1);
-      const index = Math.round(mx / step);
-      const monthIdx = Math.max(0, Math.min(chartData.length - 1, index));
-      updateSelection(monthIdx, my);
-    };
-
-    const handleTouchMove = (event: any) => {
-      event.preventDefault();
-      const touch = event.touches[0] || event.changedTouches[0];
-      const [mx, my] = d3.pointer(touch, svg.node());
-      const domain = x.domain();
-      if (domain.length < 2) return;
-      const step = width / (domain.length - 1);
-      const index = Math.round(mx / step);
-      const monthIdx = Math.max(0, Math.min(chartData.length - 1, index));
-      updateSelection(monthIdx, my);
-    };
-
-    const handleEnd = () => {
-      setActiveCategory(null);
-      setHoveredMonthIdx(null);
-      setMouseCoords(null);
-      scrubber.style('opacity', 0);
-      svg.selectAll('.bfc-band').transition().duration(300).attr('fill-opacity', 0.95);
-      svg.selectAll('.bfc-spill').transition().duration(300).attr('fill-opacity', 1.0);
-    };
-
-    svgElement.on('mousemove', handleInteraction).on('mouseleave', handleEnd);
-
-    // Attach touch events directly to the SVG DOM node for proper passive: false handling
+    // Touch support
     const svgNode = svgRef.current;
     if (svgNode) {
-      svgNode.addEventListener('touchstart', handleTouchStart, { passive: false });
-      svgNode.addEventListener('touchmove', handleTouchMove, { passive: false });
-      svgNode.addEventListener('touchend', handleEnd);
-      svgNode.addEventListener('touchcancel', handleEnd);
-    }
+      const handleTouch = (event: TouchEvent) => {
+        event.preventDefault();
+        const touch = event.touches[0] || event.changedTouches[0];
+        const rect = svgNode.getBoundingClientRect();
+        const mx = touch.clientX - rect.left - margin.left;
+        const step = x.step();
+        const idx = Math.floor(mx / step);
+        const clampedIdx = Math.max(0, Math.min(chartData.length - 1, idx));
+        setSelectedMonthIdx(clampedIdx);
+      };
 
-    return () => {
-      svgElement.on('mousemove', null).on('mouseleave', null);
-      if (svgNode) {
-        svgNode.removeEventListener('touchstart', handleTouchStart, { passive: false } as EventListenerOptions);
-        svgNode.removeEventListener('touchmove', handleTouchMove, { passive: false } as EventListenerOptions);
-        svgNode.removeEventListener('touchend', handleEnd);
-        svgNode.removeEventListener('touchcancel', handleEnd);
-      }
-    };
+      svgNode.addEventListener('touchstart', handleTouch, { passive: false });
+      svgNode.addEventListener('touchmove', handleTouch, { passive: false });
+      svgNode.addEventListener('touchend', () => {}, { passive: true });
+
+      return () => {
+        svgNode.removeEventListener('touchstart', handleTouch);
+        svgNode.removeEventListener('touchmove', handleTouch);
+        svgNode.removeEventListener('touchend', () => {});
+      };
+    }
   }, [chartData, categoryNames, totalBudgetLimit, theme]);
 
-  const activeMonthData = hoveredMonthIdx !== null ? chartData[hoveredMonthIdx] : null;
-  const activeCatAmount =
-    activeCategory && activeMonthData && typeof activeMonthData[activeCategory] === 'number'
-      ? (activeMonthData[activeCategory] as number)
-      : 0;
-  const categoryPercentage =
-    activeCategory && activeMonthData && activeMonthData.total > 0
-      ? Math.round((activeCatAmount / activeMonthData.total) * 100)
-      : 0;
-
-  const activeCatIndex = activeCategory ? categoryNames.indexOf(activeCategory) : -1;
-  const activeCatGradient = activeCategory ? getGradient(activeCategory, activeCatIndex) : null;
+  const activeMonthData = selectedMonthIdx !== null ? chartData[selectedMonthIdx] : null;
 
   // No data fallback
   if (chartData.length === 0) {
     return (
       <div id="spending-flow-chart" className="w-full mb-2">
-        <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-md rounded-3xl p-4 border-2 border-slate-100 dark:border-slate-800 shadow-lg">
+        <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 border border-slate-100 dark:border-slate-800/60 shadow-xl">
           <div className="mb-3">
             <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
-              Spending Flow
+              Spending Overview
             </h3>
           </div>
           <div className="text-center py-8">
             <p className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-2">No spending data yet</p>
             <p className="text-xs text-slate-400 dark:text-slate-500">
-              Once you add transactions, your spending flow will appear here.
+              Once you add transactions, your spending overview will appear here.
             </p>
           </div>
         </div>
@@ -561,110 +334,76 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
   return (
     <div id="spending-flow-chart" className="w-full mb-1 shrink-0">
-      <div className="relative">
-        {/* Tooltip card — moves up as the user's thumb moves up so it never obscures the card */}
-        {activeCategory && mouseCoords && activeMonthData && (
-          <div
-            className="absolute z-50 pointer-events-none transition-all duration-200 ease-out"
-            style={{
-              transform: `translate(${mouseCoords.x}px, 0px)`,
-              left: 0,
-              top: `${-TOOLTIP_BASE_OFFSET - (chartHeight > 0 ? (1 - mouseCoords.y / chartHeight) * TOOLTIP_MAX_THUMB_OFFSET : 0)}px`,
-            }}
-          >
-            <div
-              className={`absolute p-2.5 w-[150px] backdrop-blur-xl rounded-xl flex flex-col gap-2 ${
-                theme === 'dark'
-                  ? 'bg-slate-900/95 border border-white/20 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.9)]'
-                  : 'bg-white/95 border border-slate-200 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.15)]'
-              } ${
-                mouseCoords.x > chartWidth * 0.7
-                  ? '-translate-x-[115%]'
-                  : mouseCoords.x < chartWidth * 0.3
-                    ? 'translate-x-[20%]'
-                    : mouseCoords.x > chartWidth / 2
-                      ? '-translate-x-[110%]'
-                      : 'translate-x-[12%]'
-              }`}
-            >
-              <div className="flex justify-between items-center">
-                <span className={`text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-emerald-400' : 'text-emerald-600'}`}>
-                  {activeMonthData.month}
-                </span>
-                <div
-                  className={`px-2 py-0.5 rounded-full border text-[8px] font-black uppercase tracking-widest ${
-                    activeMonthData.total > totalBudgetLimit
-                      ? theme === 'dark'
-                        ? 'bg-white text-[#030a08] border-white'
-                        : 'bg-slate-900 text-white border-slate-900'
-                      : theme === 'dark'
-                        ? 'text-white/60 border-white/20'
-                        : 'text-slate-400 border-slate-200'
-                  }`}
-                >
-                  {activeMonthData.total > totalBudgetLimit ? 'Over' : 'Safe'}
-                </div>
-              </div>
+      <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-4 border border-slate-100 dark:border-slate-800/60 shadow-xl">
+        {/* Header */}
+        <div className="flex items-center justify-between px-2 mb-2">
+          <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
+            Spending Overview
+          </h3>
+          {activeMonthData && (
+            <div className="flex items-center gap-2">
+              <span className={`text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                {activeMonthData.month}
+              </span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border ${
+                  activeMonthData.total > totalBudgetLimit
+                    ? theme === 'dark'
+                      ? 'bg-white text-[#030a08] border-white'
+                      : 'bg-slate-900 text-white border-slate-900'
+                    : theme === 'dark'
+                      ? 'text-white/60 border-white/20'
+                      : 'text-slate-400 border-slate-200'
+                }`}
+              >
+                {activeMonthData.total > totalBudgetLimit ? 'Over' : 'Safe'}
+              </span>
+            </div>
+          )}
+        </div>
 
-              <div className="flex items-center gap-2">
-                <div className="flex-1 min-w-0">
-                  <h4 className={`text-[8px] font-bold tracking-widest uppercase truncate mb-0.5 ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'}`}>
-                    {activeCategory}
-                  </h4>
-                  <div className={`text-base font-black tracking-tighter leading-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                    ${activeCatAmount.toFixed(0)}
+        {/* Chart */}
+        <div ref={containerRef} className="w-full relative">
+          <svg
+            ref={svgRef}
+            className="w-full h-auto overflow-visible select-none"
+            style={{ touchAction: 'none' }}
+          />
+        </div>
+
+        {/* Selected month details */}
+        {activeMonthData && (
+          <div className="px-2 pt-3 mt-1 border-t border-slate-100 dark:border-slate-800/60">
+            <div className="flex items-baseline justify-between mb-2">
+              <span className={`text-lg font-black tracking-tighter ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
+                ${activeMonthData.total.toFixed(0)}
+              </span>
+              <span className={`text-[10px] font-bold ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`}>
+                / ${totalBudgetLimit} budget
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              {categoryNames.map((name, i) => {
+                const val = typeof activeMonthData[name] === 'number' ? (activeMonthData[name] as number) : 0;
+                if (val === 0) return null;
+                return (
+                  <div key={name} className="flex items-center gap-1.5">
+                    <div
+                      className="w-2 h-2 rounded-full shrink-0"
+                      style={{ backgroundColor: getCategoryColor(name, i) }}
+                    />
+                    <span className={`text-[10px] font-bold ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
+                      {name}
+                    </span>
+                    <span className={`text-[10px] font-black ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>
+                      ${val.toFixed(0)}
+                    </span>
                   </div>
-                </div>
-                <div className={`w-1 h-8 rounded-full relative overflow-hidden shrink-0 ${theme === 'dark' ? 'bg-white/10' : 'bg-slate-200'}`}>
-                  <div
-                    className="absolute bottom-0 left-0 w-full rounded-full transition-all duration-500 ease-out"
-                    style={{
-                      height: `${categoryPercentage}%`,
-                      background: activeCatGradient
-                        ? `linear-gradient(to top, ${activeCatGradient[1]}, ${activeCatGradient[0]})`
-                        : '#10b981',
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div className={`pt-1.5 border-t grid grid-cols-2 gap-2 ${theme === 'dark' ? 'border-white/10' : 'border-slate-200'}`}>
-                <div className="flex flex-col">
-                  <span className={`text-[7px] font-black uppercase tracking-tighter mb-0.5 ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'}`}>Part</span>
-                  <span className={`text-[11px] font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{categoryPercentage}%</span>
-                </div>
-                <div className="flex flex-col text-right">
-                  <span className={`text-[7px] font-black uppercase tracking-tighter mb-0.5 ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'}`}>Total</span>
-                  <span
-                    className={`text-[11px] font-black ${
-                      activeMonthData.total > totalBudgetLimit
-                        ? theme === 'dark'
-                          ? 'text-white underline decoration-white/40 underline-offset-4'
-                          : 'text-slate-900 underline decoration-slate-300 underline-offset-4'
-                        : 'text-emerald-400'
-                    }`}
-                  >
-                    ${activeMonthData.total.toFixed(0)}
-                  </span>
-                </div>
-              </div>
+                );
+              })}
             </div>
           </div>
         )}
-
-        {/* Chart container */}
-        <div ref={containerRef} className="w-full relative">
-          <div className="bg-white/[0.03] dark:bg-white/[0.02] rounded-[2.5rem] p-0.5 shadow-xl border border-slate-200/30 dark:border-white/10 overflow-hidden">
-            <div className="bg-slate-100 dark:bg-slate-900 rounded-[2.4rem] overflow-hidden border border-slate-200/20 dark:border-white/10 relative">
-              <svg
-                ref={svgRef}
-                className="w-full h-auto overflow-visible cursor-crosshair relative z-10 select-none"
-                style={{ touchAction: 'none' }}
-              />
-            </div>
-          </div>
-
-        </div>
       </div>
     </div>
   );

@@ -86,14 +86,14 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
   const [showFAQ, setShowFAQ] = useState(false);
 
   return (
-    <div className="fixed inset-0 z-[110] bg-slate-900/40 backdrop-blur-lg flex items-center justify-center p-6 animate-in fade-in duration-300">
+    <div className="fixed inset-0 z-[110] bg-slate-900/40 backdrop-blur-lg flex items-center justify-center p-4 animate-in fade-in duration-300">
       <div
         ref={settingsScrollRef}
-        className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-[3rem] p-10 space-y-8 shadow-2xl animate-in zoom-in-95 duration-500 max-h-[85vh] overflow-y-auto no-scrollbar border border-slate-100 dark:border-slate-800/60"
+        className="w-full max-w-lg bg-slate-50 dark:bg-slate-950 rounded-[2.5rem] p-6 space-y-4 shadow-2xl animate-in zoom-in-95 duration-500 max-h-[85vh] overflow-y-auto no-scrollbar border border-slate-200/30 dark:border-white/10"
       >
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">
+        <div className="flex items-center justify-between px-2">
+          <h2 className="text-xl font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">
             Vault Settings
           </h2>
           <div className="flex items-center space-x-2">
@@ -106,7 +106,7 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           <button
             id="run-tutorial-button"
             onClick={onRunTutorial}
-            className="w-full py-5 bg-emerald-50 dark:bg-emerald-900/20 border-2 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-black rounded-2xl hover:bg-emerald-100 transition-colors uppercase tracking-[0.2em] shadow-sm active:scale-95"
+            className="w-full py-5 bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800/40 text-emerald-600 dark:text-emerald-400 text-xs font-black rounded-[2.5rem] hover:bg-emerald-50 transition-colors uppercase tracking-[0.2em] shadow-xl active:scale-95"
           >
             Run Tutorial
           </button>
@@ -115,7 +115,7 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           <button
             id="faq-button"
             onClick={() => setShowFAQ(true)}
-            className="w-full py-5 bg-slate-50 dark:bg-slate-800/30 border-2 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 text-xs font-black rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors uppercase tracking-[0.2em] shadow-sm active:scale-95"
+            className="w-full py-5 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/60 text-slate-500 dark:text-slate-400 text-xs font-black rounded-[2.5rem] hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors uppercase tracking-[0.2em] shadow-xl active:scale-95"
           >
             Frequently Asked
           </button>

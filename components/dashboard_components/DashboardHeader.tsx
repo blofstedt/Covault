@@ -6,11 +6,14 @@ interface DashboardHeaderProps {
 
 const DashboardHeader: React.FC<DashboardHeaderProps> = ({ onOpenSettings }) => {
   return (
-    <div className="relative flex items-center justify-end h-8">
+    <div className="relative flex items-center justify-center h-8">
+      <h1 className="text-xl font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">
+        Covault
+      </h1>
       <button
         id="settings-button"
         onClick={onOpenSettings}
-        className="p-2.5 transition-colors active:scale-90 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-xl text-slate-400 hover:text-emerald-600"
+        className="absolute right-0 p-2.5 transition-colors active:scale-90 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-xl text-slate-400 hover:text-emerald-600"
       >
         <svg
           className="w-7 h-7"

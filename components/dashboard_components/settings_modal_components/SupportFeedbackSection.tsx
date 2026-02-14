@@ -24,7 +24,7 @@ const SupportFeedbackSection: React.FC<SupportFeedbackSectionProps> = ({
         <a
           id="report-problem-button"
           href="mailto:itsjustmyemail@gmail.com?subject=Covault: Problem Report"
-          className="flex items-center p-5 bg-slate-50 dark:bg-slate-800/30 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm active:scale-[0.98] transition-all group"
+          className="flex items-center p-5 bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800/60 shadow-xl active:scale-[0.98] transition-all group"
         >
           <div className="w-10 h-10 bg-rose-50 dark:bg-rose-900/20 rounded-xl flex items-center justify-center mr-4 group-hover:scale-110 transition-transform">
             <svg
@@ -64,7 +64,7 @@ const SupportFeedbackSection: React.FC<SupportFeedbackSectionProps> = ({
           <a
             id="request-feature-button"
             href="mailto:mostlydecentdev@gmail.com?subject=Covault: Feature Request"
-            className="flex items-center p-5 bg-slate-50 dark:bg-slate-800/30 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm active:scale-[0.98] transition-all group"
+            className="flex items-center p-5 bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800/60 shadow-xl active:scale-[0.98] transition-all group"
           >
             <div className="w-10 h-10 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl flex items-center justify-center mr-4 group-hover:scale-110 transition-transform">
               <svg

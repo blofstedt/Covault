@@ -17,7 +17,7 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
 }) => (
   <div
     id={id}
-    className={`${padding === 'sm' ? 'p-5' : 'p-6'} bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60`}
+    className={`${padding === 'sm' ? 'p-5' : 'p-6'} bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-xl border border-slate-100 dark:border-slate-800/60`}
   >
     <div className="flex flex-col mb-4">
       <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
