@@ -391,6 +391,44 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
     [userId, vendorOverrides],
   );
 
+  // ── Optimistically upsert a vendor override in local state (no DB call) ──
+  const upsertLocalVendorOverride = useCallback(
+    (vendorName: string, categoryId: string, properName?: string) => {
+      const category = budgets.find((b) => b.id === categoryId);
+      const categoryName = category?.name;
+
+      setVendorOverrides((prev) => {
+        const existingIdx = prev.findIndex(
+          (vo) => vo.vendor_name.toLowerCase() === vendorName.toLowerCase(),
+        );
+        if (existingIdx >= 0) {
+          // Update existing override
+          const updated = [...prev];
+          updated[existingIdx] = {
+            ...updated[existingIdx],
+            category_id: categoryId,
+            category_name: categoryName,
+            ...(properName ? { proper_name: properName } : {}),
+          };
+          return updated;
+        }
+        // Add new override
+        return [
+          ...prev,
+          {
+            id: `temp-${crypto.randomUUID()}`,
+            vendor_name: vendorName,
+            category_id: categoryId,
+            auto_accept: false,
+            category_name: categoryName,
+            ...(properName ? { proper_name: properName } : {}),
+          },
+        ];
+      });
+    },
+    [budgets],
+  );
+
   return {
     vendorOverrides,
     expandedVendorCategory,
@@ -401,5 +439,6 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
     handleToggleAutoAcceptByVendor,
     handleSetVendorCategory,
     handleSetProperName,
+    upsertLocalVendorOverride,
   };
 }

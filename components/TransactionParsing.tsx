@@ -222,6 +222,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                 onApprovePending={onApprovePending}
                 onRejectConfirm={setRejectConfirmId}
                 onLoadVendorOverrides={vendorOverridesHook.loadVendorOverrides}
+                onUpsertLocalVendorOverride={vendorOverridesHook.upsertLocalVendorOverride}
                 onScanForTransactions={handleScanForTransactions}
               />
 
