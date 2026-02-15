@@ -152,8 +152,8 @@ const COMMON_TRANSACTION_PATTERNS: Array<[string, string]> = [
   ['\\$([\\d,]+\\.\\d{2})\\s+(?:at|from|to)', '\\$[\\d,]+\\.\\d{2}\\s+(?:at|from|to)\\s+(.+?)(?:\\s+(?:was|on|has|ending|card)|$)'],
   // "Purchase/spent/charged/debited of $XX.XX at VENDOR"
   ['(?:purchase|spent|charged|debited|transaction)\\s+(?:of\\s+)?\\$([\\d,]+\\.\\d{2})', '(?:at|from)\\s+(.+?)(?:\\s+(?:was|on|has|ending|card|\\.)|$)'],
-  // "INTERAC e-Transfer of $XX.XX sent to RECIPIENT" or "sent $XX.XX to RECIPIENT"
-  ['(?:e-?transfer|interac|sent|transfer)\\s+(?:of\\s+)?\\$([\\d,]+\\.\\d{2})', '(?:sent to|to)\\s+(.+?)(?:\\s+(?:was|has|from|\\.|$))'],
+  // "INTERAC e-Transfer of $XX.XX sent to RECIPIENT" or "sent/transfer $XX.XX to RECIPIENT"
+  ['(?:e-?transfer|interac|transfer|sent)\\s+(?:of\\s+)?\\$([\\d,]+\\.\\d{2})', '(?:sent to|to)\\s+(.+?)(?:\\s+(?:was|has|from|\\.|$))'],
   // "Bill payment of $XX.XX to VENDOR"
   ['(?:bill\\s+payment|payment)\\s+(?:of\\s+)?\\$([\\d,]+\\.\\d{2})', '(?:to|for)\\s+(.+?)(?:\\s+(?:was|on|has|from|\\.|$))'],
 ];
