@@ -78,6 +78,9 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
       if (!userId) return;
       const newValue = !currentValue;
 
+      // Find the override to get vendor_name for temp-ID fallback
+      const override = vendorOverrides.find((vo) => vo.id === overrideId);
+
       setVendorOverrides((prev) =>
         prev.map((vo) => (vo.id === overrideId ? { ...vo, auto_accept: newValue } : vo)),
       );
@@ -85,8 +88,12 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
       try {
         const headers = await getAuthHeaders();
         (headers as any)['Prefer'] = 'return=representation';
+        // Use vendor_name-based URL when override has a temp ID (not yet synced with DB)
+        const url = overrideId.startsWith('temp-') && override
+          ? `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(override.vendor_name)}`
+          : `${REST_BASE}/vendor_overrides?id=eq.${overrideId}&user_id=eq.${userId}`;
         const res = await fetch(
-          `${REST_BASE}/vendor_overrides?id=eq.${overrideId}&user_id=eq.${userId}`,
+          url,
           { method: 'PATCH', headers, body: JSON.stringify({ auto_accept: newValue }) },
         );
         const body = await res.text();
@@ -102,8 +109,9 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
         }
 
         const actualValue = data[0].auto_accept ?? false;
+        const realId = data[0].id ?? overrideId;
         setVendorOverrides((prev) =>
-          prev.map((vo) => (vo.id === overrideId ? { ...vo, auto_accept: actualValue } : vo)),
+          prev.map((vo) => (vo.id === overrideId ? { ...vo, auto_accept: actualValue, id: realId } : vo)),
         );
       } catch (err: any) {
         console.error('[TransactionParsing] Exception toggling auto_accept:', err?.message || err);
@@ -112,7 +120,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
         );
       }
     },
-    [userId],
+    [userId, vendorOverrides],
   );
 
   // ── Delete a vendor override ──
@@ -186,8 +194,12 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
       try {
         const headers = await getAuthHeaders();
         (headers as any)['Prefer'] = 'return=representation';
+        // Use vendor_name-based URL when override has a temp ID (not yet synced with DB)
+        const url = override.id.startsWith('temp-')
+          ? `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(override.vendor_name)}`
+          : `${REST_BASE}/vendor_overrides?id=eq.${override.id}&user_id=eq.${userId}`;
         const res = await fetch(
-          `${REST_BASE}/vendor_overrides?id=eq.${override.id}&user_id=eq.${userId}`,
+          url,
           { method: 'PATCH', headers, body: JSON.stringify({ auto_accept: newValue }) },
         );
         const body = await res.text();
@@ -203,8 +215,9 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
         }
 
         const actualValue = data[0].auto_accept ?? false;
+        const realId = data[0].id ?? override.id;
         setVendorOverrides((prev) =>
-          prev.map((vo) => (vo.id === override.id ? { ...vo, auto_accept: actualValue } : vo)),
+          prev.map((vo) => (vo.id === override.id ? { ...vo, auto_accept: actualValue, id: realId } : vo)),
         );
       } catch (err: any) {
         console.error('[TransactionParsing] Exception toggling auto_accept:', err?.message || err);
