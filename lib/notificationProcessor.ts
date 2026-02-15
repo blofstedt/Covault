@@ -151,7 +151,7 @@ async function checkAndInsertFingerprint(
  */
 const COMMON_TRANSACTION_PATTERNS: Array<[string, string]> = [
   // "transaction in the amount of $XX.XX at VENDOR"
-  ['(?:amount of|of)\\s*\\$([\\d,]+\\.\\d{2})', '\\bat\\s+([A-Z0-9][A-Z0-9\\s#\\.\\-]+?)\\s+(?:was|on|has)'],
+  ['(?:amount of|of)\\s*\\$([\\d,]+\\.\\d{2})', '\\bat\\s+([A-Za-z0-9][A-Za-z0-9\\s#\\.\\-]+?)\\s+(?:was|on|has)'],
   // "$XX.XX at VENDOR was/on/has..."
   ['\\$([\\d,]+\\.\\d{2})\\s+(?:at|from|to)', '\\$[\\d,]+\\.\\d{2}\\s+(?:at|from|to)\\s+(.+?)(?:\\s+(?:was|on|has|ending|card)|$)'],
   // "Purchase/spent/charged/debited of $XX.XX at VENDOR"
@@ -184,7 +184,7 @@ function tryHeuristicParsing(
 
       if (amountMatch?.[1] && vendorMatch?.[1]) {
         const rawAmount = amountMatch[1].replace(/[^0-9.,-]/g, '');
-        const amount = Number(rawAmount.replace(',', ''));
+        const amount = Number(rawAmount.replace(/,/g, ''));
         if (!Number.isNaN(amount) && amount > 0) {
           const vendor = vendorMatch[1].trim();
           if (vendor.length >= 2 && vendor.length <= 100) {
@@ -714,23 +714,17 @@ async function tryAutoAccept(
     .from('transactions')
     .select('id, amount, vendor, created_at')
     .eq('user_id', userId)
-    .eq('date', today);
+    .eq('date', today)
+    .or(`vendor.ilike.${pending.extracted_vendor},vendor.ilike.${cleanedVendor}`);
 
   if (existing && existing.length > 0) {
-    // Check for a transaction with the same vendor (raw or cleaned) and amount
-    // within the same hour and minute
+    // Check for a transaction with the same amount within the same hour and minute
     const hasDuplicate = existing.some((tx) => {
       if (Math.abs(tx.amount - pending.extracted_amount) >= AMOUNT_TOLERANCE) return false;
-      // Match vendor by either raw extracted name or cleaned name (case-insensitive)
-      const txVendorLower = tx.vendor.toLowerCase();
-      const rawVendorLower = pending.extracted_vendor.toLowerCase();
-      const cleanedVendorLower = cleanedVendor.toLowerCase();
-      if (txVendorLower !== rawVendorLower && txVendorLower !== cleanedVendorLower) return false;
       // Check if the existing transaction was created within the same hour and minute
       if (!tx.created_at) return true; // If no timestamp, treat as duplicate for same-day match
       const txCreated = new Date(tx.created_at);
-      return txCreated.toISOString().slice(0, 10) === today
-        && txCreated.getHours() === now.getHours()
+      return txCreated.getHours() === now.getHours()
         && txCreated.getMinutes() === now.getMinutes();
     });
     if (hasDuplicate) {
