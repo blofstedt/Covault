@@ -15,7 +15,7 @@ interface ToBeReviewedCardProps {
   showDemoData: boolean;
   isScanning: boolean;
   onSetExpandedPendingId: (id: string | null) => void;
-  onApprovePending?: (pendingId: string, categoryId: string, preferredName?: string) => void | Promise<void>;
+  onApprovePending?: (pendingId: string, categoryId: string) => void | Promise<void>;
   onRejectConfirm: (id: string) => void;
   onLoadVendorOverrides: () => Promise<void>;
   onUpsertLocalVendorOverride: (vendorName: string, categoryId: string, properName?: string) => void;
@@ -38,7 +38,6 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
   onUpsertLocalVendorOverride,
   onScanForTransactions,
 }) => {
-  const [preferredNames, setPreferredNames] = useState<Record<string, string>>({});
   const [selectedCategories, setSelectedCategories] = useState<Record<string, string>>({});
 
   return (
@@ -74,7 +73,7 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
                   </div>
                   <div className="text-left min-w-0">
                     <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate max-w-[160px]">
-                      {vendorOverride?.proper_name || pt.extracted_vendor}
+                      {pt.extracted_vendor}
                     </p>
                     <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
                       {pt.app_name}
@@ -108,18 +107,6 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
                     </p>
                   </div>
 
-                  {/* Preferred name input */}
-                  <div>
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Preferred Name</p>
-                    <input
-                      type="text"
-                      placeholder={pt.extracted_vendor}
-                      value={preferredNames[pt.id] ?? ''}
-                      onChange={(e) => setPreferredNames(prev => ({ ...prev, [pt.id]: e.target.value }))}
-                      className="w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 placeholder-slate-300 dark:placeholder-slate-600 outline-none focus:border-amber-400 dark:focus:border-amber-500 transition-colors"
-                    />
-                  </div>
-
                   {/* Category picker */}
                   <div>
                     <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Assign Category</p>
@@ -150,11 +137,9 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
                     onClick={async () => {
                       const categoryId = selectedCategories[pt.id];
                       if (!categoryId) return;
-                      const preferred = preferredNames[pt.id]?.trim() || undefined;
                       // Create vendor override only on submit (after user confirms)
-                      onUpsertLocalVendorOverride(formatVendorName(pt.extracted_vendor), categoryId, preferred);
-                      await onApprovePending?.(pt.id, categoryId, preferred);
-                      setPreferredNames(prev => { const { [pt.id]: _, ...rest } = prev; return rest; });
+                      onUpsertLocalVendorOverride(formatVendorName(pt.extracted_vendor), categoryId);
+                      await onApprovePending?.(pt.id, categoryId);
                       setSelectedCategories(prev => { const { [pt.id]: _, ...rest } = prev; return rest; });
                       onSetExpandedPendingId(null);
                       // Reload vendor overrides to sync with DB (replaces temp ID with real one)

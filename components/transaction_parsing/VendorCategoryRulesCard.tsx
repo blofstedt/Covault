@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { BudgetCategory } from '../../types';
 import type { VendorOverride } from './useVendorOverrides';
 import ParsingCard from '../ui/ParsingCard';
@@ -14,7 +14,6 @@ interface VendorCategoryRulesCardProps {
   onToggleAutoAccept: (overrideId: string, currentValue: boolean) => void;
   onSetVendorCategory: (vendorName: string, categoryId: string) => void;
   onDeleteVendorOverride: (overrideId: string) => void;
-  onSetProperName: (vendorName: string, properName: string) => void;
 }
 
 const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
@@ -28,10 +27,7 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
   onToggleAutoAccept,
   onSetVendorCategory,
   onDeleteVendorOverride,
-  onSetProperName,
 }) => {
-  const [editingProperName, setEditingProperName] = useState<string | null>(null);
-  const [properNameDraft, setProperNameDraft] = useState('');
 
   if (allVendors.length === 0 && !showDemoData) return null;
 
@@ -49,7 +45,6 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
           const vo = vendorOverrideByName.get(vendorName.toLowerCase());
           const hasCategory = vo && vo.category_id;
           const isExpanded = expandedVendorCategory === vendorName;
-          const displayName = vo?.proper_name || vendorName;
 
           return (
             <div key={vendorName} className="bg-violet-50 dark:bg-violet-900/10 rounded-2xl border border-violet-100 dark:border-violet-800/30 overflow-hidden">
@@ -62,10 +57,7 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
               >
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">
-                    {displayName}
-                    {vo?.proper_name && vo.proper_name !== vendorName && (
-                      <span className="text-slate-400 dark:text-slate-500 font-normal ml-1">({vendorName})</span>
-                    )}
+                    {vendorName}
                   </span>
                   <svg className="w-3 h-3 text-slate-300 dark:text-slate-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <polyline points="9 18 15 12 9 6" />
@@ -99,66 +91,6 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
               {/* Expanded: category picker + proper name */}
               {isExpanded && (
                 <div className="px-3 pb-3 space-y-2 border-t border-violet-100 dark:border-violet-800/30 pt-2">
-                  {/* Proper name editor */}
-                  {vo && (
-                    <div>
-                      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
-                        Display Name
-                      </p>
-                      {editingProperName === vendorName ? (
-                        <div className="flex items-center gap-1.5">
-                          <input
-                            type="text"
-                            value={properNameDraft}
-                            onChange={(e) => setProperNameDraft(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                onSetProperName(vendorName, properNameDraft);
-                                setEditingProperName(null);
-                              } else if (e.key === 'Escape') {
-                                setEditingProperName(null);
-                              }
-                            }}
-                            placeholder={vendorName}
-                            className="flex-1 px-2 py-1 text-[10px] rounded-lg border border-violet-200 dark:border-violet-800/40 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-violet-400"
-                            autoFocus
-                          />
-                          <button
-                            onClick={() => {
-                              onSetProperName(vendorName, properNameDraft);
-                              setEditingProperName(null);
-                            }}
-                            className="px-2 py-1 text-[11px] font-bold rounded-lg bg-violet-500 text-white hover:bg-violet-600 transition-all active:scale-95"
-                          >
-                            Save
-                          </button>
-                          <button
-                            onClick={() => setEditingProperName(null)}
-                            className="px-2 py-1 text-[11px] font-bold rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 transition-all active:scale-95"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => {
-                            setProperNameDraft(vo.proper_name ?? '');
-                            setEditingProperName(vendorName);
-                          }}
-                          className="w-full flex items-center gap-1.5 px-2 py-1.5 text-xs rounded-lg border border-dashed border-violet-200 dark:border-violet-800/40 text-slate-600 dark:text-slate-300 hover:bg-violet-100 dark:hover:bg-violet-900/30 transition-all active:scale-95"
-                        >
-                          <svg className="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
-                            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-                          </svg>
-                          <span className="truncate">
-                            {vo.proper_name ? vo.proper_name : `Set preferred name for "${vendorName}"`}
-                          </span>
-                        </button>
-                      )}
-                    </div>
-                  )}
-
                   <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     Select Default Category
                   </p>

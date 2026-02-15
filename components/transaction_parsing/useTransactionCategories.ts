@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import { PendingTransaction, BudgetCategory, Transaction } from '../../types';
 import { KEYWORD_IGNORED_PATTERN_ID } from '../../lib/notificationProcessor';
-import type { NotificationRuleRow } from '../../lib/notificationProcessor';
 import type { VendorOverride } from './useVendorOverrides';
 
 /** Tolerance for comparing monetary amounts (e.g., vendor+amount matching). */
@@ -12,7 +11,6 @@ interface UseTransactionCategoriesOptions {
   autoDetectedTransactions: Transaction[];
   vendorOverrides: VendorOverride[];
   budgets: BudgetCategory[];
-  savedRules: NotificationRuleRow[];
 }
 
 export function useTransactionCategories({
@@ -20,12 +18,11 @@ export function useTransactionCategories({
   autoDetectedTransactions,
   vendorOverrides,
   budgets,
-  savedRules,
 }: UseTransactionCategoriesOptions) {
-  // 1. Captured: no rule configured (pattern_id is null)
+  // 1. Captured: AI extraction failed completely (no vendor extracted)
   const capturedNotifications = useMemo(
     () => pendingTransactions.filter(
-      (pt) => !pt.pattern_id && pt.needs_review,
+      (pt) => pt.needs_review && (!pt.extracted_vendor || pt.extracted_vendor === 'Unknown') && pt.pattern_id !== KEYWORD_IGNORED_PATTERN_ID,
     ),
     [pendingTransactions],
   );
@@ -52,11 +49,13 @@ export function useTransactionCategories({
     [keywordIgnoredNotifications],
   );
 
-  // 2. To Review: rule exists, needs category + approval
+  // 2. To Review: needs category + approval (AI-extracted or has fallback data)
   const toReviewTransactions = useMemo(
     () => pendingTransactions.filter(
       (pt) => {
-        if (!pt.pattern_id || pt.pattern_id === KEYWORD_IGNORED_PATTERN_ID || !pt.needs_review) return false;
+        if (pt.pattern_id === KEYWORD_IGNORED_PATTERN_ID || !pt.needs_review) return false;
+        // Skip unconfigured captures with no extracted data
+        if (!pt.extracted_vendor || pt.extracted_vendor === 'Unknown') return false;
         const vendor = (pt.extracted_vendor || '').toLowerCase();
         const alreadyApproved = autoDetectedTransactions.some(
           (tx) =>
@@ -118,17 +117,6 @@ export function useTransactionCategories({
     [autoDetectedTransactions],
   );
 
-  // Group saved rules by bank for multi-regex display
-  const rulesByBank = useMemo(() => {
-    const groups = new Map<string, NotificationRuleRow[]>();
-    for (const rule of savedRules) {
-      const key = rule.bank_app_id;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(rule);
-    }
-    return groups;
-  }, [savedRules]);
-
   const toReviewCount = toReviewTransactions.length;
   const capturedCount = capturedNotifications.length;
   const filteredOutCount = filteredOutNotifications.length;
@@ -144,7 +132,6 @@ export function useTransactionCategories({
     allVendors,
     approvedTransactions,
     rejectedTransactions,
-    rulesByBank,
     toReviewCount,
     capturedCount,
     filteredOutCount,

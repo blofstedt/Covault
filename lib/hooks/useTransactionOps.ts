@@ -290,7 +290,7 @@ export const useTransactionOps = ({
 
   // Approve a pending transaction (convert to actual transaction)
   const handleApprovePendingTransaction = useCallback(
-    async (pendingId: string, categoryId: string, preferredName?: string) => {
+    async (pendingId: string, categoryId: string) => {
       try {
         const userId = appState.user?.id;
         if (!userId) return;
@@ -430,11 +430,7 @@ export const useTransactionOps = ({
         try {
           const overrideHeaders = await getAuthHeaders();
           (overrideHeaders as any)['Prefer'] = 'return=representation';
-          const trimmedPreferredName = preferredName?.trim() || null;
           const overridePatchBody: Record<string, any> = { category_id: categoryId };
-          if (trimmedPreferredName) {
-            overridePatchBody.proper_name = trimmedPreferredName;
-          }
           // Try to update existing override (preserves auto_accept)
           const patchOverrideRes = await fetch(
             `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(formatVendorName(pending.extracted_vendor))}`,
@@ -459,9 +455,6 @@ export const useTransactionOps = ({
               vendor_name: formatVendorName(pending.extracted_vendor),
               category_id: categoryId,
             };
-            if (trimmedPreferredName) {
-              overrideInsertBody.proper_name = trimmedPreferredName;
-            }
             const postRes = await fetch(`${REST_BASE}/vendor_overrides`, {
               method: 'POST',
               headers: overrideHeaders,

@@ -1,21 +1,22 @@
 // lib/notificationProcessor.ts
 //
-// Notification processing pipeline (manual regex flow).
-// No AI/Gemini — rules are created manually by the user.
+// Notification processing pipeline (AI-powered extraction).
+// Uses a local AI model (Transformers.js) to automatically extract
+// vendor names and amounts from bank notifications — no manual regex setup.
 //
 // Pipeline:
 //   1. Fingerprint deduplication
-//   2. Look up active notification rule for the bank
-//   3. If no rule → store as unconfigured capture
-//   4. If rule → apply regex
-//      - No match → mark as ignored
-//      - Match → extract vendor/amount → insert pending transaction
-//   5. Ignore rule check (user-defined vendor ignores)
+//   2. AI-based extraction of vendor + amount
+//      - If extraction fails → store with fallback data for review
+//   3. Keyword filtering (if configured)
+//   4. Ignore rule check (user-defined vendor ignores)
+//   5. Insert pending transaction
 //   6. Auto-approve if vendor has a category and auto_approve is enabled
 
 import { supabase } from './supabase';
 import { REST_BASE, getAuthHeaders } from './apiHelpers';
 import { formatVendorName } from './formatVendorName';
+import { getTransactionModel } from './localTransactionModel';
 import type { PendingTransaction } from '../types';
 
 // ─── Constants ───────────────────────────────────────────────────
@@ -830,16 +831,16 @@ async function tryAutoApprove(
 // ─── Main Pipeline ──────────────────────────────────────────────
 
 /**
- * Process an incoming bank notification through the manual pipeline.
+ * Process an incoming bank notification through the AI-powered pipeline.
  *
  * Steps:
  *   1. Fingerprint deduplication
- *   2. Look up notification rule for the bank
- *   3. If no rule → store as unconfigured capture (needs manual setup)
- *   4. Apply regex → no match = ignored, match = extract vendor/amount
- *   5. Ignore rule check
- *   6. Insert pending transaction
- *   7. Auto-approve if vendor has category assigned
+ *   2. Keyword filtering (if rules with keywords exist for this bank)
+ *   3. AI-based extraction of vendor + amount
+ *      - Extraction fails → store with fallback data for review
+ *   4. Ignore rule check
+ *   5. Insert pending transaction
+ *   6. Auto-approve if vendor has category assigned
  */
 export async function processNotification(
   userId: string,
@@ -873,12 +874,10 @@ export async function processNotification(
     return { processed: false, skipReason: 'duplicate' };
   }
 
-  // ── Step 2: Look up notification rule ──
-  // First check if the notification is ignored by keyword filters
+  // ── Step 2: Keyword filtering (if configured) ──
   const keywordIgnored = await isKeywordIgnored(userId, input.bankAppId, input.rawNotification);
 
   if (keywordIgnored) {
-    // Store as keyword-ignored so it shows in the "Ignored Notifications" card
     console.log('[processNotification] Notification ignored by keyword filter');
     const pending = await insertPendingTransaction(
       userId,
@@ -897,11 +896,24 @@ export async function processNotification(
     };
   }
 
-  const rule = await getActiveRule(userId, input.bankAppId, input.rawNotification);
+  // ── Step 3: AI-based extraction of vendor + amount ──
+  const model = getTransactionModel();
+  await model.initialize();
+  const aiResult = await model.extractTransaction(input.rawNotification);
 
-  if (!rule) {
-    // No rule configured for this bank — store as unconfigured capture
-    // so the user can see it and set up a regex rule
+  let vendor: string;
+  let amount: number;
+
+  if (aiResult.success && aiResult.data) {
+    vendor = aiResult.data.vendor;
+    amount = aiResult.data.amount;
+  } else if (input.fallbackVendor && input.fallbackAmount != null && input.fallbackAmount > 0) {
+    // AI extraction failed but we have fallback data from the native plugin
+    vendor = formatVendorName(input.fallbackVendor);
+    amount = input.fallbackAmount;
+  } else {
+    // No extraction possible — store for manual review
+    console.log('[processNotification] AI extraction failed, storing with fallback data');
     const pending = await insertPendingTransaction(
       userId,
       input,
@@ -909,36 +921,7 @@ export async function processNotification(
       input.fallbackAmount ?? 0,
       true,
       undefined,
-      'No rule configured',
-    );
-
-    return {
-      processed: true,
-      skipReason: 'no_rule',
-      pendingTransaction: pending || undefined,
-    };
-  }
-
-  // ── Step 3: Apply regex ──
-  const parsed = applyRuleToNotification(
-    rule.amount_regex,
-    rule.vendor_regex,
-    input.rawNotification,
-  );
-
-  if (!parsed) {
-    // Regex didn't match — store as pending with fallback data so the user
-    // can see the notification and adjust their rule if needed.
-    // Include the rule.id so the UI knows a rule exists (avoids "needs setup").
-    console.log('[processNotification] Regex did not match, storing with fallback data');
-    const pending = await insertPendingTransaction(
-      userId,
-      input,
-      input.fallbackVendor || 'Unknown',
-      input.fallbackAmount ?? 0,
-      true,
-      rule.id,
-      'Regex did not match notification format',
+      aiResult.error || 'AI extraction failed',
     );
 
     return {
@@ -949,7 +932,7 @@ export async function processNotification(
   }
 
   // ── Step 4: Ignore rule check ──
-  const ignored = await shouldIgnore(userId, parsed.vendor, parsed.amount, input.bankAppId);
+  const ignored = await shouldIgnore(userId, vendor, amount, input.bankAppId);
 
   if (ignored) {
     console.log('[processNotification] Notification ignored by user rule');
@@ -960,10 +943,10 @@ export async function processNotification(
   const pending = await insertPendingTransaction(
     userId,
     input,
-    parsed.vendor,
-    parsed.amount,
+    vendor,
+    amount,
     true, // needs review by default
-    rule.id,
+    'ai-extracted',
     'OK',
   );
 
@@ -972,10 +955,33 @@ export async function processNotification(
   }
 
   // ── Step 6: Auto-approve if vendor has category ──
+  // Look up category from vendor overrides (user-configured) or AI suggestion
+  let defaultCategoryId: string | null = null;
+
+  // Check vendor overrides first
+  const { data: overrideData } = await (async () => {
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(
+        `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=ilike.${encodeURIComponent(vendor)}&limit=1`,
+        { headers },
+      );
+      if (!res.ok) return { data: null };
+      const rows = await res.json();
+      return { data: Array.isArray(rows) && rows.length > 0 ? rows[0] : null };
+    } catch {
+      return { data: null };
+    }
+  })();
+
+  if (overrideData?.category_id) {
+    defaultCategoryId = overrideData.category_id;
+  }
+
   const autoResult = await tryAutoApprove(
     userId,
     pending,
-    rule.default_category_id,
+    defaultCategoryId,
   );
 
   return {

@@ -1,13 +1,10 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
-import RegexSetupModal from './RegexSetupModal';
 import { PendingTransaction, BudgetCategory, Transaction } from '../types';
 
 import NotificationToggleCard from './transaction_parsing/NotificationToggleCard';
-import ParsingRulesCard from './transaction_parsing/ParsingRulesCard';
 import VendorCategoryRulesCard from './transaction_parsing/VendorCategoryRulesCard';
 import IgnoredNotificationsCard from './transaction_parsing/IgnoredNotificationsCard';
-import CapturedNotificationsCard from './transaction_parsing/CapturedNotificationsCard';
 import ToBeReviewedCard from './transaction_parsing/ToBeReviewedCard';
 import ApprovedTransactionsCard from './transaction_parsing/ApprovedTransactionsCard';
 import RejectedTransactionsCard from './transaction_parsing/RejectedTransactionsCard';
@@ -16,7 +13,6 @@ import RejectConfirmModal from './transaction_parsing/RejectConfirmModal';
 import ConfirmModal from './ui/ConfirmModal';
 import PageShell from './ui/PageShell';
 
-import { useParsingRules } from './transaction_parsing/useParsingRules';
 import { useVendorOverrides } from './transaction_parsing/useVendorOverrides';
 import { useTransactionCategories } from './transaction_parsing/useTransactionCategories';
 
@@ -33,7 +29,7 @@ interface TransactionParsingProps {
   onTransactionTap?: (tx: Transaction) => void;
   pendingTransactions?: PendingTransaction[];
   budgets?: BudgetCategory[];
-  onApprovePending?: (pendingId: string, categoryId: string, preferredName?: string) => void | Promise<void>;
+  onApprovePending?: (pendingId: string, categoryId: string) => void | Promise<void>;
   onRejectPending?: (pendingId: string) => void;
   onClearFilteredNotifications?: (ids: string[]) => Promise<void>;
   onClearApprovedTransactions?: (ids: string[]) => Promise<void>;
@@ -73,38 +69,28 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   // ── Vendor overrides (CRUD + state) ──
   const vendorOverridesHook = useVendorOverrides({ userId, budgets });
 
-  // ── Parsing rules (CRUD + state) ──
-  const parsingRulesHook = useParsingRules({
-    userId,
-    onReloadPendingTransactions,
-    loadVendorOverrides: vendorOverridesHook.loadVendorOverrides,
-  });
-
   // ── Derived/computed transaction categories ──
   const categories = useTransactionCategories({
     pendingTransactions,
     autoDetectedTransactions,
     vendorOverrides: vendorOverridesHook.vendorOverrides,
     budgets,
-    savedRules: parsingRulesHook.savedRules,
   });
 
   // Load data on mount and refresh on visibility change
   useEffect(() => {
     vendorOverridesHook.loadVendorOverrides();
-    parsingRulesHook.loadRules();
-  }, [vendorOverridesHook.loadVendorOverrides, parsingRulesHook.loadRules]);
+  }, [vendorOverridesHook.loadVendorOverrides]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        parsingRulesHook.loadRules();
         vendorOverridesHook.loadVendorOverrides();
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [parsingRulesHook.loadRules, vendorOverridesHook.loadVendorOverrides]);
+  }, [vendorOverridesHook.loadVendorOverrides]);
 
   // ── Handle manual scan for transactions ──
   const handleScanForTransactions = useCallback(async () => {
@@ -117,14 +103,13 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       if (onReloadPendingTransactions && userId) {
         await onReloadPendingTransactions(userId);
       }
-      await parsingRulesHook.loadRules();
       await vendorOverridesHook.loadVendorOverrides();
     } catch (err) {
       console.error('[TransactionParsing] Error scanning for transactions:', err);
     } finally {
       setIsScanning(false);
     }
-  }, [onRefreshNotifications, onReloadPendingTransactions, userId, parsingRulesHook.loadRules, vendorOverridesHook.loadVendorOverrides]);
+  }, [onRefreshNotifications, onReloadPendingTransactions, userId, vendorOverridesHook.loadVendorOverrides]);
 
   // ── Handle clear confirmation ──
   const handleClearConfirm = useCallback(async () => {
@@ -162,28 +147,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
             <>
               <NotificationToggleCard enabled={enabled} onToggle={onToggle} />
 
-              <ParsingRulesCard
-                savedRules={parsingRulesHook.savedRules}
-                rulesByBank={categories.rulesByBank}
-                showDemoData={showDemoData}
-                addingRuleForBank={parsingRulesHook.addingRuleForBank}
-                newRuleType={parsingRulesHook.newRuleType}
-                keywordEditRuleId={parsingRulesHook.keywordEditRuleId}
-                onlyParseText={parsingRulesHook.onlyParseText}
-                keywordMode={parsingRulesHook.keywordMode}
-                savingKeywords={parsingRulesHook.savingKeywords}
-                onStartAddRuleForBank={parsingRulesHook.handleStartAddRuleForBank}
-                onSetAddingRuleForBank={parsingRulesHook.setAddingRuleForBank}
-                onSetNewRuleType={parsingRulesHook.setNewRuleType}
-                onConfirmNewRuleType={parsingRulesHook.handleConfirmNewRuleType}
-                onEditRule={parsingRulesHook.handleEditRule}
-                onOpenKeywordEdit={parsingRulesHook.handleOpenKeywordEdit}
-                onSetKeywordEditRuleId={parsingRulesHook.setKeywordEditRuleId}
-                onSetOnlyParseText={parsingRulesHook.setOnlyParseText}
-                onSetKeywordMode={parsingRulesHook.setKeywordMode}
-                onSaveKeywords={parsingRulesHook.handleSaveKeywords}
-              />
-
               <VendorCategoryRulesCard
                 allVendors={categories.allVendors}
                 vendorOverrideByName={categories.vendorOverrideByName}
@@ -195,18 +158,11 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                 onToggleAutoAccept={vendorOverridesHook.handleToggleAutoAccept}
                 onSetVendorCategory={vendorOverridesHook.handleSetVendorCategory}
                 onDeleteVendorOverride={vendorOverridesHook.handleDeleteVendorOverride}
-                onSetProperName={vendorOverridesHook.handleSetProperName}
               />
 
               <IgnoredNotificationsCard
                 filteredOutNotifications={categories.filteredOutNotifications}
                 onClear={onClearFilteredNotifications ? () => setClearConfirm('filtered') : undefined}
-              />
-
-              <CapturedNotificationsCard
-                capturedByBank={categories.capturedByBank}
-                capturedCount={categories.capturedCount}
-                onSetupNotification={parsingRulesHook.setSetupNotification}
               />
 
               <ToBeReviewedCard
@@ -252,19 +208,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         activeView="parsing"
         pendingCount={categories.toReviewCount}
       />
-
-      {/* Regex Setup Modal */}
-      {parsingRulesHook.setupNotification && (
-        <RegexSetupModal
-          notification={parsingRulesHook.setupNotification}
-          onSave={parsingRulesHook.editingRuleId ? parsingRulesHook.handleSaveEditedRule : (parsingRulesHook.newRuleType ? parsingRulesHook.handleSaveNewTypedRule : parsingRulesHook.handleSaveRule)}
-          onClose={() => {
-            parsingRulesHook.setSetupNotification(null);
-            parsingRulesHook.setEditingRuleId(null);
-            parsingRulesHook.setNewRuleType('');
-          }}
-        />
-      )}
 
       {/* Reject Confirmation Modal */}
       {rejectConfirmId && (
