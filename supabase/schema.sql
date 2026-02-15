@@ -502,7 +502,7 @@ CREATE POLICY "Users can update own vendor overrides"
   USING (auth.uid() = user_id);
 
 -- ============================================================
--- 13. FLAG REPORTS  (rate-limited Gemini correction requests)
+-- 13. FLAG REPORTS  (rate-limited AI correction requests)
 --    Max 5 per 24h, 1h cooldown between reports
 -- ============================================================
 CREATE TABLE IF NOT EXISTS public.flag_reports (

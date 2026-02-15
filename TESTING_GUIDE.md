@@ -18,7 +18,6 @@ Your GitHub Actions workflow was building the APK with the **WRONG environment v
 2. **Check if you have these secrets:**
    - Look for `VITE_PUBLIC_SUPABASE_URL` (note the "PUBLIC")
    - Look for `VITE_SUPABASE_ANON_KEY`
-   - Look for `GEMINI_API_KEY` (optional)
 
 3. **If you only have `VITE_SUPABASE_URL`:**
    - Click "New repository secret"
@@ -29,7 +28,6 @@ Your GitHub Actions workflow was building the APK with the **WRONG environment v
 4. **Verify you have:**
    - ✅ `VITE_PUBLIC_SUPABASE_URL` = https://your-project-id.supabase.co
    - ✅ `VITE_SUPABASE_ANON_KEY` = your-anon-key
-   - ✅ `GEMINI_API_KEY` = your-gemini-key (optional)
 
 ### Step 2: Merge This PR to Main 🔀
 

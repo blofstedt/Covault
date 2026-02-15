@@ -7,10 +7,16 @@ A modern budget tracking Progressive Web App (PWA) built with React, TypeScript,
 - 📊 Budget tracking across multiple categories
 - 💰 Monthly income management
 - 🔄 Transaction tracking (manual and auto-added)
+- 🤖 On-device AI for auto-parsing bank notifications (no cloud APIs)
 - 🏠 Household budget sharing
 - 📱 Progressive Web App (works offline)
 - 🌙 Dark mode support
 - 🔐 Secure authentication with Google OAuth
+
+> **Note:** The local AI model (~2 GB) is downloaded once on first use and
+> cached in the browser for subsequent sessions. Transaction parsing and
+> vendor name cleaning run entirely on-device — no data is sent to any
+> external service.
 
 ## Setup
 
@@ -38,7 +44,6 @@ Create a `.env` file in the root directory (see `.env.example` for reference):
 ```
 VITE_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-GEMINI_API_KEY=your_gemini_api_key (optional)
 ```
 
 **Get your Supabase credentials:**

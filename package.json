@@ -20,7 +20,7 @@
     "@capacitor/filesystem": "^8.1.0",
     "@capacitor/local-notifications": "^8.0.0",
     "@capacitor/share": "^8.0.0",
-    "@google/genai": "^1.38.0",
+    "@huggingface/transformers": "^3.8.1",
     "@supabase/supabase-js": "^2.49.1",
     "@types/d3": "^7.4.3",
     "d3": "^7.9.0",
