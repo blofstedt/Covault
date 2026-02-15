@@ -145,6 +145,61 @@ async function checkAndInsertFingerprint(
 // ─── Step 2: Regex Parsing ──────────────────────────────────────
 
 /**
+ * Common heuristic patterns for transaction notifications across banks.
+ * These are tried as a fallback when the Gemini-generated rule fails.
+ * Each pair: [amount_regex, vendor_regex]
+ */
+const COMMON_TRANSACTION_PATTERNS: Array<[string, string]> = [
+  // "transaction in the amount of $XX.XX at VENDOR"
+  ['(?:amount of|of)\\s*\\$([\\d,]+\\.\\d{2})', '\\bat\\s+([A-Z0-9][A-Z0-9\\s#\\.\\-]+?)\\s+(?:was|on|has)'],
+  // "$XX.XX at VENDOR was/on/has..."
+  ['\\$([\\d,]+\\.\\d{2})\\s+(?:at|from|to)', '\\$[\\d,]+\\.\\d{2}\\s+(?:at|from|to)\\s+(.+?)(?:\\s+(?:was|on|has|ending|card)|$)'],
+  // "Purchase/spent/charged/debited of $XX.XX at VENDOR"
+  ['(?:purchase|spent|charged|debited|transaction)\\s+(?:of\\s+)?\\$([\\d,]+\\.\\d{2})', '(?:at|from)\\s+(.+?)(?:\\s+(?:was|on|has|ending|card|\\.)|$)'],
+];
+
+/** Keywords that indicate a notification is about a financial transaction */
+const TRANSACTION_KEYWORDS = /(?:transaction|purchase|spent|charged|debited|approved|declined|payment|authorized|merchant|vendor|bought)/i;
+
+/**
+ * Try common heuristic patterns to extract vendor + amount when
+ * the primary Gemini-generated regex fails.
+ * Only matches if the notification contains transaction-related keywords.
+ */
+function tryHeuristicParsing(
+  rawNotification: string,
+): { vendor: string; amount: number } | null {
+  // Only try heuristics if the notification looks like a transaction
+  if (!TRANSACTION_KEYWORDS.test(rawNotification)) {
+    return null;
+  }
+
+  for (const [amountPattern, vendorPattern] of COMMON_TRANSACTION_PATTERNS) {
+    try {
+      const amountRegex = new RegExp(amountPattern, 'i');
+      const vendorRegex = new RegExp(vendorPattern, 'i');
+
+      const amountMatch = rawNotification.match(amountRegex);
+      const vendorMatch = rawNotification.match(vendorRegex);
+
+      if (amountMatch?.[1] && vendorMatch?.[1]) {
+        const rawAmount = amountMatch[1].replace(/[^0-9.,-]/g, '');
+        const amount = Number(rawAmount.replace(',', ''));
+        if (!Number.isNaN(amount) && amount > 0) {
+          const vendor = vendorMatch[1].trim();
+          if (vendor.length >= 2 && vendor.length <= 100) {
+            return { vendor, amount };
+          }
+        }
+      }
+    } catch {
+      // Skip invalid patterns
+    }
+  }
+  return null;
+}
+
+/**
  * Apply regex rule to extract vendor + amount from notification text.
  * Returns null if parsing fails.
  */
@@ -336,21 +391,33 @@ async function generateRuleWithGemini(
   }
 
   const prompt = `
-You are helping parse bank transaction notification text.
+You are an expert at parsing bank and credit card transaction notifications from any financial institution.
 
-Here is a sample notification from ${bankName}:
+Here is a notification from ${bankName}:
 "${rawNotification}"
 
+Your task: Create regex patterns that will work for THIS notification and SIMILAR future notifications from the same bank/institution. The patterns should be general enough to handle variations in vendor names, amounts, and card numbers.
+
+Common notification formats you should handle include:
+- "A transaction of $XX.XX at VENDOR was approved on card ending XXXX"
+- "Credit Card Transaction Alert A transaction in the amount of $XX.XX at VENDOR was approved..."
+- "Purchase of $XX.XX at VENDOR"
+- "You spent $XX.XX at VENDOR"
+- "Transaction alert: $XX.XX charged at VENDOR"
+- "Debit card purchase: $XX.XX at VENDOR"
+- And many other similar banking notification formats
+
 Return a JSON object with these exact keys:
-- "amount_regex": a JavaScript regular expression (without surrounding slashes) that matches this kind of notification and captures the numeric amount in the FIRST capturing group.
-- "vendor_regex": a JavaScript regular expression (without surrounding slashes) that matches this kind of notification and captures the vendor/merchant name in the FIRST capturing group.
-- "category_name": a short category name for this transaction, e.g. "Groceries", "Transport", "Utilities", "Leisure", "Housing", "Other".
-- "recurrence": the likely recurrence pattern: "One-time", "Biweekly", or "Monthly".
+- "amount_regex": a JavaScript regular expression (without surrounding slashes) that captures the numeric dollar amount (digits, optional comma separators, decimal point) in the FIRST capturing group. Must handle amounts like $61.57, $1,234.56, etc.
+- "vendor_regex": a JavaScript regular expression (without surrounding slashes) that captures the vendor/merchant name in the FIRST capturing group. The vendor name may contain alphanumeric characters, spaces, hashes, and other special characters.
+- "category_name": a short category name: "Groceries", "Transport", "Utilities", "Leisure", "Housing", "Dining", "Shopping", "Gas", "Other".
+- "recurrence": "One-time", "Biweekly", or "Monthly".
 
 Rules:
-- Use simple, robust regex patterns.
-- Make sure the first capturing group (...) is the numeric amount for amount_regex, and vendor name for vendor_regex.
-- Escape special characters that appear in the notification text.
+- Make regex patterns FLEXIBLE enough to match variations of this notification style (different vendors, different amounts, different card numbers).
+- Do NOT hardcode specific vendor names, amounts, or card numbers into the regex.
+- The amount_regex should capture just the numeric part (e.g., "61.57" from "$61.57").
+- Use non-greedy quantifiers where appropriate.
 - Return ONLY valid JSON. No comments, no code blocks, no explanations.
 `;
 
@@ -551,6 +618,27 @@ async function shouldIgnore(
   return false;
 }
 
+// ─── Step 5b: Check for already-recorded notifications ──────────
+
+/**
+ * Check if this notification has already been recorded as a pending
+ * or approved transaction (by matching notification_text).
+ * This prevents re-adding the same notification on refresh.
+ */
+async function isAlreadyRecorded(
+  userId: string,
+  rawNotification: string,
+): Promise<boolean> {
+  const { data: existing } = await supabase
+    .from('pending_transactions')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('notification_text', rawNotification)
+    .limit(1);
+
+  return !!(existing && existing.length > 0);
+}
+
 // ─── Step 6: Pending Transaction Insert ─────────────────────────
 
 /**
@@ -614,24 +702,36 @@ async function tryAutoAccept(
   confidenceThreshold: number,
 ): Promise<{ accepted: boolean; transactionId?: string; categoryId?: string }> {
   // Check for potential conflicts with existing transactions
-  // (same vendor + similar amount + same day)
+  // (same vendor + similar amount + same day + same hour and minute)
   const now = new Date();
   const today = now.toISOString().slice(0, 10);
+
+  // Clean vendor name first so we can check both raw and cleaned versions
+  const cleanedVendor = await cleanVendorName(pending.extracted_vendor);
+
+  // Query today's transactions matching either the raw or cleaned vendor name
   const { data: existing } = await supabase
     .from('transactions')
     .select('id, amount, vendor, created_at')
     .eq('user_id', userId)
-    .ilike('vendor', pending.extracted_vendor)
     .eq('date', today);
 
   if (existing && existing.length > 0) {
-    // Check for a transaction with the same amount within the same hour
+    // Check for a transaction with the same vendor (raw or cleaned) and amount
+    // within the same hour and minute
     const hasDuplicate = existing.some((tx) => {
       if (Math.abs(tx.amount - pending.extracted_amount) >= AMOUNT_TOLERANCE) return false;
-      // Check if the existing transaction was created within the same day and hour
+      // Match vendor by either raw extracted name or cleaned name (case-insensitive)
+      const txVendorLower = tx.vendor.toLowerCase();
+      const rawVendorLower = pending.extracted_vendor.toLowerCase();
+      const cleanedVendorLower = cleanedVendor.toLowerCase();
+      if (txVendorLower !== rawVendorLower && txVendorLower !== cleanedVendorLower) return false;
+      // Check if the existing transaction was created within the same hour and minute
       if (!tx.created_at) return true; // If no timestamp, treat as duplicate for same-day match
       const txCreated = new Date(tx.created_at);
-      return txCreated.toISOString().slice(0, 10) === today && txCreated.getHours() === now.getHours();
+      return txCreated.toISOString().slice(0, 10) === today
+        && txCreated.getHours() === now.getHours()
+        && txCreated.getMinutes() === now.getMinutes();
     });
     if (hasDuplicate) {
       // Mark as rejected due to duplicate
@@ -677,8 +777,8 @@ async function tryAutoAccept(
     return { accepted: false };
   }
 
-  // Clean vendor name using AI before inserting
-  const cleanedVendor = await cleanVendorName(pending.extracted_vendor);
+  // Vendor name was already cleaned above for duplicate checking;
+  // reuse the cleaned name for insertion
 
   // Insert into transactions
   const transactionId = crypto.randomUUID();
@@ -824,6 +924,26 @@ export async function processNotification(
     }
   }
 
+  // ── Step 4b: Heuristic fallback parsing ──
+  // If regex and Gemini both failed, try common transaction patterns
+  if (!parsed) {
+    const heuristicResult = tryHeuristicParsing(input.rawNotification);
+    if (heuristicResult) {
+      parsed = heuristicResult;
+      // Re-validate with heuristic-extracted data
+      validation = await validateExtraction(
+        userId,
+        input.bankAppId,
+        parsed.vendor,
+        parsed.amount,
+        true, // heuristic parsing is considered a valid extraction
+      );
+      if (validation.reasons.length === 0) {
+        validation.reasons.push('Extracted via heuristic pattern matching');
+      }
+    }
+  }
+
   // Final vendor/amount (use fallbacks if regex still failed)
   const finalVendor = parsed?.vendor || input.fallbackVendor || 'Unknown Merchant';
   const finalAmount = parsed?.amount ?? input.fallbackAmount ?? 0;
@@ -854,6 +974,15 @@ export async function processNotification(
   if (ignored) {
     console.log('[processNotification] Notification ignored by user rule');
     return { processed: false, skipReason: 'ignored' };
+  }
+
+  // ── Step 5b: Check if already recorded ──
+  // Prevents re-adding notifications that have already been processed
+  // (e.g. when user hits refresh and the notification is still visible)
+  const alreadyRecorded = await isAlreadyRecorded(userId, input.rawNotification);
+  if (alreadyRecorded) {
+    console.log('[processNotification] Notification already recorded, skipping');
+    return { processed: false, skipReason: 'duplicate' };
   }
 
   // ── Step 6: Pending Transaction Insert ──
