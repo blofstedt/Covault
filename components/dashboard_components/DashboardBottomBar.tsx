@@ -6,7 +6,6 @@ interface DashboardBottomBarProps {
   onOpenParsing: () => void;
   activeView?: 'home' | 'parsing';
   shouldAnimate?: boolean;
-  pendingCount?: number;
 }
 
 const DashboardBottomBar: React.FC<DashboardBottomBarProps> = ({
@@ -15,7 +14,6 @@ const DashboardBottomBar: React.FC<DashboardBottomBarProps> = ({
   onOpenParsing,
   activeView = 'home',
   shouldAnimate = false,
-  pendingCount = 0,
 }) => {
   return (
     <div
@@ -84,11 +82,6 @@ const DashboardBottomBar: React.FC<DashboardBottomBarProps> = ({
             }`}
             aria-label="Open transaction parsing"
           >
-            {pendingCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center px-1 text-[9px] font-black bg-emerald-500 text-white rounded-full shadow-lg">
-                {pendingCount > 99 ? '99+' : pendingCount}
-              </span>
-            )}
             <svg
               className="w-6 h-6"
               viewBox="0 0 24 24"
