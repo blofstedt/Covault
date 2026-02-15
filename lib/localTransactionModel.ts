@@ -10,10 +10,17 @@ import { pipeline, env } from '@xenova/transformers';
 import { formatVendorName } from './formatVendorName';
 
 // Disable local model checks — always pull from HuggingFace Hub on first use
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 (env as any).allowLocalModels = false;
 
 /** Key for persisting learned vendor associations in localStorage */
 const MEMORY_KEY = 'spend_sense_vendor_memory_v3';
+
+/** Maximum reasonable transaction amount (safety bound) */
+const MAX_TRANSACTION_AMOUNT = 1_000_000;
+
+/** Minimum cosine similarity score to consider an AI category match meaningful */
+const MIN_CATEGORY_SIMILARITY = 0.3;
 
 /** Default category mappings for common vendor keywords */
 const DEFAULT_CATEGORY_MAP: Record<string, string> = {
@@ -251,7 +258,7 @@ export class LocalTransactionModel {
       if (match?.[1]) {
         const cleaned = match[1].replace(/,/g, '');
         const amount = parseFloat(cleaned);
-        if (!isNaN(amount) && amount > 0 && amount < 1_000_000) {
+        if (!isNaN(amount) && amount > 0 && amount < MAX_TRANSACTION_AMOUNT) {
           return amount;
         }
       }
@@ -385,7 +392,7 @@ export class LocalTransactionModel {
       }
 
       // Only return if similarity is meaningful
-      if (bestScore > 0.3) {
+      if (bestScore > MIN_CATEGORY_SIMILARITY) {
         return { category: bestCategory, score: bestScore };
       }
 
