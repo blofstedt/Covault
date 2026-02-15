@@ -514,25 +514,45 @@ const Dashboard: React.FC<DashboardProps> = ({
   // If showing parsing view, render that instead of the main dashboard
   if (showParsing) {
     return (
-      <TransactionParsing
-        enabled={state.settings.notificationsEnabled || false}
-        onToggle={(v: boolean) => updateSettings('notificationsEnabled', v)}
-        onBack={() => setShowParsing(false)}
-        onAddTransaction={() => setIsAddingTx(true)}
-        onGoHome={() => {
-          setShowParsing(false);
-          handleGoHome();
-        }}
-        autoDetectedTransactions={autoDetectedTransactions}
-        onTransactionTap={(tx) => setSelectedTx(tx)}
-        onDeleteTransaction={onDeleteTransaction}
-        pendingTransactions={state.pendingTransactions || []}
-        rejectedTransactions={state.rejectedTransactions || []}
-        budgets={visibleBudgets}
-        onApprovePending={onApprovePendingTransaction}
-        onRejectPending={onRejectPendingTransaction}
-        onRefreshNotifications={onRefreshNotifications}
-      />
+      <>
+        <TransactionParsing
+          enabled={state.settings.notificationsEnabled || false}
+          onToggle={(v: boolean) => updateSettings('notificationsEnabled', v)}
+          onBack={() => setShowParsing(false)}
+          onAddTransaction={() => setIsAddingTx(true)}
+          onGoHome={() => {
+            setShowParsing(false);
+            handleGoHome();
+          }}
+          autoDetectedTransactions={autoDetectedTransactions}
+          onTransactionTap={(tx) => setSelectedTx(tx)}
+          onDeleteTransaction={onDeleteTransaction}
+          pendingTransactions={state.pendingTransactions || []}
+          rejectedTransactions={state.rejectedTransactions || []}
+          budgets={visibleBudgets}
+          onApprovePending={onApprovePendingTransaction}
+          onRejectPending={onRejectPendingTransaction}
+          onRefreshNotifications={onRefreshNotifications}
+        />
+
+        {selectedTx && (
+          <TransactionActionModal
+            transaction={selectedTx}
+            budgets={state.budgets}
+            currentUserName={state.user?.name || 'User'}
+            isSharedAccount={isSharedAccount}
+            onClose={() => setSelectedTx(null)}
+            onEdit={(updatedTx) => {
+              onUpdateTransaction(updatedTx);
+              setSelectedTx(null);
+            }}
+            onDelete={() => {
+              onDeleteTransaction(selectedTx.id);
+              setSelectedTx(null);
+            }}
+          />
+        )}
+      </>
     );
   }
 

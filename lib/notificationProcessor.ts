@@ -160,7 +160,7 @@ const COMMON_TRANSACTION_PATTERNS: Array<[string, string]> = [
 ];
 
 /** Keywords that indicate a notification is about a financial transaction */
-const TRANSACTION_KEYWORDS = /(?:transaction|purchase|spent|charged|debited|approved|declined|payment|authorized|merchant|vendor|bought|bill)/i;
+const TRANSACTION_KEYWORDS = /(?:transaction|purchase|spent|charged|debited|approved|declined|payment|authorized|merchant|vendor|bought|bill|paid|cost)/i;
 
 /**
  * Try common heuristic patterns to extract vendor + amount when
@@ -877,6 +877,37 @@ export async function processNotification(
       validation.confidence = Math.max(validation.confidence, 50);
       validation.needsReview = true; // Always review fallback-based transactions
     }
+  }
+
+  // ── Step 4c: Non-spend notification rejection ──
+  // If no parsing method extracted a valid amount and the notification text
+  // doesn't contain spend-related keywords, reject it outright.
+  if (!parsed && !TRANSACTION_KEYWORDS.test(input.rawNotification)) {
+    console.log('[processNotification] Not a spend transaction, rejecting');
+    // Insert as a rejected pending transaction so the user can see why it was rejected
+    await insertPendingTransaction(
+      userId,
+      input,
+      finalVendor,
+      finalAmount,
+      0,
+      ['Not being a spend transaction'],
+      false,
+      rule?.id,
+    ).then(async (pending) => {
+      if (pending) {
+        // Mark as rejected
+        await supabase
+          .from('pending_transactions')
+          .update({
+            approved: false,
+            reviewed_at: new Date().toISOString(),
+            validation_reasons: 'Not being a spend transaction',
+          })
+          .eq('id', pending.id);
+      }
+    });
+    return { processed: true };
   }
 
   // ── Step 5: Ignore Rule Check ──

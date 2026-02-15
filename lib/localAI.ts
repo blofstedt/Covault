@@ -71,7 +71,11 @@ You are an expert at parsing bank and credit card transaction notifications. Ret
 Here is a notification from ${bankName}:
 "${rawNotification}"
 
-Create regex patterns for this notification format. Return a JSON object with:
+First, determine if this is a spend transaction (e.g. purchase, payment, charge, debit, cost, paid).
+If it is NOT a spend transaction (e.g. promotional message, account alert, login notification, OTP, balance update without a purchase), return:
+{"rejected": true, "reason": "Not being a spend transaction"}
+
+If it IS a spend transaction, create regex patterns for this notification format. Return a JSON object with:
 - "amount_regex": JavaScript regex (no slashes) capturing the dollar amount in group 1
 - "vendor_regex": JavaScript regex (no slashes) capturing the vendor name in group 1
 - "category_name": one of "Groceries","Transport","Utilities","Leisure","Housing","Dining","Shopping","Gas","Other"
@@ -103,6 +107,9 @@ Rules:
 
     const jsonStr = raw.slice(jsonStart, jsonEnd + 1);
     const parsed = JSON.parse(jsonStr);
+
+    // If the AI model determined this is not a spend transaction, return null
+    if (parsed.rejected) return null;
 
     if (!parsed.amount_regex || !parsed.vendor_regex) return null;
 
