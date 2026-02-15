@@ -468,6 +468,18 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             </div>
           </div>
 
+          {/* Vendor override reminder for AI-added transactions */}
+          {initialTransaction &&
+            (initialTransaction.label === TransactionLabel.AUTO_ADDED || initialTransaction.label === TransactionLabel.EDITED) &&
+            selectedIds.size === 1 &&
+            Array.from(selectedIds)[0] !== initialTransaction.budget_id && (
+            <div className="bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl p-3 border border-emerald-200 dark:border-emerald-800/30">
+              <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 text-center leading-relaxed">
+                Covault will remember this and apply this budget category going forward.
+              </p>
+            </div>
+          )}
+
           <div className="space-y-3">
             {/* Styled date picker */}
             <div

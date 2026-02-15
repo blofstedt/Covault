@@ -526,6 +526,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         autoDetectedTransactions={autoDetectedTransactions}
         onTransactionTap={(tx) => setSelectedTx(tx)}
         pendingTransactions={state.pendingTransactions || []}
+        rejectedTransactions={state.rejectedTransactions || []}
         budgets={visibleBudgets}
         onApprovePending={onApprovePendingTransaction}
         onRejectPending={onRejectPendingTransaction}

@@ -12,6 +12,7 @@ interface TransactionParsingProps {
   autoDetectedTransactions?: Transaction[];
   onTransactionTap?: (tx: Transaction) => void;
   pendingTransactions?: PendingTransaction[];
+  rejectedTransactions?: PendingTransaction[];
   budgets?: BudgetCategory[];
   onApprovePending?: (pendingId: string, categoryId: string) => void;
   onRejectPending?: (pendingId: string) => void;
@@ -27,16 +28,17 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   autoDetectedTransactions = [],
   onTransactionTap,
   pendingTransactions = [],
+  rejectedTransactions = [],
   budgets = [],
   onApprovePending,
   onRejectPending,
   onRefreshNotifications,
 }) => {
-  // Track which pending transaction is expanded for category selection
-  const [expandedPendingId, setExpandedPendingId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showRejected, setShowRejected] = useState(false);
 
   const pendingCount = pendingTransactions.length;
+  const rejectedCount = rejectedTransactions.length;
 
   return (
     <div className="flex-1 flex flex-col h-screen relative overflow-hidden transition-colors duration-700 bg-slate-50 dark:bg-slate-950">
@@ -71,129 +73,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                 />
               </div>
 
-              {/* Pending Transactions – Review Queue */}
-              {pendingCount > 0 && (
-                <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-amber-200 dark:border-amber-800/40 space-y-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-xl">
-                      <svg className="w-5 h-5 text-amber-600 dark:text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-                      </svg>
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-                        Needs Review
-                      </h3>
-                      <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
-                        {pendingCount} transaction{pendingCount !== 1 ? 's' : ''} awaiting approval
-                      </p>
-                    </div>
-                    <span className="text-[10px] font-black bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-2.5 py-1 rounded-full">
-                      {pendingCount}
-                    </span>
-                  </div>
-
-                  <div className="space-y-2">
-                    {pendingTransactions.map((pt) => {
-                      const isExpanded = expandedPendingId === pt.id;
-                      const confidenceColor = pt.confidence >= 80
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : pt.confidence >= 50
-                          ? 'text-amber-600 dark:text-amber-400'
-                          : 'text-red-600 dark:text-red-400';
-
-                      return (
-                        <div key={pt.id} className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800/60 overflow-hidden">
-                          {/* Card header – tap to expand */}
-                          <button
-                            onClick={() => setExpandedPendingId(isExpanded ? null : pt.id)}
-                            className="w-full flex items-center justify-between p-4 transition-all active:scale-[0.99]"
-                          >
-                            <div className="flex items-center space-x-3">
-                              <div className="w-8 h-8 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center shrink-0">
-                                <svg className="w-4 h-4 text-amber-600 dark:text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-                                </svg>
-                              </div>
-                              <div className="text-left min-w-0">
-                                <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate max-w-[160px]">
-                                  {pt.extracted_vendor}
-                                </p>
-                                <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
-                                  {pt.app_name} • <span className={confidenceColor}>{pt.confidence}% confidence</span>
-                                </p>
-                              </div>
-                            </div>
-                            <div className="text-right shrink-0">
-                              <span className="text-sm font-black text-slate-700 dark:text-slate-200">
-                                ${pt.extracted_amount.toFixed(2)}
-                              </span>
-                              <p className="text-[8px] font-bold uppercase tracking-wider text-amber-500 dark:text-amber-400 mt-0.5">
-                                {isExpanded ? 'Collapse' : 'Tap to review'}
-                              </p>
-                            </div>
-                          </button>
-
-                          {/* Expanded: validation info + category picker + actions */}
-                          {isExpanded && (
-                            <div className="px-4 pb-4 space-y-3 border-t border-slate-100 dark:border-slate-800/60 pt-3">
-                              {/* Validation reasons */}
-                              {pt.validation_reasons && pt.validation_reasons !== 'OK' && (
-                                <div className="bg-amber-50 dark:bg-amber-900/10 rounded-xl p-3">
-                                  <p className="text-[9px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 mb-1">Flags</p>
-                                  <p className="text-[10px] text-amber-700 dark:text-amber-300 leading-relaxed">
-                                    {pt.validation_reasons}
-                                  </p>
-                                </div>
-                              )}
-
-                              {/* Notification text preview */}
-                              <div className="bg-slate-100 dark:bg-slate-800/80 rounded-xl p-3">
-                                <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Notification</p>
-                                <p className="text-[10px] text-slate-600 dark:text-slate-300 leading-relaxed line-clamp-3">
-                                  {pt.notification_text}
-                                </p>
-                              </div>
-
-                              {/* Category picker */}
-                              <div>
-                                <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Assign Category</p>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {budgets.map((b) => (
-                                    <button
-                                      key={b.id}
-                                      onClick={() => {
-                                        onApprovePending?.(pt.id, b.id);
-                                        setExpandedPendingId(null);
-                                      }}
-                                      className="px-3 py-1.5 text-[10px] font-bold rounded-full border transition-all active:scale-95 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40"
-                                    >
-                                      {b.name}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-
-                              {/* Reject button */}
-                              <button
-                                onClick={() => {
-                                  onRejectPending?.(pt.id);
-                                  setExpandedPendingId(null);
-                                }}
-                                className="w-full py-2 text-[10px] font-bold uppercase tracking-wider text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/10 rounded-xl border border-red-200 dark:border-red-800/30 transition-all active:scale-[0.98] hover:bg-red-100 dark:hover:bg-red-900/20"
-                              >
-                                Reject Transaction
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Captured Transactions (already approved) */}
+              {/* Approved Transactions (AI-parsed from notifications, added automatically) */}
               <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border border-slate-100 dark:border-slate-800/60 space-y-4">
                 <div className="flex items-center space-x-3">
                   <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
@@ -206,10 +86,10 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                   </div>
                   <div className="flex-1">
                     <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-                      Captured Transactions
+                      Approved Transactions
                     </h3>
                     <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
-                      Auto-detected from bank notifications
+                      AI-parsed from bank notifications
                     </p>
                   </div>
                   {onRefreshNotifications && (
@@ -263,7 +143,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                               {tx.vendor}
                             </p>
                             <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
-                              {new Date(tx.date).toLocaleDateString()} • Added automatically
+                              {new Date(tx.date).toLocaleDateString()} • <span className="text-emerald-500 dark:text-emerald-400 font-bold">AI</span>
                             </p>
                           </div>
                         </div>
@@ -286,11 +166,87 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                       No transactions captured yet
                     </p>
                     <p className="text-[10px] text-slate-400 dark:text-slate-600 mt-1 leading-relaxed max-w-xs mx-auto">
-                      When your banking apps send notifications, they'll appear here for review.
+                      When your banking apps send notifications, they'll be automatically parsed and added here.
                     </p>
                   </div>
                 )}
               </div>
+
+              {/* Rejected Notifications - grey card */}
+              {rejectedCount > 0 && (
+                <div className="bg-slate-100 dark:bg-slate-800/50 rounded-[2.5rem] p-6 shadow border border-slate-200 dark:border-slate-700/40 space-y-4">
+                  <button
+                    onClick={() => setShowRejected(!showRejected)}
+                    className="w-full flex items-center space-x-3"
+                  >
+                    <div className="p-2 bg-slate-200 dark:bg-slate-700/40 rounded-xl">
+                      <svg className="w-5 h-5 text-slate-400 dark:text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="15" y1="9" x2="9" y2="15" />
+                        <line x1="9" y1="9" x2="15" y2="15" />
+                      </svg>
+                    </div>
+                    <div className="flex-1 text-left">
+                      <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
+                        Rejected
+                      </h3>
+                      <p className="text-[9px] text-slate-400 dark:text-slate-600 mt-0.5">
+                        {rejectedCount} notification{rejectedCount !== 1 ? 's' : ''} rejected
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-black bg-slate-200 dark:bg-slate-700/50 text-slate-500 dark:text-slate-400 px-2.5 py-1 rounded-full">
+                      {rejectedCount}
+                    </span>
+                    <svg
+                      className={`w-4 h-4 text-slate-400 dark:text-slate-500 transition-transform ${showRejected ? 'rotate-180' : ''}`}
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </button>
+
+                  {showRejected && (
+                    <div className="space-y-2">
+                      {rejectedTransactions.map((pt) => (
+                        <div key={pt.id} className="bg-white/60 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/40 p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                              <div className="w-8 h-8 bg-slate-200 dark:bg-slate-700/40 rounded-full flex items-center justify-center shrink-0">
+                                <svg className="w-4 h-4 text-slate-400 dark:text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                  <circle cx="12" cy="12" r="10" />
+                                  <line x1="15" y1="9" x2="9" y2="15" />
+                                  <line x1="9" y1="9" x2="15" y2="15" />
+                                </svg>
+                              </div>
+                              <div className="text-left min-w-0">
+                                <p className="text-xs font-bold text-slate-500 dark:text-slate-400 truncate max-w-[160px]">
+                                  {pt.extracted_vendor}
+                                </p>
+                                <p className="text-[9px] text-slate-400 dark:text-slate-600 mt-0.5">
+                                  {pt.app_name} • {new Date(pt.posted_at).toLocaleDateString()}
+                                </p>
+                              </div>
+                            </div>
+                            <span className="text-sm font-black text-slate-400 dark:text-slate-500">
+                              ${pt.extracted_amount.toFixed(2)}
+                            </span>
+                          </div>
+                          {pt.validation_reasons && pt.validation_reasons !== 'OK' && (
+                            <div className="mt-2 bg-slate-50 dark:bg-slate-800/80 rounded-xl p-2">
+                              <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-relaxed">
+                                {pt.validation_reasons}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           ) : (
             <>
@@ -365,7 +321,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                       3
                     </div>
                     <span className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                      Review pending transactions and assign categories
+                      AI automatically adds transactions to your budgets
                     </span>
                   </div>
                 </div>

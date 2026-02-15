@@ -434,6 +434,42 @@ export const useDataLoading = ({
     [setAppState],
   );
 
+  // Load rejected/failed pending transactions
+  const loadRejectedTransactions = useCallback(
+    async (userId: string) => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(
+          `${REST_BASE}/pending_transactions?select=*&user_id=eq.${userId}&needs_review=eq.false&approved=eq.false&order=created_at.desc&limit=50`,
+          { headers },
+        );
+
+        if (!res.ok) {
+          const body = await res.text();
+          if (res.status === 404 && body.includes('Could not find the table')) {
+            console.log('[loadRejectedTransactions] table not found');
+            setAppState(prev => ({ ...prev, rejectedTransactions: [] }));
+            return;
+          }
+          console.log('[loadRejectedTransactions] failed or no rejected transactions');
+          return;
+        }
+
+        const data = JSON.parse(await res.text());
+        if (data && data.length > 0) {
+          console.log('[loadRejectedTransactions] OK, count:', data.length);
+          setAppState(prev => ({ ...prev, rejectedTransactions: data }));
+        } else {
+          console.log('[loadRejectedTransactions] no rejected transactions');
+          setAppState(prev => ({ ...prev, rejectedTransactions: [] }));
+        }
+      } catch (err: any) {
+        console.error('[loadRejectedTransactions]', err?.message || err);
+      }
+    },
+    [setAppState],
+  );
+
   // Load household link status from household_links table
   const loadHouseholdLink = useCallback(
     async (userId: string) => {
@@ -497,10 +533,11 @@ export const useDataLoading = ({
       await loadUserSettings(userId); // load user-specific settings (monthly_income, etc.)
       await loadTransactions(userId);
       await loadPendingTransactions(userId); // load pending transactions awaiting approval
+      await loadRejectedTransactions(userId); // load rejected/failed notifications
       await loadHouseholdLink(userId); // Changed from loadPartnerLink
       console.log('loadUserData completed');
     },
-    [loadCategories, loadHouseholdLink, loadPendingTransactions, loadTransactions, loadUserBudgets, loadUserSettings],
+    [loadCategories, loadHouseholdLink, loadPendingTransactions, loadRejectedTransactions, loadTransactions, loadUserBudgets, loadUserSettings],
   );
 
   return {
