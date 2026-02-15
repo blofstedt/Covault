@@ -227,7 +227,7 @@ async function validateExtraction(
   // If regex didn't work at all, low confidence
   if (!regexWorked || vendor == null || amount == null) {
     confidence = 20;
-    reasons.push('Regex extraction failed');
+    reasons.push('AI determined this notification is not a spend.');
     return { confidence, reasons, needsReview: true };
   }
 
@@ -605,7 +605,7 @@ async function insertPendingTransaction(
  * Check if a pending transaction can be auto-accepted.
  * AI-parsed notifications go straight into transactions.
  * Only rejected if:
- *   - Duplicate transaction found (same vendor + amount + day)
+ *   - Duplicate transaction found (same vendor + amount + same day and hour)
  */
 async function tryAutoAccept(
   userId: string,
@@ -615,28 +615,33 @@ async function tryAutoAccept(
 ): Promise<{ accepted: boolean; transactionId?: string; categoryId?: string }> {
   // Check for potential conflicts with existing transactions
   // (same vendor + similar amount + same day)
-  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
   const { data: existing } = await supabase
     .from('transactions')
-    .select('id, amount, vendor')
+    .select('id, amount, vendor, created_at')
     .eq('user_id', userId)
-    .eq('vendor', pending.extracted_vendor)
+    .ilike('vendor', pending.extracted_vendor)
     .eq('date', today);
 
   if (existing && existing.length > 0) {
-    // Check for a transaction with the same amount already today
-    const hasDuplicate = existing.some(
-      (tx) => Math.abs(tx.amount - pending.extracted_amount) < AMOUNT_TOLERANCE,
-    );
+    // Check for a transaction with the same amount within the same hour
+    const hasDuplicate = existing.some((tx) => {
+      if (Math.abs(tx.amount - pending.extracted_amount) >= AMOUNT_TOLERANCE) return false;
+      // Check if the existing transaction was created within the same day and hour
+      if (!tx.created_at) return true; // If no timestamp, treat as duplicate for same-day match
+      const txCreated = new Date(tx.created_at);
+      return txCreated.toISOString().slice(0, 10) === today && txCreated.getHours() === now.getHours();
+    });
     if (hasDuplicate) {
-      // Mark as rejected due to potential duplicate
+      // Mark as rejected due to duplicate
       await supabase
         .from('pending_transactions')
         .update({
           needs_review: false,
           approved: false,
-          reviewed_at: new Date().toISOString(),
-          validation_reasons: (pending.validation_reasons || 'OK') + '; Potential duplicate of existing transaction',
+          reviewed_at: now.toISOString(),
+          validation_reasons: 'Duplicate transaction found.',
         })
         .eq('id', pending.id);
       return { accepted: false };
@@ -672,6 +677,9 @@ async function tryAutoAccept(
     return { accepted: false };
   }
 
+  // Clean vendor name using AI before inserting
+  const cleanedVendor = await cleanVendorName(pending.extracted_vendor);
+
   // Insert into transactions
   const transactionId = crypto.randomUUID();
   const { error: txError } = await supabase
@@ -679,7 +687,7 @@ async function tryAutoAccept(
     .insert({
       id: transactionId,
       user_id: userId,
-      vendor: pending.extracted_vendor,
+      vendor: cleanedVendor,
       amount: pending.extracted_amount,
       date: new Date().toISOString().slice(0, 10),
       category_id: categoryId,
@@ -832,7 +840,7 @@ export async function processNotification(
     );
     // If fallback values are reasonable, improve confidence and adjust reasons
     if (finalVendor !== 'Unknown Merchant' && finalAmount != null) {
-      validation.reasons = validation.reasons.filter(r => r !== 'Regex extraction failed');
+      validation.reasons = validation.reasons.filter(r => r !== 'AI determined this notification is not a spend.');
       validation.reasons.push('Used fallback extraction (regex unavailable)');
       // Give moderate confidence for fallback values
       validation.confidence = Math.max(validation.confidence, 50);
@@ -994,5 +1002,61 @@ export async function flagAndRegenerateRule(options: {
   if (updateError) {
     console.error('[flagAndRegenerate] Error updating notification_rule:', updateError);
     throw updateError;
+  }
+}
+
+// ─── Vendor Name Cleaning (AI-powered) ──────────────────────────
+
+/**
+ * Use Gemini to clean/normalize a raw vendor name extracted from a
+ * bank notification into a human-friendly merchant name.
+ * e.g. "Netflix 425" → "Netflix", "Amazn#57" → "Amazon"
+ *
+ * Falls back to the raw vendor name if Gemini is unavailable or fails.
+ */
+export async function cleanVendorName(rawVendor: string): Promise<string> {
+  if (!GEMINI_API_KEY || !rawVendor || rawVendor.trim().length === 0) {
+    return rawVendor;
+  }
+
+  try {
+    const prompt = `You are a merchant name normalizer. Given a raw vendor string from a bank transaction notification, return ONLY the clean, human-readable merchant name. Do not include transaction IDs, reference numbers, or codes. Return just the merchant name as plain text, nothing else.
+
+Raw vendor: "${rawVendor}"
+
+Clean merchant name:`;
+
+    const body = {
+      contents: [{ parts: [{ text: prompt }] }],
+    };
+
+    const response = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' +
+        GEMINI_API_KEY,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+    );
+
+    if (!response.ok) {
+      console.warn('[cleanVendorName] Gemini API error, using raw vendor');
+      return rawVendor;
+    }
+
+    const data = await response.json();
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    const cleaned = text.trim().replace(/^["']|["']$/g, '');
+
+    // Sanity check: if the cleaned name is empty or too long, use raw
+    if (!cleaned || cleaned.length > 100) {
+      return rawVendor;
+    }
+
+    return cleaned;
+  } catch (err) {
+    console.warn('[cleanVendorName] Error:', err);
+    return rawVendor;
   }
 }
