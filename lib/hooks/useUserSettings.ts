@@ -42,17 +42,14 @@ export const useUserSettings = ({
       try {
         const headers = await getAuthHeaders();
         
-        // Use upsert with on_conflict to handle both insert and update in one call
-        // resolution=merge-duplicates will update existing row if (user_id, category) already exists
-        (headers as any)['Prefer'] = 'return=representation,resolution=merge-duplicates';
+        // Use PATCH to update the existing budget row by user_id and category name
+        (headers as any)['Prefer'] = 'return=representation';
         const res = await fetch(
-          `${REST_BASE}/budgets?on_conflict=user_id,category`,
+          `${REST_BASE}/budgets?user_id=eq.${userId}&category=eq.${encodeURIComponent(categoryName)}`,
           {
-            method: 'POST',
+            method: 'PATCH',
             headers,
             body: JSON.stringify({
-              user_id: userId,
-              category: categoryName,
               limit_amount: newLimit,
               is_household: !appState.user?.budgetingSolo,
             }),
@@ -62,7 +59,7 @@ export const useUserSettings = ({
         const body = await res.text();
 
         if (!res.ok) {
-          const msg = `[saveBudgetLimit] upsert failed (${res.status}): ${body.slice(
+          const msg = `[saveBudgetLimit] update failed (${res.status}): ${body.slice(
             0,
             200,
           )}`;
@@ -97,7 +94,7 @@ export const useUserSettings = ({
           }
           
           if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
-            const msg = `[saveBudgetLimit] no rows upserted - operation failed silently`;
+            const msg = `[saveBudgetLimit] no rows updated for category "${categoryName}"`;
             console.error(msg);
             setDbError(msg);
             
@@ -109,7 +106,7 @@ export const useUserSettings = ({
               ),
             }));
           } else {
-            console.log(`[saveBudgetLimit] upserted OK`);
+            console.log(`[saveBudgetLimit] updated OK`);
           }
         }
       } catch (err: any) {
@@ -337,18 +334,14 @@ export const useUserSettings = ({
       try {
         const headers = await getAuthHeaders();
 
-        // Use upsert with on_conflict to handle both insert and update in one call
-        // resolution=merge-duplicates will update existing row if (user_id, category) already exists
-        (headers as any)['Prefer'] = 'return=representation,resolution=merge-duplicates';
+        // Use PATCH to update the existing budget row by user_id and category name
+        (headers as any)['Prefer'] = 'return=representation';
         const res = await fetch(
-          `${REST_BASE}/budgets?on_conflict=user_id,category`,
+          `${REST_BASE}/budgets?user_id=eq.${userId}&category=eq.${encodeURIComponent(categoryName)}`,
           {
-            method: 'POST',
+            method: 'PATCH',
             headers,
             body: JSON.stringify({
-              user_id: userId,
-              category: categoryName,
-              limit_amount: category.totalLimit,
               visible,
               is_household: !appState.user?.budgetingSolo,
             }),
@@ -357,11 +350,11 @@ export const useUserSettings = ({
 
         if (!res.ok) {
           const body = await res.text();
-          console.error('[saveBudgetVisibility] upsert failed:', body.slice(0, 200));
-          setDbError(`[saveBudgetVisibility] upsert failed (${res.status})`);
+          console.error('[saveBudgetVisibility] update failed:', body.slice(0, 200));
+          setDbError(`[saveBudgetVisibility] update failed (${res.status})`);
           rollback();
         } else {
-          console.log(`[saveBudgetVisibility] upserted ${categoryName} visible=${visible}`);
+          console.log(`[saveBudgetVisibility] updated ${categoryName} visible=${visible}`);
         }
       } catch (err: any) {
         const msg = `[saveBudgetVisibility] exception: ${err?.message || err}`;
