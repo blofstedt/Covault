@@ -491,101 +491,6 @@ export const useTransactionOps = ({
     [appState.user, appState.pendingTransactions, fromSupabaseTransaction, setAppState, setDbError],
   );
 
-  // Reject a pending transaction
-  const handleRejectPendingTransaction = useCallback(
-    async (pendingId: string) => {
-      try {
-        const headers = await getAuthHeaders();
-        (headers as any)['Prefer'] = 'return=representation';
-
-        // Mark as reviewed and not approved
-        const res = await fetch(`${REST_BASE}/pending_transactions?id=eq.${pendingId}`, {
-          method: 'PATCH',
-          headers,
-          body: JSON.stringify({
-            needs_review: false,
-            reviewed_at: new Date().toISOString(),
-            approved: false,
-            rejection_reason: 'Manually rejected',
-          }),
-        });
-
-        if (!res.ok) {
-          const body = await res.text();
-          const msg = `[rejectPending] PATCH failed (${res.status}): ${body.slice(0, 200)}`;
-          console.error(msg);
-          setDbError(msg);
-          return;
-        }
-
-        const body = await res.text();
-        let updatedRows: any[] = [];
-        try {
-          updatedRows = body ? JSON.parse(body) : [];
-        } catch (parseErr) {
-          const msg = `[rejectPending] failed to parse response: ${body.slice(0, 200)}`;
-          console.error(msg);
-          setDbError(msg);
-          return;
-        }
-        
-        if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
-          const msg = `[rejectPending] no rows updated for pending transaction ${pendingId}`;
-          console.error(msg);
-          setDbError(msg);
-          return;
-        }
-
-        // Remove rejected transaction from UI state immediately
-        setAppState(prev => ({
-          ...prev,
-          pendingTransactions: (prev.pendingTransactions || []).filter(p => p.id !== pendingId),
-        }));
-
-        console.log('[rejectPending] OK, rejected pending transaction', pendingId);
-      } catch (err: any) {
-        const msg = `Reject pending exception: ${err?.message || err}`;
-        console.error(msg);
-        setDbError(msg);
-      }
-    },
-    [setAppState, setDbError],
-  );
-
-  // Clear filtered (keyword-ignored) pending transactions by deleting from DB
-  const handleClearFilteredNotifications = useCallback(
-    async (ids: string[]) => {
-      if (ids.length === 0) return;
-      try {
-        const headers = await getAuthHeaders();
-        const idList = ids.map(id => `"${id}"`).join(',');
-        const res = await fetch(`${REST_BASE}/pending_transactions?id=in.(${idList})`, {
-          method: 'DELETE',
-          headers,
-        });
-        if (!res.ok) {
-          const body = await res.text();
-          const msg = `[clearFiltered] DELETE failed (${res.status}): ${body.slice(0, 200)}`;
-          console.error(msg);
-          setDbError(msg);
-          return;
-        }
-        // Remove from UI state
-        const idSet = new Set(ids);
-        setAppState(prev => ({
-          ...prev,
-          pendingTransactions: (prev.pendingTransactions || []).filter(p => !idSet.has(p.id)),
-        }));
-        console.log('[clearFiltered] OK, cleared', ids.length, 'filtered notifications');
-      } catch (err: any) {
-        const msg = `Clear filtered exception: ${err?.message || err}`;
-        console.error(msg);
-        setDbError(msg);
-      }
-    },
-    [setAppState, setDbError],
-  );
-
   // Clear approved transactions by removing the Auto-Added label
   const handleClearApprovedTransactions = useCallback(
     async (ids: string[]) => {
@@ -630,8 +535,6 @@ export const useTransactionOps = ({
     handleUpdateTransaction,
     handleDeleteTransaction,
     handleApprovePendingTransaction,
-    handleRejectPendingTransaction,
-    handleClearFilteredNotifications,
     handleClearApprovedTransactions,
   };
 };

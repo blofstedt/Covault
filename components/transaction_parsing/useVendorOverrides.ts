@@ -172,61 +172,6 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
     [userId, vendorOverrides],
   );
 
-  // ── Toggle auto-accept for a vendor by vendor name ──
-  const handleToggleAutoAcceptByVendor = useCallback(
-    async (vendorName: string) => {
-      if (!userId) return;
-      const override = vendorOverrides.find(
-        (vo) => vo.vendor_name.toLowerCase() === vendorName.toLowerCase(),
-      );
-
-      if (!override) return;
-
-      const currentValue = override.auto_accept;
-      const newValue = !currentValue;
-
-      setVendorOverrides((prev) =>
-        prev.map((vo) => (vo.id === override.id ? { ...vo, auto_accept: newValue } : vo)),
-      );
-
-      try {
-        const headers = await getAuthHeaders();
-        (headers as any)['Prefer'] = 'return=representation';
-        // Use vendor_name-based URL when override has a temp ID (not yet synced with DB)
-        const url = override.id.startsWith('temp-')
-          ? `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(override.vendor_name)}`
-          : `${REST_BASE}/vendor_overrides?id=eq.${override.id}&user_id=eq.${userId}`;
-        const res = await fetch(
-          url,
-          { method: 'PATCH', headers, body: JSON.stringify({ auto_accept: newValue }) },
-        );
-        const body = await res.text();
-        let data: any[] = [];
-        try { data = body ? JSON.parse(body) : []; } catch { data = []; }
-
-        if (!res.ok || !Array.isArray(data) || data.length === 0) {
-          console.error('[TransactionParsing] Error toggling auto_accept:', res.status, body.slice(0, 200));
-          setVendorOverrides((prev) =>
-            prev.map((vo) => (vo.id === override.id ? { ...vo, auto_accept: currentValue } : vo)),
-          );
-          return;
-        }
-
-        const actualValue = data[0].auto_accept ?? false;
-        const realId = data[0].id ?? override.id;
-        setVendorOverrides((prev) =>
-          prev.map((vo) => (vo.id === override.id ? { ...vo, auto_accept: actualValue, id: realId } : vo)),
-        );
-      } catch (err: any) {
-        console.error('[TransactionParsing] Exception toggling auto_accept:', err?.message || err);
-        setVendorOverrides((prev) =>
-          prev.map((vo) => (vo.id === override.id ? { ...vo, auto_accept: currentValue } : vo)),
-        );
-      }
-    },
-    [userId, vendorOverrides],
-  );
-
   // ── Set or update a vendor's default category ──
   const handleSetVendorCategory = useCallback(
     async (vendorName: string, categoryId: string) => {
@@ -336,43 +281,6 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
     [userId, vendorOverrides, budgets],
   );
 
-  // ── Optimistically upsert a vendor override in local state (no DB call) ──
-  const upsertLocalVendorOverride = useCallback(
-    (vendorName: string, categoryId: string) => {
-      const category = budgets.find((b) => b.id === categoryId);
-      if (!category) return;
-      const categoryName = category.name;
-
-      setVendorOverrides((prev) => {
-        const existingIdx = prev.findIndex(
-          (vo) => vo.vendor_name.toLowerCase() === vendorName.toLowerCase(),
-        );
-        if (existingIdx >= 0) {
-          // Update existing override
-          const updated = [...prev];
-          updated[existingIdx] = {
-            ...updated[existingIdx],
-            category_id: categoryId,
-            category_name: categoryName,
-          };
-          return updated;
-        }
-        // Add new override
-        return [
-          ...prev,
-          {
-            id: `temp-${crypto.randomUUID()}`,
-            vendor_name: vendorName,
-            category_id: categoryId,
-            auto_accept: false,
-            category_name: categoryName,
-          },
-        ];
-      });
-    },
-    [budgets],
-  );
-
   return {
     vendorOverrides,
     expandedVendorCategory,
@@ -380,8 +288,6 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
     loadVendorOverrides,
     handleToggleAutoAccept,
     handleDeleteVendorOverride,
-    handleToggleAutoAcceptByVendor,
     handleSetVendorCategory,
-    upsertLocalVendorOverride,
   };
 }

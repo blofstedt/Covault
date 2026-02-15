@@ -1,23 +1,17 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
-import { PendingTransaction, BudgetCategory, Transaction } from '../types';
+import { BudgetCategory, Transaction } from '../types';
 
 import NotificationToggleCard from './transaction_parsing/NotificationToggleCard';
 import VendorCategoryRulesCard from './transaction_parsing/VendorCategoryRulesCard';
-import IgnoredNotificationsCard from './transaction_parsing/IgnoredNotificationsCard';
-import ToBeReviewedCard from './transaction_parsing/ToBeReviewedCard';
 import ApprovedTransactionsCard from './transaction_parsing/ApprovedTransactionsCard';
 import RejectedTransactionsCard from './transaction_parsing/RejectedTransactionsCard';
 import SetupInfoCard from './transaction_parsing/SetupInfoCard';
-import RejectConfirmModal from './transaction_parsing/RejectConfirmModal';
 import ConfirmModal from './ui/ConfirmModal';
 import PageShell from './ui/PageShell';
 
 import { useVendorOverrides } from './transaction_parsing/useVendorOverrides';
 import { useTransactionCategories } from './transaction_parsing/useTransactionCategories';
-
-/** Delay before reloading pending transactions after a scan, to allow the notification pipeline to finish processing. */
-const SCAN_PROCESSING_DELAY_MS = 2000;
 
 interface TransactionParsingProps {
   enabled: boolean;
@@ -27,11 +21,8 @@ interface TransactionParsingProps {
   onGoHome: () => void;
   autoDetectedTransactions?: Transaction[];
   onTransactionTap?: (tx: Transaction) => void;
-  pendingTransactions?: PendingTransaction[];
+  pendingTransactions?: import('../types').PendingTransaction[];
   budgets?: BudgetCategory[];
-  onApprovePending?: (pendingId: string, categoryId: string) => void | Promise<void>;
-  onRejectPending?: (pendingId: string) => void;
-  onClearFilteredNotifications?: (ids: string[]) => Promise<void>;
   onClearApprovedTransactions?: (ids: string[]) => Promise<void>;
   onRefreshNotifications?: () => Promise<void>;
   onReloadPendingTransactions?: (userId: string) => Promise<void>;
@@ -39,6 +30,9 @@ interface TransactionParsingProps {
   isTutorialMode?: boolean;
   showDemoData?: boolean;
 }
+
+/** Delay before reloading pending transactions after a scan, to allow the notification pipeline to finish processing. */
+const SCAN_PROCESSING_DELAY_MS = 2000;
 
 const TransactionParsing: React.FC<TransactionParsingProps> = ({
   enabled,
@@ -50,9 +44,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   onTransactionTap,
   pendingTransactions = [],
   budgets = [],
-  onApprovePending,
-  onRejectPending,
-  onClearFilteredNotifications,
   onClearApprovedTransactions,
   onRefreshNotifications,
   onReloadPendingTransactions,
@@ -61,9 +52,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   showDemoData = false,
 }) => {
   // ── UI-only state ──
-  const [expandedPendingId, setExpandedPendingId] = useState<string | null>(null);
-  const [rejectConfirmId, setRejectConfirmId] = useState<string | null>(null);
-  const [clearConfirm, setClearConfirm] = useState<'filtered' | 'approved' | null>(null);
+  const [clearConfirm, setClearConfirm] = useState<'approved' | null>(null);
   const [isScanning, setIsScanning] = useState(false);
 
   // ── Vendor overrides (CRUD + state) ──
@@ -114,17 +103,14 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   // ── Handle clear confirmation ──
   const handleClearConfirm = useCallback(async () => {
     try {
-      if (clearConfirm === 'filtered' && onClearFilteredNotifications) {
-        const ids = categories.filteredOutNotifications.map((pt) => pt.id);
-        await onClearFilteredNotifications(ids);
-      } else if (clearConfirm === 'approved' && onClearApprovedTransactions) {
+      if (clearConfirm === 'approved' && onClearApprovedTransactions) {
         const ids = categories.approvedTransactions.map((tx) => tx.id);
         await onClearApprovedTransactions(ids);
       }
     } finally {
       setClearConfirm(null);
     }
-  }, [clearConfirm, onClearFilteredNotifications, onClearApprovedTransactions, categories.filteredOutNotifications, categories.approvedTransactions]);
+  }, [clearConfirm, onClearApprovedTransactions, categories.approvedTransactions]);
 
   return (
     <PageShell>
@@ -160,28 +146,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                 onDeleteVendorOverride={vendorOverridesHook.handleDeleteVendorOverride}
               />
 
-              <IgnoredNotificationsCard
-                filteredOutNotifications={categories.filteredOutNotifications}
-                onClear={onClearFilteredNotifications ? () => setClearConfirm('filtered') : undefined}
-              />
-
-              <ToBeReviewedCard
-                toReviewTransactions={categories.toReviewTransactions}
-                toReviewCount={categories.toReviewCount}
-                expandedPendingId={expandedPendingId}
-                vendorOverrideByName={categories.vendorOverrideByName}
-                categoryNameById={categories.categoryNameById}
-                budgets={budgets}
-                showDemoData={showDemoData}
-                isScanning={isScanning}
-                onSetExpandedPendingId={setExpandedPendingId}
-                onApprovePending={onApprovePending}
-                onRejectConfirm={setRejectConfirmId}
-                onLoadVendorOverrides={vendorOverridesHook.loadVendorOverrides}
-                onUpsertLocalVendorOverride={vendorOverridesHook.upsertLocalVendorOverride}
-                onScanForTransactions={handleScanForTransactions}
-              />
-
               <ApprovedTransactionsCard
                 approvedTransactions={categories.approvedTransactions}
                 vendorOverrideByName={categories.vendorOverrideByName}
@@ -194,6 +158,14 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                 rejectedTransactions={categories.rejectedTransactions}
               />
 
+              {/* Scan for Transactions button */}
+              <button
+                onClick={handleScanForTransactions}
+                disabled={isScanning}
+                className="w-full py-2.5 text-[11px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800/40 transition-all active:scale-[0.98] hover:bg-amber-100 dark:hover:bg-amber-900/30 disabled:opacity-50"
+              >
+                {isScanning ? 'Scanning…' : 'Scan for Transactions'}
+              </button>
             </>
           ) : (
             <SetupInfoCard enabled={enabled} onToggle={onToggle} />
@@ -206,31 +178,13 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         onAddTransaction={onAddTransaction}
         onOpenParsing={onBack}
         activeView="parsing"
-        pendingCount={categories.toReviewCount}
       />
-
-      {/* Reject Confirmation Modal */}
-      {rejectConfirmId && (
-        <RejectConfirmModal
-          rejectConfirmId={rejectConfirmId}
-          onCancel={() => setRejectConfirmId(null)}
-          onConfirm={(id) => {
-            onRejectPending?.(id);
-            setExpandedPendingId(null);
-            setRejectConfirmId(null);
-          }}
-        />
-      )}
 
       {/* Clear Confirmation Modal */}
       {clearConfirm && (
         <ConfirmModal
-          title={clearConfirm === 'filtered' ? 'Clear Filtered Notifications?' : 'Clear Approved Transactions?'}
-          message={
-            clearConfirm === 'filtered'
-              ? 'This will permanently remove all filtered notifications from this list.'
-              : 'This will clear approved transactions from this list. They will remain in your budget.'
-          }
+          title="Clear Approved Transactions?"
+          message="This will clear approved transactions from this list. They will remain in your budget."
           confirmLabel="Clear"
           cancelLabel="Cancel"
           variant="danger"

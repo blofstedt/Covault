@@ -78,8 +78,6 @@ const App: React.FC = () => {
     handleGenerateLinkCode,
     handleJoinWithCode,
     handleApprovePendingTransaction,
-    handleRejectPendingTransaction,
-    handleClearFilteredNotifications,
     handleClearApprovedTransactions,
     saveBudgetLimit,
     saveUserIncome,
@@ -239,8 +237,6 @@ const App: React.FC = () => {
             onGenerateLinkCode={devNoopString}
             onJoinWithCode={devNoop as any}
             onApprovePendingTransaction={devNoop as any}
-            onRejectPendingTransaction={devNoop}
-            onClearFilteredNotifications={devNoopAsync as any}
             onClearApprovedTransactions={devNoopAsync as any}
             onRefreshNotifications={devNoopAsync}
             onReloadPendingTransactions={devNoopAsync as any}
@@ -290,8 +286,6 @@ const App: React.FC = () => {
           onGenerateLinkCode={handleGenerateLinkCode}
           onJoinWithCode={handleJoinWithCode}
           onApprovePendingTransaction={handleApprovePendingTransaction}
-          onRejectPendingTransaction={handleRejectPendingTransaction}
-          onClearFilteredNotifications={handleClearFilteredNotifications}
           onClearApprovedTransactions={handleClearApprovedTransactions}
           onRefreshNotifications={refreshNotifications}
           onReloadPendingTransactions={loadPendingTransactions}

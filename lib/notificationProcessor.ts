@@ -314,7 +314,7 @@ export async function deduplicatePendingTransactions(
 // ─── Keyword Filtering ──────────────────────────────────────────
 
 /** Sentinel pattern_id value for notifications ignored by keyword filters */
-export const KEYWORD_IGNORED_PATTERN_ID = 'keyword-ignored';
+const KEYWORD_IGNORED_PATTERN_ID = 'keyword-ignored';
 
 /**
  * Parse keywords from the `only_parse` text field.
@@ -637,133 +637,19 @@ export async function checkDuplicateTransaction(
   return { isDuplicate: false };
 }
 
-// ─── Step 5: Auto-Approve Logic ─────────────────────────────────
-
-/**
- * Check if a pending transaction can be auto-approved.
- * Auto-approve requires:
- *   - Vendor has a category via vendor_overrides
- *   - No duplicate transaction today with same vendor+amount
- *   - The rule's auto-approve is conceptually enabled (flagged_count = 0 means no issues)
- */
-async function tryAutoApprove(
-  userId: string,
-  pending: PendingTransaction,
-  defaultCategoryId: string | null,
-): Promise<{ accepted: boolean; transactionId?: string; categoryId?: string }> {
-  // Look up category: vendor override > rule default > none
-  let categoryId = defaultCategoryId;
-  let autoAcceptEnabled = false;
-
-  const { data: override } = await (async () => {
-    try {
-      const headers = await getAuthHeaders();
-      const res = await fetch(
-        `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=ilike.${encodeURIComponent(pending.extracted_vendor)}&limit=1`,
-        { headers },
-      );
-      if (!res.ok) return { data: null };
-      const rows = await res.json();
-      return { data: Array.isArray(rows) && rows.length > 0 ? rows[0] : null };
-    } catch {
-      return { data: null };
-    }
-  })();
-
-  if (override) {
-    categoryId = override.category_id;
-    autoAcceptEnabled = override.auto_accept === true;
-  }
-
-  // Can't auto-approve without a category
-  if (!categoryId) {
-    return { accepted: false };
-  }
-
-  // Only auto-approve if auto_accept is toggled on for this vendor
-  if (!autoAcceptEnabled) {
-    return { accepted: false };
-  }
-
-  // Check for duplicate against existing transactions
-  const dupResult = await checkDuplicateTransaction(userId, pending);
-
-  if (dupResult.isDuplicate) {
-    // Mark as rejected with reason
-    await supabase
-      .from('pending_transactions')
-      .update({
-        needs_review: false,
-        reviewed_at: new Date().toISOString(),
-        approved: false,
-        rejection_reason: dupResult.reason,
-      })
-      .eq('id', pending.id);
-    console.log(`[autoApprove] Duplicate detected: ${dupResult.reason}`);
-    return { accepted: false };
-  }
-
-  if (dupResult.updatedExistingId) {
-    // Recurring transaction date was updated — no new transaction needed
-    await supabase
-      .from('pending_transactions')
-      .update({
-        needs_review: false,
-        reviewed_at: new Date().toISOString(),
-        approved: true,
-      })
-      .eq('id', pending.id);
-    console.log(`[autoApprove] Updated recurring transaction ${dupResult.updatedExistingId} date`);
-    return { accepted: true, transactionId: dupResult.updatedExistingId, categoryId };
-  }
-
-  // Insert into transactions
-  const transactionId = crypto.randomUUID();
-  const { error: txError } = await supabase
-    .from('transactions')
-    .insert({
-      id: transactionId,
-      user_id: userId,
-      vendor: formatVendorName(pending.extracted_vendor),
-      amount: pending.extracted_amount,
-      date: new Date().toISOString().slice(0, 10),
-      category_id: categoryId,
-      recurrence: 'One-time',
-      label: 'Auto-Added',
-      is_projected: false,
-    });
-
-  if (txError) {
-    console.error('[autoApprove] Error inserting transaction:', txError);
-    return { accepted: false };
-  }
-
-  // Mark pending as reviewed + approved
-  await supabase
-    .from('pending_transactions')
-    .update({
-      needs_review: false,
-      reviewed_at: new Date().toISOString(),
-      approved: true,
-    })
-    .eq('id', pending.id);
-
-  return { accepted: true, transactionId, categoryId };
-}
-
 // ─── Main Pipeline ──────────────────────────────────────────────
 
 /**
  * Process an incoming bank notification through the AI-powered pipeline.
+ * All valid transactions are automatically approved — no manual review needed.
  *
  * Steps:
  *   1. Fingerprint deduplication
  *   2. Keyword filtering (if rules with keywords exist for this bank)
  *   3. AI-based extraction of vendor + amount
- *      - Extraction fails → store with fallback data for review
  *   4. Ignore rule check
- *   5. Insert pending transaction
- *   6. Auto-approve if vendor has category assigned
+ *   5. Duplicate detection against existing transactions
+ *   6. Auto-approve: insert transaction + create vendor override
  */
 export async function processNotification(
   userId: string,
@@ -826,26 +712,39 @@ export async function processNotification(
 
   let vendor: string;
   let amount: number;
+  let suggestedCategory: string | null = null;
 
   if (aiResult.success && aiResult.data) {
     vendor = aiResult.data.vendor;
     amount = aiResult.data.amount;
+    suggestedCategory = aiResult.data.suggestedCategory;
   } else if (input.fallbackVendor && input.fallbackAmount != null && input.fallbackAmount > 0) {
     // AI extraction failed but we have fallback data from the native plugin
     vendor = formatVendorName(input.fallbackVendor);
     amount = input.fallbackAmount;
   } else {
-    // No extraction possible — store for manual review
-    console.log('[processNotification] AI extraction failed, storing with fallback data');
+    // No extraction possible — store as rejected
+    console.log('[processNotification] AI extraction failed, storing as rejected');
     const pending = await insertPendingTransaction(
       userId,
       input,
       input.fallbackVendor || 'Unknown',
       input.fallbackAmount ?? 0,
-      true,
+      false,
       undefined,
       aiResult.error || 'AI extraction failed',
     );
+
+    if (pending) {
+      await supabase
+        .from('pending_transactions')
+        .update({
+          approved: false,
+          rejection_reason: 'Could not extract transaction data',
+          reviewed_at: new Date().toISOString(),
+        })
+        .eq('id', pending.id);
+    }
 
     return {
       processed: true,
@@ -862,14 +761,14 @@ export async function processNotification(
     return { processed: false, skipReason: 'ignored' };
   }
 
-  // ── Step 5: Insert pending transaction ──
+  // ── Step 5: Insert pending transaction record ──
   const pending = await insertPendingTransaction(
     userId,
     input,
     vendor,
     amount,
-    true, // needs review by default
-    'ai-extracted',
+    false, // no manual review needed — auto-approved
+    undefined,
     'OK',
   );
 
@@ -877,11 +776,11 @@ export async function processNotification(
     return { processed: true };
   }
 
-  // ── Step 6: Auto-approve if vendor has category ──
-  // Look up category from vendor overrides (user-configured) or AI suggestion
-  let defaultCategoryId: string | null = null;
+  // ── Step 6: Auto-approve — always insert as a transaction ──
+  // Resolve category: vendor override > AI suggestion > fallback
+  let categoryId: string | null = null;
 
-  // Check vendor overrides first
+  // Check vendor overrides first (user-configured)
   const { data: overrideData } = await (async () => {
     try {
       const headers = await getAuthHeaders();
@@ -898,21 +797,159 @@ export async function processNotification(
   })();
 
   if (overrideData?.category_id) {
-    defaultCategoryId = overrideData.category_id;
+    categoryId = overrideData.category_id;
   }
 
-  const autoResult = await tryAutoApprove(
-    userId,
-    pending,
-    defaultCategoryId,
-  );
+  // If no override, try to resolve AI-suggested category name to a budget ID
+  if (!categoryId && suggestedCategory) {
+    const { data: categories } = await supabase
+      .from('categories')
+      .select('id, name')
+      .eq('user_id', userId);
+
+    if (categories && categories.length > 0) {
+      const lowerSuggested = suggestedCategory.toLowerCase();
+      const match = categories.find((c: any) => c.name.toLowerCase() === lowerSuggested);
+      if (match) {
+        categoryId = match.id;
+      } else {
+        // Fallback: use "Other" or the first available category
+        const other = categories.find((c: any) => c.name.toLowerCase() === 'other');
+        categoryId = other?.id || categories[0]?.id || null;
+      }
+    }
+  }
+
+  // If still no category, try to find any default
+  if (!categoryId) {
+    const { data: categories } = await supabase
+      .from('categories')
+      .select('id, name')
+      .eq('user_id', userId)
+      .limit(1);
+
+    if (categories && categories.length > 0) {
+      categoryId = categories[0].id;
+    }
+  }
+
+  // Check for duplicate against existing transactions
+  const dupResult = await checkDuplicateTransaction(userId, pending);
+
+  if (dupResult.isDuplicate) {
+    // Mark as rejected with reason
+    await supabase
+      .from('pending_transactions')
+      .update({
+        needs_review: false,
+        reviewed_at: new Date().toISOString(),
+        approved: false,
+        rejection_reason: dupResult.reason,
+      })
+      .eq('id', pending.id);
+    console.log(`[processNotification] Duplicate detected: ${dupResult.reason}`);
+    return { processed: true, pendingTransaction: pending };
+  }
+
+  if (dupResult.updatedExistingId) {
+    // Recurring transaction date was updated — no new transaction needed
+    await supabase
+      .from('pending_transactions')
+      .update({
+        needs_review: false,
+        reviewed_at: new Date().toISOString(),
+        approved: true,
+      })
+      .eq('id', pending.id);
+    console.log(`[processNotification] Updated recurring transaction ${dupResult.updatedExistingId} date`);
+    return { processed: true, pendingTransaction: pending, autoAccepted: true, transactionId: dupResult.updatedExistingId, categoryId: categoryId || undefined };
+  }
+
+  // Insert the transaction
+  if (categoryId) {
+    const transactionId = crypto.randomUUID();
+    const { error: txError } = await supabase
+      .from('transactions')
+      .insert({
+        id: transactionId,
+        user_id: userId,
+        vendor: formatVendorName(vendor),
+        amount,
+        date: new Date().toISOString().slice(0, 10),
+        category_id: categoryId,
+        recurrence: 'One-time',
+        label: 'Auto-Added',
+        is_projected: false,
+      });
+
+    if (txError) {
+      console.error('[processNotification] Error inserting transaction:', txError);
+    } else {
+      // Mark pending as approved
+      await supabase
+        .from('pending_transactions')
+        .update({
+          needs_review: false,
+          reviewed_at: new Date().toISOString(),
+          approved: true,
+        })
+        .eq('id', pending.id);
+
+      // Save vendor override for future auto-categorization (if not already saved)
+      if (!overrideData) {
+        try {
+          const headers = await getAuthHeaders();
+          (headers as any)['Prefer'] = 'return=representation';
+          await fetch(`${REST_BASE}/vendor_overrides`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              user_id: userId,
+              vendor_name: formatVendorName(vendor),
+              category_id: categoryId,
+              auto_accept: true,
+            }),
+          });
+        } catch {
+          // Non-critical
+        }
+      }
+
+      // Remember vendor→category in AI model
+      const { data: catData } = await supabase
+        .from('categories')
+        .select('name')
+        .eq('id', categoryId)
+        .single();
+      if (catData?.name) {
+        model.rememberVendorCategory(vendor, catData.name);
+      }
+
+      return {
+        processed: true,
+        pendingTransaction: pending,
+        autoAccepted: true,
+        transactionId,
+        categoryId,
+      };
+    }
+  }
+
+  // If we couldn't determine a category at all, still mark as approved
+  // but without a budget category — it will show as uncategorized
+  await supabase
+    .from('pending_transactions')
+    .update({
+      needs_review: false,
+      reviewed_at: new Date().toISOString(),
+      approved: true,
+    })
+    .eq('id', pending.id);
 
   return {
     processed: true,
     pendingTransaction: pending,
-    autoAccepted: autoResult.accepted,
-    transactionId: autoResult.transactionId,
-    categoryId: autoResult.categoryId,
+    autoAccepted: true,
   };
 }
 
