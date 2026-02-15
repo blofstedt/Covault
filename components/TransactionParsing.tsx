@@ -98,7 +98,11 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                         if (isRefreshing) return;
                         setIsRefreshing(true);
                         try {
-                          await onRefreshNotifications();
+                          // Run refresh and enforce a minimum visible spin duration
+                          await Promise.all([
+                            onRefreshNotifications(),
+                            new Promise(r => setTimeout(r, 800)),
+                          ]);
                         } finally {
                           setIsRefreshing(false);
                         }
