@@ -137,10 +137,16 @@ async function checkAndInsertFingerprint(
 
 // ─── Step 2: Regex Parsing ──────────────────────────────────────
 
+/** Detect Interac e-Transfer notifications — these often lack amounts or recipient names */
+const INTERAC_PATTERN = /interac|e-?transfer/i;
+
 /**
  * Common heuristic patterns for transaction notifications across banks.
  * These are tried as a fallback when the AI-generated rule fails.
  * Each pair: [amount_regex, vendor_regex]
+ *
+ * Note: Interac e-Transfer patterns are intentionally excluded because
+ * those notifications frequently omit dollar amounts or recipient names.
  */
 const COMMON_TRANSACTION_PATTERNS: Array<[string, string]> = [
   // "transaction in the amount of $XX.XX at VENDOR"
@@ -149,14 +155,12 @@ const COMMON_TRANSACTION_PATTERNS: Array<[string, string]> = [
   ['\\$([\\d,]+\\.\\d{2})\\s+(?:at|from|to)', '\\$[\\d,]+\\.\\d{2}\\s+(?:at|from|to)\\s+(.+?)(?:\\s+(?:was|on|has|ending|card)|$)'],
   // "Purchase/spent/charged/debited of $XX.XX at VENDOR"
   ['(?:purchase|spent|charged|debited|transaction)\\s+(?:of\\s+)?\\$([\\d,]+\\.\\d{2})', '(?:at|from)\\s+(.+?)(?:\\s+(?:was|on|has|ending|card|\\.)|$)'],
-  // "INTERAC e-Transfer of $XX.XX sent to RECIPIENT" or "sent/transfer $XX.XX to RECIPIENT"
-  ['(?:e-?transfer|interac|transfer|sent)\\s+(?:of\\s+)?\\$([\\d,]+\\.\\d{2})', '(?:sent to|to)\\s+(.+?)(?:\\s+(?:was|has|from|\\.|$))'],
   // "Bill payment of $XX.XX to VENDOR"
   ['(?:bill\\s+payment|payment)\\s+(?:of\\s+)?\\$([\\d,]+\\.\\d{2})', '(?:to|for)\\s+(.+?)(?:\\s+(?:was|on|has|from|\\.|$))'],
 ];
 
 /** Keywords that indicate a notification is about a financial transaction */
-const TRANSACTION_KEYWORDS = /(?:transaction|purchase|spent|charged|debited|approved|declined|payment|authorized|merchant|vendor|bought|transfer|e-transfer|interac|sent|bill)/i;
+const TRANSACTION_KEYWORDS = /(?:transaction|purchase|spent|charged|debited|approved|declined|payment|authorized|merchant|vendor|bought|bill)/i;
 
 /**
  * Try common heuristic patterns to extract vendor + amount when
@@ -795,7 +799,10 @@ export async function processNotification(
 
   const confidenceThreshold = (baseline as { confidence_threshold: number } | null)?.confidence_threshold ?? DEFAULT_CONFIDENCE_THRESHOLD;
 
-  const needsAI = !rule || regexFailed || validation.confidence < confidenceThreshold;
+  // Skip AI for Interac e-Transfer notifications — they often lack
+  // dollar amounts or recipient names, producing unreliable results.
+  const isInterac = INTERAC_PATTERN.test(input.rawNotification);
+  const needsAI = !isInterac && (!rule || regexFailed || validation.confidence < confidenceThreshold);
 
   if (needsAI) {
     // Pass true for regexFailed when confidence is below threshold,
@@ -1004,7 +1011,13 @@ export async function flagAndRegenerateRule(options: {
     throw ruleError ?? new Error('Notification rule not found');
   }
 
-  // 5) Call local AI to regenerate regex
+  // 5) Skip AI regeneration for Interac e-Transfer notifications —
+  //    they often lack amounts or recipient names.
+  if (INTERAC_PATTERN.test(rawNotification)) {
+    throw new Error('Interac e-Transfer notifications cannot be re-parsed by AI due to missing data.');
+  }
+
+  // 6) Call local AI to regenerate regex
   const aiResult = await generateRuleWithLocalAI(rule.bank_name, rawNotification);
 
   // Map new category_name to categories table
@@ -1020,7 +1033,7 @@ export async function flagAndRegenerateRule(options: {
     }
   }
 
-  // 6) Update notification_rules with new regex + counters
+  // 7) Update notification_rules with new regex + counters
   const { error: updateError } = await supabase
     .from('notification_rules')
     .update({
