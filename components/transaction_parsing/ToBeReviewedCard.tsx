@@ -18,7 +18,7 @@ interface ToBeReviewedCardProps {
   onApprovePending?: (pendingId: string, categoryId: string) => void | Promise<void>;
   onRejectConfirm: (id: string) => void;
   onLoadVendorOverrides: () => Promise<void>;
-  onUpsertLocalVendorOverride: (vendorName: string, categoryId: string, properName?: string) => void;
+  onUpsertLocalVendorOverride: (vendorName: string, categoryId: string) => void;
   onScanForTransactions: () => void;
 }
 
