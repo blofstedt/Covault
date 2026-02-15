@@ -626,12 +626,12 @@ async function tryAutoAccept(
 
   if (existing && existing.length > 0) {
     // Check for a transaction with the same amount within the same hour
-    const currentHour = now.getHours();
     const hasDuplicate = existing.some((tx) => {
       if (Math.abs(tx.amount - pending.extracted_amount) >= AMOUNT_TOLERANCE) return false;
-      // Check if the existing transaction was created in the same hour
+      // Check if the existing transaction was created within the same day and hour
+      if (!tx.created_at) return true; // If no timestamp, treat as duplicate for same-day match
       const txCreated = new Date(tx.created_at);
-      return txCreated.getHours() === currentHour;
+      return txCreated.toISOString().slice(0, 10) === today && txCreated.getHours() === now.getHours();
     });
     if (hasDuplicate) {
       // Mark as rejected due to duplicate
@@ -1050,7 +1050,7 @@ Clean merchant name:`;
     const cleaned = text.trim().replace(/^["']|["']$/g, '');
 
     // Sanity check: if the cleaned name is empty or too long, use raw
-    if (!cleaned || cleaned.length === 0 || cleaned.length > 100) {
+    if (!cleaned || cleaned.length > 100) {
       return rawVendor;
     }
 

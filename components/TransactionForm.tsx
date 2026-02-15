@@ -482,7 +482,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             Array.from(selectedIds)[0] !== initialTransaction.budget_id && (
             <div className="bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl p-3 border border-emerald-200 dark:border-emerald-800/30">
               <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 text-center leading-relaxed">
-                You've set a default category for this vendor. This category will be applied by Covault for future transactions from this vendor.
+                You've set a default category for this vendor. Future transactions will automatically use this category.
               </p>
             </div>
           )}
@@ -585,7 +585,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
               </div>
             </div>
             <p className="text-xs font-bold text-slate-600 dark:text-slate-300 text-center leading-relaxed">
-              This split category transaction will be submitted as a one time submission. Please choose just one category to set a default category for this vendor going forward.
+              This split category transaction will be submitted as a one-time submission. Please choose just one category to set a default category for this vendor going forward.
             </p>
             <button
               onClick={() => setShowAiSplitWarning(false)}
