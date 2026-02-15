@@ -5,17 +5,14 @@
 //   1. Fingerprint deduplication
 //   2. Regex parsing
 //   3. Validation & confidence scoring
-//   4. Gemini Flash invocation (authoring only)
+//   4. Local AI invocation (authoring only)
 //   5. Ignore rule check
 //   6. Pending transaction insert
 //   7. Auto-accept logic
 
 import { supabase } from './supabase';
 import type { PendingTransaction, ValidationBaseline } from '../types';
-
-// ─── Constants ───────────────────────────────────────────────────
-
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+import { generateRuleLocally, cleanVendorNameLocally } from './localAI';
 
 /** Default confidence threshold if no validation_baselines row exists */
 const DEFAULT_CONFIDENCE_THRESHOLD = 70;
@@ -142,7 +139,7 @@ async function checkAndInsertFingerprint(
 
 /**
  * Common heuristic patterns for transaction notifications across banks.
- * These are tried as a fallback when the Gemini-generated rule fails.
+ * These are tried as a fallback when the AI-generated rule fails.
  * Each pair: [amount_regex, vendor_regex]
  */
 const COMMON_TRANSACTION_PATTERNS: Array<[string, string]> = [
@@ -163,7 +160,7 @@ const TRANSACTION_KEYWORDS = /(?:transaction|purchase|spent|charged|debited|appr
 
 /**
  * Try common heuristic patterns to extract vendor + amount when
- * the primary Gemini-generated regex fails.
+ * the primary AI-generated regex fails.
  * Only matches if the notification contains transaction-related keywords.
  */
 function tryHeuristicParsing(
@@ -368,16 +365,17 @@ async function validateExtraction(
   return { confidence, reasons, needsReview };
 }
 
-// ─── Step 4: Gemini Flash Invocation ────────────────────────────
+// ─── Step 4: Local AI Invocation ────────────────────────────────
 
 /**
- * Call Gemini Flash to generate regex patterns for a bank notification.
+ * Generate regex patterns for a bank notification using the local AI model.
+ * Runs entirely on-device via Transformers.js — no cloud API calls.
  * Only called when:
  *   - No regex exists for the bank
  *   - Regex fails validation
  *   - Confidence < threshold
  */
-async function generateRuleWithGemini(
+async function generateRuleWithLocalAI(
   bankName: string,
   rawNotification: string,
 ): Promise<{
@@ -386,103 +384,18 @@ async function generateRuleWithGemini(
   category_name: string;
   recurrence: string;
 }> {
-  if (!GEMINI_API_KEY) {
-    throw new Error('GEMINI_API_KEY is not set');
+  const result = await generateRuleLocally(bankName, rawNotification);
+
+  if (!result) {
+    throw new Error('Local AI model unavailable or failed to generate rule');
   }
 
-  const prompt = `
-You are an expert at parsing bank and credit card transaction notifications from any financial institution.
-
-Here is a notification from ${bankName}:
-"${rawNotification}"
-
-Your task: Create regex patterns that will work for THIS notification and SIMILAR future notifications from the same bank/institution. The patterns should be general enough to handle variations in vendor names, amounts, and card numbers.
-
-Common notification formats you should handle include:
-- "A transaction of $XX.XX at VENDOR was approved on card ending XXXX"
-- "Credit Card Transaction Alert A transaction in the amount of $XX.XX at VENDOR was approved..."
-- "Purchase of $XX.XX at VENDOR"
-- "You spent $XX.XX at VENDOR"
-- "Transaction alert: $XX.XX charged at VENDOR"
-- "Debit card purchase: $XX.XX at VENDOR"
-- "INTERAC e-Transfer of $XX.XX sent to RECIPIENT"
-- "You sent an INTERAC e-Transfer of $XX.XX to RECIPIENT"
-- "Bill payment of $XX.XX to VENDOR"
-- "Your bill payment of $XX.XX to VENDOR has been processed"
-- And many other similar banking notification formats
-
-Return a JSON object with these exact keys:
-- "amount_regex": a JavaScript regular expression (without surrounding slashes) that captures the numeric dollar amount (digits, optional comma separators, decimal point) in the FIRST capturing group. Must handle amounts like $61.57, $1,234.56, etc.
-- "vendor_regex": a JavaScript regular expression (without surrounding slashes) that captures the vendor/merchant name in the FIRST capturing group. The vendor name may contain alphanumeric characters, spaces, hashes, and other special characters.
-- "category_name": a short category name: "Groceries", "Transport", "Utilities", "Leisure", "Housing", "Dining", "Shopping", "Gas", "Other".
-- "recurrence": "One-time", "Biweekly", or "Monthly".
-
-Rules:
-- Make regex patterns FLEXIBLE enough to match variations of this notification style (different vendors, different amounts, different card numbers).
-- Do NOT hardcode specific vendor names, amounts, or card numbers into the regex.
-- The amount_regex should capture just the numeric part (e.g., "61.57" from "$61.57").
-- Use non-greedy quantifiers where appropriate.
-- Return ONLY valid JSON. No comments, no code blocks, no explanations.
-`;
-
-  const body = {
-    contents: [{ parts: [{ text: prompt }] }],
-  };
-
-  const response = await fetch(
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' +
-      GEMINI_API_KEY,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    },
-  );
-
-  if (!response.ok) {
-    const text = await response.text();
-    console.error('[Gemini] Error:', text);
-    throw new Error('Gemini API error');
-  }
-
-  const data = await response.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-
-  // Strip code fences if present
-  const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-
-  let parsed;
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch {
-    console.error('[Gemini] Failed to parse response:', text);
-    throw new Error('Invalid JSON from Gemini');
-  }
-
-  // Validate Gemini output
-  if (!parsed.amount_regex || !parsed.vendor_regex) {
-    throw new Error('Gemini response missing required regex fields');
-  }
-
-  // Validate regex is syntactically valid
-  try {
-    new RegExp(parsed.amount_regex);
-    new RegExp(parsed.vendor_regex);
-  } catch {
-    throw new Error('Gemini returned invalid regex syntax');
-  }
-
-  return {
-    amount_regex: parsed.amount_regex,
-    vendor_regex: parsed.vendor_regex,
-    category_name: parsed.category_name || 'Other',
-    recurrence: parsed.recurrence || 'One-time',
-  };
+  return result;
 }
 
 /**
  * Get or create a notification rule for a bank.
- * Calls Gemini only if no existing rule or if regex fails.
+ * Uses local AI only if no existing rule or if regex fails.
  */
 async function getOrCreateRule(
   userId: string,
@@ -499,22 +412,17 @@ async function getOrCreateRule(
     return rule;
   }
 
-  // Need Gemini: no rule exists, or regex failed
-  if (!GEMINI_API_KEY) {
-    console.warn('[getOrCreateRule] No GEMINI_API_KEY, cannot generate rule');
-    return rule; // Return existing (possibly failing) rule, or null
-  }
-
+  // Need local AI: no rule exists, or regex failed
   try {
-    const geminiResult = await generateRuleWithGemini(bankName, rawNotification);
+    const aiResult = await generateRuleWithLocalAI(bankName, rawNotification);
 
     // Map category name to existing categories table
     let defaultCategoryId: string | null = null;
-    if (geminiResult.category_name) {
+    if (aiResult.category_name) {
       const { data: cat } = await supabase
         .from('categories')
         .select('id, name')
-        .ilike('name', geminiResult.category_name)
+        .ilike('name', aiResult.category_name)
         .maybeSingle();
       if (cat) {
         defaultCategoryId = cat.id;
@@ -527,8 +435,8 @@ async function getOrCreateRule(
       const { data: updated, error } = await supabase
         .from('notification_rules')
         .update({
-          amount_regex: geminiResult.amount_regex,
-          vendor_regex: geminiResult.vendor_regex,
+          amount_regex: aiResult.amount_regex,
+          vendor_regex: aiResult.vendor_regex,
           default_category_id: defaultCategoryId,
         })
         .eq('id', rule.id)
@@ -548,8 +456,8 @@ async function getOrCreateRule(
           user_id: userId,
           bank_app_id: bankAppId,
           bank_name: bankName,
-          amount_regex: geminiResult.amount_regex,
-          vendor_regex: geminiResult.vendor_regex,
+          amount_regex: aiResult.amount_regex,
+          vendor_regex: aiResult.vendor_regex,
           default_category_id: defaultCategoryId,
         })
         .select()
@@ -562,7 +470,7 @@ async function getOrCreateRule(
       return inserted as NotificationRuleRow;
     }
   } catch (err) {
-    console.error('[getOrCreateRule] Gemini invocation failed:', err);
+    console.warn('[getOrCreateRule] Local AI invocation failed, falling back:', err);
     return rule;
   }
 }
@@ -821,7 +729,7 @@ async function tryAutoAccept(
  *   1. Fingerprint deduplication
  *   2. Regex parsing
  *   3. Validation & confidence scoring
- *   4. Gemini Flash (if needed)
+ *   4. Local AI (if needed)
  *   5. Ignore rule check
  *   6. Pending transaction insert
  *   7. Auto-accept logic
@@ -876,7 +784,7 @@ export async function processNotification(
     !regexFailed && parsed != null,
   );
 
-  // ── Step 4: Gemini Flash (if needed) ──
+  // ── Step 4: Local AI (if needed) ──
   // Get the confidence threshold from baselines
   const { data: baseline } = await supabase
     .from('validation_baselines')
@@ -887,11 +795,11 @@ export async function processNotification(
 
   const confidenceThreshold = (baseline as { confidence_threshold: number } | null)?.confidence_threshold ?? DEFAULT_CONFIDENCE_THRESHOLD;
 
-  const needsGemini = !rule || regexFailed || validation.confidence < confidenceThreshold;
+  const needsAI = !rule || regexFailed || validation.confidence < confidenceThreshold;
 
-  if (needsGemini) {
+  if (needsAI) {
     // Pass true for regexFailed when confidence is below threshold,
-    // so getOrCreateRule calls Gemini to regenerate patterns
+    // so getOrCreateRule calls local AI to regenerate patterns
     const shouldRegenerate = regexFailed || validation.confidence < confidenceThreshold;
     const updatedRule = await getOrCreateRule(
       userId,
@@ -921,7 +829,7 @@ export async function processNotification(
   }
 
   // ── Step 4b: Heuristic fallback parsing ──
-  // If regex and Gemini both failed, try common transaction patterns
+  // If regex and local AI both failed, try common transaction patterns
   if (!parsed) {
     const heuristicResult = tryHeuristicParsing(input.rawNotification);
     if (heuristicResult) {
@@ -1020,7 +928,7 @@ export async function processNotification(
  * When the user marks a transaction as incorrectly parsed:
  * 1) Enforce rate limits via flag_reports (max 1/24h, max 5/7d)
  * 2) Insert a row into flag_reports
- * 3) Call Gemini again to regenerate regex for the bank
+ * 3) Call local AI again to regenerate regex for the bank
  * 4) Update notification_rules with new regex + flagged_count
  */
 export async function flagAndRegenerateRule(options: {
@@ -1096,16 +1004,16 @@ export async function flagAndRegenerateRule(options: {
     throw ruleError ?? new Error('Notification rule not found');
   }
 
-  // 5) Call Gemini to regenerate regex
-  const geminiResult = await generateRuleWithGemini(rule.bank_name, rawNotification);
+  // 5) Call local AI to regenerate regex
+  const aiResult = await generateRuleWithLocalAI(rule.bank_name, rawNotification);
 
   // Map new category_name to categories table
   let newDefaultCategoryId: string | null = rule.default_category_id;
-  if (geminiResult.category_name) {
+  if (aiResult.category_name) {
     const { data: cat } = await supabase
       .from('categories')
       .select('id, name')
-      .ilike('name', geminiResult.category_name)
+      .ilike('name', aiResult.category_name)
       .maybeSingle();
     if (cat) {
       newDefaultCategoryId = cat.id;
@@ -1116,8 +1024,8 @@ export async function flagAndRegenerateRule(options: {
   const { error: updateError } = await supabase
     .from('notification_rules')
     .update({
-      amount_regex: geminiResult.amount_regex,
-      vendor_regex: geminiResult.vendor_regex,
+      amount_regex: aiResult.amount_regex,
+      vendor_regex: aiResult.vendor_regex,
       default_category_id: newDefaultCategoryId,
       flagged_count: (rule.flagged_count ?? 0) + 1,
       last_flagged_at: new Date().toISOString(),
@@ -1133,55 +1041,12 @@ export async function flagAndRegenerateRule(options: {
 // ─── Vendor Name Cleaning (AI-powered) ──────────────────────────
 
 /**
- * Use Gemini to clean/normalize a raw vendor name extracted from a
+ * Use the local AI model to clean/normalize a raw vendor name extracted from a
  * bank notification into a human-friendly merchant name.
  * e.g. "Netflix 425" → "Netflix", "Amazn#57" → "Amazon"
  *
- * Falls back to the raw vendor name if Gemini is unavailable or fails.
+ * Falls back to the raw vendor name if the model is unavailable or fails.
  */
 export async function cleanVendorName(rawVendor: string): Promise<string> {
-  if (!GEMINI_API_KEY || !rawVendor || rawVendor.trim().length === 0) {
-    return rawVendor;
-  }
-
-  try {
-    const prompt = `You are a merchant name normalizer. Given a raw vendor string from a bank transaction notification, return ONLY the clean, human-readable merchant name. Do not include transaction IDs, reference numbers, or codes. Return just the merchant name as plain text, nothing else.
-
-Raw vendor: "${rawVendor}"
-
-Clean merchant name:`;
-
-    const body = {
-      contents: [{ parts: [{ text: prompt }] }],
-    };
-
-    const response = await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' +
-        GEMINI_API_KEY,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      },
-    );
-
-    if (!response.ok) {
-      console.warn('[cleanVendorName] Gemini API error, using raw vendor');
-      return rawVendor;
-    }
-
-    const data = await response.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-    const cleaned = text.trim().replace(/^["']|["']$/g, '');
-
-    // Sanity check: if the cleaned name is empty or too long, use raw
-    if (!cleaned || cleaned.length > 100) {
-      return rawVendor;
-    }
-
-    return cleaned;
-  } catch (err) {
-    console.warn('[cleanVendorName] Error:', err);
-    return rawVendor;
-  }
+  return cleanVendorNameLocally(rawVendor);
 }
