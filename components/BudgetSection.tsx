@@ -87,7 +87,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
         {external > 0 && (
           <div
             style={{ width: `${externalWidth}%` }}
-            className="h-full bg-amber-400/30 dark:bg-amber-500/40 transition-all duration-300"
+            className="h-full bg-slate-300/40 dark:bg-slate-500/30 transition-all duration-300"
           />
         )}
 
@@ -146,12 +146,12 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                   {isDanger
                     ? `Over: $${Math.max(0, total - budget.totalLimit).toFixed(0)}`
                     : `$${Math.max(0, budget.totalLimit - total).toFixed(0)} left`}
+                  {external > 0 && (
+                    <span className="text-[9px] font-bold uppercase tracking-wider ml-1 text-slate-400 dark:text-slate-500">
+                      +${external.toFixed(0)} Shield
+                    </span>
+                  )}
                 </span>
-                {external > 0 && (
-                  <span className="text-[9px] font-bold uppercase tracking-wider mt-0.5 text-amber-500 dark:text-amber-400">
-                    +${external.toFixed(0)} Shield
-                  </span>
-                )}
               </div>
             )}
           </div>
@@ -168,7 +168,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                   >
                     ${spent.toFixed(0)}
                     {external > 0 && (
-                      <span className="text-amber-500 dark:text-amber-400">
+                      <span className="text-slate-400 dark:text-slate-500">
                         {' '}+${external.toFixed(0)}
                       </span>
                     )}
@@ -177,7 +177,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                     </span>
                   </span>
                   {external > 0 && (
-                    <span className="text-[8px] font-bold uppercase tracking-wider text-amber-500 dark:text-amber-400 mr-2">
+                    <span className="text-[8px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mr-2">
                       Shield Active
                     </span>
                   )}
@@ -218,14 +218,14 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
         >
           <div className="py-6 space-y-4">
             {external > 0 && (
-              <div className="px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-2xl">
+              <div className="px-4 py-3 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/40 rounded-2xl">
                 <div className="flex items-start space-x-2">
-                  <span className="text-amber-500 dark:text-amber-400 text-lg">🛡️</span>
+                  <span className="text-slate-400 dark:text-slate-500 text-lg">🛡️</span>
                   <div className="flex-1">
-                    <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider">
+                    <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                       Discretionary Shield Active
                     </p>
-                    <p className="text-[9px] text-amber-600 dark:text-amber-500 mt-1 leading-relaxed">
+                    <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-1 leading-relaxed">
                       ${external.toFixed(0)} from other budgets' overspending is being covered by this category.
                     </p>
                   </div>

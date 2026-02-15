@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { BudgetCategory } from '../../../types';
 
 interface BudgetLimitsSectionProps {
@@ -20,6 +20,32 @@ const BudgetLimitsSection: React.FC<BudgetLimitsSectionProps> = ({
 }) => {
   const [editingBudgets, setEditingBudgets] = useState<Record<string, string>>({});
   const [overAllocatedMessage, setOverAllocatedMessage] = useState<string | null>(null);
+  // Track which budgets have been saved and are awaiting prop updates
+  const pendingSavesRef = useRef<Record<string, number>>({});
+
+  // Clear editing state once the prop value matches the saved value
+  useEffect(() => {
+    const pending = pendingSavesRef.current;
+    const toRemove: string[] = [];
+    for (const [budgetId, savedLimit] of Object.entries(pending)) {
+      const budget = budgets.find(b => b.id === budgetId);
+      if (budget && budget.totalLimit === savedLimit) {
+        toRemove.push(budgetId);
+      }
+    }
+    if (toRemove.length > 0) {
+      for (const id of toRemove) {
+        delete pending[id];
+      }
+      setEditingBudgets(prev => {
+        const updated = { ...prev };
+        for (const id of toRemove) {
+          delete updated[id];
+        }
+        return updated;
+      });
+    }
+  }, [budgets]);
 
   const handleInputChange = (budgetId: string, value: string) => {
     setOverAllocatedMessage(null);
@@ -53,13 +79,9 @@ const BudgetLimitsSection: React.FC<BudgetLimitsSectionProps> = ({
         }
 
         setOverAllocatedMessage(null);
+        // Track the pending save so we clear editing state when props update
+        pendingSavesRef.current[budget.id] = newLimit;
         onSaveBudgetLimit(budget.id, newLimit);
-        // Clear the editing state for this budget
-        setEditingBudgets(prev => {
-          const updated = { ...prev };
-          delete updated[budget.id];
-          return updated;
-        });
       }
     }
   };

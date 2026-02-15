@@ -20,9 +20,6 @@ const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 /** Default confidence threshold if no validation_baselines row exists */
 const DEFAULT_CONFIDENCE_THRESHOLD = 70;
 
-/** Timestamp bucket size for fingerprinting (± 3 minutes) */
-const FINGERPRINT_TIME_BUCKET_MS = 3 * 60 * 1000;
-
 /** Tolerance for comparing monetary amounts */
 const AMOUNT_TOLERANCE = 0.01;
 
@@ -74,20 +71,20 @@ interface NotificationRuleRow {
 
 /**
  * Generate a fingerprint hash from notification content.
- * Uses: bank_app_id + normalized text + timestamp bucket.
+ * Uses: bank_app_id + normalized text + detected amount.
+ * Timestamp is intentionally excluded because rescanned notifications
+ * (e.g. on refresh) lack an original timestamp and would generate
+ * different hashes each time, defeating deduplication.
  */
 function generateFingerprintHash(
   bankAppId: string,
   rawNotification: string,
   detectedAmount: number | null,
-  timestamp: number,
 ): string {
   // Normalize: lowercase, strip extra whitespace
   const normalizedText = rawNotification.toLowerCase().replace(/\s+/g, ' ').trim();
-  // Time bucket: round to nearest FINGERPRINT_TIME_BUCKET_MS
-  const timeBucket = Math.floor(timestamp / FINGERPRINT_TIME_BUCKET_MS);
   const amountStr = detectedAmount != null ? detectedAmount.toFixed(2) : '';
-  const raw = `${bankAppId}|${normalizedText}|${amountStr}|${timeBucket}`;
+  const raw = `${bankAppId}|${normalizedText}|${amountStr}`;
 
   // Simple hash (djb2) — deterministic and fast
   let hash = 5381;
@@ -106,9 +103,8 @@ async function checkAndInsertFingerprint(
   bankAppId: string,
   rawNotification: string,
   detectedAmount: number | null,
-  timestamp: number,
 ): Promise<boolean> {
-  const hash = generateFingerprintHash(bankAppId, rawNotification, detectedAmount, timestamp);
+  const hash = generateFingerprintHash(bankAppId, rawNotification, detectedAmount);
 
   // Check if fingerprint already exists for this user
   const { data: existing } = await supabase
@@ -156,10 +152,14 @@ const COMMON_TRANSACTION_PATTERNS: Array<[string, string]> = [
   ['\\$([\\d,]+\\.\\d{2})\\s+(?:at|from|to)', '\\$[\\d,]+\\.\\d{2}\\s+(?:at|from|to)\\s+(.+?)(?:\\s+(?:was|on|has|ending|card)|$)'],
   // "Purchase/spent/charged/debited of $XX.XX at VENDOR"
   ['(?:purchase|spent|charged|debited|transaction)\\s+(?:of\\s+)?\\$([\\d,]+\\.\\d{2})', '(?:at|from)\\s+(.+?)(?:\\s+(?:was|on|has|ending|card|\\.)|$)'],
+  // "INTERAC e-Transfer of $XX.XX sent to RECIPIENT" or "sent/transfer $XX.XX to RECIPIENT"
+  ['(?:e-?transfer|interac|transfer|sent)\\s+(?:of\\s+)?\\$([\\d,]+\\.\\d{2})', '(?:sent to|to)\\s+(.+?)(?:\\s+(?:was|has|from|\\.|$))'],
+  // "Bill payment of $XX.XX to VENDOR"
+  ['(?:bill\\s+payment|payment)\\s+(?:of\\s+)?\\$([\\d,]+\\.\\d{2})', '(?:to|for)\\s+(.+?)(?:\\s+(?:was|on|has|from|\\.|$))'],
 ];
 
 /** Keywords that indicate a notification is about a financial transaction */
-const TRANSACTION_KEYWORDS = /(?:transaction|purchase|spent|charged|debited|approved|declined|payment|authorized|merchant|vendor|bought)/i;
+const TRANSACTION_KEYWORDS = /(?:transaction|purchase|spent|charged|debited|approved|declined|payment|authorized|merchant|vendor|bought|transfer|e-transfer|interac|sent|bill)/i;
 
 /**
  * Try common heuristic patterns to extract vendor + amount when
@@ -405,6 +405,10 @@ Common notification formats you should handle include:
 - "You spent $XX.XX at VENDOR"
 - "Transaction alert: $XX.XX charged at VENDOR"
 - "Debit card purchase: $XX.XX at VENDOR"
+- "INTERAC e-Transfer of $XX.XX sent to RECIPIENT"
+- "You sent an INTERAC e-Transfer of $XX.XX to RECIPIENT"
+- "Bill payment of $XX.XX to VENDOR"
+- "Your bill payment of $XX.XX to VENDOR has been processed"
 - And many other similar banking notification formats
 
 Return a JSON object with these exact keys:
@@ -826,7 +830,6 @@ export async function processNotification(
   userId: string,
   input: NotificationInput,
 ): Promise<ProcessingResult> {
-  const timestamp = input.notificationTimestamp || Date.now();
 
   // ── Step 1: Fingerprint Deduplication ──
   // Quick amount extraction for fingerprinting (best effort, pre-regex)
@@ -841,7 +844,6 @@ export async function processNotification(
     input.bankAppId,
     input.rawNotification,
     quickAmount,
-    timestamp,
   );
 
   if (isDuplicate) {
