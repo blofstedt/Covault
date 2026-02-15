@@ -1,6 +1,7 @@
 // lib/hooks/useTransactionOps.ts
 import { useCallback } from 'react';
 import type { Transaction } from '../../types';
+import { TransactionLabel } from '../../types';
 import { REST_BASE, getAuthHeaders } from '../apiHelpers';
 import { useToSupabaseTransaction, useFromSupabaseTransaction } from './transactionMappers';
 import type { UseUserDataParams } from './types';
@@ -213,7 +214,7 @@ export const useTransactionOps = ({
             // Save vendor_override when category changes on an AI-added transaction (non-split)
             const userId = appState.user?.id;
             const categoryChanged = originalTx && originalTx.budget_id !== updatedTx.budget_id;
-            const isAutoAdded = updatedTx.label === 'Auto-Added' || updatedTx.label === 'Auto-Added + Edited';
+            const isAutoAdded = updatedTx.label === TransactionLabel.AUTO_ADDED || updatedTx.label === TransactionLabel.EDITED;
             if (userId && categoryChanged && isAutoAdded && updatedTx.budget_id) {
               try {
                 const overrideHeaders = await getAuthHeaders();

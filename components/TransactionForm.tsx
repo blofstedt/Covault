@@ -470,7 +470,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
           {/* Vendor override reminder for AI-added transactions */}
           {initialTransaction &&
-            (initialTransaction.label === 'Auto-Added' || initialTransaction.label === 'Auto-Added + Edited') &&
+            (initialTransaction.label === TransactionLabel.AUTO_ADDED || initialTransaction.label === TransactionLabel.EDITED) &&
             selectedIds.size === 1 &&
             Array.from(selectedIds)[0] !== initialTransaction.budget_id && (
             <div className="bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl p-3 border border-emerald-200 dark:border-emerald-800/30">
