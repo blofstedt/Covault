@@ -59,6 +59,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const [description, setDescription] = useState(initialTransaction?.description || '');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const [showAiSplitWarning, setShowAiSplitWarning] = useState(false);
 
   const amountInputRef = useRef<HTMLInputElement>(null);
   const dateInputRef = useRef<HTMLInputElement>(null);
@@ -138,6 +139,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const hasMovedRef = useRef<boolean>(false);
 
   const amount = parseFloat(amountStr) || 0;
+  const isAiTransaction = initialTransaction?.label === TransactionLabel.AUTO_ADDED || initialTransaction?.label === TransactionLabel.EDITED;
 
   // Demo split animation: select two budgets and animate the split
   useEffect(() => {
@@ -205,6 +207,11 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       // When editing an existing transaction with a single budget selected,
       // replace the selection (reassign) rather than entering split mode
       if (initialTransaction && next.size === 1 && !next.has(id)) {
+        // For AI transactions, show split warning if trying to add a second category
+        if (isAiTransaction) {
+          setShowAiSplitWarning(true);
+          return;
+        }
         next.clear();
       }
       if (next.size < 2) {
@@ -470,12 +477,12 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
           {/* Vendor override reminder for AI-added transactions */}
           {initialTransaction &&
-            (initialTransaction.label === TransactionLabel.AUTO_ADDED || initialTransaction.label === TransactionLabel.EDITED) &&
+            isAiTransaction &&
             selectedIds.size === 1 &&
             Array.from(selectedIds)[0] !== initialTransaction.budget_id && (
             <div className="bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl p-3 border border-emerald-200 dark:border-emerald-800/30">
               <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 text-center leading-relaxed">
-                Covault will remember this and apply this budget category going forward.
+                You've set a default category for this vendor. This category will be applied by Covault for future transactions from this vendor.
               </p>
             </div>
           )}
@@ -563,6 +570,32 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           )}
         </form>
       </div>
+
+      {/* AI split warning popup */}
+      {showAiSplitWarning && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-xs bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl border border-slate-100 dark:border-slate-800/60 space-y-4 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-center">
+              <div className="w-10 h-10 bg-amber-50 dark:bg-amber-900/20 rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+              </div>
+            </div>
+            <p className="text-xs font-bold text-slate-600 dark:text-slate-300 text-center leading-relaxed">
+              This split category transaction will be submitted as a one time submission. Please choose just one category to set a default category for this vendor going forward.
+            </p>
+            <button
+              onClick={() => setShowAiSplitWarning(false)}
+              className="w-full py-2.5 bg-emerald-600 text-white rounded-2xl font-black text-[11px] active:scale-95 transition-all uppercase tracking-[0.15em]"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

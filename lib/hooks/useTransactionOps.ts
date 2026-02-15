@@ -4,6 +4,7 @@ import type { Transaction } from '../../types';
 import { TransactionLabel } from '../../types';
 import { REST_BASE, getAuthHeaders } from '../apiHelpers';
 import { useToSupabaseTransaction, useFromSupabaseTransaction } from './transactionMappers';
+import { cleanVendorName } from '../notificationProcessor';
 import type { UseUserDataParams } from './types';
 
 export const useTransactionOps = ({
@@ -310,11 +311,12 @@ export const useTransactionOps = ({
           return;
         }
 
-        // 1) Insert the actual transaction directly into Supabase
+        // 1) Clean vendor name using AI, then insert the actual transaction
+        const cleanedVendor = await cleanVendorName(pending.extracted_vendor);
         const dateStr = new Date(pending.extracted_timestamp || pending.posted_at || new Date()).toISOString().split('T')[0];
         const transactionRow = {
           user_id: userId,
-          vendor: pending.extracted_vendor,
+          vendor: cleanedVendor,
           amount: Number(pending.extracted_amount),
           date: dateStr,
           category_id: categoryId,
@@ -378,7 +380,7 @@ export const useTransactionOps = ({
           (overrideHeaders as any)['Prefer'] = 'return=representation';
           // Upsert: if an override for this vendor already exists, delete then re-insert
           const deleteRes = await fetch(
-            `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(pending.extracted_vendor)}`,
+            `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(cleanedVendor)}`,
             { method: 'DELETE', headers: overrideHeaders },
           );
           if (!deleteRes.ok) {
@@ -389,7 +391,7 @@ export const useTransactionOps = ({
             headers: overrideHeaders,
             body: JSON.stringify({
               user_id: userId,
-              vendor_name: pending.extracted_vendor,
+              vendor_name: cleanedVendor,
               category_id: categoryId,
             }),
           });
@@ -397,7 +399,7 @@ export const useTransactionOps = ({
             const postBody = await postRes.text();
             console.warn('[approvePending] vendor_override POST failed:', postRes.status, postBody.slice(0, 200));
           } else {
-            console.log('[approvePending] vendor_override saved for', pending.extracted_vendor);
+            console.log('[approvePending] vendor_override saved for', cleanedVendor);
           }
         } catch (overrideErr: any) {
           // Non-critical: log but don't fail the approval
