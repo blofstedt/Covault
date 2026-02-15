@@ -9,8 +9,8 @@ import { pipeline, type TextGenerationPipeline } from '@huggingface/transformers
 // ─── Configuration ──────────────────────────────────────────────
 
 /**
- * Microsoft Phi-3.5-mini quantized for browser use.
- * ~2 GB download on first load, cached in IndexedDB for subsequent uses.
+ * Small instruction-tuned language model quantized for browser use.
+ * Downloaded once (~2 GB) and cached in IndexedDB for subsequent sessions.
  */
 const MODEL_ID = 'onnx-community/Phi-3.5-mini-instruct-onnx-web';
 

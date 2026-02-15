@@ -387,7 +387,7 @@ async function generateRuleWithLocalAI(
   const result = await generateRuleLocally(bankName, rawNotification);
 
   if (!result) {
-    throw new Error('Local AI model unavailable or failed to generate rule');
+    throw new Error(`Local AI failed to generate rule for bank "${bankName}" — model may still be loading or device is too constrained`);
   }
 
   return result;
