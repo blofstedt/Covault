@@ -561,7 +561,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
           <div
             className="absolute z-50 pointer-events-none transition-all duration-200 ease-out"
             style={{
-              transform: `translate(${mouseCoords.x}px, ${mouseCoords.y - 80}px)`,
+              transform: `translate(${mouseCoords.x}px, ${mouseCoords.y - 120}px)`,
               left: 0,
               top: 0,
             }}
