@@ -581,7 +581,7 @@ async function insertPendingTransaction(
     extracted_timestamp: now.toISOString(),
     confidence,
     validation_reasons: validationReasons.length > 0 ? validationReasons.join('; ') : 'OK',
-    needs_review: needsReview,
+    needs_review: false,
     pattern_id: ruleId || null,
   };
 
@@ -603,10 +603,9 @@ async function insertPendingTransaction(
 
 /**
  * Check if a pending transaction can be auto-accepted.
- * Auto-accept is allowed only if:
- *   - Confidence >= threshold
- *   - No validation flags
- *   - No likely conflict with existing transactions
+ * AI-parsed notifications go straight into transactions.
+ * Only rejected if:
+ *   - Duplicate transaction found (same vendor + amount + day)
  */
 async function tryAutoAccept(
   userId: string,
@@ -614,16 +613,6 @@ async function tryAutoAccept(
   defaultCategoryId: string | null,
   confidenceThreshold: number,
 ): Promise<{ accepted: boolean; transactionId?: string; categoryId?: string }> {
-  // Must meet confidence threshold
-  if (pending.confidence < confidenceThreshold) {
-    return { accepted: false };
-  }
-
-  // Must have no validation issues
-  if (pending.needs_review) {
-    return { accepted: false };
-  }
-
   // Check for potential conflicts with existing transactions
   // (same vendor + similar amount + same day)
   const today = new Date().toISOString().slice(0, 10);
@@ -640,11 +629,13 @@ async function tryAutoAccept(
       (tx) => Math.abs(tx.amount - pending.extracted_amount) < AMOUNT_TOLERANCE,
     );
     if (hasDuplicate) {
-      // Mark as needs_review due to potential duplicate
+      // Mark as rejected due to potential duplicate
       await supabase
         .from('pending_transactions')
         .update({
-          needs_review: true,
+          needs_review: false,
+          approved: false,
+          reviewed_at: new Date().toISOString(),
           validation_reasons: (pending.validation_reasons || 'OK') + '; Potential duplicate of existing transaction',
         })
         .eq('id', pending.id);

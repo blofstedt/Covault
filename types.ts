@@ -207,6 +207,7 @@ export interface AppState {
   budgets: BudgetCategory[];
   transactions: Transaction[];
   pendingTransactions?: PendingTransaction[]; // New: pending transactions awaiting approval
+  rejectedTransactions?: PendingTransaction[]; // Rejected/failed notifications
   settings: {
     rolloverEnabled: boolean;
     rolloverOverspend: boolean;

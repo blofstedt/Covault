@@ -138,6 +138,12 @@ const App: React.FC = () => {
         pendingTransactions: [pending, ...(prev.pendingTransactions || [])],
       }));
     },
+    onRejectedTransactionCreated: (pending) => {
+      setAppState(prev => ({
+        ...prev,
+        rejectedTransactions: [pending, ...(prev.rejectedTransactions || [])],
+      }));
+    },
     onAutoAcceptedTransaction: (tx) => {
       // Only update local UI state — the transaction is already in the DB
       setAppState(prev => ({

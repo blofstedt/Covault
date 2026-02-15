@@ -12,6 +12,8 @@ export interface UseNotificationListenerParams {
   user: User | null;
   onTransactionDetected: (tx: Transaction) => void;
   onPendingTransactionCreated?: (pending: PendingTransaction) => void;
+  /** Called when a notification is rejected (duplicate, failed AI parsing) */
+  onRejectedTransactionCreated?: (pending: PendingTransaction) => void;
   /** Called for auto-accepted transactions that are already saved in the DB.
    *  Unlike onTransactionDetected, this only updates local UI state without
    *  attempting a duplicate DB insert. */
@@ -29,6 +31,7 @@ export const useNotificationListener = ({
   user,
   onTransactionDetected,
   onPendingTransactionCreated,
+  onRejectedTransactionCreated,
   onAutoAcceptedTransaction,
 }: UseNotificationListenerParams) => {
   useEffect(() => {
@@ -77,30 +80,33 @@ export const useNotificationListener = ({
                   return;
                 }
 
-                // Notify about pending transaction for UI update
+                // Notify about the result
                 if (result.pendingTransaction) {
-                  onPendingTransactionCreated?.(result.pendingTransaction);
-                }
-
-                // If auto-accepted, notify via the UI-only callback
-                // (transaction is already saved in the DB by processNotification)
-                if (result.autoAccepted && result.transactionId && result.pendingTransaction) {
-                  const tx: Transaction = {
-                    id: result.transactionId,
-                    user_id: user.id,
-                    vendor: result.pendingTransaction.extracted_vendor,
-                    amount: result.pendingTransaction.extracted_amount,
-                    date: new Date().toISOString().slice(0, 10),
-                    budget_id: result.categoryId || null,
-                    is_projected: false,
-                    label: 'Auto-Added',
-                    userName: user.name || 'User',
-                    created_at: new Date().toISOString(),
-                  };
-                  if (onAutoAcceptedTransaction) {
-                    onAutoAcceptedTransaction(tx);
+                  if (result.autoAccepted) {
+                    // Auto-accepted: notify via the UI-only callback
+                    // (transaction is already saved in the DB by processNotification)
+                    if (result.transactionId) {
+                      const tx: Transaction = {
+                        id: result.transactionId,
+                        user_id: user.id,
+                        vendor: result.pendingTransaction.extracted_vendor,
+                        amount: result.pendingTransaction.extracted_amount,
+                        date: new Date().toISOString().slice(0, 10),
+                        budget_id: result.categoryId || null,
+                        is_projected: false,
+                        label: 'Auto-Added',
+                        userName: user.name || 'User',
+                        created_at: new Date().toISOString(),
+                      };
+                      if (onAutoAcceptedTransaction) {
+                        onAutoAcceptedTransaction(tx);
+                      } else {
+                        onTransactionDetected(tx);
+                      }
+                    }
                   } else {
-                    onTransactionDetected(tx);
+                    // Rejected (duplicate or failed): add to rejected list
+                    onRejectedTransactionCreated?.(result.pendingTransaction);
                   }
                 }
 
@@ -149,5 +155,5 @@ export const useNotificationListener = ({
     return () => {
       cleanup?.();
     };
-  }, [user, onTransactionDetected, onPendingTransactionCreated, onAutoAcceptedTransaction]);
+  }, [user, onTransactionDetected, onPendingTransactionCreated, onRejectedTransactionCreated, onAutoAcceptedTransaction]);
 };

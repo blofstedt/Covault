@@ -116,6 +116,12 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
                     Future
                   </span>
                 )}
+
+                {transaction.label === 'Auto-Added' && (
+                  <span className="text-[8px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-[0.15em] bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded-md">
+                    AI
+                  </span>
+                )}
               </div>
 
               {/* Description */}

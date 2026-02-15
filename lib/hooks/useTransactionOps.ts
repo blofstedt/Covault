@@ -144,6 +144,9 @@ export const useTransactionOps = ({
   // Update transaction
   const handleUpdateTransaction = useCallback(
     async (updatedTx: Transaction) => {
+      // Capture the original transaction before update for category change detection
+      const originalTx = appState.transactions.find(t => t.id === updatedTx.id);
+
       setAppState(prev => ({
         ...prev,
         transactions: prev.transactions.map(t =>
@@ -206,6 +209,36 @@ export const useTransactionOps = ({
               `${REST_BASE}/transaction_budget_splits?transaction_id=eq.${updatedTx.id}`,
               { method: 'DELETE', headers: deleteHeaders },
             );
+
+            // Save vendor_override when category changes on an AI-added transaction (non-split)
+            const userId = appState.user?.id;
+            const categoryChanged = originalTx && originalTx.budget_id !== updatedTx.budget_id;
+            const isAutoAdded = updatedTx.label === 'Auto-Added' || updatedTx.label === 'Auto-Added + Edited';
+            if (userId && categoryChanged && isAutoAdded && updatedTx.budget_id) {
+              try {
+                const overrideHeaders = await getAuthHeaders();
+                // Delete existing override for this vendor
+                await fetch(
+                  `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(updatedTx.vendor)}`,
+                  { method: 'DELETE', headers: overrideHeaders },
+                );
+                // Insert new override
+                const postHeaders = await getAuthHeaders();
+                (postHeaders as any)['Prefer'] = 'return=representation';
+                await fetch(`${REST_BASE}/vendor_overrides`, {
+                  method: 'POST',
+                  headers: postHeaders,
+                  body: JSON.stringify({
+                    user_id: userId,
+                    vendor_name: updatedTx.vendor,
+                    category_id: updatedTx.budget_id,
+                  }),
+                });
+                console.log('[updateTransaction] vendor_override saved for', updatedTx.vendor);
+              } catch (overrideErr: any) {
+                console.warn('[updateTransaction] vendor_override save failed:', overrideErr?.message || overrideErr);
+              }
+            }
           }
         }
       } catch (err: any) {
@@ -214,7 +247,7 @@ export const useTransactionOps = ({
         setDbError(msg);
       }
     },
-    [saveSplits, setAppState, setDbError, toSupabaseTransaction],
+    [appState.transactions, appState.user, saveSplits, setAppState, setDbError, toSupabaseTransaction],
   );
 
   // Delete transaction
@@ -431,10 +464,14 @@ export const useTransactionOps = ({
           return;
         }
 
-        // Remove from pending list in UI
+        // Remove from pending list and add to rejected list in UI
+        const rejectedItem = appState.pendingTransactions?.find(p => p.id === pendingId);
         setAppState(prev => ({
           ...prev,
           pendingTransactions: prev.pendingTransactions?.filter(p => p.id !== pendingId) || [],
+          rejectedTransactions: rejectedItem
+            ? [{ ...rejectedItem, approved: false, reviewed_at: new Date().toISOString() }, ...(prev.rejectedTransactions || [])]
+            : prev.rejectedTransactions || [],
         }));
 
         console.log('[rejectPending] OK, rejected pending transaction', pendingId);
@@ -444,7 +481,7 @@ export const useTransactionOps = ({
         setDbError(msg);
       }
     },
-    [setAppState, setDbError],
+    [appState.pendingTransactions, setAppState, setDbError],
   );
 
   return {
