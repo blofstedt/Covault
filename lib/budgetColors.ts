@@ -3,7 +3,7 @@
 
 export const BUDGET_CATEGORY_COLORS: Record<string, string> = {
   Housing:   '#0d9488', // teal-600
-  Groceries: '#059669', // emerald-600
+  Groceries: '#e11d48', // rose-600
   Transport: '#2563eb', // blue-600
   Utilities: '#d97706', // amber-600
   Leisure:   '#9333ea', // purple-600
@@ -14,13 +14,13 @@ export const BUDGET_CATEGORY_COLORS: Record<string, string> = {
 // Fallback colors for unknown category names
 const FALLBACK_COLORS: string[] = [
   '#0d9488',
-  '#059669',
+  '#e11d48',
   '#2563eb',
   '#d97706',
   '#9333ea',
   '#0891b2',
   '#64748b',
-  '#e11d48',
+  '#f97316',
 ];
 
 /**
