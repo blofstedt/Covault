@@ -24,8 +24,8 @@ function getGradient(name: string, index: number): [string, string] {
 // Tooltip vertical positioning: base offset above chart + extra shift when thumb is near the top
 const TOOLTIP_BASE_OFFSET = 100;
 const TOOLTIP_MAX_THUMB_OFFSET = 50;
-// Maximum upward offset so the tooltip never escapes into the header
-const TOOLTIP_MAX_UPWARD = 140;
+// Fallback maximum upward offset so the tooltip never escapes into the header
+const TOOLTIP_MAX_UPWARD_FALLBACK = 140;
 
 function formatMonthLabel(key: string): string {
   const [year, month] = key.split('-');
@@ -36,6 +36,7 @@ function formatMonthLabel(key: string): string {
 const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions, isTutorialMode = false, theme = 'light' }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [hoveredMonthIdx, setHoveredMonthIdx] = useState<number | null>(null);
   const [mouseCoords, setMouseCoords] = useState<{ x: number; y: number } | null>(null);
@@ -494,6 +495,20 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
   const activeCatGradient = activeCategory ? getGradient(activeCategory, activeCatIndex) : null;
   const activeCatColor = activeCategory ? getBudgetColor(activeCategory, activeCatIndex) : null;
 
+  // Dynamically compute the maximum upward offset so the tooltip never goes above
+  // the bottom of the "Remaining Balance" header.
+  const tooltipMaxUpward = useMemo(() => {
+    if (!wrapperRef.current) return TOOLTIP_MAX_UPWARD_FALLBACK;
+    const balanceHeader = document.getElementById('balance-header');
+    if (!balanceHeader) return TOOLTIP_MAX_UPWARD_FALLBACK;
+    const wrapperTop = wrapperRef.current.getBoundingClientRect().top;
+    const headerBottom = balanceHeader.getBoundingClientRect().bottom;
+    const available = wrapperTop - headerBottom;
+    return Math.max(0, available);
+    // Re-compute whenever the tooltip becomes visible (activeCategory changes)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCategory, chartHeight]);
+
   // No data fallback
   if (chartData.length === 0) {
     return (
@@ -517,7 +532,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
   return (
     <div id="spending-flow-chart" className="w-full mb-1 shrink-0">
-      <div className="relative">
+      <div className="relative" ref={wrapperRef}>
         {/* Tooltip card — moves up as the user's thumb moves up so it never obscures the card */}
         {activeCategory && mouseCoords && activeMonthData && (
           <div
@@ -525,7 +540,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
             style={{
               transform: `translate(${mouseCoords.x}px, 0px)`,
               left: 0,
-              top: `${Math.max(-TOOLTIP_MAX_UPWARD, -TOOLTIP_BASE_OFFSET - (chartHeight > 0 ? (1 - mouseCoords.y / chartHeight) * TOOLTIP_MAX_THUMB_OFFSET : 0))}px`,
+              top: `${Math.max(-tooltipMaxUpward, -TOOLTIP_BASE_OFFSET - (chartHeight > 0 ? (1 - mouseCoords.y / chartHeight) * TOOLTIP_MAX_THUMB_OFFSET : 0))}px`,
             }}
           >
             <div
