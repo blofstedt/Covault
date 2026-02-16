@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { AppState, Transaction, BudgetCategory } from '../types';
-import BudgetSection from './BudgetSection';
 import TransactionForm from './TransactionForm';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import Tutorial from './Tutorial';
@@ -10,11 +9,11 @@ import TransactionParsing from './TransactionParsing';
 // New dashboard components
 import DashboardHeader from './dashboard_components/DashboardHeader';
 import DashboardBalanceSection from './dashboard_components/DashboardBalanceSection';
-import DashboardBudgetSectionsList from './dashboard_components/DashboardBudgetSectionsList';
+import DashboardTransactionList from './dashboard_components/DashboardTransactionList';
 import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import DashboardSettingsModal from './dashboard_components/DashboardSettingsModal';
 import SearchResults from './dashboard_components/SearchResults';
-import BudgetFlowChart from './dashboard_components/BudgetFlowChart';
+import CategoryBarChart from './dashboard_components/CategoryBarChart';
 
 // Notifications helper
 import { checkAndTriggerAppNotifications } from '../lib/appNotifications';
@@ -573,13 +572,11 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   return (
     <div className="flex-1 flex flex-col h-screen relative overflow-hidden transition-colors duration-700 bg-slate-50 dark:bg-slate-950">
-      {/* Background glow (only when not in focus mode) */}
-      {!isFocusMode && (
-        <div className="absolute top-0 left-0 right-0 h-[320px] z-0 flex items-center justify-center pointer-events-none overflow-visible transition-opacity duration-700 animate-nest">
-          <div className="w-80 h-80 rounded-full blur-[90px] animate-blob translate-x-20 -translate-y-16 transition-colors duration-1000 bg-emerald-400/25 dark:bg-emerald-500/35"></div>
-          <div className="w-72 h-72 rounded-full blur-[80px] animate-blob animation-delay-4000 -translate-x-24 translate-y-8 transition-colors duration-1000 bg-green-300/20 dark:bg-green-400/30"></div>
-        </div>
-      )}
+      {/* Background glow */}
+      <div className="absolute top-0 left-0 right-0 h-[320px] z-0 flex items-center justify-center pointer-events-none overflow-visible transition-opacity duration-700 animate-nest">
+        <div className="w-80 h-80 rounded-full blur-[90px] animate-blob translate-x-20 -translate-y-16 transition-colors duration-1000 bg-emerald-400/25 dark:bg-emerald-500/35"></div>
+        <div className="w-72 h-72 rounded-full blur-[80px] animate-blob animation-delay-4000 -translate-x-24 translate-y-8 transition-colors duration-1000 bg-green-300/20 dark:bg-green-400/30"></div>
+      </div>
 
       {/* Header */}
       <header
@@ -593,7 +590,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       {/* Main content */}
       <main className="flex-1 flex flex-col p-3 pb-2 pt-0 overflow-hidden relative z-10">
-        {!isFocusMode && !isLoadingData && (
+        {!isLoadingData && (
           <DashboardBalanceSection
             isSharedAccount={isSharedAccount}
             remainingMoney={remainingMoney}
@@ -602,10 +599,11 @@ const Dashboard: React.FC<DashboardProps> = ({
           />
         )}
 
-        {!isFocusMode && !searchQuery && (
-          <BudgetFlowChart
+        {!searchQuery && (
+          <CategoryBarChart
             budgets={visibleBudgets}
             transactions={state.transactions}
+            totalIncome={totalIncome}
             isTutorialMode={showTutorial}
             theme={state.settings.theme as 'light' | 'dark'}
           />
@@ -624,23 +622,19 @@ const Dashboard: React.FC<DashboardProps> = ({
             onTransactionTap={(tx) => setSelectedTx(tx)}
           />
         ) : (
-          <DashboardBudgetSectionsList
-            budgets={state.budgets}
-            transactions={tutorialPlaceholderTransaction
-              ? [...currentMonthWithProjected, tutorialPlaceholderTransaction]
-              : currentMonthWithProjected}
-            expandedBudgets={expandedBudgets}
-            isFocusMode={isFocusMode}
-            focusedBudgetId={focusedBudgetId}
-            leisureAdjustments={leisureAdjustments}
-            settings={state.settings}
+          <DashboardTransactionList
+            currentMonthTransactions={
+              tutorialPlaceholderTransaction
+                ? [...currentMonthWithProjected, tutorialPlaceholderTransaction]
+                : currentMonthWithProjected
+            }
+            pastTransactions={pastTransactions}
+            futureTransactions={futureTransactions}
+            budgets={visibleBudgets}
             currentUserName={state.user?.name || ''}
             isSharedAccount={isSharedAccount}
-            scrollContainerRef={scrollContainerRef}
-            budgetRefs={budgetRefs}
-            onToggleExpand={toggleExpand}
             onTransactionTap={(tx) => setSelectedTx(tx)}
-            onUpdateBudget={onUpdateBudget}
+            scrollContainerRef={scrollContainerRef}
           />
         )}
       </main>
