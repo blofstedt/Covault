@@ -87,8 +87,8 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
         <div
           style={{
             width: `${spentWidth}%`,
-            backgroundColor: `${budgetColor}80`,
-            borderRight: spentWidth > 0 && spentWidth < 100 ? `2px solid ${budgetColor}` : 'none',
+            backgroundColor: `${budgetColor}66`,
+            borderRight: spentWidth > 0 && spentWidth < 100 ? `1px solid ${budgetColor}40` : 'none',
           }}
           className="h-full transition-all duration-300"
         />

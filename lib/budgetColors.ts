@@ -2,25 +2,25 @@
 // Each category gets a distinct color used consistently across budget bars, icons, and charts
 
 export const BUDGET_CATEGORY_COLORS: Record<string, string> = {
-  Housing:   '#0d9488', // teal-600
-  Groceries: '#16a34a', // green-600
-  Transport: '#2563eb', // blue-600
-  Utilities: '#d97706', // amber-600
-  Leisure:   '#9333ea', // purple-600
-  Services:  '#0891b2', // cyan-600
-  Other:     '#64748b', // slate-500
+  Housing:   '#5b9e97', // muted teal
+  Groceries: '#6b9e6e', // muted green
+  Transport: '#6e8ec4', // muted blue
+  Utilities: '#c49a4a', // muted amber
+  Leisure:   '#9a7bbf', // muted purple
+  Services:  '#5ea0ad', // muted cyan
+  Other:     '#8a95a3', // muted slate
 };
 
 // Fallback colors for unknown category names
 const FALLBACK_COLORS: string[] = [
-  '#0d9488',
-  '#16a34a',
-  '#2563eb',
-  '#d97706',
-  '#9333ea',
-  '#0891b2',
-  '#64748b',
-  '#f97316',
+  '#5b9e97',
+  '#6b9e6e',
+  '#6e8ec4',
+  '#c49a4a',
+  '#9a7bbf',
+  '#5ea0ad',
+  '#8a95a3',
+  '#c48a5a',
 ];
 
 /**

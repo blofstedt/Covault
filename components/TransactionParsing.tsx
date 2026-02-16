@@ -30,6 +30,7 @@ interface TransactionParsingProps {
   onAddTransaction: () => void;
   onGoHome: () => void;
   autoDetectedTransactions?: Transaction[];
+  allTransactions?: Transaction[];
   onTransactionTap?: (tx: Transaction) => void;
   pendingTransactions?: PendingTransaction[];
   budgets?: BudgetCategory[];
@@ -51,6 +52,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   onAddTransaction,
   onGoHome,
   autoDetectedTransactions = [],
+  allTransactions = [],
   onTransactionTap,
   pendingTransactions = [],
   budgets = [],
@@ -84,6 +86,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   const categories = useTransactionCategories({
     pendingTransactions,
     autoDetectedTransactions,
+    allTransactions,
     vendorOverrides: vendorOverridesHook.vendorOverrides,
     budgets,
     savedRules: parsingRulesHook.savedRules,

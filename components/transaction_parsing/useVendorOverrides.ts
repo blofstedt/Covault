@@ -258,14 +258,21 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
             )
           );
 
+          // Use vendor_name-based URL when override has a temp ID (not yet synced with DB)
+          const url = existing.id.startsWith('temp-')
+            ? `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(existing.vendor_name)}`
+            : `${REST_BASE}/vendor_overrides?id=eq.${existing.id}&user_id=eq.${userId}`;
           const res = await fetch(
-            `${REST_BASE}/vendor_overrides?id=eq.${existing.id}&user_id=eq.${userId}`,
+            url,
             { method: 'PATCH', headers, body: JSON.stringify({ category_id: categoryId }) },
           );
 
-          if (!res.ok) {
-            const body = await res.text();
-            console.error('[TransactionParsing] Error updating vendor category:', res.status, body.slice(0, 200));
+          const body = await res.text();
+          let data: any[] = [];
+          try { data = body ? JSON.parse(body) : []; } catch { data = []; }
+
+          if (!res.ok || !Array.isArray(data) || data.length === 0) {
+            console.error('[TransactionParsing] Error updating vendor category:', res.status, (body || '').slice(0, 200));
             setVendorOverrides((prev) =>
               prev.map((vo) =>
                 vo.id === existing.id
@@ -274,6 +281,14 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
               )
             );
             return;
+          }
+
+          // Replace temp ID with real ID from DB response
+          if (existing.id.startsWith('temp-') && Array.isArray(data) && data.length > 0) {
+            const realId = data[0].id;
+            setVendorOverrides((prev) =>
+              prev.map((vo) => vo.id === existing.id ? { ...vo, id: realId } : vo)
+            );
           }
         } else {
           const tempId = `temp-${crypto.randomUUID()}`;
@@ -362,8 +377,12 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
       try {
         const headers = await getAuthHeaders();
         (headers as any)['Prefer'] = 'return=representation';
+        // Use vendor_name-based URL when override has a temp ID (not yet synced with DB)
+        const url = existing.id.startsWith('temp-')
+          ? `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(existing.vendor_name)}`
+          : `${REST_BASE}/vendor_overrides?id=eq.${existing.id}&user_id=eq.${userId}`;
         const res = await fetch(
-          `${REST_BASE}/vendor_overrides?id=eq.${existing.id}&user_id=eq.${userId}`,
+          url,
           { method: 'PATCH', headers, body: JSON.stringify({ proper_name: newProperName }) },
         );
         const body = await res.text();
@@ -383,10 +402,11 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
         }
 
         const actualValue = data[0].proper_name ?? undefined;
+        const realId = data[0].id ?? existing.id;
         setVendorOverrides((prev) =>
           prev.map((vo) =>
             vo.id === existing.id
-              ? { ...vo, proper_name: actualValue }
+              ? { ...vo, proper_name: actualValue, id: realId }
               : vo
           )
         );
