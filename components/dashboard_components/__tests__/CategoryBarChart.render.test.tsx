@@ -47,4 +47,31 @@ describe('CategoryBarChart rendering verification', () => {
     // Leisure is over budget (500 > 400), its bar should use #ec4899 (pink primary)
     expect(html).toContain('#ec4899');
   });
+
+  it('fills actual bar with light color and outlines with primary color', () => {
+    const html = renderToString(
+      React.createElement(CategoryBarChart, { budgets, transactions, totalIncome: 3000, theme: 'dark' }),
+    );
+
+    // Housing: primary=#6366f1, light=#a5b4fc — bar should use light as fill, primary as border
+    expect(html).toContain('background-color:#a5b4fc');
+    expect(html).toContain('border:2px solid #6366f1');
+  });
+
+  it('hatched bar rect has no rx attribute (no tapering)', () => {
+    const html = renderToString(
+      React.createElement(CategoryBarChart, {
+        budgets,
+        transactions,
+        projectedTransactions: [
+          { id: 'p1', user_id: 'u', vendor: 'Proj', amount: 100, date: thisMonth, budget_id: 'b1', is_projected: true, label: TransactionLabel.MANUAL, created_at: thisMonth },
+        ],
+        totalIncome: 3000,
+        theme: 'dark',
+      }),
+    );
+
+    // The hatched rect should NOT have rx="9999" for tapering
+    expect(html).not.toContain('rx="9999"');
+  });
 });
