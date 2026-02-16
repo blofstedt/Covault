@@ -7,6 +7,12 @@ import type { VendorOverride } from './useVendorOverrides';
 /** Tolerance for comparing monetary amounts (e.g., vendor+amount matching). */
 const AMOUNT_MATCH_TOLERANCE = 0.01;
 
+/** Format a date string/timestamp to YYYY-MM-DD using local time. */
+function toLocalDateStr(dateInput: string | number): string {
+  const d = new Date(dateInput);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 interface UseTransactionCategoriesOptions {
   pendingTransactions: PendingTransaction[];
   autoDetectedTransactions: Transaction[];
@@ -69,8 +75,7 @@ export function useTransactionCategories({
         if (alreadyApproved) return false;
         // Check against all existing transactions (including manually added)
         // to filter out notifications for transactions the user already recorded
-        const ptDate = new Date(pt.extracted_timestamp || pt.posted_at || pt.created_at);
-        const ptDateStr = `${ptDate.getFullYear()}-${String(ptDate.getMonth() + 1).padStart(2, '0')}-${String(ptDate.getDate()).padStart(2, '0')}`;
+        const ptDateStr = toLocalDateStr(pt.extracted_timestamp || pt.posted_at || pt.created_at);
         const alreadyExists = allTransactions.some(
           (tx) =>
             tx.vendor.toLowerCase() === vendor &&
