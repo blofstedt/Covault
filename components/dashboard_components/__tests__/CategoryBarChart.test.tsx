@@ -82,23 +82,21 @@ describe('CategoryBarChart', () => {
       />,
     );
 
-    // Each category row is a flex items-center gap-2.5 div
-    const rows = container.querySelectorAll('.flex.items-center.gap-2\\.5');
+    // Each category row is a flex items-end gap-2.5 div
+    const rows = container.querySelectorAll('.flex.items-end.gap-2\\.5');
     for (const row of rows) {
       const icon = row.querySelector('.flex-shrink-0') as HTMLElement;
       const barTrack = row.querySelector('.h-8.rounded-full.overflow-hidden');
       const solidBar = barTrack?.querySelector('div[style]') as HTMLElement;
       if (!icon || !solidBar) continue;
 
-      // Icon color is set via style.color
-      const iconColor = icon.style.color;
-      // Bar color is set via style.backgroundColor
+      // Icon background and bar fill should be the same color
+      const iconBg = icon.style.backgroundColor;
       const barBg = solidBar.style.backgroundColor;
 
-      // Both should derive from the same primary color
-      // The icon uses hex, the bar may be rendered as rgb — just verify neither is rose/red
       expect(barBg).not.toBe('');
-      expect(iconColor).not.toBe('');
+      expect(iconBg).not.toBe('');
+      expect(barBg).toBe(iconBg);
     }
   });
 

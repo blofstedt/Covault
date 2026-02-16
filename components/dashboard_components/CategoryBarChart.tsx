@@ -184,7 +184,7 @@ const CategoryBarChart: React.FC<CategoryBarChartProps> = ({
             const isOver = total > cat.limit;
 
             return (
-              <div key={cat.name} className="flex items-center gap-2.5">
+              <div key={cat.name} className="flex items-end gap-2.5">
                 {/* Icon — centered */}
                 <div
                   className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center"
@@ -215,7 +215,7 @@ const CategoryBarChart: React.FC<CategoryBarChartProps> = ({
                       className="absolute inset-y-0 left-0 rounded-full transition-all duration-700 ease-out box-border"
                       style={{
                         width: `${actualPct}%`,
-                        backgroundColor: cat.color.light,
+                        backgroundColor: `${cat.color.primary}15`,
                         border: `2px solid ${cat.color.primary}`,
                         minWidth: cat.actual > 0 ? '3px' : '0px',
                       }}
