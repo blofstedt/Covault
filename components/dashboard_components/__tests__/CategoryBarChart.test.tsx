@@ -73,7 +73,7 @@ describe('CategoryBarChart', () => {
     expect(solidBar.style.backgroundColor).not.toContain('rgb(251, 113, 133)'); // #fb7185
   });
 
-  it('uses the same color for icon and bar', () => {
+  it('uses the same primary color for icon and bar', () => {
     const { container } = render(
       <CategoryBarChart
         budgets={budgets}
@@ -90,13 +90,12 @@ describe('CategoryBarChart', () => {
       const solidBar = barTrack?.querySelector('div[style]') as HTMLElement;
       if (!icon || !solidBar) continue;
 
-      // Icon background and bar fill should be the same color
-      const iconBg = icon.style.backgroundColor;
-      const barBg = solidBar.style.backgroundColor;
+      // Icon text color should match the bar border color (both use the primary color)
+      const iconColor = icon.style.color;
+      const barBorder = solidBar.style.border;
 
-      expect(barBg).not.toBe('');
-      expect(iconBg).not.toBe('');
-      expect(barBg).toBe(iconBg);
+      expect(iconColor).not.toBe('');
+      expect(barBorder).toContain(iconColor);
     }
   });
 

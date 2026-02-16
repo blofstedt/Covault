@@ -157,17 +157,17 @@ const CategoryBarChart: React.FC<CategoryBarChartProps> = ({
       <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-md rounded-3xl p-4 border border-slate-200/40 dark:border-slate-700/40 shadow-lg">
         {/* Header */}
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
+          <h3 className="text-[14px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
             This Month
           </h3>
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-black text-slate-500 dark:text-slate-400">
+            <span className="text-[14px] font-black text-slate-500 dark:text-slate-400">
               ${totalSpent.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </span>
             {totalIncome > 0 && (
               <>
-                <span className="text-[10px] font-medium text-slate-300 dark:text-slate-600">/</span>
-                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">
+                <span className="text-[14px] font-medium text-slate-300 dark:text-slate-600">/</span>
+                <span className="text-[14px] font-bold text-slate-400 dark:text-slate-500">
                   ${totalIncome.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </span>
               </>
@@ -188,7 +188,7 @@ const CategoryBarChart: React.FC<CategoryBarChartProps> = ({
                 {/* Icon — centered */}
                 <div
                   className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center"
-                  style={{ backgroundColor: `${cat.color.primary}15`, color: cat.color.primary }}
+                  style={{ backgroundColor: `${cat.color.primary}25`, color: cat.color.primary }}
                 >
                   {getBudgetIcon(cat.name)}
                 </div>
@@ -196,10 +196,10 @@ const CategoryBarChart: React.FC<CategoryBarChartProps> = ({
                 {/* Bar + label */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 truncate">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 truncate">
                       {cat.name}
                     </span>
-                    <span className={`text-[9px] font-black tracking-tight ml-2 ${
+                    <span className={`text-[10px] font-black tracking-tight ml-2 ${
                       isOver
                         ? 'text-rose-500'
                         : 'text-slate-400 dark:text-slate-500'
@@ -215,7 +215,7 @@ const CategoryBarChart: React.FC<CategoryBarChartProps> = ({
                       className="absolute inset-y-0 left-0 rounded-full transition-all duration-700 ease-out box-border"
                       style={{
                         width: `${actualPct}%`,
-                        backgroundColor: `${cat.color.primary}15`,
+                        backgroundColor: `${cat.color.primary}40`,
                         border: `2px solid ${cat.color.primary}`,
                         minWidth: cat.actual > 0 ? '3px' : '0px',
                       }}
