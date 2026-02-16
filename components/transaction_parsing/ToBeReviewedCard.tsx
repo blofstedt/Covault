@@ -66,14 +66,14 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
                 onClick={() => onSetExpandedPendingId(isExpanded ? null : pt.id)}
                 className="w-full flex items-center justify-between p-4 transition-all active:scale-[0.99]"
               >
-                <div className="flex items-center space-x-3">
+                <div className="flex items-center space-x-3 min-w-0 flex-1">
                   <div className="w-8 h-8 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center shrink-0">
                     <svg className="w-4 h-4 text-amber-600 dark:text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
                     </svg>
                   </div>
                   <div className="text-left min-w-0">
-                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate max-w-[160px]">
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">
                       {vendorOverride?.proper_name || pt.extracted_vendor}
                     </p>
                     <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
@@ -81,7 +81,7 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
                     </p>
                   </div>
                 </div>
-                <div className="text-right shrink-0">
+                <div className="text-right shrink-0 ml-3">
                   <span className="text-sm font-black text-slate-700 dark:text-slate-200">
                     ${pt.extracted_amount.toFixed(2)}
                   </span>

@@ -604,6 +604,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           handleGoHome();
         }}
         autoDetectedTransactions={autoDetectedTransactions}
+        allTransactions={state.transactions}
         onTransactionTap={(tx) => setSelectedTx(tx)}
         pendingTransactions={state.pendingTransactions || []}
         budgets={visibleBudgets}

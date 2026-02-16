@@ -24,6 +24,8 @@ function getGradient(name: string, index: number): [string, string] {
 // Tooltip vertical positioning: base offset above chart + extra shift when thumb is near the top
 const TOOLTIP_BASE_OFFSET = 100;
 const TOOLTIP_MAX_THUMB_OFFSET = 50;
+// Maximum upward offset so the tooltip never escapes into the header
+const TOOLTIP_MAX_UPWARD = 140;
 
 function formatMonthLabel(key: string): string {
   const [year, month] = key.split('-');
@@ -282,12 +284,6 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .y1((d) => y(d[1]))
       .curve(d3.curveCatmullRom.alpha(0.5));
 
-    const line = d3
-      .line<d3.SeriesPoint<MonthlyBudgetData>>()
-      .x((d) => x(d.data.month) || 0)
-      .y((d) => y(d[1]))
-      .curve(d3.curveCatmullRom.alpha(0.5));
-
     // Draw stacked area bands
     const layerGroup = svg.selectAll('.bfc-layer').data(stackedData).enter().append('g').attr('class', 'bfc-layer');
 
@@ -296,17 +292,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .attr('class', 'bfc-band')
       .attr('d', area)
       .style('fill', (_d, i) => `url(#bfc-grad-${i})`)
-      .attr('fill-opacity', 0.85);
-
-    // Thin line at top edge of each band for definition
-    layerGroup
-      .append('path')
-      .attr('class', 'bfc-line')
-      .attr('d', line)
-      .attr('fill', 'none')
-      .attr('stroke', (_d, i) => getBudgetColor(categoryNames[i], i))
-      .attr('stroke-width', 1.5)
-      .attr('stroke-opacity', 0.4);
+      .attr('fill-opacity', 0.75);
 
     // Budget limit line (dashed)
     const budgetY = y(totalBudgetLimit);
@@ -409,12 +395,6 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         .transition()
         .duration(100)
         .attr('fill-opacity', (d: any) => (foundCat && d.key === foundCat ? 0.95 : 0.25));
-
-      svg
-        .selectAll('.bfc-line')
-        .transition()
-        .duration(100)
-        .attr('stroke-opacity', (d: any) => (foundCat && d.key === foundCat ? 0.8 : 0.1));
     };
 
     // Interaction handler for mouse events
@@ -475,8 +455,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       setMouseCoords(null);
       scrubber.style('opacity', 0);
       scrubberDot.style('opacity', 0);
-      svg.selectAll('.bfc-band').transition().duration(300).attr('fill-opacity', 0.85);
-      svg.selectAll('.bfc-line').transition().duration(300).attr('stroke-opacity', 0.4);
+      svg.selectAll('.bfc-band').transition().duration(300).attr('fill-opacity', 0.75);
     };
 
     svgElement.on('mousemove', handleInteraction).on('mouseleave', handleEnd);
@@ -546,7 +525,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
             style={{
               transform: `translate(${mouseCoords.x}px, 0px)`,
               left: 0,
-              top: `${-TOOLTIP_BASE_OFFSET - (chartHeight > 0 ? (1 - mouseCoords.y / chartHeight) * TOOLTIP_MAX_THUMB_OFFSET : 0)}px`,
+              top: `${Math.max(-TOOLTIP_MAX_UPWARD, -TOOLTIP_BASE_OFFSET - (chartHeight > 0 ? (1 - mouseCoords.y / chartHeight) * TOOLTIP_MAX_THUMB_OFFSET : 0))}px`,
             }}
           >
             <div

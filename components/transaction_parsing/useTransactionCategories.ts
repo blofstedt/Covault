@@ -7,9 +7,16 @@ import type { VendorOverride } from './useVendorOverrides';
 /** Tolerance for comparing monetary amounts (e.g., vendor+amount matching). */
 const AMOUNT_MATCH_TOLERANCE = 0.01;
 
+/** Format a date string/timestamp to YYYY-MM-DD using local time. */
+function toLocalDateStr(dateInput: string | number): string {
+  const d = new Date(dateInput);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 interface UseTransactionCategoriesOptions {
   pendingTransactions: PendingTransaction[];
   autoDetectedTransactions: Transaction[];
+  allTransactions?: Transaction[];
   vendorOverrides: VendorOverride[];
   budgets: BudgetCategory[];
   savedRules: NotificationRuleRow[];
@@ -18,6 +25,7 @@ interface UseTransactionCategoriesOptions {
 export function useTransactionCategories({
   pendingTransactions,
   autoDetectedTransactions,
+  allTransactions = [],
   vendorOverrides,
   budgets,
   savedRules,
@@ -58,15 +66,26 @@ export function useTransactionCategories({
       (pt) => {
         if (!pt.pattern_id || pt.pattern_id === KEYWORD_IGNORED_PATTERN_ID || !pt.needs_review) return false;
         const vendor = (pt.extracted_vendor || '').toLowerCase();
+        // Check against auto-detected transactions
         const alreadyApproved = autoDetectedTransactions.some(
           (tx) =>
             tx.vendor.toLowerCase() === vendor &&
             Math.abs(tx.amount - pt.extracted_amount) < AMOUNT_MATCH_TOLERANCE,
         );
-        return !alreadyApproved;
+        if (alreadyApproved) return false;
+        // Check against all existing transactions (including manually added)
+        // to filter out notifications for transactions the user already recorded
+        const ptDateStr = toLocalDateStr(pt.extracted_timestamp || pt.posted_at || pt.created_at);
+        const alreadyExists = allTransactions.some(
+          (tx) =>
+            tx.vendor.toLowerCase() === vendor &&
+            Math.abs(tx.amount - pt.extracted_amount) < AMOUNT_MATCH_TOLERANCE &&
+            tx.date === ptDateStr,
+        );
+        return !alreadyExists;
       },
     ),
-    [pendingTransactions, autoDetectedTransactions],
+    [pendingTransactions, autoDetectedTransactions, allTransactions],
   );
 
   // Group captured notifications by bank app
