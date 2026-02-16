@@ -514,7 +514,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   // If showing parsing view, render that instead of the main dashboard
   if (showParsing) {
     return (
-      <>
+      <div className="flex-1 flex flex-col h-screen relative overflow-hidden transition-colors duration-700 bg-slate-50 dark:bg-slate-950">
         <TransactionParsing
           enabled={state.settings.notificationsEnabled || false}
           onToggle={(v: boolean) => updateSettings('notificationsEnabled', v)}
@@ -535,6 +535,21 @@ const Dashboard: React.FC<DashboardProps> = ({
           onRefreshNotifications={onRefreshNotifications}
         />
 
+        {isAddingTx && (
+          <TransactionForm
+            onClose={() => {
+              setIsAddingTx(false);
+              onDevResetShowAddTx?.();
+            }}
+            onSave={onAddTransaction}
+            budgets={visibleBudgets}
+            userId={state.user?.id || '1'}
+            userName={state.user?.name || 'User'}
+            isSharedAccount={isSharedAccount}
+            vendorHistory={vendorHistory}
+          />
+        )}
+
         {selectedTx && (
           <TransactionActionModal
             transaction={selectedTx}
@@ -552,7 +567,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             }}
           />
         )}
-      </>
+      </div>
     );
   }
 
