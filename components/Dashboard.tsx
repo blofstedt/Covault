@@ -601,6 +601,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           <CategoryBarChart
             budgets={visibleBudgets}
             transactions={state.transactions}
+            projectedTransactions={projectedCurrentMonth}
             totalIncome={totalIncome}
             isTutorialMode={showTutorial}
             theme={state.settings.theme as 'light' | 'dark'}
