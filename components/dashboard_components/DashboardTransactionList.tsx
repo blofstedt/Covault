@@ -15,6 +15,8 @@ interface DashboardTransactionListProps {
   isSharedAccount: boolean;
   onTransactionTap: (tx: Transaction) => void;
   scrollContainerRef: React.RefObject<HTMLDivElement>;
+  searchQuery: string;
+  onSearchQueryChange: (value: string) => void;
 }
 
 const DashboardTransactionList: React.FC<DashboardTransactionListProps> = ({
@@ -26,6 +28,8 @@ const DashboardTransactionList: React.FC<DashboardTransactionListProps> = ({
   isSharedAccount,
   onTransactionTap,
   scrollContainerRef,
+  searchQuery,
+  onSearchQueryChange,
 }) => {
   const [activeFilter, setActiveFilter] = useState<TimeFilter>('current');
 
@@ -63,21 +67,53 @@ const DashboardTransactionList: React.FC<DashboardTransactionListProps> = ({
   return (
     <div className="flex-1 flex flex-col overflow-hidden mt-1">
       {/* Toggle bar */}
-      <div className="flex items-center justify-center shrink-0 mb-2">
-        <div className="inline-flex rounded-2xl p-1 bg-slate-100/90 dark:bg-slate-800/80 border border-slate-200/40 dark:border-slate-700/40">
+      <div className="flex flex-col items-center shrink-0 mb-2 gap-2">
+        <div className="relative inline-flex rounded-2xl p-1 bg-slate-100/90 dark:bg-slate-800/80 border border-slate-200/40 dark:border-slate-700/40">
+          {/* Sliding pill */}
+          <div
+            className="absolute top-1 bottom-1 rounded-xl bg-white dark:bg-slate-700 shadow-sm transition-all duration-300 ease-out"
+            style={{
+              width: `calc(${100 / tabs.length}% - 0px)`,
+              left: `calc(${(tabs.findIndex(t => t.key === activeFilter)) * (100 / tabs.length)}% + 0px)`,
+            }}
+          />
           {tabs.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveFilter(tab.key)}
-              className={`px-5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-[0.15em] transition-all duration-200 ${
+              className={`relative z-10 w-[72px] py-1.5 rounded-xl text-[10px] font-black uppercase tracking-[0.15em] transition-colors duration-200 ${
                 activeFilter === tab.key
-                  ? 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-100 shadow-sm'
+                  ? 'text-slate-700 dark:text-slate-100'
                   : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'
               }`}
             >
               {tab.label}
             </button>
           ))}
+        </div>
+
+        {/* Search field */}
+        <div className="relative w-[224px]">
+          <input
+            type="text"
+            placeholder="Find entry..."
+            value={searchQuery}
+            onChange={(e) => onSearchQueryChange(e.target.value)}
+            className="w-full bg-white/70 dark:bg-slate-900/70 backdrop-blur-md border rounded-2xl py-2 px-9 text-[11px] font-bold focus:ring-2 transition-all placeholder-slate-400 shadow-sm text-center border-slate-200/40 dark:border-slate-700/40 focus:ring-emerald-500/20 dark:text-slate-100"
+          />
+          <svg
+            className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={3}
+              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+            />
+          </svg>
         </div>
       </div>
 

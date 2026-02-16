@@ -552,7 +552,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         {selectedTx && (
           <TransactionActionModal
             transaction={selectedTx}
-            budgets={state.budgets}
+            budgets={visibleBudgets}
             currentUserName={state.user?.name || 'User'}
             isSharedAccount={isSharedAccount}
             onClose={() => setSelectedTx(null)}
@@ -594,8 +594,6 @@ const Dashboard: React.FC<DashboardProps> = ({
           <DashboardBalanceSection
             isSharedAccount={isSharedAccount}
             remainingMoney={remainingMoney}
-            searchQuery={searchQuery}
-            onSearchQueryChange={setSearchQuery}
           />
         )}
 
@@ -635,6 +633,8 @@ const Dashboard: React.FC<DashboardProps> = ({
             isSharedAccount={isSharedAccount}
             onTransactionTap={(tx) => setSelectedTx(tx)}
             scrollContainerRef={scrollContainerRef}
+            searchQuery={searchQuery}
+            onSearchQueryChange={setSearchQuery}
           />
         )}
       </main>
@@ -696,7 +696,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       {selectedTx && (
         <TransactionActionModal
           transaction={selectedTx}
-          budgets={state.budgets}
+          budgets={visibleBudgets}
           currentUserName={state.user?.name || 'User'}
           isSharedAccount={isSharedAccount}
           onClose={() => {
