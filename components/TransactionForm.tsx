@@ -356,7 +356,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                   value={amountStr}
                   onChange={e => setAmountStr(e.target.value)}
                   readOnly={isTutorialMode}
-                  className="bg-transparent text-left text-3xl font-black tracking-tighter outline-none text-slate-500 dark:text-slate-50 placeholder-slate-200 dark:placeholder-slate-800 w-auto min-w-[1ch]"
+                  className="bg-transparent text-center text-3xl font-black tracking-tighter outline-none text-slate-500 dark:text-slate-50 placeholder-slate-200 dark:placeholder-slate-800 w-auto min-w-[1ch]"
                   style={{ width: amountStr ? `${amountStr.length + 0.5}ch` : '4ch' }}
                 />
               </div>
@@ -455,10 +455,10 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                         )}
 
                         <div className={`relative z-10 flex flex-col items-center justify-center transition-transform ${isSliding ? 'scale-110' : ''}`}>
-                          <div className={`w-4 h-4 ${isSelected ? 'text-emerald-600 dark:text-emerald-400' : ''} ${isSelected && isSplit ? 'opacity-30' : ''}`}>
+                          <div className={`w-4 h-4 mx-auto ${isSelected ? 'text-emerald-600 dark:text-emerald-400' : ''} ${isSelected && isSplit ? 'opacity-30' : ''}`}>
                             {getBudgetIcon(b.name)}
                           </div>
-                          <span className={`text-[8px] font-black uppercase tracking-tighter mt-1 leading-none ${isSelected ? 'text-emerald-700 dark:text-emerald-300' : ''} ${isSelected && isSplit ? 'opacity-30' : ''}`}>
+                          <span className={`text-[8px] font-black uppercase tracking-tighter mt-1.5 leading-none ${isSelected ? 'text-emerald-700 dark:text-emerald-300' : ''} ${isSelected && isSplit ? 'opacity-30' : ''}`}>
                             {b.name}
                           </span>
                           {isSelected && isSplit && (
@@ -513,13 +513,21 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
             <div className="space-y-3">
               <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] px-2 text-center block">Recurrence</span>
-              <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl">
+              <div className="relative flex bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl">
+                {/* Sliding pill */}
+                <div
+                  className="absolute top-1 bottom-1 rounded-xl bg-white dark:bg-slate-700 shadow-sm transition-all duration-300 ease-out"
+                  style={{
+                    width: `calc(${100 / 3}%)`,
+                    left: `calc(${['One-time', 'Biweekly', 'Monthly'].indexOf(recurrence) * (100 / 3)}%)`,
+                  }}
+                />
                 {['One-time', 'Biweekly', 'Monthly'].map(r => (
                   <button
                     key={r}
                     type="button"
                     onClick={() => setRecurrence(r as Recurrence)}
-                    className={`flex-1 py-2.5 text-[10px] font-black rounded-xl transition-all uppercase tracking-widest ${recurrence === r ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-slate-400'}`}
+                    className={`relative z-10 flex-1 py-2.5 text-[10px] font-black rounded-xl transition-colors duration-200 uppercase tracking-widest ${recurrence === r ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`}
                   >
                     {r}
                   </button>

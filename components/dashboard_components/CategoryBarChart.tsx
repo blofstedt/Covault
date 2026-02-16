@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { BudgetCategory, Transaction, TransactionLabel } from '../../types';
 import { getBudgetColor } from './budgetColors';
+import { getBudgetIcon } from './getBudgetIcon';
 
 interface CategoryBarChartProps {
   budgets: BudgetCategory[];
@@ -51,10 +52,8 @@ const CategoryBarChart: React.FC<CategoryBarChartProps> = ({
   // Per-category spending
   const categoryData = useMemo(() => {
     const budgetNameById = new Map<string, string>();
-    const budgetIdByName = new Map<string, string>();
     safeBudgets.forEach((b) => {
       budgetNameById.set(b.id, b.name);
-      budgetIdByName.set(b.name, b.id);
     });
 
     const spendMap = new Map<string, number>();
@@ -81,11 +80,6 @@ const CategoryBarChart: React.FC<CategoryBarChartProps> = ({
   }, [safeBudgets, currentMonthTxs]);
 
   const totalSpent = categoryData.reduce((sum, c) => sum + c.spent, 0);
-  const totalBudget = categoryData.reduce((sum, c) => sum + c.limit, 0);
-  const maxValue = Math.max(totalIncome, totalBudget, totalSpent, 1);
-
-  // Spend ratio line position
-  const spendRatio = totalIncome > 0 ? Math.min((totalSpent / totalIncome) * 100, 100) : 0;
 
   if (categoryData.length === 0) {
     return (
@@ -104,102 +98,76 @@ const CategoryBarChart: React.FC<CategoryBarChartProps> = ({
 
   return (
     <div id="spending-flow-chart" className="w-full mb-1 shrink-0">
-      <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-md rounded-3xl p-4 pt-3 border border-slate-200/40 dark:border-slate-700/40 shadow-lg">
+      <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-md rounded-3xl p-4 border border-slate-200/40 dark:border-slate-700/40 shadow-lg">
         {/* Header */}
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
             This Month
           </h3>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-black text-slate-500 dark:text-slate-400">
               ${totalSpent.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </span>
-            <span className="text-[10px] font-medium text-slate-300 dark:text-slate-600">/</span>
-            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">
-              ${totalIncome.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-            </span>
+            {totalIncome > 0 && (
+              <>
+                <span className="text-[10px] font-medium text-slate-300 dark:text-slate-600">/</span>
+                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">
+                  ${totalIncome.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </span>
+              </>
+            )}
           </div>
         </div>
 
-        {/* Bar chart */}
-        <div className="space-y-2 relative">
-          {categoryData.map((cat, i) => {
-            const barPct = maxValue > 0 ? Math.min((cat.spent / maxValue) * 100, 100) : 0;
-            const limitPct = maxValue > 0 ? Math.min((cat.limit / maxValue) * 100, 100) : 0;
+        {/* Category rows */}
+        <div className="space-y-1.5">
+          {categoryData.map((cat) => {
+            const percentage = cat.limit > 0 ? Math.min((cat.spent / cat.limit) * 100, 100) : 0;
             const isOver = cat.spent > cat.limit;
 
             return (
-              <div key={cat.name} className="flex items-center gap-3">
-                {/* Category label */}
-                <div className="w-[60px] flex-shrink-0 text-right">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 truncate block">
-                    {cat.name}
-                  </span>
+              <div key={cat.name} className="flex items-center gap-2.5">
+                {/* Icon */}
+                <div
+                  className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center"
+                  style={{ backgroundColor: `${cat.color.primary}15`, color: cat.color.primary }}
+                >
+                  <div className="w-3.5 h-3.5">
+                    {getBudgetIcon(cat.name)}
+                  </div>
                 </div>
 
-                {/* Bar container */}
-                <div className="flex-1 relative h-6 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800/60">
-                  {/* Budget limit marker */}
-                  <div
-                    className="absolute top-0 bottom-0 w-px z-20"
-                    style={{
-                      left: `${limitPct}%`,
-                      backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)',
-                    }}
-                  />
-
-                  {/* Spent bar */}
-                  <div
-                    className="absolute top-0.5 bottom-0.5 left-0 rounded-md transition-all duration-700 ease-out"
-                    style={{
-                      width: `${barPct}%`,
-                      backgroundColor: isOver
-                        ? (theme === 'dark' ? '#fb7185' : '#f43f5e')
-                        : cat.color.primary,
-                      minWidth: cat.spent > 0 ? '4px' : '0px',
-                    }}
-                  />
-                </div>
-
-                {/* Amount */}
-                <div className="w-[50px] flex-shrink-0">
-                  <span className={`text-[10px] font-black tracking-tight ${
-                    isOver
-                      ? 'text-rose-500'
-                      : 'text-slate-500 dark:text-slate-400'
-                  }`}>
-                    ${cat.spent.toFixed(0)}
-                  </span>
+                {/* Bar + label */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 truncate">
+                      {cat.name}
+                    </span>
+                    <span className={`text-[9px] font-black tracking-tight ml-2 ${
+                      isOver
+                        ? 'text-rose-500'
+                        : 'text-slate-400 dark:text-slate-500'
+                    }`}>
+                      ${cat.spent.toFixed(0)}
+                      <span className="text-slate-300 dark:text-slate-600 font-bold"> / ${cat.limit.toFixed(0)}</span>
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800/60">
+                    <div
+                      className="h-full rounded-full transition-all duration-700 ease-out"
+                      style={{
+                        width: `${percentage}%`,
+                        backgroundColor: isOver
+                          ? (theme === 'dark' ? '#fb7185' : '#f43f5e')
+                          : cat.color.primary,
+                        minWidth: cat.spent > 0 ? '3px' : '0px',
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
             );
           })}
-
-          {/* Total income line overlay */}
-          {totalIncome > 0 && (
-            <div className="relative h-1 mt-1">
-              <div className="absolute inset-x-0 h-px top-1/2 bg-slate-200 dark:bg-slate-700/60 rounded-full" />
-              {/* Spend progress */}
-              <div
-                className="absolute top-0 left-0 h-1 rounded-full transition-all duration-700 ease-out"
-                style={{
-                  width: `${spendRatio}%`,
-                  background: totalSpent > totalIncome
-                    ? 'linear-gradient(90deg, #f43f5e, #fb7185)'
-                    : `linear-gradient(90deg, #10b981, #34d399)`,
-                }}
-              />
-              {/* Pay marker */}
-              <div
-                className="absolute top-1/2 -translate-y-1/2 w-2 h-2 rounded-full border-2 z-10"
-                style={{
-                  right: '0px',
-                  backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff',
-                  borderColor: theme === 'dark' ? '#64748b' : '#94a3b8',
-                }}
-              />
-            </div>
-          )}
         </div>
       </div>
     </div>
