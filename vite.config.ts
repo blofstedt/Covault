@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -116,6 +117,12 @@ export default defineConfig(({ mode }) => {
       target: 'es2015',
       // Useful for debugging if the white screen persists
       sourcemap: true,
+    },
+
+    test: {
+      environment: 'jsdom',
+      globals: true,
+      setupFiles: './vitest.setup.ts',
     },
   };
 });

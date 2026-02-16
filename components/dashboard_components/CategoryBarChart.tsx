@@ -176,7 +176,7 @@ const CategoryBarChart: React.FC<CategoryBarChartProps> = ({
         </div>
 
         {/* Category rows */}
-        <div className="space-y-2">
+        <div className="space-y-4">
           {categoryData.map((cat) => {
             const total = cat.actual + cat.upcoming;
             const actualPct = cat.limit > 0 ? Math.min((cat.actual / cat.limit) * 100, 100) : 0;
@@ -209,15 +209,13 @@ const CategoryBarChart: React.FC<CategoryBarChartProps> = ({
                     </span>
                   </div>
                   {/* Bar track */}
-                  <div className="h-2.5 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800/60 relative">
+                  <div className="h-8 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800/60 relative">
                     {/* Solid bar — actual past spend */}
                     <div
                       className="absolute inset-y-0 left-0 rounded-full transition-all duration-700 ease-out"
                       style={{
                         width: `${actualPct}%`,
-                        backgroundColor: isOver
-                          ? (theme === 'dark' ? '#fb7185' : '#f43f5e')
-                          : cat.color.primary,
+                        backgroundColor: cat.color.primary,
                         minWidth: cat.actual > 0 ? '3px' : '0px',
                       }}
                     />
