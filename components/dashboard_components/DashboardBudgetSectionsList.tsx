@@ -90,10 +90,13 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
                   budgetRefs.current.delete(budget.id);
                 }
               }}
-              className={`transition-all duration-500 ${
+              className={`flex flex-col ${
                 isExpanded ? 'flex-[100] min-h-[70vh]' : 'flex-1 min-h-0'
-              } flex flex-col`}
-              style={{ animationDelay: `${index * 40}ms` }}
+              }`}
+              style={{
+                animationDelay: `${index * 40}ms`,
+                transition: 'flex 0.5s cubic-bezier(0.32, 0.72, 0, 1), min-height 0.5s cubic-bezier(0.32, 0.72, 0, 1)',
+              }}
             >
               <BudgetSection
                 budget={displayBudget}

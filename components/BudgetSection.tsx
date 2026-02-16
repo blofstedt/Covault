@@ -71,12 +71,15 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
   return (
     <div
-      className={`flex-1 h-full overflow-hidden transition-all duration-[300ms] rounded-[2rem] border relative flex flex-col bg-white dark:bg-slate-900 ${
+      className={`flex-1 h-full overflow-hidden rounded-[2rem] border relative flex flex-col bg-white dark:bg-slate-900 ${
         isExpanded
-          ? 'ease-in shadow-2xl'
-          : 'ease-out border-slate-100 dark:border-slate-800/60 shadow-sm'
+          ? 'shadow-2xl'
+          : 'border-slate-100 dark:border-slate-800/60 shadow-sm'
       }`}
-      style={isExpanded ? { borderColor: budgetColor } : undefined}
+      style={{
+        borderColor: isExpanded ? budgetColor : undefined,
+        transition: 'all 0.5s cubic-bezier(0.32, 0.72, 0, 1)',
+      }}
     >
       {/* CLEAN BACKGROUND BARS (NO WAVES / ANIMATIONS) */}
       <div className="absolute inset-0 z-0 pointer-events-none flex">
@@ -116,9 +119,12 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
       {/* HEADER / SUMMARY */}
       <div
         onClick={onToggle}
-        className={`relative z-10 flex-1 flex items-center justify-between cursor-pointer active:scale-[0.99] transition-all ${
+        className={`relative z-10 flex-1 flex items-center justify-between cursor-pointer active:scale-[0.99] ${
           isExpanded ? 'flex-none py-10 px-8' : 'py-2 px-6'
         }`}
+        style={{
+          transition: 'all 0.5s cubic-bezier(0.32, 0.72, 0, 1)',
+        }}
       >
         {/* LEFT SIDE: ICON + NAME */}
         <div className="flex items-center space-x-4">
@@ -192,7 +198,10 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
       {/* EXPANDED TRANSACTIONS LIST */}
       {isExpanded && (
         <div 
-          className="flex-1 overflow-y-auto no-scrollbar px-6 pb-12 animate-in fade-in slide-in-from-top-2 duration-500 relative z-10"
+          className="flex-1 overflow-y-auto no-scrollbar px-6 pb-12 relative z-10"
+          style={{
+            animation: 'budgetContentReveal 0.5s cubic-bezier(0.32, 0.72, 0, 1) forwards',
+          }}
           onClick={(e) => {
             // If clicking on the blank space (the div itself), collapse the budget
             if (e.target === e.currentTarget) {

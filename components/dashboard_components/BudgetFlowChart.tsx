@@ -166,60 +166,52 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       data.push(entry);
     }
 
-    // If only one month of data, duplicate the actual spending values into
-    // synthetic prior and next months so the chart renders flat bands
-    // spanning the full width (nothing before or after to compare against).
-    if (data.length === 1) {
+    // Pad to at least 3 months so the chart always has a nice spread.
+    // Fill missing months with zero spending.
+    if (data.length < 3) {
       const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      const parts = data[0].month.split(' ');
-      const labelMonth = parts[0];
-      const labelYear = parts[1];
-      const mIdx = monthNames.indexOf(labelMonth);
 
-      const makeClone = (label: string): MonthlyBudgetData => {
+      const makeEmpty = (label: string): MonthlyBudgetData => {
         const entry: MonthlyBudgetData = {
           month: label,
-          total: data[0].total,
+          total: 0,
           budgetLimit: totalBudgetLimit,
         };
         for (const name of categoryNames) {
-          entry[name] = data[0][name];
+          entry[name] = 0;
         }
         return entry;
       };
 
-      let priorLabel: string;
-      let nextLabel: string;
-      if (mIdx >= 0 && labelYear && !isNaN(parseInt(labelYear, 10))) {
-        const prevMonth = mIdx === 0 ? 11 : mIdx - 1;
-        const prevYear = mIdx === 0 ? String(parseInt(labelYear, 10) - 1) : labelYear;
-        priorLabel = `${monthNames[prevMonth]} ${prevYear}`;
-        const nxtMonth = mIdx === 11 ? 0 : mIdx + 1;
-        const nxtYear = mIdx === 11 ? String(parseInt(labelYear, 10) + 1) : labelYear;
-        nextLabel = `${monthNames[nxtMonth]} ${nxtYear}`;
-      } else {
-        const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        const prevKey = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
-        priorLabel = formatMonthLabel(prevKey);
-        const nxtDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-        const nxtKey = `${nxtDate.getFullYear()}-${String(nxtDate.getMonth() + 1).padStart(2, '0')}`;
-        nextLabel = formatMonthLabel(nxtKey);
-      }
+      const getAdjacentLabel = (refLabel: string, offset: number): string => {
+        const parts = refLabel.split(' ');
+        const mIdx = monthNames.indexOf(parts[0]);
+        const yr = parseInt(parts[1], 10);
+        if (mIdx < 0 || isNaN(yr)) return refLabel;
+        const d = new Date(yr, mIdx + offset, 1);
+        return `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+      };
 
-      data.unshift(makeClone(priorLabel));
-      data.push(makeClone(nextLabel));
+      while (data.length < 3) {
+        const firstLabel = data[0].month;
+        const priorLabel = getAdjacentLabel(firstLabel, -1);
+        data.unshift(makeEmpty(priorLabel));
+      }
     }
 
     return data;
   }, [safeTransactions, categoryNames, budgetNameById, totalBudgetLimit]);
 
-  // Draw the D3 streamgraph
+  // Draw the D3 stacked area chart
   useEffect(() => {
     if (!svgRef.current || !containerRef.current || chartData.length === 0 || categoryNames.length === 0) return;
 
     const container = containerRef.current;
     const width = container.clientWidth;
     const height = Math.min(150, width * 0.35);
+    const margin = { top: 12, right: 0, bottom: 20, left: 0 };
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
     setChartWidth(width);
     setChartHeight(height);
 
@@ -238,77 +230,65 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         .attr('y1', '0%')
         .attr('x2', '0%')
         .attr('y2', '100%');
-      grad.append('stop').attr('offset', '0%').attr('stop-color', c0);
-      grad.append('stop').attr('offset', '100%').attr('stop-color', c1);
+      grad.append('stop').attr('offset', '0%').attr('stop-color', c0).attr('stop-opacity', 0.9);
+      grad.append('stop').attr('offset', '100%').attr('stop-color', c1).attr('stop-opacity', 0.6);
     });
 
-    // Frosted blur filter for spillover zones
-    defs
-      .append('filter')
-      .attr('id', 'bfc-frost')
-      .append('feGaussianBlur')
-      .attr('in', 'SourceGraphic')
-      .attr('stdDeviation', '8');
+    const svg = svgElement
+      .attr('viewBox', `0 0 ${width} ${height}`)
+      .append('g')
+      .attr('transform', `translate(${margin.left},${margin.top})`);
 
-    const svg = svgElement.attr('viewBox', `0 0 ${width} ${height}`).append('g');
-
+    // Use zero-baseline stacking (no silhouette/cone)
     const stack = d3
       .stack<MonthlyBudgetData>()
       .keys(categoryNames)
       .value((d, key) => (typeof d[key] === 'number' ? (d[key] as number) : 0))
-      .offset(d3.stackOffsetSilhouette)
-      .order(d3.stackOrderInsideOut);
+      .offset(d3.stackOffsetNone)
+      .order(d3.stackOrderReverse);
 
     const stackedData = stack(chartData);
 
-    const x = d3.scalePoint().domain(chartData.map((d) => d.month)).range([0, width]);
+    const x = d3.scalePoint().domain(chartData.map((d) => d.month)).range([0, innerWidth]).padding(0.1);
 
     const maxTotal = d3.max(chartData, (d) => d.total) || 1;
-    // Ensure spending bands are visible: cap so spending is ≥ ~12% of chart height
-    const baseView = Math.max(maxTotal, totalBudgetLimit) * 1.3;
-    const maxViewForVisibility = maxTotal * 8;
-    const viewLimit = Math.min(baseView, maxViewForVisibility);
+    const yMax = Math.max(maxTotal, totalBudgetLimit) * 1.15;
 
     const y = d3
       .scaleLinear()
-      .domain([-viewLimit / 2, viewLimit / 2])
-      .range([height, 0]);
+      .domain([0, yMax])
+      .range([innerHeight, 0]);
 
-    const budgetYTop = y(totalBudgetLimit / 2);
-    const budgetYBottom = y(-totalBudgetLimit / 2);
-
-    // Clip paths for the "danger zone" (outside budget corridor)
-    const clipTop = defs.append('clipPath').attr('id', 'bfc-clip-top');
-    clipTop.append('rect').attr('x', 0).attr('y', 0).attr('width', width).attr('height', budgetYTop);
-
-    const clipBottom = defs.append('clipPath').attr('id', 'bfc-clip-bottom');
-    clipBottom
-      .append('rect')
-      .attr('x', 0)
-      .attr('y', budgetYBottom)
-      .attr('width', width)
-      .attr('height', height - budgetYBottom);
-
-    // Use theme from props
     const isDarkTheme = theme === 'dark';
 
-    // Corridor background (safe zone)
-    svg
-      .append('rect')
-      .attr('x', 0)
-      .attr('y', budgetYTop)
-      .attr('width', width)
-      .attr('height', budgetYBottom - budgetYTop)
-      .attr('fill', isDarkTheme ? '#0f172a' : '#f1f5f9');
+    // Subtle horizontal grid lines
+    const gridValues = y.ticks(3);
+    gridValues.forEach((val) => {
+      if (val === 0) return;
+      svg
+        .append('line')
+        .attr('x1', 0)
+        .attr('x2', innerWidth)
+        .attr('y1', y(val))
+        .attr('y2', y(val))
+        .attr('stroke', isDarkTheme ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)')
+        .attr('stroke-width', 1);
+    });
 
     const area = d3
       .area<d3.SeriesPoint<MonthlyBudgetData>>()
       .x((d) => x(d.data.month) || 0)
       .y0((d) => y(d[0]))
       .y1((d) => y(d[1]))
-      .curve(d3.curveMonotoneX);
+      .curve(d3.curveCatmullRom.alpha(0.5));
 
-    // Main budget bands (safe zone)
+    const line = d3
+      .line<d3.SeriesPoint<MonthlyBudgetData>>()
+      .x((d) => x(d.data.month) || 0)
+      .y((d) => y(d[1]))
+      .curve(d3.curveCatmullRom.alpha(0.5));
+
+    // Draw stacked area bands
     const layerGroup = svg.selectAll('.bfc-layer').data(stackedData).enter().append('g').attr('class', 'bfc-layer');
 
     layerGroup
@@ -316,72 +296,71 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .attr('class', 'bfc-band')
       .attr('d', area)
       .style('fill', (_d, i) => `url(#bfc-grad-${i})`)
-      .attr('stroke', 'rgba(255, 255, 255, 0.05)')
-      .attr('stroke-width', '0.5px')
-      .attr('fill-opacity', 0.95);
+      .attr('fill-opacity', 0.85);
 
-    // Spillover bands (frosted white in danger zones)
-    const spillTop = svg.append('g').attr('clip-path', 'url(#bfc-clip-top)').attr('filter', 'url(#bfc-frost)');
-    const spillBottom = svg
-      .append('g')
-      .attr('clip-path', 'url(#bfc-clip-bottom)')
-      .attr('filter', 'url(#bfc-frost)');
+    // Thin line at top edge of each band for definition
+    layerGroup
+      .append('path')
+      .attr('class', 'bfc-line')
+      .attr('d', line)
+      .attr('fill', 'none')
+      .attr('stroke', (_d, i) => getBudgetColor(categoryNames[i], i))
+      .attr('stroke-width', 1.5)
+      .attr('stroke-opacity', 0.4);
 
-    // Spillover color: white in dark theme, coral/red in light theme
-    const spillColor = isDarkTheme ? '#ffffff' : '#ef4444';
-
-    [spillTop, spillBottom].forEach((group) => {
-      group
-        .selectAll('.bfc-spill')
-        .data(stackedData)
-        .enter()
-        .append('path')
-        .attr('class', 'bfc-spill')
-        .attr('d', area)
-        .attr('fill', spillColor)
-        .attr('fill-opacity', 1.0);
-    });
-
-    // Glass panels over the danger zones
-    const glassColor = isDarkTheme ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.04)';
+    // Budget limit line (dashed)
+    const budgetY = y(totalBudgetLimit);
     svg
-      .append('rect')
-      .attr('x', 0)
-      .attr('y', 0)
-      .attr('width', width)
-      .attr('height', budgetYTop)
-      .attr('fill', glassColor);
+      .append('line')
+      .attr('x1', 0)
+      .attr('x2', innerWidth)
+      .attr('y1', budgetY)
+      .attr('y2', budgetY)
+      .attr('stroke', isDarkTheme ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.12)')
+      .attr('stroke-width', 1)
+      .attr('stroke-dasharray', '4 6');
 
+    // Small "Budget" label on the threshold line
     svg
-      .append('rect')
-      .attr('x', 0)
-      .attr('y', budgetYBottom)
-      .attr('width', width)
-      .attr('height', height - budgetYBottom)
-      .attr('fill', glassColor);
+      .append('text')
+      .attr('x', innerWidth - 4)
+      .attr('y', budgetY - 4)
+      .attr('text-anchor', 'end')
+      .attr('font-size', '7px')
+      .attr('font-weight', '700')
+      .attr('letter-spacing', '0.1em')
+      .attr('fill', isDarkTheme ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.2)')
+      .text('LIMIT');
 
-    // Dashed budget threshold lines
-    const thresholdColor = isDarkTheme ? '#6ee7b7' : '#059669';
-    [budgetYTop, budgetYBottom].forEach((yPos) => {
+    // Month labels on the x-axis
+    chartData.forEach((d) => {
+      const xPos = x(d.month) || 0;
       svg
-        .append('line')
-        .attr('x1', 0)
-        .attr('x2', width)
-        .attr('y1', yPos)
-        .attr('y2', yPos)
-        .attr('stroke', thresholdColor)
-        .attr('stroke-width', 1.5)
-        .attr('stroke-dasharray', '6 10')
-        .attr('opacity', 0.7);
+        .append('text')
+        .attr('x', xPos)
+        .attr('y', innerHeight + 14)
+        .attr('text-anchor', 'middle')
+        .attr('font-size', '8px')
+        .attr('font-weight', '600')
+        .attr('letter-spacing', '0.05em')
+        .attr('fill', isDarkTheme ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)')
+        .text(d.month.split(' ')[0]);
     });
 
     // Scrubber line
     const scrubber = svg
       .append('line')
       .attr('y1', 0)
-      .attr('y2', height)
+      .attr('y2', innerHeight)
       .attr('stroke', isDarkTheme ? '#ffffff' : '#334155')
-      .attr('stroke-width', 1.5)
+      .attr('stroke-width', 1)
+      .style('opacity', 0);
+
+    // Dot on the scrubber
+    const scrubberDot = svg
+      .append('circle')
+      .attr('r', 3)
+      .attr('fill', isDarkTheme ? '#ffffff' : '#334155')
       .style('opacity', 0);
 
     // Shared update function for month/category selection
@@ -417,21 +396,25 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
       setActiveCategory(foundCat);
       setHoveredMonthIdx(monthIdx);
-      setMouseCoords({ x: xPos, y: my });
+      setMouseCoords({ x: xPos + margin.left, y: my });
 
-      scrubber.attr('x1', xPos).attr('x2', xPos).style('opacity', 0.6);
+      scrubber.attr('x1', xPos).attr('x2', xPos).style('opacity', 0.3);
+
+      // Position dot at top of total stack for this month
+      const topY = y(chartData[monthIdx].total);
+      scrubberDot.attr('cx', xPos).attr('cy', topY).style('opacity', 0.6);
 
       svg
         .selectAll('.bfc-band')
         .transition()
         .duration(100)
-        .attr('fill-opacity', (d: any) => (foundCat && d.key === foundCat ? 1.0 : 0.2));
+        .attr('fill-opacity', (d: any) => (foundCat && d.key === foundCat ? 0.95 : 0.25));
 
       svg
-        .selectAll('.bfc-spill')
+        .selectAll('.bfc-line')
         .transition()
         .duration(100)
-        .attr('fill-opacity', (d: any) => (foundCat && d.key === foundCat ? 1.0 : 0.1));
+        .attr('stroke-opacity', (d: any) => (foundCat && d.key === foundCat ? 0.8 : 0.1));
     };
 
     // Interaction handler for mouse events
@@ -442,12 +425,12 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         setHoveredMonthIdx(0);
         setActiveCategory(categoryNames[0] || null);
         const xPos = x(chartData[0].month) || 0;
-        setMouseCoords({ x: xPos, y: my });
-        scrubber.attr('x1', xPos).attr('x2', xPos).style('opacity', 0.6);
+        setMouseCoords({ x: xPos + margin.left, y: my });
+        scrubber.attr('x1', xPos).attr('x2', xPos).style('opacity', 0.3);
         return;
       }
 
-      const step = width / (domain.length - 1);
+      const step = innerWidth / (domain.length - 1);
       const index = Math.round(mx / step);
       const monthIdx = Math.max(0, Math.min(chartData.length - 1, index));
 
@@ -464,11 +447,11 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         setHoveredMonthIdx(0);
         setActiveCategory(categoryNames[0] || null);
         const xPos = x(chartData[0].month) || 0;
-        setMouseCoords({ x: xPos, y: my });
-        scrubber.attr('x1', xPos).attr('x2', xPos).style('opacity', 0.6);
+        setMouseCoords({ x: xPos + margin.left, y: my });
+        scrubber.attr('x1', xPos).attr('x2', xPos).style('opacity', 0.3);
         return;
       }
-      const step = width / (domain.length - 1);
+      const step = innerWidth / (domain.length - 1);
       const index = Math.round(mx / step);
       const monthIdx = Math.max(0, Math.min(chartData.length - 1, index));
       updateSelection(monthIdx, my);
@@ -480,7 +463,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       const [mx, my] = d3.pointer(touch, svg.node());
       const domain = x.domain();
       if (domain.length < 2) return;
-      const step = width / (domain.length - 1);
+      const step = innerWidth / (domain.length - 1);
       const index = Math.round(mx / step);
       const monthIdx = Math.max(0, Math.min(chartData.length - 1, index));
       updateSelection(monthIdx, my);
@@ -491,8 +474,9 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       setHoveredMonthIdx(null);
       setMouseCoords(null);
       scrubber.style('opacity', 0);
-      svg.selectAll('.bfc-band').transition().duration(300).attr('fill-opacity', 0.95);
-      svg.selectAll('.bfc-spill').transition().duration(300).attr('fill-opacity', 1.0);
+      scrubberDot.style('opacity', 0);
+      svg.selectAll('.bfc-band').transition().duration(300).attr('fill-opacity', 0.85);
+      svg.selectAll('.bfc-line').transition().duration(300).attr('stroke-opacity', 0.4);
     };
 
     svgElement.on('mousemove', handleInteraction).on('mouseleave', handleEnd);
@@ -656,8 +640,8 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
         {/* Chart container */}
         <div ref={containerRef} className="w-full relative">
-          <div className="bg-white/[0.03] dark:bg-white/[0.02] rounded-[2.5rem] p-0.5 shadow-xl border border-slate-200/30 dark:border-white/10 overflow-hidden">
-            <div className="bg-slate-100 dark:bg-slate-900 rounded-[2.4rem] overflow-hidden border border-slate-200/20 dark:border-white/10 relative">
+          <div className="rounded-2xl p-0.5 overflow-hidden">
+            <div className="bg-white dark:bg-slate-900/80 rounded-2xl overflow-hidden relative">
               <svg
                 ref={svgRef}
                 className="w-full h-auto overflow-visible cursor-crosshair relative z-10 select-none"
