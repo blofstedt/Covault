@@ -10,6 +10,9 @@ interface CategoryBarChartProps {
   theme?: 'light' | 'dark';
 }
 
+// Fraction of budget limit used to generate placeholder tutorial data
+const TUTORIAL_SPEND_RATIO = 0.6;
+
 const CategoryBarChart: React.FC<CategoryBarChartProps> = ({
   budgets,
   transactions,
@@ -27,7 +30,7 @@ const CategoryBarChart: React.FC<CategoryBarChartProps> = ({
       return safeBudgets.map((b, i) => ({
         id: `__tutorial_bar_${i}__`,
         vendor: 'Tutorial',
-        amount: Math.round((b.totalLimit || 500) * 0.6 * 100) / 100,
+        amount: Math.round((b.totalLimit || 500) * TUTORIAL_SPEND_RATIO * 100) / 100,
         date: now.toISOString(),
         budget_id: b.id,
         user_id: '__tutorial__',
