@@ -73,8 +73,8 @@ const DashboardTransactionList: React.FC<DashboardTransactionListProps> = ({
           <div
             className="absolute top-1 bottom-1 rounded-xl bg-white dark:bg-slate-700 shadow-sm transition-all duration-300 ease-out"
             style={{
-              width: `calc(${100 / tabs.length}% - 0px)`,
-              left: `calc(${(tabs.findIndex(t => t.key === activeFilter)) * (100 / tabs.length)}% + 0px)`,
+              width: `${100 / tabs.length}%`,
+              left: `${(tabs.findIndex(t => t.key === activeFilter)) * (100 / tabs.length)}%`,
             }}
           />
           {tabs.map((tab) => (
