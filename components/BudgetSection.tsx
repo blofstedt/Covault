@@ -4,6 +4,7 @@ import { BudgetCategory, Transaction } from '../types';
 import TransactionItem from './TransactionItem';
 import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
 import { EmptyState } from './shared';
+import { getBudgetColor } from '../lib/budgetColors';
 
 interface ExtendedBudgetCategory extends BudgetCategory {
   externalDeduction?: number;
@@ -66,29 +67,36 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
     budget.totalLimit > 0 ? (projected / budget.totalLimit) * 100 : 0,
   );
 
+  const budgetColor = getBudgetColor(budget.name);
+
   return (
     <div
       className={`flex-1 h-full overflow-hidden transition-all duration-[300ms] rounded-[2rem] border relative flex flex-col bg-white dark:bg-slate-900 ${
         isExpanded
-          ? 'ease-in border-emerald-300 dark:border-emerald-800 shadow-2xl'
+          ? 'ease-in shadow-2xl'
           : 'ease-out border-slate-100 dark:border-slate-800/60 shadow-sm'
       }`}
+      style={isExpanded ? { borderColor: budgetColor } : undefined}
     >
       {/* CLEAN BACKGROUND BARS (NO WAVES / ANIMATIONS) */}
       <div className="absolute inset-0 z-0 pointer-events-none flex">
-        {/* Spent (includes shield/external deduction) */}
+        {/* Spent (includes shield/external deduction) — filled with budget color at 50% opacity and brighter stroke */}
         <div
-          style={{ width: `${spentWidth}%` }}
-          className="h-full bg-emerald-400/30 dark:bg-emerald-500/40 transition-all duration-300"
+          style={{
+            width: `${spentWidth}%`,
+            backgroundColor: `${budgetColor}80`,
+            borderRight: spentWidth > 0 && spentWidth < 100 ? `2px solid ${budgetColor}` : 'none',
+          }}
+          className="h-full transition-all duration-300"
         />
 
-        {/* Projected - with fine slanted lines /// */}
+        {/* Projected - with fine slanted lines /// using budget color */}
         <div
           style={{ width: `${projectedWidth}%` }}
           className="h-full transition-all duration-300 relative"
         >
           {/* Base color layer */}
-          <div className="absolute inset-0 bg-emerald-500/10 dark:bg-emerald-800/20" />
+          <div className="absolute inset-0" style={{ backgroundColor: `${budgetColor}1A` }} />
           {/* Fine slanted lines overlay pattern /// */}
           <div 
             className="absolute inset-0 bg-repeat"
@@ -97,8 +105,8 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                 45deg,
                 transparent,
                 transparent 3px,
-                rgba(16, 185, 129, 0.3) 3px,
-                rgba(16, 185, 129, 0.3) 4px
+                ${budgetColor}4D 3px,
+                ${budgetColor}4D 4px
               )`
             }}
           />
@@ -117,9 +125,13 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           <div
             className={`p-2 rounded-2xl transition-all duration-300 ${
               isExpanded
-                ? 'bg-emerald-600 text-white shadow-lg scale-110 p-3.5'
-                : 'bg-white/80 dark:bg-slate-800 text-slate-400 dark:text-slate-500 shadow-sm'
+                ? 'text-white shadow-lg scale-110 p-3.5'
+                : 'bg-white/80 dark:bg-slate-800 shadow-sm'
             }`}
+            style={isExpanded
+              ? { backgroundColor: budgetColor }
+              : { color: budgetColor }
+            }
           >
             {getBudgetIcon(budget.name)}
           </div>

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { BudgetCategory, Transaction, TransactionLabel } from '../../types';
+import { getBudgetGradient, getBudgetColor } from '../../lib/budgetColors';
 
 interface BudgetFlowChartProps {
   budgets: BudgetCategory[];
@@ -16,34 +17,13 @@ interface MonthlyBudgetData {
   [key: string]: number | string;
 }
 
-// Saturated monochromatic teal palette for budget categories
-const CATEGORY_GRADIENTS: Record<string, [string, string]> = {
-  Housing:   ['#064e3b', '#0d9488'],
-  Groceries: ['#1EA078', '#059669'],
-  Transport: ['#059669', '#10b981'],
-  Utilities: ['#34d399', '#10b981'],
-  Leisure:   ['#0d9488', '#1EA078'],
-  Services:  ['#047857', '#34d399'],
-  Other:     ['#10b981', '#6ee7b7'],
-};
-
-// Fallback gradient for unknown category names
-const FALLBACK_GRADIENTS: [string, string][] = [
-  ['#064e3b', '#0d9488'],
-  ['#1EA078', '#059669'],
-  ['#059669', '#10b981'],
-  ['#34d399', '#10b981'],
-  ['#0d9488', '#1EA078'],
-  ['#10b981', '#6ee7b7'],
-];
-
 function getGradient(name: string, index: number): [string, string] {
-  return CATEGORY_GRADIENTS[name] || FALLBACK_GRADIENTS[index % FALLBACK_GRADIENTS.length];
+  return getBudgetGradient(name, index);
 }
 
 // Tooltip vertical positioning: base offset above chart + extra shift when thumb is near the top
-const TOOLTIP_BASE_OFFSET = 70;
-const TOOLTIP_MAX_THUMB_OFFSET = 40;
+const TOOLTIP_BASE_OFFSET = 100;
+const TOOLTIP_MAX_THUMB_OFFSET = 50;
 
 function formatMonthLabel(key: string): string {
   const [year, month] = key.split('-');
@@ -186,8 +166,9 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       data.push(entry);
     }
 
-    // If only one month of data, prepend a synthetic prior month with zero spending
-    // so the chart renders a flat band without mislabeling the actual month
+    // If only one month of data, duplicate the actual spending values into
+    // synthetic prior and next months so the chart renders flat bands
+    // spanning the full width (nothing before or after to compare against).
     if (data.length === 1) {
       const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       const parts = data[0].month.split(' ');
@@ -195,27 +176,38 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       const labelYear = parts[1];
       const mIdx = monthNames.indexOf(labelMonth);
 
+      const makeClone = (label: string): MonthlyBudgetData => {
+        const entry: MonthlyBudgetData = {
+          month: label,
+          total: data[0].total,
+          budgetLimit: totalBudgetLimit,
+        };
+        for (const name of categoryNames) {
+          entry[name] = data[0][name];
+        }
+        return entry;
+      };
+
       let priorLabel: string;
+      let nextLabel: string;
       if (mIdx >= 0 && labelYear && !isNaN(parseInt(labelYear, 10))) {
         const prevMonth = mIdx === 0 ? 11 : mIdx - 1;
         const prevYear = mIdx === 0 ? String(parseInt(labelYear, 10) - 1) : labelYear;
         priorLabel = `${monthNames[prevMonth]} ${prevYear}`;
+        const nxtMonth = mIdx === 11 ? 0 : mIdx + 1;
+        const nxtYear = mIdx === 11 ? String(parseInt(labelYear, 10) + 1) : labelYear;
+        nextLabel = `${monthNames[nxtMonth]} ${nxtYear}`;
       } else {
-        // Fallback: compute prior month from current date
         const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         const prevKey = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
         priorLabel = formatMonthLabel(prevKey);
+        const nxtDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        const nxtKey = `${nxtDate.getFullYear()}-${String(nxtDate.getMonth() + 1).padStart(2, '0')}`;
+        nextLabel = formatMonthLabel(nxtKey);
       }
 
-      const priorEntry: MonthlyBudgetData = {
-        month: priorLabel,
-        total: 0,
-        budgetLimit: totalBudgetLimit,
-      };
-      for (const name of categoryNames) {
-        priorEntry[name] = 0;
-      }
-      data.unshift(priorEntry);
+      data.unshift(makeClone(priorLabel));
+      data.push(makeClone(nextLabel));
     }
 
     return data;
@@ -537,6 +529,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
   const activeCatIndex = activeCategory ? categoryNames.indexOf(activeCategory) : -1;
   const activeCatGradient = activeCategory ? getGradient(activeCategory, activeCatIndex) : null;
+  const activeCatColor = activeCategory ? getBudgetColor(activeCategory, activeCatIndex) : null;
 
   // No data fallback
   if (chartData.length === 0) {
@@ -575,20 +568,28 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
             <div
               className={`absolute p-2.5 w-[150px] backdrop-blur-xl rounded-xl flex flex-col gap-2 ${
                 theme === 'dark'
-                  ? 'bg-slate-900/95 border border-white/20 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.9)]'
-                  : 'bg-white/95 border border-slate-200 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.15)]'
+                  ? 'bg-slate-900/95 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.9)]'
+                  : 'bg-white/95 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.15)]'
               } ${
                 mouseCoords.x > chartWidth * 0.7
-                  ? '-translate-x-[115%]'
+                  ? '-translate-x-[130%]'
                   : mouseCoords.x < chartWidth * 0.3
-                    ? 'translate-x-[20%]'
+                    ? 'translate-x-[30%]'
                     : mouseCoords.x > chartWidth / 2
-                      ? '-translate-x-[110%]'
-                      : 'translate-x-[12%]'
+                      ? '-translate-x-[125%]'
+                      : 'translate-x-[25%]'
               }`}
+              style={{
+                borderWidth: '1.5px',
+                borderStyle: 'solid',
+                borderColor: activeCatColor || (theme === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)'),
+              }}
             >
               <div className="flex justify-between items-center">
-                <span className={`text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                <span
+                  className="text-[10px] font-black uppercase tracking-widest"
+                  style={{ color: activeCatColor || (theme === 'dark' ? '#6ee7b7' : '#059669') }}
+                >
                   {activeMonthData.month}
                 </span>
                 <div
@@ -641,8 +642,9 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
                         ? theme === 'dark'
                           ? 'text-white underline decoration-white/40 underline-offset-4'
                           : 'text-slate-900 underline decoration-slate-300 underline-offset-4'
-                        : 'text-emerald-400'
+                        : ''
                     }`}
+                    style={activeMonthData.total <= totalBudgetLimit && activeCatColor ? { color: activeCatColor } : undefined}
                   >
                     ${activeMonthData.total.toFixed(0)}
                   </span>
