@@ -48,13 +48,13 @@ describe('CategoryBarChart rendering verification', () => {
     expect(html).toContain('#ec4899');
   });
 
-  it('fills actual bar with light color and outlines with primary color', () => {
+  it('fills actual bar with same color as icon background and outlines with primary color', () => {
     const html = renderToString(
       React.createElement(CategoryBarChart, { budgets, transactions, totalIncome: 3000, theme: 'dark' }),
     );
 
-    // Housing: primary=#6366f1, light=#a5b4fc — bar should use light as fill, primary as border
-    expect(html).toContain('background-color:#a5b4fc');
+    // Housing: primary=#6366f1 — bar fill should match icon background (#6366f115)
+    expect(html).toContain('background-color:#6366f115');
     expect(html).toContain('border:2px solid #6366f1');
   });
 
