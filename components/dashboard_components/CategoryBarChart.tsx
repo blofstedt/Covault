@@ -212,10 +212,11 @@ const CategoryBarChart: React.FC<CategoryBarChartProps> = ({
                   <div className="h-8 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800/60 relative">
                     {/* Solid bar — actual past spend */}
                     <div
-                      className="absolute inset-y-0 left-0 rounded-full transition-all duration-700 ease-out"
+                      className="absolute inset-y-0 left-0 rounded-full transition-all duration-700 ease-out box-border"
                       style={{
                         width: `${actualPct}%`,
-                        backgroundColor: cat.color.primary,
+                        backgroundColor: cat.color.light,
+                        border: `2px solid ${cat.color.primary}`,
                         minWidth: cat.actual > 0 ? '3px' : '0px',
                       }}
                     />
@@ -233,7 +234,6 @@ const CategoryBarChart: React.FC<CategoryBarChartProps> = ({
                         <rect
                           width="100%"
                           height="100%"
-                          rx="9999"
                           fill={`url(#hatch-${cat.name.replace(/\s+/g, '-')})`}
                         />
                       </svg>
