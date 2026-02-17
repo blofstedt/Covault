@@ -2,7 +2,6 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import { Transaction, BudgetCategory } from '../types';
 
-import NotificationToggleCard from './transaction_parsing/NotificationToggleCard';
 import ActiveBanksCard from './transaction_parsing/ActiveBanksCard';
 import AITransactionsEnteredCard from './transaction_parsing/AITransactionsEnteredCard';
 import AITransactionsRejectedCard from './transaction_parsing/AITransactionsRejectedCard';
@@ -32,7 +31,6 @@ interface TransactionParsingProps {
   showDemoData?: boolean;
   onRefreshNotifications?: () => Promise<void>;
   onReloadTransactions?: (userId: string) => Promise<void>;
-  secondsUntilNextScan?: number | null;
   onClearEntered?: () => void;
 }
 
@@ -50,7 +48,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   showDemoData = false,
   onRefreshNotifications,
   onReloadTransactions,
-  secondsUntilNextScan,
   onClearEntered,
 }) => {
   // ── State for rejected notifications ──
@@ -189,13 +186,13 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   const handleClearRejected = useCallback(async () => {
     if (!userId) return;
     const rejectedIds = rejectedNotifications.map((r) => r.id);
+    // Always clear local state so the UI updates immediately
+    setRejectedNotifications([]);
     if (rejectedIds.length === 0) return;
     const { error } = await supabase.from('pending_transactions').delete().in('id', rejectedIds);
     if (error) {
       console.error('[TransactionParsing] Error clearing rejected:', error);
-      return;
     }
-    setRejectedNotifications([]);
   }, [userId, rejectedNotifications]);
 
   // ── Refresh handler ──
@@ -245,14 +242,9 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         <div className="max-w-2xl mx-auto w-full space-y-4">
           {enabled || isTutorialMode ? (
             <>
-              <NotificationToggleCard enabled={enabled} onToggle={onToggle} />
-
               <ActiveBanksCard
                 activeBanks={monitoredBanks}
                 showDemoData={showDemoData}
-                onRefresh={handleRefresh}
-                isRefreshing={isRefreshing}
-                secondsUntilNextScan={secondsUntilNextScan}
               />
 
               <AITransactionsEnteredCard

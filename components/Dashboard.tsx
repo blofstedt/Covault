@@ -608,7 +608,6 @@ const Dashboard: React.FC<DashboardProps> = ({
         showDemoData={tutorialParsingDemo}
         onRefreshNotifications={onRefreshNotifications}
         onReloadTransactions={onReloadTransactions}
-        secondsUntilNextScan={secondsUntilNextScan}
         onClearEntered={() => {
           setState(prev => ({
             ...prev,
