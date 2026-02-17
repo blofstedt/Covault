@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Transaction, BudgetCategory, Recurrence, TransactionLabel, TransactionSplit } from '../types';
+import { Transaction, BudgetCategory, Recurrence, TransactionLabel } from '../types';
 import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
 import { formatVendorName } from '../lib/formatVendorName';
 import { parseLocalDate } from '../lib/dateUtils';
@@ -10,7 +10,6 @@ import { CloseButton } from './shared';
 interface VendorHistoryItem {
   vendor: string;
   budget_id: string;
-  splits?: { budget_id: string; amount: number }[];
 }
 
 interface TransactionFormProps {
@@ -23,8 +22,6 @@ interface TransactionFormProps {
   isSharedAccount?: boolean;
   vendorHistory?: VendorHistoryItem[];
   onDelete?: () => void;
-  isTutorialMode?: boolean;
-  demoSplitTrigger?: number;
   /** Callback when an AI transaction's budget category is updated (vendor override) */
   onVendorOverrideUpdated?: (vendor: string, categoryName: string) => void;
 }
@@ -50,8 +47,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   isSharedAccount = false,
   vendorHistory = [],
   onDelete,
-  isTutorialMode = false,
-  demoSplitTrigger,
   onVendorOverrideUpdated,
 }) => {
   const [vendor, setVendor] = useState(initialTransaction?.vendor || '');
@@ -88,7 +83,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   };
 
   useEffect(() => {
-    if (!initialTransaction && !isTutorialMode) {
+    if (!initialTransaction) {
       amountInputRef.current?.focus();
     }
   }, []);
@@ -104,16 +99,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const selectSuggestion = (item: VendorHistoryItem) => {
     setVendor(item.vendor);
     setShowSuggestions(false);
-    // Auto-select the last-used budget(s) for this vendor
+    // Auto-select the last-used budget for this vendor
     if (!initialTransaction) {
-      if (item.splits && item.splits.length > 1) {
-        // Restore the previous split configuration
-        const ids = new Set(item.splits.map(s => s.budget_id));
-        setSelectedIds(ids);
-        const restored: Record<string, number> = {};
-        item.splits.forEach(s => { restored[s.budget_id] = s.amount; });
-        setSplits(restored);
-      } else if (item.budget_id) {
+      if (item.budget_id) {
         setSelectedIds(new Set([item.budget_id]));
       }
     }
@@ -126,9 +114,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
   // Track selected budget IDs
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => {
-    if (initialTransaction?.splits) {
-      return new Set(initialTransaction.splits.map(s => s.budget_id));
-    }
     if (initialTransaction?.budget_id) {
       return new Set([initialTransaction.budget_id]);
     }
@@ -137,11 +122,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
   const [splits, setSplits] = useState<Record<string, number>>(() => {
     const amountVal = parseFloat(initialTransaction?.amount.toString() || '0');
-    if (initialTransaction?.splits) {
-      const initial: Record<string, number> = {};
-      initialTransaction.splits.forEach(s => { initial[s.budget_id] = s.amount; });
-      return initial;
-    }
     const res: Record<string, number> = {};
     if (initialTransaction?.budget_id) {
       res[initialTransaction.budget_id] = amountVal;
@@ -155,30 +135,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const hasMovedRef = useRef<boolean>(false);
 
   const amount = parseFloat(amountStr) || 0;
-
-  // Demo split animation: select two budgets and animate the split
-  useEffect(() => {
-    if (!demoSplitTrigger || !isTutorialMode || budgets.length < 2) return;
-    const demoAmount = 50;
-    setAmountStr('50');
-    setVendor('Demo Split');
-    const id1 = budgets[0].id;
-    const id2 = budgets[1].id;
-    setSelectedIds(new Set([id1, id2]));
-    setSplits({ [id1]: demoAmount / 2, [id2]: demoAmount / 2 });
-
-    // Animate the split shifting
-    let frame = 0;
-    const totalFrames = 40;
-    const interval = setInterval(() => {
-      frame++;
-      const ratio = 0.5 + 0.3 * Math.sin((frame / totalFrames) * Math.PI * 2);
-      setSplits({ [id1]: demoAmount * ratio, [id2]: demoAmount * (1 - ratio) });
-      if (frame >= totalFrames) clearInterval(interval);
-    }, 50);
-
-    return () => clearInterval(interval);
-  }, [demoSplitTrigger]);
 
   // Sync splits when amount or selectedIds change
   useEffect(() => {
@@ -322,11 +278,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     e.preventDefault();
     if (!amount || amount <= 0 || selectedIds.size === 0) return;
 
-    const finalSplits: TransactionSplit[] = (Array.from(selectedIds) as string[]).map(id => ({
-      budget_id: id,
-      amount: parseFloat((splits[id] || 0).toFixed(2))
-    }));
-
     const tx: Transaction = {
       id: initialTransaction?.id || generateUUID(),
       vendor: formatVendorName(vendor || 'Untitled Vendor'),
@@ -342,7 +293,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       user_id: userId,
       userName,
       is_projected: false,
-      splits: finalSplits.length > 1 ? finalSplits : undefined,
       description: description.trim() || undefined,
       created_at: initialTransaction?.created_at || new Date().toISOString()
     };
@@ -386,7 +336,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                   placeholder="0.00"
                   value={amountStr}
                   onChange={e => setAmountStr(e.target.value)}
-                  readOnly={isTutorialMode}
+                  readOnly={false}
                   className="bg-transparent text-center text-3xl font-black tracking-tighter outline-none text-slate-500 dark:text-slate-50 placeholder-slate-200 dark:placeholder-slate-800 w-auto min-w-[1ch]"
                   style={{ width: amountStr ? `${amountStr.length + 0.5}ch` : '4ch' }}
                 />

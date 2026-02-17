@@ -6,7 +6,6 @@ import SectionHeader from '../../ui/SectionHeader';
 interface BudgetLimitsSectionProps {
   budgets: BudgetCategory[];
   onSaveBudgetLimit: (categoryId: string, newLimit: number) => void;
-  showTutorial?: boolean;
   hiddenCategories?: string[];
   onToggleHideCategory?: (categoryId: string) => void;
   monthlyIncome?: number;
@@ -15,7 +14,6 @@ interface BudgetLimitsSectionProps {
 const BudgetLimitsSection: React.FC<BudgetLimitsSectionProps> = ({
   budgets,
   onSaveBudgetLimit,
-  showTutorial,
   hiddenCategories = [],
   onToggleHideCategory,
   monthlyIncome,
@@ -88,7 +86,7 @@ const BudgetLimitsSection: React.FC<BudgetLimitsSectionProps> = ({
       )}
 
       <div className="space-y-3">
-        {(showTutorial ? budgets.slice(0, 1) : budgets).map((budget) => {
+        {budgets.map((budget) => {
           const isHidden = hiddenCategories.includes(budget.id);
           const isEditing = editingBudgets[budget.id] !== undefined;
           const displayValue = isEditing 

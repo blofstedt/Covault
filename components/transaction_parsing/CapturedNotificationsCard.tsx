@@ -27,11 +27,6 @@ const CapturedNotificationsCard: React.FC<CapturedNotificationsCardProps> = ({
         <div key={bankName} className="space-y-2">
           <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-1">
             {bankName}
-            {!notifications[0]?.pattern_id && (
-              <span className="ml-2 text-blue-500 dark:text-blue-400">
-                — needs setup
-              </span>
-            )}
           </p>
 
           {notifications.map((pt) => (
@@ -48,7 +43,7 @@ const CapturedNotificationsCard: React.FC<CapturedNotificationsCardProps> = ({
                 </div>
                 <div className="text-left min-w-0">
                   <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed line-clamp-2">
-                    {pt.notification_text}
+                    {pt.extracted_vendor} — ${pt.extracted_amount}
                   </p>
                   <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
                     {new Date(pt.posted_at).toLocaleString()}

@@ -59,7 +59,7 @@ export const shouldShowUpgradePrompt = (user: User | null): boolean => {
   }
 
   // No trial data and no subscription — prompt
-  if (!user.trial_ends_at && user.subscription_status !== 'active') return true;
+  if (!user.trial_ends_at && (user.subscription_status as string) !== 'active') return true;
 
   return false;
 };

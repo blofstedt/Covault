@@ -27,7 +27,7 @@ export const useToSupabaseTransaction = () =>
     // Validate and set recurrence value
     let recurrence: string = Recurrence.ONE_TIME;
     if (tx.recurrence) {
-      if (VALID_RECURRENCES.includes(tx.recurrence)) {
+      if (VALID_RECURRENCES.includes(tx.recurrence as Recurrence)) {
         recurrence = tx.recurrence;
       } else {
         console.warn(`Invalid recurrence value "${tx.recurrence}", defaulting to "${Recurrence.ONE_TIME}"`);
@@ -47,7 +47,6 @@ export const useToSupabaseTransaction = () =>
     };
 
     if (tx.userName) row.user_name = tx.userName;
-    if (tx.splits && tx.splits.length > 1) row.split_group_id = tx.id;
     if (tx.description !== undefined) row.Description = tx.description || null;
 
     return row;
@@ -57,10 +56,10 @@ export const useToSupabaseTransaction = () =>
 export const useFromSupabaseTransaction = () =>
   useCallback((row: any): Transaction => {
     // Validate recurrence value from database
-    let recurrence: string = Recurrence.ONE_TIME;
+    let recurrence: Recurrence = Recurrence.ONE_TIME;
     if (row.recurrence) {
-      if (VALID_RECURRENCES.includes(row.recurrence)) {
-        recurrence = row.recurrence;
+      if (VALID_RECURRENCES.includes(row.recurrence as Recurrence)) {
+        recurrence = row.recurrence as Recurrence;
       } else {
         console.warn(`Invalid recurrence value "${row.recurrence}" from database, using "${Recurrence.ONE_TIME}"`);
       }

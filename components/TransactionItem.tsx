@@ -25,18 +25,12 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
 }) => {
 
   const displayAmount = useMemo(() => {
-    if (transaction.splits && transaction.splits.length > 0 && currentBudgetId) {
-      const split = transaction.splits.find((s) => s.budget_id === currentBudgetId);
-      return split ? split.amount : transaction.amount;
-    }
     return transaction.amount;
-  }, [transaction, currentBudgetId]);
+  }, [transaction]);
 
   const budget = useMemo(() => {
     if (!budgets || !showBudgetIcon) return null;
-    const budgetId = transaction.splits && transaction.splits.length > 0
-      ? transaction.splits[0].budget_id
-      : transaction.budget_id;
+    const budgetId = transaction.budget_id;
     return budgets.find(b => b.id === budgetId);
   }, [budgets, transaction, showBudgetIcon]);
 
@@ -145,11 +139,6 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
             >
               ${displayAmount.toFixed(2)}
             </div>
-            {transaction.splits && transaction.splits.length > 0 && (
-              <div className="text-[8px] text-emerald-600 dark:text-emerald-400 font-black uppercase tracking-[0.2em] mt-0.5">
-                Split Vault
-              </div>
-            )}
           </div>
         </div>
       </button>

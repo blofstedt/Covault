@@ -9,7 +9,6 @@ interface AITransactionsEnteredCardProps {
   /** AI-entered transactions (label === 'AI') */
   aiTransactions: Transaction[];
   budgets: BudgetCategory[];
-  showDemoData?: boolean;
   onTransactionTap?: (tx: Transaction) => void;
   onClear?: () => void;
   onRefresh?: () => void;
@@ -24,7 +23,6 @@ interface AITransactionsEnteredCardProps {
 const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
   aiTransactions,
   budgets,
-  showDemoData = false,
   onTransactionTap,
   onClear,
   onRefresh,
@@ -44,7 +42,7 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
       }
       title="Transactions Entered"
       subtitle="AI-processed transactions added to your budgets"
-      count={showDemoData && aiTransactions.length === 0 ? 3 : aiTransactions.length}
+      count={aiTransactions.length}
       headerAction={
         <div className="flex items-center gap-1">
           <button
@@ -135,32 +133,6 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
               </button>
             );
           })}
-        </div>
-      ) : showDemoData ? (
-        <div className="space-y-2">
-          {[
-            { vendor: 'Starbucks', amount: 6.50, budget: 'Leisure' },
-            { vendor: 'Costco', amount: 147.23, budget: 'Groceries' },
-            { vendor: 'Shell Gas', amount: 55.00, budget: 'Transport' },
-          ].map((demo, i) => (
-            <div key={i} className="w-full flex items-center justify-between p-4 bg-emerald-50/50 dark:bg-emerald-900/10 rounded-2xl border border-emerald-100 dark:border-emerald-800/30">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center">
-                  <span className="text-emerald-600 dark:text-emerald-400 w-4 h-4">
-                    {getBudgetIcon(demo.budget)}
-                  </span>
-                </div>
-                <div className="text-left">
-                  <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{demo.vendor}</p>
-                  <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">{demo.budget}</span>
-                </div>
-              </div>
-              <div className="text-right">
-                <span className="text-sm font-black text-slate-700 dark:text-slate-200">${demo.amount.toFixed(2)}</span>
-                <p className="text-[8px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mt-0.5">AI</p>
-              </div>
-            </div>
-          ))}
         </div>
       ) : (
         <EmptyState

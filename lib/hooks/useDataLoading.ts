@@ -20,69 +20,12 @@ export const useDataLoading = ({
   const [categoriesLoaded, setCategoriesLoaded] = useState(false);
   const fromSupabaseTransaction = useFromSupabaseTransaction();
 
-  // Load categories from Supabase
+  // Load budgets from Supabase (replaces both loadCategories and loadUserBudgets)
+  // The budgets table now serves as both categories and per-user budget limits.
   const loadCategories = useCallback(async () => {
-    try {
-      const headers = await getAuthHeaders();
-      const res = await fetch(
-        `${REST_BASE}/categories?select=*&order=display_order`,
-        { headers },
-      );
-      const body = await res.text();
-      console.log(
-        '[loadCategories] status:',
-        res.status,
-        'body:',
-        body.slice(0, 300),
-      );
-
-      if (!res.ok) {
-        const msg = `Load categories failed (${res.status}): ${body.slice(
-          0,
-          200,
-        )}`;
-        console.error(msg);
-        setDbError(msg);
-        setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
-        setCategoriesLoaded(true);
-        return;
-      }
-
-      const data = JSON.parse(body);
-      if (data && data.length > 0) {
-        const budgets: BudgetCategory[] = data.map((row: any) => ({
-          id: row.id,
-          name: row.name,
-          // start with default limit; user-specific overrides will be loaded separately
-          totalLimit: DEFAULT_BUDGET_LIMIT,
-        }));
-
-        // Ensure all system categories are present (e.g. Services)
-        const loadedNames = new Set(budgets.map(b => b.name));
-        for (const sysCat of SYSTEM_CATEGORIES) {
-          if (!loadedNames.has(sysCat.name)) {
-            budgets.push({ ...sysCat });
-          }
-        }
-
-        console.log(
-          '[loadCategories] OK:',
-          budgets.map(b => ({ id: b.id, name: b.name })),
-        );
-        setAppState(prev => ({ ...prev, budgets }));
-      } else {
-        console.warn('[loadCategories] empty result, using fallback');
-        setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
-      }
-      setCategoriesLoaded(true);
-    } catch (err: any) {
-      const msg = `Load categories exception: ${err?.message || err}`;
-      console.error(msg);
-      setDbError(msg);
-      setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
-      setCategoriesLoaded(true);
-    }
-  }, [setAppState, setDbError]);
+    // Categories are now loaded as part of loadUserBudgets; mark as loaded immediately
+    setCategoriesLoaded(true);
+  }, []);
 
   // Ensure all default budgets exist in the budgets table for this user
   const ensureDefaultBudgets = useCallback(
@@ -100,7 +43,6 @@ export const useDataLoading = ({
         }));
 
         // Use upsert with on_conflict to avoid creating duplicate rows
-        // resolution=ignore-duplicates will skip rows that already exist for (user_id, category)
         (headers as any)['Prefer'] = 'return=representation,resolution=ignore-duplicates';
         const res = await fetch(`${REST_BASE}/budgets?on_conflict=user_id,category`, {
           method: 'POST',
@@ -121,7 +63,7 @@ export const useDataLoading = ({
     [],
   );
 
-  // Load user budget limits from budgets table
+  // Load user budgets from budgets table (this is now the single source of truth for categories)
   const loadUserBudgets = useCallback(
     async (userId: string) => {
       try {
@@ -133,12 +75,15 @@ export const useDataLoading = ({
         const body = await res.text();
 
         if (!res.ok) {
-          // Check if it's a "table not found" error (expected during initial setup)
           if (res.status === 404 && body.includes('Could not find the table')) {
-            console.log('[loadUserBudgets] budgets table not found - using defaults (run schema.sql to create tables)');
+            console.log('[loadUserBudgets] budgets table not found - using defaults');
+            setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
+            setCategoriesLoaded(true);
             return;
           }
           console.error('[loadUserBudgets] failed:', body.slice(0, 200));
+          setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
+          setCategoriesLoaded(true);
           return;
         }
 
@@ -148,41 +93,54 @@ export const useDataLoading = ({
         const existingCategories = new Set<string>(rows.map((r: any) => r.category));
         await ensureDefaultBudgets(userId, existingCategories);
 
-        // Map category name → limit_amount and hidden categories in a single pass
-        const limitsByCategory: Record<string, number> = {};
-        const hiddenCategoryNames = new Set<string>();
-        for (const row of rows) {
-          limitsByCategory[row.category] = Number(row.limit_amount);
-          if (row.visible === false) {
-            hiddenCategoryNames.add(row.category);
+        // If we just seeded new budgets, re-fetch to get their IDs
+        let finalRows = rows;
+        if (SYSTEM_CATEGORIES.some(sc => !existingCategories.has(sc.name))) {
+          const refetchRes = await fetch(
+            `${REST_BASE}/budgets?select=*&user_id=eq.${userId}`,
+            { headers },
+          );
+          if (refetchRes.ok) {
+            finalRows = JSON.parse(await refetchRes.text());
           }
         }
 
-        // Merge with existing categories in state and build hidden list
-        setAppState(prev => {
-          const updatedBudgets = prev.budgets.map(b => ({
-            ...b,
-            totalLimit: limitsByCategory[b.name] ?? b.totalLimit ?? 0,
-          }));
-
-          // Build hidden categories list by matching names to budget IDs
-          const hiddenCategoryIds = updatedBudgets
-            .filter(b => hiddenCategoryNames.has(b.name))
-            .map(b => b.id);
-
+        // Build budgets directly from the budgets table rows
+        const hiddenCategoryIds: string[] = [];
+        const budgets: BudgetCategory[] = finalRows.map((row: any) => {
+          if (row.visible === false) {
+            hiddenCategoryIds.push(row.id);
+          }
           return {
-            ...prev,
-            budgets: updatedBudgets,
-            settings: {
-              ...prev.settings,
-              hiddenCategories: hiddenCategoryIds,
-            },
+            id: row.id,
+            name: row.category,
+            totalLimit: Number(row.limit_amount) || 0,
           };
         });
 
-        console.log('[loadUserBudgets] loaded:', limitsByCategory, 'hidden:', Array.from(hiddenCategoryNames));
+        // Ensure all system categories are present (fallback for newly seeded ones)
+        const loadedNames = new Set(budgets.map(b => b.name));
+        for (const sysCat of SYSTEM_CATEGORIES) {
+          if (!loadedNames.has(sysCat.name)) {
+            budgets.push({ ...sysCat });
+          }
+        }
+
+        setAppState(prev => ({
+          ...prev,
+          budgets,
+          settings: {
+            ...prev.settings,
+            hiddenCategories: hiddenCategoryIds,
+          },
+        }));
+
+        console.log('[loadUserBudgets] loaded:', budgets.map(b => ({ id: b.id, name: b.name, limit: b.totalLimit })));
+        setCategoriesLoaded(true);
       } catch (err: any) {
         console.error('[loadUserBudgets] exception:', err?.message || err);
+        setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
+        setCategoriesLoaded(true);
       }
     },
     [setAppState, ensureDefaultBudgets],
@@ -272,54 +230,6 @@ export const useDataLoading = ({
     [setAppState],
   );
 
-  // Load splits for transactions that have a split_group_id
-  const loadSplitsForTransactions = useCallback(
-    async (transactionIds: string[]): Promise<Record<string, { budget_id: string; amount: number }[]>> => {
-      const splitMap: Record<string, { budget_id: string; amount: number }[]> = {};
-      if (transactionIds.length === 0) return splitMap;
-
-      try {
-        const headers = await getAuthHeaders();
-        // Fetch all splits for these transaction IDs
-        const idsFilter = transactionIds.map(id => `transaction_id.eq.${id}`).join(',');
-        const res = await fetch(
-          `${REST_BASE}/transaction_budget_splits?select=*&or=(${idsFilter})`,
-          { headers },
-        );
-
-        if (!res.ok) {
-          const body = await res.text();
-          if (res.status === 404 && body.includes('Could not find the table')) {
-            console.log('[loadSplitsForTransactions] table not found - skipping splits');
-            return splitMap;
-          }
-          console.error('[loadSplitsForTransactions] failed:', res.status);
-          return splitMap;
-        }
-
-        const rows = JSON.parse(await res.text());
-        if (rows && rows.length > 0) {
-          for (const row of rows) {
-            if (!splitMap[row.transaction_id]) {
-              splitMap[row.transaction_id] = [];
-            }
-            // budget_category is a name string; caller resolves it to a budget UUID
-            splitMap[row.transaction_id].push({
-              budget_id: row.budget_category,
-              amount: parseFloat(row.amount),
-            });
-          }
-          console.log('[loadSplitsForTransactions] loaded splits for', Object.keys(splitMap).length, 'transactions');
-        }
-      } catch (err: any) {
-        console.error('[loadSplitsForTransactions] exception:', err?.message || err);
-      }
-
-      return splitMap;
-    },
-    [],
-  );
-
   // Load transactions from Supabase via raw fetch
   // When merge is true, new transactions are appended to existing ones (used for partner data)
   const loadTransactions = useCallback(
@@ -350,44 +260,7 @@ export const useDataLoading = ({
 
         const data = JSON.parse(body);
         if (data && data.length > 0) {
-          let transactions = data.map(fromSupabaseTransaction);
-
-          // Load splits for transactions that have split_group_id
-          const splitTxIds = data
-            .filter((row: any) => row.split_group_id)
-            .map((row: any) => row.id);
-
-          if (splitTxIds.length > 0) {
-            const splitMap = await loadSplitsForTransactions(splitTxIds);
-
-            // Resolve budget_category names to budget_ids using current state
-            setAppState(prev => {
-              const budgetsByName: Record<string, string> = {};
-              for (const b of prev.budgets) {
-                budgetsByName[b.name] = b.id;
-              }
-
-              const resolvedTransactions = transactions.map((tx: any) => {
-                const splits = splitMap[tx.id];
-                if (splits && splits.length > 0) {
-                  return {
-                    ...tx,
-                    splits: splits.map(s => ({
-                      budget_id: budgetsByName[s.budget_id] || s.budget_id,
-                      amount: s.amount,
-                    })),
-                  };
-                }
-                return tx;
-              });
-
-              const mergedTransactions = merge
-                ? mergeTransactions(prev.transactions, resolvedTransactions)
-                : resolvedTransactions;
-              return { ...prev, transactions: mergedTransactions };
-            });
-            return; // setAppState already called above
-          }
+          const transactions = data.map(fromSupabaseTransaction);
 
           console.log('[loadTransactions] OK, count:', transactions.length);
           setAppState(prev => {
@@ -408,7 +281,7 @@ export const useDataLoading = ({
         setDbError(msg);
       }
     },
-    [fromSupabaseTransaction, loadSplitsForTransactions, setAppState, setDbError],
+    [fromSupabaseTransaction, setAppState, setDbError],
   );
 
   // Load pending transactions awaiting approval
@@ -417,7 +290,7 @@ export const useDataLoading = ({
       try {
         const headers = await getAuthHeaders();
         const res = await fetch(
-          `${REST_BASE}/pending_transactions?select=*&user_id=eq.${userId}&needs_review=eq.true&approved=is.null&order=created_at.desc`,
+          `${REST_BASE}/pending_transactions?select=*&user_id=eq.${userId}&status=eq.pending&order=created_at.desc`,
           { headers },
         );
 
@@ -450,36 +323,28 @@ export const useDataLoading = ({
     [setAppState],
   );
 
-  // Load household link status from household_links table
+  // Load household link status from settings table (partner_id field)
   const loadHouseholdLink = useCallback(
     async (userId: string) => {
       try {
         const headers = await getAuthHeaders();
 
-        // Query household_links where user is either user1 or user2
+        // Check if the user has a partner_id set in their settings
         const res = await fetch(
-          `${REST_BASE}/household_links?select=*&or=(user1_id.eq.${userId},user2_id.eq.${userId})&limit=1`,
+          `${REST_BASE}/settings?select=partner_id,partner_name,partner_email,has_joint_accounts&user_id=eq.${userId}&limit=1`,
           { headers },
         );
 
         if (!res.ok) {
-          const body = await res.text();
-          // Check if table doesn't exist (expected during initial setup)
-          if (res.status === 404 && body.includes('Could not find the table')) {
-            console.log('[loadHouseholdLink] table not found - using defaults (run schema.sql to create tables)');
-            return;
-          }
-          console.log('[loadHouseholdLink] No household link found or error');
+          console.log('[loadHouseholdLink] Could not load settings');
           return;
         }
 
         const body = await res.text();
         const data = JSON.parse(body);
-        if (data && data.length > 0) {
-          const link = data[0];
-          const isUser1 = link.user1_id === userId;
-          const partnerId = isUser1 ? link.user2_id : link.user1_id;
-          const partnerName = isUser1 ? link.user2_name : link.user1_name;
+        if (data && data.length > 0 && data[0].partner_id) {
+          const partnerId = data[0].partner_id;
+          const partnerName = data[0].partner_name;
 
           setAppState(prev => ({
             ...prev,

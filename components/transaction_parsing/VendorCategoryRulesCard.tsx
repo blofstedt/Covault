@@ -9,9 +9,7 @@ interface VendorCategoryRulesCardProps {
   categoryNameById: Map<string, string>;
   expandedVendorCategory: string | null;
   budgets: BudgetCategory[];
-  showDemoData: boolean;
   onSetExpandedVendorCategory: (vendorName: string | null) => void;
-  onToggleAutoAccept: (overrideId: string, currentValue: boolean) => void;
   onSetVendorCategory: (vendorName: string, categoryId: string) => void;
   onDeleteVendorOverride: (overrideId: string) => void;
   onSetProperName: (vendorName: string, properName: string) => void;
@@ -23,9 +21,7 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
   categoryNameById,
   expandedVendorCategory,
   budgets,
-  showDemoData,
   onSetExpandedVendorCategory,
-  onToggleAutoAccept,
   onSetVendorCategory,
   onDeleteVendorOverride,
   onSetProperName,
@@ -33,7 +29,7 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
   const [editingProperName, setEditingProperName] = useState<string | null>(null);
   const [properNameDraft, setProperNameDraft] = useState('');
 
-  if (allVendors.length === 0 && !showDemoData) return null;
+  if (allVendors.length === 0) return null;
 
   return (
     <ParsingCard
@@ -42,7 +38,7 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
       icon={<path d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />}
       title="Vendor Category Rules"
       subtitle="Toggle each vendor on to auto-approve transactions from that vendor"
-      count={showDemoData && allVendors.length === 0 ? 2 : allVendors.length}
+      count={allVendors.length}
     >
       <div className="space-y-2">
         {allVendors.map((vendorName) => {
@@ -79,20 +75,6 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
                   </span>
                 </div>
                 <div className="flex items-center gap-2 shrink-0 ml-2">
-                  {vo && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onToggleAutoAccept(vo.id, vo.auto_accept);
-                      }}
-                      className="p-1 rounded-full transition-all active:scale-95"
-                      title={vo.auto_accept ? 'Auto-approve is on' : 'Auto-approve is off'}
-                    >
-                      <div className={`w-10 h-6 rounded-full relative transition-colors ${vo.auto_accept ? 'bg-emerald-400 dark:bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
-                        <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm transition-all ${vo.auto_accept ? 'left-5' : 'left-1'}`} />
-                      </div>
-                    </button>
-                  )}
                 </div>
               </div>
 
@@ -194,28 +176,6 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
             </div>
           );
         })}
-        {allVendors.length === 0 && showDemoData && (
-          <>
-            <div className="bg-violet-50 dark:bg-violet-900/10 rounded-2xl border border-violet-100 dark:border-violet-800/30 overflow-hidden">
-              <div className="w-full flex items-center justify-between p-3">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">Coffee Shop</span>
-                  <svg className="w-3 h-3 text-slate-300 dark:text-slate-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="9 18 15 12 9 6" /></svg>
-                  <span className="text-xs font-bold truncate text-violet-600 dark:text-violet-400">Leisure</span>
-                </div>
-              </div>
-            </div>
-            <div className="bg-violet-50 dark:bg-violet-900/10 rounded-2xl border border-violet-100 dark:border-violet-800/30 overflow-hidden">
-              <div className="w-full flex items-center justify-between p-3">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">Grocery Mart</span>
-                  <svg className="w-3 h-3 text-slate-300 dark:text-slate-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="9 18 15 12 9 6" /></svg>
-                  <span className="text-xs font-bold truncate text-violet-600 dark:text-violet-400">Groceries</span>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
       </div>
     </ParsingCard>
   );

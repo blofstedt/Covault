@@ -1,12 +1,11 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import * as d3 from 'd3';
-import { BudgetCategory, Transaction, TransactionLabel } from '../../types';
+import { BudgetCategory, Transaction } from '../../types';
 import { getBudgetGradient, getBudgetColor } from '../../lib/budgetColors';
 
 interface BudgetFlowChartProps {
   budgets: BudgetCategory[];
   transactions: Transaction[];
-  isTutorialMode?: boolean;
   theme?: 'light' | 'dark';
 }
 
@@ -33,7 +32,7 @@ function formatMonthLabel(key: string): string {
   return `${months[parseInt(month, 10) - 1]} ${year}`;
 }
 
-const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions, isTutorialMode = false, theme = 'light' }) => {
+const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions, theme = 'light' }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -45,31 +44,8 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
   const safeBudgets = Array.isArray(budgets) ? budgets : [];
   const safeTransactions = useMemo(() => {
     const txs = Array.isArray(transactions) ? transactions : [];
-    if (isTutorialMode && txs.length === 0 && safeBudgets.length > 0) {
-      // Generate placeholder transactions so the chart renders during tutorial
-      const now = new Date();
-      const placeholders: Transaction[] = [];
-      for (let m = 5; m >= 0; m--) {
-        const d = new Date(now.getFullYear(), now.getMonth() - m, 15);
-        safeBudgets.forEach((b, i) => {
-          const base = (b.totalLimit || 500) * (0.3 + Math.abs(Math.sin(m + i)) * 0.5);
-          placeholders.push({
-            id: `__tutorial_chart_${m}_${i}__`,
-            vendor: 'Tutorial',
-            amount: Math.round(base * 100) / 100,
-            date: d.toISOString(),
-            budget_id: b.id,
-            user_id: '__tutorial__',
-            is_projected: false,
-            label: TransactionLabel.MANUAL,
-            created_at: d.toISOString(),
-          });
-        });
-      }
-      return placeholders;
-    }
     return txs;
-  }, [transactions, isTutorialMode, safeBudgets]);
+  }, [transactions]);
 
   // Build a map from budget id -> budget name
   const budgetNameById = useMemo(() => {
@@ -122,16 +98,8 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       }
       const catMap = monthMap.get(monthKey)!;
 
-      // Handle splits
-      if (tx.splits && tx.splits.length > 0) {
-        for (const split of tx.splits) {
-          const catName = budgetNameById.get(split.budget_id) || 'Other';
-          catMap.set(catName, (catMap.get(catName) || 0) + (split.amount || 0));
-        }
-      } else {
-        const catName = tx.budget_id ? (budgetNameById.get(tx.budget_id) || 'Other') : 'Other';
-        catMap.set(catName, (catMap.get(catName) || 0) + amount);
-      }
+      const catName = tx.budget_id ? (budgetNameById.get(tx.budget_id) || 'Other') : 'Other';
+      catMap.set(catName, (catMap.get(catName) || 0) + amount);
     }
 
     // Sort month keys chronologically

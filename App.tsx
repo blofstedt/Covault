@@ -3,7 +3,6 @@ import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
 import Onboarding from './components/Onboarding';
 import FullScreenLoader from './components/FullScreenLoader';
-import DeveloperModeOverlay from './components/DeveloperModeOverlay';
 import type { AppState, BudgetCategory, Transaction, PendingTransaction } from './types';
 import { supabase } from './lib/supabase';
 import { useAuthState, AuthStatus } from './lib/useAuthState';
@@ -13,8 +12,6 @@ import { covaultNotification, autoDetectAndSaveMonitoredApps } from './lib/covau
 import { KNOWN_BANKING_APPS } from './lib/bankingApps';
 import { useAppTheme } from './lib/useAppTheme';
 import { useUserData } from './lib/useUserData';
-import { useDeveloperMode } from './lib/useDeveloperMode';
-import { buildDevState } from './lib/developerData';
 
 const SETTINGS_KEY = 'covault_settings';
 
@@ -31,11 +28,9 @@ const DEFAULT_SETTINGS = {
   useLeisureAsBuffer: true,
   showSavingsInsight: true,
   theme: 'light' as const,
-  hasSeenTutorial: false,
   notificationsEnabled: false,
   app_notifications_enabled: false,
   hiddenCategories: [] as string[],
-  notification_rules: [] as import('./types').NotificationRule[],
 };
 
 // Load settings from localStorage
@@ -274,95 +269,10 @@ const App: React.FC = () => {
     await supabase.auth.signOut();
   };
 
-  // --- Developer Mode ----------------------------------------------------
-
-  const [devModeActive, devModeToggle] = useDeveloperMode();
-  type DevScreen = 'auth' | 'onboarding' | 'dashboard' | 'parsing';
-  const [devScreen, setDevScreen] = useState<DevScreen>('dashboard');
-  const [devSolo, setDevSolo] = useState(true);
-  const [devNotifications, setDevNotifications] = useState(true);
-
-  // Rebuild fake state whenever dev toggles change
-  const [devState, setDevState] = useState<AppState>(() =>
-    buildDevState({ solo: true, notificationsEnabled: true }),
-  );
-
-  useEffect(() => {
-    if (devModeActive) {
-      setDevState(buildDevState({ solo: devSolo, notificationsEnabled: devNotifications }));
-    }
-  }, [devModeActive, devSolo, devNotifications]);
-
-  // No-op handlers for developer mode (all data is fake)
-  const devNoop = useCallback(() => {}, []);
-  const devNoopAsync = useCallback(async () => {}, []);
-  const devNoopString = useCallback(async () => null as string | null, []);
-
   // --- Render -------------------------------------------------------------
 
-  if (authState === 'loading' && !devModeActive) {
+  if (authState === 'loading') {
     return <FullScreenLoader />;
-  }
-
-  // Developer mode: render fake screens with overlay
-  if (devModeActive) {
-    return (
-      <div className="min-h-screen w-full bg-slate-50 dark:bg-slate-950 overflow-hidden relative flex flex-col transition-colors duration-300">
-        {devScreen === 'auth' && (
-          <Auth onSignIn={devNoop} />
-        )}
-
-        {devScreen === 'onboarding' && (
-          <Onboarding onComplete={() => setDevScreen('dashboard')} />
-        )}
-
-        {(devScreen === 'dashboard' || devScreen === 'parsing') && (
-          <Dashboard
-            key={devScreen}
-            state={{
-              ...devState,
-              settings: {
-                ...devState.settings,
-                notificationsEnabled: devNotifications,
-              },
-            }}
-            setState={setDevState}
-            onSignOut={devNoop}
-            onUpdateBudget={devNoop as any}
-            onAddTransaction={devNoop as any}
-            onUpdateTransaction={devNoop as any}
-            onDeleteTransaction={devNoop}
-            saveBudgetLimit={devNoop as any}
-            saveUserIncome={devNoop as any}
-            saveTheme={devNoop as any}
-            saveBudgetVisibility={devNoop as any}
-            onLinkPartner={devNoop as any}
-            onUnlinkPartner={devNoop}
-            onGenerateLinkCode={devNoopString}
-            onJoinWithCode={devNoop as any}
-            onApprovePendingTransaction={devNoop as any}
-            onRejectPendingTransaction={devNoop}
-            onClearFilteredNotifications={devNoopAsync as any}
-            onClearApprovedTransactions={devNoopAsync as any}
-            onRefreshNotifications={devNoopAsync}
-            onReloadPendingTransactions={devNoopAsync as any}
-            onReloadTransactions={devNoopAsync as any}
-            isLoadingData={false}
-            initialShowParsing={devScreen === 'parsing'}
-          />
-        )}
-
-        <DeveloperModeOverlay
-          currentScreen={devScreen}
-          isSolo={devSolo}
-          notificationsEnabled={devNotifications}
-          onNavigate={setDevScreen}
-          onToggleSolo={() => setDevSolo((p) => !p)}
-          onToggleNotifications={() => setDevNotifications((p) => !p)}
-          onExit={devModeToggle}
-        />
-      </div>
-    );
   }
 
   return (

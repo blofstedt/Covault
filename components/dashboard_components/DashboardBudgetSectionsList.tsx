@@ -67,8 +67,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
         .map((budget, index) => {
           const budgetTxs = transactions.filter(
             (t) =>
-              t.budget_id === budget.id ||
-              t.splits?.some((s) => s.budget_id === budget.id)
+              t.budget_id === budget.id
           );
 
           const isExpanded = expandedBudgets.has(budget.id);

@@ -8,7 +8,6 @@ import { EmptyState } from '../shared';
 interface ApprovedTransactionsCardProps {
   approvedTransactions: Transaction[];
   vendorOverrideByName: Map<string, VendorOverride>;
-  showDemoData: boolean;
   onTransactionTap?: (tx: Transaction) => void;
   onClear?: () => void;
 }
@@ -16,7 +15,6 @@ interface ApprovedTransactionsCardProps {
 const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
   approvedTransactions,
   vendorOverrideByName,
-  showDemoData,
   onTransactionTap,
   onClear,
 }) => (
@@ -38,13 +36,10 @@ const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
       </button>
     )}
   >
-    {(approvedTransactions.length > 0 || showDemoData) ? (
+    {approvedTransactions.length > 0 ? (
       <div className="space-y-2">
         {approvedTransactions.map((tx) => {
           const vo = vendorOverrideByName.get(tx.vendor.toLowerCase());
-          const approvalLabel = vo?.auto_accept
-            ? '- approved automatically'
-            : '- approved manually';
 
           return (
           <button
@@ -63,7 +58,7 @@ const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
                   {vo?.proper_name || tx.vendor}
                 </p>
                 <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-                  {parseLocalDate(tx.date).toLocaleDateString()} {approvalLabel}
+                  {parseLocalDate(tx.date).toLocaleDateString()}
                 </p>
               </div>
             </div>
@@ -75,30 +70,6 @@ const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
           </button>
           );
         })}
-        {approvedTransactions.length === 0 && showDemoData && (
-          <div className="w-full flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800/60">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center">
-                <svg className="w-4 h-4 text-emerald-600 dark:text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              </div>
-              <div className="text-left">
-                <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate max-w-[160px]">
-                  Coffee Shop
-                </p>
-                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-                  Jan 15, 2026 - approved manually
-                </p>
-              </div>
-            </div>
-            <div className="text-right">
-              <span className="text-sm font-black text-slate-700 dark:text-slate-200">
-                $5.75
-              </span>
-            </div>
-          </div>
-        )}
       </div>
     ) : (
       <EmptyState
