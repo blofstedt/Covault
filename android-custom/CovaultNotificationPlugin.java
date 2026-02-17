@@ -164,7 +164,11 @@ public class CovaultNotificationPlugin extends Plugin {
         List<ApplicationInfo> apps = pm.getInstalledApplications(PackageManager.GET_META_DATA);
         JSArray result = new JSArray();
         for (ApplicationInfo app : apps) {
-            if ((app.flags & ApplicationInfo.FLAG_SYSTEM) == 0) {
+            // Include non-system apps and any known banking app (which may be
+            // pre-installed or flagged as a system app on some devices).
+            boolean isUserApp = (app.flags & ApplicationInfo.FLAG_SYSTEM) == 0;
+            boolean isKnownBank = NotificationListener.BANKING_APPS.contains(app.packageName);
+            if (isUserApp || isKnownBank) {
                 JSObject obj = new JSObject();
                 obj.put("packageName", app.packageName);
                 obj.put("name", pm.getApplicationLabel(app).toString());
