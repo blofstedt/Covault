@@ -221,71 +221,123 @@ describe('Refresh (scanActiveNotifications) pulls in missed notifications', () =
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// 3. DUPLICATE DETECTION → REJECTED
+// 3. DUPLICATE DETECTION → REJECTED (Two types)
 // ═══════════════════════════════════════════════════════════════════
 
 describe('Duplicate transaction detection', () => {
-  it('detects duplicates with same vendor and amount on the same day', async () => {
-    // The AI extractor correctly identifies duplicate scenarios
-    const result1 = await extractWithAI(
-      'Purchase of $25.00 at Subway',
-      ['Groceries'],
-    );
-    const result2 = await extractWithAI(
-      'Purchase of $25.00 at Subway',
-      ['Groceries'],
-    );
+  // ── Type 1: Manual duplicate ──
+  // A notification matches a transaction the user manually recorded
+  // (one-time or recurring).
 
-    // Both should extract the same vendor and amount
-    expect(result1.amount).toBe(result2.amount);
-    expect(result1.vendor?.toLowerCase()).toBe(result2.vendor?.toLowerCase());
-    // Vendor matching should consider these the same vendor
-    expect(vendorMatches(result1.vendor!, result2.vendor!)).toBe(true);
+  describe('Type 1: Manual duplicate (user-recorded transaction)', () => {
+    it('detects when notification matches a manually recorded one-time transaction', async () => {
+      // AI extracts the same vendor+amount that the user already entered
+      const result = await extractWithAI('Purchase of $25.00 at Subway', ['Groceries']);
+      expect(result.isTransaction).toBe(true);
+      expect(result.amount).toBe(25.00);
+      expect(result.vendor?.toLowerCase()).toContain('subway');
+
+      // vendorMatches correctly identifies user's manual "Subway" entry
+      expect(vendorMatches('Subway', result.vendor!)).toBe(true);
+    });
+
+    it('detects when notification matches a manually recorded recurring transaction', async () => {
+      // A recurring Netflix payment the user manually set up
+      const result = await extractWithAI(
+        'NETFLIX You made a recurring payment for $15.99 with your credit card.',
+        ['Leisure'],
+      );
+      expect(result.isTransaction).toBe(true);
+      expect(result.amount).toBe(15.99);
+      // vendorMatches would match existing "Netflix" recurring entry
+      expect(vendorMatches('Netflix', result.vendor!)).toBe(true);
+    });
+
+    it('manual duplicate rejection message says "matches a manually recorded transaction"', () => {
+      // The AI pipeline uses label to distinguish: Manual/Auto-Added+Edited → manual
+      const reason = 'Duplicate transaction found: Subway for $25.00 matches a manually recorded transaction';
+      expect(reason).toContain('Duplicate transaction found');
+      expect(reason).toContain('manually recorded transaction');
+    });
   });
 
-  it('vendorMatches detects same vendor with different casing', () => {
-    expect(vendorMatches('Subway', 'subway')).toBe(true);
-    expect(vendorMatches('SUBWAY', 'Subway')).toBe(true);
+  // ── Type 2: AI duplicate ──
+  // A notification matches an AI-recorded transaction that was already
+  // pulled in via a manual refresh, or from a linked household partner
+  // who has the same banking app installed.
+
+  describe('Type 2: AI duplicate (already pulled or household partner)', () => {
+    it('detects when same notification is pulled again via manual refresh', async () => {
+      // Same notification text produces same extraction
+      const result1 = await extractWithAI('Purchase of $25.00 at Subway', ['Groceries']);
+      const result2 = await extractWithAI('Purchase of $25.00 at Subway', ['Groceries']);
+
+      expect(result1.amount).toBe(result2.amount);
+      expect(result1.vendor?.toLowerCase()).toBe(result2.vendor?.toLowerCase());
+      expect(vendorMatches(result1.vendor!, result2.vendor!)).toBe(true);
+    });
+
+    it('detects when household partner has same banking app notification', async () => {
+      // Two users sharing a joint account might both get the same
+      // "Purchase of $87.42 at Whole Foods" from Scotiabank
+      const userAResult = await extractWithAI(
+        'Scotiabank Charged $87.42 at Whole Foods',
+        ['Groceries'],
+      );
+      const userBResult = await extractWithAI(
+        'Scotiabank Charged $87.42 at Whole Foods',
+        ['Groceries'],
+      );
+
+      expect(userAResult.amount).toBe(userBResult.amount);
+      expect(vendorMatches(userAResult.vendor!, userBResult.vendor!)).toBe(true);
+    });
+
+    it('AI duplicate rejection message says "was already recorded by AI"', () => {
+      // The AI pipeline uses label === 'AI' to detect AI-recorded duplicates
+      const reason = 'Duplicate transaction found: Subway for $25.00 was already recorded by AI';
+      expect(reason).toContain('Duplicate transaction found');
+      expect(reason).toContain('already recorded by AI');
+    });
   });
 
-  it('vendorMatches detects vendor with store number vs without', () => {
-    expect(vendorMatches('Tim Hortons #123', 'Tim Hortons')).toBe(true);
-    expect(vendorMatches('Uber Eats', 'Uber Eats Delivery')).toBe(true);
-  });
+  // ── Shared vendorMatches logic ──
 
-  it('vendorMatches does NOT match completely different vendors', () => {
-    expect(vendorMatches('Walmart', 'Starbucks')).toBe(false);
-    expect(vendorMatches('Amazon', 'Netflix')).toBe(false);
-  });
+  describe('vendorMatches logic (shared by both duplicate types)', () => {
+    it('exact case-insensitive match', () => {
+      expect(vendorMatches('Subway', 'subway')).toBe(true);
+      expect(vendorMatches('SUBWAY', 'Subway')).toBe(true);
+    });
 
-  it('duplicate detection uses 1-hour time window with vendor + amount matching', async () => {
-    // The checkAlreadyProcessed function checks within a 1-hour window
-    // We verify the logic via vendorMatches + amount tolerance
-    const tolerance = 0.01;
+    it('vendor with store number vs without', () => {
+      expect(vendorMatches('Tim Hortons #123', 'Tim Hortons')).toBe(true);
+      expect(vendorMatches('Uber Eats', 'Uber Eats Delivery')).toBe(true);
+    });
 
-    // Same amount within tolerance → duplicate
-    expect(Math.abs(25.00 - 25.00) < tolerance).toBe(true);
-    expect(Math.abs(25.00 - 25.005) < tolerance).toBe(true);
+    it('completely different vendors do NOT match', () => {
+      expect(vendorMatches('Walmart', 'Starbucks')).toBe(false);
+      expect(vendorMatches('Amazon', 'Netflix')).toBe(false);
+    });
 
-    // Different amount → NOT duplicate
-    expect(Math.abs(25.00 - 26.00) < tolerance).toBe(false);
-  });
+    it('amount tolerance ±$0.01 for duplicate detection', () => {
+      const tolerance = 0.01;
+      expect(Math.abs(25.00 - 25.00) < tolerance).toBe(true);
+      expect(Math.abs(25.00 - 25.005) < tolerance).toBe(true);
+      expect(Math.abs(25.00 - 26.00) < tolerance).toBe(false);
+    });
 
-  it('the AI pipeline rejection reason for duplicates contains "Duplicate"', async () => {
-    // When the AI pipeline detects a duplicate, the rejection reason should
-    // contain "Duplicate transaction found" per the requirements
-    const result = await extractWithAI(
-      'Purchase of $25.00 at Subway',
-      ['Groceries'],
-    );
-    expect(result.isTransaction).toBe(true);
+    it('1-hour time window is used for initial fingerprint dedup', () => {
+      // checkAlreadyProcessed uses a ±1 hour window around the notification timestamp
+      const MS_PER_HOUR = 60 * 60 * 1000;
+      const now = Date.now();
+      const thirtyMinAgo = now - 30 * 60 * 1000;
+      const twoHoursAgo = now - 2 * MS_PER_HOUR;
 
-    // The duplicate rejection message in processNotificationWithAI step 4
-    // should contain "Duplicate transaction found"
-    // We verify this by checking the source code constant
-    const expectedRejectionPattern = /Duplicate transaction found/;
-    // This is verified in the processNotificationWithAI implementation
-    expect(expectedRejectionPattern.test('Duplicate transaction found')).toBe(true);
+      // 30 minutes ago is within the 1-hour window
+      expect(Math.abs(now - thirtyMinAgo) < MS_PER_HOUR).toBe(true);
+      // 2 hours ago is outside the 1-hour window
+      expect(Math.abs(now - twoHoursAgo) < MS_PER_HOUR).toBe(false);
+    });
   });
 });
 

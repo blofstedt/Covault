@@ -1375,7 +1375,7 @@ export interface AIProcessingResult {
   /** Reason for rejection if not a transaction or duplicate */
   rejectionReason?: string;
   /** Skip reason */
-  skipReason?: 'duplicate_fingerprint' | 'duplicate_vendor_amount' | 'not_transaction' | 'extraction_failed';
+  skipReason?: 'duplicate_fingerprint' | 'duplicate_vendor_amount' | 'duplicate_manual' | 'duplicate_ai' | 'not_transaction' | 'extraction_failed';
   /** The bank name */
   bankName?: string;
 }
@@ -1514,20 +1514,51 @@ export async function processNotificationWithAI(
   const today = new Date().toISOString().slice(0, 10);
   const { data: existingTx } = await supabase
     .from('transactions')
-    .select('id, vendor, amount, date')
+    .select('id, vendor, amount, date, label, recurrence')
     .eq('user_id', userId)
     .ilike('vendor', vendor);
 
   if (existingTx && existingTx.length > 0) {
-    const duplicateToday = existingTx.find(
-      (tx) =>
-        Math.abs(Number(tx.amount) - amount) < AMOUNT_TOLERANCE &&
-        tx.date === today,
+    // Filter to matching amounts
+    const amountMatches = existingTx.filter(
+      (tx) => Math.abs(Number(tx.amount) - amount) < AMOUNT_TOLERANCE,
+    );
+
+    // Check recurring transactions first: same vendor + amount within ±3 days
+    // → update the existing transaction's date to today (not a duplicate)
+    const todayMs = new Date(today).getTime();
+    const toleranceMs = RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY;
+
+    for (const tx of amountMatches) {
+      const recurrence = (tx.recurrence || '').toLowerCase();
+      if (recurrence !== 'monthly' && recurrence !== 'biweekly') continue;
+
+      const txDateMs = new Date(tx.date).getTime();
+      if (Math.abs(todayMs - txDateMs) <= toleranceMs) {
+        // Update the existing recurring transaction's date to today
+        await supabase
+          .from('transactions')
+          .update({ date: today })
+          .eq('id', tx.id);
+        console.log(`[AI pipeline] Updated recurring transaction ${tx.id} date to ${today}`);
+        // Not a duplicate — the recurring entry is refreshed
+        break;
+      }
+    }
+
+    // Check one-time duplicates: same vendor + amount + same day
+    const duplicateToday = amountMatches.find(
+      (tx) => tx.date === today,
     );
 
     if (duplicateToday) {
-      console.log('[AI pipeline] Duplicate vendor+amount found for today');
-      const reason = `Duplicate transaction found: ${vendor} for $${amount.toFixed(2)} already recorded today`;
+      // Distinguish manual vs AI duplicates
+      const isAIDuplicate = duplicateToday.label === 'AI' || duplicateToday.label === 'Auto-Added';
+      const skipReason = isAIDuplicate ? 'duplicate_ai' as const : 'duplicate_manual' as const;
+      const reason = isAIDuplicate
+        ? `Duplicate transaction found: ${vendor} for $${amount.toFixed(2)} was already recorded by AI`
+        : `Duplicate transaction found: ${vendor} for $${amount.toFixed(2)} matches a manually recorded transaction`;
+      console.log(`[AI pipeline] ${reason}`);
       // Store as rejected so it appears in the rejected card
       await storeRejectedNotification(userId, input, notifTimestamp, vendor, amount, reason);
       return {
@@ -1535,7 +1566,7 @@ export async function processNotificationWithAI(
         isTransaction: true,
         vendor,
         amount,
-        skipReason: 'duplicate_vendor_amount',
+        skipReason,
         rejectionReason: reason,
         bankName: input.bankName,
       };
