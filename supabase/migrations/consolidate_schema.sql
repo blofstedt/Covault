@@ -502,6 +502,14 @@ ON CONFLICT (package_name) DO NOTHING;
 -- ────────────────────────────────────────────────────────────────────────────
 
 -- Create the unique constraint (used by ON CONFLICT in the app)
+-- Deduplicate budgets: keep the row with the highest limit_amount for each (user_id, category)
+DELETE FROM public.budgets
+WHERE id NOT IN (
+  SELECT DISTINCT ON (user_id, category) id
+  FROM public.budgets
+  ORDER BY user_id, category, limit_amount DESC, created_at ASC
+);
+
 DO $$
 BEGIN
   IF NOT EXISTS (
