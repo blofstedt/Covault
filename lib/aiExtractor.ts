@@ -1,12 +1,14 @@
 // lib/aiExtractor.ts
 //
-// Fully local, client-side notification extraction.
-// No cloud API calls — everything runs on-device.
+// Client-side AI-powered notification extraction using Transformers.js.
+// Runs a text-generation model (Xenova/flan-t5-small) entirely on-device
+// via ONNX Runtime / WebAssembly — no cloud API calls.
 //
 // Extracts vendor name, amount, and determines if a notification
 // is an actual transaction (purchase/charge/payment) or not.
-// Also guesses a budget category when no vendor_override exists.
+// Also classifies into a budget category.
 
+import { pipeline, type Text2TextGenerationPipeline } from '@huggingface/transformers';
 import { formatVendorName } from './formatVendorName';
 
 // ─── Types ───────────────────────────────────────────────────────
@@ -25,133 +27,55 @@ export interface AIExtractionResult {
 }
 
 // ═════════════════════════════════════════════════════════════════
-// 1. NON-TRANSACTION REJECTION
+// 1. AI MODEL — singleton lazy-loaded Flan-T5 pipeline
 // ═════════════════════════════════════════════════════════════════
 
-const REJECT_PATTERNS: RegExp[] = [
-  /\bverification\s*code\b/i,
-  /\bone[- ]?time\s*(?:pass|code|pin|password)\b/i,
-  /\bOTP\b/,
-  /\b(?:sign|log)(?:ed)?\s*in\b/i,
-  /\bpassword\s*(?:changed|reset|updated)\b/i,
-  /\b(?:card|account)\s*(?:activated|locked|blocked|suspended)\b/i,
-  /\breward\s*points?\b/i,
-  /\bcashback\s*(?:earned|credited)\b/i,
-  /\bstatement\s*(?:is\s*)?(?:ready|available)\b/i,
-  /\bpayment\s*(?:is\s*)?(?:due|overdue)\b/i,
-  /\bminimum\s*payment\b/i,
-  /\bcredit\s*(?:score|limit)\b/i,
-  /\baccount\s*balance\s*(?:is|:)/i,
-  /\bavailable\s*balance\b/i,
-  /\btransfer(?:red)?\s*(?:from|between)\s*(?:your|my)\b/i,
-  /\bdirect\s*deposit\b/i,
-  /\bpayroll\b/i,
-  /\bpromotion(?:al)?\b/i,
-  /\boffer\s*(?:expires?|ends?)\b/i,
-  /\bearn\s*\d/i,
-  /\bsecurity\s*alert\b/i,
-];
+const MODEL_ID = 'Xenova/flan-t5-small';
 
-const TRANSACTION_KEYWORDS: RegExp[] = [
-  /\bpurchase\b/i,
-  /\btransaction\b/i,
-  /\bcharged?\b/i,
-  /\bspent\b/i,
-  /\bpaid\b/i,
-  /\bpayment\b/i,
-  /\brecurring\b/i,
-  /\bwithdra?w(?:al|n)?\b/i,
-  /\bauthori[sz](?:ed|ation)\b/i,
-  /\bpending\b/i,
-  /\bcompleted\b/i,
-  /\bdebit(?:ed)?\b/i,
-  /\bcost\b/i,
-  /\bbought\b/i,
-  /\bpay\b/i,
-  /\bbilled?\b/i,
-  /\binvoice\b/i,
-  /\brefund\b/i,
-];
-
-// ═════════════════════════════════════════════════════════════════
-// 2. AMOUNT EXTRACTION
-// ═════════════════════════════════════════════════════════════════
-
-const AMOUNT_PATTERNS: RegExp[] = [
-  /\$([\d,]+\.\d{2})\b/,                                         // $123.45
-  /\$([\d,]+)\b/,                                                 // $123
-  /(?:USD|CAD|GBP|EUR|AUD)\s*([\d,]+\.\d{2})/i,                  // CAD 123.45
-  /([\d,]+\.\d{2})\s*(?:USD|CAD|GBP|EUR|AUD|dollars?)/i,         // 123.45 CAD
-];
-
-// ═════════════════════════════════════════════════════════════════
-// 3. VENDOR EXTRACTION — multi-strategy approach
-// ═════════════════════════════════════════════════════════════════
-
-//
-// Strategy A: Explicit preposition patterns
-//   "at VENDOR", "to VENDOR", "from VENDOR", "@VENDOR"
-//   These are the highest confidence — the notification explicitly names
-//   the merchant after a preposition.
-//
-// Strategy B: Structured label patterns
-//   "merchant: VENDOR", "vendor: VENDOR", "payee: VENDOR"
-//
-// Strategy C: Notification title extraction
-//   Many notifications put the vendor or service name as the title:
-//     "FIZZ (TX. INCL.) You made a recurring payment..."
-//     "DISNEY PLUS You made a recurring payment..."
-//     "Uber Eats Your order of $23.45..."
-//   We split at where the "body" starts and use the title part.
-//
-// Strategy D: Dollar-adjacent extraction
-//   "VENDOR $12.34" or "$12.34 at VENDOR" — pick the text near the amount.
-//
+let generatorPromise: Promise<Text2TextGenerationPipeline> | null = null;
 
 /**
- * Characters allowed in a vendor name match.
- * Covers multi-word names, apostrophes, ampersands, dots, hyphens, etc.
- * Examples: "Tim Horton's", "A&W", "H&M", "Chick-fil-A", "St. Hubert"
+ * Get or initialize the text2text-generation pipeline.
+ * The model is downloaded once and cached by the browser / ONNX runtime.
  */
-const V = "[A-Za-z0-9][A-Za-z0-9\\s&'.,#!*+/()-]*[A-Za-z0-9).]";
-
-/** Stoppers: text that ends a vendor capture (prepositions, amounts, dates, etc.) */
-const STOP =
-  '(?=\\s+(?:for|on|using|with|via|ending|card|credit|debit|account|visa|mastercard|amex|interac)\\b|\\s*\\$|\\s*(?:USD|CAD)|\\s*\\d{1,2}[/.-]\\d{1,2})';
-
-// Strategy A — preposition-based (highest confidence)
-const PREP_PATTERNS: RegExp[] = [
-  new RegExp(`(?:^|\\s)(?:at|@)\\s+(${V})${STOP}`, 'i'),
-  new RegExp(`(?:^|\\s)(?:at|@)\\s+(${V})\\s*\\.?\\s*$`, 'i'),
-  new RegExp(`(?:^|\\s)(?:to|from)\\s+(${V})${STOP}`, 'i'),
-  new RegExp(`(?:^|\\s)(?:to|from)\\s+(${V})\\s*\\.?\\s*$`, 'i'),
-];
-
-// Strategy B — structured label patterns
-const LABEL_PATTERNS: RegExp[] = [
-  /(?:merchant|vendor|payee|retailer|store)\s*:\s*([A-Za-z][A-Za-z0-9\s&'.#()*/-]{1,60})/i,
-  /(?:purchase|transaction|payment|charge)\s+(?:at|from|to)\s+([A-Za-z][A-Za-z0-9\s&'.#()*/-]{1,60})/i,
-];
-
-// Strategy D — dollar-adjacent
-const DOLLAR_ADJ_PATTERNS: RegExp[] = [
-  // "VENDOR $12.34" (text before dollar sign)
-  /([A-Z][A-Za-z0-9\s&'./-]{1,50}?)\s+\$[\d,]+\.?\d{0,2}/,
-  // "$12.34 at/from/to VENDOR"
-  /\$[\d,]+\.?\d{0,2}\s+(?:at|from|to|@)\s+([A-Za-z][A-Za-z0-9\s&'.#()*/-]{1,60})/i,
-];
-
-// ═════════════════════════════════════════════════════════════════
-// 4. VENDOR NAME POLISHING
-// ═════════════════════════════════════════════════════════════════
+function getGenerator(): Promise<Text2TextGenerationPipeline> {
+  if (!generatorPromise) {
+    console.log('[aiExtractor] Loading AI model:', MODEL_ID);
+    generatorPromise = pipeline('text2text-generation', MODEL_ID, {
+      // Use WASM backend for broadest compatibility (WebView + browser)
+      device: 'wasm',
+    }).then(gen => {
+      console.log('[aiExtractor] AI model loaded successfully');
+      return gen;
+    }).catch(err => {
+      console.error('[aiExtractor] Failed to load AI model:', err);
+      generatorPromise = null; // allow retry
+      throw err;
+    });
+  }
+  return generatorPromise;
+}
 
 /**
- * Known vendor name corrections.
- * Maps mangled/abbreviated vendor names to their proper form.
- * Uses lowercased keys for case-insensitive matching.
+ * Run an AI prompt through the Flan-T5 model.
+ * Returns the generated text string.
  */
+async function aiGenerate(prompt: string, maxTokens = 64): Promise<string> {
+  const generator = await getGenerator();
+  const output = await generator(prompt, {
+    max_new_tokens: maxTokens,
+    temperature: 0,
+  });
+  // output is an array of { generated_text: string }
+  const result = Array.isArray(output) ? output[0] : output;
+  return (result as any)?.generated_text?.trim() || '';
+}
+
+// ═════════════════════════════════════════════════════════════════
+// 2. VENDOR NAME CORRECTIONS (abbreviations → proper names)
+// ═════════════════════════════════════════════════════════════════
+
 const VENDOR_CORRECTIONS: Record<string, string> = {
-  // Common abbreviations & typos
   'amzn': 'Amazon', 'amzn mktp': 'Amazon', 'amzn mktplace': 'Amazon',
   'amazon.ca': 'Amazon', 'amazon.com': 'Amazon', 'amzn digital': 'Amazon',
   'amazon prime': 'Amazon Prime',
@@ -179,6 +103,7 @@ const VENDOR_CORRECTIONS: Record<string, string> = {
   'netflix.com': 'Netflix',
   'spotify.com': 'Spotify', 'spotify ab': 'Spotify',
   'apple.com/bill': 'Apple', 'apple.com': 'Apple',
+  'apple icloud': 'Apple',
   'google *': 'Google', 'google play': 'Google Play',
   'paypal *': 'PayPal',
   'sq *': 'Square', 'sq*': 'Square',
@@ -198,6 +123,8 @@ const VENDOR_CORRECTIONS: Record<string, string> = {
   'bestbuy': 'Best Buy', 'best buy': 'Best Buy',
   'homedepot': 'Home Depot', 'home depot': 'Home Depot',
   'ikea': 'IKEA',
+  'goodlife fitness': 'Goodlife Fitness',
+  'goodlife': 'Goodlife Fitness',
 };
 
 /**
@@ -213,17 +140,14 @@ function polishVendor(raw: string): string {
   v = v.replace(/^(?:SQ\s*\*|TST\s*\*|PP\s*\*|GOOGLE\s*\*|PAYPAL\s*\*)\s*/i, '');
 
   // Strip store / location / terminal numbers
-  //   "Subway#327" → "Subway"
-  //   "WALMART SUPERCENTER #1234" → "WALMART SUPERCENTER"
-  //   "SHELL 004821" → "SHELL"
   v = v.replace(/[#]\s*\d+/g, '');
   v = v.replace(/\s+(?:STORE|STR|LOC|LOCATION|TERMINAL|TML|UNIT|KIOSK)\s*#?\s*\d*$/i, '');
-  v = v.replace(/\s+\d{4,}$/g, '');       // trailing 4+ digit numbers
-  v = v.replace(/\s+\d{3}$/g, '');         // trailing 3 digit store numbers
-  v = v.replace(/\s*-\s*\d+$/g, '');       // trailing "-123"
+  v = v.replace(/\s+\d{4,}$/g, '');
+  v = v.replace(/\s+\d{3}$/g, '');
+  v = v.replace(/\s*-\s*\d+$/g, '');
 
-  // Strip city/province/state suffixes: "COSTCO WHOLESALE GATINEAU QC" → "COSTCO WHOLESALE"
-  v = v.replace(/\s+[A-Z]{2}\s*$/i, '');   // trailing 2-letter province/state
+  // Strip city/province/state suffixes
+  v = v.replace(/\s+[A-Z]{2}\s*$/i, '');
   v = v.replace(/\s+(?:CA|US|UK|ON|QC|BC|AB|SK|MB|NB|NS|PE|NL|NT|NU|YT)\s*$/i, '');
 
   // Strip trailing punctuation
@@ -250,151 +174,142 @@ function polishVendor(raw: string): string {
 }
 
 // ═════════════════════════════════════════════════════════════════
-// 5. LOCAL CATEGORY GUESSER
+// 3. AMOUNT EXTRACTION (simple parsing — amounts are unambiguous)
 // ═════════════════════════════════════════════════════════════════
 
 /**
- * Category rules: each entry has keyword patterns matched against the
- * lowercased vendor name AND the full notification text.
+ * Extract a dollar amount from notification text.
+ * Uses simple string parsing — dollar amounts like $14.99 are
+ * unambiguous and don't need AI interpretation.
  */
-const CATEGORY_RULES: Array<{ patterns: RegExp[]; category: string }> = [
-  // ── Groceries ──
-  { patterns: [
-    /\b(?:grocery|groceries|supermarket|superstore)\b/i,
-    /\b(?:walmart|costco|whole\s*foods|trader\s*joe|safeway|kroger|publix|aldi|lidl|target)\b/i,
-    /\b(?:loblaws?|metro|sobeys?|no\s*frills|food\s*basics|freshco|iga|provigo|maxi)\b/i,
-    /\b(?:save[- ]on|farm\s*boy|longos?|foodland|voila|instacart)\b/i,
-    /\b(?:real\s*canadian|rcss|t&t|h\s*mart)\b/i,
-  ], category: 'Groceries' },
+function extractAmount(text: string): number | null {
+  // Try $X,XXX.XX or $X.XX format first
+  const dollarMatch = text.match(/\$([\d,]+\.\d{2})\b/) || text.match(/\$([\d,]+)\b/);
+  if (dollarMatch?.[1]) {
+    const parsed = parseFloat(dollarMatch[1].replace(/,/g, ''));
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+  }
 
-  // ── Transport ──
-  { patterns: [
-    /\b(?:gas|fuel|gasoline|petrol|diesel)\b/i,
-    /\b(?:shell|esso|petro[- ]?canada|chevron|bp|exxon|mobil|sunoco|ultramar|husky)\b/i,
-    /\b(?:uber(?!\s*eats)|lyft|taxi|cab|ride)\b/i,
-    /\b(?:parking|park\b)/i,
-    /\b(?:transit|metro\s*(?:pass|card|fare)|bus\s*(?:pass|fare)|train|subway\s*(?:pass|fare))\b/i,
-    /\b(?:airline|air\s*canada|westjet|flair|porter|united|delta|southwest|american\s*air)\b/i,
-    /\b(?:presto|opus|stm|ttc|oc\s*transpo|compass)\b/i,
-    /\b(?:circle\s*k|couche[- ]?tard)\b/i,
-  ], category: 'Transport' },
+  // Try currency-prefixed: CAD 123.45
+  const currPrefixMatch = text.match(/(?:USD|CAD|GBP|EUR|AUD)\s*([\d,]+\.\d{2})/i);
+  if (currPrefixMatch?.[1]) {
+    const parsed = parseFloat(currPrefixMatch[1].replace(/,/g, ''));
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+  }
 
-  // ── Utilities ──
-  { patterns: [
-    /\b(?:hydro|electric|power|energy|water|sewage|utility|utilities)\b/i,
-    /\b(?:internet|broadband|wifi|wi-fi|fibre|fiber)\b/i,
-    /\b(?:bell|rogers|telus|fido|koodo|virgin\s*(?:mobile|plus)|freedom\s*mobile)\b/i,
-    /\b(?:shaw|videotron|fizz|chatr|lucky\s*mobile|public\s*mobile)\b/i,
-    /\b(?:comcast|xfinity|spectrum|at&t|verizon|t-mobile|sprint)\b/i,
-    /\b(?:phone\s*bill|cell\s*bill|mobile\s*bill|telecom)\b/i,
-    /\b(?:enbridge|fortis|hydro[- ]?(?:one|qu[eé]bec|ottawa))\b/i,
-  ], category: 'Utilities' },
-
-  // ── Housing ──
-  { patterns: [
-    /\b(?:rent|mortgage|landlord|property\s*(?:tax|mgmt|management))\b/i,
-    /\b(?:condo\s*fee|strata|hoa|home\s*insurance|tenant|lease)\b/i,
-  ], category: 'Housing' },
-
-  // ── Leisure / Entertainment / Dining / Shopping ──
-  { patterns: [
-    // Streaming & digital
-    /\b(?:netflix|spotify|disney|hulu|crave|hbo|paramount|peacock|apple\s*(?:tv|music))\b/i,
-    /\b(?:youtube|twitch|audible|kindle)\b/i,
-    // Dining & coffee
-    /\b(?:starbucks?|starbux|sbux|tim\s*horton|tims|coffee|caf[eé]|bistro)\b/i,
-    /\b(?:restaurant|diner|grill|kitchen|eatery|tavern|brasserie|pub)\b/i,
-    /\b(?:mcdonald|burger\s*king|wendy|subway|chipotle|popeyes|kfc|taco\s*bell)\b/i,
-    /\b(?:chick[- ]?fil[- ]?a|five\s*guys|a&w|harvey|swiss\s*chalet|boston\s*pizza)\b/i,
-    /\b(?:earls|cactus\s*club|joey|the\s*keg|milestone|jack\s*astor|moxie|st[- ]?hubert)\b/i,
-    // Food delivery
-    /\b(?:doordash|door\s*dash|uber\s*eats|ubereats|skip\s*the\s*dishes|grubhub)\b/i,
-    // Shopping & retail
-    /\b(?:amazon|ebay|etsy|shopping|mall|best\s*buy|home\s*depot|ikea)\b/i,
-    /\b(?:clothing|fashion|nike|adidas|zara|h&m|gap|old\s*navy|winners|marshalls)\b/i,
-    /\b(?:dollarama|dollar\s*tree|canadian\s*tire|cdn\s*tire|sport\s*che[ck])\b/i,
-    /\b(?:apple\.com|apple\s*store|google\s*play|app\s*store)\b/i,
-    // Entertainment & recreation
-    /\b(?:cinema|movie|theatre|theater|concert|ticket|event)\b/i,
-    /\b(?:gym|fitness|yoga|crossfit|sport|golf|bowling|recreation)\b/i,
-    /\b(?:steam|playstation|xbox|nintendo|gaming)\b/i,
-    /\b(?:book|library|chapter|indigo)\b/i,
-    // Alcohol
-    /\b(?:wine|beer|liquor|lcbo|saq|brewery|winery)\b/i,
-    // Pets
-    /\b(?:petsmart|petcetera|pet\s*valu)\b/i,
-  ], category: 'Leisure' },
-
-  // ── Services ──
-  { patterns: [
-    /\b(?:barber|salon|hair|spa|massage|beauty|nails?)\b/i,
-    /\b(?:dental|dentist|doctor|clinic|physician|optometrist|chiro)\b/i,
-    /\b(?:pharmacy|drug\s*mart|shoppers|pharmaprix|jean\s*coutu|rexall)\b/i,
-    /\b(?:insurance|legal|lawyer|accountant|tax|cpa|notary)\b/i,
-    /\b(?:cleaning|laundry|dry\s*clean|repair|mechanic|auto\s*body)\b/i,
-    /\b(?:vet|veterinary|daycare|tutor|tutoring|education)\b/i,
-    /\b(?:storage|moving|courier|shipping|purolator|fedex|ups|canada\s*post)\b/i,
-    /\b(?:subscription|membership)\b/i,
-  ], category: 'Services' },
-];
-
-/**
- * Guess a budget category from the vendor name + notification text.
- * Matches regex patterns against both, so even if the vendor name is
- * mangled, context from the notification body can help.
- */
-function guessCategory(vendor: string | null, notificationText: string): string | null {
-  const vendorLower = (vendor || '').toLowerCase();
-  const textLower = notificationText.toLowerCase();
-
-  for (const { patterns, category } of CATEGORY_RULES) {
-    for (const re of patterns) {
-      if (re.test(vendorLower) || re.test(textLower)) {
-        return category;
-      }
-    }
+  // Try currency-suffixed: 123.45 CAD
+  const currSuffixMatch = text.match(/([\d,]+\.\d{2})\s*(?:USD|CAD|GBP|EUR|AUD|dollars?)/i);
+  if (currSuffixMatch?.[1]) {
+    const parsed = parseFloat(currSuffixMatch[1].replace(/,/g, ''));
+    if (!isNaN(parsed) && parsed > 0) return parsed;
   }
 
   return null;
 }
 
 // ═════════════════════════════════════════════════════════════════
-// 6. MAIN EXTRACTION ENTRY POINT
+// 4. AI-POWERED EXTRACTION
 // ═════════════════════════════════════════════════════════════════
 
 /**
- * Extract transaction details from a bank notification using local
- * pattern matching. Runs entirely on-device with no network calls.
+ * Use the AI model to extract vendor name and classify the notification.
+ * Returns { vendor, category, isTransaction }.
+ */
+async function aiExtractVendorAndCategory(
+  text: string,
+  availableCategories: string[],
+): Promise<{ vendor: string | null; category: string | null; isTransaction: boolean; rejectionReason: string | null }> {
+  const categories = availableCategories.length > 0
+    ? availableCategories.join(', ')
+    : 'Housing, Groceries, Transport, Utilities, Leisure, Services, Other';
+
+  // ── Step 1: Ask AI if this is a transaction and extract vendor ──
+  const vendorPrompt =
+    `Extract the vendor or merchant name from this bank notification. ` +
+    `If this is not a real purchase or payment (e.g. it is a login alert, ` +
+    `verification code, balance notification, reward points, or promotional message), ` +
+    `respond with "NONE". Otherwise respond with just the vendor name.\n\n` +
+    `Notification: "${text}"\n\nVendor:`;
+
+  let vendorResponse: string;
+  try {
+    vendorResponse = await aiGenerate(vendorPrompt, 32);
+  } catch {
+    // Model failed to load — return null to trigger fallback
+    return { vendor: null, category: null, isTransaction: false, rejectionReason: 'AI model not available' };
+  }
+
+  // Check if AI says this is not a transaction
+  const vendorUpper = vendorResponse.toUpperCase().trim();
+  if (vendorUpper === 'NONE' || vendorUpper === 'N/A' || vendorUpper === '' || vendorUpper === 'NO') {
+    return { vendor: null, category: null, isTransaction: false, rejectionReason: 'AI determined this is not a transaction' };
+  }
+
+  // Polish the vendor name
+  const vendor = polishVendor(vendorResponse);
+  if (!vendor || vendor.length < 2) {
+    return { vendor: null, category: null, isTransaction: false, rejectionReason: 'No vendor name found in notification' };
+  }
+
+  // ── Step 2: Ask AI to classify the category ──
+  const categoryPrompt =
+    `Classify this transaction into one of these budget categories: ${categories}.\n\n` +
+    `Vendor: ${vendor}\n` +
+    `Notification: "${text}"\n\n` +
+    `Category:`;
+
+  let categoryResponse: string;
+  try {
+    categoryResponse = await aiGenerate(categoryPrompt, 16);
+  } catch {
+    categoryResponse = '';
+  }
+
+  // Match AI response to an available category
+  const categoryLower = categoryResponse.toLowerCase().trim();
+  const allCategories = availableCategories.length > 0
+    ? availableCategories
+    : ['Housing', 'Groceries', 'Transport', 'Utilities', 'Leisure', 'Services', 'Other'];
+
+  let category: string | null = null;
+  for (const cat of allCategories) {
+    if (categoryLower.includes(cat.toLowerCase())) {
+      category = cat;
+      break;
+    }
+  }
+
+  return { vendor, category, isTransaction: true, rejectionReason: null };
+}
+
+// ═════════════════════════════════════════════════════════════════
+// 5. MAIN EXTRACTION ENTRY POINT
+// ═════════════════════════════════════════════════════════════════
+
+/**
+ * Extract transaction details from a bank notification using a
+ * client-side AI model (Flan-T5 via Transformers.js / ONNX Runtime).
  *
  * Pipeline:
- *   1. Extract dollar amount
- *   2. Reject known non-transaction patterns
- *   3. Extract vendor name (multi-strategy)
- *   4. Polish vendor name (typo correction, title-casing)
- *   5. Guess budget category from vendor + notification context
+ *   1. Extract dollar amount (simple parsing)
+ *   2. Use AI model to extract vendor name and classify
+ *   3. Polish vendor name (abbreviation correction, title-casing)
+ *   4. Use AI model to guess budget category
  */
 export async function extractWithAI(
   notificationText: string,
   availableCategories: string[],
 ): Promise<AIExtractionResult> {
-  return localExtraction(notificationText);
-}
-
-function localExtraction(notificationText: string): AIExtractionResult {
   const text = notificationText.trim();
-
-  // ── 1. Extract amount ──
-  let amount: number | null = null;
-  for (const pattern of AMOUNT_PATTERNS) {
-    const match = text.match(pattern);
-    if (match?.[1]) {
-      const parsed = parseFloat(match[1].replace(/,/g, ''));
-      if (!isNaN(parsed) && parsed > 0) {
-        amount = parsed;
-        break;
-      }
-    }
+  if (!text) {
+    return {
+      isTransaction: false, vendor: null, amount: null,
+      suggestedCategory: null, rejectionReason: 'Empty notification',
+    };
   }
+
+  // ── 1. Extract amount (simple parsing — amounts are unambiguous) ──
+  const amount = extractAmount(text);
 
   if (amount === null) {
     return {
@@ -404,158 +319,24 @@ function localExtraction(notificationText: string): AIExtractionResult {
     };
   }
 
-  // ── 2. Reject non-transactions ──
-  for (const pattern of REJECT_PATTERNS) {
-    if (pattern.test(text)) {
-      return {
-        isTransaction: false, vendor: null, amount,
-        suggestedCategory: null,
-        rejectionReason: 'Not cost-related notification',
-      };
-    }
-  }
+  // ── 2. Use AI to extract vendor and classify ──
+  const aiResult = await aiExtractVendorAndCategory(text, availableCategories);
 
-  // ── 3. Check transaction keywords ──
-  const hasTransactionKeyword = TRANSACTION_KEYWORDS.some(p => p.test(text));
-
-  // ── 4. Extract vendor (multi-strategy) ──
-  let rawVendor = extractVendorMultiStrategy(text);
-
-  // ── 5. Determine if this is a transaction ──
-  const isTransaction = amount > 0 && (hasTransactionKeyword || rawVendor !== null);
-
-  if (!isTransaction) {
+  if (!aiResult.isTransaction || !aiResult.vendor) {
     return {
       isTransaction: false,
-      vendor: rawVendor ? polishVendor(rawVendor) : null,
+      vendor: aiResult.vendor,
       amount,
       suggestedCategory: null,
-      rejectionReason: 'No transaction keywords found',
-    };
-  }
-
-  // ── 6. Polish vendor name ──
-  const vendor = rawVendor ? polishVendor(rawVendor) : null;
-
-  // ── 7. Reject if no vendor could be identified ──
-  if (!vendor) {
-    return {
-      isTransaction: false,
-      vendor: null,
-      amount,
-      suggestedCategory: null,
-      rejectionReason: 'No vendor name found in notification',
+      rejectionReason: aiResult.rejectionReason || 'No vendor name found in notification',
     };
   }
 
   return {
     isTransaction: true,
-    vendor,
+    vendor: aiResult.vendor,
     amount,
-    suggestedCategory: guessCategory(vendor, text),
+    suggestedCategory: aiResult.category,
     rejectionReason: null,
   };
-}
-
-// ═════════════════════════════════════════════════════════════════
-// 7. MULTI-STRATEGY VENDOR EXTRACTION
-// ═════════════════════════════════════════════════════════════════
-
-/**
- * Try multiple strategies to extract the vendor name.
- * Returns the raw (uncleaned) vendor string, or null.
- */
-function extractVendorMultiStrategy(text: string): string | null {
-  // Strategy A — preposition-based ("at VENDOR", "to VENDOR", "from VENDOR")
-  for (const pattern of PREP_PATTERNS) {
-    const match = text.match(pattern);
-    if (match?.[1]) {
-      const candidate = match[1].trim();
-      if (isValidVendor(candidate)) return candidate;
-    }
-  }
-
-  // Strategy B — structured labels ("merchant: VENDOR")
-  for (const pattern of LABEL_PATTERNS) {
-    const match = text.match(pattern);
-    if (match?.[1]) {
-      const candidate = match[1].trim();
-      if (isValidVendor(candidate)) return candidate;
-    }
-  }
-
-  // Strategy C — notification title extraction
-  const titleVendor = extractVendorFromTitle(text);
-  if (titleVendor) return titleVendor;
-
-  // Strategy D — dollar-adjacent ("VENDOR $12.34")
-  for (const pattern of DOLLAR_ADJ_PATTERNS) {
-    const match = text.match(pattern);
-    if (match?.[1]) {
-      const candidate = match[1].trim();
-      if (isValidVendor(candidate)) return candidate;
-    }
-  }
-
-  return null;
-}
-
-/**
- * Extract vendor from the notification title.
- *
- * Android notification fullText = "TITLE BODY". We detect where the body
- * starts by looking for common body-opening patterns, and take everything
- * before that as the title/vendor.
- */
-function extractVendorFromTitle(fullText: string): string | null {
-  const bodyStarts = [
-    /\s+You\s+(?:made|have|just|were|recently)\s/i,
-    /\s+(?:A\s+)?(?:purchase|transaction|payment|charge|recurring)\s/i,
-    /\s+(?:Your\s+(?:card|account|credit|debit|visa|mastercard))\s/i,
-    /\s+(?:Charged?|Spent|Paid|Authorized|Pending|Approved|Declined)\s/i,
-    /\s+(?:New|Recent)\s+(?:transaction|charge|purchase)\b/i,
-    /\s+\$[\d,]+/,
-  ];
-
-  for (const pattern of bodyStarts) {
-    const idx = fullText.search(pattern);
-    if (idx > 0) {
-      const titlePart = fullText.substring(0, idx).trim();
-      const cleaned = titlePart
-        // Remove parenthetical suffixes: "FIZZ (TX. INCL.)" → "FIZZ"
-        .replace(/\s*\([^)]*\)\s*$/, '')
-        // Remove trailing colon: "BMO:" → "BMO"
-        .replace(/:\s*$/, '')
-        .trim();
-
-      if (cleaned.length >= 2 && isValidVendor(cleaned)) {
-        return cleaned;
-      }
-    }
-  }
-
-  return null;
-}
-
-/**
- * Check if a candidate vendor name is valid (not a common false positive).
- */
-function isValidVendor(name: string): boolean {
-  const lower = name.toLowerCase().trim();
-  if (lower.length < 2) return false;
-  if (/^\d+$/.test(lower)) return false;
-  // Reject if entirely punctuation / symbols
-  if (/^[^A-Za-z0-9]+$/.test(lower)) return false;
-
-  const falsePositives = new Set([
-    'you', 'your', 'the', 'for', 'and', 'with', 'from', 'this',
-    'that', 'has', 'have', 'been', 'was', 'were', 'are', 'will',
-    'its', 'it', 'not', 'but', 'our', 'can', 'all', 'new',
-    'unknown', 'unknown merchant', 'merchant', 'card', 'account',
-    'credit', 'debit', 'bank', 'alert', 'notification',
-    'visa', 'mastercard', 'amex', 'interac',
-    'payment', 'transaction', 'purchase', 'charge',
-    'recurring', 'automatic', 'scheduled',
-  ]);
-  return !falsePositives.has(lower);
 }
