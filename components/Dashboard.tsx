@@ -408,10 +408,6 @@ const Dashboard: React.FC<DashboardProps> = ({
   const isFocusMode = expandedBudgets.size === 1;
   const focusedBudgetId = isFocusMode ? Array.from(expandedBudgets)[0] : null;
 
-  const handleRunTutorialFromSettings = () => {
-    setShowSettings(false);
-  };
-
   // 🔔 Notification alerts: budgets + remaining money
   useEffect(() => {
     if (!state.user?.id) return;
@@ -459,10 +455,14 @@ const Dashboard: React.FC<DashboardProps> = ({
     [onAddTransaction],
   );
 
-  // Handle vendor override update from AI transaction editing
+  // Handle vendor override update from AI transaction editing (fires on save only)
   const handleVendorOverrideUpdated = useCallback(
-    (vendor: string, categoryName: string) => {
-      setToastMessage(`You've updated the budget category for ${vendor}. Covault will use ${categoryName} next time.`);
+    (vendor: string, info: string) => {
+      if (info === 'vendor_name_changed') {
+        setToastMessage(`Covault will automatically use this vendor name for this vendor going forward.`);
+      } else {
+        setToastMessage(`Covault will automatically use this budget category for ${vendor} going forward.`);
+      }
     },
     [],
   );
@@ -593,7 +593,6 @@ const Dashboard: React.FC<DashboardProps> = ({
             setShowSettings(false);
             setIsLinkingPartner(false);
           }}
-          onRunTutorial={handleRunTutorialFromSettings}
           onUpdateSettings={updateSettings}
           onUpdateUserIncome={updateUserIncome}
           onConnectPartner={handleConnectPartner}
@@ -621,6 +620,26 @@ const Dashboard: React.FC<DashboardProps> = ({
         />
       )}
 
+      {showSubscribeModal && (
+        <SubscribeModal
+          onClose={() => setShowSubscribeModal(false)}
+          onSubscribe={() => {
+            setShowSubscribeModal(false);
+            handleSubscribe();
+          }}
+        />
+      )}
+
+      {toastMessage && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[200] animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="bg-emerald-600 text-white px-6 py-3 rounded-2xl shadow-xl shadow-emerald-500/20 text-xs font-black uppercase tracking-widest text-center max-w-xs">
+            {toastMessage}
+          </div>
+        </div>
+      )}
+    </PageShell>
+    )}
+
       {selectedTx && (
         <TransactionActionModal
           transaction={selectedTx}
@@ -641,26 +660,6 @@ const Dashboard: React.FC<DashboardProps> = ({
           onVendorOverrideUpdated={handleVendorOverrideUpdated}
         />
       )}
-
-      {showSubscribeModal && (
-        <SubscribeModal
-          onClose={() => setShowSubscribeModal(false)}
-          onSubscribe={() => {
-            setShowSubscribeModal(false);
-            handleSubscribe();
-          }}
-        />
-      )}
-
-      {toastMessage && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[200] animate-in fade-in slide-in-from-bottom-4 duration-300">
-          <div className="bg-emerald-600 text-white px-6 py-3 rounded-2xl shadow-xl shadow-emerald-500/20 text-xs font-black uppercase tracking-widest text-center max-w-xs">
-            {toastMessage}
-          </div>
-        </div>
-      )}
-    </PageShell>
-    )}
 
     </>
   );

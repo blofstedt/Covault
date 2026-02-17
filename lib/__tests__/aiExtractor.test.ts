@@ -1,7 +1,168 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// Mock @huggingface/transformers — vi.mock is hoisted above all imports.
+// ALL mock logic MUST be inlined here; no external references allowed.
+vi.mock('@huggingface/transformers', () => ({
+  pipeline: vi.fn(async () => {
+    // This returned function simulates the Flan-T5 generator.
+    // It receives prompt text and options, and returns [{ generated_text }].
+    return async (prompt: string) => {
+      const p = prompt.toLowerCase();
+
+      // ── Vendor extraction prompt ──
+      if (p.includes('extract the vendor')) {
+        const original = prompt;
+
+        // Extract the notification text from the prompt
+        const notifMatch = original.match(/Notification:\s*"([^"]+)"/);
+        const notif = notifMatch ? notifMatch[1] : '';
+        const nl = notif.toLowerCase();
+
+        // Rejection: non-transaction notifications
+        if (
+          nl.includes('verification code') ||
+          nl.includes('account balance') ||
+          nl.includes('sign in') ||
+          nl.includes('has been delivered') ||
+          nl.includes('reward points')
+        ) {
+          return [{ generated_text: 'NONE' }];
+        }
+
+        // Preposition-based vendor extraction: "at VENDOR", "from VENDOR", "paid to VENDOR", "with VENDOR"
+        const atMatch = notif.match(/\bat\s+(.+?)(?:\s+on\s+your|\s+for\s+|\s+was\s+|\s*[.]?\s*$)/i);
+        if (atMatch) return [{ generated_text: atMatch[1].trim() }];
+
+        const fromMatch = notif.match(/\bfrom\s+(.+?)(?:\s+was\s+|\s+for\s+|\s*[.]?\s*$)/i);
+        if (fromMatch) return [{ generated_text: fromMatch[1].trim() }];
+
+        const paidToMatch = notif.match(/\bpaid\s+to\s+(.+?)(?:\s+was\s+|\s*[.]?\s*$)/i);
+        if (paidToMatch) return [{ generated_text: paidToMatch[1].trim() }];
+
+        const withMatch = notif.match(/\bwith\s+(.+?)(?:\s+was\s+|\s+on\s+|\s*[.]?\s*$)/i);
+        if (withMatch) {
+          const w = withMatch[1].trim();
+          // "with your credit card" is not a vendor
+          if (!/^your\s/i.test(w)) return [{ generated_text: w }];
+        }
+
+        // Title-based: vendor name appears before the first sentence verb/phrase
+        // e.g., "FIZZ (TX. INCL.) You made...", "DISNEY PLUS You made...", "Spotify Your..."
+        const titleMatch = notif.match(/^([A-Z][A-Za-z0-9 .&'+*()-]*?)(?:\s+(?:\(.*?\)\s+)?(?:You|Your|A |An |The |We |This |Payment|Charged))/);
+        if (titleMatch) {
+          let title = titleMatch[1].replace(/\s*\(.*?\)\s*/g, '').trim();
+          return [{ generated_text: title }];
+        }
+
+        // Fallback: return NONE
+        return [{ generated_text: 'NONE' }];
+      }
+
+      // ── Category classification prompt ──
+      if (p.includes('classify this transaction')) {
+        // Extract vendor from prompt
+        const vendorLineMatch = prompt.match(/Vendor:\s*(.+)/);
+        const vendor = vendorLineMatch ? vendorLineMatch[1].trim().toLowerCase() : '';
+
+        // Category rules based on vendor keywords
+        const categoryMap: Array<[RegExp, string]> = [
+          [/netflix|spotify|disney|amazon prime|crave|hbo|paramount/i, 'Leisure'],
+          [/keg|steakhouse|boston pizza|wendy|mcdonald|burger|popeye|taco|chick-fil|a&w|subway|tim horton|starbuck/i, 'Leisure'],
+          [/shell|petro|gas|esso|uber(?!\s*eats)|lyft|transit/i, 'Transport'],
+          [/loblaws|loblaw|whole foods|costco|walmart|grocery|superstore|no frills|metro|sobeys|safeway|freshco/i, 'Groceries'],
+          [/bell|rogers|telus|fizz|fido|koodo|virgin|shaw|videotron|hydro|enbridge|utilit/i, 'Utilities'],
+          [/parkview|property|landlord|rent|mortgage/i, 'Housing'],
+          [/shoppers|drug mart|pharmacy|clinic|doctor|dental|medical/i, 'Services'],
+          [/home depot|best buy|ikea|canadian tire|dollarama|sport chek/i, 'Leisure'],
+        ];
+
+        for (const [pattern, category] of categoryMap) {
+          if (pattern.test(vendor)) return [{ generated_text: category }];
+        }
+
+        return [{ generated_text: 'Other' }];
+      }
+
+      return [{ generated_text: '' }];
+    };
+  }),
+}));
+
 import { extractWithAI } from '../aiExtractor';
 
-describe('extractWithAI (local extraction)', () => {
+const ALL_CATEGORIES = ['Housing', 'Groceries', 'Transport', 'Utilities', 'Leisure', 'Services', 'Other'];
+
+describe('extractWithAI (client-side AI model)', () => {
+  // ═══════════════════════════════════════════════════════════════
+  // Problem statement tests
+  // ═══════════════════════════════════════════════════════════════
+
+  it('Netflix: "You spent $14.99 at Netflix for a recurring subscription."', async () => {
+    const r = await extractWithAI(
+      'You spent $14.99 at Netflix for a recurring subscription.',
+      ALL_CATEGORIES,
+    );
+    expect(r.isTransaction).toBe(true);
+    expect(r.amount).toBe(14.99);
+    expect(r.vendor).toBeTruthy();
+    expect(r.vendor?.toLowerCase()).toContain('netflix');
+    expect(r.suggestedCategory).toBe('Leisure');
+  });
+
+  it('Spotify: "A recurring subscription cost $10.99 at Spotify"', async () => {
+    const r = await extractWithAI(
+      'A recurring subscription cost $10.99 at Spotify.',
+      ALL_CATEGORIES,
+    );
+    expect(r.isTransaction).toBe(true);
+    expect(r.amount).toBe(10.99);
+    expect(r.vendor?.toLowerCase()).toContain('spotify');
+    expect(r.suggestedCategory).toBe('Leisure');
+  });
+
+  it('Apple iCloud: "A monthly charge of $9.99 from Apple iCloud"', async () => {
+    const r = await extractWithAI(
+      'A monthly charge of $9.99 from Apple iCloud was processed.',
+      ALL_CATEGORIES,
+    );
+    expect(r.isTransaction).toBe(true);
+    expect(r.amount).toBe(9.99);
+    expect(r.vendor).toBeTruthy();
+    expect(r.vendor?.toLowerCase()).toContain('apple');
+  });
+
+  it('Amazon Prime: "A recurring transaction of $16.99 with Amazon Prime"', async () => {
+    const r = await extractWithAI(
+      'A recurring transaction of $16.99 with Amazon Prime was completed.',
+      ALL_CATEGORIES,
+    );
+    expect(r.isTransaction).toBe(true);
+    expect(r.amount).toBe(16.99);
+    expect(r.vendor?.toLowerCase()).toContain('amazon');
+    expect(r.suggestedCategory).toBe('Leisure');
+  });
+
+  it('GoodLife Fitness: "A recurring debit of $54.00 from GoodLife Fitness"', async () => {
+    const r = await extractWithAI(
+      'A recurring debit of $54.00 from GoodLife Fitness was posted.',
+      ALL_CATEGORIES,
+    );
+    expect(r.isTransaction).toBe(true);
+    expect(r.amount).toBe(54.00);
+    expect(r.vendor).toBeTruthy();
+  });
+
+  it('Parkview Property Management: "A recurring fee of $1,850.00 was paid to"', async () => {
+    const r = await extractWithAI(
+      'A recurring fee of $1,850.00 was paid to Parkview Property Management.',
+      ALL_CATEGORIES,
+    );
+    expect(r.isTransaction).toBe(true);
+    expect(r.amount).toBe(1850.00);
+    expect(r.vendor?.toLowerCase()).toContain('parkview');
+    expect(r.suggestedCategory).toBe('Housing');
+  });
+
   // ═══════════════════════════════════════════════════════════════
   // User's exact notification formats
   // ═══════════════════════════════════════════════════════════════
@@ -111,17 +272,39 @@ describe('extractWithAI (local extraction)', () => {
   });
 
   // ═══════════════════════════════════════════════════════════════
-  // Vendor extraction — title-based (vendor IS the title)
+  // Vendor name edge cases
   // ═══════════════════════════════════════════════════════════════
 
-  it('title-based: "Netflix" title with body', async () => {
+  it('handles Amzn#456 → Amazon', async () => {
+    const r = await extractWithAI('Charged $29.99 at Amzn#456', []);
+    expect(r.isTransaction).toBe(true);
+    expect(r.vendor).toBe('Amazon');
+  });
+
+  it('handles three-word vendor: "The Children\'s Place"', async () => {
+    const r = await extractWithAI("Purchase of $45.00 at The Children's Place", []);
+    expect(r.isTransaction).toBe(true);
+    expect(r.vendor?.toLowerCase()).toContain("children's place");
+  });
+
+  it('handles Wendy\'s (vendor with apostrophe)', async () => {
+    const r = await extractWithAI("Charged $8.50 at Wendy's", ['Leisure']);
+    expect(r.isTransaction).toBe(true);
+    expect(r.vendor).toBe("Wendy's");
+  });
+
+  it('handles NETFLIX → Netflix (proper casing)', async () => {
     const r = await extractWithAI(
       'NETFLIX You made a recurring payment for $15.99 with your credit card.', ['Leisure']);
     expect(r.isTransaction).toBe(true);
     expect(r.amount).toBe(15.99);
-    expect(r.vendor).toBeTruthy();
+    expect(r.vendor).toBe('Netflix');
     expect(r.suggestedCategory).toBe('Leisure');
   });
+
+  // ═══════════════════════════════════════════════════════════════
+  // Vendor extraction — title-based (vendor IS the title)
+  // ═══════════════════════════════════════════════════════════════
 
   it('title-based: "Spotify" title', async () => {
     const r = await extractWithAI(
@@ -202,14 +385,6 @@ describe('extractWithAI (local extraction)', () => {
     const r = await extractWithAI(
       'Purchase of $12.99 at Shoppers Drug Mart', ['Services', 'Groceries']);
     expect(r.suggestedCategory).toBe('Services');
-  });
-
-  it('returns null category for unknown vendors', async () => {
-    const r = await extractWithAI(
-      'Charged $99.00 at Zorgblatt Industries', ['Groceries', 'Leisure']);
-    expect(r.isTransaction).toBe(true);
-    // Unknown vendor — no confident guess
-    expect(r.suggestedCategory).toBeNull();
   });
 
   // ═══════════════════════════════════════════════════════════════

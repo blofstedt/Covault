@@ -179,11 +179,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       // Allow reassignment but not split
       const next = new Set([id]);
       setSelectedIds(next);
-      // Notify about vendor override update
-      const budgetName = budgets.find(b => b.id === id)?.name;
-      if (budgetName && onVendorOverrideUpdated && vendor) {
-        onVendorOverrideUpdated(vendor, budgetName);
-      }
       return;
     }
 
@@ -296,6 +291,19 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       description: description.trim() || undefined,
       created_at: initialTransaction?.created_at || new Date().toISOString()
     };
+
+    // Notify about vendor override changes for AI transactions (only on save)
+    if (isAITransaction && onVendorOverrideUpdated && initialTransaction) {
+      const vendorChanged = formatVendorName(vendor || '') !== formatVendorName(initialTransaction.vendor || '');
+      const categoryChanged = tx.budget_id !== initialTransaction.budget_id;
+      if (vendorChanged) {
+        onVendorOverrideUpdated(formatVendorName(vendor || ''), 'vendor_name_changed');
+      }
+      if (categoryChanged) {
+        const budgetName = budgets.find(b => b.id === tx.budget_id)?.name || '';
+        onVendorOverrideUpdated(formatVendorName(vendor || ''), budgetName);
+      }
+    }
 
     onSave(tx);
     onClose();

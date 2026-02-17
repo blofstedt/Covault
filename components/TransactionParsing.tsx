@@ -271,7 +271,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       {/* Clear confirmation modal */}
       {clearTarget && (
         <ClearConfirmModal
-          cardName={clearTarget === 'entered' ? 'Transactions Entered' : 'Transactions Rejected'}
+          cardName={clearTarget === 'entered' ? 'Transactions Entered' : 'Notifications Rejected'}
           onConfirm={async () => {
             if (clearTarget === 'entered') {
               await handleClearEntered();

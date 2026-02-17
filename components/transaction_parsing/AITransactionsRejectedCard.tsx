@@ -36,7 +36,7 @@ const AITransactionsRejectedCard: React.FC<AITransactionsRejectedCardProps> = ({
           <line x1="9" y1="9" x2="15" y2="15" />
         </>
       }
-      title="Transactions Rejected"
+      title="Notifications Rejected"
       subtitle="Notifications filtered out by AI"
       count={rejectedTransactions.length}
       headerAction={
