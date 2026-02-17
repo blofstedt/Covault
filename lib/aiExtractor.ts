@@ -1,11 +1,11 @@
 // lib/aiExtractor.ts
 //
-// AI-based notification extraction using Google Gemini.
+// Fully local, client-side notification extraction.
+// No cloud API calls — everything runs on-device.
+//
 // Extracts vendor name, amount, and determines if a notification
 // is an actual transaction (purchase/charge/payment) or not.
-// Also assigns a budget category based on vendor overrides or AI guess.
 
-import { GoogleGenAI } from '@google/genai';
 import { formatVendorName } from './formatVendorName';
 
 // ─── Types ───────────────────────────────────────────────────────
@@ -23,147 +23,256 @@ export interface AIExtractionResult {
   rejectionReason: string | null;
 }
 
-// ─── Gemini Client ───────────────────────────────────────────────
+// ─── Non-transaction keywords ────────────────────────────────────
 
-let genaiClient: GoogleGenAI | null = null;
+/** Notifications containing these patterns are NOT transactions. */
+const REJECT_PATTERNS: RegExp[] = [
+  /\bverification\s*code\b/i,
+  /\bone[- ]?time\s*(?:pass|code|pin|password)\b/i,
+  /\bOTP\b/,
+  /\b(?:sign|log)(?:ed)?\s*in\b/i,
+  /\bpassword\s*(?:changed|reset|updated)\b/i,
+  /\b(?:card|account)\s*(?:activated|locked|blocked|suspended)\b/i,
+  /\breward\s*points?\b/i,
+  /\bcashback\s*(?:earned|credited)\b/i,
+  /\bstatement\s*(?:is\s*)?(?:ready|available)\b/i,
+  /\bpayment\s*(?:is\s*)?(?:due|overdue)\b/i,
+  /\bminimum\s*payment\b/i,
+  /\bcredit\s*(?:score|limit)\b/i,
+  /\baccount\s*balance\s*(?:is|:)/i,
+  /\bavailable\s*balance\b/i,
+  /\btransfer(?:red)?\s*(?:from|between)\s*(?:your|my)\b/i,
+  /\bdirect\s*deposit\b/i,
+  /\bpayroll\b/i,
+  /\bpromotion(?:al)?\b/i,
+  /\boffer\s*(?:expires?|ends?)\b/i,
+  /\bearn\s*\d/i,
+  /\bsecurity\s*alert\b/i,
+];
 
-function getGenAIClient(): GoogleGenAI | null {
-  if (genaiClient) return genaiClient;
+/** Transaction-positive keywords (notification is likely a real charge). */
+const TRANSACTION_KEYWORDS: RegExp[] = [
+  /\bpurchase\b/i,
+  /\btransaction\b/i,
+  /\bcharged?\b/i,
+  /\bspent\b/i,
+  /\bpaid\b/i,
+  /\bpayment\b/i,
+  /\brecurring\b/i,
+  /\bwithdra?w(?:al|n)?\b/i,
+  /\bauthori[sz](?:ed|ation)\b/i,
+  /\bpending\b/i,
+  /\bcompleted\b/i,
+  /\bdebit(?:ed)?\b/i,
+  /\bcost\b/i,
+];
 
-  const apiKey =
-    (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) ||
-    (typeof process !== 'undefined' && process.env?.API_KEY) ||
-    '';
+// ─── Amount extraction patterns ──────────────────────────────────
 
-  if (!apiKey) {
-    console.warn('[aiExtractor] No GEMINI_API_KEY configured');
-    return null;
-  }
+const AMOUNT_PATTERNS: RegExp[] = [
+  /\$([\d,]+\.\d{2})/,                                           // $123.45
+  /\$([\d,]+)/,                                                   // $123
+  /(?:USD|CAD|GBP|EUR)\s*([\d,]+\.\d{2})/i,                      // USD 123.45
+  /([\d,]+\.\d{2})\s*(?:USD|CAD|GBP|EUR|dollars?)/i,             // 123.45 USD
+  /(?:for|of|amount[:\s]*)\s*\$?([\d,]+\.\d{2})/i,               // for $123.45 / amount: 123.45
+];
 
-  genaiClient = new GoogleGenAI({ apiKey });
-  return genaiClient;
-}
+// ─── Vendor extraction patterns ──────────────────────────────────
+//
+// Banking notifications come in many formats. The patterns below are
+// ordered from most specific to most general. The first match wins.
 
-// ─── AI Extraction ───────────────────────────────────────────────
+const VENDOR_PATTERNS: RegExp[] = [
+  // "at VENDOR for $X" / "at VENDOR on date" / "at VENDOR."
+  /(?:at|@)\s+([A-Za-z][A-Za-z0-9\s&'./()-]{1,50}?)\s+(?:for|on|using|\$|USD|CAD)/i,
+  // "to VENDOR for $X"
+  /(?:to|from)\s+([A-Za-z][A-Za-z0-9\s&'./()-]{1,50}?)\s+(?:for|on|using|\$|USD|CAD)/i,
+  // "purchase at/from VENDOR"
+  /(?:purchase|transaction|payment|charge)\s+(?:at|from|to)\s+([A-Za-z][A-Za-z0-9\s&'./()-]{1,50})/i,
+  // "VENDOR $X" (vendor followed by dollar amount)
+  /^([A-Z][A-Za-z0-9\s&'./-]+?)\s+\$[\d,]+\.?\d{0,2}/,
+  // "VENDOR: You made..." (title-style, vendor before colon)
+  /^([A-Z][A-Za-z0-9\s&'./-]+?):\s/,
+  // "merchant: VENDOR" / "vendor: VENDOR"
+  /(?:merchant|vendor|store)[:\s]+([A-Za-z][A-Za-z0-9\s&'./()-]{1,50})/i,
+];
+
+// ─── Extraction ──────────────────────────────────────────────────
 
 /**
- * Use Google Gemini to extract transaction details from a bank notification.
+ * Extract transaction details from a bank notification using local
+ * pattern matching. Runs entirely on-device with no network calls.
  *
- * The AI will:
- *   1. Determine if the notification is an actual transaction (purchase, charge,
- *      payment, spend, cost) vs. other notification types (balance alerts, login
- *      notifications, OTPs, transfer confirmations, etc.)
- *   2. Extract the vendor name and clean it up (remove store numbers, fix typos)
- *   3. Extract the dollar amount
- *   4. Suggest a budget category from the provided list
+ * The function:
+ *   1. Determines if the notification is a real transaction vs noise
+ *   2. Extracts the dollar amount
+ *   3. Extracts the vendor/merchant name
+ *
+ * The notification text is expected to be the concatenation of the
+ * Android notification title + " " + body, e.g.:
+ *   "FIZZ (TX. INCL.) You made a recurring payment for $26.20 with your credit card."
  */
 export async function extractWithAI(
   notificationText: string,
-  availableCategories: string[],
+  _availableCategories: string[],
 ): Promise<AIExtractionResult> {
-  const client = getGenAIClient();
-
-  if (!client) {
-    // Fallback: try basic extraction without AI
-    return fallbackExtraction(notificationText);
-  }
-
-  const categoryList = availableCategories.length > 0
-    ? availableCategories.join(', ')
-    : 'Housing, Groceries, Transport, Utilities, Leisure, Services, Other';
-
-  const prompt = `You are a financial notification parser. Analyze this bank/payment notification and respond ONLY with valid JSON (no markdown, no code fences).
-
-Notification: "${notificationText}"
-
-Available budget categories: ${categoryList}
-
-Respond with this exact JSON structure:
-{
-  "isTransaction": true/false,
-  "vendor": "cleaned vendor name or null",
-  "amount": number or null,
-  "suggestedCategory": "category name from the list or null",
-  "rejectionReason": "reason string or null"
+  return localExtraction(notificationText);
 }
 
-Rules:
-1. isTransaction is TRUE only for actual purchases, charges, payments, costs, or spending. FALSE for balance alerts, login notifications, OTP codes, transfer confirmations between own accounts, reward points, card activation, or any non-spending notification.
-2. For vendor: Clean up the name. Remove store/location numbers (e.g., "Subway#327" → "Subway", "WALMART SUPERCENTER #1234" → "Walmart"). Fix obvious abbreviations (e.g., "SPRT CHECK" → "Sport Check", "AMZN" → "Amazon"). Convert to proper title case. The vendor can be one word or multiple words.
-3. For amount: Find the dollar value. Look for $ sign followed by a number, or any monetary amount mentioned.
-4. For suggestedCategory: Pick the most likely category from the provided list based on what the vendor sells/provides.
-5. If isTransaction is false, set vendor and amount to null and provide a clear rejectionReason.`;
+function localExtraction(notificationText: string): AIExtractionResult {
+  const text = notificationText.trim();
 
-  try {
-    const response = await client.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: prompt,
-    });
-
-    const text = response.text?.trim() || '';
-
-    // Parse JSON response - strip markdown fences if present
-    let jsonStr = text;
-    const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (fenceMatch) {
-      jsonStr = fenceMatch[1].trim();
-    }
-
-    const parsed = JSON.parse(jsonStr);
-
-    return {
-      isTransaction: parsed.isTransaction === true,
-      vendor: parsed.vendor ? formatVendorName(String(parsed.vendor)) : null,
-      amount: typeof parsed.amount === 'number' && !isNaN(parsed.amount) ? parsed.amount : null,
-      suggestedCategory: parsed.suggestedCategory || null,
-      rejectionReason: parsed.rejectionReason || null,
-    };
-  } catch (err) {
-    console.error('[aiExtractor] Gemini extraction failed:', err);
-    // Fallback to basic extraction
-    return fallbackExtraction(notificationText);
-  }
-}
-
-// ─── Fallback Extraction (no AI) ─────────────────────────────────
-
-/**
- * Basic regex-based fallback when AI is unavailable.
- * Extracts amount using $ pattern and uses remaining text as vendor hint.
- */
-function fallbackExtraction(notificationText: string): AIExtractionResult {
-  // Extract amount: find $ followed by number
-  const amountMatch = notificationText.match(/\$\s?([\d,]+\.?\d{0,2})/);
-  const amount = amountMatch
-    ? parseFloat(amountMatch[1].replace(/,/g, ''))
-    : null;
-
-  // Basic vendor extraction: look for common patterns
-  // "at VENDOR", "to VENDOR", "from VENDOR", "VENDOR purchase"
-  let vendor: string | null = null;
-  const vendorPatterns = [
-    /(?:at|to|from|@)\s+([A-Za-z][A-Za-z0-9\s&'.#-]{1,40}?)(?:\s+(?:for|on|with|$))/i,
-    /(?:purchase|payment|charge|transaction)\s+(?:at|to|from)?\s*([A-Za-z][A-Za-z0-9\s&'.#-]{1,40})/i,
-  ];
-
-  for (const pattern of vendorPatterns) {
-    const match = notificationText.match(pattern);
+  // ── 1. Extract amount ──
+  let amount: number | null = null;
+  for (const pattern of AMOUNT_PATTERNS) {
+    const match = text.match(pattern);
     if (match?.[1]) {
-      vendor = cleanVendorName(match[1].trim());
-      break;
+      const parsed = parseFloat(match[1].replace(/,/g, ''));
+      if (!isNaN(parsed) && parsed > 0) {
+        amount = parsed;
+        break;
+      }
     }
   }
 
-  // If we have an amount, assume it's probably a transaction
-  const isTransaction = amount !== null && amount > 0;
+  // No dollar amount → not a transaction notification we can use
+  if (amount === null) {
+    return {
+      isTransaction: false,
+      vendor: null,
+      amount: null,
+      suggestedCategory: null,
+      rejectionReason: 'No dollar amount found in notification',
+    };
+  }
+
+  // ── 2. Reject non-transactions ──
+  for (const pattern of REJECT_PATTERNS) {
+    if (pattern.test(text)) {
+      return {
+        isTransaction: false,
+        vendor: null,
+        amount,
+        suggestedCategory: null,
+        rejectionReason: `Non-transaction notification (matched: ${pattern.source})`,
+      };
+    }
+  }
+
+  // ── 3. Check for transaction keywords ──
+  const hasTransactionKeyword = TRANSACTION_KEYWORDS.some(p => p.test(text));
+
+  // ── 4. Extract vendor ──
+  let vendor = extractVendor(text);
+
+  // ── 5. If no vendor found from body patterns, use the notification title ──
+  // Banking notifications often put the vendor in the title:
+  //   Title: "FIZZ (TX. INCL.)"  Body: "You made a recurring payment for $26.20..."
+  //   Title: "DISNEY PLUS"       Body: "You made a recurring payment for $17.84..."
+  //   Title: "Wealthsimple"      Body: "Purchase of $12.34 at Subway"
+  //
+  // The fullText is "TITLE BODY", so the title is the part BEFORE the body's
+  // common opening patterns.
+  if (!vendor) {
+    vendor = extractVendorFromTitle(text);
+  }
+
+  // ── 6. Determine if this is a transaction ──
+  // A notification with a dollar amount AND either a transaction keyword or
+  // a recognized vendor is almost certainly a transaction.
+  const isTransaction = amount > 0 && (hasTransactionKeyword || vendor !== null);
+
+  if (!isTransaction) {
+    return {
+      isTransaction: false,
+      vendor,
+      amount,
+      suggestedCategory: null,
+      rejectionReason: 'No transaction keywords found',
+    };
+  }
 
   return {
-    isTransaction,
-    vendor: vendor ? formatVendorName(vendor) : null,
+    isTransaction: true,
+    vendor: vendor ? formatVendorName(cleanVendorName(vendor)) : null,
     amount,
-    suggestedCategory: null,
-    rejectionReason: isTransaction ? null : 'Could not determine if this is a transaction',
+    suggestedCategory: guessCategory(vendor, text),
+    rejectionReason: null,
   };
+}
+
+// ─── Vendor extraction helpers ───────────────────────────────────
+
+/**
+ * Try to extract vendor from the notification body using known patterns.
+ */
+function extractVendor(text: string): string | null {
+  for (const pattern of VENDOR_PATTERNS) {
+    const match = text.match(pattern);
+    if (match?.[1]) {
+      const candidate = match[1].trim();
+      // Reject if the "vendor" is just a common word / false positive
+      if (isValidVendor(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Extract vendor from the notification title.
+ *
+ * Android notification fullText = "TITLE BODY". We detect where the body
+ * starts by looking for common body-opening patterns, and take everything
+ * before that as the title/vendor.
+ */
+function extractVendorFromTitle(fullText: string): string | null {
+  // Common body-start patterns (what comes after the title)
+  const bodyStarts = [
+    /\s+You\s+(?:made|have|just)\s/i,
+    /\s+(?:A\s+)?(?:purchase|transaction|payment|charge|recurring)\s/i,
+    /\s+(?:Your\s+(?:card|account|credit|debit))\s/i,
+    /\s+(?:Charged?|Spent|Paid|Authorized|Pending)\s/i,
+    /\s+\$[\d,]+/,
+  ];
+
+  for (const pattern of bodyStarts) {
+    const match = fullText.search(pattern);
+    if (match > 0) {
+      const titlePart = fullText.substring(0, match).trim();
+      const cleaned = titlePart
+        // Remove parenthetical suffixes: "FIZZ (TX. INCL.)" → "FIZZ"
+        .replace(/\s*\([^)]*\)\s*$/, '')
+        // Remove trailing colon: "BMO:" → "BMO"
+        .replace(/:\s*$/, '')
+        .trim();
+
+      if (cleaned.length >= 2 && isValidVendor(cleaned)) {
+        return cleaned;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Check if a candidate vendor name is valid (not a common false positive).
+ */
+function isValidVendor(name: string): boolean {
+  const lower = name.toLowerCase().trim();
+  // Reject very short strings, pure numbers, or common false-positive words
+  if (lower.length < 2) return false;
+  if (/^\d+$/.test(lower)) return false;
+
+  const falsePositives = new Set([
+    'you', 'your', 'the', 'for', 'and', 'with', 'from', 'this',
+    'that', 'has', 'have', 'been', 'was', 'were', 'are', 'will',
+    'unknown', 'unknown merchant', 'merchant', 'card', 'account',
+    'credit', 'debit', 'bank', 'alert', 'notification',
+  ]);
+  return !falsePositives.has(lower);
 }
 
 /**
@@ -177,9 +286,104 @@ function cleanVendorName(raw: string): string {
     .replace(/\s+\d{3,}$/g, '')
     // Remove "STORE" suffix
     .replace(/\s+STORE$/i, '')
+    // Remove trailing punctuation
+    .replace(/[.,;:!]+$/, '')
     // Remove excess whitespace
     .replace(/\s+/g, ' ')
     .trim();
 
   return cleaned;
+}
+
+// ─── Local category guesser ──────────────────────────────────────
+//
+// Maps vendor names and notification context to budget categories
+// entirely on-device. No cloud calls needed.
+
+/** Vendor keyword → category mapping (checked against lowercased vendor name). */
+const VENDOR_CATEGORY_MAP: Array<{ keywords: string[]; category: string }> = [
+  // Groceries
+  { keywords: [
+    'walmart', 'costco', 'whole foods', 'trader joe', 'safeway', 'kroger',
+    'publix', 'aldi', 'lidl', 'target', 'grocery', 'supermarket', 'market',
+    'loblaws', 'metro', 'sobeys', 'no frills', 'food basics', 'freshco',
+    'iga', 'provigo', 'maxi', 'save-on', 'superstore', 'real canadian',
+    'farm boy', 'longos', 'foodland',
+  ], category: 'Groceries' },
+
+  // Transport
+  { keywords: [
+    'gas', 'fuel', 'shell', 'esso', 'petro', 'chevron', 'bp', 'exxon',
+    'uber', 'lyft', 'taxi', 'cab', 'parking', 'transit', 'metro', 'bus',
+    'train', 'subway', 'airline', 'air canada', 'westjet', 'flair',
+    'porter', 'united', 'american airlines', 'delta', 'southwest',
+    'presto', 'opus', 'stm',
+  ], category: 'Transport' },
+
+  // Utilities
+  { keywords: [
+    'hydro', 'electric', 'power', 'energy', 'water', 'gas bill',
+    'internet', 'bell', 'rogers', 'telus', 'fido', 'koodo', 'virgin',
+    'freedom mobile', 'shaw', 'videotron', 'fizz', 'chatr',
+    'comcast', 'xfinity', 'spectrum', 'at&t', 'verizon', 't-mobile',
+    'phone bill', 'cell bill', 'mobile bill', 'utility', 'utilities',
+    'enbridge', 'fortis',
+  ], category: 'Utilities' },
+
+  // Housing
+  { keywords: [
+    'rent', 'mortgage', 'landlord', 'property', 'condo', 'strata',
+    'home insurance', 'tenant', 'lease',
+  ], category: 'Housing' },
+
+  // Leisure / Entertainment
+  { keywords: [
+    'netflix', 'spotify', 'disney', 'disney plus', 'apple music', 'youtube',
+    'hulu', 'amazon prime', 'crave', 'hbo', 'paramount', 'peacock',
+    'starbucks', 'tim horton', 'tims', 'coffee', 'cafe', 'bar',
+    'restaurant', 'mcdonald', 'burger', 'pizza', 'subway', 'wendy',
+    'chipotle', 'popeyes', 'kfc', 'taco bell', 'chick-fil-a',
+    'doordash', 'uber eats', 'skip the dishes', 'grubhub', 'instacart',
+    'cinema', 'movie', 'theatre', 'theater', 'concert', 'ticket',
+    'gym', 'fitness', 'yoga', 'sport', 'golf', 'bowling',
+    'steam', 'playstation', 'xbox', 'nintendo', 'gaming', 'twitch',
+    'amazon', 'ebay', 'etsy', 'shopping', 'mall', 'store',
+    'clothing', 'fashion', 'nike', 'adidas', 'zara', 'h&m',
+    'apple', 'google play', 'app store',
+    'book', 'audible', 'kindle',
+    'wine', 'beer', 'liquor', 'lcbo', 'saq',
+    'a&w', 'harveys', 'swiss chalet', 'boston pizza', 'earls',
+    'cactus club', 'joeys', 'the keg', 'milestone',
+  ], category: 'Leisure' },
+
+  // Services
+  { keywords: [
+    'barber', 'salon', 'hair', 'spa', 'massage', 'dental', 'dentist',
+    'doctor', 'clinic', 'pharmacy', 'drug mart', 'shoppers',
+    'insurance', 'legal', 'lawyer', 'accountant', 'tax',
+    'cleaning', 'laundry', 'dry clean', 'repair', 'mechanic',
+    'vet', 'veterinary', 'pet', 'daycare', 'tutor',
+    'subscription', 'membership', 'recurring payment',
+  ], category: 'Services' },
+];
+
+/**
+ * Guess a budget category for a vendor using local keyword matching.
+ * Returns the category name string or null if no confident match.
+ */
+function guessCategory(vendor: string | null, notificationText: string): string | null {
+  const searchText = [
+    (vendor || '').toLowerCase(),
+    notificationText.toLowerCase(),
+  ].join(' ');
+
+  for (const { keywords, category } of VENDOR_CATEGORY_MAP) {
+    for (const kw of keywords) {
+      if (searchText.includes(kw)) {
+        return category;
+      }
+    }
+  }
+
+  return null;
 }

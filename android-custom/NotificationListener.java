@@ -199,9 +199,8 @@ public class NotificationListener extends NotificationListenerService {
     public void onNotificationPosted(StatusBarNotification sbn) {
         String packageName = sbn.getPackageName();
 
-        // Only process notifications from monitored apps
-        // (hardcoded banking apps + user-configured apps)
-        if (!isMonitoredApp(packageName)) {
+        // Ignore our own notifications (e.g. guide notification)
+        if (packageName.equals(getPackageName())) {
             return;
         }
 
@@ -222,14 +221,24 @@ public class NotificationListener extends NotificationListenerService {
         String body = (bigText != null && !bigText.isEmpty()) ? bigText : text;
         String fullText = title + " " + body;
 
-        // Extract transaction data (best-effort; the TypeScript pipeline + Gemini
-        // will handle extraction when native regex doesn't match)
+        // Forward any notification that looks financial: either from a known/
+        // monitored banking app, OR contains a dollar amount.  The local
+        // TypeScript pipeline handles classification and rejection.
+        boolean fromMonitored = isMonitoredApp(packageName);
+        boolean hasDollarAmount = extractAmount(fullText) != null;
+
+        if (!fromMonitored && !hasDollarAmount) {
+            return;
+        }
+
+        // Extract transaction data (best-effort; the local extraction
+        // pipeline will handle extraction when native regex doesn't match)
         Double amount = extractAmount(fullText);
         String vendor = extractVendor(fullText);
 
-        Log.i(TAG, "Notification from monitored app " + packageName + ": " + (amount != null ? "$" + amount : "[amount pending]") + " at " + (vendor != null ? vendor : "Unknown"));
+        Log.i(TAG, "Financial notification from " + packageName + ": " + (amount != null ? "$" + amount : "[amount pending]") + " at " + (vendor != null ? vendor : "Unknown"));
 
-        // Always broadcast to the TypeScript AI pipeline which will classify
+        // Broadcast to the local TypeScript pipeline which will classify
         // as transaction or non-transaction — non-transactions will appear in
         // the rejected card so the user can see what was processed.
         broadcastTransaction(packageName, amount, vendor, fullText, sbn.getPostTime());
