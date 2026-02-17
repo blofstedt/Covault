@@ -3,7 +3,6 @@ import { AppState, Transaction, BudgetCategory } from '../types';
 import BudgetSection from './BudgetSection';
 import TransactionForm from './TransactionForm';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
-import Tutorial from './Tutorial';
 import TransactionActionModal from './TransactionActionModal';
 import TransactionParsing from './TransactionParsing';
 import PremiumGate from './PremiumGate';
@@ -95,14 +94,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [showParsing, setShowParsing] = useState(initialShowParsing);
   const [isLinkingPartner, setIsLinkingPartner] = useState(false);
   const [partnerLinkEmail, setPartnerLinkEmail] = useState('');
-  const [showTutorial, setShowTutorial] = useState(!state.settings.hasSeenTutorial);
-  const [tutorialStep, setTutorialStep] = useState(0);
   const shouldAnimateBottomBarRef = useRef(true);
-  const [tutorialPlaceholderTx, setTutorialPlaceholderTx] = useState(false);
-  const [tutorialShowTxModal, setTutorialShowTxModal] = useState(false);
-  const [tutorialFormOpen, setTutorialFormOpen] = useState(false);
-  const [demoSplitTrigger, setDemoSplitTrigger] = useState(0);
-  const [tutorialParsingDemo, setTutorialParsingDemo] = useState(false);
   const [showSubscribeModal, setShowSubscribeModal] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -137,7 +129,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   // Lock body scroll when overlays are open
   useEffect(() => {
     const shouldLock =
-      showSettings || isAddingTx || !!selectedTx || showTutorial;
+      showSettings || isAddingTx || !!selectedTx;
     if (shouldLock) {
       if (bodyOverflowRef.current === null) {
         bodyOverflowRef.current = document.body.style.overflow || '';
@@ -147,7 +139,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       document.body.style.overflow = bodyOverflowRef.current;
       bodyOverflowRef.current = null;
     }
-  }, [showSettings, isAddingTx, selectedTx, showTutorial]);
+  }, [showSettings, isAddingTx, selectedTx]);
 
   useEffect(() => {
     return () => {
@@ -179,7 +171,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   // Build vendor history for autocomplete (most recent transaction per vendor)
   const vendorHistory = useMemo(() => {
-    const vendorMap = new Map<string, { vendor: string; budget_id: string; splits?: { budget_id: string; amount: number }[]; date: string }>();
+    const vendorMap = new Map<string, { vendor: string; budget_id: string; date: string }>();
     const sorted = [...state.transactions].sort((a, b) => {
       return b.date.localeCompare(a.date);
     });
@@ -189,7 +181,6 @@ const Dashboard: React.FC<DashboardProps> = ({
         vendorMap.set(key, {
           vendor: tx.vendor,
           budget_id: tx.budget_id || '',
-          splits: tx.splits,
           date: tx.date,
         });
       }
@@ -310,17 +301,12 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       const bTxs = currentMonthTransactionsAll.filter(
         (tx) =>
-          tx.budget_id === b.id ||
-          tx.splits?.some((s) => s.budget_id === b.id),
+          tx.budget_id === b.id,
       );
 
       // Only count actual spent amounts, not projected transactions
       const spent = bTxs.reduce((acc, tx) => {
         if (tx.is_projected) return acc;
-        if (tx.splits) {
-          const s = tx.splits.find((sp) => sp.budget_id === b.id);
-          return acc + (s?.amount || 0);
-        }
         return acc + (tx.budget_id === b.id ? tx.amount : 0);
       }, 0);
 
@@ -422,101 +408,8 @@ const Dashboard: React.FC<DashboardProps> = ({
   const isFocusMode = expandedBudgets.size === 1;
   const focusedBudgetId = isFocusMode ? Array.from(expandedBudgets)[0] : null;
 
-  const handleTutorialComplete = () => {
-    setShowTutorial(false);
-    setShowSettings(false);
-    setShowParsing(false);
-    setTutorialParsingDemo(false);
-    // Clean up any tutorial state
-    setTutorialPlaceholderTx(false);
-    setTutorialShowTxModal(false);
-    setTutorialFormOpen(false);
-    setExpandedBudgets(new Set());
-    setIsAddingTx(false);
-    setSelectedTx(null);
-    updateSettings('hasSeenTutorial', true);
-  };
-
-  const handleTutorialStepChange = (step: number) => {
-    setTutorialStep(step);
-    // Steps 11-15 target elements in the Transaction Parsing dashboard
-    if (step >= 11 && step <= 15) {
-      setShowParsing(true);
-      // Steps 12-15 show demo/placeholder data in the parsing dashboard
-      setTutorialParsingDemo(step >= 12);
-      setShowSettings(false);
-    // Steps 17 ("Re-run Tutorial") through 32 ("Sign Out") target elements inside the settings modal
-    } else if (step >= 17 && step <= 32) {
-      setShowParsing(false);
-      setTutorialParsingDemo(false);
-      setShowSettings(true);
-    } else {
-      setShowParsing(false);
-      setTutorialParsingDemo(false);
-      setShowSettings(false);
-    }
-  };
-
-  // Tutorial callback: expand/collapse a budget
-  const handleTutorialExpandBudget = (budgetId: string | null) => {
-    if (budgetId) {
-      setExpandedBudgets(new Set([budgetId]));
-    } else {
-      setExpandedBudgets(new Set());
-    }
-  };
-
-  // Tutorial callback: show/hide placeholder transaction
-  const handleTutorialShowPlaceholder = (show: boolean) => {
-    setTutorialPlaceholderTx(show);
-  };
-
-  // Build a tutorial placeholder transaction object
-  const buildTutorialPlaceholder = (): Transaction | null => {
-    if (state.budgets.length === 0) return null;
-    return {
-      id: '__tutorial_placeholder__',
-      vendor: 'Example Store',
-      amount: 24.99,
-      date: new Date().toISOString(),
-      budget_id: state.budgets[0].id,
-      user_id: state.user?.id || '1',
-      userName: state.user?.name || 'You',
-      is_projected: false,
-      label: 'Manual',
-      created_at: new Date().toISOString(),
-    };
-  };
-
-  // Tutorial callback: show/hide transaction modal for demo
-  const handleTutorialShowTxModal = (show: boolean) => {
-    setTutorialShowTxModal(show);
-    if (show) {
-      setSelectedTx(buildTutorialPlaceholder());
-    } else {
-      setSelectedTx(null);
-    }
-  };
-
-  // Tutorial callback: open/close the transaction form
-  const handleTutorialOpenForm = (open: boolean) => {
-    setTutorialFormOpen(open);
-    setIsAddingTx(open);
-  };
-
-  // Tutorial callback: trigger split demo animation
-  const handleTutorialDemoSplit = () => {
-    setDemoSplitTrigger(prev => prev + 1);
-  };
-
-  // Build placeholder transaction for display in expanded budget during tutorial
-  const tutorialPlaceholderTransaction: Transaction | null = tutorialPlaceholderTx
-    ? buildTutorialPlaceholder()
-    : null;
-
   const handleRunTutorialFromSettings = () => {
     setShowSettings(false);
-    setShowTutorial(true);
   };
 
   // 🔔 Notification alerts: budgets + remaining money
@@ -575,7 +468,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   );
 
   // If showing parsing view without premium (and not in tutorial), show subscribe modal
-  if (showParsing && !hasPremium && !showTutorial) {
+  if (showParsing && !hasPremium) {
     return (
       <SubscribeModal
         onClose={() => setShowParsing(false)}
@@ -603,8 +496,6 @@ const Dashboard: React.FC<DashboardProps> = ({
         onTransactionTap={(tx) => setSelectedTx(tx)}
         budgets={visibleBudgets}
         userId={state.user?.id}
-        isTutorialMode={showTutorial}
-        showDemoData={tutorialParsingDemo}
         onRefreshNotifications={onRefreshNotifications}
         onReloadTransactions={onReloadTransactions}
         onClearEntered={() => {
@@ -643,7 +534,6 @@ const Dashboard: React.FC<DashboardProps> = ({
             <BudgetFlowChart
               budgets={visibleBudgets}
               transactions={state.transactions}
-              isTutorialMode={showTutorial}
               theme={state.settings.theme as 'light' | 'dark'}
             />
           </PremiumGate>
@@ -664,9 +554,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         ) : (
           <DashboardBudgetSectionsList
             budgets={state.budgets}
-            transactions={tutorialPlaceholderTransaction
-              ? [...currentMonthWithProjected, tutorialPlaceholderTransaction]
-              : currentMonthWithProjected}
+            transactions={currentMonthWithProjected}
             expandedBudgets={expandedBudgets}
             isFocusMode={isFocusMode}
             focusedBudgetId={focusedBudgetId}
@@ -696,7 +584,6 @@ const Dashboard: React.FC<DashboardProps> = ({
           isSharedAccount={isSharedAccount}
           settings={state.settings}
           user={state.user}
-          showTutorial={showTutorial}
           isLinkingPartner={isLinkingPartner}
           partnerLinkEmail={partnerLinkEmail}
           budgets={state.budgets}
@@ -724,16 +611,13 @@ const Dashboard: React.FC<DashboardProps> = ({
         <TransactionForm
           onClose={() => {
             setIsAddingTx(false);
-            setTutorialFormOpen(false);
           }}
-          onSave={tutorialFormOpen ? (_tx: Transaction) => { /* no-op: saves disabled during tutorial */ } : handleAddTransactionWithToast}
+          onSave={handleAddTransactionWithToast}
           budgets={visibleBudgets}
           userId={state.user?.id || '1'}
           userName={state.user?.name || 'User'}
           isSharedAccount={isSharedAccount}
-          isTutorialMode={tutorialFormOpen && showTutorial}
           vendorHistory={vendorHistory}
-          demoSplitTrigger={demoSplitTrigger}
         />
       )}
 
@@ -745,21 +629,12 @@ const Dashboard: React.FC<DashboardProps> = ({
           isSharedAccount={isSharedAccount}
           onClose={() => {
             setSelectedTx(null);
-            setTutorialShowTxModal(false);
           }}
           onEdit={(updatedTx) => {
-            if (selectedTx.id === '__tutorial_placeholder__') {
-              setSelectedTx(null);
-              return;
-            }
             onUpdateTransaction(updatedTx);
             setSelectedTx(null);
           }}
           onDelete={() => {
-            if (selectedTx.id === '__tutorial_placeholder__') {
-              setSelectedTx(null);
-              return;
-            }
             onDeleteTransaction(selectedTx.id);
             setSelectedTx(null);
           }}
@@ -787,19 +662,6 @@ const Dashboard: React.FC<DashboardProps> = ({
     </PageShell>
     )}
 
-      {showTutorial && (
-        <Tutorial
-          isShared={isSharedAccount}
-          onComplete={handleTutorialComplete}
-          onStepChange={handleTutorialStepChange}
-          onExpandBudget={handleTutorialExpandBudget}
-          onShowPlaceholderTransaction={handleTutorialShowPlaceholder}
-          onShowTransactionModal={handleTutorialShowTxModal}
-          onOpenTransactionForm={handleTutorialOpenForm}
-          onDemoSplit={handleTutorialDemoSplit}
-          firstBudgetId={state.budgets.length > 0 ? state.budgets[0].id : undefined}
-        />
-      )}
     </>
   );
 };

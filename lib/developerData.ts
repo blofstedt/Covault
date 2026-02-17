@@ -110,7 +110,6 @@ export function buildDevState(options: {
       useLeisureAsBuffer: true,
       showSavingsInsight: true,
       theme: 'light',
-      hasSeenTutorial: true,
       notificationsEnabled: options.notificationsEnabled,
       app_notifications_enabled: false,
       hiddenCategories: [],

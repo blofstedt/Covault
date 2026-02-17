@@ -54,11 +54,6 @@ function getSpentForBudget(budgetId: string, txs: Transaction[]): number {
   return txs.reduce((acc, tx) => {
     if (tx.is_projected) return acc; // only real transactions
 
-    if (tx.splits && tx.splits.length > 0) {
-      const split = tx.splits.find((s: any) => s.budget_id === budgetId);
-      return acc + (split ? Number(split.amount) : 0);
-    }
-
     if (tx.budget_id === budgetId) {
       return acc + Number(tx.amount);
     }

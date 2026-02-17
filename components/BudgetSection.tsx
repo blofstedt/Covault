@@ -35,10 +35,6 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 }) => {
 
   const getAmountForThisBudget = (tx: Transaction) => {
-    if (tx.splits && tx.splits.length > 0) {
-      const split = tx.splits.find((s) => s.budget_id === budget.id);
-      return split ? split.amount : 0;
-    }
     return tx.budget_id === budget.id ? tx.amount : 0;
   };
 

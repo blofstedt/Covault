@@ -37,7 +37,6 @@ export interface DashboardSettingsModalProps {
   isSharedAccount: boolean;
   settings: DashboardSettings;
   user: DashboardUser | null | undefined;
-  showTutorial: boolean;
   isLinkingPartner: boolean;
   partnerLinkEmail: string;
   budgets: BudgetCategory[];
@@ -61,7 +60,6 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
   isSharedAccount,
   settings,
   user,
-  showTutorial,
   isLinkingPartner,
   partnerLinkEmail,
   budgets,
@@ -95,7 +93,7 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
             Vault Settings
           </h2>
           <div className="flex items-center space-x-2">
-            <CloseButton onClick={onClose} disabled={showTutorial} />
+            <CloseButton onClick={onClose} />
           </div>
         </div>
 
@@ -129,7 +127,6 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           <BudgetLimitsSection
             budgets={budgets}
             onSaveBudgetLimit={onSaveBudgetLimit}
-            showTutorial={showTutorial}
             hiddenCategories={settings.hiddenCategories || []}
             monthlyIncome={user?.monthlyIncome}
             onToggleHideCategory={(categoryId: string) => {

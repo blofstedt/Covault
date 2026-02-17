@@ -16,50 +16,6 @@ export const useTransactionOps = ({
   const toSupabaseTransaction = useToSupabaseTransaction();
   const fromSupabaseTransaction = useFromSupabaseTransaction();
 
-  // Save split records to transaction_budget_splits table
-  const saveSplits = useCallback(
-    async (transactionId: string, splits: { budget_id: string; amount: number }[]) => {
-      try {
-        const headers = await getAuthHeaders();
-
-        // Delete any existing splits for this transaction
-        await fetch(
-          `${REST_BASE}/transaction_budget_splits?transaction_id=eq.${transactionId}`,
-          { method: 'DELETE', headers },
-        );
-
-        // Find budget names from appState; the DB column is budget_category (text name)
-        const totalAmount = splits.reduce((sum, sp) => sum + sp.amount, 0);
-        const rows = splits.map(s => {
-          const budget = appState.budgets.find(b => b.id === s.budget_id);
-          return {
-            transaction_id: transactionId,
-            budget_category: budget?.name || s.budget_id,
-            amount: s.amount,
-            percentage: totalAmount > 0 ? parseFloat(((s.amount / totalAmount) * 100).toFixed(2)) : 0,
-          };
-        });
-
-        (headers as any)['Prefer'] = 'return=representation';
-        const res = await fetch(`${REST_BASE}/transaction_budget_splits`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(rows),
-        });
-
-        if (!res.ok) {
-          const body = await res.text();
-          console.error('[saveSplits] failed:', body.slice(0, 200));
-        } else {
-          console.log('[saveSplits] OK, saved', rows.length, 'splits for transaction', transactionId);
-        }
-      } catch (err: any) {
-        console.error('[saveSplits] exception:', err?.message || err);
-      }
-    },
-    [appState.budgets],
-  );
-
   // Add transaction
   const handleAddTransaction = useCallback(
     async (tx: Transaction) => {
@@ -124,12 +80,6 @@ export const useTransactionOps = ({
           Array.isArray(data) ? data[0] : data,
         );
 
-        // Persist splits if present
-        if (tx.splits && tx.splits.length > 1) {
-          await saveSplits(saved.id, tx.splits);
-          saved.splits = tx.splits;
-        }
-
         console.log('[insert] OK, id:', saved.id);
         setAppState(prev => {
           const hasOptimistic = prev.transactions.some(t => t.id === tx.id);
@@ -159,7 +109,6 @@ export const useTransactionOps = ({
     [
       categoriesLoaded,
       fromSupabaseTransaction,
-      saveSplits,
       setAppState,
       setDbError,
       toSupabaseTransaction,
@@ -225,18 +174,6 @@ export const useTransactionOps = ({
             setDbError(msg);
           }
 
-          // Persist splits (replace existing ones)
-          if (updatedTx.splits && updatedTx.splits.length > 1) {
-            await saveSplits(updatedTx.id, updatedTx.splits);
-          } else {
-            // If no splits, delete any existing ones
-            const deleteHeaders = await getAuthHeaders();
-            await fetch(
-              `${REST_BASE}/transaction_budget_splits?transaction_id=eq.${updatedTx.id}`,
-              { method: 'DELETE', headers: deleteHeaders },
-            );
-          }
-
           // If AI transaction was re-categorized, update vendor_overrides
           if (isAIRecategorize && updatedTx.budget_id && appState.user?.id) {
             try {
@@ -281,7 +218,7 @@ export const useTransactionOps = ({
         setDbError(msg);
       }
     },
-    [appState.transactions, appState.user, saveSplits, setAppState, setDbError, toSupabaseTransaction],
+    [appState.transactions, appState.user, setAppState, setDbError, toSupabaseTransaction],
   );
 
   // Delete transaction

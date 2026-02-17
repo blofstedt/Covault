@@ -12,7 +12,6 @@ interface ToBeReviewedCardProps {
   vendorOverrideByName: Map<string, VendorOverride>;
   categoryNameById: Map<string, string>;
   budgets: BudgetCategory[];
-  showDemoData: boolean;
   isScanning: boolean;
   onSetExpandedPendingId: (id: string | null) => void;
   onApprovePending?: (pendingId: string, categoryId: string, preferredName?: string) => void | Promise<void>;
@@ -29,7 +28,6 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
   vendorOverrideByName,
   categoryNameById,
   budgets,
-  showDemoData,
   isScanning,
   onSetExpandedPendingId,
   onApprovePending,
@@ -50,7 +48,7 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
     subtitle={toReviewCount > 0 ? 'Assign a budget category to approve these transactions' : 'No transactions to review'}
     count={toReviewCount}
   >
-    {(toReviewCount > 0 || (showDemoData && toReviewCount === 0)) ? (
+    {toReviewCount > 0 ? (
       <div className="space-y-2">
         {toReviewCount > 0 ? toReviewTransactions.map((pt) => {
           const isExpanded = expandedPendingId === pt.id;
@@ -182,35 +180,7 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
               )}
             </div>
           );
-        }) : showDemoData && (
-          <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800/60 overflow-hidden">
-            <div className="w-full flex items-center justify-between p-4">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center shrink-0">
-                  <svg className="w-4 h-4 text-amber-600 dark:text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                  </svg>
-                </div>
-                <div className="text-left min-w-0">
-                  <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate max-w-[160px]">
-                    Gas Station
-                  </p>
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-                    Example Bank
-                  </p>
-                </div>
-              </div>
-              <div className="text-right shrink-0">
-                <span className="text-sm font-black text-slate-700 dark:text-slate-200">
-                  $45.00
-                </span>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-amber-500 dark:text-amber-400 mt-0.5">
-                  Demo
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
+        }) : null}
       </div>
     ) : (
       <EmptyState

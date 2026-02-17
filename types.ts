@@ -21,22 +21,7 @@ export interface BudgetCategory {
   externalDeduction?: number;
 }
 
-export interface TransactionSplit {
-  budget_id: string;
-  amount: number;
-}
-
-// New: Transaction budget split from database
-export interface TransactionBudgetSplit {
-  id: string;
-  transaction_id: string;
-  budget_category: string;
-  amount: number;
-  percentage?: number;
-  created_at: string;
-}
-
-// New: Household link from database
+// Household link from database
 export interface HouseholdLink {
   id: string;
   user1_id: string;
@@ -110,7 +95,6 @@ export interface Transaction {
   label?: TransactionLabel | 'Auto-Added' | 'Manual' | 'Auto-Added + Edited' | 'AI';
   is_projected: boolean;
   userName?: string;
-  splits?: TransactionSplit[];
   description?: string;
   created_at: string;
 
@@ -131,7 +115,6 @@ export interface Settings {
   useLeisureAsBuffer?: boolean;
   showSavingsInsight?: boolean;
   theme?: 'light' | 'dark';
-  hasSeenTutorial?: boolean;
 }
 
 export interface AppState {
@@ -145,7 +128,6 @@ export interface AppState {
     useLeisureAsBuffer: boolean;
     showSavingsInsight: boolean;
     theme: 'light' | 'dark';
-    hasSeenTutorial: boolean;
     notificationsEnabled: boolean;
     hiddenCategories: string[]; // IDs of hidden budget categories
     app_notifications_enabled: boolean;

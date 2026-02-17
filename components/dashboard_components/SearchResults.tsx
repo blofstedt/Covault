@@ -57,10 +57,7 @@ const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
       {open && (
         <div className="mt-3 space-y-2">
           {transactions.map((tx) => {
-            const budgetIdForTx =
-              tx.splits && tx.splits.length > 0
-                ? tx.splits[0].budget_id
-                : tx.budget_id;
+            const budgetIdForTx = tx.budget_id;
 
             return (
               <TransactionItem
@@ -230,10 +227,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 
             <div className="space-y-2">
               {filteredCurrent.map((tx) => {
-                const budgetIdForTx =
-                  tx.splits && tx.splits.length > 0
-                    ? tx.splits[0].budget_id
-                    : tx.budget_id;
+                const budgetIdForTx = tx.budget_id;
 
                 return (
                   <TransactionItem

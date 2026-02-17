@@ -27,8 +27,6 @@ interface TransactionParsingProps {
   onTransactionTap?: (tx: Transaction) => void;
   budgets?: BudgetCategory[];
   userId?: string;
-  isTutorialMode?: boolean;
-  showDemoData?: boolean;
   onRefreshNotifications?: () => Promise<void>;
   onReloadTransactions?: (userId: string) => Promise<void>;
   onClearEntered?: () => void;
@@ -44,8 +42,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   onTransactionTap,
   budgets = [],
   userId,
-  isTutorialMode = false,
-  showDemoData = false,
   onRefreshNotifications,
   onReloadTransactions,
   onClearEntered,
@@ -239,17 +235,15 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       {/* Main content */}
       <main className="flex-1 flex flex-col p-4 pb-24 overflow-y-auto relative z-10">
         <div className="max-w-2xl mx-auto w-full space-y-4">
-          {enabled || isTutorialMode ? (
+          {enabled ? (
             <>
               <ActiveBanksCard
                 activeBanks={monitoredBanks}
-                showDemoData={showDemoData}
               />
 
               <AITransactionsEnteredCard
                 aiTransactions={aiTransactions}
                 budgets={budgets}
-                showDemoData={showDemoData}
                 onTransactionTap={onTransactionTap}
                 onClear={() => setClearTarget('entered')}
                 onRefresh={handleRefresh}
@@ -258,7 +252,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
 
               <AITransactionsRejectedCard
                 rejectedTransactions={rejectedNotifications}
-                showDemoData={showDemoData}
                 onClear={() => setClearTarget('rejected')}
               />
             </>

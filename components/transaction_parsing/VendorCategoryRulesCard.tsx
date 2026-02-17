@@ -9,7 +9,6 @@ interface VendorCategoryRulesCardProps {
   categoryNameById: Map<string, string>;
   expandedVendorCategory: string | null;
   budgets: BudgetCategory[];
-  showDemoData: boolean;
   onSetExpandedVendorCategory: (vendorName: string | null) => void;
   onToggleAutoAccept: (overrideId: string, currentValue: boolean) => void;
   onSetVendorCategory: (vendorName: string, categoryId: string) => void;
@@ -23,7 +22,6 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
   categoryNameById,
   expandedVendorCategory,
   budgets,
-  showDemoData,
   onSetExpandedVendorCategory,
   onToggleAutoAccept,
   onSetVendorCategory,
@@ -33,7 +31,7 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
   const [editingProperName, setEditingProperName] = useState<string | null>(null);
   const [properNameDraft, setProperNameDraft] = useState('');
 
-  if (allVendors.length === 0 && !showDemoData) return null;
+  if (allVendors.length === 0) return null;
 
   return (
     <ParsingCard
@@ -42,7 +40,7 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
       icon={<path d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />}
       title="Vendor Category Rules"
       subtitle="Toggle each vendor on to auto-approve transactions from that vendor"
-      count={showDemoData && allVendors.length === 0 ? 2 : allVendors.length}
+      count={allVendors.length}
     >
       <div className="space-y-2">
         {allVendors.map((vendorName) => {
@@ -194,28 +192,6 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
             </div>
           );
         })}
-        {allVendors.length === 0 && showDemoData && (
-          <>
-            <div className="bg-violet-50 dark:bg-violet-900/10 rounded-2xl border border-violet-100 dark:border-violet-800/30 overflow-hidden">
-              <div className="w-full flex items-center justify-between p-3">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">Coffee Shop</span>
-                  <svg className="w-3 h-3 text-slate-300 dark:text-slate-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="9 18 15 12 9 6" /></svg>
-                  <span className="text-xs font-bold truncate text-violet-600 dark:text-violet-400">Leisure</span>
-                </div>
-              </div>
-            </div>
-            <div className="bg-violet-50 dark:bg-violet-900/10 rounded-2xl border border-violet-100 dark:border-violet-800/30 overflow-hidden">
-              <div className="w-full flex items-center justify-between p-3">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">Grocery Mart</span>
-                  <svg className="w-3 h-3 text-slate-300 dark:text-slate-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="9 18 15 12 9 6" /></svg>
-                  <span className="text-xs font-bold truncate text-violet-600 dark:text-violet-400">Groceries</span>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
       </div>
     </ParsingCard>
   );

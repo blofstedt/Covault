@@ -272,54 +272,6 @@ export const useDataLoading = ({
     [setAppState],
   );
 
-  // Load splits for transactions that have a split_group_id
-  const loadSplitsForTransactions = useCallback(
-    async (transactionIds: string[]): Promise<Record<string, { budget_id: string; amount: number }[]>> => {
-      const splitMap: Record<string, { budget_id: string; amount: number }[]> = {};
-      if (transactionIds.length === 0) return splitMap;
-
-      try {
-        const headers = await getAuthHeaders();
-        // Fetch all splits for these transaction IDs
-        const idsFilter = transactionIds.map(id => `transaction_id.eq.${id}`).join(',');
-        const res = await fetch(
-          `${REST_BASE}/transaction_budget_splits?select=*&or=(${idsFilter})`,
-          { headers },
-        );
-
-        if (!res.ok) {
-          const body = await res.text();
-          if (res.status === 404 && body.includes('Could not find the table')) {
-            console.log('[loadSplitsForTransactions] table not found - skipping splits');
-            return splitMap;
-          }
-          console.error('[loadSplitsForTransactions] failed:', res.status);
-          return splitMap;
-        }
-
-        const rows = JSON.parse(await res.text());
-        if (rows && rows.length > 0) {
-          for (const row of rows) {
-            if (!splitMap[row.transaction_id]) {
-              splitMap[row.transaction_id] = [];
-            }
-            // budget_category is a name string; caller resolves it to a budget UUID
-            splitMap[row.transaction_id].push({
-              budget_id: row.budget_category,
-              amount: parseFloat(row.amount),
-            });
-          }
-          console.log('[loadSplitsForTransactions] loaded splits for', Object.keys(splitMap).length, 'transactions');
-        }
-      } catch (err: any) {
-        console.error('[loadSplitsForTransactions] exception:', err?.message || err);
-      }
-
-      return splitMap;
-    },
-    [],
-  );
-
   // Load transactions from Supabase via raw fetch
   // When merge is true, new transactions are appended to existing ones (used for partner data)
   const loadTransactions = useCallback(
@@ -350,44 +302,7 @@ export const useDataLoading = ({
 
         const data = JSON.parse(body);
         if (data && data.length > 0) {
-          let transactions = data.map(fromSupabaseTransaction);
-
-          // Load splits for transactions that have split_group_id
-          const splitTxIds = data
-            .filter((row: any) => row.split_group_id)
-            .map((row: any) => row.id);
-
-          if (splitTxIds.length > 0) {
-            const splitMap = await loadSplitsForTransactions(splitTxIds);
-
-            // Resolve budget_category names to budget_ids using current state
-            setAppState(prev => {
-              const budgetsByName: Record<string, string> = {};
-              for (const b of prev.budgets) {
-                budgetsByName[b.name] = b.id;
-              }
-
-              const resolvedTransactions = transactions.map((tx: any) => {
-                const splits = splitMap[tx.id];
-                if (splits && splits.length > 0) {
-                  return {
-                    ...tx,
-                    splits: splits.map(s => ({
-                      budget_id: budgetsByName[s.budget_id] || s.budget_id,
-                      amount: s.amount,
-                    })),
-                  };
-                }
-                return tx;
-              });
-
-              const mergedTransactions = merge
-                ? mergeTransactions(prev.transactions, resolvedTransactions)
-                : resolvedTransactions;
-              return { ...prev, transactions: mergedTransactions };
-            });
-            return; // setAppState already called above
-          }
+          const transactions = data.map(fromSupabaseTransaction);
 
           console.log('[loadTransactions] OK, count:', transactions.length);
           setAppState(prev => {
@@ -408,7 +323,7 @@ export const useDataLoading = ({
         setDbError(msg);
       }
     },
-    [fromSupabaseTransaction, loadSplitsForTransactions, setAppState, setDbError],
+    [fromSupabaseTransaction, setAppState, setDbError],
   );
 
   // Load pending transactions awaiting approval

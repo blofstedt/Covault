@@ -47,7 +47,6 @@ export const useToSupabaseTransaction = () =>
     };
 
     if (tx.userName) row.user_name = tx.userName;
-    if (tx.splits && tx.splits.length > 1) row.split_group_id = tx.id;
     if (tx.description !== undefined) row.Description = tx.description || null;
 
     return row;
