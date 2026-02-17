@@ -40,9 +40,6 @@ const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
       <div className="space-y-2">
         {approvedTransactions.map((tx) => {
           const vo = vendorOverrideByName.get(tx.vendor.toLowerCase());
-          const approvalLabel = vo?.auto_accept
-            ? '- approved automatically'
-            : '- approved manually';
 
           return (
           <button
@@ -61,7 +58,7 @@ const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
                   {vo?.proper_name || tx.vendor}
                 </p>
                 <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-                  {parseLocalDate(tx.date).toLocaleDateString()} {approvalLabel}
+                  {parseLocalDate(tx.date).toLocaleDateString()}
                 </p>
               </div>
             </div>

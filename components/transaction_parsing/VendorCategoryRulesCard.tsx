@@ -10,7 +10,6 @@ interface VendorCategoryRulesCardProps {
   expandedVendorCategory: string | null;
   budgets: BudgetCategory[];
   onSetExpandedVendorCategory: (vendorName: string | null) => void;
-  onToggleAutoAccept: (overrideId: string, currentValue: boolean) => void;
   onSetVendorCategory: (vendorName: string, categoryId: string) => void;
   onDeleteVendorOverride: (overrideId: string) => void;
   onSetProperName: (vendorName: string, properName: string) => void;
@@ -23,7 +22,6 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
   expandedVendorCategory,
   budgets,
   onSetExpandedVendorCategory,
-  onToggleAutoAccept,
   onSetVendorCategory,
   onDeleteVendorOverride,
   onSetProperName,
@@ -77,20 +75,6 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
                   </span>
                 </div>
                 <div className="flex items-center gap-2 shrink-0 ml-2">
-                  {vo && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onToggleAutoAccept(vo.id, vo.auto_accept);
-                      }}
-                      className="p-1 rounded-full transition-all active:scale-95"
-                      title={vo.auto_accept ? 'Auto-approve is on' : 'Auto-approve is off'}
-                    >
-                      <div className={`w-10 h-6 rounded-full relative transition-colors ${vo.auto_accept ? 'bg-emerald-400 dark:bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
-                        <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm transition-all ${vo.auto_accept ? 'left-5' : 'left-1'}`} />
-                      </div>
-                    </button>
-                  )}
                 </div>
               </div>
 

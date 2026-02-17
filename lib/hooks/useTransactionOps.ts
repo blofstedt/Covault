@@ -411,7 +411,7 @@ export const useTransactionOps = ({
           if (trimmedPreferredName) {
             overridePatchBody.proper_name = trimmedPreferredName;
           }
-          // Try to update existing override (preserves auto_accept)
+          // Try to update existing override
           const patchOverrideRes = await fetch(
             `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(formatVendorName(pending.extracted_vendor))}`,
             {

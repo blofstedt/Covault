@@ -20,69 +20,12 @@ export const useDataLoading = ({
   const [categoriesLoaded, setCategoriesLoaded] = useState(false);
   const fromSupabaseTransaction = useFromSupabaseTransaction();
 
-  // Load categories from Supabase
+  // Load budgets from Supabase (replaces both loadCategories and loadUserBudgets)
+  // The budgets table now serves as both categories and per-user budget limits.
   const loadCategories = useCallback(async () => {
-    try {
-      const headers = await getAuthHeaders();
-      const res = await fetch(
-        `${REST_BASE}/categories?select=*&order=display_order`,
-        { headers },
-      );
-      const body = await res.text();
-      console.log(
-        '[loadCategories] status:',
-        res.status,
-        'body:',
-        body.slice(0, 300),
-      );
-
-      if (!res.ok) {
-        const msg = `Load categories failed (${res.status}): ${body.slice(
-          0,
-          200,
-        )}`;
-        console.error(msg);
-        setDbError(msg);
-        setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
-        setCategoriesLoaded(true);
-        return;
-      }
-
-      const data = JSON.parse(body);
-      if (data && data.length > 0) {
-        const budgets: BudgetCategory[] = data.map((row: any) => ({
-          id: row.id,
-          name: row.name,
-          // start with default limit; user-specific overrides will be loaded separately
-          totalLimit: DEFAULT_BUDGET_LIMIT,
-        }));
-
-        // Ensure all system categories are present (e.g. Services)
-        const loadedNames = new Set(budgets.map(b => b.name));
-        for (const sysCat of SYSTEM_CATEGORIES) {
-          if (!loadedNames.has(sysCat.name)) {
-            budgets.push({ ...sysCat });
-          }
-        }
-
-        console.log(
-          '[loadCategories] OK:',
-          budgets.map(b => ({ id: b.id, name: b.name })),
-        );
-        setAppState(prev => ({ ...prev, budgets }));
-      } else {
-        console.warn('[loadCategories] empty result, using fallback');
-        setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
-      }
-      setCategoriesLoaded(true);
-    } catch (err: any) {
-      const msg = `Load categories exception: ${err?.message || err}`;
-      console.error(msg);
-      setDbError(msg);
-      setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
-      setCategoriesLoaded(true);
-    }
-  }, [setAppState, setDbError]);
+    // Categories are now loaded as part of loadUserBudgets; mark as loaded immediately
+    setCategoriesLoaded(true);
+  }, []);
 
   // Ensure all default budgets exist in the budgets table for this user
   const ensureDefaultBudgets = useCallback(
@@ -100,7 +43,6 @@ export const useDataLoading = ({
         }));
 
         // Use upsert with on_conflict to avoid creating duplicate rows
-        // resolution=ignore-duplicates will skip rows that already exist for (user_id, category)
         (headers as any)['Prefer'] = 'return=representation,resolution=ignore-duplicates';
         const res = await fetch(`${REST_BASE}/budgets?on_conflict=user_id,category`, {
           method: 'POST',
@@ -121,7 +63,7 @@ export const useDataLoading = ({
     [],
   );
 
-  // Load user budget limits from budgets table
+  // Load user budgets from budgets table (this is now the single source of truth for categories)
   const loadUserBudgets = useCallback(
     async (userId: string) => {
       try {
@@ -133,12 +75,15 @@ export const useDataLoading = ({
         const body = await res.text();
 
         if (!res.ok) {
-          // Check if it's a "table not found" error (expected during initial setup)
           if (res.status === 404 && body.includes('Could not find the table')) {
-            console.log('[loadUserBudgets] budgets table not found - using defaults (run schema.sql to create tables)');
+            console.log('[loadUserBudgets] budgets table not found - using defaults');
+            setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
+            setCategoriesLoaded(true);
             return;
           }
           console.error('[loadUserBudgets] failed:', body.slice(0, 200));
+          setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
+          setCategoriesLoaded(true);
           return;
         }
 
@@ -148,41 +93,54 @@ export const useDataLoading = ({
         const existingCategories = new Set<string>(rows.map((r: any) => r.category));
         await ensureDefaultBudgets(userId, existingCategories);
 
-        // Map category name → limit_amount and hidden categories in a single pass
-        const limitsByCategory: Record<string, number> = {};
-        const hiddenCategoryNames = new Set<string>();
-        for (const row of rows) {
-          limitsByCategory[row.category] = Number(row.limit_amount);
-          if (row.visible === false) {
-            hiddenCategoryNames.add(row.category);
+        // If we just seeded new budgets, re-fetch to get their IDs
+        let finalRows = rows;
+        if (SYSTEM_CATEGORIES.some(sc => !existingCategories.has(sc.name))) {
+          const refetchRes = await fetch(
+            `${REST_BASE}/budgets?select=*&user_id=eq.${userId}`,
+            { headers },
+          );
+          if (refetchRes.ok) {
+            finalRows = JSON.parse(await refetchRes.text());
           }
         }
 
-        // Merge with existing categories in state and build hidden list
-        setAppState(prev => {
-          const updatedBudgets = prev.budgets.map(b => ({
-            ...b,
-            totalLimit: limitsByCategory[b.name] ?? b.totalLimit ?? 0,
-          }));
-
-          // Build hidden categories list by matching names to budget IDs
-          const hiddenCategoryIds = updatedBudgets
-            .filter(b => hiddenCategoryNames.has(b.name))
-            .map(b => b.id);
-
+        // Build budgets directly from the budgets table rows
+        const hiddenCategoryIds: string[] = [];
+        const budgets: BudgetCategory[] = finalRows.map((row: any) => {
+          if (row.visible === false) {
+            hiddenCategoryIds.push(row.id);
+          }
           return {
-            ...prev,
-            budgets: updatedBudgets,
-            settings: {
-              ...prev.settings,
-              hiddenCategories: hiddenCategoryIds,
-            },
+            id: row.id,
+            name: row.category,
+            totalLimit: Number(row.limit_amount) || 0,
           };
         });
 
-        console.log('[loadUserBudgets] loaded:', limitsByCategory, 'hidden:', Array.from(hiddenCategoryNames));
+        // Ensure all system categories are present (fallback for newly seeded ones)
+        const loadedNames = new Set(budgets.map(b => b.name));
+        for (const sysCat of SYSTEM_CATEGORIES) {
+          if (!loadedNames.has(sysCat.name)) {
+            budgets.push({ ...sysCat });
+          }
+        }
+
+        setAppState(prev => ({
+          ...prev,
+          budgets,
+          settings: {
+            ...prev.settings,
+            hiddenCategories: hiddenCategoryIds,
+          },
+        }));
+
+        console.log('[loadUserBudgets] loaded:', budgets.map(b => ({ id: b.id, name: b.name, limit: b.totalLimit })));
+        setCategoriesLoaded(true);
       } catch (err: any) {
         console.error('[loadUserBudgets] exception:', err?.message || err);
+        setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
+        setCategoriesLoaded(true);
       }
     },
     [setAppState, ensureDefaultBudgets],
