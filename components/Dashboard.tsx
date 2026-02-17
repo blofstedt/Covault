@@ -602,6 +602,13 @@ const Dashboard: React.FC<DashboardProps> = ({
         userId={state.user?.id}
         isTutorialMode={showTutorial}
         showDemoData={tutorialParsingDemo}
+        onRefreshNotifications={onRefreshNotifications}
+        onClearEntered={() => {
+          setState(prev => ({
+            ...prev,
+            transactions: prev.transactions.filter(tx => tx.label !== 'AI'),
+          }));
+        }}
       />
     ) : (
     <PageShell showGlow={!isFocusMode}>
