@@ -66,7 +66,7 @@ public class NotificationListener extends NotificationListenerService {
 
     // Banking app package names to listen for
     // Users can configure which apps to monitor in the app
-    private static final Set<String> BANKING_APPS = new HashSet<>(Arrays.asList(
+    static final Set<String> BANKING_APPS = new HashSet<>(Arrays.asList(
         // Major US Banks
         "com.chase.sig.android",           // Chase
         "com.wf.wellsfargomobile",          // Wells Fargo

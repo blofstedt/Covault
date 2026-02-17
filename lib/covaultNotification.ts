@@ -75,3 +75,39 @@ export const covaultNotification: CovaultNotificationPlugin | null =
   Capacitor.isNativePlatform()
     ? registerPlugin<CovaultNotificationPlugin>('CovaultNotification')
     : null;
+
+/**
+ * Auto-detect installed banking apps and save them as monitored apps
+ * so the notification listener can monitor them immediately on fresh install,
+ * without waiting for the user to open notification settings.
+ *
+ * Only runs on native platforms and only saves when no monitored apps
+ * have been configured yet (preserves user customizations).
+ */
+export async function autoDetectAndSaveMonitoredApps(
+  knownBankingApps: Record<string, string>,
+): Promise<void> {
+  if (!covaultNotification) return;
+
+  try {
+    const { apps: saved } = await covaultNotification.getMonitoredApps();
+    if (saved && saved.length > 0) {
+      // User already has monitored apps configured — don't overwrite
+      return;
+    }
+
+    const { apps: installed } = await covaultNotification.getInstalledApps();
+    const bankingPackages = installed
+      .filter(app => app.packageName in knownBankingApps)
+      .map(app => app.packageName);
+
+    if (bankingPackages.length > 0) {
+      await covaultNotification.saveMonitoredApps({ apps: bankingPackages });
+      console.log(
+        `[autoDetect] Saved ${bankingPackages.length} installed banking apps`,
+      );
+    }
+  } catch (e) {
+    console.warn('[autoDetect] Error during banking app auto-detection:', e);
+  }
+}

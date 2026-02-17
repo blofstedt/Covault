@@ -50,6 +50,7 @@ export const KNOWN_BANKING_APPS: Record<string, string> = {
   'com.paypal.android.p2pmobile': 'PayPal',
   'com.zellepay.zelle': 'Zelle',
   'com.revolut.revolut': 'Revolut',
+  'com.simple': 'Simple',
   'com.monzo.android': 'Monzo',
   'com.n26.android': 'N26',
   'com.varo': 'Varo',
