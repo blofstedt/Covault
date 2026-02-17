@@ -138,9 +138,12 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       if (onRefreshNotifications) {
         await onRefreshNotifications();
       }
-      // Wait for async notification processing to complete, then
-      // reload rejected notifications from the database so newly
-      // processed items appear in the UI.
+      // scanActiveNotifications resolves immediately while notification
+      // events are processed asynchronously through the AI pipeline.
+      // Reload after a short delay to pick up fast-processing results,
+      // then again after a longer delay for slower AI extractions.
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      await loadRejectedNotifications();
       await new Promise(resolve => setTimeout(resolve, 2000));
       await loadRejectedNotifications();
     } finally {

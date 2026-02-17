@@ -1339,6 +1339,9 @@ export interface AIProcessingResult {
 /**
  * Store a rejected notification in pending_transactions so it appears
  * in the rejected card on the Transaction Parsing screen.
+ *
+ * Note: extracted_vendor defaults to 'Unknown' and extracted_amount to 0
+ * when values are unavailable because the DB columns are NOT NULL.
  */
 async function storeRejectedNotification(
   userId: string,
