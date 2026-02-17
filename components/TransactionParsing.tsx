@@ -1,27 +1,16 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
-import RegexSetupModal from './RegexSetupModal';
-import { PendingTransaction, BudgetCategory, Transaction } from '../types';
+import { Transaction, BudgetCategory } from '../types';
 
 import NotificationToggleCard from './transaction_parsing/NotificationToggleCard';
-import ParsingRulesCard from './transaction_parsing/ParsingRulesCard';
-import VendorCategoryRulesCard from './transaction_parsing/VendorCategoryRulesCard';
-import IgnoredNotificationsCard from './transaction_parsing/IgnoredNotificationsCard';
-import CapturedNotificationsCard from './transaction_parsing/CapturedNotificationsCard';
-import ToBeReviewedCard from './transaction_parsing/ToBeReviewedCard';
-import ApprovedTransactionsCard from './transaction_parsing/ApprovedTransactionsCard';
-import RejectedTransactionsCard from './transaction_parsing/RejectedTransactionsCard';
+import ActiveBanksCard from './transaction_parsing/ActiveBanksCard';
+import AITransactionsEnteredCard from './transaction_parsing/AITransactionsEnteredCard';
+import AITransactionsRejectedCard from './transaction_parsing/AITransactionsRejectedCard';
+import type { AIRejectedTransaction } from './transaction_parsing/AITransactionsRejectedCard';
 import SetupInfoCard from './transaction_parsing/SetupInfoCard';
-import RejectConfirmModal from './transaction_parsing/RejectConfirmModal';
-import ConfirmModal from './ui/ConfirmModal';
 import PageShell from './ui/PageShell';
 
-import { useParsingRules } from './transaction_parsing/useParsingRules';
-import { useVendorOverrides } from './transaction_parsing/useVendorOverrides';
-import { useTransactionCategories } from './transaction_parsing/useTransactionCategories';
-
-/** Delay before reloading pending transactions after a scan, to allow the notification pipeline to finish processing. */
-const SCAN_PROCESSING_DELAY_MS = 2000;
+import { supabase } from '../lib/supabase';
 
 interface TransactionParsingProps {
   enabled: boolean;
@@ -29,17 +18,9 @@ interface TransactionParsingProps {
   onBack: () => void;
   onAddTransaction: () => void;
   onGoHome: () => void;
-  autoDetectedTransactions?: Transaction[];
   allTransactions?: Transaction[];
   onTransactionTap?: (tx: Transaction) => void;
-  pendingTransactions?: PendingTransaction[];
   budgets?: BudgetCategory[];
-  onApprovePending?: (pendingId: string, categoryId: string, preferredName?: string) => void | Promise<void>;
-  onRejectPending?: (pendingId: string) => void;
-  onClearFilteredNotifications?: (ids: string[]) => Promise<void>;
-  onClearApprovedTransactions?: (ids: string[]) => Promise<void>;
-  onRefreshNotifications?: () => Promise<void>;
-  onReloadPendingTransactions?: (userId: string) => Promise<void>;
   userId?: string;
   isTutorialMode?: boolean;
   showDemoData?: boolean;
@@ -51,98 +32,128 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   onBack,
   onAddTransaction,
   onGoHome,
-  autoDetectedTransactions = [],
   allTransactions = [],
   onTransactionTap,
-  pendingTransactions = [],
   budgets = [],
-  onApprovePending,
-  onRejectPending,
-  onClearFilteredNotifications,
-  onClearApprovedTransactions,
-  onRefreshNotifications,
-  onReloadPendingTransactions,
   userId,
   isTutorialMode = false,
   showDemoData = false,
 }) => {
-  // ── UI-only state ──
-  const [expandedPendingId, setExpandedPendingId] = useState<string | null>(null);
-  const [rejectConfirmId, setRejectConfirmId] = useState<string | null>(null);
-  const [clearConfirm, setClearConfirm] = useState<'filtered' | 'approved' | null>(null);
-  const [isScanning, setIsScanning] = useState(false);
+  // ── State for rejected notifications ──
+  const [rejectedNotifications, setRejectedNotifications] = useState<AIRejectedTransaction[]>([]);
 
-  // ── Vendor overrides (CRUD + state) ──
-  const vendorOverridesHook = useVendorOverrides({ userId, budgets });
+  // ── AI-entered transactions (label === 'AI') ──
+  const aiTransactions = useMemo(
+    () => allTransactions.filter((tx) => tx.label === 'AI'),
+    [allTransactions],
+  );
 
-  // ── Parsing rules (CRUD + state) ──
-  const parsingRulesHook = useParsingRules({
-    userId,
-    onReloadPendingTransactions,
-    loadVendorOverrides: vendorOverridesHook.loadVendorOverrides,
-  });
+  // ── Active banks: derive from AI transactions + notification rules ──
+  const [activeBanks, setActiveBanks] = useState<Map<string, string>>(new Map());
 
-  // ── Derived/computed transaction categories ──
-  const categories = useTransactionCategories({
-    pendingTransactions,
-    autoDetectedTransactions,
-    allTransactions,
-    vendorOverrides: vendorOverridesHook.vendorOverrides,
-    budgets,
-    savedRules: parsingRulesHook.savedRules,
-  });
-
-  // Load data on mount and refresh on visibility change
+  // Load active banks from notification_rules table
   useEffect(() => {
-    vendorOverridesHook.loadVendorOverrides();
-    parsingRulesHook.loadRules();
-  }, [vendorOverridesHook.loadVendorOverrides, parsingRulesHook.loadRules]);
+    const loadActiveBanks = async () => {
+      if (!userId) return;
 
+      const { data, error } = await supabase
+        .from('notification_rules')
+        .select('bank_app_id, bank_name')
+        .eq('user_id', userId)
+        .eq('is_active', true);
+
+      if (error) {
+        console.error('[TransactionParsing] Error loading active banks:', error);
+        return;
+      }
+
+      const banks = new Map<string, string>();
+      if (data) {
+        for (const rule of data) {
+          if (rule.bank_app_id && rule.bank_name) {
+            banks.set(rule.bank_app_id, rule.bank_name);
+          }
+        }
+      }
+
+      // Also derive banks from AI transactions that may not have rules
+      for (const tx of aiTransactions) {
+        if (tx.notification_rule_id && tx.raw_notification) {
+          // These fields are only on the client side, skip
+        }
+      }
+
+      setActiveBanks(banks);
+    };
+
+    loadActiveBanks();
+  }, [userId, aiTransactions]);
+
+  // Load rejected notifications from pending_transactions
+  useEffect(() => {
+    const loadRejected = async () => {
+      if (!userId) return;
+
+      const { data, error } = await supabase
+        .from('pending_transactions')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('needs_review', false)
+        .eq('approved', false)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (error) {
+        console.error('[TransactionParsing] Error loading rejected:', error);
+        return;
+      }
+
+      if (data) {
+        const rejected: AIRejectedTransaction[] = data.map((pt: any) => ({
+          id: pt.id,
+          vendor: pt.extracted_vendor || undefined,
+          amount: pt.extracted_amount || undefined,
+          reason: pt.rejection_reason || pt.validation_reasons || 'Rejected by AI',
+          bankName: pt.app_name || undefined,
+          timestamp: pt.created_at,
+        }));
+        setRejectedNotifications(rejected);
+      }
+    };
+
+    loadRejected();
+  }, [userId]);
+
+  // Refresh data on visibility change
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        parsingRulesHook.loadRules();
-        vendorOverridesHook.loadVendorOverrides();
+      if (document.visibilityState === 'visible' && userId) {
+        // Refresh rejected list
+        supabase
+          .from('pending_transactions')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('needs_review', false)
+          .eq('approved', false)
+          .order('created_at', { ascending: false })
+          .limit(50)
+          .then(({ data }) => {
+            if (data) {
+              setRejectedNotifications(data.map((pt: any) => ({
+                id: pt.id,
+                vendor: pt.extracted_vendor || undefined,
+                amount: pt.extracted_amount || undefined,
+                reason: pt.rejection_reason || pt.validation_reasons || 'Rejected by AI',
+                bankName: pt.app_name || undefined,
+                timestamp: pt.created_at,
+              })));
+            }
+          });
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [parsingRulesHook.loadRules, vendorOverridesHook.loadVendorOverrides]);
-
-  // ── Handle manual scan for transactions ──
-  const handleScanForTransactions = useCallback(async () => {
-    setIsScanning(true);
-    try {
-      if (onRefreshNotifications) {
-        await onRefreshNotifications();
-      }
-      await new Promise((resolve) => setTimeout(resolve, SCAN_PROCESSING_DELAY_MS));
-      if (onReloadPendingTransactions && userId) {
-        await onReloadPendingTransactions(userId);
-      }
-      await parsingRulesHook.loadRules();
-      await vendorOverridesHook.loadVendorOverrides();
-    } catch (err) {
-      console.error('[TransactionParsing] Error scanning for transactions:', err);
-    } finally {
-      setIsScanning(false);
-    }
-  }, [onRefreshNotifications, onReloadPendingTransactions, userId, parsingRulesHook.loadRules, vendorOverridesHook.loadVendorOverrides]);
-
-  // ── Handle clear confirmation ──
-  const handleClearConfirm = useCallback(async () => {
-    try {
-      if (clearConfirm === 'filtered' && onClearFilteredNotifications) {
-        const ids = categories.filteredOutNotifications.map((pt) => pt.id);
-        await onClearFilteredNotifications(ids);
-      } else if (clearConfirm === 'approved' && onClearApprovedTransactions) {
-        const ids = categories.approvedTransactions.map((tx) => tx.id);
-        await onClearApprovedTransactions(ids);
-      }
-    } finally {
-      setClearConfirm(null);
-    }
-  }, [clearConfirm, onClearFilteredNotifications, onClearApprovedTransactions, categories.filteredOutNotifications, categories.approvedTransactions]);
+  }, [userId]);
 
   return (
     <PageShell>
@@ -165,82 +176,22 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
             <>
               <NotificationToggleCard enabled={enabled} onToggle={onToggle} />
 
-              <ParsingRulesCard
-                savedRules={parsingRulesHook.savedRules}
-                rulesByBank={categories.rulesByBank}
+              <ActiveBanksCard
+                activeBanks={activeBanks}
                 showDemoData={showDemoData}
-                addingRuleForBank={parsingRulesHook.addingRuleForBank}
-                newRuleType={parsingRulesHook.newRuleType}
-                keywordEditRuleId={parsingRulesHook.keywordEditRuleId}
-                onlyParseText={parsingRulesHook.onlyParseText}
-                keywordMode={parsingRulesHook.keywordMode}
-                savingKeywords={parsingRulesHook.savingKeywords}
-                onStartAddRuleForBank={parsingRulesHook.handleStartAddRuleForBank}
-                onSetAddingRuleForBank={parsingRulesHook.setAddingRuleForBank}
-                onSetNewRuleType={parsingRulesHook.setNewRuleType}
-                onConfirmNewRuleType={parsingRulesHook.handleConfirmNewRuleType}
-                onEditRule={parsingRulesHook.handleEditRule}
-                onOpenKeywordEdit={parsingRulesHook.handleOpenKeywordEdit}
-                onSetKeywordEditRuleId={parsingRulesHook.setKeywordEditRuleId}
-                onSetOnlyParseText={parsingRulesHook.setOnlyParseText}
-                onSetKeywordMode={parsingRulesHook.setKeywordMode}
-                onSaveKeywords={parsingRulesHook.handleSaveKeywords}
               />
 
-              <VendorCategoryRulesCard
-                allVendors={categories.allVendors}
-                vendorOverrideByName={categories.vendorOverrideByName}
-                categoryNameById={categories.categoryNameById}
-                expandedVendorCategory={vendorOverridesHook.expandedVendorCategory}
+              <AITransactionsEnteredCard
+                aiTransactions={aiTransactions}
                 budgets={budgets}
-                showDemoData={showDemoData}
-                onSetExpandedVendorCategory={vendorOverridesHook.setExpandedVendorCategory}
-                onToggleAutoAccept={vendorOverridesHook.handleToggleAutoAccept}
-                onSetVendorCategory={vendorOverridesHook.handleSetVendorCategory}
-                onDeleteVendorOverride={vendorOverridesHook.handleDeleteVendorOverride}
-                onSetProperName={vendorOverridesHook.handleSetProperName}
-              />
-
-              <IgnoredNotificationsCard
-                filteredOutNotifications={categories.filteredOutNotifications}
-                onClear={onClearFilteredNotifications ? () => setClearConfirm('filtered') : undefined}
-              />
-
-              <CapturedNotificationsCard
-                capturedByBank={categories.capturedByBank}
-                capturedCount={categories.capturedCount}
-                onSetupNotification={parsingRulesHook.setSetupNotification}
-              />
-
-              <ToBeReviewedCard
-                toReviewTransactions={categories.toReviewTransactions}
-                toReviewCount={categories.toReviewCount}
-                expandedPendingId={expandedPendingId}
-                vendorOverrideByName={categories.vendorOverrideByName}
-                categoryNameById={categories.categoryNameById}
-                budgets={budgets}
-                showDemoData={showDemoData}
-                isScanning={isScanning}
-                onSetExpandedPendingId={setExpandedPendingId}
-                onApprovePending={onApprovePending}
-                onRejectConfirm={setRejectConfirmId}
-                onLoadVendorOverrides={vendorOverridesHook.loadVendorOverrides}
-                onUpsertLocalVendorOverride={vendorOverridesHook.upsertLocalVendorOverride}
-                onScanForTransactions={handleScanForTransactions}
-              />
-
-              <ApprovedTransactionsCard
-                approvedTransactions={categories.approvedTransactions}
-                vendorOverrideByName={categories.vendorOverrideByName}
                 showDemoData={showDemoData}
                 onTransactionTap={onTransactionTap}
-                onClear={onClearApprovedTransactions ? () => setClearConfirm('approved') : undefined}
               />
 
-              <RejectedTransactionsCard
-                rejectedTransactions={categories.rejectedTransactions}
+              <AITransactionsRejectedCard
+                rejectedTransactions={rejectedNotifications}
+                showDemoData={showDemoData}
               />
-
             </>
           ) : (
             <SetupInfoCard enabled={enabled} onToggle={onToggle} />
@@ -253,56 +204,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         onAddTransaction={onAddTransaction}
         onOpenParsing={onBack}
         activeView="parsing"
-        pendingCount={categories.toReviewCount}
       />
-
-      {/* Regex Setup Modal */}
-      {parsingRulesHook.setupNotification && (
-        <RegexSetupModal
-          notification={parsingRulesHook.setupNotification}
-          onSave={parsingRulesHook.editingRuleId ? parsingRulesHook.handleSaveEditedRule : (parsingRulesHook.newRuleType ? parsingRulesHook.handleSaveNewTypedRule : parsingRulesHook.handleSaveRule)}
-          onClose={() => {
-            parsingRulesHook.setSetupNotification(null);
-            parsingRulesHook.setEditingRuleId(null);
-            parsingRulesHook.setNewRuleType('');
-          }}
-        />
-      )}
-
-      {/* Reject Confirmation Modal */}
-      {rejectConfirmId && (
-        <RejectConfirmModal
-          rejectConfirmId={rejectConfirmId}
-          onCancel={() => setRejectConfirmId(null)}
-          onConfirm={(id) => {
-            onRejectPending?.(id);
-            setExpandedPendingId(null);
-            setRejectConfirmId(null);
-          }}
-        />
-      )}
-
-      {/* Clear Confirmation Modal */}
-      {clearConfirm && (
-        <ConfirmModal
-          title={clearConfirm === 'filtered' ? 'Clear Filtered Notifications?' : 'Clear Approved Transactions?'}
-          message={
-            clearConfirm === 'filtered'
-              ? 'This will permanently remove all filtered notifications from this list.'
-              : 'This will clear approved transactions from this list. They will remain in your budget.'
-          }
-          confirmLabel="Clear"
-          cancelLabel="Cancel"
-          variant="danger"
-          icon={
-            <svg className="w-6 h-6 text-rose-500 dark:text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2M10 11v6M14 11v6" />
-            </svg>
-          }
-          onConfirm={handleClearConfirm}
-          onCancel={() => setClearConfirm(null)}
-        />
-      )}
     </PageShell>
   );
 };

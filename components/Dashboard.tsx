@@ -23,7 +23,6 @@ import BudgetFlowChart from './dashboard_components/BudgetFlowChart';
 import { checkAndTriggerAppNotifications } from '../lib/appNotifications';
 import { generateProjectedTransactions } from '../lib/projectedTransactions';
 import { hasPremiumAccess, shouldShowUpgradePrompt } from '../lib/entitlement';
-import { KEYWORD_IGNORED_PATTERN_ID } from '../lib/notificationProcessor';
 
 interface DashboardProps {
   state: AppState;
@@ -105,14 +104,6 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   // Premium access check (single source of truth)
   const hasPremium = hasPremiumAccess(state.user);
-
-  // Count only "to be reviewed" transactions for the badge indicator
-  const toReviewCount = useMemo(() => {
-    const pending = state.pendingTransactions || [];
-    return pending.filter(
-      (pt) => pt.pattern_id && pt.pattern_id !== KEYWORD_IGNORED_PATTERN_ID && pt.needs_review,
-    ).length;
-  }, [state.pendingTransactions]);
 
   const handleSubscribe = () => {
     // TODO: Integrate Google Play Billing flow here.
@@ -427,12 +418,6 @@ const Dashboard: React.FC<DashboardProps> = ({
   const isFocusMode = expandedBudgets.size === 1;
   const focusedBudgetId = isFocusMode ? Array.from(expandedBudgets)[0] : null;
 
-  // Auto-detected transactions (from bank notification listener)
-  const autoDetectedTransactions = useMemo(
-    () => state.transactions.filter((tx) => tx.label === 'Auto-Added' || tx.label === 'Auto-Added + Edited'),
-    [state.transactions],
-  );
-
   const handleTutorialComplete = () => {
     setShowTutorial(false);
     setShowSettings(false);
@@ -578,6 +563,14 @@ const Dashboard: React.FC<DashboardProps> = ({
     [onAddTransaction],
   );
 
+  // Handle vendor override update from AI transaction editing
+  const handleVendorOverrideUpdated = useCallback(
+    (vendor: string, categoryName: string) => {
+      setToastMessage(`You've updated the budget category for ${vendor}. Covault will use ${categoryName} next time.`);
+    },
+    [],
+  );
+
   // If showing parsing view without premium (and not in tutorial), show subscribe modal
   if (showParsing && !hasPremium && !showTutorial) {
     return (
@@ -603,17 +596,9 @@ const Dashboard: React.FC<DashboardProps> = ({
           setShowParsing(false);
           handleGoHome();
         }}
-        autoDetectedTransactions={autoDetectedTransactions}
         allTransactions={state.transactions}
         onTransactionTap={(tx) => setSelectedTx(tx)}
-        pendingTransactions={state.pendingTransactions || []}
         budgets={visibleBudgets}
-        onApprovePending={onApprovePendingTransaction}
-        onRejectPending={onRejectPendingTransaction}
-        onClearFilteredNotifications={onClearFilteredNotifications}
-        onClearApprovedTransactions={onClearApprovedTransactions}
-        onRefreshNotifications={onRefreshNotifications}
-        onReloadPendingTransactions={onReloadPendingTransactions}
         userId={state.user?.id}
         isTutorialMode={showTutorial}
         showDemoData={tutorialParsingDemo}
@@ -693,7 +678,6 @@ const Dashboard: React.FC<DashboardProps> = ({
         onOpenParsing={() => setShowParsing(true)}
         activeView="home"
         shouldAnimate={shouldAnimateBottomBarRef.current}
-        pendingCount={toReviewCount}
       />
 
       {showSettings && (
@@ -768,6 +752,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             onDeleteTransaction(selectedTx.id);
             setSelectedTx(null);
           }}
+          onVendorOverrideUpdated={handleVendorOverrideUpdated}
         />
       )}
 

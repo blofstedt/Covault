@@ -1,21 +1,19 @@
 // lib/notificationProcessor.ts
 //
-// Notification processing pipeline (manual regex flow).
-// No AI/Gemini — rules are created manually by the user.
+// Notification processing pipeline with AI-based extraction.
 //
 // Pipeline:
 //   1. Fingerprint deduplication
-//   2. Look up active notification rule for the bank
-//   3. If no rule → store as unconfigured capture
-//   4. If rule → apply regex
-//      - No match → mark as ignored
-//      - Match → extract vendor/amount → insert pending transaction
-//   5. Ignore rule check (user-defined vendor ignores)
-//   6. Auto-approve if vendor has a category and auto_approve is enabled
+//   2. AI extraction: vendor, amount, transaction classification
+//   3. Duplicate detection (same vendor + amount pair)
+//   4. Non-transaction filtering (balance alerts, OTPs, etc.)
+//   5. Category assignment: vendor_overrides first, then AI guess
+//   6. Insert into transactions table with 'AI' label
 
 import { supabase } from './supabase';
 import { REST_BASE, getAuthHeaders } from './apiHelpers';
 import { formatVendorName } from './formatVendorName';
+import { extractWithAI } from './aiExtractor';
 import type { PendingTransaction } from '../types';
 
 // ─── Constants ───────────────────────────────────────────────────
@@ -1311,4 +1309,280 @@ export async function updateRuleKeywordFilter(
     return false;
   }
   return true;
+}
+
+// ─── AI Processing Pipeline ─────────────────────────────────────
+
+export interface AIProcessingResult {
+  /** Whether the notification was processed */
+  processed: boolean;
+  /** Whether the AI determined this is a real transaction */
+  isTransaction: boolean;
+  /** The transaction ID if inserted into the transactions table */
+  transactionId?: string;
+  /** The vendor name extracted by AI */
+  vendor?: string;
+  /** The amount extracted by AI */
+  amount?: number;
+  /** The category ID assigned */
+  categoryId?: string;
+  /** The category name assigned */
+  categoryName?: string;
+  /** Reason for rejection if not a transaction or duplicate */
+  rejectionReason?: string;
+  /** Skip reason */
+  skipReason?: 'duplicate_fingerprint' | 'duplicate_vendor_amount' | 'not_transaction' | 'extraction_failed';
+  /** The bank name */
+  bankName?: string;
+}
+
+/**
+ * Process a notification using the AI pipeline.
+ *
+ * Steps:
+ *   1. Fingerprint deduplication
+ *   2. AI extraction (vendor, amount, transaction classification)
+ *   3. Reject non-transactions
+ *   4. Duplicate detection (same vendor + amount pair in existing transactions)
+ *   5. Category assignment: vendor_overrides first, then AI suggestion
+ *   6. Insert directly into transactions table with 'AI' label
+ */
+export async function processNotificationWithAI(
+  userId: string,
+  input: NotificationInput,
+  availableCategories: { id: string; name: string }[],
+): Promise<AIProcessingResult> {
+  // Normalize bank identifiers
+  input = {
+    ...input,
+    bankAppId: (input.bankAppId || '').toLowerCase(),
+    bankName: (input.bankName || '').toLowerCase(),
+  };
+
+  // ── Step 1: Fingerprint Deduplication ──
+  let quickAmount: number | null = null;
+  const quickAmountMatch = input.rawNotification.match(/\$?([\d,]+\.?\d{0,2})/);
+  if (quickAmountMatch) {
+    quickAmount = parseFloat(quickAmountMatch[1].replace(',', ''));
+  }
+
+  const notifTimestamp = input.notificationTimestamp || Date.now();
+  const isDuplicate = await checkAndInsertFingerprint(
+    userId,
+    input.bankAppId,
+    quickAmount,
+    input.fallbackVendor || input.rawNotification,
+    notifTimestamp,
+  );
+
+  if (isDuplicate) {
+    console.log('[AI pipeline] Duplicate fingerprint, skipping');
+    return {
+      processed: false,
+      isTransaction: false,
+      skipReason: 'duplicate_fingerprint',
+      rejectionReason: 'Duplicate notification (already processed)',
+      bankName: input.bankName,
+    };
+  }
+
+  // ── Step 2: AI Extraction ──
+  const categoryNames = availableCategories.map(c => c.name);
+  const aiResult = await extractWithAI(input.rawNotification, categoryNames);
+
+  if (!aiResult.vendor && !aiResult.amount) {
+    console.log('[AI pipeline] AI could not extract data');
+    return {
+      processed: true,
+      isTransaction: false,
+      skipReason: 'extraction_failed',
+      rejectionReason: aiResult.rejectionReason || 'Could not extract transaction data',
+      bankName: input.bankName,
+    };
+  }
+
+  // ── Step 3: Reject non-transactions ──
+  if (!aiResult.isTransaction) {
+    console.log('[AI pipeline] Not a transaction:', aiResult.rejectionReason);
+    return {
+      processed: true,
+      isTransaction: false,
+      vendor: aiResult.vendor || undefined,
+      amount: aiResult.amount || undefined,
+      skipReason: 'not_transaction',
+      rejectionReason: aiResult.rejectionReason || 'Not a purchase or charge',
+      bankName: input.bankName,
+    };
+  }
+
+  const vendor = aiResult.vendor || input.fallbackVendor || 'Unknown';
+  const amount = aiResult.amount ?? input.fallbackAmount ?? 0;
+
+  // ── Step 4: Duplicate detection (vendor + amount pair) ──
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: existingTx } = await supabase
+    .from('transactions')
+    .select('id, vendor, amount, date')
+    .eq('user_id', userId)
+    .ilike('vendor', vendor);
+
+  if (existingTx && existingTx.length > 0) {
+    const duplicateToday = existingTx.find(
+      (tx) =>
+        Math.abs(Number(tx.amount) - amount) < AMOUNT_TOLERANCE &&
+        tx.date === today,
+    );
+
+    if (duplicateToday) {
+      console.log('[AI pipeline] Duplicate vendor+amount found for today');
+      return {
+        processed: true,
+        isTransaction: true,
+        vendor,
+        amount,
+        skipReason: 'duplicate_vendor_amount',
+        rejectionReason: `Duplicate: ${vendor} for $${amount.toFixed(2)} already recorded today`,
+        bankName: input.bankName,
+      };
+    }
+  }
+
+  // ── Step 5: Category assignment ──
+  let categoryId: string | null = null;
+  let categoryName: string | null = null;
+
+  // First check vendor_overrides
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch(
+      `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=ilike.${encodeURIComponent(vendor)}&limit=1`,
+      { headers },
+    );
+    if (res.ok) {
+      const rows = await res.json();
+      if (Array.isArray(rows) && rows.length > 0) {
+        categoryId = rows[0].category_id;
+        const matchedCat = availableCategories.find(c => c.id === categoryId);
+        categoryName = matchedCat?.name || null;
+        console.log(`[AI pipeline] Vendor override found: ${vendor} → ${categoryName}`);
+      }
+    }
+  } catch (err) {
+    console.warn('[AI pipeline] Error checking vendor overrides:', err);
+  }
+
+  // If no vendor override, use AI suggestion
+  if (!categoryId && aiResult.suggestedCategory) {
+    const matchedCat = availableCategories.find(
+      c => c.name.toLowerCase() === aiResult.suggestedCategory!.toLowerCase(),
+    );
+    if (matchedCat) {
+      categoryId = matchedCat.id;
+      categoryName = matchedCat.name;
+      console.log(`[AI pipeline] AI suggested category: ${categoryName}`);
+    }
+  }
+
+  // Fallback to first available category if neither found one
+  if (!categoryId && availableCategories.length > 0) {
+    // Try to find "Other" category first
+    const otherCat = availableCategories.find(
+      c => c.name.toLowerCase() === 'other',
+    );
+    if (otherCat) {
+      categoryId = otherCat.id;
+      categoryName = otherCat.name;
+    } else {
+      categoryId = availableCategories[0].id;
+      categoryName = availableCategories[0].name;
+    }
+    console.log(`[AI pipeline] Fallback category: ${categoryName}`);
+  }
+
+  if (!categoryId) {
+    console.error('[AI pipeline] No category available for transaction');
+    return {
+      processed: true,
+      isTransaction: true,
+      vendor,
+      amount,
+      rejectionReason: 'No budget category available',
+      bankName: input.bankName,
+    };
+  }
+
+  // ── Step 6: Insert transaction with 'AI' label ──
+  const transactionId = crypto.randomUUID();
+  const { error: txError } = await supabase
+    .from('transactions')
+    .insert({
+      id: transactionId,
+      user_id: userId,
+      vendor: formatVendorName(vendor),
+      amount,
+      date: today,
+      category_id: categoryId,
+      recurrence: 'One-time',
+      label: 'AI',
+      is_projected: false,
+    });
+
+  if (txError) {
+    console.error('[AI pipeline] Error inserting transaction:', txError);
+    return {
+      processed: true,
+      isTransaction: true,
+      vendor,
+      amount,
+      rejectionReason: 'Failed to save transaction',
+      bankName: input.bankName,
+    };
+  }
+
+  // Also save/update vendor_override for future categorization
+  try {
+    const headers = await getAuthHeaders();
+    (headers as any)['Prefer'] = 'return=representation';
+
+    // Try to update existing override first
+    const patchRes = await fetch(
+      `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(formatVendorName(vendor))}`,
+      {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ category_id: categoryId }),
+      },
+    );
+    const patchBody = await patchRes.text();
+    let patchedRows: any[] = [];
+    try { patchedRows = patchBody ? JSON.parse(patchBody) : []; } catch (e) { console.warn('[AI pipeline] vendor_override PATCH parse error:', e); patchedRows = []; }
+
+    if (!patchRes.ok || !Array.isArray(patchedRows) || patchedRows.length === 0) {
+      // Insert new override
+      await fetch(`${REST_BASE}/vendor_overrides`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          user_id: userId,
+          vendor_name: formatVendorName(vendor),
+          category_id: categoryId,
+        }),
+      });
+    }
+  } catch (err) {
+    console.warn('[AI pipeline] vendor_override save failed:', err);
+  }
+
+  console.log(`[AI pipeline] Transaction saved: ${vendor} $${amount} → ${categoryName}`);
+
+  return {
+    processed: true,
+    isTransaction: true,
+    transactionId,
+    vendor: formatVendorName(vendor),
+    amount,
+    categoryId,
+    categoryName: categoryName || undefined,
+    bankName: input.bankName,
+  };
 }

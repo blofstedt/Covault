@@ -124,6 +124,7 @@ const App: React.FC = () => {
   // Native notification → auto transaction listener
   useNotificationListener({
     user: appState.user,
+    budgets: appState.budgets,
     onTransactionDetected: handleAddTransaction,
     onPendingTransactionCreated: handlePendingTransactionCreated,
     onAutoAcceptedTransaction: handleAutoAcceptedTransaction,

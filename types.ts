@@ -109,6 +109,7 @@ export enum TransactionLabel {
   AUTO_ADDED = 'Auto-Added',
   MANUAL = 'Manual',
   EDITED = 'Auto-Added + Edited',
+  AI = 'AI',
 }
 
 export interface Transaction {
@@ -119,7 +120,7 @@ export interface Transaction {
   date: string;
   budget_id: string | null;
   recurrence?: Recurrence | 'One-time' | 'Biweekly' | 'Monthly';
-  label?: TransactionLabel | 'Auto-Added' | 'Manual' | 'Auto-Added + Edited';
+  label?: TransactionLabel | 'Auto-Added' | 'Manual' | 'Auto-Added + Edited' | 'AI';
   is_projected: boolean;
   userName?: string;
   splits?: TransactionSplit[];
