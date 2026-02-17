@@ -176,14 +176,15 @@ const App: React.FC = () => {
 
     if (!wasEnabled && isEnabled) {
       // Notifications were just enabled — scan immediately
+      const userId = appState.user?.id;
       (async () => {
         await autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
         if (covaultNotification) {
           await covaultNotification.scanActiveNotifications();
         }
         // Reload transactions after a short delay to pick up processed results
-        if (appState.user?.id) {
-          timeoutId = setTimeout(() => loadTransactions(appState.user!.id), SCAN_PROCESSING_DELAY_MS);
+        if (userId) {
+          timeoutId = setTimeout(() => loadTransactions(userId), SCAN_PROCESSING_DELAY_MS);
         }
       })();
     }
