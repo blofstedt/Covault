@@ -23,16 +23,11 @@ export const useHouseholdLinking = ({
       // Generate a 6-character code
       const code = Math.random().toString(36).substring(2, 8).toUpperCase();
       
-      // Set expiration to 24 hours from now
-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-      
-      (headers as any)['Prefer'] = 'return=representation';
       const res = await fetch(`${REST_BASE}/settings?user_id=eq.${userId}`, {
         method: 'PATCH',
         headers,
         body: JSON.stringify({
           link_code: code,
-          link_code_expires_at: expiresAt,
         }),
       });
 
@@ -65,7 +60,7 @@ export const useHouseholdLinking = ({
         
         // Look up the settings row with this link code
         const codeRes = await fetch(
-          `${REST_BASE}/settings?select=user_id,name,email&link_code=eq.${code.toUpperCase()}&link_code_expires_at=gt.${new Date().toISOString()}&limit=1`,
+          `${REST_BASE}/settings?select=user_id,name,email&link_code=eq.${code.toUpperCase()}&limit=1`,
           { headers },
         );
 
@@ -100,10 +95,8 @@ export const useHouseholdLinking = ({
             partner_id: userId,
             partner_name: userName,
             partner_email: appState.user?.email,
-            has_joint_accounts: true,
             budgeting_solo: false,
             link_code: null,
-            link_code_expires_at: null,
           }),
         });
 
@@ -115,7 +108,6 @@ export const useHouseholdLinking = ({
             partner_id: otherUserId,
             partner_name: otherUserName,
             partner_email: otherUserEmail,
-            has_joint_accounts: true,
             budgeting_solo: false,
           }),
         });
@@ -185,7 +177,6 @@ export const useHouseholdLinking = ({
             partner_id: userId,
             partner_name: userName,
             partner_email: appState.user?.email,
-            has_joint_accounts: true,
             budgeting_solo: false,
           }),
         });
@@ -198,7 +189,6 @@ export const useHouseholdLinking = ({
             partner_id: partnerId,
             partner_name: partnerName,
             partner_email: partnerEmail,
-            has_joint_accounts: true,
             budgeting_solo: false,
           }),
         });
@@ -247,7 +237,6 @@ export const useHouseholdLinking = ({
           partner_id: null,
           partner_name: null,
           partner_email: null,
-          has_joint_accounts: false,
           budgeting_solo: true,
         }),
       });
@@ -261,7 +250,6 @@ export const useHouseholdLinking = ({
             partner_id: null,
             partner_name: null,
             partner_email: null,
-            has_joint_accounts: false,
             budgeting_solo: true,
           }),
         });

@@ -47,7 +47,7 @@ export const useToSupabaseTransaction = () =>
     };
 
     if (tx.userName) row.user_name = tx.userName;
-    if (tx.description !== undefined) row.Description = tx.description || null;
+    if (tx.description !== undefined) row.description = tx.description || null;
 
     return row;
   }, []);
@@ -81,7 +81,7 @@ export const useFromSupabaseTransaction = () =>
       label: row.label,
       is_projected: row.is_projected,
       userName: row.user_name || '',
-      description: row.Description || row.description || '',
+      description: row.description || '',
       created_at: row.created_at,
     };
   }, []);

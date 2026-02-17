@@ -152,7 +152,7 @@ export const useDataLoading = ({
       try {
         const headers = await getAuthHeaders();
         const res = await fetch(
-          `${REST_BASE}/settings?select=monthly_income,theme,trial_started_at,trial_ends_at,trial_consumed,subscription_status&user_id=eq.${userId}`,
+          `${REST_BASE}/settings?select=monthly_income,theme_selected,trial_started_at,trial_ends_at,trial_consumed,subscription_status&user_id=eq.${userId}`,
           { 
             headers,
             cache: 'no-store' // Prevent caching to always get fresh data
@@ -179,7 +179,7 @@ export const useDataLoading = ({
             : parsedMonthlyIncome;
 
           // Load theme from database
-          const theme = rows[0].theme || 'light';
+          const theme = rows[0].theme_selected || 'light';
 
           // Load trial/subscription fields
           const trial_started_at = rows[0].trial_started_at || null;
@@ -331,7 +331,7 @@ export const useDataLoading = ({
 
         // Check if the user has a partner_id set in their settings
         const res = await fetch(
-          `${REST_BASE}/settings?select=partner_id,partner_name,partner_email,has_joint_accounts&user_id=eq.${userId}&limit=1`,
+          `${REST_BASE}/settings?select=partner_id,partner_name,partner_email&user_id=eq.${userId}&limit=1`,
           { headers },
         );
 

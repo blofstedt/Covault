@@ -82,44 +82,22 @@ CREATE TABLE IF NOT EXISTS public.settings (
   partner_id uuid,
   partner_email text,
   partner_name text,
-  has_joint_accounts boolean DEFAULT false,
   budgeting_solo boolean DEFAULT true,
   monthly_income numeric DEFAULT 0 CHECK (monthly_income >= 0),
   rollover_enabled boolean DEFAULT true,
-  rollover_overspend boolean DEFAULT false,
-  use_leisure_as_buffer boolean DEFAULT true,
+  leisure_buffer_enable boolean DEFAULT true,
   show_savings_insight boolean DEFAULT true,
-  theme text DEFAULT 'dark' CHECK (theme IN ('light', 'dark')),
   app_notifications_enabled boolean DEFAULT false,
+  theme_selected text DEFAULT 'dark',
   trial_started_at timestamptz,
   trial_ends_at timestamptz,
   trial_consumed boolean DEFAULT false,
   subscription_status text DEFAULT 'none' CHECK (subscription_status IN ('none', 'active', 'expired')),
   link_code text,
-  link_code_expires_at timestamptz,
   CONSTRAINT settings_pkey PRIMARY KEY (user_id),
   CONSTRAINT settings_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
   CONSTRAINT settings_partner_id_fkey FOREIGN KEY (partner_id) REFERENCES auth.users(id)
 );
-
--- Add link_code columns for existing databases
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'settings' AND column_name = 'link_code'
-  ) THEN
-    ALTER TABLE public.settings ADD COLUMN link_code text;
-  END IF;
-END $$;
-
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'settings' AND column_name = 'link_code_expires_at'
-  ) THEN
-    ALTER TABLE public.settings ADD COLUMN link_code_expires_at timestamptz;
-  END IF;
-END $$;
 
 ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
 
