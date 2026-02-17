@@ -48,6 +48,7 @@ interface DashboardProps {
   saveTheme: (theme: 'light' | 'dark') => void;
   saveBudgetVisibility: (categoryId: string, visible: boolean) => void;
   isLoadingData: boolean;
+  secondsUntilNextScan?: number | null;
   initialShowParsing?: boolean;
 }
 
@@ -83,6 +84,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   saveTheme,
   saveBudgetVisibility,
   isLoadingData,
+  secondsUntilNextScan,
   initialShowParsing = false,
 }) => {
   const [isAddingTx, setIsAddingTx] = useState(false);
@@ -606,6 +608,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         showDemoData={tutorialParsingDemo}
         onRefreshNotifications={onRefreshNotifications}
         onReloadTransactions={onReloadTransactions}
+        secondsUntilNextScan={secondsUntilNextScan}
         onClearEntered={() => {
           setState(prev => ({
             ...prev,

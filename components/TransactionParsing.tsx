@@ -29,6 +29,7 @@ interface TransactionParsingProps {
   showDemoData?: boolean;
   onRefreshNotifications?: () => Promise<void>;
   onReloadTransactions?: (userId: string) => Promise<void>;
+  secondsUntilNextScan?: number | null;
   onClearEntered?: () => void;
 }
 
@@ -46,6 +47,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   showDemoData = false,
   onRefreshNotifications,
   onReloadTransactions,
+  secondsUntilNextScan,
   onClearEntered,
 }) => {
   // ── State for rejected notifications ──
@@ -222,6 +224,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                 onClear={() => setClearTarget('entered')}
                 onRefresh={handleRefresh}
                 isRefreshing={isRefreshing}
+                secondsUntilNextScan={secondsUntilNextScan}
               />
 
               <AITransactionsRejectedCard

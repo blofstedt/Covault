@@ -90,6 +90,7 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
     Array<{ packageName: string; name: string }>
   >([]);
   const [selectedApps, setSelectedApps] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
   const [plugin, setPlugin] = useState<CovaultNotificationPlugin | null>(null);
 
   // Initialize plugin
@@ -109,6 +110,7 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
   const checkStatus = useCallback(async () => {
     if (!plugin) return;
     try {
+      setLoading(true);
       const { enabled: granted } = await plugin.isEnabled();
       setPermissionGranted(granted);
 
@@ -144,6 +146,8 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
       }
     } catch (e) {
       console.warn('[NotificationSettingsSection] checkStatus error:', e);
+    } finally {
+      setLoading(false);
     }
   }, [plugin]);
 
@@ -348,9 +352,15 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
           </div>
 
           {installedBankApps.length === 0 ? (
-            <p className="text-[11px] text-slate-400 text-center py-3">
-              No supported banking apps detected on this device. Ensure your banking apps are installed and try reopening Covault.
-            </p>
+            loading ? (
+              <p className="text-[11px] text-slate-400 text-center py-3">
+                Detecting installed banking apps…
+              </p>
+            ) : (
+              <p className="text-[11px] text-slate-400 text-center py-3">
+                No supported banking apps detected. If you have banking apps installed, they may not be in our supported list yet.
+              </p>
+            )
           ) : (
             <div className="grid grid-cols-2 gap-2">
               {installedBankApps.map((app) => {
