@@ -109,6 +109,36 @@ describe('autoDetectAndSaveMonitoredApps', () => {
     const shouldSkip = alreadySaved.length > 0;
     expect(shouldSkip).toBe(false);
   });
+
+  it('should detect a banking app installed between periodic scans', () => {
+    // Simulate first scan: only Chase is installed
+    const firstScanInstalled = [
+      { packageName: 'com.chase.sig.android', name: 'Chase' },
+    ];
+    const savedAfterFirstScan = filterInstalledBankingApps(firstScanInstalled, KNOWN_BANKING_APPS);
+    expect(savedAfterFirstScan).toEqual(['com.chase.sig.android']);
+
+    // Simulate second scan: user installed BMO between scans
+    const secondScanInstalled = [
+      { packageName: 'com.chase.sig.android', name: 'Chase' },
+      { packageName: 'com.bmo.mobile', name: 'BMO' },
+    ];
+    const bankingPackages = filterInstalledBankingApps(secondScanInstalled, KNOWN_BANKING_APPS);
+    const savedSet = new Set(savedAfterFirstScan);
+    let changed = false;
+    for (const pkg of bankingPackages) {
+      if (!savedSet.has(pkg)) {
+        savedSet.add(pkg);
+        changed = true;
+      }
+    }
+
+    // The newly installed BMO app should be detected and merged
+    expect(changed).toBe(true);
+    expect(Array.from(savedSet)).toContain('com.bmo.mobile');
+    expect(Array.from(savedSet)).toContain('com.chase.sig.android');
+    expect(savedSet.size).toBe(2);
+  });
 });
 
 describe('KNOWN_BANKING_APPS consistency', () => {

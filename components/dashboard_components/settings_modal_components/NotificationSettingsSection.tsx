@@ -131,7 +131,13 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
         if (saved && saved.length > 0) {
           setSelectedApps(new Set(saved));
         } else {
-          setSelectedApps(new Set(named.map((a) => a.packageName)));
+          // Default: select all banking apps found and persist so the
+          // native NotificationListener can monitor them immediately.
+          const allPkgs = named.map((a) => a.packageName);
+          setSelectedApps(new Set(allPkgs));
+          if (allPkgs.length > 0) {
+            await plugin.saveMonitoredApps({ apps: allPkgs });
+          }
         }
       } else {
         setSelectedApps(new Set());
