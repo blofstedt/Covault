@@ -77,36 +77,48 @@ public class CovaultNotificationPlugin extends Plugin {
 
     /**
      * Scan installed apps, cross-reference with the known banking apps list,
-     * and persist to SharedPreferences if no monitored apps have been saved yet.
+     * and merge any newly installed banking apps into the saved monitored list.
      */
     private void autoDetectBankingApps() {
         try {
             String stored = getContext().getSharedPreferences("covault_prefs", 0)
                 .getString("monitored_apps", "[]");
             org.json.JSONArray existing = new org.json.JSONArray(stored);
-            if (existing.length() > 0) {
-                Log.i(TAG, "autoDetectBankingApps: " + existing.length() + " monitored apps already saved, skipping");
-                return;
+
+            // Build a set of already-saved package names
+            java.util.Set<String> savedSet = new java.util.HashSet<>();
+            for (int i = 0; i < existing.length(); i++) {
+                String pkg = existing.optString(i, "").trim();
+                if (!pkg.isEmpty()) {
+                    savedSet.add(pkg);
+                }
             }
 
             PackageManager pm = getContext().getPackageManager();
             List<ApplicationInfo> apps = pm.getInstalledApplications(PackageManager.GET_META_DATA);
-            org.json.JSONArray detected = new org.json.JSONArray();
 
+            boolean changed = false;
             for (ApplicationInfo app : apps) {
                 if (NotificationListener.BANKING_APPS.contains(app.packageName)) {
-                    detected.put(app.packageName);
+                    if (!savedSet.contains(app.packageName)) {
+                        savedSet.add(app.packageName);
+                        changed = true;
+                    }
                 }
             }
 
-            if (detected.length() > 0) {
+            if (changed) {
+                org.json.JSONArray merged = new org.json.JSONArray();
+                for (String pkg : savedSet) {
+                    merged.put(pkg);
+                }
                 getContext().getSharedPreferences("covault_prefs", 0)
                     .edit()
-                    .putString("monitored_apps", detected.toString())
+                    .putString("monitored_apps", merged.toString())
                     .apply();
-                Log.i(TAG, "autoDetectBankingApps: auto-saved " + detected.length() + " banking apps");
+                Log.i(TAG, "autoDetectBankingApps: merged to " + savedSet.size() + " monitored apps");
             } else {
-                Log.i(TAG, "autoDetectBankingApps: no known banking apps found installed");
+                Log.i(TAG, "autoDetectBankingApps: no new banking apps to add (" + savedSet.size() + " already saved)");
             }
         } catch (Exception e) {
             Log.w(TAG, "autoDetectBankingApps: error during auto-detection", e);
@@ -191,6 +203,10 @@ public class CovaultNotificationPlugin extends Plugin {
 
     @PluginMethod
     public void scanActiveNotifications(PluginCall call) {
+        // Re-run auto-detection so newly installed banking apps are picked up
+        // before scanning active notifications.
+        autoDetectBankingApps();
+
         NotificationListener listener = NotificationListener.getInstance();
         if (listener != null) {
             listener.scanActiveNotifications();

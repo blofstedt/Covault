@@ -331,7 +331,7 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
 
           {installedBankApps.length === 0 ? (
             <p className="text-[11px] text-slate-400 text-center py-3">
-              No banking app notifications received yet. Once a notification arrives from a supported app, it will appear here automatically.
+              No supported banking apps detected on this device. Ensure your banking apps are installed and try reopening Covault.
             </p>
           ) : (
             <div className="grid grid-cols-2 gap-2">

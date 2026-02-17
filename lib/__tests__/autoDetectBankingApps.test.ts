@@ -60,11 +60,48 @@ describe('autoDetectAndSaveMonitoredApps', () => {
     expect(result.length).toBe(Object.keys(KNOWN_BANKING_APPS).length);
   });
 
-  it('should not save when monitored apps already exist (skip logic)', () => {
-    // This tests the guard: if saved.length > 0, don't overwrite
+  it('should merge newly installed apps with existing monitored apps', () => {
+    // New behavior: merge instead of skip when monitored apps already exist
     const alreadySaved = ['com.chase.sig.android'];
-    const shouldSkip = alreadySaved.length > 0;
-    expect(shouldSkip).toBe(true);
+    const installed = [
+      { packageName: 'com.chase.sig.android', name: 'Chase' },
+      { packageName: 'com.wealthsimple', name: 'Wealthsimple' },
+    ];
+
+    const bankingPackages = filterInstalledBankingApps(installed, KNOWN_BANKING_APPS);
+    const savedSet = new Set(alreadySaved);
+    let changed = false;
+    for (const pkg of bankingPackages) {
+      if (!savedSet.has(pkg)) {
+        savedSet.add(pkg);
+        changed = true;
+      }
+    }
+
+    expect(changed).toBe(true);
+    expect(Array.from(savedSet)).toContain('com.chase.sig.android');
+    expect(Array.from(savedSet)).toContain('com.wealthsimple');
+    expect(savedSet.size).toBe(2);
+  });
+
+  it('should not change saved list when no new apps are found', () => {
+    const alreadySaved = ['com.chase.sig.android'];
+    const installed = [
+      { packageName: 'com.chase.sig.android', name: 'Chase' },
+    ];
+
+    const bankingPackages = filterInstalledBankingApps(installed, KNOWN_BANKING_APPS);
+    const savedSet = new Set(alreadySaved);
+    let changed = false;
+    for (const pkg of bankingPackages) {
+      if (!savedSet.has(pkg)) {
+        savedSet.add(pkg);
+        changed = true;
+      }
+    }
+
+    expect(changed).toBe(false);
+    expect(savedSet.size).toBe(1);
   });
 
   it('should proceed when no monitored apps are saved yet', () => {

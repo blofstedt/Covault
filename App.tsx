@@ -132,8 +132,10 @@ const App: React.FC = () => {
     onAutoAcceptedTransaction: handleAutoAcceptedTransaction,
   });
 
-  // Refresh notifications: scan currently visible Android notifications
+  // Refresh notifications: re-detect banking apps then scan currently
+  // visible Android notifications so newly installed apps are picked up.
   const refreshNotifications = useCallback(async () => {
+    await autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
     if (covaultNotification) {
       await covaultNotification.scanActiveNotifications();
     }
@@ -142,11 +144,11 @@ const App: React.FC = () => {
   // Auto-detect installed banking apps on startup so the notification
   // listener can monitor them immediately (even before the user opens
   // notification settings or any banking notification arrives).
+  // Runs unconditionally so that banking apps are discovered as soon as
+  // the user opens the app — not only after notifications are enabled.
   useEffect(() => {
-    if (appState.settings.notificationsEnabled) {
-      autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
-    }
-  }, [appState.settings.notificationsEnabled]);
+    autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
+  }, []);
 
   // Theme handling
   useAppTheme(appState.settings.theme);

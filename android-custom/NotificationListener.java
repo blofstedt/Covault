@@ -46,6 +46,7 @@ public class NotificationListener extends NotificationListenerService {
     /**
      * Re-process all active (currently visible) notifications from banking apps.
      * Called by the CovaultNotificationPlugin when the user taps the refresh button.
+     * Refreshes the monitored apps list first to pick up any newly installed apps.
      */
     public void scanActiveNotifications() {
         try {
@@ -161,7 +162,7 @@ public class NotificationListener extends NotificationListenerService {
         "purchase", "transaction", "charged", "spent", "paid", "payment",
         "withdrew", "withdrawal", "deposit", "transfer", "sent", "received",
         "debit", "credit", "authorized", "pending", "completed",
-        "cost", "charge"
+        "cost", "charge", "recurring"
     };
 
     /**
