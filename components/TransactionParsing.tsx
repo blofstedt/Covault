@@ -58,71 +58,52 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     [allTransactions],
   );
 
-  // Load rejected notifications from pending_transactions
-  useEffect(() => {
-    const loadRejected = async () => {
-      if (!userId) return;
+  // ── Load rejected notifications from pending_transactions ──
+  const loadRejectedNotifications = useCallback(async () => {
+    if (!userId) return;
 
-      const { data, error } = await supabase
-        .from('pending_transactions')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('needs_review', false)
-        .eq('approved', false)
-        .order('created_at', { ascending: false })
-        .limit(50);
+    const { data, error } = await supabase
+      .from('pending_transactions')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('needs_review', false)
+      .eq('approved', false)
+      .order('created_at', { ascending: false })
+      .limit(50);
 
-      if (error) {
-        console.error('[TransactionParsing] Error loading rejected:', error);
-        return;
-      }
+    if (error) {
+      console.error('[TransactionParsing] Error loading rejected:', error);
+      return;
+    }
 
-      if (data) {
-        const rejected: AIRejectedTransaction[] = data.map((pt: any) => ({
-          id: pt.id,
-          vendor: pt.extracted_vendor || undefined,
-          amount: pt.extracted_amount || undefined,
-          reason: pt.rejection_reason || pt.validation_reasons || 'Rejected by AI',
-          bankName: pt.app_name || undefined,
-          timestamp: pt.created_at,
-        }));
-        setRejectedNotifications(rejected);
-      }
-    };
-
-    loadRejected();
+    if (data) {
+      const rejected: AIRejectedTransaction[] = data.map((pt: any) => ({
+        id: pt.id,
+        vendor: pt.extracted_vendor || undefined,
+        amount: pt.extracted_amount || undefined,
+        reason: pt.rejection_reason || pt.validation_reasons || 'Rejected by AI',
+        bankName: pt.app_name || undefined,
+        timestamp: pt.created_at,
+      }));
+      setRejectedNotifications(rejected);
+    }
   }, [userId]);
+
+  // Load on mount
+  useEffect(() => {
+    loadRejectedNotifications();
+  }, [loadRejectedNotifications]);
 
   // Refresh data on visibility change
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && userId) {
-        // Refresh rejected list
-        supabase
-          .from('pending_transactions')
-          .select('*')
-          .eq('user_id', userId)
-          .eq('needs_review', false)
-          .eq('approved', false)
-          .order('created_at', { ascending: false })
-          .limit(50)
-          .then(({ data }) => {
-            if (data) {
-              setRejectedNotifications(data.map((pt: any) => ({
-                id: pt.id,
-                vendor: pt.extracted_vendor || undefined,
-                amount: pt.extracted_amount || undefined,
-                reason: pt.rejection_reason || pt.validation_reasons || 'Rejected by AI',
-                bankName: pt.app_name || undefined,
-                timestamp: pt.created_at,
-              })));
-            }
-          });
+      if (document.visibilityState === 'visible') {
+        loadRejectedNotifications();
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [userId]);
+  }, [loadRejectedNotifications]);
 
   // ── Clear handlers ──
   const handleClearEntered = useCallback(async () => {
@@ -157,11 +138,15 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       if (onRefreshNotifications) {
         await onRefreshNotifications();
       }
+      // Wait for async notification processing to complete, then
+      // reload rejected notifications from the database so newly
+      // processed items appear in the UI.
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      await loadRejectedNotifications();
     } finally {
-      // Keep spinning for a short moment to feel responsive
-      setTimeout(() => setIsRefreshing(false), 1200);
+      setIsRefreshing(false);
     }
-  }, [isRefreshing, onRefreshNotifications]);
+  }, [isRefreshing, onRefreshNotifications, loadRejectedNotifications]);
 
   return (
     <PageShell>
