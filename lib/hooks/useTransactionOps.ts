@@ -169,6 +169,10 @@ export const useTransactionOps = ({
   // Update transaction
   const handleUpdateTransaction = useCallback(
     async (updatedTx: Transaction) => {
+      // Check if this was an AI transaction being re-categorized
+      const originalTx = appState.transactions.find(t => t.id === updatedTx.id);
+      const isAIRecategorize = originalTx?.label === 'AI' && updatedTx.budget_id !== originalTx.budget_id;
+
       setAppState(prev => ({
         ...prev,
         transactions: prev.transactions.map(t =>
@@ -232,6 +236,44 @@ export const useTransactionOps = ({
               { method: 'DELETE', headers: deleteHeaders },
             );
           }
+
+          // If AI transaction was re-categorized, update vendor_overrides
+          if (isAIRecategorize && updatedTx.budget_id && appState.user?.id) {
+            try {
+              const overrideHeaders = await getAuthHeaders();
+              (overrideHeaders as any)['Prefer'] = 'return=representation';
+              const vendorName = formatVendorName(updatedTx.vendor);
+
+              // Try to update existing override
+              const patchRes = await fetch(
+                `${REST_BASE}/vendor_overrides?user_id=eq.${appState.user.id}&vendor_name=eq.${encodeURIComponent(vendorName)}`,
+                {
+                  method: 'PATCH',
+                  headers: overrideHeaders,
+                  body: JSON.stringify({ category_id: updatedTx.budget_id }),
+                },
+              );
+              const patchBody = await patchRes.text();
+              let patchedRows: any[] = [];
+              try { patchedRows = patchBody ? JSON.parse(patchBody) : []; } catch { patchedRows = []; }
+
+              if (!patchRes.ok || !Array.isArray(patchedRows) || patchedRows.length === 0) {
+                // Insert new override
+                await fetch(`${REST_BASE}/vendor_overrides`, {
+                  method: 'POST',
+                  headers: overrideHeaders,
+                  body: JSON.stringify({
+                    user_id: appState.user.id,
+                    vendor_name: vendorName,
+                    category_id: updatedTx.budget_id,
+                  }),
+                });
+              }
+              console.log('[update] vendor_override saved for AI transaction:', vendorName);
+            } catch (overrideErr: any) {
+              console.warn('[update] vendor_override save failed:', overrideErr?.message || overrideErr);
+            }
+          }
         }
       } catch (err: any) {
         const msg = `Update exception: ${err?.message || err}`;
@@ -239,7 +281,7 @@ export const useTransactionOps = ({
         setDbError(msg);
       }
     },
-    [saveSplits, setAppState, setDbError, toSupabaseTransaction],
+    [appState.transactions, appState.user, saveSplits, setAppState, setDbError, toSupabaseTransaction],
   );
 
   // Delete transaction

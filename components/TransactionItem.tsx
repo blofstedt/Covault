@@ -117,6 +117,12 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
                     Future
                   </span>
                 )}
+
+                {transaction.label === 'AI' && (
+                  <span className="text-[8px] font-black text-violet-500 dark:text-violet-400 uppercase tracking-[0.15em] bg-violet-50 dark:bg-violet-900/20 px-2 py-0.5 rounded-md">
+                    AI
+                  </span>
+                )}
               </div>
 
               {/* Description */}

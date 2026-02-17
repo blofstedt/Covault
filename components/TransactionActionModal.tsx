@@ -11,6 +11,7 @@ interface TransactionActionModalProps {
   onClose: () => void;
   onEdit: (tx: Transaction) => void;
   onDelete: () => void;
+  onVendorOverrideUpdated?: (vendor: string, categoryName: string) => void;
 }
 
 const TransactionActionModal: React.FC<TransactionActionModalProps> = ({
@@ -21,6 +22,7 @@ const TransactionActionModal: React.FC<TransactionActionModalProps> = ({
   onClose,
   onEdit,
   onDelete,
+  onVendorOverrideUpdated,
 }) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
@@ -62,6 +64,7 @@ const TransactionActionModal: React.FC<TransactionActionModalProps> = ({
       initialTransaction={transaction}
       isSharedAccount={isSharedAccount}
       onDelete={() => setShowDeleteConfirm(true)}
+      onVendorOverrideUpdated={onVendorOverrideUpdated}
     />
   );
 };

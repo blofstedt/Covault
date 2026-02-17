@@ -25,6 +25,8 @@ interface TransactionFormProps {
   onDelete?: () => void;
   isTutorialMode?: boolean;
   demoSplitTrigger?: number;
+  /** Callback when an AI transaction's budget category is updated (vendor override) */
+  onVendorOverrideUpdated?: (vendor: string, categoryName: string) => void;
 }
 
 const generateUUID = () => {
@@ -50,6 +52,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   onDelete,
   isTutorialMode = false,
   demoSplitTrigger,
+  onVendorOverrideUpdated,
 }) => {
   const [vendor, setVendor] = useState(initialTransaction?.vendor || '');
   const [amountStr, setAmountStr] = useState(initialTransaction?.amount.toString() || '');
@@ -71,7 +74,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
+  const [splitBlockMessage, setSplitBlockMessage] = useState<string | null>(null);
 
+  const isAITransaction = initialTransaction?.label === 'AI';
   const amountInputRef = useRef<HTMLInputElement>(null);
 
   const CLOSE_ANIMATION_MS = 250;
@@ -209,6 +214,22 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   }, [amount, selectedIds]);
 
   const toggleCategory = (id: string) => {
+    // Block splitting for AI transactions
+    if (isAITransaction && selectedIds.size >= 1 && !selectedIds.has(id)) {
+      // For AI transactions, replace the category (no split allowed)
+      setSplitBlockMessage('Budget splitting is not available for AI transactions');
+      setTimeout(() => setSplitBlockMessage(null), 3000);
+      // Allow reassignment but not split
+      const next = new Set([id]);
+      setSelectedIds(next);
+      // Notify about vendor override update
+      const budgetName = budgets.find(b => b.id === id)?.name;
+      if (budgetName && onVendorOverrideUpdated && vendor) {
+        onVendorOverrideUpdated(vendor, budgetName);
+      }
+      return;
+    }
+
     const next = new Set(selectedIds);
     if (next.has(id)) {
       next.delete(id);
@@ -344,6 +365,11 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                 Recording as {userName}
               </span>
             )}
+            {isAITransaction && (
+              <span className="text-[10px] font-black text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded-full uppercase tracking-widest mt-1 inline-block">
+                AI Transaction
+              </span>
+            )}
           </div>
           <CloseButton onClick={handleClose} />
         </div>
@@ -408,9 +434,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           <div className="space-y-3">
             <div className="flex items-center justify-between px-2">
               <span className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">
-                {selectedIds.size > 1 ? 'Slide to Allocate' : 'Target Vault (Max 2)'}
+                {isAITransaction ? 'Select Budget' : (selectedIds.size > 1 ? 'Slide to Allocate' : 'Target Vault (Max 2)')}
               </span>
-              {selectedIds.size > 1 && (
+              {selectedIds.size > 1 && !isAITransaction && (
                 <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded-full animate-pulse">
                   SPLIT ACTIVE
                 </span>
@@ -560,6 +586,15 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           onChange={setDate}
           onClose={() => setShowCalendar(false)}
         />
+      )}
+
+      {/* Split block message for AI transactions */}
+      {splitBlockMessage && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[200] animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="bg-amber-600 text-white px-6 py-3 rounded-2xl shadow-xl shadow-amber-500/20 text-xs font-black uppercase tracking-widest text-center max-w-xs">
+            {splitBlockMessage}
+          </div>
+        </div>
       )}
     </div>
   );
