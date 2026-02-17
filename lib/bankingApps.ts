@@ -47,10 +47,8 @@ export const KNOWN_BANKING_APPS: Record<string, string> = {
   'com.koho.android': 'KOHO',
   'com.mogo.mobile': 'Mogo',
   'ca.payments.interac': 'Interac',
-  'com.questrade.questmobile': 'Questrade',
   'com.stack.app': 'Stack',
   'com.paytm.canada': 'Paytm Canada',
-  'com.mylo.android': 'Mylo',
 
   // ── US Banks ────────────────────────────────────────────────────────
   'com.chase.sig.android': 'Chase',
@@ -134,18 +132,8 @@ export const KNOWN_BANKING_APPS: Record<string, string> = {
   'com.step.app': 'Step',
   'com.upgrade.mobile': 'Upgrade',
   'com.lendingclub.mobile': 'LendingClub',
-  'com.possible.mobile': 'Possible Finance',
-  'com.earnin.app': 'Earnin',
-  'com.brigit.app': 'Brigit',
   'com.moneyLion.android': 'MoneyLion',
-  'com.acorns.android': 'Acorns',
-  'com.stash.stashinvest': 'Stash',
-  'com.betterment.app': 'Betterment',
-  'com.wealthfront.app': 'Wealthfront',
   'com.marcus.android': 'Marcus by Goldman Sachs',
-  'com.apple.android.card': 'Apple Card',
-  'com.google.android.apps.walletnfcrel': 'Google Wallet',
-  'com.samsung.android.spay': 'Samsung Pay',
 
   // ── US Credit Unions ────────────────────────────────────────────────
   'com.navyfederal.android': 'Navy Federal',
@@ -168,22 +156,9 @@ export const KNOWN_BANKING_APPS: Record<string, string> = {
   'com.delta.community.mobile': 'Delta Community CU',
   'com.americafirst.mobile': 'America First CU',
 
-  // ── US Investment / Brokerage ───────────────────────────────────────
-  'com.robinhood.android': 'Robinhood',
+  // ── US Banks with Brokerage + Spending ────────────────────────────
   'com.fidelity.android': 'Fidelity',
   'com.schwab.mobile': 'Schwab',
-  'com.etrade.mobilepro.activity': 'E*TRADE',
-  'com.tdameritrade.mobi': 'TD Ameritrade',
-  'com.interactivebrokers.tws': 'Interactive Brokers',
-  'com.webull.android': 'Webull',
-  'com.coinbase.android': 'Coinbase',
-  'com.binance.dev': 'Binance',
-  'piuk.blockchain.android': 'Blockchain.com',
-  'com.kraken.trade': 'Kraken',
-  'com.gemini.android.app': 'Gemini',
-  'com.personalcapital.pcapandroid': 'Empower Personal Capital',
-  'com.merrilllynch.mobile': 'Merrill Lynch',
-  'com.vanguard.android': 'Vanguard',
 
   // ── UK Banks ────────────────────────────────────────────────────────
   'com.barclays.android.barclaysmobilebanking': 'Barclays',
@@ -281,7 +256,6 @@ export const KNOWN_BANKING_APPS: Record<string, string> = {
   'com.zuercherkb.android': 'Zürcher Kantonalbank',
   'com.csg.cs.dnmb': 'Credit Suisse',
   'ch.raiffeisen.android': 'Raiffeisen Switzerland',
-  'com.swissquote.android': 'Swissquote',
   'com.neon.app': 'Neon (Swiss)',
   'com.yapeal.app': 'Yapeal',
 
@@ -338,9 +312,7 @@ export const KNOWN_BANKING_APPS: Record<string, string> = {
   'com.qonto.qonto': 'Qonto',
   'com.pleo.android': 'Pleo',
   'com.sumup.bank': 'SumUp',
-  'com.adyen.checkout': 'Adyen',
   'com.curve.android': 'Curve',
-  'de.solarisbank.app': 'Solaris Bank',
   'com.monese.monese.live': 'Monese',
   'com.twint.payment': 'TWINT',
   'com.holvi.app': 'Holvi',
@@ -350,17 +322,11 @@ export const KNOWN_BANKING_APPS: Record<string, string> = {
   'com.worldremit.android': 'WorldRemit',
   'com.remitly.android': 'Remitly',
 
-  // ── Payment / Transfers / Crypto ────────────────────────────────────
-  'com.stripe.android.dashboard': 'Stripe Dashboard',
-  'com.plaid.link': 'Plaid',
+  // ── Buy-Now-Pay-Later / Payment Apps ──────────────────────────────
   'com.affirm.mobile': 'Affirm',
   'com.afterpay.mobile': 'Afterpay',
-  'com.shopify.mobile': 'Shopify Balance',
   'com.skrill.moneybookers': 'Skrill',
   'com.paysend.app': 'Paysend',
-  'de.wirecard.myaccount': 'Wirecard',
-  'com.adp.mobile.app': 'ADP Mobile',
-  'com.gusto.wallet': 'Gusto',
 };
 
 export interface CovaultNotificationPlugin {

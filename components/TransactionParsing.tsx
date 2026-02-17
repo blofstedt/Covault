@@ -3,6 +3,7 @@ import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import { Transaction, BudgetCategory } from '../types';
 
 import NotificationToggleCard from './transaction_parsing/NotificationToggleCard';
+import ActiveBanksCard from './transaction_parsing/ActiveBanksCard';
 import AITransactionsEnteredCard from './transaction_parsing/AITransactionsEnteredCard';
 import AITransactionsRejectedCard from './transaction_parsing/AITransactionsRejectedCard';
 import type { AIRejectedTransaction } from './transaction_parsing/AITransactionsRejectedCard';
@@ -11,6 +12,8 @@ import ClearConfirmModal from './transaction_parsing/ClearConfirmModal';
 import PageShell from './ui/PageShell';
 
 import { supabase } from '../lib/supabase';
+import { covaultNotification } from '../lib/covaultNotification';
+import { KNOWN_BANKING_APPS } from '../lib/bankingApps';
 
 /** Delay (ms) after scanning to allow notification processing before reloading data */
 const SCAN_PROCESSING_DELAY_MS = 2000;
@@ -58,6 +61,32 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
 
   // ── Refresh spinner state ──
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // ── Monitored banking apps for ActiveBanksCard ──
+  const [monitoredBanks, setMonitoredBanks] = useState<Map<string, string>>(new Map());
+
+  const loadMonitoredBanks = useCallback(async () => {
+    if (!covaultNotification) return;
+    try {
+      const { apps: packageNames } = await covaultNotification.getMonitoredApps();
+      const bankMap = new Map<string, string>();
+      for (const pkg of packageNames) {
+        if (pkg in KNOWN_BANKING_APPS) {
+          bankMap.set(pkg, KNOWN_BANKING_APPS[pkg]);
+        }
+      }
+      setMonitoredBanks(bankMap);
+    } catch (e) {
+      console.warn('[TransactionParsing] Error loading monitored banks:', e);
+    }
+  }, []);
+
+  // Load monitored banks on mount and when notifications are enabled
+  useEffect(() => {
+    if (enabled) {
+      loadMonitoredBanks();
+    }
+  }, [enabled, loadMonitoredBanks]);
 
   // ── AI-entered transactions (label === 'AI') ──
   const aiTransactions = useMemo(
@@ -137,11 +166,12 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         loadRejectedNotifications();
+        loadMonitoredBanks();
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [loadRejectedNotifications]);
+  }, [loadRejectedNotifications, loadMonitoredBanks]);
 
   // ── Clear handlers ──
   const handleClearEntered = useCallback(async () => {
@@ -192,8 +222,9 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       }
     } finally {
       setIsRefreshing(false);
+      loadMonitoredBanks();
     }
-  }, [isRefreshing, onRefreshNotifications, onReloadTransactions, userId, loadRejectedNotifications]);
+  }, [isRefreshing, onRefreshNotifications, onReloadTransactions, userId, loadRejectedNotifications, loadMonitoredBanks]);
 
   return (
     <PageShell>
@@ -216,6 +247,14 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
             <>
               <NotificationToggleCard enabled={enabled} onToggle={onToggle} />
 
+              <ActiveBanksCard
+                activeBanks={monitoredBanks}
+                showDemoData={showDemoData}
+                onRefresh={handleRefresh}
+                isRefreshing={isRefreshing}
+                secondsUntilNextScan={secondsUntilNextScan}
+              />
+
               <AITransactionsEnteredCard
                 aiTransactions={aiTransactions}
                 budgets={budgets}
@@ -224,7 +263,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                 onClear={() => setClearTarget('entered')}
                 onRefresh={handleRefresh}
                 isRefreshing={isRefreshing}
-                secondsUntilNextScan={secondsUntilNextScan}
               />
 
               <AITransactionsRejectedCard
