@@ -68,6 +68,49 @@ public class CovaultNotificationPlugin extends Plugin {
             getContext().registerReceiver(transactionReceiver, filter);
         }
         Log.i(TAG, "Transaction broadcast receiver registered");
+
+        // Auto-detect installed banking apps and save to SharedPreferences
+        // so the NotificationListener can monitor them immediately,
+        // even before the user opens the notification settings UI.
+        autoDetectBankingApps();
+    }
+
+    /**
+     * Scan installed apps, cross-reference with the known banking apps list,
+     * and persist to SharedPreferences if no monitored apps have been saved yet.
+     */
+    private void autoDetectBankingApps() {
+        try {
+            String stored = getContext().getSharedPreferences("covault_prefs", 0)
+                .getString("monitored_apps", "[]");
+            org.json.JSONArray existing = new org.json.JSONArray(stored);
+            if (existing.length() > 0) {
+                Log.i(TAG, "autoDetectBankingApps: " + existing.length() + " monitored apps already saved, skipping");
+                return;
+            }
+
+            PackageManager pm = getContext().getPackageManager();
+            List<ApplicationInfo> apps = pm.getInstalledApplications(PackageManager.GET_META_DATA);
+            org.json.JSONArray detected = new org.json.JSONArray();
+
+            for (ApplicationInfo app : apps) {
+                if (NotificationListener.BANKING_APPS.contains(app.packageName)) {
+                    detected.put(app.packageName);
+                }
+            }
+
+            if (detected.length() > 0) {
+                getContext().getSharedPreferences("covault_prefs", 0)
+                    .edit()
+                    .putString("monitored_apps", detected.toString())
+                    .apply();
+                Log.i(TAG, "autoDetectBankingApps: auto-saved " + detected.length() + " banking apps");
+            } else {
+                Log.i(TAG, "autoDetectBankingApps: no known banking apps found installed");
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "autoDetectBankingApps: error during auto-detection", e);
+        }
     }
 
     @Override

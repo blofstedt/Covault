@@ -9,7 +9,8 @@ import { supabase } from './lib/supabase';
 import { useAuthState, AuthStatus } from './lib/useAuthState';
 import { useDeepLinks } from './lib/useDeepLinks';
 import { useNotificationListener } from './lib/useNotificationListener';
-import { covaultNotification } from './lib/covaultNotification';
+import { covaultNotification, autoDetectAndSaveMonitoredApps } from './lib/covaultNotification';
+import { KNOWN_BANKING_APPS } from './lib/bankingApps';
 import { useAppTheme } from './lib/useAppTheme';
 import { useUserData } from './lib/useUserData';
 import { useDeveloperMode } from './lib/useDeveloperMode';
@@ -137,6 +138,15 @@ const App: React.FC = () => {
       await covaultNotification.scanActiveNotifications();
     }
   }, []);
+
+  // Auto-detect installed banking apps on startup so the notification
+  // listener can monitor them immediately (even before the user opens
+  // notification settings or any banking notification arrives).
+  useEffect(() => {
+    if (appState.settings.notificationsEnabled) {
+      autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
+    }
+  }, [appState.settings.notificationsEnabled]);
 
   // Theme handling
   useAppTheme(appState.settings.theme);

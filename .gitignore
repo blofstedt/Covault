@@ -25,3 +25,4 @@ www
 *.sw?
 .env
 node_modules
+.env
