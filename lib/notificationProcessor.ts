@@ -1555,7 +1555,7 @@ export async function processNotificationWithAI(
     );
     const patchBody = await patchRes.text();
     let patchedRows: any[] = [];
-    try { patchedRows = patchBody ? JSON.parse(patchBody) : []; } catch { patchedRows = []; }
+    try { patchedRows = patchBody ? JSON.parse(patchBody) : []; } catch (e) { console.warn('[AI pipeline] vendor_override PATCH parse error:', e); patchedRows = []; }
 
     if (!patchRes.ok || !Array.isArray(patchedRows) || patchedRows.length === 0) {
       // Insert new override

@@ -80,6 +80,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const amountInputRef = useRef<HTMLInputElement>(null);
 
   const CLOSE_ANIMATION_MS = 250;
+  const TOAST_DISMISS_MS = 3000;
 
   const handleClose = () => {
     setIsClosing(true);
@@ -218,7 +219,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     if (isAITransaction && selectedIds.size >= 1 && !selectedIds.has(id)) {
       // For AI transactions, replace the category (no split allowed)
       setSplitBlockMessage('Budget splitting is not available for AI transactions');
-      setTimeout(() => setSplitBlockMessage(null), 3000);
+      setTimeout(() => setSplitBlockMessage(null), TOAST_DISMISS_MS);
       // Allow reassignment but not split
       const next = new Set([id]);
       setSelectedIds(next);
