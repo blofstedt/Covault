@@ -52,6 +52,7 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
             disabled={isRefreshing}
             className="p-1.5 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
             title="Scan for new transactions"
+            aria-label="Scan for new transactions"
           >
             <svg
               className={`w-4 h-4 text-emerald-500 dark:text-emerald-400 ${isRefreshing ? 'animate-spin' : ''}`}
@@ -71,6 +72,7 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
             onClick={onClear}
             className="p-1.5 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
             title="Clear entered"
+            aria-label="Clear all entered transactions"
           >
             <svg className="w-4 h-4 text-slate-400 dark:text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <polyline points="3 6 5 6 21 6" />

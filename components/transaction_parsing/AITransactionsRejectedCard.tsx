@@ -46,6 +46,7 @@ const AITransactionsRejectedCard: React.FC<AITransactionsRejectedCardProps> = ({
           onClick={onClear}
           className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           title="Clear rejected"
+          aria-label="Clear all rejected notifications"
         >
           <svg className="w-4 h-4 text-slate-400 dark:text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
             <polyline points="3 6 5 6 21 6" />

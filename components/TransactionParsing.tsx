@@ -129,7 +129,11 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     if (!userId) return;
     const aiIds = aiTransactions.map((tx) => tx.id);
     if (aiIds.length === 0) return;
-    await supabase.from('transactions').delete().in('id', aiIds);
+    const { error } = await supabase.from('transactions').delete().in('id', aiIds);
+    if (error) {
+      console.error('[TransactionParsing] Error clearing entered:', error);
+      return;
+    }
     onClearEntered?.();
   }, [userId, aiTransactions, onClearEntered]);
 
@@ -137,7 +141,11 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     if (!userId) return;
     const rejectedIds = rejectedNotifications.map((r) => r.id);
     if (rejectedIds.length === 0) return;
-    await supabase.from('pending_transactions').delete().in('id', rejectedIds);
+    const { error } = await supabase.from('pending_transactions').delete().in('id', rejectedIds);
+    if (error) {
+      console.error('[TransactionParsing] Error clearing rejected:', error);
+      return;
+    }
     setRejectedNotifications([]);
   }, [userId, rejectedNotifications]);
 
