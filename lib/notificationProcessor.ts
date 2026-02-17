@@ -1490,7 +1490,7 @@ export async function processNotificationWithAI(
   // ── Step 3: Reject non-transactions ──
   if (!aiResult.isTransaction) {
     console.log('[AI pipeline] Not a transaction:', aiResult.rejectionReason);
-    const reason = aiResult.rejectionReason || 'Not a purchase or charge';
+    const reason = aiResult.rejectionReason || 'Not cost-related notification';
     // Store as rejected so it appears in the rejected card
     await storeRejectedNotification(
       userId, input, notifTimestamp,
@@ -1527,7 +1527,7 @@ export async function processNotificationWithAI(
 
     if (duplicateToday) {
       console.log('[AI pipeline] Duplicate vendor+amount found for today');
-      const reason = `Duplicate: ${vendor} for $${amount.toFixed(2)} already recorded today`;
+      const reason = `Duplicate transaction found: ${vendor} for $${amount.toFixed(2)} already recorded today`;
       // Store as rejected so it appears in the rejected card
       await storeRejectedNotification(userId, input, notifTimestamp, vendor, amount, reason);
       return {
