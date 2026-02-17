@@ -3,11 +3,11 @@ import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import { Transaction, BudgetCategory } from '../types';
 
 import NotificationToggleCard from './transaction_parsing/NotificationToggleCard';
-import ActiveBanksCard from './transaction_parsing/ActiveBanksCard';
 import AITransactionsEnteredCard from './transaction_parsing/AITransactionsEnteredCard';
 import AITransactionsRejectedCard from './transaction_parsing/AITransactionsRejectedCard';
 import type { AIRejectedTransaction } from './transaction_parsing/AITransactionsRejectedCard';
 import SetupInfoCard from './transaction_parsing/SetupInfoCard';
+import ClearConfirmModal from './transaction_parsing/ClearConfirmModal';
 import PageShell from './ui/PageShell';
 
 import { supabase } from '../lib/supabase';
@@ -24,6 +24,8 @@ interface TransactionParsingProps {
   userId?: string;
   isTutorialMode?: boolean;
   showDemoData?: boolean;
+  onRefreshNotifications?: () => Promise<void>;
+  onClearEntered?: () => void;
 }
 
 const TransactionParsing: React.FC<TransactionParsingProps> = ({
@@ -38,56 +40,23 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   userId,
   isTutorialMode = false,
   showDemoData = false,
+  onRefreshNotifications,
+  onClearEntered,
 }) => {
   // ── State for rejected notifications ──
   const [rejectedNotifications, setRejectedNotifications] = useState<AIRejectedTransaction[]>([]);
+
+  // ── Clear modal state ──
+  const [clearTarget, setClearTarget] = useState<'entered' | 'rejected' | null>(null);
+
+  // ── Refresh spinner state ──
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // ── AI-entered transactions (label === 'AI') ──
   const aiTransactions = useMemo(
     () => allTransactions.filter((tx) => tx.label === 'AI'),
     [allTransactions],
   );
-
-  // ── Active banks: derive from AI transactions + notification rules ──
-  const [activeBanks, setActiveBanks] = useState<Map<string, string>>(new Map());
-
-  // Load active banks from notification_rules table
-  useEffect(() => {
-    const loadActiveBanks = async () => {
-      if (!userId) return;
-
-      const { data, error } = await supabase
-        .from('notification_rules')
-        .select('bank_app_id, bank_name')
-        .eq('user_id', userId)
-        .eq('is_active', true);
-
-      if (error) {
-        console.error('[TransactionParsing] Error loading active banks:', error);
-        return;
-      }
-
-      const banks = new Map<string, string>();
-      if (data) {
-        for (const rule of data) {
-          if (rule.bank_app_id && rule.bank_name) {
-            banks.set(rule.bank_app_id, rule.bank_name);
-          }
-        }
-      }
-
-      // Also derive banks from AI transactions that may not have rules
-      for (const tx of aiTransactions) {
-        if (tx.notification_rule_id && tx.raw_notification) {
-          // These fields are only on the client side, skip
-        }
-      }
-
-      setActiveBanks(banks);
-    };
-
-    loadActiveBanks();
-  }, [userId, aiTransactions]);
 
   // Load rejected notifications from pending_transactions
   useEffect(() => {
@@ -155,6 +124,37 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [userId]);
 
+  // ── Clear handlers ──
+  const handleClearEntered = useCallback(async () => {
+    if (!userId) return;
+    const aiIds = aiTransactions.map((tx) => tx.id);
+    if (aiIds.length === 0) return;
+    await supabase.from('transactions').delete().in('id', aiIds);
+    onClearEntered?.();
+  }, [userId, aiTransactions, onClearEntered]);
+
+  const handleClearRejected = useCallback(async () => {
+    if (!userId) return;
+    const rejectedIds = rejectedNotifications.map((r) => r.id);
+    if (rejectedIds.length === 0) return;
+    await supabase.from('pending_transactions').delete().in('id', rejectedIds);
+    setRejectedNotifications([]);
+  }, [userId, rejectedNotifications]);
+
+  // ── Refresh handler ──
+  const handleRefresh = useCallback(async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      if (onRefreshNotifications) {
+        await onRefreshNotifications();
+      }
+    } finally {
+      // Keep spinning for a short moment to feel responsive
+      setTimeout(() => setIsRefreshing(false), 1200);
+    }
+  }, [isRefreshing, onRefreshNotifications]);
+
   return (
     <PageShell>
       {/* Header */}
@@ -176,21 +176,20 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
             <>
               <NotificationToggleCard enabled={enabled} onToggle={onToggle} />
 
-              <ActiveBanksCard
-                activeBanks={activeBanks}
-                showDemoData={showDemoData}
-              />
-
               <AITransactionsEnteredCard
                 aiTransactions={aiTransactions}
                 budgets={budgets}
                 showDemoData={showDemoData}
                 onTransactionTap={onTransactionTap}
+                onClear={() => setClearTarget('entered')}
+                onRefresh={handleRefresh}
+                isRefreshing={isRefreshing}
               />
 
               <AITransactionsRejectedCard
                 rejectedTransactions={rejectedNotifications}
                 showDemoData={showDemoData}
+                onClear={() => setClearTarget('rejected')}
               />
             </>
           ) : (
@@ -205,6 +204,22 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         onOpenParsing={onBack}
         activeView="parsing"
       />
+
+      {/* Clear confirmation modal */}
+      {clearTarget && (
+        <ClearConfirmModal
+          cardName={clearTarget === 'entered' ? 'Transactions Entered' : 'Transactions Rejected'}
+          onConfirm={async () => {
+            if (clearTarget === 'entered') {
+              await handleClearEntered();
+            } else {
+              await handleClearRejected();
+            }
+            setClearTarget(null);
+          }}
+          onCancel={() => setClearTarget(null)}
+        />
+      )}
     </PageShell>
   );
 };

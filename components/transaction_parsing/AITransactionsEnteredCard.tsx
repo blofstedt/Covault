@@ -11,6 +11,9 @@ interface AITransactionsEnteredCardProps {
   budgets: BudgetCategory[];
   showDemoData?: boolean;
   onTransactionTap?: (tx: Transaction) => void;
+  onClear?: () => void;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
 }
 
 /**
@@ -23,6 +26,9 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
   budgets,
   showDemoData = false,
   onTransactionTap,
+  onClear,
+  onRefresh,
+  isRefreshing = false,
 }) => {
   const budgetNameById = new Map<string, string>(budgets.map(b => [b.id, b.name]));
 
@@ -39,6 +45,40 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
       title="Transactions Entered"
       subtitle="AI-processed transactions added to your budgets"
       count={showDemoData && aiTransactions.length === 0 ? 3 : aiTransactions.length}
+      headerAction={
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            className="p-1.5 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
+            title="Scan for new transactions"
+          >
+            <svg
+              className={`w-4 h-4 text-emerald-500 dark:text-emerald-400 ${isRefreshing ? 'animate-spin' : ''}`}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="23 4 23 10 17 10" />
+              <polyline points="1 20 1 14 7 14" />
+              <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+            </svg>
+          </button>
+          <button
+            onClick={onClear}
+            className="p-1.5 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
+            title="Clear entered"
+          >
+            <svg className="w-4 h-4 text-slate-400 dark:text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+            </svg>
+          </button>
+        </div>
+      }
     >
       {aiTransactions.length > 0 ? (
         <div className="space-y-2">
