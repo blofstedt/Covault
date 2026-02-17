@@ -6,15 +6,27 @@ interface ActiveBanksCardProps {
   /** Map of bank app ID → bank display name */
   activeBanks: Map<string, string>;
   showDemoData?: boolean;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
+  secondsUntilNextScan?: number | null;
 }
+
+const formatCountdown = (s: number) => {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${String(sec).padStart(2, '0')}`;
+};
 
 /**
  * Shows the banks currently being parsed for notifications at the top
- * of the Transaction Parsing page.
+ * of the Transaction Parsing page with a scan timer.
  */
 const ActiveBanksCard: React.FC<ActiveBanksCardProps> = ({
   activeBanks,
   showDemoData = false,
+  onRefresh,
+  isRefreshing = false,
+  secondsUntilNextScan,
 }) => {
   const banks = Array.from(activeBanks.entries());
 
@@ -28,9 +40,39 @@ const ActiveBanksCard: React.FC<ActiveBanksCardProps> = ({
           <line x1="1" y1="10" x2="23" y2="10" />
         </>
       }
-      title="Banks Being Parsed"
-      subtitle="Covault AI is monitoring these banks"
+      title="Banking Apps"
+      subtitle="Covault AI is monitoring these apps for transactions"
       count={showDemoData && banks.length === 0 ? 2 : banks.length}
+      headerAction={
+        <div className="flex flex-col items-end gap-0.5">
+          <button
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+            title="Scan now"
+            aria-label="Scan for new transactions"
+          >
+            <svg
+              className={`w-4 h-4 text-blue-500 dark:text-blue-400 ${isRefreshing ? 'animate-spin' : ''}`}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="23 4 23 10 17 10" />
+              <polyline points="1 20 1 14 7 14" />
+              <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+            </svg>
+          </button>
+          {secondsUntilNextScan != null && secondsUntilNextScan > 0 && (
+            <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 tabular-nums">
+              next scan {formatCountdown(secondsUntilNextScan)}
+            </span>
+          )}
+        </div>
+      }
     >
       {banks.length > 0 ? (
         <div className="flex flex-wrap gap-2">
