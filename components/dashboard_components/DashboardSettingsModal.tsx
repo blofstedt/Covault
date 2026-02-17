@@ -8,11 +8,10 @@ import VaultSharingSection from './settings_modal_components/VaultSharingSection
 import SupportFeedbackSection from './settings_modal_components/SupportFeedbackSection';
 import SignOutSection from './settings_modal_components/SignOutSection';
 import NotificationSettingsSection from './settings_modal_components/NotificationSettingsSection';
-import NotificationRulesSection from './settings_modal_components/NotificationRulesSection';
 import BudgetLimitsSection from './settings_modal_components/BudgetLimitsSection';
 import ExportTransactionsSection from './settings_modal_components/ExportTransactionsSection';
 import ReportSection from './settings_modal_components/ReportSection';
-import { BudgetCategory, Transaction, NotificationRule } from '../../types';
+import { BudgetCategory, Transaction } from '../../types';
 import PremiumGate from '../PremiumGate';
 import { CloseButton } from '../shared';
 
@@ -22,7 +21,6 @@ export interface DashboardSettings {
   useLeisureAsBuffer: boolean;
   notificationsEnabled?: boolean;
   app_notifications_enabled?: boolean;
-  notification_rules?: NotificationRule[];
 
   [key: string]: any;
 }
@@ -153,18 +151,6 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
             <NotificationSettingsSection
               enabled={!!settings.notificationsEnabled}
               onToggle={(v) => onUpdateSettings('notificationsEnabled', v)}
-            />
-          </PremiumGate>
-
-          {/* Notification Rules — Premium */}
-          <PremiumGate hasPremium={hasPremium} onSubscribe={onSubscribe}>
-            <NotificationRulesSection
-              enabled={!!settings.app_notifications_enabled}
-              onToggle={(v) => onUpdateSettings('app_notifications_enabled', v)}
-              rules={settings.notification_rules || []}
-              onUpdateRules={(rules) => onUpdateSettings('notification_rules', rules)}
-              budgets={budgets}
-              transactions={transactions}
             />
           </PremiumGate>
 

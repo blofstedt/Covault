@@ -60,21 +60,16 @@ export interface PendingTransaction {
   user_id: string;
   app_package: string;
   app_name: string;
-  notification_title: string;
-  notification_text: string;
   notification_timestamp: number;
   posted_at: string;
   extracted_vendor: string;
   extracted_amount: number;
   extracted_timestamp: string;
   confidence: number;
-  validation_reasons: string;
-  needs_review: boolean;
-  pattern_id?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  rejection_reason?: string;
   created_at: string;
   reviewed_at?: string;
-  approved?: boolean;
-  rejection_reason?: string;
 }
 
 
@@ -90,14 +85,6 @@ export interface IgnoredTransaction {
   created_at: string;
 }
 
-// Notification fingerprint for deduplication
-export interface NotificationFingerprint {
-  id: string;
-  user_id: string;
-  fingerprint_hash: string;
-  bank_app_id: string;
-  created_at: string;
-}
 
 export enum Recurrence {
   ONE_TIME = 'One-time',
@@ -127,9 +114,6 @@ export interface Transaction {
   description?: string;
   created_at: string;
 
-  // 🔽 New: used only on the client for notification correction / flagging
-  notification_rule_id?: string;
-  raw_notification?: string;
 }
 
 export interface Settings {
@@ -150,46 +134,6 @@ export interface Settings {
   hasSeenTutorial?: boolean;
 }
 
-// Notification Rule types
-export type NotificationSubjectType =
-  | 'specific_budget'
-  | 'all_budgets'
-  | 'specific_recurring'
-  | 'all_recurring'
-  | 'remaining_balance';
-
-export type BudgetCondition = 'within' | 'over' | 'under';
-export type BudgetThresholdType = 'dollar' | 'percent';
-export type RecurringTimingCondition = 'days_before' | 'on_due_date' | 'if_missed';
-export type RecurringValueCondition = 'is_over' | 'higher_than_last_month';
-export type BalanceCondition = 'falls_below' | 'is_over';
-export type DeliveryMethod = 'push' | 'email' | 'in_app';
-
-export interface NotificationRule {
-  id: string;
-  subjectType: NotificationSubjectType;
-  subjectId?: string;       // budget or transaction ID for specific selections
-  subjectName?: string;     // display name for the subject
-
-  // Budget conditions
-  budgetCondition?: BudgetCondition;
-  budgetThresholdType?: BudgetThresholdType;
-  budgetThresholdValue?: number;
-
-  // Recurring transaction conditions
-  recurringTimingCondition?: RecurringTimingCondition;
-  recurringTimingDays?: number;
-  recurringValueCondition?: RecurringValueCondition;
-  recurringValueAmount?: number;
-
-  // Balance conditions
-  balanceCondition?: BalanceCondition;
-  balanceThresholdValue?: number;
-
-  delivery: DeliveryMethod;
-  enabled: boolean;
-}
-
 export interface AppState {
   user: User | null;
   budgets: BudgetCategory[];
@@ -204,7 +148,6 @@ export interface AppState {
     hasSeenTutorial: boolean;
     notificationsEnabled: boolean;
     hiddenCategories: string[]; // IDs of hidden budget categories
-    notification_rules: NotificationRule[];
     app_notifications_enabled: boolean;
   };
 }

@@ -35,7 +35,6 @@ const DEFAULT_SETTINGS = {
   notificationsEnabled: false,
   app_notifications_enabled: false,
   hiddenCategories: [] as string[],
-  notification_rules: [] as import('./types').NotificationRule[],
 };
 
 // Load settings from localStorage

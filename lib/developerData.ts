@@ -122,7 +122,6 @@ export function buildDevState(options: {
       notificationsEnabled: options.notificationsEnabled,
       app_notifications_enabled: false,
       hiddenCategories: [],
-      notification_rules: [],
     },
   };
 }
