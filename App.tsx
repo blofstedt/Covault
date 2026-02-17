@@ -229,7 +229,7 @@ const App: React.FC = () => {
 
     // Tick down every second
     const tickId = setInterval(() => {
-      setSecondsUntilNextScan(prev => (prev != null && prev > 0 ? prev - 1 : prev));
+      setSecondsUntilNextScan(prev => (prev !== null && prev > 0 ? prev - 1 : prev));
     }, 1000);
 
     return () => {

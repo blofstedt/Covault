@@ -17,6 +17,12 @@ interface AITransactionsEnteredCardProps {
   secondsUntilNextScan?: number | null;
 }
 
+const formatCountdown = (s: number) => {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${String(sec).padStart(2, '0')}`;
+};
+
 /**
  * Shows all transactions that the AI successfully processed and entered.
  * These are real purchases/charges that passed duplicate detection and
@@ -33,12 +39,6 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
   secondsUntilNextScan,
 }) => {
   const budgetNameById = new Map<string, string>(budgets.map(b => [b.id, b.name]));
-
-  const formatCountdown = (s: number) => {
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return `${m}:${String(sec).padStart(2, '0')}`;
-  };
 
   return (
     <ParsingCard
@@ -89,7 +89,7 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
               </svg>
             </button>
           </div>
-          {secondsUntilNextScan != null && secondsUntilNextScan > 0 && (
+          {secondsUntilNextScan !== null && secondsUntilNextScan > 0 && (
             <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 tabular-nums">
               next scan {formatCountdown(secondsUntilNextScan)}
             </span>
