@@ -197,18 +197,19 @@ const App: React.FC = () => {
     };
   }, [appState.settings.notificationsEnabled, appState.user?.id, loadTransactions]);
 
-  // ── Periodic notification scanning while enabled ──
-  // Re-scan active notifications every 5 minutes so the app picks up
-  // banking notifications that arrive while the app is in the foreground
-  // without waiting for the user to tap refresh.
+  // ── Periodic banking app detection & notification scanning while enabled ──
+  // Every 5 minutes, re-detect installed banking apps (so newly installed
+  // apps are picked up without waiting for a notification) and then
+  // re-scan active notifications in the notification shade.
   useEffect(() => {
     if (!appState.settings.notificationsEnabled || !covaultNotification) return;
 
     const intervalId = setInterval(async () => {
       try {
+        await autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
         await covaultNotification.scanActiveNotifications();
       } catch (e) {
-        console.warn('[periodic scan] Error scanning active notifications:', e);
+        console.warn('[periodic scan] Error during periodic bank app detection/scan:', e);
       }
     }, SCAN_INTERVAL_MS);
 
