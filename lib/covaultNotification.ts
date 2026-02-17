@@ -91,20 +91,31 @@ export async function autoDetectAndSaveMonitoredApps(
 
   try {
     const { apps: saved } = await covaultNotification.getMonitoredApps();
-    if (saved && saved.length > 0) {
-      // User already has monitored apps configured — don't overwrite
-      return;
-    }
-
     const { apps: installed } = await covaultNotification.getInstalledApps();
     const bankingPackages = installed
       .filter(app => app.packageName in knownBankingApps)
       .map(app => app.packageName);
 
-    if (bankingPackages.length > 0) {
-      await covaultNotification.saveMonitoredApps({ apps: bankingPackages });
+    if (bankingPackages.length === 0) {
+      console.log('[autoDetect] No known banking apps found installed');
+      return;
+    }
+
+    // Merge with existing selections so newly installed banking apps
+    // are picked up without overwriting the user's previous choices.
+    const savedSet = new Set(saved || []);
+    let changed = false;
+    for (const pkg of bankingPackages) {
+      if (!savedSet.has(pkg)) {
+        savedSet.add(pkg);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      await covaultNotification.saveMonitoredApps({ apps: Array.from(savedSet) });
       console.log(
-        `[autoDetect] Saved ${bankingPackages.length} installed banking apps`,
+        `[autoDetect] Saved ${savedSet.size} monitored banking apps (${bankingPackages.length} installed)`,
       );
     }
   } catch (e) {

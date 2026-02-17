@@ -103,26 +103,30 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
     }
   }, [isNative]);
 
-  // Check permission status and load data
+  // Check permission status and load data.
+  // Always scan for installed banking apps so the user can see which
+  // apps are detected — even before granting notification permission.
   const checkStatus = useCallback(async () => {
     if (!plugin) return;
     try {
       const { enabled: granted } = await plugin.isEnabled();
       setPermissionGranted(granted);
 
+      // Always scan for installed banking apps regardless of permission
+      // so the user can see their apps are detected on this device.
+      const { apps: installed } = await plugin.getInstalledApps();
+      const bankApps = installed.filter((a) => a.packageName in KNOWN_BANKING_APPS);
+
+      const named = bankApps
+        .map((a) => ({
+          packageName: a.packageName,
+          name: KNOWN_BANKING_APPS[a.packageName] || a.name,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      setInstalledBankApps(named);
+
       if (granted) {
-        const { apps: installed } = await plugin.getInstalledApps();
-        const bankApps = installed.filter((a) => a.packageName in KNOWN_BANKING_APPS);
-
-        const named = bankApps
-          .map((a) => ({
-            packageName: a.packageName,
-            name: KNOWN_BANKING_APPS[a.packageName] || a.name,
-          }))
-          .sort((a, b) => a.name.localeCompare(b.name));
-
-        setInstalledBankApps(named);
-
         const { apps: saved } = await plugin.getMonitoredApps();
         if (saved && saved.length > 0) {
           setSelectedApps(new Set(saved));
@@ -130,7 +134,6 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
           setSelectedApps(new Set(named.map((a) => a.packageName)));
         }
       } else {
-        setInstalledBankApps([]);
         setSelectedApps(new Set());
       }
     } catch (e) {
@@ -300,6 +303,15 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
                 </span>
               </span>
             )}
+
+            {!enabled && installedBankApps.length > 0 && (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700">
+                <span className="w-2 h-2 rounded-full bg-blue-500 mr-2" />
+                <span className="text-[10px] font-semibold text-blue-700 dark:text-blue-300">
+                  {installedBankApps.length} banking app{installedBankApps.length === 1 ? '' : 's'} detected
+                </span>
+              </span>
+            )}
           </div>
         </div>
 
@@ -331,7 +343,7 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
 
           {installedBankApps.length === 0 ? (
             <p className="text-[11px] text-slate-400 text-center py-3">
-              No banking app notifications received yet. Once a notification arrives from a supported app, it will appear here automatically.
+              No supported banking apps detected on this device. Ensure your banking apps are installed and try reopening Covault.
             </p>
           ) : (
             <div className="grid grid-cols-2 gap-2">

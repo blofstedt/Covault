@@ -28,25 +28,28 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
     }
   }, [isNative]);
 
-  // Check permission status and load data when component mounts or becomes visible
+  // Check permission status and load data when component mounts or becomes visible.
+  // Always scan for installed banking apps so the user can see which
+  // apps are detected — even before granting notification permission.
   const checkStatus = useCallback(async () => {
     if (!plugin) return;
     try {
       const { enabled: granted } = await plugin.isEnabled();
       setPermissionGranted(granted);
 
-      if (granted) {
-        // Load installed apps and filter to known banking apps
-        const { apps: installed } = await plugin.getInstalledApps();
-        const bankApps = installed.filter(a => a.packageName in KNOWN_BANKING_APPS);
-        // Use our friendly names
-        const named = bankApps.map(a => ({
-          packageName: a.packageName,
-          name: KNOWN_BANKING_APPS[a.packageName] || a.name,
-        }));
-        named.sort((a, b) => a.name.localeCompare(b.name));
-        setInstalledBankApps(named);
+      // Always scan for installed banking apps regardless of permission
+      // so the user can see their apps are detected on this device.
+      const { apps: installed } = await plugin.getInstalledApps();
+      const bankApps = installed.filter(a => a.packageName in KNOWN_BANKING_APPS);
+      // Use our friendly names
+      const named = bankApps.map(a => ({
+        packageName: a.packageName,
+        name: KNOWN_BANKING_APPS[a.packageName] || a.name,
+      }));
+      named.sort((a, b) => a.name.localeCompare(b.name));
+      setInstalledBankApps(named);
 
+      if (granted) {
         // Load previously saved selections
         const { apps: saved } = await plugin.getMonitoredApps();
         if (saved && saved.length > 0) {
