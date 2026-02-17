@@ -1,29 +1,35 @@
 // lib/useNotificationListener.ts
 import { useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
-import type { Transaction, User, PendingTransaction } from '../types';
+import type { Transaction, User, PendingTransaction, BudgetCategory } from '../types';
 import { covaultNotification } from './covaultNotification';
-import { processNotification } from './notificationProcessor';
+import { processNotificationWithAI } from './notificationProcessor';
+import type { AIProcessingResult } from './notificationProcessor';
 
 export interface UseNotificationListenerParams {
   user: User | null;
+  budgets: BudgetCategory[];
   onTransactionDetected: (tx: Transaction) => void;
   onPendingTransactionCreated?: (pending: PendingTransaction) => void;
   /** Called for auto-accepted transactions that are already saved in the DB. */
   onAutoAcceptedTransaction?: (tx: Transaction) => void;
+  /** Called when AI processes a notification (for the parsing UI) */
+  onAIProcessingResult?: (result: AIProcessingResult) => void;
 }
 
 /**
  * Hook that listens for transactionDetected events from the native CovaultNotification plugin.
  *
- * Uses the manual-regex processing pipeline:
- *   dedup → rule lookup → regex apply → pending insert → auto-approve
+ * Uses the AI processing pipeline:
+ *   dedup → AI extraction → duplicate check → category assignment → auto-insert
  */
 export const useNotificationListener = ({
   user,
+  budgets,
   onTransactionDetected,
   onPendingTransactionCreated,
   onAutoAcceptedTransaction,
+  onAIProcessingResult,
 }: UseNotificationListenerParams) => {
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
@@ -52,41 +58,40 @@ export const useNotificationListener = ({
             const bankAppId = (event.bankAppId || event.source_app)?.toLowerCase();
             const bankName = (event.bankName || event.source_app)?.toLowerCase();
 
-            // ── Processing pipeline ──
+            // ── AI Processing pipeline ──
             if (rawNotification && bankAppId && bankName) {
               try {
-                const result = await processNotification(user.id, {
+                const availableCategories = budgets.map(b => ({ id: b.id, name: b.name }));
+                const result = await processNotificationWithAI(user.id, {
                   rawNotification,
                   bankAppId,
                   bankName,
                   notificationTimestamp: event.timestamp,
                   fallbackVendor: event.vendor,
                   fallbackAmount: event.amount,
-                });
+                }, availableCategories);
 
-                if (!result.processed) {
+                // Notify parsing UI about the result
+                onAIProcessingResult?.(result);
+
+                if (!result.processed || !result.isTransaction) {
                   console.log(
-                    `[notification] Skipped: ${result.skipReason}`,
+                    `[notification] Skipped: ${result.skipReason || result.rejectionReason}`,
                   );
                   return;
                 }
 
-                // Notify about pending transaction for UI update
-                if (result.pendingTransaction) {
-                  onPendingTransactionCreated?.(result.pendingTransaction);
-                }
-
-                // If auto-accepted, notify via the UI-only callback
-                if (result.autoAccepted && result.transactionId && result.pendingTransaction) {
+                // If transaction was inserted, notify the UI
+                if (result.transactionId) {
                   const tx: Transaction = {
                     id: result.transactionId,
                     user_id: user.id,
-                    vendor: result.pendingTransaction.extracted_vendor,
-                    amount: result.pendingTransaction.extracted_amount,
+                    vendor: result.vendor || 'Unknown',
+                    amount: result.amount || 0,
                     date: new Date().toISOString().slice(0, 10),
                     budget_id: result.categoryId || null,
                     is_projected: false,
-                    label: 'Auto-Added',
+                    label: 'AI',
                     userName: user.name || 'User',
                     created_at: new Date().toISOString(),
                   };
@@ -100,7 +105,7 @@ export const useNotificationListener = ({
                 return;
               } catch (err) {
                 console.error(
-                  '[notification] Pipeline error, falling back to legacy:',
+                  '[notification] AI pipeline error, falling back to legacy:',
                   err,
                 );
               }
@@ -118,7 +123,7 @@ export const useNotificationListener = ({
               date: new Date().toISOString().slice(0, 10),
               budget_id: null,
               is_projected: false,
-              label: 'Auto-Added',
+              label: 'AI',
               userName: user.name || 'User',
               created_at: new Date().toISOString(),
             };
@@ -141,5 +146,5 @@ export const useNotificationListener = ({
     return () => {
       cleanup?.();
     };
-  }, [user, onTransactionDetected, onPendingTransactionCreated, onAutoAcceptedTransaction]);
+  }, [user, budgets, onTransactionDetected, onPendingTransactionCreated, onAutoAcceptedTransaction, onAIProcessingResult]);
 };
