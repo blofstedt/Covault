@@ -437,6 +437,17 @@ function localExtraction(notificationText: string): AIExtractionResult {
   // ── 6. Polish vendor name ──
   const vendor = rawVendor ? polishVendor(rawVendor) : null;
 
+  // ── 7. Reject if no vendor could be identified ──
+  if (!vendor) {
+    return {
+      isTransaction: false,
+      vendor: null,
+      amount,
+      suggestedCategory: null,
+      rejectionReason: 'No vendor name found in notification',
+    };
+  }
+
   return {
     isTransaction: true,
     vendor,

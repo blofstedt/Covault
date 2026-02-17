@@ -618,8 +618,23 @@ export async function processNotificationWithAI(
     };
   }
 
-  const vendor = aiResult.vendor || input.fallbackVendor || 'Unknown';
+  const vendor = aiResult.vendor || input.fallbackVendor || null;
   const amount = aiResult.amount ?? input.fallbackAmount ?? 0;
+
+  // ── Step 3b: Reject if no vendor could be identified ──
+  if (!vendor) {
+    const reason = 'No vendor name found in notification';
+    console.log('[AI pipeline] Rejected: no vendor identified');
+    await storeRejectedNotification(userId, input, notifTimestamp, null, amount, reason);
+    return {
+      processed: true,
+      isTransaction: false,
+      amount,
+      skipReason: 'not_transaction',
+      rejectionReason: reason,
+      bankName: input.bankName,
+    };
+  }
 
   // ── Step 4: Duplicate detection (vendor + amount pair) ──
   const today = new Date().toISOString().slice(0, 10);

@@ -43,7 +43,6 @@ export interface DashboardSettingsModalProps {
   transactions: Transaction[];
   onChangePartnerLinkEmail: (value: string) => void;
   onClose: () => void;
-  onRunTutorial: () => void;
   onUpdateSettings: (key: string, value: any) => void;
   onUpdateUserIncome: (income: number) => void;
   onConnectPartner: () => void;
@@ -66,7 +65,6 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
   transactions,
   onChangePartnerLinkEmail,
   onClose,
-  onRunTutorial,
   onUpdateSettings,
   onUpdateUserIncome,
   onConnectPartner,
@@ -98,15 +96,6 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
         </div>
 
         <div className="space-y-4">
-          {/* Run Tutorial */}
-          <button
-            id="run-tutorial-button"
-            onClick={onRunTutorial}
-            className="w-full py-5 bg-emerald-50 dark:bg-emerald-900/20 border-2 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-black rounded-2xl hover:bg-emerald-100 transition-colors uppercase tracking-[0.2em] shadow-sm active:scale-95"
-          >
-            Run Tutorial
-          </button>
-
           {/* Frequently Asked */}
           <button
             id="faq-button"
