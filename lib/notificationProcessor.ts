@@ -1337,12 +1337,51 @@ export interface AIProcessingResult {
 }
 
 /**
+ * Store a rejected notification in pending_transactions so it appears
+ * in the rejected card on the Transaction Parsing screen.
+ *
+ * Note: extracted_vendor defaults to 'Unknown' and extracted_amount to 0
+ * when values are unavailable because the DB columns are NOT NULL.
+ */
+async function storeRejectedNotification(
+  userId: string,
+  input: NotificationInput,
+  notifTimestamp: number,
+  vendor: string | null,
+  amount: number | null,
+  rejectionReason: string,
+): Promise<void> {
+  try {
+    const now = new Date();
+    await supabase.from('pending_transactions').insert({
+      user_id: userId,
+      app_package: input.bankAppId,
+      app_name: input.bankName,
+      notification_title: input.notificationTitle || input.bankName,
+      notification_text: input.rawNotification,
+      notification_timestamp: notifTimestamp,
+      posted_at: now.toISOString(),
+      extracted_vendor: vendor || 'Unknown',
+      extracted_amount: amount ?? 0,
+      extracted_timestamp: now.toISOString(),
+      confidence: 0,
+      validation_reasons: rejectionReason,
+      needs_review: false,
+      approved: false,
+      rejection_reason: rejectionReason,
+    });
+  } catch (err) {
+    console.warn('[AI pipeline] Failed to store rejected notification:', err);
+  }
+}
+
+/**
  * Process a notification using the AI pipeline.
  *
  * Steps:
  *   1. Fingerprint deduplication
  *   2. AI extraction (vendor, amount, transaction classification)
- *   3. Reject non-transactions
+ *   3. Reject non-transactions (stored in pending_transactions as rejected)
  *   4. Duplicate detection (same vendor + amount pair in existing transactions)
  *   5. Category assignment: vendor_overrides first, then AI suggestion
  *   6. Insert directly into transactions table with 'AI' label
@@ -1392,11 +1431,14 @@ export async function processNotificationWithAI(
 
   if (!aiResult.vendor && !aiResult.amount) {
     console.log('[AI pipeline] AI could not extract data');
+    const reason = aiResult.rejectionReason || 'Could not extract transaction data';
+    // Store as rejected so it appears in the rejected card
+    await storeRejectedNotification(userId, input, notifTimestamp, null, null, reason);
     return {
       processed: true,
       isTransaction: false,
       skipReason: 'extraction_failed',
-      rejectionReason: aiResult.rejectionReason || 'Could not extract transaction data',
+      rejectionReason: reason,
       bankName: input.bankName,
     };
   }
@@ -1404,13 +1446,19 @@ export async function processNotificationWithAI(
   // ── Step 3: Reject non-transactions ──
   if (!aiResult.isTransaction) {
     console.log('[AI pipeline] Not a transaction:', aiResult.rejectionReason);
+    const reason = aiResult.rejectionReason || 'Not a purchase or charge';
+    // Store as rejected so it appears in the rejected card
+    await storeRejectedNotification(
+      userId, input, notifTimestamp,
+      aiResult.vendor || null, aiResult.amount || null, reason,
+    );
     return {
       processed: true,
       isTransaction: false,
       vendor: aiResult.vendor || undefined,
       amount: aiResult.amount || undefined,
       skipReason: 'not_transaction',
-      rejectionReason: aiResult.rejectionReason || 'Not a purchase or charge',
+      rejectionReason: reason,
       bankName: input.bankName,
     };
   }
@@ -1435,13 +1483,16 @@ export async function processNotificationWithAI(
 
     if (duplicateToday) {
       console.log('[AI pipeline] Duplicate vendor+amount found for today');
+      const reason = `Duplicate: ${vendor} for $${amount.toFixed(2)} already recorded today`;
+      // Store as rejected so it appears in the rejected card
+      await storeRejectedNotification(userId, input, notifTimestamp, vendor, amount, reason);
       return {
         processed: true,
         isTransaction: true,
         vendor,
         amount,
         skipReason: 'duplicate_vendor_amount',
-        rejectionReason: `Duplicate: ${vendor} for $${amount.toFixed(2)} already recorded today`,
+        rejectionReason: reason,
         bankName: input.bankName,
       };
     }

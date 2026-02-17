@@ -164,12 +164,43 @@ public class NotificationListener extends NotificationListenerService {
         "cost", "charge"
     };
 
+    /**
+     * Load user-configured monitored apps from SharedPreferences.
+     */
+    private Set<String> getUserMonitoredApps() {
+        try {
+            String stored = getSharedPreferences("covault_prefs", 0)
+                .getString("monitored_apps", "[]");
+            Set<String> apps = new HashSet<>();
+            org.json.JSONArray arr = new org.json.JSONArray(stored);
+            for (int i = 0; i < arr.length(); i++) {
+                String pkg = arr.optString(i, "").trim();
+                if (!pkg.isEmpty()) {
+                    apps.add(pkg);
+                }
+            }
+            return apps;
+        } catch (Exception e) {
+            Log.w(TAG, "Error loading monitored apps", e);
+            return new HashSet<>();
+        }
+    }
+
+    /**
+     * Check if a package is a monitored app (hardcoded banking apps OR user-configured).
+     */
+    private boolean isMonitoredApp(String packageName) {
+        if (BANKING_APPS.contains(packageName)) return true;
+        return getUserMonitoredApps().contains(packageName);
+    }
+
     @Override
     public void onNotificationPosted(StatusBarNotification sbn) {
         String packageName = sbn.getPackageName();
 
-        // Only process notifications from banking apps
-        if (!BANKING_APPS.contains(packageName)) {
+        // Only process notifications from monitored apps
+        // (hardcoded banking apps + user-configured apps)
+        if (!isMonitoredApp(packageName)) {
             return;
         }
 
@@ -190,21 +221,16 @@ public class NotificationListener extends NotificationListenerService {
         String body = (bigText != null && !bigText.isEmpty()) ? bigText : text;
         String fullText = title + " " + body;
 
-        // Check if this looks like a transaction notification
-        if (!isTransactionNotification(fullText)) {
-            Log.d(TAG, "Skipping non-transaction notification from " + packageName);
-            return;
-        }
-
         // Extract transaction data (best-effort; the TypeScript pipeline + Gemini
         // will handle extraction when native regex doesn't match)
         Double amount = extractAmount(fullText);
         String vendor = extractVendor(fullText);
 
-        Log.i(TAG, "Transaction detected: " + (amount != null ? "$" + amount : "[amount pending]") + " at " + (vendor != null ? vendor : "Unknown"));
+        Log.i(TAG, "Notification from monitored app " + packageName + ": " + (amount != null ? "$" + amount : "[amount pending]") + " at " + (vendor != null ? vendor : "Unknown"));
 
-        // Always broadcast to the TypeScript pipeline so Gemini can generate
-        // or regenerate regex patterns even when native extraction fails
+        // Always broadcast to the TypeScript AI pipeline which will classify
+        // as transaction or non-transaction — non-transactions will appear in
+        // the rejected card so the user can see what was processed.
         broadcastTransaction(packageName, amount, vendor, fullText, sbn.getPostTime());
     }
 
