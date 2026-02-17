@@ -1,4 +1,5 @@
 // lib/hooks/types.ts
+import type React from 'react';
 import type { AppState } from '../../types';
 
 export interface UseUserDataParams {

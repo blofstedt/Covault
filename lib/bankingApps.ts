@@ -336,3 +336,34 @@ export interface CovaultNotificationPlugin {
   saveMonitoredApps(options: { apps: any }): Promise<void>;
   getMonitoredApps(): Promise<{ apps: string[] }>;
 }
+
+/**
+ * Load banking apps from the known_banking_apps table in Supabase.
+ * Falls back to the hardcoded KNOWN_BANKING_APPS if the DB is unavailable.
+ */
+export async function loadBankingAppsFromDB(): Promise<Record<string, string>> {
+  try {
+    const { REST_BASE, getAuthHeaders } = await import('./apiHelpers');
+    const headers = await getAuthHeaders();
+    const res = await fetch(
+      `${REST_BASE}/known_banking_apps?select=package_name,display_name&is_active=eq.true`,
+      { headers },
+    );
+    if (!res.ok) {
+      console.warn('[loadBankingApps] DB unavailable, using hardcoded fallback');
+      return { ...KNOWN_BANKING_APPS };
+    }
+    const rows: Array<{ package_name: string; display_name: string }> = await res.json();
+    if (!rows || rows.length === 0) {
+      return { ...KNOWN_BANKING_APPS };
+    }
+    const apps: Record<string, string> = {};
+    for (const row of rows) {
+      apps[row.package_name] = row.display_name;
+    }
+    return apps;
+  } catch {
+    console.warn('[loadBankingApps] Error loading from DB, using hardcoded fallback');
+    return { ...KNOWN_BANKING_APPS };
+  }
+}

@@ -84,10 +84,6 @@ export const supabase = isSupabaseConfigured
         // For web, Supabase auto-detects the session from URL
         detectSessionInUrl: !Capacitor.isNativePlatform(),
 
-        // Skip automatic browser redirect on Android (we handle it manually)
-        // This prevents the OAuth window from staying open
-        skipBrowserRedirect: Capacitor.isNativePlatform(),
-
         // Recommended for browser-based OAuth flows
         flowType: 'pkce',
 

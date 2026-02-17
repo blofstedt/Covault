@@ -1,5 +1,5 @@
 // lib/useAuthState.ts
-import { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { supabase } from './supabase';
 import type { AppState, User } from '../types';
 
