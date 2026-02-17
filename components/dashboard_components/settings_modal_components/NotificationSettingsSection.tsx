@@ -133,6 +133,8 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
         } else {
           setSelectedApps(new Set(named.map((a) => a.packageName)));
         }
+      } else {
+        setSelectedApps(new Set());
       }
     } catch (e) {
       console.warn('[NotificationSettingsSection] checkStatus error:', e);
