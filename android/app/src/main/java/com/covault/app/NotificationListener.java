@@ -86,47 +86,9 @@ public class NotificationListener extends NotificationListenerService {
     // Banking app package names to listen for
     // Users can configure which apps to monitor in the app
     static final Set<String> BANKING_APPS = new HashSet<>(Arrays.asList(
-        // Major US Banks
-        "com.chase.sig.android",           // Chase
-        "com.wf.wellsfargomobile",          // Wells Fargo
-        "com.infonow.bofa",                 // Bank of America
-        "com.citi.citimobile",              // Citi
-        "com.usbank.mobilebanking",         // US Bank
-        "com.pnc.ecommerce.mobile",         // PNC
-        "com.tdbank",                       // TD Bank
-        "com.capitalone.mobile",            // Capital One (not credit card)
-        "com.key.android",                  // KeyBank
-        "com.regions.mobbanking",           // Regions
-        "com.huntington.m",                 // Huntington
-        "com.ally.MobileBanking",           // Ally Bank
-
-        // Credit Cards
-        "com.americanexpress.android.acctsvcs.us", // Amex
-        "com.capitalone.creditcard.app",   // Capital One (credit card)
-        "com.discoverfinancial.mobile",    // Discover
-        "com.synchrony.banking",           // Synchrony
-
-        // Neobanks & Fintech
-        "com.chime.chmapplication",        // Chime
-        "com.sofi.mobile",                 // SoFi
-        "com.venmo",                       // Venmo
-        "com.squareup.cash",               // Cash App
-        "com.paypal.android.p2pmobile",    // PayPal
-        "com.zellepay.zelle",              // Zelle
-        "com.revolut.revolut",             // Revolut
-        "com.simple",                      // Simple
-        "com.monzo.android",               // Monzo
-        "com.n26.android",                 // N26
-        "com.varo",                        // Varo
-
-        // Credit Unions (common ones)
-        "com.navyfederal.android",         // Navy Federal
-        "com.penfed.mobile.banking",       // PenFed
-        "org.becu.mobile",                 // BECU
-
-        // Canadian Banks
-        "com.bmo.mobile",                  // BMO (Bank of Montreal)
-        "com.rbc.mobile.android",          // RBC (Royal Bank of Canada)
+        // ── Canadian Banks ──────────────────────────────────────────
+        "com.bmo.mobile",                  // BMO
+        "com.rbc.mobile.android",          // RBC
         "com.td",                          // TD Canada
         "com.cibc.android.mobi",           // CIBC
         "com.scotiabank.mobile",           // Scotiabank
@@ -140,22 +102,351 @@ public class NotificationListener extends NotificationListenerService {
         "com.laurentianbank.mobile",       // Laurentian Bank
         "com.eq.mobile",                   // EQ Bank
         "com.manulife.mobile",             // Manulife Bank
+        "com.coastcapitalsavings.dcu",     // Coast Capital
+        "com.meridiancu.banking",          // Meridian Credit Union
+        "com.vancity.mobile",              // Vancity
+        "com.alterna.mobile",              // Alterna Savings
+        "com.firstontario.mobile",         // FirstOntario
+        "ca.conexus.mobile",               // Conexus Credit Union
+        "ca.affinitycu.mobile",            // Affinity Credit Union
+        "com.libro.mobile",                // Libro Credit Union
+        "com.servus.mobile",               // Servus Credit Union
+        "com.duca.mobile",                 // DUCA Credit Union
+        "com.pcfinancial.mobile",          // PC Financial
+        "com.canadianwestern.mobile",      // Canadian Western Bank
+        "com.motusbank.mobile",            // Motus Bank
+        "com.bridgewater.mobile",          // Bridgewater Bank
+        "com.icicibank.imobile.canada",    // ICICI Bank Canada
+        "com.envisionfinancial.mobile",    // Envision Financial
+        "com.blueshore.mobile",            // BlueShore Financial
+        "com.steinbach.mobile",            // Steinbach Credit Union
+        "com.innovationcu.mobile",         // Innovation Credit Union
+        "com.prospera.mobile",             // Prospera Credit Union
+        "com.interiorsa.mobile",           // Interior Savings
+        "com.islandsavings.mobile",        // Island Savings
+        "com.sunlife.mobile",              // Sun Life Financial
 
-        // Canadian Fintech / Neobanks
+        // ── Canadian Fintech ────────────────────────────────────────
         "com.wealthsimple",               // Wealthsimple
         "com.wealthsimple.trade",          // Wealthsimple Trade
         "com.neofinancial.android",        // Neo Financial
         "com.koho.android",               // KOHO
         "com.mogo.mobile",                // Mogo
-
-        // Canadian Payment / Transfer
         "ca.payments.interac",             // Interac e-Transfer
+        "com.questrade.questmobile",       // Questrade
+        "com.stack.app",                   // Stack
+        "com.paytm.canada",               // Paytm Canada
+        "com.mylo.android",               // Mylo
 
-        // Investment/Trading (for cash accounts)
+        // ── US Banks ────────────────────────────────────────────────
+        "com.chase.sig.android",           // Chase
+        "com.wf.wellsfargomobile",          // Wells Fargo
+        "com.infonow.bofa",                 // Bank of America
+        "com.citi.citimobile",              // Citi
+        "com.usbank.mobilebanking",         // US Bank
+        "com.pnc.ecommerce.mobile",         // PNC
+        "com.tdbank",                       // TD Bank
+        "com.capitalone.mobile",            // Capital One
+        "com.key.android",                  // KeyBank
+        "com.regions.mobbanking",           // Regions
+        "com.huntington.m",                 // Huntington
+        "com.ally.MobileBanking",           // Ally Bank
+        "com.fifththird.mobile",            // Fifth Third
+        "com.mtb.mbanking.sc.retail.prod",  // M&T Bank
+        "com.citizensbank.androidapp",      // Citizens Bank
+        "com.truist.mobile",                // Truist
+        "com.bmoharris.digital",            // BMO Harris
+        "com.firstcitizens.mobile",         // First Citizens
+        "com.websterbank.mobilebanking",    // Webster Bank
+        "com.comerica.mobile",              // Comerica
+        "com.zionsbancorp.mobile",          // Zions Bank
+        "com.synovus.mobile",               // Synovus
+        "com.svb.mobilebanking",            // Silicon Valley Bank
+        "com.newYorkCommunityBank.mobile",  // New York Community Bank
+        "com.popular.android",              // Popular Bank
+        "com.eastwestbank.mobile",          // East West Bank
+        "com.valleynationalbank.mobile",    // Valley National Bank
+        "com.culbersonbanking.mobile",      // Culberson Bank
+        "com.bokfinancial.mobile",          // BOK Financial
+        "com.frostbank.mobile",             // Frost Bank
+        "com.glacier.mobile",               // Glacier Bank
+        "com.oldnational.mobile",           // Old National Bank
+        "com.pacwest.mobile",               // PacWest Bank
+        "com.wintrust.mobile",              // Wintrust
+        "com.associatedbank.mobile",        // Associated Bank
+        "com.atlanticcapitalbank.mobile",   // Atlantic Capital
+        "com.umpquabank.mobile",            // Umpqua Bank
+        "com.columbiabankingmobile",        // Columbia Banking
+        "com.renasantbank.mobile",          // Renasant Bank
+        "com.bankunited.mobile",            // BankUnited
+        "com.independentbank.mobile",       // Independent Bank
+        "com.firsthorizon.mobile",          // First Horizon
+        "com.suntrust.mobilebanking",       // SunTrust
+        "com.bbandt.mobilebanking",         // BB&T
+
+        // ── US Credit Cards ─────────────────────────────────────────
+        "com.americanexpress.android.acctsvcs.us", // Amex
+        "com.capitalone.creditcard.app",   // Capital One (credit card)
+        "com.discoverfinancial.mobile",    // Discover
+        "com.synchrony.banking",           // Synchrony
+        "com.barclays.bca",                // Barclaycard US
+        "com.comenity.mobile",             // Comenity
+        "com.bread.mobile",                // Bread Financial
+
+        // ── US Fintech / Neobanks ───────────────────────────────────
+        "com.chime.chmapplication",        // Chime
+        "com.sofi.mobile",                 // SoFi
+        "com.venmo",                       // Venmo
+        "com.squareup.cash",               // Cash App
+        "com.paypal.android.p2pmobile",    // PayPal
+        "com.zellepay.zelle",              // Zelle
+        "com.revolut.revolut",             // Revolut
+        "com.simple",                      // Simple
+        "com.monzo.android",               // Monzo
+        "com.n26.android",                 // N26
+        "com.varo",                        // Varo
+        "com.current.mobile",              // Current
+        "com.dave.android",                // Dave
+        "com.albert.app",                  // Albert
+        "com.aspiration.app",              // Aspiration
+        "com.greendot.mobile",             // Green Dot
+        "com.netspend.mobile",             // NetSpend
+        "com.brex.mobile",                 // Brex
+        "com.mercury.app",                 // Mercury
+        "com.ramp.app",                    // Ramp
+        "com.one.mobile.android",          // ONE
+        "com.go2bank.mobile",              // GO2bank
+        "com.empower.mobile",              // Empower
+        "com.step.app",                    // Step
+        "com.upgrade.mobile",              // Upgrade
+        "com.lendingclub.mobile",          // LendingClub
+        "com.possible.mobile",             // Possible Finance
+        "com.earnin.app",                  // Earnin
+        "com.brigit.app",                  // Brigit
+        "com.moneyLion.android",           // MoneyLion
+        "com.acorns.android",              // Acorns
+        "com.stash.stashinvest",           // Stash
+        "com.betterment.app",              // Betterment
+        "com.wealthfront.app",             // Wealthfront
+        "com.marcus.android",              // Marcus by Goldman Sachs
+        "com.apple.android.card",          // Apple Card
+        "com.google.android.apps.walletnfcrel", // Google Wallet
+        "com.samsung.android.spay",        // Samsung Pay
+
+        // ── US Credit Unions ────────────────────────────────────────
+        "com.navyfederal.android",         // Navy Federal
+        "com.penfed.mobile.banking",       // PenFed
+        "org.becu.mobile",                 // BECU
+        "com.usaa.mobile.android.usaa",    // USAA
+        "com.schoolsfirstfcu.mobile",      // SchoolsFirst FCU
+        "org.stcu.mobilebanking",          // STCU
+        "com.golden1.mobile",              // Golden 1 Credit Union
+        "com.alliantcu.mobile",            // Alliant Credit Union
+        "org.sefcu.mobile",                // SEFCU
+        "com.suncoastcreditunion.mobile",  // Suncoast Credit Union
+        "com.vyStar.mobilebanking",        // VyStar Credit Union
+        "com.psecu.mobile",                // PSECU
+        "com.dcuonline.mobile",            // DCU
+        "com.firsttechfed.mobile",         // First Tech FCU
+        "com.bethpagefcu.mobile",          // Bethpage FCU
+        "com.statefarm.bank",              // State Farm Bank
+        "com.rbfcu.mobile",                // Randolph-Brooks FCU
+        "com.delta.community.mobile",      // Delta Community CU
+        "com.americafirst.mobile",         // America First CU
+
+        // ── US Investment / Brokerage ───────────────────────────────
         "com.robinhood.android",           // Robinhood
         "com.fidelity.android",            // Fidelity
         "com.schwab.mobile",              // Charles Schwab
-        "com.questrade.questmobile"        // Questrade
+        "com.etrade.mobilepro.activity",   // E*TRADE
+        "com.tdameritrade.mobi",           // TD Ameritrade
+        "com.interactivebrokers.tws",      // Interactive Brokers
+        "com.webull.android",              // Webull
+        "com.coinbase.android",            // Coinbase
+        "com.binance.dev",                 // Binance
+        "piuk.blockchain.android",         // Blockchain.com
+        "com.kraken.trade",                // Kraken
+        "com.gemini.android.app",          // Gemini
+        "com.personalcapital.pcapandroid", // Empower Personal Capital
+        "com.merrilllynch.mobile",         // Merrill Lynch
+        "com.vanguard.android",            // Vanguard
+
+        // ── UK Banks ────────────────────────────────────────────────
+        "com.barclays.android.barclaysmobilebanking", // Barclays
+        "com.hsbc.hsbcuk",                 // HSBC UK
+        "com.grfrtsq.lloydsretail",        // Lloyds Bank
+        "com.natwest.mobilebanking",       // NatWest
+        "com.starlingbank.android",        // Starling Bank
+        "com.halifax.mobile",              // Halifax
+        "co.uk.Nationwide.Mobile",         // Nationwide
+        "uk.co.metrobankonline.mobile.android.production", // Metro Bank
+        "com.virginmoney.uk.mobile.android", // Virgin Money UK
+        "com.tsb.mobilebank",             // TSB
+        "com.santander.app",               // Santander UK
+        "com.rbs.mobile.android.rbs",      // Royal Bank of Scotland
+        "com.bankofscotland.mobile",       // Bank of Scotland
+        "com.atom.bank",                   // Atom Bank
+        "com.chase.intl",                  // Chase UK
+        "com.thinkmoney.app",              // Think Money
+        "com.kroo.app",                    // Kroo Bank
+        "com.zopa.android",                // Zopa Bank
+        "com.tescobank.mobile",            // Tesco Bank
+
+        // ── German Banks ────────────────────────────────────────────
+        "com.db.pwcc.dbmobile",            // Deutsche Bank
+        "de.commerzbanking.mobil",         // Commerzbank
+        "de.dkb.portalapp",                // DKB
+        "de.ingdiba.bankingapp",           // ING Germany
+        "com.starfinanz.smob.android.sfinanzstatus", // Sparkasse
+        "de.fiducia.smartphone.android.banking.vr",  // Volksbank/Raiffeisenbank
+        "de.postbank.finanzassistent",     // Postbank
+        "com.hypovereinsbank.universchin", // HypoVereinsbank
+        "de.consorsbank",                  // Consorsbank
+        "de.comdirect.app",                // comdirect
+        "de.number26.android",             // N26 Germany
+        "com.tomorrow.app",                // Tomorrow Bank
+
+        // ── French Banks ────────────────────────────────────────────
+        "com.cih.android.bnpparibas",      // BNP Paribas
+        "mobi.societegenerale.mobile.lappli", // Société Générale
+        "com.caisseepargne.android.mobilebanking", // Caisse d'Épargne
+        "fr.creditagricole.androidapp",    // Crédit Agricole
+        "com.boursorama.android.clients",  // Boursorama
+        "fr.banquepopulaire.cyberplus",    // Banque Populaire
+        "fr.lcl.android.customerarea",     // LCL
+        "com.fortuneo.android",            // Fortuneo
+        "net.bnpparibas.mescomptes",       // Hello Bank France
+        "com.cic_prod.bad",                // CIC
+        "fr.creditMutuel.CMBanque",        // Crédit Mutuel
+        "com.labanquepostale.ecoapp",      // La Banque Postale
+        "com.orange.banking.music",        // Orange Bank
+        "com.lydia",                       // Lydia
+
+        // ── Spanish Banks ───────────────────────────────────────────
+        "com.bbva.bbvacontigo",            // BBVA Spain
+        "es.bancosantander.apps",          // Santander Spain
+        "es.lacaixa.mobile.android.newwapicon", // CaixaBank
+        "net.inverline.bancosabadell.officelocator.android", // Banco Sabadell
+        "com.bankinter.launcher",          // Bankinter
+        "es.ibercaja.ibercajaapp",         // Ibercaja
+        "com.kutxabank.android",           // Kutxabank
+        "com.abanca.bancaempresas",        // Abanca
+        "com.unicajabanco.app",            // Unicaja Banco
+
+        // ── Italian Banks ───────────────────────────────────────────
+        "com.unicredit",                   // UniCredit
+        "com.latuabancaperandroid",        // Intesa Sanpaolo
+        "it.copergmps.rt.pf.android.sp.bmps", // Banca MPS
+        "com.bfriancoapp",                // Banco BPM
+        "it.bnl.apps.banking",             // BNL
+        "it.popso.SCRIGNOapp",             // Banca Popolare di Sondrio
+        "com.fineco.it",                   // Fineco Bank
+        "it.hype.app",                     // HYPE
+        "com.illimity.mobile",             // Illimity Bank
+
+        // ── Dutch Banks ─────────────────────────────────────────────
+        "com.ing.mobile",                  // ING
+        "com.abnamro.nl.mobile.payments",  // ABN AMRO
+        "nl.rabomobiel",                   // Rabobank
+        "com.bunq.android",                // Bunq
+        "nl.asnbank.asnbankieren",         // ASN Bank
+        "com.snsbank.mobile",              // SNS Bank
+        "com.triodos.banking.mobile",      // Triodos Bank
+        "nl.knab.app",                     // Knab
+
+        // ── Belgian Banks ───────────────────────────────────────────
+        "com.kbc.mobile.android.phone",    // KBC
+        "be.belfius.directmobile.android", // Belfius
+        "com.bnpparibasfortis.geomobile",  // BNP Paribas Fortis
+        "be.argenta.bankieren",            // Argenta
+        "com.ing.banking",                 // ING Belgium
+
+        // ── Swiss Banks ─────────────────────────────────────────────
+        "com.ubs.swidKXJ.android",         // UBS
+        "ch.postfinance.android",          // PostFinance
+        "com.zuercherkb.android",          // Zürcher Kantonalbank
+        "com.csg.cs.dnmb",                // Credit Suisse
+        "ch.raiffeisen.android",           // Raiffeisen Switzerland
+        "com.swissquote.android",          // Swissquote
+        "com.neon.app",                    // Neon (Swiss)
+        "com.yapeal.app",                  // Yapeal
+
+        // ── Austrian Banks ──────────────────────────────────────────
+        "at.erstebank.george",             // Erste Bank
+        "com.bankaustria.android.olb",     // Bank Austria
+        "at.spardat.bcrmobile",            // Raiffeisen Austria
+        "com.bawagpsk.mbanking",           // BAWAG
+
+        // ── Scandinavian Banks ──────────────────────────────────────
+        "com.nordea.mobilebanking",        // Nordea
+        "com.danskebank.mobilebank3.dk",   // Danske Bank
+        "com.seb.privatkund",              // SEB
+        "com.handelsbanken.mobile",        // Handelsbanken
+        "se.swedbankab.mbid",              // Swedbank
+        "se.swish.app",                    // Swish
+        "dk.mobilepay.android",            // MobilePay
+        "fi.op.android.opbank",            // OP Financial
+        "no.dnb.android",                  // DNB
+        "no.sparebank1.mobilbank",         // SpareBank 1
+        "com.skandia.android",             // Skandia
+        "com.lunar.app",                   // Lunar
+        "com.norwegian.bank",             // Norwegian Bank
+
+        // ── Irish Banks ─────────────────────────────────────────────
+        "com.aib.mobilebanking",           // AIB
+        "ie.boi.mobilebanking",            // Bank of Ireland
+        "com.permanenttsb.ptsb",           // Permanent TSB
+        "com.ulsterbank.mobile",           // Ulster Bank
+
+        // ── Portuguese Banks ────────────────────────────────────────
+        "pt.cgd.caixadirecta",             // Caixa Geral de Depósitos
+        "pt.novobanco.nbapp",              // Novo Banco
+        "pt.millenniumbcp.app",            // Millennium BCP
+        "pt.bancobpi.mobile",              // Banco BPI
+
+        // ── Polish Banks ────────────────────────────────────────────
+        "pl.mbank",                        // mBank
+        "pl.ing.mojeing",                  // ING Poland
+        "pl.pkobp.iko",                    // PKO Bank Polski
+        "pl.bzwbk.bzwbk24",               // Santander Poland
+        "eu.eleader.mobilebanking.pekao",  // Bank Pekao
+        "com.blik",                        // BLIK
+
+        // ── Czech & Slovak Banks ────────────────────────────────────
+        "cz.csob.smartbanking",            // ČSOB
+        "cz.airbank.android",              // Air Bank
+        "cz.kb.mba",                       // Komerční banka
+
+        // ── Pan-European Fintech ────────────────────────────────────
+        "com.transferwise.android",        // Wise
+        "com.klarna.android",              // Klarna
+        "com.vfrtzn.app",                  // Vivid Money
+        "com.qonto.qonto",                // Qonto
+        "com.pleo.android",               // Pleo
+        "com.sumup.bank",                  // SumUp
+        "com.adyen.checkout",              // Adyen
+        "com.curve.android",               // Curve
+        "de.solarisbank.app",              // Solaris Bank
+        "com.monese.monese.live",          // Monese
+        "com.twint.payment",               // TWINT
+        "com.holvi.app",                   // Holvi
+        "com.tide.business",               // Tide
+        "com.anna.money",                  // Anna Money
+        "com.numbrs.android.production",   // Numbrs
+        "com.worldremit.android",          // WorldRemit
+        "com.remitly.android",             // Remitly
+
+        // ── Payment / Transfers / Crypto ────────────────────────────
+        "com.stripe.android.dashboard",    // Stripe Dashboard
+        "com.plaid.link",                  // Plaid
+        "com.affirm.mobile",              // Affirm
+        "com.afterpay.mobile",             // Afterpay
+        "com.shopify.mobile",              // Shopify Balance
+        "com.skrill.moneybookers",         // Skrill
+        "com.paysend.app",                 // Paysend
+        "de.wirecard.myaccount",           // Wirecard
+        "com.adp.mobile.app",              // ADP Mobile
+        "com.gusto.wallet"                 // Gusto
     ));
 
     // Patterns to extract transaction amount
