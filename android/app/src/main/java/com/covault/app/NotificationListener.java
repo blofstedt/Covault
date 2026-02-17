@@ -44,6 +44,24 @@ public class NotificationListener extends NotificationListenerService {
     }
 
     /**
+     * Called by the system when the notification listener is connected.
+     * This happens when:
+     *   - The user grants notification access for the first time
+     *   - The device reboots and the system reconnects the listener
+     *   - The app is reinstalled while permission is still granted
+     *
+     * We use this to immediately scan all existing notifications in the
+     * shade — including ones that arrived before the app was installed or
+     * before the listener was enabled.
+     */
+    @Override
+    public void onListenerConnected() {
+        super.onListenerConnected();
+        Log.i(TAG, "onListenerConnected: notification listener connected, scanning existing notifications");
+        scanActiveNotifications();
+    }
+
+    /**
      * Re-process all active (currently visible) notifications from banking apps.
      * Called by the CovaultNotificationPlugin when the user taps the refresh button.
      * Refreshes the monitored apps list first to pick up any newly installed apps.

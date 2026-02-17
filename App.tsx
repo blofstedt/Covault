@@ -23,6 +23,7 @@ const SCAN_PROCESSING_DELAY_MS = 2000;
 
 /** Interval (ms) between periodic notification scans while enabled */
 const SCAN_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const SCAN_INTERVAL_S = SCAN_INTERVAL_MS / 1000;
 
 const DEFAULT_SETTINGS = {
   rolloverEnabled: true,
@@ -147,6 +148,9 @@ const App: React.FC = () => {
     onAIProcessingResult: handleAIProcessingResult,
   });
 
+  // ── Countdown state for periodic notification scanning ──
+  const [secondsUntilNextScan, setSecondsUntilNextScan] = useState<number | null>(null);
+
   // Refresh notifications: re-detect banking apps then scan currently
   // visible Android notifications so newly installed apps are picked up.
   const refreshNotifications = useCallback(async () => {
@@ -154,6 +158,8 @@ const App: React.FC = () => {
     if (covaultNotification) {
       await covaultNotification.scanActiveNotifications();
     }
+    // Reset countdown after manual refresh
+    setSecondsUntilNextScan(SCAN_INTERVAL_S);
   }, []);
 
   // Auto-detect installed banking apps on startup so the notification
@@ -202,7 +208,13 @@ const App: React.FC = () => {
   // apps are picked up without waiting for a notification) and then
   // re-scan active notifications in the notification shade.
   useEffect(() => {
-    if (!appState.settings.notificationsEnabled || !covaultNotification) return;
+    if (!appState.settings.notificationsEnabled || !covaultNotification) {
+      setSecondsUntilNextScan(null);
+      return;
+    }
+
+    // Reset countdown when interval starts
+    setSecondsUntilNextScan(SCAN_INTERVAL_S);
 
     const intervalId = setInterval(async () => {
       try {
@@ -211,9 +223,19 @@ const App: React.FC = () => {
       } catch (e) {
         console.warn('[periodic scan] Error during periodic bank app detection/scan:', e);
       }
+      // Reset countdown after each scan
+      setSecondsUntilNextScan(SCAN_INTERVAL_S);
     }, SCAN_INTERVAL_MS);
 
-    return () => clearInterval(intervalId);
+    // Tick down every second
+    const tickId = setInterval(() => {
+      setSecondsUntilNextScan(prev => (prev != null && prev > 0 ? prev - 1 : prev));
+    }, 1000);
+
+    return () => {
+      clearInterval(intervalId);
+      clearInterval(tickId);
+    };
   }, [appState.settings.notificationsEnabled]);
 
   // Theme handling
@@ -378,6 +400,7 @@ const App: React.FC = () => {
           onReloadPendingTransactions={loadPendingTransactions}
           onReloadTransactions={loadTransactions}
           isLoadingData={isLoadingData}
+          secondsUntilNextScan={secondsUntilNextScan}
         />
       )}
     </div>
