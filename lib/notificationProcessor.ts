@@ -3,7 +3,7 @@
 // Notification processing pipeline with AI-based extraction.
 //
 // Pipeline:
-//   1. Fingerprint deduplication
+//   1. Duplicate detection (check transactions + pending_transactions tables)
 //   2. AI extraction: vendor, amount, transaction classification
 //   3. Duplicate detection (same vendor + amount pair)
 //   4. Non-transaction filtering (balance alerts, OTPs, etc.)
@@ -26,6 +26,9 @@ const RECURRING_DATE_TOLERANCE_DAYS = 3;
 
 /** Milliseconds per day */
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/** Milliseconds per hour — window for duplicate detection */
+const MS_PER_HOUR = 60 * 60 * 1000;
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -75,15 +78,12 @@ export interface NotificationRuleRow {
   updated_at: string;
 }
 
-// ─── Step 1: Fingerprint Deduplication ──────────────────────────
+// ─── Step 1: Duplicate Detection Against Tables ─────────────────
 
 /**
  * Generate a fingerprint hash from notification content.
- * Uses: bank_app_id | amount | vendor | timestamp (to the second).
- * The timestamp comes from the notification's original post time, which
- * is stable across rescans.  Two genuinely different transactions at the
- * same vendor for the same amount will have different post-times and
- * therefore different fingerprints.
+ * Used for in-memory deduplication of pending transaction batches.
+ * NOT used for Supabase lookups — see checkAlreadyProcessed() instead.
  */
 function generateFingerprintHash(
   bankAppId: string,
@@ -106,54 +106,97 @@ function generateFingerprintHash(
 }
 
 /**
- * Check if this notification has already been processed (deduplication).
+ * Check if a notification has already been processed by looking at
+ * the transactions and pending_transactions tables directly.
  *
- * Uses an upsert with onConflict to atomically check-and-insert.
- * If the fingerprint already exists the upsert is a no-op and we
- * detect the duplicate via the `ignoreDuplicates` flag (status 200
- * with empty data or the existing row).
+ * A notification is considered a duplicate if a record with the same
+ * amount exists within a 1-hour window of the notification timestamp.
+ * The vendor is also checked: the existing vendor must contain a word
+ * from the notification text (keyword match) OR be an exact
+ * case-insensitive match.
+ *
+ * This replaces the old fingerprint-table approach, which required a
+ * separate Supabase table and could silently drop notifications when
+ * that table had issues.
  */
-async function checkAndInsertFingerprint(
+async function checkAlreadyProcessed(
   userId: string,
-  bankAppId: string,
-  detectedAmount: number | null,
-  vendor: string,
-  timestampMs: number,
+  amount: number | null,
+  vendor: string | null,
+  notificationTimestamp: number,
 ): Promise<boolean> {
-  const hash = generateFingerprintHash(bankAppId, detectedAmount, vendor, timestampMs);
+  if (amount == null) return false;
 
-  // Atomic upsert — the UNIQUE(user_id, fingerprint_hash) constraint
-  // guarantees at most one row per fingerprint.  `ignoreDuplicates`
-  // makes it a no-op when the row already exists (Postgres ON CONFLICT
-  // DO NOTHING).
-  const { data, error } = await supabase
-    .from('notification_fingerprints')
-    .upsert(
-      {
-        user_id: userId,
-        fingerprint_hash: hash,
-        bank_app_id: bankAppId,
-      },
-      { onConflict: 'user_id,fingerprint_hash', ignoreDuplicates: true },
-    )
-    .select('id');
+  const windowStart = new Date(notificationTimestamp - MS_PER_HOUR).toISOString();
+  const windowEnd   = new Date(notificationTimestamp + MS_PER_HOUR).toISOString();
 
-  if (error) {
-    // If we still somehow hit a constraint violation, treat as duplicate
-    if (error.code === '23505') {
-      return true;
+  // ── Check transactions table ──
+  const { data: txRows } = await supabase
+    .from('transactions')
+    .select('id, vendor, amount, created_at')
+    .eq('user_id', userId)
+    .gte('created_at', windowStart)
+    .lte('created_at', windowEnd);
+
+  if (txRows && txRows.length > 0) {
+    for (const tx of txRows) {
+      if (Math.abs(Number(tx.amount) - amount) < AMOUNT_TOLERANCE) {
+        if (vendorMatches(tx.vendor, vendor)) {
+          console.log(`[dedup] Duplicate found in transactions: ${tx.vendor} $${tx.amount}`);
+          return true;
+        }
+      }
     }
-    console.error('[fingerprint] Error upserting fingerprint:', error);
-    return false;
   }
 
-  // When ignoreDuplicates is true and the row already existed, the
-  // upsert returns an empty array (no row was inserted).
-  if (!data || data.length === 0) {
-    return true; // duplicate
+  // ── Check pending_transactions table ──
+  const { data: ptRows } = await supabase
+    .from('pending_transactions')
+    .select('id, extracted_vendor, extracted_amount, created_at')
+    .eq('user_id', userId)
+    .gte('created_at', windowStart)
+    .lte('created_at', windowEnd);
+
+  if (ptRows && ptRows.length > 0) {
+    for (const pt of ptRows) {
+      if (Math.abs(Number(pt.extracted_amount) - amount) < AMOUNT_TOLERANCE) {
+        if (vendorMatches(pt.extracted_vendor, vendor)) {
+          console.log(`[dedup] Duplicate found in pending_transactions: ${pt.extracted_vendor} $${pt.extracted_amount}`);
+          return true;
+        }
+      }
+    }
   }
 
-  return false; // new fingerprint — not a duplicate
+  return false;
+}
+
+/**
+ * Check whether two vendor names match.
+ * Returns true if:
+ *   - They are an exact case-insensitive match, OR
+ *   - One vendor name contains a significant word (3+ chars) from the other
+ */
+export function vendorMatches(existingVendor: string | null, newVendor: string | null): boolean {
+  if (existingVendor == null || newVendor == null) return existingVendor == null && newVendor == null;
+
+  const a = existingVendor.toLowerCase().trim();
+  const b = newVendor.toLowerCase().trim();
+
+  if (a === b) return true;
+  if (!a || !b) return false;
+
+  // Check if any significant word from one appears in the other
+  const wordsA = a.split(/\s+/).filter(w => w.length >= 3);
+  for (const word of wordsA) {
+    if (b.includes(word)) return true;
+  }
+  const wordsB = b.split(/\s+/).filter(w => w.length >= 3);
+  for (const word of wordsB) {
+    if (a.includes(word)) return true;
+  }
+
+  return false;
 }
 
 // ─── Step 1b: Second-Phase Deduplication ────────────────────────
@@ -831,7 +874,7 @@ async function tryAutoApprove(
  * Process an incoming bank notification through the manual pipeline.
  *
  * Steps:
- *   1. Fingerprint deduplication
+ *   1. Duplicate detection (check transactions + pending_transactions)
  *   2. Look up notification rule for the bank
  *   3. If no rule → store as unconfigured capture (needs manual setup)
  *   4. Apply regex → no match = ignored, match = extract vendor/amount
@@ -846,8 +889,8 @@ export async function processNotification(
   // Normalize bank identifiers to lowercase for case-insensitive matching
   input = { ...input, bankAppId: (input.bankAppId || '').toLowerCase(), bankName: (input.bankName || '').toLowerCase() };
 
-  // ── Step 1: Fingerprint Deduplication ──
-  // Extract a quick amount from the raw text for fingerprinting.
+  // ── Step 1: Duplicate Detection ──
+  // Extract a quick amount from the raw text for the duplicate check.
   // Require a leading '$' so stray numbers (e.g. "13h" time prefixes) are
   // not mistaken for dollar amounts.
   let quickAmount: number | null = null;
@@ -857,19 +900,18 @@ export async function processNotification(
   }
 
   // Use the notification's original post time (from Android) for a stable
-  // fingerprint. Falls back to Date.now() only on non-native platforms.
+  // time reference. Falls back to Date.now() only on non-native platforms.
   const notifTimestamp = input.notificationTimestamp || Date.now();
 
-  const isDuplicate = await checkAndInsertFingerprint(
+  const isDuplicate = await checkAlreadyProcessed(
     userId,
-    input.bankAppId,
     quickAmount,
-    input.fallbackVendor || input.rawNotification,
+    input.fallbackVendor || null,
     notifTimestamp,
   );
 
   if (isDuplicate) {
-    console.log('[processNotification] Duplicate fingerprint, skipping');
+    console.log('[processNotification] Duplicate detected, skipping');
     return { processed: false, skipReason: 'duplicate' };
   }
 
@@ -1381,7 +1423,7 @@ async function storeRejectedNotification(
  * Process a notification using the AI pipeline.
  *
  * Steps:
- *   1. Fingerprint deduplication
+ *   1. Duplicate detection (check transactions + pending_transactions tables)
  *   2. AI extraction (vendor, amount, transaction classification)
  *   3. Reject non-transactions (stored in pending_transactions as rejected)
  *   4. Duplicate detection (same vendor + amount pair in existing transactions)
@@ -1400,9 +1442,8 @@ export async function processNotificationWithAI(
     bankName: (input.bankName || '').toLowerCase(),
   };
 
-  // ── Step 1: Fingerprint Deduplication ──
-  // Require a leading '$' so stray numbers (e.g. "13h" time prefixes) are
-  // not mistaken for dollar amounts.
+  // ── Step 1: Duplicate Detection ──
+  // Extract a quick amount from the raw text for the duplicate check.
   let quickAmount: number | null = null;
   const quickAmountMatch = input.rawNotification.match(/\$([\d,]+\.?\d{0,2})/);
   if (quickAmountMatch) {
@@ -1410,16 +1451,15 @@ export async function processNotificationWithAI(
   }
 
   const notifTimestamp = input.notificationTimestamp || Date.now();
-  const isDuplicate = await checkAndInsertFingerprint(
+  const isDuplicate = await checkAlreadyProcessed(
     userId,
-    input.bankAppId,
     quickAmount,
-    input.fallbackVendor || input.rawNotification,
+    input.fallbackVendor || null,
     notifTimestamp,
   );
 
   if (isDuplicate) {
-    console.log('[AI pipeline] Duplicate fingerprint, skipping');
+    console.log('[AI pipeline] Duplicate detected, skipping');
     return {
       processed: false,
       isTransaction: false,

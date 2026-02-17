@@ -12,6 +12,9 @@ import PageShell from './ui/PageShell';
 
 import { supabase } from '../lib/supabase';
 
+/** Delay (ms) after scanning to allow notification processing before reloading data */
+const SCAN_PROCESSING_DELAY_MS = 2000;
+
 interface TransactionParsingProps {
   enabled: boolean;
   onToggle: (enabled: boolean) => void;
@@ -95,6 +98,37 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   useEffect(() => {
     loadRejectedNotifications();
   }, [loadRejectedNotifications]);
+
+  // When notifications are enabled, trigger a scan and reload data
+  // after a short delay so newly processed notifications appear.
+  const prevEnabled = React.useRef(enabled);
+  const reloadTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const wasEnabled = prevEnabled.current;
+    prevEnabled.current = enabled;
+
+    if (!wasEnabled && enabled) {
+      // Notifications were just enabled — refresh after scan has time to process
+      (async () => {
+        if (onRefreshNotifications) {
+          await onRefreshNotifications();
+        }
+        reloadTimeoutRef.current = setTimeout(async () => {
+          await loadRejectedNotifications();
+          if (onReloadTransactions && userId) {
+            await onReloadTransactions(userId);
+          }
+        }, SCAN_PROCESSING_DELAY_MS);
+      })();
+    }
+
+    return () => {
+      if (reloadTimeoutRef.current != null) {
+        clearTimeout(reloadTimeoutRef.current);
+        reloadTimeoutRef.current = null;
+      }
+    };
+  }, [enabled, onRefreshNotifications, onReloadTransactions, userId, loadRejectedNotifications]);
 
   // Refresh data on visibility change
   useEffect(() => {
