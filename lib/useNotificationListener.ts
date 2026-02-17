@@ -5,6 +5,7 @@ import type { Transaction, User, PendingTransaction, BudgetCategory } from '../t
 import { covaultNotification } from './covaultNotification';
 import { processNotificationWithAI } from './notificationProcessor';
 import type { AIProcessingResult } from './notificationProcessor';
+import { KNOWN_BANKING_APPS } from './bankingApps';
 
 export interface UseNotificationListenerParams {
   user: User | null;
@@ -56,7 +57,12 @@ export const useNotificationListener = ({
             // Normalize field names from native broadcast
             const rawNotification = event.rawNotification || event.raw_text;
             const bankAppId = (event.bankAppId || event.source_app)?.toLowerCase();
-            const bankName = (event.bankName || event.source_app)?.toLowerCase();
+            // Resolve a friendly bank name from the package ID so the UI
+            // shows "BMO" instead of "com.bmo.mobile".
+            const bankName = event.bankName
+              || (bankAppId && KNOWN_BANKING_APPS[bankAppId])
+              || event.source_app
+              || bankAppId;
 
             // ── AI Processing pipeline ──
             if (rawNotification && bankAppId && bankName) {

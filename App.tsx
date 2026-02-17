@@ -18,6 +18,9 @@ import { buildDevState } from './lib/developerData';
 
 const SETTINGS_KEY = 'covault_settings';
 
+/** Delay (ms) after scanning to allow notification processing before reloading data */
+const SCAN_PROCESSING_DELAY_MS = 2000;
+
 const DEFAULT_SETTINGS = {
   rolloverEnabled: true,
   rolloverOverspend: false,
@@ -169,6 +172,8 @@ const App: React.FC = () => {
     const isEnabled = appState.settings.notificationsEnabled;
     prevNotificationsEnabled.current = isEnabled;
 
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
     if (!wasEnabled && isEnabled) {
       // Notifications were just enabled — scan immediately
       (async () => {
@@ -178,10 +183,14 @@ const App: React.FC = () => {
         }
         // Reload transactions after a short delay to pick up processed results
         if (appState.user?.id) {
-          setTimeout(() => loadTransactions(appState.user!.id), 2000);
+          timeoutId = setTimeout(() => loadTransactions(appState.user!.id), SCAN_PROCESSING_DELAY_MS);
         }
       })();
     }
+
+    return () => {
+      if (timeoutId != null) clearTimeout(timeoutId);
+    };
   }, [appState.settings.notificationsEnabled, appState.user?.id, loadTransactions]);
 
   // ── Periodic notification scanning while enabled ──

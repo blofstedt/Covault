@@ -12,6 +12,9 @@ import PageShell from './ui/PageShell';
 
 import { supabase } from '../lib/supabase';
 
+/** Delay (ms) after scanning to allow notification processing before reloading data */
+const SCAN_PROCESSING_DELAY_MS = 2000;
+
 interface TransactionParsingProps {
   enabled: boolean;
   onToggle: (enabled: boolean) => void;
@@ -103,19 +106,26 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     const wasEnabled = prevEnabled.current;
     prevEnabled.current = enabled;
 
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
     if (!wasEnabled && enabled) {
       // Notifications were just enabled — refresh after scan has time to process
       (async () => {
         if (onRefreshNotifications) {
           await onRefreshNotifications();
         }
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        await loadRejectedNotifications();
-        if (onReloadTransactions && userId) {
-          await onReloadTransactions(userId);
-        }
+        timeoutId = setTimeout(async () => {
+          await loadRejectedNotifications();
+          if (onReloadTransactions && userId) {
+            await onReloadTransactions(userId);
+          }
+        }, SCAN_PROCESSING_DELAY_MS);
       })();
     }
+
+    return () => {
+      if (timeoutId != null) clearTimeout(timeoutId);
+    };
   }, [enabled, onRefreshNotifications, onReloadTransactions, userId, loadRejectedNotifications]);
 
   // Refresh data on visibility change
