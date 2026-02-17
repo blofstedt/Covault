@@ -410,7 +410,7 @@ function localExtraction(notificationText: string): AIExtractionResult {
       return {
         isTransaction: false, vendor: null, amount,
         suggestedCategory: null,
-        rejectionReason: 'Non-transaction notification',
+        rejectionReason: 'Not cost-related notification',
       };
     }
   }
