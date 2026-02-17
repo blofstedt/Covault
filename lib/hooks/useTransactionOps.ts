@@ -118,9 +118,11 @@ export const useTransactionOps = ({
   // Update transaction
   const handleUpdateTransaction = useCallback(
     async (updatedTx: Transaction) => {
-      // Check if this was an AI transaction being re-categorized
+      // Check if this was an AI transaction being re-categorized or renamed
       const originalTx = appState.transactions.find(t => t.id === updatedTx.id);
-      const isAIRecategorize = originalTx?.label === 'AI' && updatedTx.budget_id !== originalTx.budget_id;
+      const isAI = originalTx?.label === 'AI';
+      const isAIRecategorize = isAI && updatedTx.budget_id !== originalTx.budget_id;
+      const isAIVendorRename = isAI && originalTx && formatVendorName(updatedTx.vendor) !== formatVendorName(originalTx.vendor);
 
       setAppState(prev => ({
         ...prev,
@@ -174,20 +176,31 @@ export const useTransactionOps = ({
             setDbError(msg);
           }
 
-          // If AI transaction was re-categorized, update vendor_overrides
-          if (isAIRecategorize && updatedTx.budget_id && appState.user?.id) {
+          // If AI transaction was re-categorized or vendor renamed, update vendor_overrides
+          if ((isAIRecategorize || isAIVendorRename) && appState.user?.id) {
             try {
               const overrideHeaders = await getAuthHeaders();
               (overrideHeaders as any)['Prefer'] = 'return=representation';
-              const vendorName = formatVendorName(updatedTx.vendor);
+              // Use the original vendor name as the key for lookup
+              const originalVendorName = formatVendorName(originalTx!.vendor);
+              const newVendorName = formatVendorName(updatedTx.vendor);
 
-              // Try to update existing override
+              // Build the update payload
+              const overridePayload: Record<string, string> = {};
+              if (isAIRecategorize && updatedTx.budget_id) {
+                overridePayload.category_id = updatedTx.budget_id;
+              }
+              if (isAIVendorRename) {
+                overridePayload.proper_name = newVendorName;
+              }
+
+              // Try to update existing override (match on original vendor name)
               const patchRes = await fetch(
-                `${REST_BASE}/vendor_overrides?user_id=eq.${appState.user.id}&vendor_name=eq.${encodeURIComponent(vendorName)}`,
+                `${REST_BASE}/vendor_overrides?user_id=eq.${appState.user.id}&vendor_name=eq.${encodeURIComponent(originalVendorName)}`,
                 {
                   method: 'PATCH',
                   headers: overrideHeaders,
-                  body: JSON.stringify({ category_id: updatedTx.budget_id }),
+                  body: JSON.stringify(overridePayload),
                 },
               );
               const patchBody = await patchRes.text();
@@ -201,12 +214,15 @@ export const useTransactionOps = ({
                   headers: overrideHeaders,
                   body: JSON.stringify({
                     user_id: appState.user.id,
-                    vendor_name: vendorName,
-                    category_id: updatedTx.budget_id,
+                    vendor_name: originalVendorName,
+                    category_id: updatedTx.budget_id || originalTx!.budget_id,
+                    ...(isAIVendorRename ? { proper_name: newVendorName } : {}),
                   }),
                 });
               }
-              console.log('[update] vendor_override saved for AI transaction:', vendorName);
+              console.log('[update] vendor_override saved for AI transaction:', originalVendorName,
+                isAIVendorRename ? `→ proper_name: ${newVendorName}` : '',
+                isAIRecategorize ? `→ category_id: ${updatedTx.budget_id}` : '');
             } catch (overrideErr: any) {
               console.warn('[update] vendor_override save failed:', overrideErr?.message || overrideErr);
             }

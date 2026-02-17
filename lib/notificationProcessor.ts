@@ -699,11 +699,13 @@ export async function processNotificationWithAI(
     }
   }
 
-  // ── Step 5: Category assignment ──
+  // ── Step 5: Category assignment + vendor name override ──
   let categoryId: string | null = null;
   let categoryName: string | null = null;
+  // The display vendor name — may be overridden by vendor_overrides
+  let displayVendor: string = vendor;
 
-  // First check vendor_overrides
+  // First check vendor_overrides for category_id, proper_name, and vendor_name
   try {
     const headers = await getAuthHeaders();
     const res = await fetch(
@@ -713,10 +715,20 @@ export async function processNotificationWithAI(
     if (res.ok) {
       const rows = await res.json();
       if (Array.isArray(rows) && rows.length > 0) {
-        categoryId = rows[0].category_id;
+        const override = rows[0];
+        categoryId = override.category_id;
         const matchedCat = availableCategories.find(c => c.id === categoryId);
         categoryName = matchedCat?.name || null;
-        console.log(`[AI pipeline] Vendor override found: ${vendor} → ${categoryName}`);
+        // Use proper_name if available, otherwise use vendor_name from override
+        if (override.proper_name) {
+          displayVendor = override.proper_name;
+          console.log(`[AI pipeline] Vendor override proper_name: ${vendor} → ${displayVendor} (${categoryName})`);
+        } else if (override.vendor_name) {
+          displayVendor = override.vendor_name;
+          console.log(`[AI pipeline] Vendor override vendor_name: ${vendor} → ${displayVendor} (${categoryName})`);
+        } else {
+          console.log(`[AI pipeline] Vendor override found: ${vendor} → ${categoryName}`);
+        }
       }
     }
   } catch (err) {
@@ -765,12 +777,13 @@ export async function processNotificationWithAI(
 
   // ── Step 6: Insert transaction with 'AI' label ──
   const transactionId = crypto.randomUUID();
+  const finalVendorName = formatVendorName(displayVendor);
   const { error: txError } = await supabase
     .from('transactions')
     .insert({
       id: transactionId,
       user_id: userId,
-      vendor: formatVendorName(vendor),
+      vendor: finalVendorName,
       amount,
       date: today,
       category_id: categoryId,
@@ -784,7 +797,7 @@ export async function processNotificationWithAI(
     return {
       processed: true,
       isTransaction: true,
-      vendor,
+      vendor: finalVendorName,
       amount,
       rejectionReason: 'Failed to save transaction',
       bankName: input.bankName,
@@ -798,7 +811,7 @@ export async function processNotificationWithAI(
 
     // Try to update existing override first
     const patchRes = await fetch(
-      `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(formatVendorName(vendor))}`,
+      `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(finalVendorName)}`,
       {
         method: 'PATCH',
         headers,
@@ -816,7 +829,7 @@ export async function processNotificationWithAI(
         headers,
         body: JSON.stringify({
           user_id: userId,
-          vendor_name: formatVendorName(vendor),
+          vendor_name: finalVendorName,
           category_id: categoryId,
         }),
       });
@@ -825,13 +838,13 @@ export async function processNotificationWithAI(
     console.warn('[AI pipeline] vendor_override save failed:', err);
   }
 
-  console.log(`[AI pipeline] Transaction saved: ${vendor} $${amount} → ${categoryName}`);
+  console.log(`[AI pipeline] Transaction saved: ${finalVendorName} $${amount} → ${categoryName}`);
 
   return {
     processed: true,
     isTransaction: true,
     transactionId,
-    vendor: formatVendorName(vendor),
+    vendor: finalVendorName,
     amount,
     categoryId,
     categoryName: categoryName || undefined,

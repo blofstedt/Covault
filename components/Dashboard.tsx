@@ -455,10 +455,14 @@ const Dashboard: React.FC<DashboardProps> = ({
     [onAddTransaction],
   );
 
-  // Handle vendor override update from AI transaction editing
+  // Handle vendor override update from AI transaction editing (fires on save only)
   const handleVendorOverrideUpdated = useCallback(
-    (vendor: string, categoryName: string) => {
-      setToastMessage(`You've updated the budget category for ${vendor}. Covault will use ${categoryName} next time.`);
+    (vendor: string, info: string) => {
+      if (info === 'vendor_name_changed') {
+        setToastMessage(`Covault will automatically use this vendor name for this vendor going forward.`);
+      } else {
+        setToastMessage(`Covault will automatically use this budget category for ${vendor} going forward.`);
+      }
     },
     [],
   );
