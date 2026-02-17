@@ -62,7 +62,8 @@ export const useNotificationListener = ({
             const bankName = event.bankName
               || (bankAppId && KNOWN_BANKING_APPS[bankAppId])
               || event.source_app
-              || bankAppId;
+              || bankAppId
+              || 'Unknown Bank';
 
             // ── AI Processing pipeline ──
             if (rawNotification && bankAppId && bankName) {

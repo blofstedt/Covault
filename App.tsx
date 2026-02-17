@@ -21,6 +21,9 @@ const SETTINGS_KEY = 'covault_settings';
 /** Delay (ms) after scanning to allow notification processing before reloading data */
 const SCAN_PROCESSING_DELAY_MS = 2000;
 
+/** Interval (ms) between periodic notification scans while enabled */
+const SCAN_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+
 const DEFAULT_SETTINGS = {
   rolloverEnabled: true,
   rolloverOverspend: false,
@@ -201,7 +204,6 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!appState.settings.notificationsEnabled || !covaultNotification) return;
 
-    const SCAN_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
     const intervalId = setInterval(async () => {
       try {
         await covaultNotification.scanActiveNotifications();

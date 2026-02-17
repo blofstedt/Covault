@@ -102,11 +102,10 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   // When notifications are enabled, trigger a scan and reload data
   // after a short delay so newly processed notifications appear.
   const prevEnabled = React.useRef(enabled);
+  const reloadTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     const wasEnabled = prevEnabled.current;
     prevEnabled.current = enabled;
-
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
     if (!wasEnabled && enabled) {
       // Notifications were just enabled — refresh after scan has time to process
@@ -114,7 +113,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         if (onRefreshNotifications) {
           await onRefreshNotifications();
         }
-        timeoutId = setTimeout(async () => {
+        reloadTimeoutRef.current = setTimeout(async () => {
           await loadRejectedNotifications();
           if (onReloadTransactions && userId) {
             await onReloadTransactions(userId);
@@ -124,7 +123,10 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     }
 
     return () => {
-      if (timeoutId != null) clearTimeout(timeoutId);
+      if (reloadTimeoutRef.current != null) {
+        clearTimeout(reloadTimeoutRef.current);
+        reloadTimeoutRef.current = null;
+      }
     };
   }, [enabled, onRefreshNotifications, onReloadTransactions, userId, loadRejectedNotifications]);
 

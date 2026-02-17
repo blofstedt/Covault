@@ -178,20 +178,20 @@ async function checkAlreadyProcessed(
  *   - One vendor name contains a significant word (3+ chars) from the other
  */
 export function vendorMatches(existingVendor: string | null, newVendor: string | null): boolean {
-  if (!existingVendor || !newVendor) return !existingVendor && !newVendor;
+  if (existingVendor == null || newVendor == null) return existingVendor == null && newVendor == null;
 
   const a = existingVendor.toLowerCase().trim();
   const b = newVendor.toLowerCase().trim();
 
   if (a === b) return true;
+  if (!a || !b) return false;
 
   // Check if any significant word from one appears in the other
   const wordsA = a.split(/\s+/).filter(w => w.length >= 3);
-  const wordsB = b.split(/\s+/).filter(w => w.length >= 3);
-
   for (const word of wordsA) {
     if (b.includes(word)) return true;
   }
+  const wordsB = b.split(/\s+/).filter(w => w.length >= 3);
   for (const word of wordsB) {
     if (a.includes(word)) return true;
   }
