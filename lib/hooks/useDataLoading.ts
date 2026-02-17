@@ -523,5 +523,6 @@ export const useDataLoading = ({
     categoriesLoaded,
     loadUserData,
     loadPendingTransactions,
+    loadTransactions,
   };
 };

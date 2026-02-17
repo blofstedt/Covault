@@ -18,7 +18,7 @@ export const useUserData = ({
   setAppState,
   setDbError,
 }: UseUserDataParams) => {
-  const { categoriesLoaded, loadUserData, loadPendingTransactions } = useDataLoading({ setAppState, setDbError });
+  const { categoriesLoaded, loadUserData, loadPendingTransactions, loadTransactions } = useDataLoading({ setAppState, setDbError });
 
   const {
     handleAddTransaction,
@@ -48,6 +48,7 @@ export const useUserData = ({
     categoriesLoaded,
     loadUserData,
     loadPendingTransactions,
+    loadTransactions,
     handleAddTransaction,
     handleUpdateTransaction,
     handleDeleteTransaction,

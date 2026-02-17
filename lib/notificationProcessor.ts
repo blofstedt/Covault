@@ -847,9 +847,11 @@ export async function processNotification(
   input = { ...input, bankAppId: (input.bankAppId || '').toLowerCase(), bankName: (input.bankName || '').toLowerCase() };
 
   // ── Step 1: Fingerprint Deduplication ──
-  // Extract a quick amount from the raw text for fingerprinting
+  // Extract a quick amount from the raw text for fingerprinting.
+  // Require a leading '$' so stray numbers (e.g. "13h" time prefixes) are
+  // not mistaken for dollar amounts.
   let quickAmount: number | null = null;
-  const quickAmountMatch = input.rawNotification.match(/\$?([\d,]+\.?\d{0,2})/);
+  const quickAmountMatch = input.rawNotification.match(/\$([\d,]+\.?\d{0,2})/);
   if (quickAmountMatch) {
     quickAmount = parseFloat(quickAmountMatch[1].replace(',', ''));
   }
@@ -1399,8 +1401,10 @@ export async function processNotificationWithAI(
   };
 
   // ── Step 1: Fingerprint Deduplication ──
+  // Require a leading '$' so stray numbers (e.g. "13h" time prefixes) are
+  // not mistaken for dollar amounts.
   let quickAmount: number | null = null;
-  const quickAmountMatch = input.rawNotification.match(/\$?([\d,]+\.?\d{0,2})/);
+  const quickAmountMatch = input.rawNotification.match(/\$([\d,]+\.?\d{0,2})/);
   if (quickAmountMatch) {
     quickAmount = parseFloat(quickAmountMatch[1].replace(',', ''));
   }

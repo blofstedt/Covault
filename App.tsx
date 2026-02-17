@@ -70,6 +70,7 @@ const App: React.FC = () => {
   const {
     loadUserData,
     loadPendingTransactions,
+    loadTransactions,
     handleAddTransaction,
     handleUpdateTransaction,
     handleDeleteTransaction,
@@ -245,6 +246,7 @@ const App: React.FC = () => {
             onClearApprovedTransactions={devNoopAsync as any}
             onRefreshNotifications={devNoopAsync}
             onReloadPendingTransactions={devNoopAsync as any}
+            onReloadTransactions={devNoopAsync as any}
             isLoadingData={false}
             initialShowParsing={devScreen === 'parsing'}
           />
@@ -296,6 +298,7 @@ const App: React.FC = () => {
           onClearApprovedTransactions={handleClearApprovedTransactions}
           onRefreshNotifications={refreshNotifications}
           onReloadPendingTransactions={loadPendingTransactions}
+          onReloadTransactions={loadTransactions}
           isLoadingData={isLoadingData}
         />
       )}

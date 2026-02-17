@@ -42,6 +42,7 @@ interface DashboardProps {
   onClearApprovedTransactions?: (ids: string[]) => Promise<void>;
   onRefreshNotifications?: () => Promise<void>;
   onReloadPendingTransactions?: (userId: string) => Promise<void>;
+  onReloadTransactions?: (userId: string) => Promise<void>;
   saveBudgetLimit: (categoryId: string, newLimit: number) => void;
   saveUserIncome: (income: number) => void;
   saveTheme: (theme: 'light' | 'dark') => void;
@@ -76,6 +77,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   onClearApprovedTransactions,
   onRefreshNotifications,
   onReloadPendingTransactions,
+  onReloadTransactions,
   saveBudgetLimit,
   saveUserIncome,
   saveTheme,
@@ -603,6 +605,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         isTutorialMode={showTutorial}
         showDemoData={tutorialParsingDemo}
         onRefreshNotifications={onRefreshNotifications}
+        onReloadTransactions={onReloadTransactions}
         onClearEntered={() => {
           setState(prev => ({
             ...prev,
