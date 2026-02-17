@@ -96,7 +96,10 @@ export async function autoDetectAndSaveMonitoredApps(
       .filter(app => app.packageName in knownBankingApps)
       .map(app => app.packageName);
 
-    if (bankingPackages.length === 0) return;
+    if (bankingPackages.length === 0) {
+      console.log('[autoDetect] No known banking apps found installed');
+      return;
+    }
 
     // Merge with existing selections so newly installed banking apps
     // are picked up without overwriting the user's previous choices.
