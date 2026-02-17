@@ -1,6 +1,5 @@
 import React from 'react';
 import { PendingTransaction } from '../../types';
-import { KEYWORD_IGNORED_PATTERN_ID } from '../../lib/notificationProcessor';
 import ParsingCard from '../ui/ParsingCard';
 import { EmptyState } from '../shared';
 
@@ -11,8 +10,7 @@ interface IgnoredNotificationsCardProps {
 
 /** Derive the reason label for a filtered-out notification. */
 function getFilterReason(pt: PendingTransaction): string {
-  if (pt.pattern_id === KEYWORD_IGNORED_PATTERN_ID) return 'Keyword filter';
-  if (pt.rejection_reason) return 'Duplicate';
+  if (pt.rejection_reason) return pt.rejection_reason;
   return 'Filtered';
 }
 
@@ -54,7 +52,7 @@ const IgnoredNotificationsCard: React.FC<IgnoredNotificationsCardProps> = ({
               </div>
               <div className="text-left min-w-0">
                 <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed line-clamp-2">
-                  {pt.notification_text}
+                  {pt.extracted_vendor} — ${pt.extracted_amount}
                 </p>
                 <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
                   {pt.app_name} · {new Date(pt.posted_at).toLocaleString()}

@@ -417,7 +417,7 @@ export const useDataLoading = ({
       try {
         const headers = await getAuthHeaders();
         const res = await fetch(
-          `${REST_BASE}/pending_transactions?select=*&user_id=eq.${userId}&needs_review=eq.true&approved=is.null&order=created_at.desc`,
+          `${REST_BASE}/pending_transactions?select=*&user_id=eq.${userId}&status=eq.pending&order=created_at.desc`,
           { headers },
         );
 

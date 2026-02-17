@@ -102,9 +102,9 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
                 <div className="px-4 pb-4 space-y-3 border-t border-slate-100 dark:border-slate-800/60 pt-3">
                   {/* Notification text preview */}
                   <div className="bg-slate-100 dark:bg-slate-800/80 rounded-xl p-3">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Notification</p>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Detected</p>
                     <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed line-clamp-3">
-                      {pt.notification_text}
+                      {pt.extracted_vendor} — ${pt.extracted_amount}
                     </p>
                   </div>
 

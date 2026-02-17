@@ -99,8 +99,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       .from('pending_transactions')
       .select('*')
       .eq('user_id', userId)
-      .eq('needs_review', false)
-      .eq('approved', false)
+      .eq('status', 'rejected')
       .order('created_at', { ascending: false })
       .limit(50);
 
@@ -114,7 +113,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         id: pt.id,
         vendor: pt.extracted_vendor || undefined,
         amount: pt.extracted_amount || undefined,
-        reason: pt.rejection_reason || pt.validation_reasons || 'Rejected by AI',
+        reason: pt.rejection_reason || 'Rejected by AI',
         bankName: pt.app_name || undefined,
         timestamp: pt.created_at,
       }));

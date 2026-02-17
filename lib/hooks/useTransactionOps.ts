@@ -354,9 +354,8 @@ export const useTransactionOps = ({
             method: 'PATCH',
             headers: rejectHeaders,
             body: JSON.stringify({
-              needs_review: false,
+              status: 'rejected',
               reviewed_at: new Date().toISOString(),
-              approved: false,
               rejection_reason: dupResult.reason,
             }),
           });
@@ -366,7 +365,7 @@ export const useTransactionOps = ({
             ...prev,
             pendingTransactions: (prev.pendingTransactions || []).map(p =>
               p.id === pendingId
-                ? { ...p, needs_review: false, approved: false, rejection_reason: dupResult.reason, reviewed_at: new Date().toISOString() }
+                ? { ...p, status: 'rejected' as const, rejection_reason: dupResult.reason, reviewed_at: new Date().toISOString() }
                 : p,
             ),
           }));
@@ -383,9 +382,8 @@ export const useTransactionOps = ({
             method: 'PATCH',
             headers: patchHeaders,
             body: JSON.stringify({
-              needs_review: false,
+              status: 'approved',
               reviewed_at: new Date().toISOString(),
-              approved: true,
             }),
           });
 
@@ -456,9 +454,8 @@ export const useTransactionOps = ({
           method: 'PATCH',
           headers: patchHeaders,
           body: JSON.stringify({
-            needs_review: false,
+            status: 'approved',
             reviewed_at: new Date().toISOString(),
-            approved: true,
           }),
         });
 
@@ -552,9 +549,8 @@ export const useTransactionOps = ({
           method: 'PATCH',
           headers,
           body: JSON.stringify({
-            needs_review: false,
+            status: 'rejected',
             reviewed_at: new Date().toISOString(),
-            approved: false,
             rejection_reason: 'Manually rejected',
           }),
         });
