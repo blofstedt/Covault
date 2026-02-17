@@ -25,6 +25,7 @@ interface TransactionParsingProps {
   isTutorialMode?: boolean;
   showDemoData?: boolean;
   onRefreshNotifications?: () => Promise<void>;
+  onReloadTransactions?: (userId: string) => Promise<void>;
   onClearEntered?: () => void;
 }
 
@@ -41,6 +42,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   isTutorialMode = false,
   showDemoData = false,
   onRefreshNotifications,
+  onReloadTransactions,
   onClearEntered,
 }) => {
   // ── State for rejected notifications ──
@@ -144,12 +146,18 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       // then again after a longer delay for slower AI extractions.
       await new Promise(resolve => setTimeout(resolve, 1500));
       await loadRejectedNotifications();
+      if (onReloadTransactions && userId) {
+        await onReloadTransactions(userId);
+      }
       await new Promise(resolve => setTimeout(resolve, 2000));
       await loadRejectedNotifications();
+      if (onReloadTransactions && userId) {
+        await onReloadTransactions(userId);
+      }
     } finally {
       setIsRefreshing(false);
     }
-  }, [isRefreshing, onRefreshNotifications, loadRejectedNotifications]);
+  }, [isRefreshing, onRefreshNotifications, onReloadTransactions, userId, loadRejectedNotifications]);
 
   return (
     <PageShell>
