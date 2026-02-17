@@ -275,7 +275,7 @@ export const useUserSettings = ({
           {
             method: 'PATCH',
             headers: headersWithPrefer,
-            body: JSON.stringify({ theme }),
+            body: JSON.stringify({ theme_selected: theme }),
           },
         );
         

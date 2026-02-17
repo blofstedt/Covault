@@ -36,20 +36,20 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
       }
       const data = await overridesRes.json();
 
-      // Load all categories to resolve names (vendor_overrides may lack FK to categories)
+      // Load all budgets to resolve category names
       const catsRes = await fetch(
-        `${REST_BASE}/categories?select=id,name`,
+        `${REST_BASE}/budgets?select=id,category`,
         { headers, cache: 'no-store' },
       );
       let cats: any[] = [];
       if (catsRes.ok) {
         cats = await catsRes.json();
       } else {
-        console.error('[TransactionParsing] Error loading categories for name resolution:', catsRes.status);
+        console.error('[TransactionParsing] Error loading budgets for name resolution:', catsRes.status);
       }
       const catNameById = new Map<string, string>();
       for (const c of cats) {
-        catNameById.set(c.id, c.name);
+        catNameById.set(c.id, c.category);
       }
 
       const overrides: VendorOverride[] = (data || []).map((row: any) => ({
