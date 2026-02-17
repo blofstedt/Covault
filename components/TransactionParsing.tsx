@@ -96,6 +96,28 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     loadRejectedNotifications();
   }, [loadRejectedNotifications]);
 
+  // When notifications are enabled, trigger a scan and reload data
+  // after a short delay so newly processed notifications appear.
+  const prevEnabled = React.useRef(enabled);
+  useEffect(() => {
+    const wasEnabled = prevEnabled.current;
+    prevEnabled.current = enabled;
+
+    if (!wasEnabled && enabled) {
+      // Notifications were just enabled — refresh after scan has time to process
+      (async () => {
+        if (onRefreshNotifications) {
+          await onRefreshNotifications();
+        }
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        await loadRejectedNotifications();
+        if (onReloadTransactions && userId) {
+          await onReloadTransactions(userId);
+        }
+      })();
+    }
+  }, [enabled, onRefreshNotifications, onReloadTransactions, userId, loadRejectedNotifications]);
+
   // Refresh data on visibility change
   useEffect(() => {
     const handleVisibilityChange = () => {

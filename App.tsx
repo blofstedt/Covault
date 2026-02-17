@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
 import Onboarding from './components/Onboarding';
@@ -123,6 +123,14 @@ const App: React.FC = () => {
     });
   }, [setAppState]);
 
+  // Handle AI processing result: reload transactions so newly inserted
+  // AI-labelled transactions appear in the UI immediately.
+  const handleAIProcessingResult = useCallback(async () => {
+    if (appState.user?.id) {
+      await loadTransactions(appState.user.id);
+    }
+  }, [appState.user?.id, loadTransactions]);
+
   // Native notification → auto transaction listener
   useNotificationListener({
     user: appState.user,
@@ -130,6 +138,7 @@ const App: React.FC = () => {
     onTransactionDetected: handleAddTransaction,
     onPendingTransactionCreated: handlePendingTransactionCreated,
     onAutoAcceptedTransaction: handleAutoAcceptedTransaction,
+    onAIProcessingResult: handleAIProcessingResult,
   });
 
   // Refresh notifications: re-detect banking apps then scan currently
@@ -149,6 +158,50 @@ const App: React.FC = () => {
   useEffect(() => {
     autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
   }, []);
+
+  // ── Scan immediately when notifications are enabled ──
+  // Track the previous value of notificationsEnabled so we detect the
+  // transition from false → true.  On that transition, auto-detect
+  // banking apps and scan active notifications in the notification shade.
+  const prevNotificationsEnabled = useRef(appState.settings.notificationsEnabled);
+  useEffect(() => {
+    const wasEnabled = prevNotificationsEnabled.current;
+    const isEnabled = appState.settings.notificationsEnabled;
+    prevNotificationsEnabled.current = isEnabled;
+
+    if (!wasEnabled && isEnabled) {
+      // Notifications were just enabled — scan immediately
+      (async () => {
+        await autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
+        if (covaultNotification) {
+          await covaultNotification.scanActiveNotifications();
+        }
+        // Reload transactions after a short delay to pick up processed results
+        if (appState.user?.id) {
+          setTimeout(() => loadTransactions(appState.user!.id), 2000);
+        }
+      })();
+    }
+  }, [appState.settings.notificationsEnabled, appState.user?.id, loadTransactions]);
+
+  // ── Periodic notification scanning while enabled ──
+  // Re-scan active notifications every 5 minutes so the app picks up
+  // banking notifications that arrive while the app is in the foreground
+  // without waiting for the user to tap refresh.
+  useEffect(() => {
+    if (!appState.settings.notificationsEnabled || !covaultNotification) return;
+
+    const SCAN_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+    const intervalId = setInterval(async () => {
+      try {
+        await covaultNotification.scanActiveNotifications();
+      } catch (e) {
+        console.warn('[periodic scan] Error scanning active notifications:', e);
+      }
+    }, SCAN_INTERVAL_MS);
+
+    return () => clearInterval(intervalId);
+  }, [appState.settings.notificationsEnabled]);
 
   // Theme handling
   useAppTheme(appState.settings.theme);
