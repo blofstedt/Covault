@@ -114,7 +114,7 @@ const VENDOR_PATTERNS: RegExp[] = [
  */
 export async function extractWithAI(
   notificationText: string,
-  _availableCategories: string[],
+  availableCategories: string[],
 ): Promise<AIExtractionResult> {
   return localExtraction(notificationText);
 }
@@ -154,7 +154,7 @@ function localExtraction(notificationText: string): AIExtractionResult {
         vendor: null,
         amount,
         suggestedCategory: null,
-        rejectionReason: `Non-transaction notification (matched: ${pattern.source})`,
+        rejectionReason: 'Non-transaction notification',
       };
     }
   }
@@ -238,9 +238,9 @@ function extractVendorFromTitle(fullText: string): string | null {
   ];
 
   for (const pattern of bodyStarts) {
-    const match = fullText.search(pattern);
-    if (match > 0) {
-      const titlePart = fullText.substring(0, match).trim();
+    const idx = fullText.search(pattern);
+    if (idx > 0) {
+      const titlePart = fullText.substring(0, idx).trim();
       const cleaned = titlePart
         // Remove parenthetical suffixes: "FIZZ (TX. INCL.)" → "FIZZ"
         .replace(/\s*\([^)]*\)\s*$/, '')
