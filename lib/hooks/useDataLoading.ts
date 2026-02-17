@@ -365,36 +365,28 @@ export const useDataLoading = ({
     [setAppState],
   );
 
-  // Load household link status from household_links table
+  // Load household link status from settings table (partner_id field)
   const loadHouseholdLink = useCallback(
     async (userId: string) => {
       try {
         const headers = await getAuthHeaders();
 
-        // Query household_links where user is either user1 or user2
+        // Check if the user has a partner_id set in their settings
         const res = await fetch(
-          `${REST_BASE}/household_links?select=*&or=(user1_id.eq.${userId},user2_id.eq.${userId})&limit=1`,
+          `${REST_BASE}/settings?select=partner_id,partner_name,partner_email,has_joint_accounts&user_id=eq.${userId}&limit=1`,
           { headers },
         );
 
         if (!res.ok) {
-          const body = await res.text();
-          // Check if table doesn't exist (expected during initial setup)
-          if (res.status === 404 && body.includes('Could not find the table')) {
-            console.log('[loadHouseholdLink] table not found - using defaults (run schema.sql to create tables)');
-            return;
-          }
-          console.log('[loadHouseholdLink] No household link found or error');
+          console.log('[loadHouseholdLink] Could not load settings');
           return;
         }
 
         const body = await res.text();
         const data = JSON.parse(body);
-        if (data && data.length > 0) {
-          const link = data[0];
-          const isUser1 = link.user1_id === userId;
-          const partnerId = isUser1 ? link.user2_id : link.user1_id;
-          const partnerName = isUser1 ? link.user2_name : link.user1_name;
+        if (data && data.length > 0 && data[0].partner_id) {
+          const partnerId = data[0].partner_id;
+          const partnerName = data[0].partner_name;
 
           setAppState(prev => ({
             ...prev,

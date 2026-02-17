@@ -21,24 +21,6 @@ export interface BudgetCategory {
   externalDeduction?: number;
 }
 
-// Household link from database
-export interface HouseholdLink {
-  id: string;
-  user1_id: string;
-  user2_id: string;
-  created_at: string;
-  user1_name?: string;
-  user2_name?: string;
-}
-
-// New: Link code for household linking
-export interface LinkCode {
-  code: string;
-  user_id: string;
-  expires_at: string;
-  created_at: string;
-}
-
 // New: Pending transaction awaiting approval
 export interface PendingTransaction {
   id: string;

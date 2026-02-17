@@ -9,7 +9,7 @@ export const useHouseholdLinking = ({
   setDbError,
 }: UseUserDataParams) => {
 
-  // Generate a link code for household linking
+  // Generate a link code for household linking (stored in settings row)
   const handleGenerateLinkCode = useCallback(async (): Promise<string | null> => {
     try {
       const userId = appState.user?.id;
@@ -27,13 +27,12 @@ export const useHouseholdLinking = ({
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
       
       (headers as any)['Prefer'] = 'return=representation';
-      const res = await fetch(`${REST_BASE}/link_codes`, {
-        method: 'POST',
+      const res = await fetch(`${REST_BASE}/settings?user_id=eq.${userId}`, {
+        method: 'PATCH',
         headers,
         body: JSON.stringify({
-          code,
-          user_id: userId,
-          expires_at: expiresAt,
+          link_code: code,
+          link_code_expires_at: expiresAt,
         }),
       });
 
@@ -51,7 +50,7 @@ export const useHouseholdLinking = ({
     }
   }, [appState.user, setDbError]);
 
-  // Join household using a link code
+  // Join household using a link code (stored in partner's settings row)
   const handleJoinWithCode = useCallback(
     async (code: string) => {
       try {
@@ -64,9 +63,9 @@ export const useHouseholdLinking = ({
 
         const headers = await getAuthHeaders();
         
-        // Look up the link code
+        // Look up the settings row with this link code
         const codeRes = await fetch(
-          `${REST_BASE}/link_codes?select=*&code=eq.${code.toUpperCase()}&expires_at=gt.${new Date().toISOString()}&limit=1`,
+          `${REST_BASE}/settings?select=user_id,name,email&link_code=eq.${code.toUpperCase()}&link_code_expires_at=gt.${new Date().toISOString()}&limit=1`,
           { headers },
         );
 
@@ -81,51 +80,44 @@ export const useHouseholdLinking = ({
           return;
         }
 
-        const linkCode = codeData[0];
-        const otherUserId = linkCode.user_id;
+        const otherUserId = codeData[0].user_id;
+        const otherUserName = codeData[0].name;
+        const otherUserEmail = codeData[0].email;
 
         if (otherUserId === userId) {
           setDbError("You can't link with yourself");
           return;
         }
 
-        // Get the other user's name
-        const settingsRes = await fetch(
-          `${REST_BASE}/settings?select=name&user_id=eq.${otherUserId}&limit=1`,
-          { headers },
-        );
-
-        let otherUserName = 'Partner';
-        if (settingsRes.ok) {
-          const settingsData = JSON.parse(await settingsRes.text());
-          if (settingsData && settingsData.length > 0) {
-            otherUserName = settingsData[0].name;
-          }
-        }
-
-        // Create household link
+        // Update both users' settings to link them
         (headers as any)['Prefer'] = 'return=representation';
-        const linkRes = await fetch(`${REST_BASE}/household_links`, {
-          method: 'POST',
+
+        // Update other user's settings
+        await fetch(`${REST_BASE}/settings?user_id=eq.${otherUserId}`, {
+          method: 'PATCH',
           headers,
           body: JSON.stringify({
-            user1_id: otherUserId,
-            user2_id: userId,
-            user1_name: otherUserName,
-            user2_name: userName,
+            partner_id: userId,
+            partner_name: userName,
+            partner_email: appState.user?.email,
+            has_joint_accounts: true,
+            budgeting_solo: false,
+            link_code: null,
+            link_code_expires_at: null,
           }),
         });
 
-        if (!linkRes.ok) {
-          const body = await linkRes.text();
-          setDbError(`Failed to create household link: ${body.slice(0, 200)}`);
-          return;
-        }
-
-        // Delete the used link code
-        await fetch(`${REST_BASE}/link_codes?code=eq.${code.toUpperCase()}`, {
-          method: 'DELETE',
+        // Update current user's settings
+        await fetch(`${REST_BASE}/settings?user_id=eq.${userId}`, {
+          method: 'PATCH',
           headers,
+          body: JSON.stringify({
+            partner_id: otherUserId,
+            partner_name: otherUserName,
+            partner_email: otherUserEmail,
+            has_joint_accounts: true,
+            budgeting_solo: false,
+          }),
         });
 
         setAppState(prev => ({
@@ -149,7 +141,7 @@ export const useHouseholdLinking = ({
     [appState.user, setAppState, setDbError],
   );
 
-  // Send a partner link request by email (legacy method, kept for compatibility)
+  // Send a partner link request by email
   const handleLinkPartner = useCallback(
     async (partnerEmail: string) => {
       try {
@@ -184,19 +176,35 @@ export const useHouseholdLinking = ({
         }
 
         (headers as any)['Prefer'] = 'return=representation';
-        const insertRes = await fetch(`${REST_BASE}/household_links`, {
-          method: 'POST',
+
+        // Update other user's settings
+        await fetch(`${REST_BASE}/settings?user_id=eq.${partnerId}`, {
+          method: 'PATCH',
           headers,
           body: JSON.stringify({
-            user1_id: userId,
-            user2_id: partnerId,
-            user1_name: userName,
-            user2_name: partnerName,
+            partner_id: userId,
+            partner_name: userName,
+            partner_email: appState.user?.email,
+            has_joint_accounts: true,
+            budgeting_solo: false,
           }),
         });
 
-        if (!insertRes.ok) {
-          const body = await insertRes.text();
+        // Update current user's settings
+        const updateRes = await fetch(`${REST_BASE}/settings?user_id=eq.${userId}`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({
+            partner_id: partnerId,
+            partner_name: partnerName,
+            partner_email: partnerEmail,
+            has_joint_accounts: true,
+            budgeting_solo: false,
+          }),
+        });
+
+        if (!updateRes.ok) {
+          const body = await updateRes.text();
           setDbError(`Link failed: ${body.slice(0, 200)}`);
           return;
         }
@@ -222,17 +230,42 @@ export const useHouseholdLinking = ({
     [appState.user, setAppState, setDbError],
   );
 
-  // Disconnect household
+  // Disconnect household (clear partner fields in both users' settings)
   const handleUnlinkPartner = useCallback(async () => {
     try {
       const userId = appState.user?.id;
+      const partnerId = appState.user?.partnerId;
       if (!userId) return;
 
       const headers = await getAuthHeaders();
-      await fetch(
-        `${REST_BASE}/household_links?or=(user1_id.eq.${userId},user2_id.eq.${userId})`,
-        { method: 'DELETE', headers },
-      );
+
+      // Clear current user's partner fields
+      await fetch(`${REST_BASE}/settings?user_id=eq.${userId}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({
+          partner_id: null,
+          partner_name: null,
+          partner_email: null,
+          has_joint_accounts: false,
+          budgeting_solo: true,
+        }),
+      });
+
+      // Clear partner's fields too
+      if (partnerId) {
+        await fetch(`${REST_BASE}/settings?user_id=eq.${partnerId}`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({
+            partner_id: null,
+            partner_name: null,
+            partner_email: null,
+            has_joint_accounts: false,
+            budgeting_solo: true,
+          }),
+        });
+      }
 
       setAppState(prev => ({
         ...prev,
