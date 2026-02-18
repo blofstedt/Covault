@@ -368,60 +368,81 @@ export const useDataLoading = ({
 
           // Load partner's transactions and merge with existing user transactions
           await loadTransactions(partnerId, { merge: true });
-
-          // Remap partner transaction budget_ids to match the current user's budget IDs.
-          // Each user has their own budget rows (with unique UUIDs) for the same category
-          // names, so partner transactions reference the partner's budget IDs which won't
-          // match the logged-in user's budget IDs without remapping.
-          try {
-            const partnerBudgetsRes = await fetch(
-              `${REST_BASE}/budgets?select=id,category&user_id=eq.${partnerId}`,
-              { headers: await getAuthHeaders() },
-            );
-            if (partnerBudgetsRes.ok) {
-              const partnerBudgets: { id: string; category: string }[] = await partnerBudgetsRes.json();
-              // Build partner budget ID → category name mapping
-              const partnerIdToCategory = new Map<string, string>();
-              for (const pb of partnerBudgets) {
-                partnerIdToCategory.set(pb.id, pb.category.toLowerCase());
-              }
-
-              if (partnerIdToCategory.size > 0) {
-                setAppState(prev => {
-                  // Build category name → user budget ID mapping from the user's budgets
-                  const categoryToUserId = new Map<string, string>();
-                  for (const b of prev.budgets) {
-                    categoryToUserId.set(b.name.toLowerCase(), b.id);
-                  }
-
-                  // Build set of valid user budget IDs for quick lookup
-                  const userBudgetIds = new Set(prev.budgets.map(b => b.id));
-
-                  const remapped = prev.transactions.map(tx => {
-                    if (!tx.budget_id) return tx;
-                    // Skip transactions that already reference a valid user budget
-                    if (userBudgetIds.has(tx.budget_id)) return tx;
-                    const catName = partnerIdToCategory.get(tx.budget_id);
-                    if (!catName) return tx;
-                    const userBudgetId = categoryToUserId.get(catName);
-                    if (!userBudgetId) return tx;
-                    return { ...tx, budget_id: userBudgetId };
-                  });
-
-                  return { ...prev, transactions: remapped };
-                });
-                console.log('[loadHouseholdLink] remapped partner transaction budget IDs');
-              }
-            }
-          } catch (remapErr: any) {
-            console.warn('[loadHouseholdLink] budget remap failed:', remapErr?.message || remapErr);
-          }
+          // Budget ID remapping is handled by remapOrphanedTransactions
+          // which runs after all data is loaded.
         }
       } catch (err: any) {
         console.error('[loadHouseholdLink]', err?.message || err);
       }
     },
     [loadTransactions, setAppState],
+  );
+
+  // Remap transactions whose budget_id doesn't match any of the user's
+  // budget IDs.  This covers two scenarios:
+  //   a) Schema migration: old category_id values reference a dropped
+  //      categories table or a partner's budgets table.
+  //   b) Household: the user's own transactions were saved with the
+  //      partner's budget IDs.
+  // The function fetches ALL accessible budget rows (own + partner via
+  // RLS) so that stale IDs can be resolved to category names, then
+  // remaps to the current user's budget IDs in a single state update.
+  const remapOrphanedTransactions = useCallback(
+    async (userId: string) => {
+      try {
+        const headers = await getAuthHeaders();
+
+        // 1. Fetch the logged-in user's budgets (valid target IDs)
+        const userBudgetsRes = await fetch(
+          `${REST_BASE}/budgets?select=id,category&user_id=eq.${userId}`,
+          { headers },
+        );
+        if (!userBudgetsRes.ok) return;
+        const userBudgets: { id: string; category: string }[] = await userBudgetsRes.json();
+        if (userBudgets.length === 0) return;
+
+        const userBudgetIds = new Set(userBudgets.map(b => b.id));
+        const categoryToUserBudgetId = new Map<string, string>();
+        for (const b of userBudgets) {
+          categoryToUserBudgetId.set(b.category.toLowerCase(), b.id);
+        }
+
+        // 2. Fetch ALL accessible budgets (own + partner via RLS).
+        //    This lets us resolve stale IDs that belong to a partner.
+        const allBudgetsRes = await fetch(
+          `${REST_BASE}/budgets?select=id,category`,
+          { headers },
+        );
+        if (!allBudgetsRes.ok) return;
+        const allBudgets: { id: string; category: string }[] = await allBudgetsRes.json();
+
+        const anyIdToCategory = new Map<string, string>();
+        for (const b of allBudgets) {
+          anyIdToCategory.set(b.id, b.category.toLowerCase());
+        }
+
+        // 3. Remap in a single state update
+        setAppState(prev => {
+          let changed = false;
+          const remapped = prev.transactions.map(tx => {
+            if (!tx.budget_id || userBudgetIds.has(tx.budget_id)) return tx;
+            const catName = anyIdToCategory.get(tx.budget_id);
+            if (!catName) return tx;
+            const correctId = categoryToUserBudgetId.get(catName);
+            if (!correctId) return tx;
+            changed = true;
+            return { ...tx, budget_id: correctId };
+          });
+          return changed ? { ...prev, transactions: remapped } : prev;
+        });
+        if (allBudgets.length > userBudgets.length) {
+          console.log('[remapOrphanedTransactions] remapped stale budget IDs');
+        }
+      } catch (err: any) {
+        console.warn('[remapOrphanedTransactions] failed:', err?.message || err);
+      }
+    },
+    [setAppState],
   );
 
   // Load all data from Supabase
@@ -433,10 +454,11 @@ export const useDataLoading = ({
       await loadUserSettings(userId); // load user-specific settings (monthly_income, etc.)
       await loadTransactions(userId);
       await loadPendingTransactions(userId); // load pending transactions awaiting approval
-      await loadHouseholdLink(userId); // Changed from loadPartnerLink
+      await loadHouseholdLink(userId); // load partner transactions (merged into state)
+      await remapOrphanedTransactions(userId); // fix stale/partner budget IDs → user's budget IDs
       console.log('loadUserData completed');
     },
-    [loadCategories, loadHouseholdLink, loadPendingTransactions, loadTransactions, loadUserBudgets, loadUserSettings],
+    [loadCategories, loadHouseholdLink, loadPendingTransactions, loadTransactions, loadUserBudgets, loadUserSettings, remapOrphanedTransactions],
   );
 
   return {
