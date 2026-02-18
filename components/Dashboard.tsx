@@ -1,4 +1,10 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import React, {
+  useState,
+  useMemo,
+  useEffect,
+  useRef,
+  useCallback,
+} from 'react';
 import { AppState, Transaction, BudgetCategory } from '../types';
 import TransactionForm from './TransactionForm';
 import TransactionActionModal from './TransactionActionModal';
@@ -90,7 +96,9 @@ const Dashboard: React.FC<DashboardProps> = ({
 }) => {
   const [isAddingTx, setIsAddingTx] = useState(false);
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
-  const [expandedBudgets, setExpandedBudgets] = useState<Set<string>>(new Set());
+  const [expandedBudgets, setExpandedBudgets] = useState<Set<string>>(
+    new Set(),
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [showParsing, setShowParsing] = useState(initialShowParsing);
@@ -104,7 +112,9 @@ const Dashboard: React.FC<DashboardProps> = ({
   const hasPremium = hasPremiumAccess(state.user);
 
   const handleSubscribe = () => {
-    console.log('[Dashboard] Subscribe tapped — Google Play Billing integration pending');
+    console.log(
+      '[Dashboard] Subscribe tapped — Google Play Billing integration pending',
+    );
     setShowSubscribeModal(false);
   };
 
@@ -151,13 +161,35 @@ const Dashboard: React.FC<DashboardProps> = ({
   const isSharedAccount = !state.user?.budgetingSolo;
 
   /**
-   * Normalize Supabase transactions so the UI can always work with:
-   *  - budget_id (from category_id if needed)
-   *  - userName (from user_name)
-   *  - amount as number (Supabase returns numeric as string)
-   *  - date as 'YYYY-MM-DD' string
+   * ✅ KEY FIX:
+   * Supabase gives us:
+   *  - category_id (points to categories.id)
+   *
+   * Your budgets (state.budgets) most likely look like user_budgets:
+   *  - id            (budget row id)
+   *  - category_id   (same categories.id as transactions.category_id)
+   *
+   * The UI groups by tx.budget_id === budget.id.
+   *
+   * So here we:
+   *  1) Build a map: category_id -> budget_id
+   *  2) For each transaction, set budget_id using that map.
+   *  3) Normalize amount, date, and userName.
    */
   const normalizedTransactions: Transaction[] = useMemo(() => {
+    // 1) Build category_id -> budget_id map from state.budgets
+    const categoryToBudgetId = new Map<string, string>();
+    (state.budgets || []).forEach((b: any) => {
+      const catId =
+        b.category_id ??
+        b.categoryId ??
+        (typeof b.category === 'object' ? b.category?.id : undefined);
+
+      if (catId && b.id) {
+        categoryToBudgetId.set(String(catId), String(b.id));
+      }
+    });
+
     const list = (state.transactions || []).map((tx: any) => {
       // Normalize amount to a number
       const rawAmount = tx.amount;
@@ -168,21 +200,36 @@ const Dashboard: React.FC<DashboardProps> = ({
           ? 0
           : Number(rawAmount);
 
-      // Normalize date to a plain 'YYYY-MM-DD' string
+      // Normalize date to plain 'YYYY-MM-DD' string
       let dateStr: string;
       if (typeof tx.date === 'string') {
-        // e.g. "2026-02-16" or "2026-02-16T00:00:00+00:00"
-        dateStr = tx.date.slice(0, 10);
+        dateStr = tx.date.slice(0, 10); // handles '2026-02-16' and '2026-02-16T...'
       } else if (tx.date instanceof Date) {
         dateStr = tx.date.toISOString().slice(0, 10);
       } else {
         dateStr = '';
       }
 
+      // Get category id from transaction
+      const rawCategoryId =
+        tx.category_id ??
+        tx.categoryId ??
+        (typeof tx.category === 'object' ? tx.category?.id : undefined);
+
+      // Look up matching budget id from map
+      const budgetIdFromCategory =
+        rawCategoryId != null
+          ? categoryToBudgetId.get(String(rawCategoryId))
+          : undefined;
+
       return {
         ...tx,
         date: dateStr,
-        budget_id: tx.budget_id ?? tx.category_id,
+        // Prefer any existing budget_id, otherwise map category -> budget id.
+        budget_id:
+          tx.budget_id ??
+          budgetIdFromCategory ??
+          (rawCategoryId ? String(rawCategoryId) : ''),
         userName: tx.userName ?? tx.user_name,
         amount: Number.isFinite(amountNum) ? amountNum : 0,
       };
@@ -194,7 +241,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
 
     return list as Transaction[];
-  }, [state.transactions]);
+  }, [state.transactions, state.budgets]);
 
   // Filter out hidden budget categories
   const hiddenCategories: string[] = state.settings.hiddenCategories || [];
@@ -215,8 +262,13 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   // Build vendor history for autocomplete (most recent transaction per vendor)
   const vendorHistory = useMemo(() => {
-    const vendorMap = new Map<string, { vendor: string; budget_id: string; date: string }>();
-    const sorted = [...normalizedTransactions].sort((a, b) => b.date.localeCompare(a.date));
+    const vendorMap = new Map<
+      string,
+      { vendor: string; budget_id: string; date: string }
+    >();
+    const sorted = [...normalizedTransactions].sort((a, b) =>
+      b.date.localeCompare(a.date),
+    );
     for (const tx of sorted) {
       const key = tx.vendor.toLowerCase();
       if (!vendorMap.has(key)) {
@@ -250,10 +302,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   }, []);
 
   /**
-   * DEBUG NOTE:
-   * For now, we KEEP the month filter, but we are logging counts above.
-   * If you want to force all transactions to show regardless of month,
-   * you can temporarily change this to:  () => normalizedTransactions
+   * HOME: THIS MONTH ONLY (but ALL vendors)
    */
   const currentMonthTransactionsAll = useMemo(() => {
     const list = normalizedTransactions.filter(
@@ -262,7 +311,10 @@ const Dashboard: React.FC<DashboardProps> = ({
 
     if (typeof window !== 'undefined') {
       console.log('[Dashboard] currentYearMonth:', currentYearMonth);
-      console.log('[Dashboard] currentMonthTransactionsAll count:', list.length);
+      console.log(
+        '[Dashboard] currentMonthTransactionsAll count:',
+        list.length,
+      );
     }
 
     return list;
@@ -270,20 +322,28 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   /**
    * SEARCH: show matches across past/current/future
-   * These are vendor-filtered.
    */
   const currentMonthTransactions = useMemo(
-    () => filteredTransactions.filter((tx) => txYearMonth(tx.date) === currentYearMonth),
+    () =>
+      filteredTransactions.filter(
+        (tx) => txYearMonth(tx.date) === currentYearMonth,
+      ),
     [filteredTransactions, currentYearMonth],
   );
 
   const pastTransactions = useMemo(
-    () => filteredTransactions.filter((tx) => txYearMonth(tx.date) < currentYearMonth),
+    () =>
+      filteredTransactions.filter(
+        (tx) => txYearMonth(tx.date) < currentYearMonth,
+      ),
     [filteredTransactions, currentYearMonth],
   );
 
   const futureTransactions = useMemo(
-    () => filteredTransactions.filter((tx) => txYearMonth(tx.date) > currentYearMonth),
+    () =>
+      filteredTransactions.filter(
+        (tx) => txYearMonth(tx.date) > currentYearMonth,
+      ),
     [filteredTransactions, currentYearMonth],
   );
 
@@ -295,7 +355,10 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   // Projected transactions falling in the current month
   const projectedCurrentMonth = useMemo(
-    () => projectedTransactions.filter((tx) => txYearMonth(tx.date) === currentYearMonth),
+    () =>
+      projectedTransactions.filter(
+        (tx) => txYearMonth(tx.date) === currentYearMonth,
+      ),
     [projectedTransactions, currentYearMonth],
   );
 
@@ -313,7 +376,10 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   // Remaining money (this month only, spent vs projected)
   const remainingMoney = useMemo(() => {
-    const allCurrentMonth = [...currentMonthTransactionsAll, ...projectedCurrentMonth];
+    const allCurrentMonth = [
+      ...currentMonthTransactionsAll,
+      ...projectedCurrentMonth,
+    ];
 
     const totalSpent = allCurrentMonth.reduce(
       (acc, tx) => acc + (tx.is_projected ? 0 : tx.amount),
@@ -335,7 +401,9 @@ const Dashboard: React.FC<DashboardProps> = ({
     visibleBudgets.forEach((b) => {
       if (b.name.toLowerCase().includes('leisure')) return;
 
-      const bTxs = currentMonthTransactionsAll.filter((tx: any) => tx.budget_id === b.id);
+      const bTxs = currentMonthTransactionsAll.filter(
+        (tx: any) => tx.budget_id === b.id,
+      );
 
       const spent = bTxs.reduce((acc, tx) => {
         if (tx.is_projected) return acc;
@@ -418,7 +486,9 @@ const Dashboard: React.FC<DashboardProps> = ({
       transactions: currentMonthTransactionsAll,
       totalIncome,
       remainingMoney,
-      settings: { app_notifications_enabled: state.settings.app_notifications_enabled },
+      settings: {
+        app_notifications_enabled: state.settings.app_notifications_enabled,
+      },
     });
   }, [
     state.user?.id,
@@ -455,17 +525,20 @@ const Dashboard: React.FC<DashboardProps> = ({
     [onAddTransaction],
   );
 
-  const handleVendorOverrideUpdated = useCallback((vendor: string, info: string) => {
-    if (info === 'vendor_name_changed') {
-      setToastMessage(
-        `Covault will automatically use this vendor name for this vendor going forward.`,
-      );
-    } else {
-      setToastMessage(
-        `Covault will automatically use this budget category for ${vendor} going forward.`,
-      );
-    }
-  }, []);
+  const handleVendorOverrideUpdated = useCallback(
+    (vendor: string, info: string) => {
+      if (info === 'vendor_name_changed') {
+        setToastMessage(
+          `Covault will automatically use this vendor name for this vendor going forward.`,
+        );
+      } else {
+        setToastMessage(
+          `Covault will automatically use this budget category for ${vendor} going forward.`,
+        );
+      }
+    },
+    [],
+  );
 
   // If showing parsing view without premium (and not in tutorial), show subscribe modal
   if (showParsing && !hasPremium) {
@@ -509,7 +582,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         />
       ) : (
         <PageShell showGlow={!isFocusMode}>
-          {/* DEBUG OVERLAY — small text in top-right so we can see counts */}
+          {/* DEBUG OVERLAY — shows how many transactions the dashboard sees */}
           <div
             style={{
               position: 'fixed',
