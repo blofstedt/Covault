@@ -3,12 +3,13 @@
 // Notification processing pipeline with AI-based extraction.
 //
 // Pipeline:
-//   1. Duplicate detection (check transactions + pending_transactions tables)
-//   2. AI extraction: vendor, amount, transaction classification
-//   3. Duplicate detection (same vendor + amount pair)
+//   1. In-memory dedup (fast, prevents re-processing during scans)
+//   2. Duplicate detection (check transactions + pending_transactions tables)
+//   3. AI extraction: vendor, amount, transaction classification
 //   4. Non-transaction filtering (balance alerts, OTPs, etc.)
-//   5. Category assignment: vendor_overrides first, then AI guess
-//   6. Insert into transactions table with 'AI' label
+//   5. Duplicate detection (same vendor + amount pair)
+//   6. Category assignment: vendor_overrides first, then AI guess
+//   7. Insert into transactions table with 'AI' label
 
 import { supabase } from './supabase';
 import { REST_BASE, getAuthHeaders } from './apiHelpers';
@@ -398,53 +399,6 @@ export async function deduplicatePendingTransactions(
   return pendingTransactions.filter(pt => keepSet.has(pt.id));
 }
 
-// ─── Step 2: Ignore Rule Check ──────────────────────────────────
-
-/**
- * Check if this notification should be ignored based on user's
- * ignored_transactions rules.
- */
-async function shouldIgnore(
-  userId: string,
-  vendor: string,
-  amount: number | null,
-  bankAppId: string,
-): Promise<boolean> {
-  const { data: rules, error } = await supabase
-    .from('ignored_transactions')
-    .select('*')
-    .eq('user_id', userId)
-    .ilike('vendor_name', vendor);
-
-  if (error) {
-    console.error('[shouldIgnore] Error fetching ignore rules:', error);
-    return false;
-  }
-
-  if (!rules || rules.length === 0) {
-    return false;
-  }
-
-  const now = new Date();
-
-  for (const rule of rules) {
-    if (rule.expires_at && new Date(rule.expires_at) < now) {
-      continue;
-    }
-    if (rule.bank_app_id && rule.bank_app_id !== bankAppId) {
-      continue;
-    }
-    if (rule.amount != null && amount != null) {
-      if (Math.abs(rule.amount - amount) > AMOUNT_TOLERANCE) {
-        continue;
-      }
-    }
-    return true;
-  }
-
-  return false;
-}
-
 // ─── Duplicate Detection Against Existing Transactions ──────────
 
 interface DuplicateCheckResult {
@@ -564,89 +518,16 @@ export interface AIProcessingResult {
 }
 
 /**
- * Store a rejected notification in pending_transactions so it appears
- * in the rejected card on the Transaction Parsing screen.
- *
- * Privacy: We do NOT store the raw notification text. Only the extracted
- * vendor, amount, and bank app identifier are persisted.
- */
-async function storeRejectedNotification(
-  userId: string,
-  input: NotificationInput,
-  notifTimestamp: number,
-  vendor: string | null,
-  amount: number | null,
-  rejectionReason: string,
-): Promise<void> {
-  try {
-    // Check for existing rejected entry with same vendor + amount to avoid duplicates
-    const normalizedVendor = (vendor || 'Unknown').toLowerCase().trim();
-    const normalizedAmount = amount ?? 0;
-
-    const { data: existing } = await supabase
-      .from('pending_transactions')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('status', 'rejected')
-      .eq('notification_timestamp', notifTimestamp);
-
-    if (existing && existing.length > 0) {
-      console.log(`[AI pipeline] Rejected notification already stored, skipping duplicate`);
-      return;
-    }
-
-    // Also check for same vendor + amount rejected today (different notification_timestamp
-    // but same underlying transaction)
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const { data: todayExisting } = await supabase
-      .from('pending_transactions')
-      .select('id, extracted_vendor, extracted_amount')
-      .eq('user_id', userId)
-      .eq('status', 'rejected')
-      .gte('created_at', todayStart.toISOString());
-
-    if (todayExisting && todayExisting.length > 0) {
-      const isDup = todayExisting.some(pt => {
-        const ptVendor = (pt.extracted_vendor || '').toLowerCase().trim();
-        const ptAmount = Number(pt.extracted_amount) || 0;
-        return ptVendor === normalizedVendor && Math.abs(ptAmount - normalizedAmount) < AMOUNT_TOLERANCE;
-      });
-      if (isDup) {
-        console.log(`[AI pipeline] Similar rejected notification already stored today, skipping`);
-        return;
-      }
-    }
-
-    const now = new Date();
-    await supabase.from('pending_transactions').insert({
-      user_id: userId,
-      app_package: input.bankAppId,
-      app_name: input.bankName,
-      notification_timestamp: notifTimestamp,
-      posted_at: now.toISOString(),
-      extracted_vendor: vendor || 'Unknown',
-      extracted_amount: amount ?? 0,
-      extracted_timestamp: now.toISOString(),
-      confidence: 0,
-      status: 'rejected',
-      rejection_reason: rejectionReason,
-    });
-  } catch (err) {
-    console.warn('[AI pipeline] Failed to store rejected notification:', err);
-  }
-}
-
-/**
  * Process a notification using the AI pipeline.
  *
  * Steps:
- *   1. Duplicate detection (check transactions + pending_transactions tables)
- *   2. AI extraction (vendor, amount, transaction classification)
- *   3. Reject non-transactions (stored in pending_transactions as rejected)
- *   4. Duplicate detection (same vendor + amount pair in existing transactions)
- *   5. Category assignment: vendor_overrides first, then AI suggestion
- *   6. Insert directly into transactions table with 'AI' label
+ *   1. In-memory dedup (fast, prevents re-processing during scans)
+ *   2. Duplicate detection (check transactions + pending_transactions tables)
+ *   3. AI extraction (vendor, amount, transaction classification)
+ *   4. Non-transaction filtering
+ *   5. Duplicate detection (same vendor + amount pair in existing transactions)
+ *   6. Category assignment: vendor_overrides first, then AI suggestion
+ *   7. Insert directly into transactions table with 'AI' label
  */
 export async function processNotificationWithAI(
   userId: string,
@@ -715,8 +596,8 @@ export async function processNotificationWithAI(
   if (!aiResult.vendor && !aiResult.amount) {
     console.log('[AI pipeline] AI could not extract data');
     const reason = aiResult.rejectionReason || 'Could not extract transaction data';
-    // Store as rejected so it appears in the rejected card
-    await storeRejectedNotification(userId, input, notifTimestamp, null, null, reason);
+    // Add to in-memory cache so we don't re-process this notification
+    recentlyProcessedCache.set(inMemoryKey, Date.now());
     return {
       processed: true,
       isTransaction: false,
@@ -730,11 +611,8 @@ export async function processNotificationWithAI(
   if (!aiResult.isTransaction) {
     console.log('[AI pipeline] Not a transaction:', aiResult.rejectionReason);
     const reason = aiResult.rejectionReason || 'Not cost-related notification';
-    // Store as rejected so it appears in the rejected card
-    await storeRejectedNotification(
-      userId, input, notifTimestamp,
-      aiResult.vendor || null, aiResult.amount || null, reason,
-    );
+    // Add to in-memory cache so we don't re-process this notification
+    recentlyProcessedCache.set(inMemoryKey, Date.now());
     return {
       processed: true,
       isTransaction: false,
@@ -752,8 +630,8 @@ export async function processNotificationWithAI(
   // ── Step 3b: Reject if no vendor could be identified ──
   if (!vendor) {
     const reason = 'No vendor name found in notification';
-    console.log('[AI pipeline] Rejected: no vendor identified');
-    await storeRejectedNotification(userId, input, notifTimestamp, null, amount, reason);
+    console.log('[AI pipeline] Skipped: no vendor identified');
+    recentlyProcessedCache.set(inMemoryKey, Date.now());
     return {
       processed: true,
       isTransaction: false,
@@ -813,11 +691,8 @@ export async function processNotificationWithAI(
         ? `Duplicate transaction found: ${vendor} for $${amount.toFixed(2)} was already recorded by AI`
         : `Duplicate transaction found: ${vendor} for $${amount.toFixed(2)} matches a manually recorded transaction`;
       console.log(`[AI pipeline] ${reason}`);
-      // Only store rejection for manual duplicates — AI duplicates are expected
-      // when re-scanning notifications and don't need to clutter the rejected card
-      if (!isAIDuplicate) {
-        await storeRejectedNotification(userId, input, notifTimestamp, vendor, amount, reason);
-      }
+      // Add to in-memory cache to prevent re-processing
+      recentlyProcessedCache.set(inMemoryKey, Date.now());
       return {
         processed: true,
         isTransaction: true,
@@ -970,6 +845,9 @@ export async function processNotificationWithAI(
   }
 
   console.log(`[AI pipeline] Transaction saved: ${finalVendorName} $${amount} → ${categoryName}`);
+
+  // Add to in-memory cache to prevent re-processing on rescan
+  recentlyProcessedCache.set(inMemoryKey, Date.now());
 
   return {
     processed: true,

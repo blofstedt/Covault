@@ -4,8 +4,6 @@ import { Transaction, BudgetCategory } from '../types';
 
 import ActiveBanksCard from './transaction_parsing/ActiveBanksCard';
 import AITransactionsEnteredCard from './transaction_parsing/AITransactionsEnteredCard';
-import AITransactionsRejectedCard from './transaction_parsing/AITransactionsRejectedCard';
-import type { AIRejectedTransaction } from './transaction_parsing/AITransactionsRejectedCard';
 import SetupInfoCard from './transaction_parsing/SetupInfoCard';
 import ClearConfirmModal from './transaction_parsing/ClearConfirmModal';
 import PageShell from './ui/PageShell';
@@ -46,11 +44,8 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   onReloadTransactions,
   onClearEntered,
 }) => {
-  // ── State for rejected notifications ──
-  const [rejectedNotifications, setRejectedNotifications] = useState<AIRejectedTransaction[]>([]);
-
   // ── Clear modal state ──
-  const [clearTarget, setClearTarget] = useState<'entered' | 'rejected' | null>(null);
+  const [clearTarget, setClearTarget] = useState<'entered' | null>(null);
 
   // ── Refresh spinner state ──
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -87,41 +82,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     [allTransactions],
   );
 
-  // ── Load rejected notifications from pending_transactions ──
-  const loadRejectedNotifications = useCallback(async () => {
-    if (!userId) return;
-
-    const { data, error } = await supabase
-      .from('pending_transactions')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('status', 'rejected')
-      .order('created_at', { ascending: false })
-      .limit(50);
-
-    if (error) {
-      console.error('[TransactionParsing] Error loading rejected:', error);
-      return;
-    }
-
-    if (data) {
-      const rejected: AIRejectedTransaction[] = data.map((pt: any) => ({
-        id: pt.id,
-        vendor: pt.extracted_vendor || undefined,
-        amount: pt.extracted_amount || undefined,
-        reason: pt.rejection_reason || 'Rejected by AI',
-        bankName: pt.app_name || undefined,
-        timestamp: pt.created_at,
-      }));
-      setRejectedNotifications(rejected);
-    }
-  }, [userId]);
-
-  // Load on mount
-  useEffect(() => {
-    loadRejectedNotifications();
-  }, [loadRejectedNotifications]);
-
   // When notifications are enabled, trigger a scan and reload data
   // after a short delay so newly processed notifications appear.
   const prevEnabled = React.useRef(enabled);
@@ -137,7 +97,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
           await onRefreshNotifications();
         }
         reloadTimeoutRef.current = setTimeout(async () => {
-          await loadRejectedNotifications();
           if (onReloadTransactions && userId) {
             await onReloadTransactions(userId);
           }
@@ -151,19 +110,18 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         reloadTimeoutRef.current = null;
       }
     };
-  }, [enabled, onRefreshNotifications, onReloadTransactions, userId, loadRejectedNotifications]);
+  }, [enabled, onRefreshNotifications, onReloadTransactions, userId]);
 
-  // Refresh data on visibility change
+  // Refresh monitored banks on visibility change
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        loadRejectedNotifications();
         loadMonitoredBanks();
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [loadRejectedNotifications, loadMonitoredBanks]);
+  }, [loadMonitoredBanks]);
 
   // ── Clear handlers ──
   const handleClearEntered = useCallback(async () => {
@@ -178,18 +136,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     onClearEntered?.();
   }, [userId, aiTransactions, onClearEntered]);
 
-  const handleClearRejected = useCallback(async () => {
-    if (!userId) return;
-    const rejectedIds = rejectedNotifications.map((r) => r.id);
-    // Always clear local state so the UI updates immediately
-    setRejectedNotifications([]);
-    if (rejectedIds.length === 0) return;
-    const { error } = await supabase.from('pending_transactions').delete().in('id', rejectedIds);
-    if (error) {
-      console.error('[TransactionParsing] Error clearing rejected:', error);
-    }
-  }, [userId, rejectedNotifications]);
-
   // ── Refresh handler ──
   const handleRefresh = useCallback(async () => {
     if (isRefreshing) return;
@@ -203,12 +149,10 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       // Reload after a short delay to pick up fast-processing results,
       // then again after a longer delay for slower AI extractions.
       await new Promise(resolve => setTimeout(resolve, 1500));
-      await loadRejectedNotifications();
       if (onReloadTransactions && userId) {
         await onReloadTransactions(userId);
       }
       await new Promise(resolve => setTimeout(resolve, 2000));
-      await loadRejectedNotifications();
       if (onReloadTransactions && userId) {
         await onReloadTransactions(userId);
       }
@@ -216,7 +160,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       setIsRefreshing(false);
       loadMonitoredBanks();
     }
-  }, [isRefreshing, onRefreshNotifications, onReloadTransactions, userId, loadRejectedNotifications, loadMonitoredBanks]);
+  }, [isRefreshing, onRefreshNotifications, onReloadTransactions, userId, loadMonitoredBanks]);
 
   return (
     <PageShell>
@@ -249,11 +193,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                 onRefresh={handleRefresh}
                 isRefreshing={isRefreshing}
               />
-
-              <AITransactionsRejectedCard
-                rejectedTransactions={rejectedNotifications}
-                onClear={() => setClearTarget('rejected')}
-              />
             </>
           ) : (
             <SetupInfoCard enabled={enabled} onToggle={onToggle} />
@@ -271,13 +210,9 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       {/* Clear confirmation modal */}
       {clearTarget && (
         <ClearConfirmModal
-          cardName={clearTarget === 'entered' ? 'Transactions Entered' : 'Notifications Rejected'}
+          cardName="Caught Transactions"
           onConfirm={async () => {
-            if (clearTarget === 'entered') {
-              await handleClearEntered();
-            } else {
-              await handleClearRejected();
-            }
+            await handleClearEntered();
             setClearTarget(null);
           }}
           onCancel={() => setClearTarget(null)}

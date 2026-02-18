@@ -40,18 +40,7 @@ export interface PendingTransaction {
 }
 
 
-// Ignored transaction rule (user-defined ignore patterns)
-export interface IgnoredTransaction {
-  id: string;
-  user_id: string;
-  vendor_name: string;
-  amount?: number;
-  bank_app_id?: string;
-  expires_at?: string;
-  reason: string;
-  created_at: string;
-}
-
+// Ignored transaction rule type removed — table deleted from backend
 
 export enum Recurrence {
   ONE_TIME = 'One-time',

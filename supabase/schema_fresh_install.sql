@@ -5,7 +5,7 @@
 -- For safe migration, see schema.sql instead.
 -- ============================================================
 -- Tables: budgets, settings, transactions, pending_transactions,
---         ignored_transactions, vendor_overrides, known_banking_apps
+--         vendor_overrides, known_banking_apps
 -- ============================================================
 
 -- 1. DROP ALL EXISTING TABLES
@@ -263,42 +263,8 @@ CREATE POLICY "Users can delete own pending transactions"
   USING (auth.uid() = user_id);
 
 -- ============================================================
--- 6. IGNORED TRANSACTIONS
--- Persist user rules to ignore known non-expense notifications
+-- 6. IGNORED TRANSACTIONS — removed (table deleted from backend)
 -- ============================================================
-CREATE TABLE public.ignored_transactions (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL,
-  vendor_name text NOT NULL,
-  amount numeric,
-  bank_app_id text,
-  expires_at timestamptz,
-  reason text,
-  created_at timestamptz DEFAULT now(),
-  CONSTRAINT ignored_transactions_pkey PRIMARY KEY (id),
-  CONSTRAINT ignored_transactions_user_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
-);
-
-CREATE INDEX idx_ignored_transactions_user_id ON public.ignored_transactions (user_id);
-CREATE INDEX idx_ignored_transactions_vendor  ON public.ignored_transactions (user_id, vendor_name);
-
-ALTER TABLE public.ignored_transactions ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can view own ignored transactions"
-  ON public.ignored_transactions FOR SELECT TO authenticated
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert own ignored transactions"
-  ON public.ignored_transactions FOR INSERT TO authenticated
-  WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own ignored transactions"
-  ON public.ignored_transactions FOR UPDATE TO authenticated
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete own ignored transactions"
-  ON public.ignored_transactions FOR DELETE TO authenticated
-  USING (auth.uid() = user_id);
 
 -- ============================================================
 -- 7. VENDOR OVERRIDES  (reclassification memory)
