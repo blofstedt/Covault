@@ -95,38 +95,43 @@ async function aiGenerate(prompt: string, maxTokens = 64): Promise<string> {
 const VENDOR_CORRECTIONS: Record<string, string> = {
   'amzn': 'Amazon', 'amzn mktp': 'Amazon', 'amzn mktplace': 'Amazon',
   'amazon.ca': 'Amazon', 'amazon.com': 'Amazon', 'amzn digital': 'Amazon',
-  'amazon prime': 'Amazon Prime',
+  'amazon prime': 'Amazon Prime', 'prime video': 'Amazon Prime',
   'wm supercenter': 'Walmart', 'wal-mart': 'Walmart', 'wal mart': 'Walmart',
-  'walmrt': 'Walmart',
+  'walmrt': 'Walmart', 'walmart supercenter': 'Walmart',
   'mcdonald\'s': 'McDonald\'s', 'mcdonalds': 'McDonald\'s', 'mcdnlds': 'McDonald\'s',
-  'mcd\'s': 'McDonald\'s',
+  'mcd\'s': 'McDonald\'s', 'mcd': 'McDonald\'s',
   'starbux': 'Starbucks', 'sbux': 'Starbucks', 'starbuck': 'Starbucks',
   'tim hortons': 'Tim Hortons', 'tim horton\'s': 'Tim Hortons', 'tims': 'Tim Hortons',
-  'timhortons': 'Tim Hortons',
+  'timhortons': 'Tim Hortons', 'tim horton': 'Tim Hortons',
   'chick fil a': 'Chick-fil-A', 'chickfila': 'Chick-fil-A', 'cfa': 'Chick-fil-A',
+  'chick-fil-a': 'Chick-fil-A',
   'sprt chek': 'Sport Chek', 'sprt check': 'Sport Chek', 'sport check': 'Sport Chek',
   'cdn tire': 'Canadian Tire', 'can tire': 'Canadian Tire', 'canadian tire': 'Canadian Tire',
+  'ct corp': 'Canadian Tire',
   'costco whse': 'Costco', 'costco wholesale': 'Costco',
   'dollarama': 'Dollarama',
   'shoppers drug mart': 'Shoppers Drug Mart', 'shoppers': 'Shoppers Drug Mart',
-  'sdm': 'Shoppers Drug Mart',
+  'sdm': 'Shoppers Drug Mart', 'shoppers drug': 'Shoppers Drug Mart',
   'lndlrd': 'Landlord',
   'rcss': 'Real Canadian Superstore', 'real cdn superstore': 'Real Canadian Superstore',
+  'superstore': 'Real Canadian Superstore',
   'loblaws': 'Loblaws', 'loblaw': 'Loblaws',
   'uber eats': 'Uber Eats', 'ubereats': 'Uber Eats',
   'skip the dishes': 'Skip The Dishes', 'skipthedishes': 'Skip The Dishes',
+  'skip': 'Skip The Dishes',
   'doordash': 'DoorDash', 'door dash': 'DoorDash',
   'disney+': 'Disney Plus', 'disney plus': 'Disney Plus', 'disneyplus': 'Disney Plus',
-  'netflix.com': 'Netflix',
-  'spotify.com': 'Spotify', 'spotify ab': 'Spotify',
+  'netflix.com': 'Netflix', 'netflix': 'Netflix',
+  'spotify.com': 'Spotify', 'spotify ab': 'Spotify', 'spotify': 'Spotify',
   'apple.com/bill': 'Apple', 'apple.com': 'Apple',
-  'apple icloud': 'Apple',
+  'apple icloud': 'Apple', 'apple.com/bill one': 'Apple',
   'google *': 'Google', 'google play': 'Google Play',
+  'google storage': 'Google', 'google one': 'Google',
   'paypal *': 'PayPal',
   'sq *': 'Square', 'sq*': 'Square',
   'tst*': 'Toast',
   'pp*': 'PayPal',
-  'wholefds': 'Whole Foods', 'whole fds': 'Whole Foods',
+  'wholefds': 'Whole Foods', 'whole fds': 'Whole Foods', 'whole foods': 'Whole Foods',
   'petro-canada': 'Petro-Canada', 'petro canada': 'Petro-Canada',
   'petrocan': 'Petro-Canada',
   'circle k': 'Circle K', 'couche-tard': 'Couche-Tard', 'couche tard': 'Couche-Tard',
@@ -134,7 +139,7 @@ const VENDOR_CORRECTIONS: Record<string, string> = {
   'wendys': 'Wendy\'s', 'wendy\'s': 'Wendy\'s',
   'bk': 'Burger King', 'burger king': 'Burger King',
   'kfc': 'KFC',
-  'popeyes': 'Popeyes',
+  'popeyes': 'Popeyes', 'popeye\'s': 'Popeyes',
   'tacobell': 'Taco Bell', 'taco bell': 'Taco Bell',
   'petsmart': 'PetSmart',
   'bestbuy': 'Best Buy', 'best buy': 'Best Buy',
@@ -142,6 +147,12 @@ const VENDOR_CORRECTIONS: Record<string, string> = {
   'ikea': 'IKEA',
   'goodlife fitness': 'Goodlife Fitness',
   'goodlife': 'Goodlife Fitness',
+  'no frills': 'No Frills', 'nofrills': 'No Frills',
+  'freshco': 'FreshCo',
+  'sobeys': 'Sobeys', 'sobey\'s': 'Sobeys',
+  'metro': 'Metro',
+  'safeway': 'Safeway',
+  'save on foods': 'Save-On-Foods', 'save-on-foods': 'Save-On-Foods',
 };
 
 /**
@@ -168,12 +179,21 @@ function polishVendor(raw: string): string {
   // Strip parenthetical suffixes like "(TX. INCL.)" or "(ONLINE)"
   v = v.replace(/\s*\([^)]*\)\s*/g, ' ');
 
+  // Strip common transaction metadata patterns
+  v = v.replace(/\bref\s*#?\s*\d+/gi, '');
+  v = v.replace(/\btxn\s*#?\s*\d+/gi, '');
+  v = v.replace(/\btransaction\s*#?\s*\d+/gi, '');
+
   // Strip store / location / terminal numbers
   v = v.replace(/[#]\s*\d+/g, '');
   v = v.replace(/\s+(?:STORE|STR|LOC|LOCATION|TERMINAL|TML|UNIT|KIOSK)\s*#?\s*\d*$/i, '');
   v = v.replace(/\s+\d{4,}$/g, '');
   v = v.replace(/\s+\d{3}$/g, '');
   v = v.replace(/\s*-\s*\d+$/g, '');
+
+  // Strip "www." prefix and ".com"/".ca"/".co" etc. suffixes from web-style vendor names
+  v = v.replace(/^www\.\s*/i, '');
+  v = v.replace(/\.(?:com|ca|co|net|org|io)\b/gi, '');
 
   // Strip city/province/state suffixes
   v = v.replace(/\s+[A-Z]{2}\s*$/i, '');
@@ -334,6 +354,13 @@ function ruleBasedVendorExtraction(text: string): { vendor: string | null; isTra
   const dollarFromMatch = stripped.match(/\$[\d,]+\.?\d*\s+from\s+(.+?)(?:\s+(?:for\s+|on\s+|was\s+)\b|\s*\.?\s*$)/i);
   if (dollarFromMatch?.[1]) {
     const v = dollarFromMatch[1].trim();
+    if (v.length >= 2 && !/^your\s/i.test(v)) return { vendor: v, isTransaction: true, rejectionReason: null };
+  }
+
+  // "with VENDOR" when NOT "with your" (e.g., "A recurring transaction of $16.99 with Amazon Prime")
+  const withMatch = stripped.match(/\bwith\s+(.+?)(?:\s+(?:was\s+|on\s+your|has\s+been|for\s+)\b|\s*\.?\s*$)/i);
+  if (withMatch?.[1]) {
+    const v = withMatch[1].trim();
     if (v.length >= 2 && !/^your\s/i.test(v)) return { vendor: v, isTransaction: true, rejectionReason: null };
   }
 

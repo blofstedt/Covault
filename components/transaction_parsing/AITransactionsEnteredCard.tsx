@@ -40,7 +40,7 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
           <polyline points="22 4 12 14.01 9 11.01" />
         </>
       }
-      title="Transactions Entered"
+      title="Caught Transactions"
       subtitle="AI-processed transactions added to your budgets"
       count={aiTransactions.length}
       headerAction={

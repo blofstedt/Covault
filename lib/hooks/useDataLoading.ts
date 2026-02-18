@@ -260,7 +260,14 @@ export const useDataLoading = ({
 
         const data = JSON.parse(body);
         if (data && data.length > 0) {
-          const transactions = data.map(fromSupabaseTransaction);
+          const transactions: Transaction[] = [];
+          for (const row of data) {
+            try {
+              transactions.push(fromSupabaseTransaction(row));
+            } catch (mapErr: any) {
+              console.warn('[loadTransactions] Skipping invalid row:', row?.id, mapErr?.message);
+            }
+          }
 
           console.log('[loadTransactions] OK, count:', transactions.length);
           setAppState(prev => {

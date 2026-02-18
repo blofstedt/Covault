@@ -264,45 +264,8 @@ END $$;
 
 
 -- ============================================================
--- 5. IGNORED TRANSACTIONS
--- Persist user rules to ignore known non-expense notifications
+-- 5. IGNORED TRANSACTIONS — removed (table deleted from backend)
 -- ============================================================
-CREATE TABLE IF NOT EXISTS public.ignored_transactions (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL,
-  vendor_name text NOT NULL,
-  amount numeric,
-  bank_app_id text,
-  expires_at timestamptz,
-  reason text,
-  created_at timestamptz DEFAULT now(),
-  CONSTRAINT ignored_transactions_pkey PRIMARY KEY (id),
-  CONSTRAINT ignored_transactions_user_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_ignored_transactions_user_id ON public.ignored_transactions (user_id);
-CREATE INDEX IF NOT EXISTS idx_ignored_transactions_vendor  ON public.ignored_transactions (user_id, vendor_name);
-
-ALTER TABLE public.ignored_transactions ENABLE ROW LEVEL SECURITY;
-
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'ignored_transactions' AND policyname = 'Users can view own ignored transactions') THEN
-    CREATE POLICY "Users can view own ignored transactions" ON public.ignored_transactions FOR SELECT TO authenticated
-      USING (auth.uid() = user_id);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'ignored_transactions' AND policyname = 'Users can insert own ignored transactions') THEN
-    CREATE POLICY "Users can insert own ignored transactions" ON public.ignored_transactions FOR INSERT TO authenticated
-      WITH CHECK (auth.uid() = user_id);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'ignored_transactions' AND policyname = 'Users can update own ignored transactions') THEN
-    CREATE POLICY "Users can update own ignored transactions" ON public.ignored_transactions FOR UPDATE TO authenticated
-      USING (auth.uid() = user_id);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'ignored_transactions' AND policyname = 'Users can delete own ignored transactions') THEN
-    CREATE POLICY "Users can delete own ignored transactions" ON public.ignored_transactions FOR DELETE TO authenticated
-      USING (auth.uid() = user_id);
-  END IF;
-END $$;
 
 
 -- ============================================================
