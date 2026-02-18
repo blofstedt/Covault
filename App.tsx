@@ -92,16 +92,19 @@ const App: React.FC = () => {
   } = useUserData({ appState, setAppState, setDbError });
 
   // Wrapped loadUserData that tracks loading state
-  const loadUserDataWithState = useCallback(async (userId: string) => {
-    setIsLoadingData(true);
-    try {
-      await loadUserData(userId);
-    } catch (error) {
-      console.error('[loadUserDataWithState] Error loading user data:', error);
-    } finally {
-      setIsLoadingData(false);
-    }
-  }, [loadUserData]);
+  const loadUserDataWithState = useCallback(
+    async (userId: string) => {
+      setIsLoadingData(true);
+      try {
+        await loadUserData(userId);
+      } catch (error) {
+        console.error('[loadUserDataWithState] Error loading user data:', error);
+      } finally {
+        setIsLoadingData(false);
+      }
+    },
+    [loadUserData],
+  );
 
   // Auth + session handling
   useAuthState({ setAppState, setAuthState, loadUserData: loadUserDataWithState });
@@ -110,20 +113,26 @@ const App: React.FC = () => {
   useDeepLinks();
 
   // Stable callbacks for the native notification listener
-  const handlePendingTransactionCreated = useCallback((pending: PendingTransaction) => {
-    setAppState(prev => {
-      const existing = prev.pendingTransactions || [];
-      if (existing.some(p => p.id === pending.id)) return prev;
-      return { ...prev, pendingTransactions: [pending, ...existing] };
-    });
-  }, [setAppState]);
+  const handlePendingTransactionCreated = useCallback(
+    (pending: PendingTransaction) => {
+      setAppState(prev => {
+        const existing = prev.pendingTransactions || [];
+        if (existing.some(p => p.id === pending.id)) return prev;
+        return { ...prev, pendingTransactions: [pending, ...existing] };
+      });
+    },
+    [setAppState],
+  );
 
-  const handleAutoAcceptedTransaction = useCallback((tx: Transaction) => {
-    setAppState(prev => {
-      if (prev.transactions.some(t => t.id === tx.id)) return prev;
-      return { ...prev, transactions: [tx, ...prev.transactions] };
-    });
-  }, [setAppState]);
+  const handleAutoAcceptedTransaction = useCallback(
+    (tx: Transaction) => {
+      setAppState(prev => {
+        if (prev.transactions.some(t => t.id === tx.id)) return prev;
+        return { ...prev, transactions: [tx, ...prev.transactions] };
+      });
+    },
+    [setAppState],
+  );
 
   // Handle AI processing result: reload transactions so newly inserted
   // AI-labelled transactions appear in the UI immediately.
@@ -136,9 +145,6 @@ const App: React.FC = () => {
       await loadTransactions(appState.user.id);
     }
   }, [appState.user?.id, loadTransactions]);
-    // No-op: rely on handleAutoAcceptedTransaction for immediate state update
-    // and on explicit refresh / visibility-change reload for DB sync.
-  }, [];
 
   // Native notification → auto transaction listener
   useNotificationListener({
@@ -256,9 +262,7 @@ const App: React.FC = () => {
     setAppState(prev => ({
       ...prev,
       budgets,
-      user: prev.user
-        ? { ...prev.user, budgetingSolo: isSolo, partnerEmail }
-        : null,
+      user: prev.user ? { ...prev.user, budgetingSolo: isSolo, partnerEmail } : null,
     }));
     setAuthState('authenticated');
   };
@@ -266,9 +270,7 @@ const App: React.FC = () => {
   const handleUpdateBudget = (updatedBudget: BudgetCategory) => {
     setAppState(prev => ({
       ...prev,
-      budgets: prev.budgets.map(b =>
-        b.id === updatedBudget.id ? updatedBudget : b,
-      ),
+      budgets: prev.budgets.map(b => (b.id === updatedBudget.id ? updatedBudget : b)),
     }));
   };
 
