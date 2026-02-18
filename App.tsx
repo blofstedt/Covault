@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
 import Onboarding from './components/Onboarding';
@@ -31,21 +31,22 @@ const DEFAULT_SETTINGS = {
   notification_rules: [] as import('./types').NotificationRule[],
 };
 
-// Load settings from localStorage
+const canUseStorage =
+  typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+
 const loadSettingsFromStorage = () => {
+  if (!canUseStorage) return null;
   try {
     const stored = localStorage.getItem(SETTINGS_KEY);
-    if (stored) {
-      return JSON.parse(stored);
-    }
+    return stored ? JSON.parse(stored) : null;
   } catch (e) {
     console.error('Error loading settings:', e);
+    return null;
   }
-  return null;
 };
 
-// Save settings to localStorage
 const saveSettingsToStorage = (settings: AppState['settings']) => {
+  if (!canUseStorage) return;
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   } catch (e) {
@@ -53,7 +54,122 @@ const saveSettingsToStorage = (settings: AppState['settings']) => {
   }
 };
 
-const App: React.FC = () => {
+/**
+ * Detect whether we're running in a native wrapper (Capacitor/Cordova).
+ * This keeps native-only plugins/hooks from running on web and causing a blank screen.
+ */
+const isNativePlatform = () => {
+  if (typeof window === 'undefined') return false;
+  const w = window as any;
+
+  // Capacitor: window.Capacitor.isNativePlatform() exists at runtime in native builds
+  const capacitorNative =
+    typeof w.Capacitor?.isNativePlatform === 'function'
+      ? !!w.Capacitor.isNativePlatform()
+      : false;
+
+  // Cordova presence
+  const cordovaNative = !!w.cordova;
+
+  return capacitorNative || cordovaNative;
+};
+
+/**
+ * Error boundary to prevent "white screen of death" on runtime exceptions.
+ * Shows a minimal fallback with the error message.
+ */
+class AppErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error?: Error }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, info: any) {
+    console.error('[AppErrorBoundary] Uncaught error:', error, info);
+  }
+
+  render() {
+    if (!this.state.hasError) return this.props.children;
+
+    return (
+      <div style={{ padding: 16, fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' }}>
+        <h2 style={{ marginBottom: 8 }}>Something went wrong</h2>
+        <p style={{ marginTop: 0 }}>
+          The app hit a runtime error instead of rendering. Check the console for details.
+        </p>
+        <pre
+          style={{
+            background: '#111',
+            color: '#eee',
+            padding: 12,
+            borderRadius: 8,
+            overflow: 'auto',
+            maxWidth: '100%',
+          }}
+        >
+          {this.state.error?.message ?? 'Unknown error'}
+        </pre>
+
+        {canUseStorage && (
+          <button
+            style={{
+              marginTop: 12,
+              padding: '10px 12px',
+              borderRadius: 8,
+              border: '1px solid #ccc',
+              cursor: 'pointer',
+            }}
+            onClick={() => {
+              try {
+                localStorage.removeItem(SETTINGS_KEY);
+                window.location.reload();
+              } catch {
+                // ignore
+              }
+            }}
+          >
+            Reset local settings & reload
+          </button>
+        )}
+      </div>
+    );
+  }
+}
+
+/**
+ * Native-only hooks isolated into their own component so we can safely
+ * NOT render it on web (no conditional hook calls).
+ */
+const NativeHooks: React.FC<{
+  user: AppState['user'];
+  budgets: AppState['budgets'];
+  onTransactionDetected: (tx: any) => any;
+  onPendingTransactionCreated: (pending: PendingTransaction) => void;
+  onAutoAcceptedTransaction: (tx: Transaction) => void;
+}> = ({ user, budgets, onTransactionDetected, onPendingTransactionCreated, onAutoAcceptedTransaction }) => {
+  // Native deep link handling (OAuth callback)
+  useDeepLinks();
+
+  // Native notification → auto transaction listener
+  useNotificationListener({
+    user,
+    budgets,
+    onTransactionDetected,
+    onPendingTransactionCreated,
+    onAutoAcceptedTransaction,
+  });
+
+  return null;
+};
+
+const AppInner: React.FC = () => {
   const [authState, setAuthState] = useState<AuthStatus>('loading');
   const [dbError, setDbError] = useState<string | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(false);
@@ -89,74 +205,71 @@ const App: React.FC = () => {
     saveBudgetVisibility,
   } = useUserData({ appState, setAppState, setDbError });
 
-  // Wrapped loadUserData that tracks loading state
-  const loadUserDataWithState = useCallback(async (userId: string) => {
-    setIsLoadingData(true);
-    try {
-      await loadUserData(userId);
-    } catch (error) {
-      console.error('[loadUserDataWithState] Error loading user data:', error);
-    } finally {
-      setIsLoadingData(false);
-    }
-  }, [loadUserData]);
+  const loadUserDataWithState = useCallback(
+    async (userId: string) => {
+      setIsLoadingData(true);
+      try {
+        await loadUserData(userId);
+      } catch (error) {
+        console.error('[loadUserDataWithState] Error loading user data:', error);
+      } finally {
+        setIsLoadingData(false);
+      }
+    },
+    [loadUserData],
+  );
 
   // Auth + session handling
   useAuthState({ setAppState, setAuthState, loadUserData: loadUserDataWithState });
 
-  // Native deep link handling (OAuth callback)
-  useDeepLinks();
-
   // Stable callbacks for the native notification listener
-  const handlePendingTransactionCreated = useCallback((pending: PendingTransaction) => {
-    setAppState(prev => {
-      const existing = prev.pendingTransactions || [];
-      if (existing.some(p => p.id === pending.id)) return prev;
-      return { ...prev, pendingTransactions: [pending, ...existing] };
-    });
-  }, [setAppState]);
+  const handlePendingTransactionCreated = useCallback(
+    (pending: PendingTransaction) => {
+      setAppState(prev => {
+        const existing = prev.pendingTransactions || [];
+        if (existing.some(p => p.id === pending.id)) return prev;
+        return { ...prev, pendingTransactions: [pending, ...existing] };
+      });
+    },
+    [setAppState],
+  );
 
-  const handleAutoAcceptedTransaction = useCallback((tx: Transaction) => {
-    setAppState(prev => {
-      if (prev.transactions.some(t => t.id === tx.id)) return prev;
-      return { ...prev, transactions: [tx, ...prev.transactions] };
-    });
-  }, [setAppState]);
+  const handleAutoAcceptedTransaction = useCallback(
+    (tx: Transaction) => {
+      setAppState(prev => {
+        if (prev.transactions.some(t => t.id === tx.id)) return prev;
+        return { ...prev, transactions: [tx, ...prev.transactions] };
+      });
+    },
+    [setAppState],
+  );
 
-  // Native notification → auto transaction listener
-  useNotificationListener({
-    user: appState.user,
-    budgets: appState.budgets,
-    onTransactionDetected: handleAddTransaction,
-    onPendingTransactionCreated: handlePendingTransactionCreated,
-    onAutoAcceptedTransaction: handleAutoAcceptedTransaction,
-  });
-
-  // Refresh notifications: scan currently visible Android notifications
-  // Refresh notifications: re-detect banking apps then scan currently
-  // visible Android notifications so newly installed apps are picked up.
+  // Refresh notifications: re-detect banking apps then scan currently visible notifications
   const refreshNotifications = useCallback(async () => {
-    await autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
-    if (covaultNotification) {
-      await covaultNotification.scanActiveNotifications();
+    try {
+      await autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
+      if (covaultNotification?.scanActiveNotifications) {
+        await covaultNotification.scanActiveNotifications();
+      }
+    } catch (e) {
+      console.error('[refreshNotifications] Failed:', e);
     }
   }, []);
 
-  // Auto-detect installed banking apps on startup so the notification
-  // listener can monitor them immediately (even before the user opens
-  // notification settings or any banking notification arrives).
-  // Runs unconditionally so that banking apps are discovered as soon as
-  // the user opens the app — not only after notifications are enabled.
+  // Auto-detect banking apps when notifications are enabled (native-only feature)
   useEffect(() => {
-    autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
-  }, []);
-  
-  useEffect(() => {
-    if (appState.settings.notificationsEnabled) {
-      autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
-    }
+    if (!appState.settings.notificationsEnabled) return;
+
+    // Wrap in try/catch so a missing native plugin can't blank the app
+    (async () => {
+      try {
+        await autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
+      } catch (e) {
+        console.error('[autoDetectAndSaveMonitoredApps] Failed:', e);
+      }
+    })();
   }, [appState.settings.notificationsEnabled]);
-  
+
   // Theme handling
   useAppTheme(appState.settings.theme);
 
@@ -173,9 +286,7 @@ const App: React.FC = () => {
     setAppState(prev => ({
       ...prev,
       budgets,
-      user: prev.user
-        ? { ...prev.user, budgetingSolo: isSolo, partnerEmail }
-        : null,
+      user: prev.user ? { ...prev.user, budgetingSolo: isSolo, partnerEmail } : null,
     }));
     setAuthState('authenticated');
   };
@@ -183,9 +294,7 @@ const App: React.FC = () => {
   const handleUpdateBudget = (updatedBudget: BudgetCategory) => {
     setAppState(prev => ({
       ...prev,
-      budgets: prev.budgets.map(b =>
-        b.id === updatedBudget.id ? updatedBudget : b,
-      ),
+      budgets: prev.budgets.map(b => (b.id === updatedBudget.id ? updatedBudget : b)),
     }));
   };
 
@@ -194,14 +303,12 @@ const App: React.FC = () => {
   };
 
   // --- Developer Mode ----------------------------------------------------
-
   const [devModeActive, devModeToggle] = useDeveloperMode();
   type DevScreen = 'auth' | 'onboarding' | 'dashboard' | 'parsing';
   const [devScreen, setDevScreen] = useState<DevScreen>('dashboard');
   const [devSolo, setDevSolo] = useState(true);
   const [devNotifications, setDevNotifications] = useState(true);
 
-  // Rebuild fake state whenever dev toggles change
   const [devState, setDevState] = useState<AppState>(() =>
     buildDevState({ solo: true, notificationsEnabled: true }),
   );
@@ -212,13 +319,26 @@ const App: React.FC = () => {
     }
   }, [devModeActive, devSolo, devNotifications]);
 
-  // No-op handlers for developer mode (all data is fake)
   const devNoop = useCallback(() => {}, []);
   const devNoopAsync = useCallback(async () => {}, []);
   const devNoopString = useCallback(async () => null as string | null, []);
 
+  // --- Platform toggle (computed once) -----------------------------------
+  const native = useMemo(() => isNativePlatform(), []);
+
   // --- Render -------------------------------------------------------------
 
+  // If an error was captured from data layer, show it (prevents "blank")
+  if (dbError) {
+    return (
+      <div style={{ padding: 16 }}>
+        <h2>Database / Data Error</h2>
+        <pre style={{ whiteSpace: 'pre-wrap' }}>{dbError}</pre>
+      </div>
+    );
+  }
+
+  // While auth loads (and not in dev mode), show loader
   if (authState === 'loading' && !devModeActive) {
     return <FullScreenLoader />;
   }
@@ -227,9 +347,7 @@ const App: React.FC = () => {
   if (devModeActive) {
     return (
       <div className="min-h-screen w-full bg-slate-50 dark:bg-slate-950 overflow-hidden relative flex flex-col transition-colors duration-300">
-        {devScreen === 'auth' && (
-          <Auth onSignIn={devNoop} />
-        )}
+        {devScreen === 'auth' && <Auth onSignIn={devNoop} />}
 
         {devScreen === 'onboarding' && (
           <Onboarding onComplete={() => setDevScreen('dashboard')} />
@@ -276,8 +394,8 @@ const App: React.FC = () => {
           isSolo={devSolo}
           notificationsEnabled={devNotifications}
           onNavigate={setDevScreen}
-          onToggleSolo={() => setDevSolo((p) => !p)}
-          onToggleNotifications={() => setDevNotifications((p) => !p)}
+          onToggleSolo={() => setDevSolo(p => !p)}
+          onToggleNotifications={() => setDevNotifications(p => !p)}
           onExit={devModeToggle}
         />
       </div>
@@ -286,6 +404,17 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen w-full bg-slate-50 dark:bg-slate-950 overflow-hidden relative flex flex-col transition-colors duration-300">
+      {/* Native-only hooks rendered ONLY on native platforms */}
+      {native && (
+        <NativeHooks
+          user={appState.user}
+          budgets={appState.budgets}
+          onTransactionDetected={handleAddTransaction}
+          onPendingTransactionCreated={handlePendingTransactionCreated}
+          onAutoAcceptedTransaction={handleAutoAcceptedTransaction}
+        />
+      )}
+
       {authState === 'unauthenticated' && (
         <Auth onSignIn={() => setAuthState('authenticated')} />
       )}
@@ -322,6 +451,14 @@ const App: React.FC = () => {
         />
       )}
     </div>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <AppErrorBoundary>
+      <AppInner />
+    </AppErrorBoundary>
   );
 };
 
