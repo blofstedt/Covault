@@ -394,12 +394,17 @@ export const useDataLoading = ({
                     categoryToUserId.set(b.name.toLowerCase(), b.id);
                   }
 
+                  // Build set of valid user budget IDs for quick lookup
+                  const userBudgetIds = new Set(prev.budgets.map(b => b.id));
+
                   const remapped = prev.transactions.map(tx => {
-                    if (tx.user_id !== partnerId || !tx.budget_id) return tx;
+                    if (!tx.budget_id) return tx;
+                    // Skip transactions that already reference a valid user budget
+                    if (userBudgetIds.has(tx.budget_id)) return tx;
                     const catName = partnerIdToCategory.get(tx.budget_id);
                     if (!catName) return tx;
                     const userBudgetId = categoryToUserId.get(catName);
-                    if (!userBudgetId || userBudgetId === tx.budget_id) return tx;
+                    if (!userBudgetId) return tx;
                     return { ...tx, budget_id: userBudgetId };
                   });
 
