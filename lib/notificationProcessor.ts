@@ -40,7 +40,13 @@ const MS_PER_HOUR = 60 * 60 * 1000;
  */
 const recentlyProcessedCache = new Map<string, number>();
 
-/** How long to keep entries in the in-memory dedup cache (ms) */
+/**
+ * How long to keep entries in the in-memory dedup cache (ms).
+ * 2 hours balances preventing duplicate processing during rescans
+ * while allowing legitimate repeat purchases (e.g., two coffees
+ * from the same vendor on the same day). The DB-based dedup in
+ * checkAlreadyProcessed() provides a separate, persistent layer.
+ */
 const DEDUP_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 /**
@@ -56,7 +62,7 @@ function buildInMemoryDedupKey(
 ): string {
   // Extract amount from raw text for keying
   const amountMatch = rawNotification.match(/\$([\d,]+\.?\d{0,2})/);
-  const amount = amountMatch ? amountMatch[1].replace(/,/g, '') : '';
+  const amount = amountMatch ? amountMatch[1].replace(/,/g, '') : 'no-amount';
   return `${bankAppId}|${amount}|${notificationTimestamp}`;
 }
 
