@@ -116,7 +116,7 @@ vi.mock('../apiHelpers', () => ({
   }),
 }));
 
-import { processNotificationWithAI, checkDuplicateTransaction, vendorMatches } from '../notificationProcessor';
+import { processNotificationWithAI, checkDuplicateTransaction, vendorMatches, _clearDedupCacheForTesting } from '../notificationProcessor';
 import { extractWithAI } from '../aiExtractor';
 import type { NotificationInput } from '../notificationProcessor';
 
@@ -149,6 +149,8 @@ beforeEach(() => {
   for (const key of Object.keys(tableChains)) {
     delete tableChains[key];
   }
+  // Clear the in-memory dedup cache so each test starts fresh
+  _clearDedupCacheForTesting();
   // Default fetch: return empty array (no vendor overrides)
   mockFetch.mockResolvedValue({
     ok: true,
@@ -587,5 +589,88 @@ describe('Vendor name polishing in AI extraction', () => {
   it('strips store numbers', async () => {
     const result = await extractWithAI('Payment of $5.50 at Subway#327', []);
     expect(result.vendor).not.toContain('#327');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// 8. IN-MEMORY DEDUP CACHE
+// ═══════════════════════════════════════════════════════════════════
+
+describe('In-memory dedup cache prevents duplicate processing', () => {
+  it('blocks the same notification from being processed twice', async () => {
+    // Setup: no duplicates, no existing transactions
+    const txChain = getChain('transactions');
+    const mockSelectChain = {
+      eq: vi.fn().mockReturnThis(),
+      gte: vi.fn().mockReturnThis(),
+      lte: vi.fn().mockReturnThis(),
+      ilike: vi.fn().mockReturnThis(),
+      then: (resolve: any) => resolve({ data: [], error: null }),
+    };
+    txChain.select = vi.fn().mockReturnValue(mockSelectChain);
+    txChain.insert = vi.fn().mockResolvedValue({ error: null });
+
+    const ptChain = getChain('pending_transactions');
+    const mockPtSelectChain = {
+      eq: vi.fn().mockReturnThis(),
+      gte: vi.fn().mockReturnThis(),
+      lte: vi.fn().mockReturnThis(),
+      then: (resolve: any) => resolve({ data: [], error: null }),
+    };
+    ptChain.select = vi.fn().mockReturnValue(mockPtSelectChain);
+
+    const timestamp = Date.now();
+    const input = makeInput({ notificationTimestamp: timestamp });
+
+    // First call — should process normally
+    const result1 = await processNotificationWithAI('user-1', input, CATEGORIES);
+    expect(result1.processed).toBe(true);
+
+    // Second call with same input — should be deduped by in-memory cache
+    const result2 = await processNotificationWithAI('user-1', input, CATEGORIES);
+    expect(result2.processed).toBe(false);
+    expect(result2.skipReason).toBe('duplicate_fingerprint');
+  });
+
+  it('allows different notifications to be processed independently', async () => {
+    // Setup: no duplicates, no existing transactions
+    const txChain = getChain('transactions');
+    const mockSelectChain = {
+      eq: vi.fn().mockReturnThis(),
+      gte: vi.fn().mockReturnThis(),
+      lte: vi.fn().mockReturnThis(),
+      ilike: vi.fn().mockReturnThis(),
+      then: (resolve: any) => resolve({ data: [], error: null }),
+    };
+    txChain.select = vi.fn().mockReturnValue(mockSelectChain);
+    txChain.insert = vi.fn().mockResolvedValue({ error: null });
+
+    const ptChain = getChain('pending_transactions');
+    const mockPtSelectChain = {
+      eq: vi.fn().mockReturnThis(),
+      gte: vi.fn().mockReturnThis(),
+      lte: vi.fn().mockReturnThis(),
+      then: (resolve: any) => resolve({ data: [], error: null }),
+    };
+    ptChain.select = vi.fn().mockReturnValue(mockPtSelectChain);
+
+    const timestamp = Date.now();
+
+    // Two different notifications
+    const input1 = makeInput({
+      rawNotification: 'Purchase of $25.00 at Subway',
+      notificationTimestamp: timestamp,
+    });
+    const input2 = makeInput({
+      rawNotification: 'Payment of $45.00 at Shell Gas Station',
+      notificationTimestamp: timestamp + 1000,
+    });
+
+    const result1 = await processNotificationWithAI('user-1', input1, CATEGORIES);
+    expect(result1.processed).toBe(true);
+
+    // Different notification — should NOT be deduped
+    const result2 = await processNotificationWithAI('user-1', input2, CATEGORIES);
+    expect(result2.processed).toBe(true);
   });
 });

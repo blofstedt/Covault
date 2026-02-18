@@ -484,6 +484,16 @@ describe('extractWithAI (client-side AI model)', () => {
     expect(r.vendor?.toLowerCase()).toContain('uber eats');
   });
 
+  it('extracts vendor from "with VENDOR" pattern (not "with your")', async () => {
+    const r = await extractWithAI(
+      'A recurring transaction of $16.99 with Amazon Prime was completed.',
+      ['Leisure'],
+    );
+    expect(r.isTransaction).toBe(true);
+    expect(r.amount).toBe(16.99);
+    expect(r.vendor?.toLowerCase()).toContain('amazon');
+  });
+
   it('strips parenthetical text like "(TX. INCL.)" from vendor name', async () => {
     const r = await extractWithAI(
       'FIZZ (TX. INCL.) You made a recurring payment for $26.20 with your credit card.',
