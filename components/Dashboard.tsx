@@ -148,16 +148,33 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   /**
    * ✅ CRITICAL FIX:
-   * Supabase schema uses `category_id` and `user_name`.
-   * UI expects `budget_id` and `userName`.
-   * Normalize once here so Home budget cards show ALL transactions (AI + Manual + etc).
+   * Supabase returns:
+   *  - category_id (not budget_id)
+   *  - user_name (not userName)
+   *  - numeric amounts as strings (e.g. "10.49")
+   *
+   * UI expects:
+   *  - budget_id
+   *  - userName
+   *  - amount as number (so .toFixed works)
    */
   const normalizedTransactions: Transaction[] = useMemo(() => {
-    return (state.transactions || []).map((tx: any) => ({
-      ...tx,
-      budget_id: tx.budget_id ?? tx.category_id,
-      userName: tx.userName ?? tx.user_name,
-    })) as Transaction[];
+    return (state.transactions || []).map((tx: any) => {
+      const rawAmount = tx.amount;
+      const amountNum =
+        typeof rawAmount === 'number'
+          ? rawAmount
+          : rawAmount == null
+          ? 0
+          : Number(rawAmount);
+
+      return {
+        ...tx,
+        budget_id: tx.budget_id ?? tx.category_id,
+        userName: tx.userName ?? tx.user_name,
+        amount: Number.isFinite(amountNum) ? amountNum : 0,
+      };
+    }) as Transaction[];
   }, [state.transactions]);
 
   // Filter out hidden budget categories
@@ -167,7 +184,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     [state.budgets, hiddenCategories],
   );
 
-  // All transactions, optionally filtered by search query
+  // All transactions, optionally filtered by search query (SEARCH should span all months)
   const filteredTransactions = useMemo(() => {
     let list = normalizedTransactions;
     if (searchQuery) {
@@ -215,7 +232,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   /**
    * ✅ HOME: THIS MONTH ONLY (but ALL labels)
-   * IMPORTANT: Home should NOT be vendor-filtered.
+   * Home should NOT be vendor-filtered.
    */
   const currentMonthTransactionsAll = useMemo(
     () => normalizedTransactions.filter((tx) => txYearMonth(tx.date) === currentYearMonth),
@@ -224,7 +241,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   /**
    * ✅ SEARCH: show matches across past/current/future
-   * These should be based on the vendor-filtered list.
+   * These are vendor-filtered.
    */
   const currentMonthTransactions = useMemo(
     () => filteredTransactions.filter((tx) => txYearMonth(tx.date) === currentYearMonth),
@@ -286,16 +303,14 @@ const Dashboard: React.FC<DashboardProps> = ({
     visibleBudgets.forEach((b) => {
       if (b.name.toLowerCase().includes('leisure')) return;
 
-      const bTxs = currentMonthTransactionsAll.filter((tx) => (tx as any).budget_id === b.id);
+      const bTxs = currentMonthTransactionsAll.filter((tx: any) => tx.budget_id === b.id);
 
       const spent = bTxs.reduce((acc, tx) => {
         if (tx.is_projected) return acc;
-        return acc + (((tx as any).budget_id === b.id) ? tx.amount : 0);
+        return acc + (tx.budget_id === b.id ? tx.amount : 0);
       }, 0);
 
-      if (spent > b.totalLimit) {
-        totalOverspend += spent - b.totalLimit;
-      }
+      if (spent > b.totalLimit) totalOverspend += spent - b.totalLimit;
     });
 
     return totalOverspend;
@@ -303,9 +318,8 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const toggleExpand = (id: string) => {
     const next = new Set(expandedBudgets);
-    if (next.has(id)) {
-      next.delete(id);
-    } else {
+    if (next.has(id)) next.delete(id);
+    else {
       next.clear();
       next.add(id);
     }
@@ -317,9 +331,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     setSearchQuery('');
     setTimeout(() => {
       const containerEl = scrollContainerRef.current;
-      if (containerEl) {
-        containerEl.scrollTo({ top: 0, behavior: 'smooth' });
-      }
+      if (containerEl) containerEl.scrollTo({ top: 0, behavior: 'smooth' });
     }, 50);
   };
 
@@ -329,25 +341,17 @@ const Dashboard: React.FC<DashboardProps> = ({
       settings: { ...prev.settings, [key]: value },
     }));
 
-    if (key === 'theme') {
-      saveTheme(value as 'light' | 'dark');
-    }
+    if (key === 'theme') saveTheme(value as 'light' | 'dark');
   };
 
-  const updateUserIncome = (income: number) => {
-    saveUserIncome(income);
-  };
+  const updateUserIncome = (income: number) => saveUserIncome(income);
 
   const handleConnectPartner = () => {
     if (!partnerLinkEmail.includes('@')) return;
     setState((prev) => ({
       ...prev,
       user: prev.user
-        ? {
-            ...prev.user,
-            budgetingSolo: false,
-            partnerEmail: partnerLinkEmail,
-          }
+        ? { ...prev.user, budgetingSolo: false, partnerEmail: partnerLinkEmail }
         : null,
     }));
     setIsLinkingPartner(false);
@@ -382,9 +386,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       transactions: currentMonthTransactionsAll,
       totalIncome,
       remainingMoney,
-      settings: {
-        app_notifications_enabled: state.settings.app_notifications_enabled,
-      },
+      settings: { app_notifications_enabled: state.settings.app_notifications_enabled },
     });
   }, [
     state.user?.id,
@@ -408,29 +410,22 @@ const Dashboard: React.FC<DashboardProps> = ({
       onAddTransaction(tx);
       const txMonth = tx.date.slice(0, 7);
       const current = getCurrentYearMonth();
-      if (txMonth === current) {
-        setToastMessage('Transaction logged!');
-      } else if (txMonth > current) {
-        setToastMessage('Future transaction logged! Use search bar at the top to see it.');
-      } else {
-        setToastMessage('Past transaction logged! Use search bar at the top to see it.');
-      }
+      if (txMonth === current) setToastMessage('Transaction logged!');
+      else if (txMonth > current) setToastMessage('Future transaction logged! Use search bar at the top to see it.');
+      else setToastMessage('Past transaction logged! Use search bar at the top to see it.');
     },
     [onAddTransaction],
   );
 
-  const handleVendorOverrideUpdated = useCallback(
-    (vendor: string, info: string) => {
-      if (info === 'vendor_name_changed') {
-        setToastMessage(`Covault will automatically use this vendor name for this vendor going forward.`);
-      } else {
-        setToastMessage(`Covault will automatically use this budget category for ${vendor} going forward.`);
-      }
-    },
-    [],
-  );
+  const handleVendorOverrideUpdated = useCallback((vendor: string, info: string) => {
+    if (info === 'vendor_name_changed') {
+      setToastMessage(`Covault will automatically use this vendor name for this vendor going forward.`);
+    } else {
+      setToastMessage(`Covault will automatically use this budget category for ${vendor} going forward.`);
+    }
+  }, []);
 
-  // If showing parsing view without premium, show subscribe modal
+  // If showing parsing view without premium (and not in tutorial), show subscribe modal
   if (showParsing && !hasPremium) {
     return (
       <SubscribeModal
@@ -568,9 +563,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
           {isAddingTx && (
             <TransactionForm
-              onClose={() => {
-                setIsAddingTx(false);
-              }}
+              onClose={() => setIsAddingTx(false)}
               onSave={handleAddTransactionWithToast}
               budgets={visibleBudgets}
               userId={state.user?.id || '1'}
@@ -606,9 +599,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           budgets={state.budgets}
           currentUserName={state.user?.name || 'User'}
           isSharedAccount={isSharedAccount}
-          onClose={() => {
-            setSelectedTx(null);
-          }}
+          onClose={() => setSelectedTx(null)}
           onEdit={(updatedTx) => {
             onUpdateTransaction(updatedTx);
             setSelectedTx(null);
