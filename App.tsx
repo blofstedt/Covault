@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Capacitor } from '@capacitor/core'; // Added safety check
 import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
 import Onboarding from './components/Onboarding';
@@ -14,12 +15,8 @@ import { useAppTheme } from './lib/useAppTheme';
 import { useUserData } from './lib/useUserData';
 
 const SETTINGS_KEY = 'covault_settings';
-
-/** Delay (ms) after scanning to allow notification processing before reloading data */
 const SCAN_PROCESSING_DELAY_MS = 2000;
-
-/** Interval (ms) between periodic notification scans while enabled */
-const SCAN_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const SCAN_INTERVAL_MS = 5 * 60 * 1000;
 const SCAN_INTERVAL_S = SCAN_INTERVAL_MS / 1000;
 
 const DEFAULT_SETTINGS = {
@@ -33,21 +30,20 @@ const DEFAULT_SETTINGS = {
   hiddenCategories: [] as string[],
 };
 
-// Load settings from localStorage
+// Fixed: Added check for 'window' so Vercel doesn't crash during build
 const loadSettingsFromStorage = () => {
+  if (typeof window === 'undefined') return null;
   try {
     const stored = localStorage.getItem(SETTINGS_KEY);
-    if (stored) {
-      return JSON.parse(stored);
-    }
+    if (stored) return JSON.parse(stored);
   } catch (e) {
     console.error('Error loading settings:', e);
   }
   return null;
 };
 
-// Save settings to localStorage
 const saveSettingsToStorage = (settings: AppState['settings']) => {
+  if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   } catch (e) {
@@ -91,14 +87,13 @@ const App: React.FC = () => {
     saveBudgetVisibility,
   } = useUserData({ appState, setAppState, setDbError });
 
-  // Wrapped loadUserData that tracks loading state
   const loadUserDataWithState = useCallback(
     async (userId: string) => {
       setIsLoadingData(true);
       try {
         await loadUserData(userId);
       } catch (error) {
-        console.error('[loadUserDataWithState] Error loading user data:', error);
+        console.error('[loadUserDataWithState] Error:', error);
       } finally {
         setIsLoadingData(false);
       }
@@ -106,47 +101,30 @@ const App: React.FC = () => {
     [loadUserData],
   );
 
-  // Auth + session handling
   useAuthState({ setAppState, setAuthState, loadUserData: loadUserDataWithState });
-
-  // Native deep link handling (OAuth callback)
   useDeepLinks();
 
-  // Stable callbacks for the native notification listener
-  const handlePendingTransactionCreated = useCallback(
-    (pending: PendingTransaction) => {
-      setAppState(prev => {
-        const existing = prev.pendingTransactions || [];
-        if (existing.some(p => p.id === pending.id)) return prev;
-        return { ...prev, pendingTransactions: [pending, ...existing] };
-      });
-    },
-    [setAppState],
-  );
+  const handlePendingTransactionCreated = useCallback((pending: PendingTransaction) => {
+    setAppState(prev => {
+      const existing = prev.pendingTransactions || [];
+      if (existing.some(p => p.id === pending.id)) return prev;
+      return { ...prev, pendingTransactions: [pending, ...existing] };
+    });
+  }, []);
 
-  const handleAutoAcceptedTransaction = useCallback(
-    (tx: Transaction) => {
-      setAppState(prev => {
-        if (prev.transactions.some(t => t.id === tx.id)) return prev;
-        return { ...prev, transactions: [tx, ...prev.transactions] };
-      });
-    },
-    [setAppState],
-  );
+  const handleAutoAcceptedTransaction = useCallback((tx: Transaction) => {
+    setAppState(prev => {
+      if (prev.transactions.some(t => t.id === tx.id)) return prev;
+      return { ...prev, transactions: [tx, ...prev.transactions] };
+    });
+  }, []);
 
-  // Handle AI processing result: reload transactions so newly inserted
-  // AI-labelled transactions appear in the UI immediately.
-  // Handle AI processing result: the transaction was already added to state
-  // via onAutoAcceptedTransaction, so we only reload on the next explicit
-  // refresh to avoid a race between the optimistic state update and a DB
-  // round-trip that could momentarily double or lose the entry.
   const handleAIProcessingResult = useCallback(async () => {
     if (appState.user?.id) {
       await loadTransactions(appState.user.id);
     }
   }, [appState.user?.id, loadTransactions]);
 
-  // Native notification → auto transaction listener
   useNotificationListener({
     user: appState.user,
     budgets: appState.budgets,
@@ -156,33 +134,24 @@ const App: React.FC = () => {
     onAIProcessingResult: handleAIProcessingResult,
   });
 
-  // ── Countdown state for periodic notification scanning ──
   const [secondsUntilNextScan, setSecondsUntilNextScan] = useState<number | null>(null);
 
-  // Refresh notifications: re-detect banking apps then scan currently
-  // visible Android notifications so newly installed apps are picked up.
   const refreshNotifications = useCallback(async () => {
+    if (!Capacitor.isNativePlatform()) return; // Safety check
     await autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
     if (covaultNotification) {
       await covaultNotification.scanActiveNotifications();
     }
-    // Reset countdown after manual refresh
     setSecondsUntilNextScan(SCAN_INTERVAL_S);
   }, []);
 
-  // Auto-detect installed banking apps on startup so the notification
-  // listener can monitor them immediately (even before the user opens
-  // notification settings or any banking notification arrives).
-  // Runs unconditionally so that banking apps are discovered as soon as
-  // the user opens the app — not only after notifications are enabled.
+  // Fixed: Only run banking detection on actual Android/iOS devices
   useEffect(() => {
-    autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
+    if (Capacitor.isNativePlatform()) {
+      autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
+    }
   }, []);
 
-  // ── Scan immediately when notifications are enabled ──
-  // Track the previous value of notificationsEnabled so we detect the
-  // transition from false → true.  On that transition, auto-detect
-  // banking apps and scan active notifications in the notification shade.
   const prevNotificationsEnabled = useRef(appState.settings.notificationsEnabled);
   useEffect(() => {
     const wasEnabled = prevNotificationsEnabled.current;
@@ -191,15 +160,13 @@ const App: React.FC = () => {
 
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-    if (!wasEnabled && isEnabled) {
-      // Notifications were just enabled — scan immediately
+    if (!wasEnabled && isEnabled && Capacitor.isNativePlatform()) {
       const userId = appState.user?.id;
       (async () => {
         await autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
         if (covaultNotification) {
           await covaultNotification.scanActiveNotifications();
         }
-        // Reload transactions after a short delay to pick up processed results
         if (userId) {
           timeoutId = setTimeout(() => loadTransactions(userId), SCAN_PROCESSING_DELAY_MS);
         }
@@ -211,17 +178,12 @@ const App: React.FC = () => {
     };
   }, [appState.settings.notificationsEnabled, appState.user?.id, loadTransactions]);
 
-  // ── Periodic banking app detection & notification scanning while enabled ──
-  // Every 5 minutes, re-detect installed banking apps (so newly installed
-  // apps are picked up without waiting for a notification) and then
-  // re-scan active notifications in the notification shade.
   useEffect(() => {
-    if (!appState.settings.notificationsEnabled || !covaultNotification) {
+    if (!appState.settings.notificationsEnabled || !covaultNotification || !Capacitor.isNativePlatform()) {
       setSecondsUntilNextScan(null);
       return;
     }
 
-    // Reset countdown when interval starts
     setSecondsUntilNextScan(SCAN_INTERVAL_S);
 
     const intervalId = setInterval(async () => {
@@ -229,13 +191,11 @@ const App: React.FC = () => {
         await autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
         await covaultNotification.scanActiveNotifications();
       } catch (e) {
-        console.warn('[periodic scan] Error during periodic bank app detection/scan:', e);
+        console.warn('[periodic scan] Error:', e);
       }
-      // Reset countdown after each scan
       setSecondsUntilNextScan(SCAN_INTERVAL_S);
     }, SCAN_INTERVAL_MS);
 
-    // Tick down every second
     const tickId = setInterval(() => {
       setSecondsUntilNextScan(prev => (prev !== null && prev > 0 ? prev - 1 : prev));
     }, 1000);
@@ -246,19 +206,13 @@ const App: React.FC = () => {
     };
   }, [appState.settings.notificationsEnabled]);
 
-  // Theme handling
   useAppTheme(appState.settings.theme);
 
-  // Persist settings whenever they change
   useEffect(() => {
     saveSettingsToStorage(appState.settings);
   }, [appState.settings]);
 
-  const handleOnboardingComplete = (
-    isSolo: boolean,
-    budgets: BudgetCategory[],
-    partnerEmail?: string,
-  ) => {
+  const handleOnboardingComplete = (isSolo: boolean, budgets: BudgetCategory[], partnerEmail?: string) => {
     setAppState(prev => ({
       ...prev,
       budgets,
@@ -278,22 +232,15 @@ const App: React.FC = () => {
     await supabase.auth.signOut();
   };
 
-  // --- Render -------------------------------------------------------------
-
+  // Render logic with extra safety
   if (authState === 'loading') {
     return <FullScreenLoader />;
   }
 
   return (
     <div className="min-h-screen w-full bg-slate-50 dark:bg-slate-950 overflow-hidden relative flex flex-col transition-colors duration-300">
-      {authState === 'unauthenticated' && (
-        <Auth onSignIn={() => setAuthState('authenticated')} />
-      )}
-
-      {authState === 'onboarding' && (
-        <Onboarding onComplete={handleOnboardingComplete} />
-      )}
-
+      {authState === 'unauthenticated' && <Auth onSignIn={() => setAuthState('authenticated')} />}
+      {authState === 'onboarding' && <Onboarding onComplete={handleOnboardingComplete} />}
       {authState === 'authenticated' && (
         <Dashboard
           state={appState}
