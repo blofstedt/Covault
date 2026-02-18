@@ -442,6 +442,7 @@ describe('extractWithAI (client-side AI model)', () => {
     expect(r.isTransaction).toBe(true);
     expect(r.vendor).toBeTruthy();
     expect(r.vendor?.toLowerCase()).not.toContain('bmo');
+    expect(r.vendor?.toLowerCase()).toContain('shell');
   });
 
   it('strips bank name prefix "Scotiabank" from vendor extraction', async () => {
@@ -490,6 +491,7 @@ describe('extractWithAI (client-side AI model)', () => {
     );
     expect(r.isTransaction).toBe(true);
     expect(r.vendor).toBeTruthy();
+    expect(r.vendor?.toLowerCase()).toContain('fizz');
     expect(r.vendor).not.toContain('TX');
     expect(r.vendor).not.toContain('INCL');
   });

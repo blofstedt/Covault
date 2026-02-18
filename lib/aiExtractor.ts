@@ -160,7 +160,7 @@ function polishVendor(raw: string): string {
   const vLower = v.toLowerCase();
   for (const prefix of BANK_NAME_PREFIXES) {
     if (vLower.startsWith(prefix + ' ') && v.length > prefix.length + 3) {
-      v = v.slice(prefix.length).trim();
+      v = v.slice(prefix.length + 1).trim();
       break;
     }
   }
