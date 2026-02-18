@@ -422,21 +422,21 @@ export const useDataLoading = ({
         }
 
         // 3. Remap in a single state update
+        let remappedCount = 0;
         setAppState(prev => {
-          let changed = false;
           const remapped = prev.transactions.map(tx => {
             if (!tx.budget_id || userBudgetIds.has(tx.budget_id)) return tx;
             const catName = anyIdToCategory.get(tx.budget_id);
             if (!catName) return tx;
             const correctId = categoryToUserBudgetId.get(catName);
             if (!correctId) return tx;
-            changed = true;
+            remappedCount++;
             return { ...tx, budget_id: correctId };
           });
-          return changed ? { ...prev, transactions: remapped } : prev;
+          return remappedCount > 0 ? { ...prev, transactions: remapped } : prev;
         });
-        if (allBudgets.length > userBudgets.length) {
-          console.log('[remapOrphanedTransactions] remapped stale budget IDs');
+        if (remappedCount > 0) {
+          console.log('[remapOrphanedTransactions] remapped', remappedCount, 'transactions');
         }
       } catch (err: any) {
         console.warn('[remapOrphanedTransactions] failed:', err?.message || err);
