@@ -14,12 +14,8 @@ import { useAppTheme } from './lib/useAppTheme';
 import { useUserData } from './lib/useUserData';
 
 const SETTINGS_KEY = 'covault_settings';
-
-/** Delay (ms) after scanning to allow notification processing before reloading data */
 const SCAN_PROCESSING_DELAY_MS = 2000;
-
-/** Interval (ms) between periodic notification scans while enabled */
-const SCAN_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const SCAN_INTERVAL_MS = 5 * 60 * 1000;
 const SCAN_INTERVAL_S = SCAN_INTERVAL_MS / 1000;
 
 const DEFAULT_SETTINGS = {
@@ -33,20 +29,16 @@ const DEFAULT_SETTINGS = {
   hiddenCategories: [] as string[],
 };
 
-// Load settings from localStorage
 const loadSettingsFromStorage = () => {
   try {
     const stored = localStorage.getItem(SETTINGS_KEY);
-    if (stored) {
-      return JSON.parse(stored);
-    }
+    if (stored) return JSON.parse(stored);
   } catch (e) {
     console.error('Error loading settings:', e);
   }
   return null;
 };
 
-// Save settings to localStorage
 const saveSettingsToStorage = (settings: AppState['settings']) => {
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
@@ -91,25 +83,26 @@ const App: React.FC = () => {
     saveBudgetVisibility,
   } = useUserData({ appState, setAppState, setDbError });
 
-  // Wrapped loadUserData that tracks loading state
+  // Wrapped loadUserData to track loading state
   const loadUserDataWithState = useCallback(async (userId: string) => {
     setIsLoadingData(true);
     try {
       await loadUserData(userId);
+      await loadTransactions(userId); // ✅ ensure transactions are loaded on login
     } catch (error) {
-      console.error('[loadUserDataWithState] Error loading user data:', error);
+      console.error('[App] Error loading user data:', error);
     } finally {
       setIsLoadingData(false);
     }
-  }, [loadUserData]);
+  }, [loadUserData, loadTransactions]);
 
   // Auth + session handling
   useAuthState({ setAppState, setAuthState, loadUserData: loadUserDataWithState });
 
-  // Native deep link handling (OAuth callback)
+  // Deep links (OAuth callback)
   useDeepLinks();
 
-  // Stable callbacks for the native notification listener
+  // Notification listener callbacks
   const handlePendingTransactionCreated = useCallback((pending: PendingTransaction) => {
     setAppState(prev => {
       const existing = prev.pendingTransactions || [];
@@ -125,16 +118,10 @@ const App: React.FC = () => {
     });
   }, [setAppState]);
 
-  // Handle AI processing result: the transaction was already added to state
-  // via onAutoAcceptedTransaction, so we only reload on the next explicit
-  // refresh to avoid a race between the optimistic state update and a DB
-  // round-trip that could momentarily double or lose the entry.
   const handleAIProcessingResult = useCallback(async () => {
-    // No-op: rely on handleAutoAcceptedTransaction for immediate state update
-    // and on explicit refresh / visibility-change reload for DB sync.
+    // no-op: relies on handleAutoAcceptedTransaction
   }, []);
 
-  // Native notification → auto transaction listener
   useNotificationListener({
     user: appState.user,
     budgets: appState.budgets,
@@ -144,33 +131,19 @@ const App: React.FC = () => {
     onAIProcessingResult: handleAIProcessingResult,
   });
 
-  // ── Countdown state for periodic notification scanning ──
+  // Countdown for periodic notification scan
   const [secondsUntilNextScan, setSecondsUntilNextScan] = useState<number | null>(null);
 
-  // Refresh notifications: re-detect banking apps then scan currently
-  // visible Android notifications so newly installed apps are picked up.
   const refreshNotifications = useCallback(async () => {
     await autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
-    if (covaultNotification) {
-      await covaultNotification.scanActiveNotifications();
-    }
-    // Reset countdown after manual refresh
+    if (covaultNotification) await covaultNotification.scanActiveNotifications();
     setSecondsUntilNextScan(SCAN_INTERVAL_S);
   }, []);
 
-  // Auto-detect installed banking apps on startup so the notification
-  // listener can monitor them immediately (even before the user opens
-  // notification settings or any banking notification arrives).
-  // Runs unconditionally so that banking apps are discovered as soon as
-  // the user opens the app — not only after notifications are enabled.
   useEffect(() => {
     autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
   }, []);
 
-  // ── Scan immediately when notifications are enabled ──
-  // Track the previous value of notificationsEnabled so we detect the
-  // transition from false → true.  On that transition, auto-detect
-  // banking apps and scan active notifications in the notification shade.
   const prevNotificationsEnabled = useRef(appState.settings.notificationsEnabled);
   useEffect(() => {
     const wasEnabled = prevNotificationsEnabled.current;
@@ -179,18 +152,11 @@ const App: React.FC = () => {
 
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-    if (!wasEnabled && isEnabled) {
-      // Notifications were just enabled — scan immediately
-      const userId = appState.user?.id;
+    if (!wasEnabled && isEnabled && appState.user?.id) {
       (async () => {
         await autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
-        if (covaultNotification) {
-          await covaultNotification.scanActiveNotifications();
-        }
-        // Reload transactions after a short delay to pick up processed results
-        if (userId) {
-          timeoutId = setTimeout(() => loadTransactions(userId), SCAN_PROCESSING_DELAY_MS);
-        }
+        if (covaultNotification) await covaultNotification.scanActiveNotifications();
+        timeoutId = setTimeout(() => loadTransactions(appState.user!.id), SCAN_PROCESSING_DELAY_MS);
       })();
     }
 
@@ -199,17 +165,12 @@ const App: React.FC = () => {
     };
   }, [appState.settings.notificationsEnabled, appState.user?.id, loadTransactions]);
 
-  // ── Periodic banking app detection & notification scanning while enabled ──
-  // Every 5 minutes, re-detect installed banking apps (so newly installed
-  // apps are picked up without waiting for a notification) and then
-  // re-scan active notifications in the notification shade.
   useEffect(() => {
     if (!appState.settings.notificationsEnabled || !covaultNotification) {
       setSecondsUntilNextScan(null);
       return;
     }
 
-    // Reset countdown when interval starts
     setSecondsUntilNextScan(SCAN_INTERVAL_S);
 
     const intervalId = setInterval(async () => {
@@ -217,13 +178,11 @@ const App: React.FC = () => {
         await autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
         await covaultNotification.scanActiveNotifications();
       } catch (e) {
-        console.warn('[periodic scan] Error during periodic bank app detection/scan:', e);
+        console.warn('[periodic scan] Error during periodic scan:', e);
       }
-      // Reset countdown after each scan
       setSecondsUntilNextScan(SCAN_INTERVAL_S);
     }, SCAN_INTERVAL_MS);
 
-    // Tick down every second
     const tickId = setInterval(() => {
       setSecondsUntilNextScan(prev => (prev !== null && prev > 0 ? prev - 1 : prev));
     }, 1000);
@@ -234,35 +193,33 @@ const App: React.FC = () => {
     };
   }, [appState.settings.notificationsEnabled]);
 
-  // Theme handling
+  // Theme
   useAppTheme(appState.settings.theme);
 
-  // Persist settings whenever they change
+  // Persist settings
   useEffect(() => {
     saveSettingsToStorage(appState.settings);
   }, [appState.settings]);
 
-  const handleOnboardingComplete = (
-    isSolo: boolean,
-    budgets: BudgetCategory[],
-    partnerEmail?: string,
-  ) => {
+  // ── Handlers ──
+  const handleOnboardingComplete = (isSolo: boolean, budgets: BudgetCategory[], partnerEmail?: string) => {
     setAppState(prev => ({
       ...prev,
       budgets,
-      user: prev.user
-        ? { ...prev.user, budgetingSolo: isSolo, partnerEmail }
-        : null,
+      user: prev.user ? { ...prev.user, budgetingSolo: isSolo, partnerEmail } : null,
     }));
+
+    if (appState.user?.id) {
+      loadTransactions(appState.user.id); // ensure transactions loaded after onboarding
+    }
+
     setAuthState('authenticated');
   };
 
   const handleUpdateBudget = (updatedBudget: BudgetCategory) => {
     setAppState(prev => ({
       ...prev,
-      budgets: prev.budgets.map(b =>
-        b.id === updatedBudget.id ? updatedBudget : b,
-      ),
+      budgets: prev.budgets.map(b => (b.id === updatedBudget.id ? updatedBudget : b)),
     }));
   };
 
@@ -270,22 +227,22 @@ const App: React.FC = () => {
     await supabase.auth.signOut();
   };
 
-  // --- Render -------------------------------------------------------------
+  // ── Auto-load transactions on login ──
+  useEffect(() => {
+    if (appState.user?.id) {
+      loadTransactions(appState.user.id).catch(err =>
+        console.error('[App] Failed to auto-load transactions:', err),
+      );
+    }
+  }, [appState.user?.id, loadTransactions]);
 
-  if (authState === 'loading') {
-    return <FullScreenLoader />;
-  }
+  // ── Render ──
+  if (authState === 'loading') return <FullScreenLoader />;
 
   return (
     <div className="min-h-screen w-full bg-slate-50 dark:bg-slate-950 overflow-hidden relative flex flex-col transition-colors duration-300">
-      {authState === 'unauthenticated' && (
-        <Auth onSignIn={() => setAuthState('authenticated')} />
-      )}
-
-      {authState === 'onboarding' && (
-        <Onboarding onComplete={handleOnboardingComplete} />
-      )}
-
+      {authState === 'unauthenticated' && <Auth onSignIn={() => setAuthState('authenticated')} />}
+      {authState === 'onboarding' && <Onboarding onComplete={handleOnboardingComplete} />}
       {authState === 'authenticated' && (
         <Dashboard
           state={appState}
