@@ -229,7 +229,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         budget_id:
           tx.budget_id ??
           budgetIdFromCategory ??
-          (rawCategoryId ? String(rawCategoryId) : ''),
+          null,
         userName: tx.userName ?? tx.user_name,
         amount: Number.isFinite(amountNum) ? amountNum : 0,
       };
