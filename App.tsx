@@ -138,7 +138,7 @@ const App: React.FC = () => {
   }, [appState.user?.id, loadTransactions]);
     // No-op: rely on handleAutoAcceptedTransaction for immediate state update
     // and on explicit refresh / visibility-change reload for DB sync.
-  }, []);
+  }, [];
 
   // Native notification → auto transaction listener
   useNotificationListener({
