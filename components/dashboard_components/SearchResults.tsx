@@ -56,8 +56,9 @@ const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
       {/* Section body */}
       {open && (
         <div className="mt-3 space-y-2">
-          {transactions.map((tx) => {
-            const budgetIdForTx = tx.budget_id;
+          {transactions.map((tx: any) => {
+            // ✅ Fix: support DB `category_id` as fallback
+            const budgetIdForTx = tx.budget_id ?? tx.category_id;
 
             return (
               <TransactionItem
@@ -94,8 +95,7 @@ interface SearchResultsProps {
  * Main search results panel:
  * - Shows THIS MONTH'S matches inline (same style as the dashboard list)
  * - Plus collapsible Past / Future sections for matching transactions
- * - NOW also includes PROJECTED recurring transactions (biweekly/monthly)
- *   up to 2 months after the end of the current month.
+ * - Includes PROJECTED recurring transactions
  */
 
 // Helper: get the current year-month string
@@ -128,50 +128,36 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     [allTransactions],
   );
 
-  // Split projected ones into "this month" vs "future after this month".
-  // Extract year-month from date strings directly to avoid timezone-related
-  // month shifts that occur when parsing through the Date constructor.
+  // Extract year-month from date strings directly to avoid timezone shifts
   const txYearMonth = (dateStr: string) => dateStr.slice(0, 7); // "YYYY-MM"
 
-  // State to track the current month for transaction filtering
-  // This ensures that if the app is left open across a month boundary,
-  // the current month will update and transactions will be filtered correctly
+  // Track current month (handles month boundary if app stays open)
   const [currentYearMonth, setCurrentYearMonth] = useState(getCurrentYearMonth);
 
-  // Set up an interval to check if the month has changed
-  // Only update state when the month actually changes to avoid unnecessary re-renders
   useEffect(() => {
     const checkMonth = () => {
       setCurrentYearMonth((prev) => {
         const newYearMonth = getCurrentYearMonth();
-        // Only update if the month actually changed
         return prev !== newYearMonth ? newYearMonth : prev;
       });
     };
 
-    // Check immediately on mount in case the month changed since initialization
     checkMonth();
-
-    // Check every minute to catch month changes promptly
-    // This is still inexpensive as it only updates state when the month actually changes
     const interval = setInterval(checkMonth, 60 * 1000);
-
     return () => clearInterval(interval);
-  }, []); // Empty dependency array - the interval should run continuously
+  }, []);
 
   const projectedCurrentMonth = useMemo(
-    () =>
-      projectedTransactions.filter((tx) => txYearMonth(tx.date) === currentYearMonth),
+    () => projectedTransactions.filter((tx) => txYearMonth(tx.date) === currentYearMonth),
     [projectedTransactions, currentYearMonth],
   );
 
   const projectedFuture = useMemo(
-    () =>
-      projectedTransactions.filter((tx) => txYearMonth(tx.date) !== currentYearMonth),
+    () => projectedTransactions.filter((tx) => txYearMonth(tx.date) !== currentYearMonth),
     [projectedTransactions, currentYearMonth],
   );
 
-  // Augment the existing sets with projected ones
+  // Augment with projected
   const augmentedCurrent = useMemo(
     () => [...currentMonthTransactions, ...projectedCurrentMonth],
     [currentMonthTransactions, projectedCurrentMonth],
@@ -182,7 +168,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     [futureTransactions, projectedFuture],
   );
 
-  // Apply search filter
+  // Apply search filter (defensive — Dashboard already filters the lists)
   const filteredCurrent = useMemo(
     () => augmentedCurrent.filter(filterFn),
     [augmentedCurrent, q],
@@ -226,8 +212,8 @@ const SearchResults: React.FC<SearchResultsProps> = ({
             </div>
 
             <div className="space-y-2">
-              {filteredCurrent.map((tx) => {
-                const budgetIdForTx = tx.budget_id;
+              {filteredCurrent.map((tx: any) => {
+                const budgetIdForTx = tx.budget_id ?? tx.category_id;
 
                 return (
                   <TransactionItem
@@ -270,7 +256,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           />
         )}
 
-        {/* PROJECTED SECTION (generated from recurring) */}
+        {/* PROJECTED SECTION */}
         {filteredFuture.filter(tx => tx.is_projected).length > 0 && (
           <CollapsibleSection
             title="Projected Transactions"
