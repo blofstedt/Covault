@@ -158,24 +158,46 @@ const Dashboard: React.FC<DashboardProps> = ({
    *  - userName
    *  - amount as number (so .toFixed works)
    */
-  const normalizedTransactions: Transaction[] = useMemo(() => {
-    return (state.transactions || []).map((tx: any) => {
-      const rawAmount = tx.amount;
-      const amountNum =
-        typeof rawAmount === 'number'
-          ? rawAmount
-          : rawAmount == null
-          ? 0
-          : Number(rawAmount);
+const normalizedTransactions: Transaction[] = useMemo(() => {
+  const list = (state.transactions || []).map((tx: any) => {
+    // Normalize amount to a number
+    const rawAmount = tx.amount;
+    const amountNum =
+      typeof rawAmount === 'number'
+        ? rawAmount
+        : rawAmount == null
+        ? 0
+        : Number(rawAmount);
 
-      return {
-        ...tx,
-        budget_id: tx.budget_id ?? tx.category_id,
-        userName: tx.userName ?? tx.user_name,
-        amount: Number.isFinite(amountNum) ? amountNum : 0,
-      };
-    }) as Transaction[];
-  }, [state.transactions]);
+    // Normalize date to a plain 'YYYY-MM-DD' string
+    let dateStr: string;
+    if (typeof tx.date === 'string') {
+      // e.g. "2026-02-16" or "2026-02-16T00:00:00+00:00"
+      dateStr = tx.date.slice(0, 10);
+    } else if (tx.date instanceof Date) {
+      dateStr = tx.date.toISOString().slice(0, 10);
+    } else {
+      dateStr = '';
+    }
+
+    return {
+      ...tx,
+      date: dateStr,
+      // Supabase returns category_id and user_name
+      budget_id: tx.budget_id ?? tx.category_id,
+      userName: tx.userName ?? tx.user_name,
+      amount: Number.isFinite(amountNum) ? amountNum : 0,
+    };
+  });
+
+  // 🔍 Debug: see what the Dashboard actually has
+  if (typeof window !== 'undefined') {
+    console.log('[Dashboard] normalizedTransactions count:', list.length);
+    console.log('[Dashboard] first 3 transactions:', list.slice(0, 3));
+  }
+
+  return list as Transaction[];
+}, [state.transactions]);
 
   // Filter out hidden budget categories
   const hiddenCategories: string[] = state.settings.hiddenCategories || [];
