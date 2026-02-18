@@ -33,7 +33,11 @@ interface DashboardProps {
   onUnlinkPartner?: () => void;
   onGenerateLinkCode?: () => Promise<string | null>;
   onJoinWithCode?: (code: string) => void;
-  onApprovePendingTransaction?: (pendingId: string, categoryId: string, preferredName?: string) => void | Promise<void>;
+  onApprovePendingTransaction?: (
+    pendingId: string,
+    categoryId: string,
+    preferredName?: string,
+  ) => void | Promise<void>;
   onRejectPendingTransaction?: (pendingId: string) => void;
   onClearFilteredNotifications?: (ids: string[]) => Promise<void>;
   onClearApprovedTransactions?: (ids: string[]) => Promise<void>;
@@ -147,57 +151,50 @@ const Dashboard: React.FC<DashboardProps> = ({
   const isSharedAccount = !state.user?.budgetingSolo;
 
   /**
-   * ✅ CRITICAL FIX:
-   * Supabase returns:
-   *  - category_id (not budget_id)
-   *  - user_name (not userName)
-   *  - numeric amounts as strings (e.g. "10.49")
-   *
-   * UI expects:
-   *  - budget_id
-   *  - userName
-   *  - amount as number (so .toFixed works)
+   * Normalize Supabase transactions so the UI can always work with:
+   *  - budget_id (from category_id if needed)
+   *  - userName (from user_name)
+   *  - amount as number (Supabase returns numeric as string)
+   *  - date as 'YYYY-MM-DD' string
    */
-const normalizedTransactions: Transaction[] = useMemo(() => {
-  const list = (state.transactions || []).map((tx: any) => {
-    // Normalize amount to a number
-    const rawAmount = tx.amount;
-    const amountNum =
-      typeof rawAmount === 'number'
-        ? rawAmount
-        : rawAmount == null
-        ? 0
-        : Number(rawAmount);
+  const normalizedTransactions: Transaction[] = useMemo(() => {
+    const list = (state.transactions || []).map((tx: any) => {
+      // Normalize amount to a number
+      const rawAmount = tx.amount;
+      const amountNum =
+        typeof rawAmount === 'number'
+          ? rawAmount
+          : rawAmount == null
+          ? 0
+          : Number(rawAmount);
 
-    // Normalize date to a plain 'YYYY-MM-DD' string
-    let dateStr: string;
-    if (typeof tx.date === 'string') {
-      // e.g. "2026-02-16" or "2026-02-16T00:00:00+00:00"
-      dateStr = tx.date.slice(0, 10);
-    } else if (tx.date instanceof Date) {
-      dateStr = tx.date.toISOString().slice(0, 10);
-    } else {
-      dateStr = '';
+      // Normalize date to a plain 'YYYY-MM-DD' string
+      let dateStr: string;
+      if (typeof tx.date === 'string') {
+        // e.g. "2026-02-16" or "2026-02-16T00:00:00+00:00"
+        dateStr = tx.date.slice(0, 10);
+      } else if (tx.date instanceof Date) {
+        dateStr = tx.date.toISOString().slice(0, 10);
+      } else {
+        dateStr = '';
+      }
+
+      return {
+        ...tx,
+        date: dateStr,
+        budget_id: tx.budget_id ?? tx.category_id,
+        userName: tx.userName ?? tx.user_name,
+        amount: Number.isFinite(amountNum) ? amountNum : 0,
+      };
+    });
+
+    if (typeof window !== 'undefined') {
+      console.log('[Dashboard] normalizedTransactions count:', list.length);
+      console.log('[Dashboard] first 3 transactions:', list.slice(0, 3));
     }
 
-    return {
-      ...tx,
-      date: dateStr,
-      // Supabase returns category_id and user_name
-      budget_id: tx.budget_id ?? tx.category_id,
-      userName: tx.userName ?? tx.user_name,
-      amount: Number.isFinite(amountNum) ? amountNum : 0,
-    };
-  });
-
-  // 🔍 Debug: see what the Dashboard actually has
-  if (typeof window !== 'undefined') {
-    console.log('[Dashboard] normalizedTransactions count:', list.length);
-    console.log('[Dashboard] first 3 transactions:', list.slice(0, 3));
-  }
-
-  return list as Transaction[];
-}, [state.transactions]);
+    return list as Transaction[];
+  }, [state.transactions]);
 
   // Filter out hidden budget categories
   const hiddenCategories: string[] = state.settings.hiddenCategories || [];
@@ -253,16 +250,26 @@ const normalizedTransactions: Transaction[] = useMemo(() => {
   }, []);
 
   /**
-   * ✅ HOME: THIS MONTH ONLY (but ALL labels)
-   * Home should NOT be vendor-filtered.
+   * DEBUG NOTE:
+   * For now, we KEEP the month filter, but we are logging counts above.
+   * If you want to force all transactions to show regardless of month,
+   * you can temporarily change this to:  () => normalizedTransactions
    */
-  const currentMonthTransactionsAll = useMemo(
-    () => normalizedTransactions.filter((tx) => txYearMonth(tx.date) === currentYearMonth),
-    [normalizedTransactions, currentYearMonth],
-  );
+  const currentMonthTransactionsAll = useMemo(() => {
+    const list = normalizedTransactions.filter(
+      (tx) => txYearMonth(tx.date) === currentYearMonth,
+    );
+
+    if (typeof window !== 'undefined') {
+      console.log('[Dashboard] currentYearMonth:', currentYearMonth);
+      console.log('[Dashboard] currentMonthTransactionsAll count:', list.length);
+    }
+
+    return list;
+  }, [normalizedTransactions, currentYearMonth]);
 
   /**
-   * ✅ SEARCH: show matches across past/current/future
+   * SEARCH: show matches across past/current/future
    * These are vendor-filtered.
    */
   const currentMonthTransactions = useMemo(
@@ -299,7 +306,10 @@ const normalizedTransactions: Transaction[] = useMemo(() => {
   );
 
   // Total income
-  const totalIncome = useMemo(() => state.user?.monthlyIncome || 0, [state.user?.monthlyIncome]);
+  const totalIncome = useMemo(
+    () => state.user?.monthlyIncome || 0,
+    [state.user?.monthlyIncome],
+  );
 
   // Remaining money (this month only, spent vs projected)
   const remainingMoney = useMemo(() => {
@@ -433,17 +443,27 @@ const normalizedTransactions: Transaction[] = useMemo(() => {
       const txMonth = tx.date.slice(0, 7);
       const current = getCurrentYearMonth();
       if (txMonth === current) setToastMessage('Transaction logged!');
-      else if (txMonth > current) setToastMessage('Future transaction logged! Use search bar at the top to see it.');
-      else setToastMessage('Past transaction logged! Use search bar at the top to see it.');
+      else if (txMonth > current)
+        setToastMessage(
+          'Future transaction logged! Use search bar at the top to see it.',
+        );
+      else
+        setToastMessage(
+          'Past transaction logged! Use search bar at the top to see it.',
+        );
     },
     [onAddTransaction],
   );
 
   const handleVendorOverrideUpdated = useCallback((vendor: string, info: string) => {
     if (info === 'vendor_name_changed') {
-      setToastMessage(`Covault will automatically use this vendor name for this vendor going forward.`);
+      setToastMessage(
+        `Covault will automatically use this vendor name for this vendor going forward.`,
+      );
     } else {
-      setToastMessage(`Covault will automatically use this budget category for ${vendor} going forward.`);
+      setToastMessage(
+        `Covault will automatically use this budget category for ${vendor} going forward.`,
+      );
     }
   }, []);
 
@@ -479,14 +499,34 @@ const normalizedTransactions: Transaction[] = useMemo(() => {
           onRefreshNotifications={onRefreshNotifications}
           onReloadTransactions={onReloadTransactions}
           onClearEntered={() => {
-            setState(prev => ({
+            setState((prev) => ({
               ...prev,
-              transactions: prev.transactions.filter(tx => (tx as any).label !== 'AI'),
+              transactions: prev.transactions.filter(
+                (tx) => (tx as any).label !== 'AI',
+              ),
             }));
           }}
         />
       ) : (
         <PageShell showGlow={!isFocusMode}>
+          {/* DEBUG OVERLAY — small text in top-right so we can see counts */}
+          <div
+            style={{
+              position: 'fixed',
+              top: 80,
+              right: 8,
+              zIndex: 9999,
+              background: 'rgba(15, 23, 42, 0.9)',
+              color: 'white',
+              padding: '4px 8px',
+              borderRadius: 8,
+              fontSize: 10,
+              fontFamily: 'system-ui',
+            }}
+          >
+            tx: {normalizedTransactions.length} | month: {currentYearMonth}
+          </div>
+
           {/* Header */}
           <header
             className="px-6 pt-safe-top pb-0 sticky top-0 z-20 transition-colors bg-transparent border-none backdrop-blur-none relative"
