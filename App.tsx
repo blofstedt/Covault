@@ -152,9 +152,7 @@ const App: React.FC = () => {
       autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
     }
   }, [appState.settings.notificationsEnabled]);
-    autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
-  }, []);
-
+  
   // Theme handling
   useAppTheme(appState.settings.theme);
 
