@@ -30,6 +30,52 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 /** Milliseconds per hour — window for duplicate detection */
 const MS_PER_HOUR = 60 * 60 * 1000;
 
+/**
+ * In-memory cache of recently processed notification keys.
+ * Prevents the same notification from being processed multiple times
+ * during a scan or when the same notification is re-broadcast.
+ * Key: `${bankAppId}|${amount}|${notificationTimestamp}`
+ * Value: timestamp when the key was added (for cache expiry)
+ */
+const recentlyProcessedCache = new Map<string, number>();
+
+/** How long to keep entries in the in-memory dedup cache (ms) */
+const DEDUP_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+/**
+ * Build an in-memory dedup key from the raw notification fields.
+ * Uses bankAppId + raw amount + notification timestamp so that
+ * identical notifications from the same app are caught before
+ * any async DB calls or AI processing.
+ */
+function buildInMemoryDedupKey(
+  bankAppId: string,
+  rawNotification: string,
+  notificationTimestamp: number,
+): string {
+  // Extract amount from raw text for keying
+  const amountMatch = rawNotification.match(/\$([\d,]+\.?\d{0,2})/);
+  const amount = amountMatch ? amountMatch[1].replace(/,/g, '') : '';
+  return `${bankAppId}|${amount}|${notificationTimestamp}`;
+}
+
+/**
+ * Evict expired entries from the in-memory dedup cache.
+ */
+function evictExpiredCacheEntries(): void {
+  const now = Date.now();
+  for (const [key, addedAt] of recentlyProcessedCache) {
+    if (now - addedAt > DEDUP_CACHE_TTL_MS) {
+      recentlyProcessedCache.delete(key);
+    }
+  }
+}
+
+/** Exposed for testing: clear the in-memory dedup cache */
+export function _clearDedupCacheForTesting(): void {
+  recentlyProcessedCache.clear();
+}
+
 // ─── Types ───────────────────────────────────────────────────────
 
 export interface NotificationInput {
@@ -614,6 +660,27 @@ export async function processNotificationWithAI(
     bankName: (input.bankName || '').toLowerCase(),
   };
 
+  const notifTimestamp = input.notificationTimestamp || Date.now();
+
+  // ── Step 0: In-memory dedup ──
+  // Fast check to prevent the same notification from being processed
+  // multiple times during a scan or rapid re-broadcast.
+  evictExpiredCacheEntries();
+  const inMemoryKey = buildInMemoryDedupKey(
+    input.bankAppId,
+    input.rawNotification,
+    notifTimestamp,
+  );
+  if (recentlyProcessedCache.has(inMemoryKey)) {
+    console.log('[AI pipeline] In-memory dedup hit, skipping');
+    return {
+      processed: false,
+      isTransaction: false,
+      skipReason: 'duplicate_fingerprint',
+      bankName: input.bankName,
+    };
+  }
+
   // ── Step 1: Duplicate Detection ──
   // Extract a quick amount from the raw text for the duplicate check.
   let quickAmount: number | null = null;
@@ -622,7 +689,6 @@ export async function processNotificationWithAI(
     quickAmount = parseFloat(quickAmountMatch[1].replace(',', ''));
   }
 
-  const notifTimestamp = input.notificationTimestamp || Date.now();
   const isDuplicate = await checkAlreadyProcessed(
     userId,
     quickAmount,
@@ -632,11 +698,12 @@ export async function processNotificationWithAI(
 
   if (isDuplicate) {
     console.log('[AI pipeline] Duplicate detected, skipping');
+    // Also add to in-memory cache to prevent re-processing
+    recentlyProcessedCache.set(inMemoryKey, Date.now());
     return {
       processed: false,
       isTransaction: false,
       skipReason: 'duplicate_fingerprint',
-      rejectionReason: 'Duplicate notification (already processed)',
       bankName: input.bankName,
     };
   }
