@@ -44,8 +44,7 @@ const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
             {title}
           </span>
           <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 mt-0.5">
-            {subtitle} • {transactions.length} entr
-            {transactions.length === 1 ? 'y' : 'ies'}
+            {subtitle} • {transactions.length} entr{transactions.length === 1 ? 'y' : 'ies'}
           </span>
         </div>
         <span className="text-[11px] font-black text-slate-400 dark:text-slate-500">
@@ -57,7 +56,6 @@ const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
       {open && (
         <div className="mt-3 space-y-2">
           {transactions.map((tx: any) => {
-            // ✅ Fix: support DB `category_id` as fallback
             const budgetIdForTx = tx.budget_id ?? tx.category_id;
 
             return (
@@ -91,14 +89,6 @@ interface SearchResultsProps {
   onTransactionTap: (tx: Transaction) => void;
 }
 
-/**
- * Main search results panel:
- * - Shows THIS MONTH'S matches inline (same style as the dashboard list)
- * - Plus collapsible Past / Future sections for matching transactions
- * - Includes PROJECTED recurring transactions
- */
-
-// Helper: get the current year-month string
 const getCurrentYearMonth = () => {
   const now = new Date();
   const y = now.getFullYear();
@@ -119,19 +109,15 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 }) => {
   const q = searchQuery.toLowerCase().trim();
 
-  const filterFn = (tx: Transaction) =>
-    tx.vendor.toLowerCase().includes(q);
+  const filterFn = (tx: Transaction) => tx.vendor.toLowerCase().includes(q);
 
-  // Generate projected recurring transactions from ALL transactions (unfiltered).
   const projectedTransactions = useMemo(
     () => generateProjectedTransactions(allTransactions),
     [allTransactions],
   );
 
-  // Extract year-month from date strings directly to avoid timezone shifts
-  const txYearMonth = (dateStr: string) => dateStr.slice(0, 7); // "YYYY-MM"
+  const txYearMonth = (dateStr: string) => dateStr.slice(0, 7);
 
-  // Track current month (handles month boundary if app stays open)
   const [currentYearMonth, setCurrentYearMonth] = useState(getCurrentYearMonth);
 
   useEffect(() => {
@@ -157,7 +143,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     [projectedTransactions, currentYearMonth],
   );
 
-  // Augment with projected
   const augmentedCurrent = useMemo(
     () => [...currentMonthTransactions, ...projectedCurrentMonth],
     [currentMonthTransactions, projectedCurrentMonth],
@@ -168,31 +153,15 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     [futureTransactions, projectedFuture],
   );
 
-  // Apply search filter (defensive — Dashboard already filters the lists)
-  const filteredCurrent = useMemo(
-    () => augmentedCurrent.filter(filterFn),
-    [augmentedCurrent, q],
-  );
+  const filteredCurrent = useMemo(() => augmentedCurrent.filter(filterFn), [augmentedCurrent, q]);
+  const filteredPast = useMemo(() => pastTransactions.filter(filterFn), [pastTransactions, q]);
+  const filteredFuture = useMemo(() => augmentedFuture.filter(filterFn), [augmentedFuture, q]);
 
-  const filteredPast = useMemo(
-    () => pastTransactions.filter(filterFn),
-    [pastTransactions, q],
-  );
-
-  const filteredFuture = useMemo(
-    () => augmentedFuture.filter(filterFn),
-    [augmentedFuture, q],
-  );
-
-  const hasAnyResults =
-    filteredCurrent.length > 0 ||
-    filteredPast.length > 0 ||
-    filteredFuture.length > 0;
+  const hasAnyResults = filteredCurrent.length > 0 || filteredPast.length > 0 || filteredFuture.length > 0;
 
   return (
     <div className="flex-1 overflow-y-auto no-scrollbar mt-3">
       <div className="px-2 pb-8 space-y-4">
-        {/* Label for current search scope */}
         <div className="flex items-center justify-between px-1">
           <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 dark:text-slate-600">
             Search Results
@@ -202,7 +171,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           </span>
         </div>
 
-        {/* CURRENT MONTH RESULTS (including projected) */}
         {filteredCurrent.length > 0 && (
           <div className="space-y-2">
             <div className="px-1">
@@ -232,7 +200,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           </div>
         )}
 
-        {/* PAST SECTION */}
         <CollapsibleSection
           title="Past Transactions"
           subtitle="Before this month"
@@ -243,7 +210,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           onTransactionTap={onTransactionTap}
         />
 
-        {/* FUTURE SECTION (real future transactions) */}
         {filteredFuture.filter(tx => !tx.is_projected).length > 0 && (
           <CollapsibleSection
             title="Future Transactions"
@@ -256,7 +222,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           />
         )}
 
-        {/* PROJECTED SECTION */}
         {filteredFuture.filter(tx => tx.is_projected).length > 0 && (
           <CollapsibleSection
             title="Projected Transactions"
@@ -269,7 +234,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           />
         )}
 
-        {/* NO RESULTS STATE */}
         {!hasAnyResults && (
           <EmptyState
             message="No entries found"
