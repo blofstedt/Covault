@@ -15,7 +15,7 @@ import { useUserData } from './lib/useUserData';
 
 const SETTINGS_KEY = 'covault_settings';
 const SCAN_PROCESSING_DELAY_MS = 2000;
-const SCAN_INTERVAL_MS = 5 * 60 * 1000;
+const SCAN_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const SCAN_INTERVAL_S = SCAN_INTERVAL_MS / 1000;
 
 const DEFAULT_SETTINGS = {
@@ -29,6 +29,7 @@ const DEFAULT_SETTINGS = {
   hiddenCategories: [] as string[],
 };
 
+// Load settings from localStorage
 const loadSettingsFromStorage = () => {
   try {
     const stored = localStorage.getItem(SETTINGS_KEY);
@@ -39,6 +40,7 @@ const loadSettingsFromStorage = () => {
   return null;
 };
 
+// Save settings to localStorage
 const saveSettingsToStorage = (settings: AppState['settings']) => {
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
@@ -58,6 +60,7 @@ const App: React.FC = () => {
       user: null,
       budgets: [],
       transactions: [],
+      pendingTransactions: [],
       settings: { ...DEFAULT_SETTINGS, ...savedSettings },
     };
   });
@@ -83,26 +86,20 @@ const App: React.FC = () => {
     saveBudgetVisibility,
   } = useUserData({ appState, setAppState, setDbError });
 
-  // Wrapped loadUserData to track loading state
   const loadUserDataWithState = useCallback(async (userId: string) => {
     setIsLoadingData(true);
     try {
       await loadUserData(userId);
-      await loadTransactions(userId); // ✅ ensure transactions are loaded on login
     } catch (error) {
       console.error('[App] Error loading user data:', error);
     } finally {
       setIsLoadingData(false);
     }
-  }, [loadUserData, loadTransactions]);
+  }, [loadUserData]);
 
-  // Auth + session handling
   useAuthState({ setAppState, setAuthState, loadUserData: loadUserDataWithState });
-
-  // Deep links (OAuth callback)
   useDeepLinks();
 
-  // Notification listener callbacks
   const handlePendingTransactionCreated = useCallback((pending: PendingTransaction) => {
     setAppState(prev => {
       const existing = prev.pendingTransactions || [];
@@ -113,13 +110,14 @@ const App: React.FC = () => {
 
   const handleAutoAcceptedTransaction = useCallback((tx: Transaction) => {
     setAppState(prev => {
-      if (prev.transactions.some(t => t.id === tx.id)) return prev;
-      return { ...prev, transactions: [tx, ...prev.transactions] };
+      const existing = prev.transactions || [];
+      if (existing.some(t => t.id === tx.id)) return prev;
+      return { ...prev, transactions: [tx, ...existing] };
     });
   }, [setAppState]);
 
   const handleAIProcessingResult = useCallback(async () => {
-    // no-op: relies on handleAutoAcceptedTransaction
+    // no-op: rely on handleAutoAcceptedTransaction
   }, []);
 
   useNotificationListener({
@@ -131,7 +129,6 @@ const App: React.FC = () => {
     onAIProcessingResult: handleAIProcessingResult,
   });
 
-  // Countdown for periodic notification scan
   const [secondsUntilNextScan, setSecondsUntilNextScan] = useState<number | null>(null);
 
   const refreshNotifications = useCallback(async () => {
@@ -140,9 +137,7 @@ const App: React.FC = () => {
     setSecondsUntilNextScan(SCAN_INTERVAL_S);
   }, []);
 
-  useEffect(() => {
-    autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
-  }, []);
+  useEffect(() => { autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS); }, []);
 
   const prevNotificationsEnabled = useRef(appState.settings.notificationsEnabled);
   useEffect(() => {
@@ -160,9 +155,7 @@ const App: React.FC = () => {
       })();
     }
 
-    return () => {
-      if (timeoutId != null) clearTimeout(timeoutId);
-    };
+    return () => { if (timeoutId) clearTimeout(timeoutId); };
   }, [appState.settings.notificationsEnabled, appState.user?.id, loadTransactions]);
 
   useEffect(() => {
@@ -170,7 +163,6 @@ const App: React.FC = () => {
       setSecondsUntilNextScan(null);
       return;
     }
-
     setSecondsUntilNextScan(SCAN_INTERVAL_S);
 
     const intervalId = setInterval(async () => {
@@ -178,7 +170,7 @@ const App: React.FC = () => {
         await autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
         await covaultNotification.scanActiveNotifications();
       } catch (e) {
-        console.warn('[periodic scan] Error during periodic scan:', e);
+        console.warn('[periodic scan] Error during bank app scan:', e);
       }
       setSecondsUntilNextScan(SCAN_INTERVAL_S);
     }, SCAN_INTERVAL_MS);
@@ -187,63 +179,39 @@ const App: React.FC = () => {
       setSecondsUntilNextScan(prev => (prev !== null && prev > 0 ? prev - 1 : prev));
     }, 1000);
 
-    return () => {
-      clearInterval(intervalId);
-      clearInterval(tickId);
-    };
+    return () => { clearInterval(intervalId); clearInterval(tickId); };
   }, [appState.settings.notificationsEnabled]);
 
-  // Theme
   useAppTheme(appState.settings.theme);
 
-  // Persist settings
-  useEffect(() => {
-    saveSettingsToStorage(appState.settings);
-  }, [appState.settings]);
+  useEffect(() => { saveSettingsToStorage(appState.settings); }, [appState.settings]);
 
-  // ── Handlers ──
   const handleOnboardingComplete = (isSolo: boolean, budgets: BudgetCategory[], partnerEmail?: string) => {
     setAppState(prev => ({
       ...prev,
       budgets,
       user: prev.user ? { ...prev.user, budgetingSolo: isSolo, partnerEmail } : null,
     }));
-
-    if (appState.user?.id) {
-      loadTransactions(appState.user.id); // ensure transactions loaded after onboarding
-    }
-
     setAuthState('authenticated');
   };
 
   const handleUpdateBudget = (updatedBudget: BudgetCategory) => {
     setAppState(prev => ({
       ...prev,
-      budgets: prev.budgets.map(b => (b.id === updatedBudget.id ? updatedBudget : b)),
+      budgets: prev.budgets.map(b => b.id === updatedBudget.id ? updatedBudget : b),
     }));
   };
 
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-  };
+  const handleSignOut = async () => { await supabase.auth.signOut(); };
 
-  // ── Auto-load transactions on login ──
-  useEffect(() => {
-    if (appState.user?.id) {
-      loadTransactions(appState.user.id).catch(err =>
-        console.error('[App] Failed to auto-load transactions:', err),
-      );
-    }
-  }, [appState.user?.id, loadTransactions]);
-
-  // ── Render ──
+  // --- Render -------------------------------------------------------------
   if (authState === 'loading') return <FullScreenLoader />;
 
   return (
     <div className="min-h-screen w-full bg-slate-50 dark:bg-slate-950 overflow-hidden relative flex flex-col transition-colors duration-300">
       {authState === 'unauthenticated' && <Auth onSignIn={() => setAuthState('authenticated')} />}
       {authState === 'onboarding' && <Onboarding onComplete={handleOnboardingComplete} />}
-      {authState === 'authenticated' && (
+      {authState === 'authenticated' && appState.user && (
         <Dashboard
           state={appState}
           setState={setAppState}
