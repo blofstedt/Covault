@@ -125,13 +125,14 @@ const App: React.FC = () => {
     });
   }, [setAppState]);
 
-  // Handle AI processing result: reload transactions so newly inserted
-  // AI-labelled transactions appear in the UI immediately.
+  // Handle AI processing result: the transaction was already added to state
+  // via onAutoAcceptedTransaction, so we only reload on the next explicit
+  // refresh to avoid a race between the optimistic state update and a DB
+  // round-trip that could momentarily double or lose the entry.
   const handleAIProcessingResult = useCallback(async () => {
-    if (appState.user?.id) {
-      await loadTransactions(appState.user.id);
-    }
-  }, [appState.user?.id, loadTransactions]);
+    // No-op: rely on handleAutoAcceptedTransaction for immediate state update
+    // and on explicit refresh / visibility-change reload for DB sync.
+  }, []);
 
   // Native notification → auto transaction listener
   useNotificationListener({

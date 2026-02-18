@@ -108,8 +108,10 @@ async function checkAlreadyProcessed(
 
   const windowStart = new Date(notificationTimestamp - MS_PER_HOUR).toISOString();
   const windowEnd   = new Date(notificationTimestamp + MS_PER_HOUR).toISOString();
+  const today = new Date().toISOString().slice(0, 10);
 
   // ── Check transactions table ──
+  // Query 1: created_at within the notification time window
   const { data: txRows } = await supabase
     .from('transactions')
     .select('id, vendor, amount, created_at')
@@ -122,6 +124,26 @@ async function checkAlreadyProcessed(
       if (Math.abs(Number(tx.amount) - amount) < AMOUNT_TOLERANCE) {
         if (vendorMatches(tx.vendor, vendor)) {
           console.log(`[dedup] Duplicate found in transactions: ${tx.vendor} $${tx.amount}`);
+          return true;
+        }
+      }
+    }
+  }
+
+  // Query 2: same amount + vendor on today's date (catches duplicates where
+  // the notification timestamp and created_at don't overlap, e.g. delayed
+  // processing or re-scanning old notifications)
+  const { data: todayTxRows } = await supabase
+    .from('transactions')
+    .select('id, vendor, amount, date')
+    .eq('user_id', userId)
+    .eq('date', today);
+
+  if (todayTxRows && todayTxRows.length > 0) {
+    for (const tx of todayTxRows) {
+      if (Math.abs(Number(tx.amount) - amount) < AMOUNT_TOLERANCE) {
+        if (vendorMatches(tx.vendor, vendor)) {
+          console.log(`[dedup] Duplicate found in today's transactions: ${tx.vendor} $${tx.amount}`);
           return true;
         }
       }
@@ -511,6 +533,45 @@ async function storeRejectedNotification(
   rejectionReason: string,
 ): Promise<void> {
   try {
+    // Check for existing rejected entry with same vendor + amount to avoid duplicates
+    const normalizedVendor = (vendor || 'Unknown').toLowerCase().trim();
+    const normalizedAmount = amount ?? 0;
+
+    const { data: existing } = await supabase
+      .from('pending_transactions')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('status', 'rejected')
+      .eq('notification_timestamp', notifTimestamp);
+
+    if (existing && existing.length > 0) {
+      console.log(`[AI pipeline] Rejected notification already stored, skipping duplicate`);
+      return;
+    }
+
+    // Also check for same vendor + amount rejected today (different notification_timestamp
+    // but same underlying transaction)
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const { data: todayExisting } = await supabase
+      .from('pending_transactions')
+      .select('id, extracted_vendor, extracted_amount')
+      .eq('user_id', userId)
+      .eq('status', 'rejected')
+      .gte('created_at', todayStart.toISOString());
+
+    if (todayExisting && todayExisting.length > 0) {
+      const isDup = todayExisting.some(pt => {
+        const ptVendor = (pt.extracted_vendor || '').toLowerCase().trim();
+        const ptAmount = Number(pt.extracted_amount) || 0;
+        return ptVendor === normalizedVendor && Math.abs(ptAmount - normalizedAmount) < AMOUNT_TOLERANCE;
+      });
+      if (isDup) {
+        console.log(`[AI pipeline] Similar rejected notification already stored today, skipping`);
+        return;
+      }
+    }
+
     const now = new Date();
     await supabase.from('pending_transactions').insert({
       user_id: userId,
@@ -685,8 +746,11 @@ export async function processNotificationWithAI(
         ? `Duplicate transaction found: ${vendor} for $${amount.toFixed(2)} was already recorded by AI`
         : `Duplicate transaction found: ${vendor} for $${amount.toFixed(2)} matches a manually recorded transaction`;
       console.log(`[AI pipeline] ${reason}`);
-      // Store as rejected so it appears in the rejected card
-      await storeRejectedNotification(userId, input, notifTimestamp, vendor, amount, reason);
+      // Only store rejection for manual duplicates — AI duplicates are expected
+      // when re-scanning notifications and don't need to clutter the rejected card
+      if (!isAIDuplicate) {
+        await storeRejectedNotification(userId, input, notifTimestamp, vendor, amount, reason);
+      }
       return {
         processed: true,
         isTransaction: true,

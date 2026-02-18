@@ -429,4 +429,86 @@ describe('extractWithAI (client-side AI model)', () => {
     expect(r.isTransaction).toBe(true);
     expect(r.vendor).toBeTruthy();
   });
+
+  // ═══════════════════════════════════════════════════════════════
+  // Rule-based vendor extraction improvements
+  // ═══════════════════════════════════════════════════════════════
+
+  it('strips bank name prefix "BMO" from vendor extraction', async () => {
+    const r = await extractWithAI(
+      'BMO You spent $45.00 at Shell Gas Station on your credit card.',
+      ['Transport'],
+    );
+    expect(r.isTransaction).toBe(true);
+    expect(r.vendor).toBeTruthy();
+    expect(r.vendor?.toLowerCase()).not.toContain('bmo');
+    expect(r.vendor?.toLowerCase()).toContain('shell');
+  });
+
+  it('strips bank name prefix "Scotiabank" from vendor extraction', async () => {
+    const r = await extractWithAI(
+      'Scotiabank Charged $87.42 at Whole Foods',
+      ['Groceries'],
+    );
+    expect(r.isTransaction).toBe(true);
+    expect(r.vendor?.toLowerCase()).not.toContain('scotiabank');
+    expect(r.vendor?.toLowerCase()).toContain('whole foods');
+  });
+
+  it('strips bank name prefix "Wealthsimple" from vendor extraction', async () => {
+    const r = await extractWithAI(
+      'Wealthsimple Purchase of $12.34 at Subway',
+      [],
+    );
+    expect(r.isTransaction).toBe(true);
+    expect(r.vendor?.toLowerCase()).not.toContain('wealthsimple');
+    expect(r.vendor?.toLowerCase()).toContain('subway');
+  });
+
+  it('extracts vendor from "paid to VENDOR" pattern', async () => {
+    const r = await extractWithAI(
+      'A recurring fee of $1,850.00 was paid to Parkview Property Management.',
+      ['Housing'],
+    );
+    expect(r.isTransaction).toBe(true);
+    expect(r.vendor?.toLowerCase()).toContain('parkview');
+  });
+
+  it('extracts vendor from "$X from VENDOR" pattern', async () => {
+    const r = await extractWithAI(
+      '$23.45 from Uber Eats for your recent order',
+      ['Leisure'],
+    );
+    expect(r.isTransaction).toBe(true);
+    expect(r.vendor).toBeTruthy();
+    expect(r.vendor?.toLowerCase()).toContain('uber eats');
+  });
+
+  it('strips parenthetical text like "(TX. INCL.)" from vendor name', async () => {
+    const r = await extractWithAI(
+      'FIZZ (TX. INCL.) You made a recurring payment for $26.20 with your credit card.',
+      ['Utilities'],
+    );
+    expect(r.isTransaction).toBe(true);
+    expect(r.vendor).toBeTruthy();
+    expect(r.vendor?.toLowerCase()).toContain('fizz');
+    expect(r.vendor).not.toContain('TX');
+    expect(r.vendor).not.toContain('INCL');
+  });
+
+  it('rejects transfer between accounts via rule-based detection', async () => {
+    const r = await extractWithAI(
+      'Transfer from your chequing to savings of $500.00',
+      [],
+    );
+    expect(r.isTransaction).toBe(false);
+  });
+
+  it('rejects direct deposit via rule-based detection', async () => {
+    const r = await extractWithAI(
+      'Direct deposit of $2,500.00 has been received in your account',
+      [],
+    );
+    expect(r.isTransaction).toBe(false);
+  });
 });
