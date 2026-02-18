@@ -1,8 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { AppState, Transaction, BudgetCategory } from '../types';
-import BudgetSection from './BudgetSection';
 import TransactionForm from './TransactionForm';
-import ConfirmDeleteModal from './ConfirmDeleteModal';
 import TransactionActionModal from './TransactionActionModal';
 import TransactionParsing from './TransactionParsing';
 import PremiumGate from './PremiumGate';
@@ -102,8 +100,6 @@ const Dashboard: React.FC<DashboardProps> = ({
   const hasPremium = hasPremiumAccess(state.user);
 
   const handleSubscribe = () => {
-    // TODO: Integrate Google Play Billing flow here.
-    // For now, open a placeholder or log the intent.
     console.log('[Dashboard] Subscribe tapped — Google Play Billing integration pending');
     setShowSubscribeModal(false);
   };
@@ -122,14 +118,12 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   // Track initial mount for animation purposes
   useEffect(() => {
-    // After the first render, disable animation for subsequent renders
     shouldAnimateBottomBarRef.current = false;
   }, []);
 
   // Lock body scroll when overlays are open
   useEffect(() => {
-    const shouldLock =
-      showSettings || isAddingTx || !!selectedTx;
+    const shouldLock = showSettings || isAddingTx || !!selectedTx;
     if (shouldLock) {
       if (bodyOverflowRef.current === null) {
         bodyOverflowRef.current = document.body.style.overflow || '';
@@ -152,6 +146,20 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const isSharedAccount = !state.user?.budgetingSolo;
 
+  /**
+   * ✅ CRITICAL FIX:
+   * Supabase schema uses `category_id` and `user_name`.
+   * UI expects `budget_id` and `userName`.
+   * Normalize once here so Home budget cards show ALL transactions (AI + Manual + etc).
+   */
+  const normalizedTransactions: Transaction[] = useMemo(() => {
+    return (state.transactions || []).map((tx: any) => ({
+      ...tx,
+      budget_id: tx.budget_id ?? tx.category_id,
+      userName: tx.userName ?? tx.user_name,
+    })) as Transaction[];
+  }, [state.transactions]);
+
   // Filter out hidden budget categories
   const hiddenCategories: string[] = state.settings.hiddenCategories || [];
   const visibleBudgets = useMemo(
@@ -161,121 +169,100 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   // All transactions, optionally filtered by search query
   const filteredTransactions = useMemo(() => {
-    let list = state.transactions;
+    let list = normalizedTransactions;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       list = list.filter((t) => t.vendor.toLowerCase().includes(q));
     }
     return list;
-  }, [state.transactions, searchQuery]);
+  }, [normalizedTransactions, searchQuery]);
 
   // Build vendor history for autocomplete (most recent transaction per vendor)
   const vendorHistory = useMemo(() => {
     const vendorMap = new Map<string, { vendor: string; budget_id: string; date: string }>();
-    const sorted = [...state.transactions].sort((a, b) => {
-      return b.date.localeCompare(a.date);
-    });
+    const sorted = [...normalizedTransactions].sort((a, b) => b.date.localeCompare(a.date));
     for (const tx of sorted) {
       const key = tx.vendor.toLowerCase();
       if (!vendorMap.has(key)) {
         vendorMap.set(key, {
           vendor: tx.vendor,
-          budget_id: tx.budget_id || '',
+          budget_id: (tx as any).budget_id || '',
           date: tx.date,
         });
       }
     }
     return Array.from(vendorMap.values());
-  }, [state.transactions]);
+  }, [normalizedTransactions]);
 
   // Helper: extract "YYYY-MM" from a date string without timezone conversion.
-  // Transaction dates originate as date-only values (e.g. "2025-02-11") and are
-  // stored as ISO strings ("2025-02-11T00:00:00.000Z"). Parsing them through the
-  // Date constructor and calling getMonth()/getUTCMonth() can shift the calendar
-  // month depending on the user's timezone. Extracting directly from the string
-  // avoids this.
   const txYearMonth = (dateStr: string) => dateStr.slice(0, 7); // "YYYY-MM"
 
-  // State to track the current month for transaction filtering
-  // This ensures that if the app is left open across a month boundary,
-  // the current month will update and transactions will be filtered correctly
+  // Track current month (updates if app stays open across a month boundary)
   const [currentYearMonth, setCurrentYearMonth] = useState(getCurrentYearMonth);
 
-  // Set up an interval to check if the month has changed
-  // Only update state when the month actually changes to avoid unnecessary re-renders
   useEffect(() => {
     const checkMonth = () => {
       setCurrentYearMonth((prev) => {
         const newYearMonth = getCurrentYearMonth();
-        // Only update if the month actually changed
         return prev !== newYearMonth ? newYearMonth : prev;
       });
     };
 
-    // Check immediately on mount in case the month changed since initialization
     checkMonth();
-
-    // Check every minute to catch month changes promptly
-    // This is still inexpensive as it only updates state when the month actually changes
     const interval = setInterval(checkMonth, 60 * 1000);
-
     return () => clearInterval(interval);
-  }, []); // Empty dependency array - the interval should run continuously
+  }, []);
 
-  // Unfiltered current month transactions (used for balance calculation)
+  /**
+   * ✅ HOME: THIS MONTH ONLY (but ALL labels)
+   * IMPORTANT: Home should NOT be vendor-filtered.
+   */
   const currentMonthTransactionsAll = useMemo(
-    () =>
-      state.transactions.filter((tx) => txYearMonth(tx.date) === currentYearMonth),
-    [state.transactions, currentYearMonth],
+    () => normalizedTransactions.filter((tx) => txYearMonth(tx.date) === currentYearMonth),
+    [normalizedTransactions, currentYearMonth],
   );
 
-  // Search-filtered current month transactions (used for display only)
+  /**
+   * ✅ SEARCH: show matches across past/current/future
+   * These should be based on the vendor-filtered list.
+   */
   const currentMonthTransactions = useMemo(
-    () =>
-      filteredTransactions.filter((tx) => txYearMonth(tx.date) === currentYearMonth),
+    () => filteredTransactions.filter((tx) => txYearMonth(tx.date) === currentYearMonth),
     [filteredTransactions, currentYearMonth],
   );
 
   const pastTransactions = useMemo(
-    () =>
-      state.transactions.filter((tx) => txYearMonth(tx.date) < currentYearMonth),
-    [state.transactions, currentYearMonth],
+    () => filteredTransactions.filter((tx) => txYearMonth(tx.date) < currentYearMonth),
+    [filteredTransactions, currentYearMonth],
   );
 
   const futureTransactions = useMemo(
-    () =>
-      state.transactions.filter((tx) => txYearMonth(tx.date) > currentYearMonth),
-    [state.transactions, currentYearMonth],
+    () => filteredTransactions.filter((tx) => txYearMonth(tx.date) > currentYearMonth),
+    [filteredTransactions, currentYearMonth],
   );
 
   // Generate projected transactions from recurring entries (display-only, not saved to DB)
   const projectedTransactions = useMemo(
-    () => generateProjectedTransactions(state.transactions),
-    [state.transactions],
+    () => generateProjectedTransactions(normalizedTransactions),
+    [normalizedTransactions],
   );
 
   // Projected transactions falling in the current month
   const projectedCurrentMonth = useMemo(
-    () =>
-      projectedTransactions.filter((tx) => txYearMonth(tx.date) === currentYearMonth),
+    () => projectedTransactions.filter((tx) => txYearMonth(tx.date) === currentYearMonth),
     [projectedTransactions, currentYearMonth],
   );
 
-  // Current month transactions augmented with projected entries (for display in budget sections)
-  // Note: futureTransactions are intentionally excluded — they belong to future months
-  // and should not affect current month budget calculations or display.
+  // Current month + projected (for display in budget sections)
   const currentMonthWithProjected = useMemo(
     () => [...currentMonthTransactionsAll, ...projectedCurrentMonth],
     [currentMonthTransactionsAll, projectedCurrentMonth],
   );
 
-  // Total income (currently just user's income, partner to be added later)
-  const totalIncome = useMemo(() => {
-    const userIncome = state.user?.monthlyIncome || 0;
-    return userIncome;
-  }, [state.user?.monthlyIncome]);
+  // Total income
+  const totalIncome = useMemo(() => state.user?.monthlyIncome || 0, [state.user?.monthlyIncome]);
 
-  // Remaining money (this month only, spent vs projected) — always uses unfiltered transactions
+  // Remaining money (this month only, spent vs projected)
   const remainingMoney = useMemo(() => {
     const allCurrentMonth = [...currentMonthTransactionsAll, ...projectedCurrentMonth];
 
@@ -299,15 +286,11 @@ const Dashboard: React.FC<DashboardProps> = ({
     visibleBudgets.forEach((b) => {
       if (b.name.toLowerCase().includes('leisure')) return;
 
-      const bTxs = currentMonthTransactionsAll.filter(
-        (tx) =>
-          tx.budget_id === b.id,
-      );
+      const bTxs = currentMonthTransactionsAll.filter((tx) => (tx as any).budget_id === b.id);
 
-      // Only count actual spent amounts, not projected transactions
       const spent = bTxs.reduce((acc, tx) => {
         if (tx.is_projected) return acc;
-        return acc + (tx.budget_id === b.id ? tx.amount : 0);
+        return acc + (((tx as any).budget_id === b.id) ? tx.amount : 0);
       }, 0);
 
       if (spent > b.totalLimit) {
@@ -329,23 +312,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     setExpandedBudgets(next);
   };
 
-  const jumpToBudget = (id: string) => {
-    const isCurrentlyFocused = expandedBudgets.has(id) && expandedBudgets.size === 1;
-    if (isCurrentlyFocused) {
-      setExpandedBudgets(new Set());
-    } else {
-      setExpandedBudgets(new Set([id]));
-      setTimeout(() => {
-        const containerEl = scrollContainerRef.current;
-        if (containerEl) {
-          containerEl.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-      }, 50);
-    }
-  };
-
   const handleGoHome = () => {
-    // Collapse all budgets and scroll to top
     setExpandedBudgets(new Set());
     setSearchQuery('');
     setTimeout(() => {
@@ -361,16 +328,13 @@ const Dashboard: React.FC<DashboardProps> = ({
       ...prev,
       settings: { ...prev.settings, [key]: value },
     }));
-    
-    // Save theme to database when it changes
+
     if (key === 'theme') {
       saveTheme(value as 'light' | 'dark');
     }
   };
 
   const updateUserIncome = (income: number) => {
-    // Update local state (optimistic update handled in saveUserIncome)
-    // Call the save function which will also update the state
     saveUserIncome(income);
   };
 
@@ -408,7 +372,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   const isFocusMode = expandedBudgets.size === 1;
   const focusedBudgetId = isFocusMode ? Array.from(expandedBudgets)[0] : null;
 
-  // 🔔 Notification alerts: budgets + remaining money
+  // 🔔 Notification alerts
   useEffect(() => {
     if (!state.user?.id) return;
 
@@ -442,7 +406,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   const handleAddTransactionWithToast = useCallback(
     (tx: Transaction) => {
       onAddTransaction(tx);
-      const txMonth = tx.date.slice(0, 7); // "YYYY-MM"
+      const txMonth = tx.date.slice(0, 7);
       const current = getCurrentYearMonth();
       if (txMonth === current) {
         setToastMessage('Transaction logged!');
@@ -455,7 +419,6 @@ const Dashboard: React.FC<DashboardProps> = ({
     [onAddTransaction],
   );
 
-  // Handle vendor override update from AI transaction editing (fires on save only)
   const handleVendorOverrideUpdated = useCallback(
     (vendor: string, info: string) => {
       if (info === 'vendor_name_changed') {
@@ -467,7 +430,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     [],
   );
 
-  // If showing parsing view without premium (and not in tutorial), show subscribe modal
+  // If showing parsing view without premium, show subscribe modal
   if (showParsing && !hasPremium) {
     return (
       <SubscribeModal
@@ -482,163 +445,160 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   return (
     <>
-    {showParsing ? (
-      <TransactionParsing
-        enabled={state.settings.notificationsEnabled || false}
-        onToggle={(v: boolean) => updateSettings('notificationsEnabled', v)}
-        onBack={() => setShowParsing(false)}
-        onAddTransaction={() => setIsAddingTx(true)}
-        onGoHome={() => {
-          setShowParsing(false);
-          handleGoHome();
-        }}
-        allTransactions={state.transactions}
-        onTransactionTap={(tx) => setSelectedTx(tx)}
-        budgets={visibleBudgets}
-        userId={state.user?.id}
-        onRefreshNotifications={onRefreshNotifications}
-        onReloadTransactions={onReloadTransactions}
-        onClearEntered={() => {
-          setState(prev => ({
-            ...prev,
-            transactions: prev.transactions.filter(tx => tx.label !== 'AI'),
-          }));
-        }}
-      />
-    ) : (
-    <PageShell showGlow={!isFocusMode}>
-
-      {/* Header */}
-      <header
-        className="px-6 pt-safe-top pb-0 sticky top-0 z-20 transition-colors bg-transparent border-none backdrop-blur-none relative"
-        style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
-      >
-        <DashboardHeader
-          onOpenSettings={() => setShowSettings(true)}
-        />
-      </header>
-
-      {/* Main content */}
-      <main className="flex-1 flex flex-col p-3 pb-2 pt-0 overflow-hidden relative z-10">
-        {!isFocusMode && !isLoadingData && (
-          <DashboardBalanceSection
-            isSharedAccount={isSharedAccount}
-            remainingMoney={remainingMoney}
-            searchQuery={searchQuery}
-            onSearchQueryChange={setSearchQuery}
-          />
-        )}
-
-        {!isFocusMode && !searchQuery && (
-          <PremiumGate hasPremium={hasPremium} onSubscribe={handleSubscribe}>
-            <BudgetFlowChart
-              budgets={visibleBudgets}
-              transactions={state.transactions}
-              theme={state.settings.theme as 'light' | 'dark'}
-            />
-          </PremiumGate>
-        )}
-
-        {searchQuery ? (
-          <SearchResults
-            searchQuery={searchQuery}
-            currentMonthTransactions={currentMonthTransactions}
-            pastTransactions={pastTransactions}
-            futureTransactions={futureTransactions}
-            allTransactions={state.transactions}
-            currentUserName={state.user?.name || ''}
-            isSharedAccount={isSharedAccount}
-            budgets={state.budgets}
-            onTransactionTap={(tx) => setSelectedTx(tx)}
-          />
-        ) : (
-          <DashboardBudgetSectionsList
-            budgets={state.budgets}
-            transactions={currentMonthWithProjected}
-            expandedBudgets={expandedBudgets}
-            isFocusMode={isFocusMode}
-            focusedBudgetId={focusedBudgetId}
-            leisureAdjustments={leisureAdjustments}
-            settings={state.settings}
-            currentUserName={state.user?.name || ''}
-            isSharedAccount={isSharedAccount}
-            scrollContainerRef={scrollContainerRef}
-            budgetRefs={budgetRefs}
-            onToggleExpand={toggleExpand}
-            onTransactionTap={(tx) => setSelectedTx(tx)}
-            onUpdateBudget={onUpdateBudget}
-          />
-        )}
-      </main>
-
-      <DashboardBottomBar
-        onGoHome={handleGoHome}
-        onAddTransaction={() => setIsAddingTx(true)}
-        onOpenParsing={() => setShowParsing(true)}
-        activeView="home"
-        shouldAnimate={shouldAnimateBottomBarRef.current}
-      />
-
-      {showSettings && (
-        <DashboardSettingsModal
-          isSharedAccount={isSharedAccount}
-          settings={state.settings}
-          user={state.user}
-          isLinkingPartner={isLinkingPartner}
-          partnerLinkEmail={partnerLinkEmail}
-          budgets={state.budgets}
-          transactions={state.transactions}
-          onChangePartnerLinkEmail={setPartnerLinkEmail}
-          onClose={() => {
-            setShowSettings(false);
-            setIsLinkingPartner(false);
+      {showParsing ? (
+        <TransactionParsing
+          enabled={state.settings.notificationsEnabled || false}
+          onToggle={(v: boolean) => updateSettings('notificationsEnabled', v)}
+          onBack={() => setShowParsing(false)}
+          onAddTransaction={() => setIsAddingTx(true)}
+          onGoHome={() => {
+            setShowParsing(false);
+            handleGoHome();
           }}
-          onUpdateSettings={updateSettings}
-          onUpdateUserIncome={updateUserIncome}
-          onConnectPartner={handleConnectPartner}
-          onDisconnectPartner={handleDisconnectPartner}
-          onToggleLinkingPartner={setIsLinkingPartner}
-          onSignOut={onSignOut}
-          onSaveBudgetLimit={saveBudgetLimit}
-          saveBudgetVisibility={saveBudgetVisibility}
-          hasPremium={hasPremium}
-          onSubscribe={handleSubscribe}
-        />
-      )}
-
-      {isAddingTx && (
-        <TransactionForm
-          onClose={() => {
-            setIsAddingTx(false);
-          }}
-          onSave={handleAddTransactionWithToast}
+          allTransactions={normalizedTransactions}
+          onTransactionTap={(tx) => setSelectedTx(tx)}
           budgets={visibleBudgets}
-          userId={state.user?.id || '1'}
-          userName={state.user?.name || 'User'}
-          isSharedAccount={isSharedAccount}
-          vendorHistory={vendorHistory}
-        />
-      )}
-
-      {showSubscribeModal && (
-        <SubscribeModal
-          onClose={() => setShowSubscribeModal(false)}
-          onSubscribe={() => {
-            setShowSubscribeModal(false);
-            handleSubscribe();
+          userId={state.user?.id}
+          onRefreshNotifications={onRefreshNotifications}
+          onReloadTransactions={onReloadTransactions}
+          onClearEntered={() => {
+            setState(prev => ({
+              ...prev,
+              transactions: prev.transactions.filter(tx => (tx as any).label !== 'AI'),
+            }));
           }}
         />
-      )}
+      ) : (
+        <PageShell showGlow={!isFocusMode}>
+          {/* Header */}
+          <header
+            className="px-6 pt-safe-top pb-0 sticky top-0 z-20 transition-colors bg-transparent border-none backdrop-blur-none relative"
+            style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+          >
+            <DashboardHeader onOpenSettings={() => setShowSettings(true)} />
+          </header>
 
-      {toastMessage && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[200] animate-in fade-in slide-in-from-bottom-4 duration-300">
-          <div className="bg-emerald-600 text-white px-6 py-3 rounded-2xl shadow-xl shadow-emerald-500/20 text-xs font-black uppercase tracking-widest text-center max-w-xs">
-            {toastMessage}
-          </div>
-        </div>
+          {/* Main content */}
+          <main className="flex-1 flex flex-col p-3 pb-2 pt-0 overflow-hidden relative z-10">
+            {!isFocusMode && !isLoadingData && (
+              <DashboardBalanceSection
+                isSharedAccount={isSharedAccount}
+                remainingMoney={remainingMoney}
+                searchQuery={searchQuery}
+                onSearchQueryChange={setSearchQuery}
+              />
+            )}
+
+            {!isFocusMode && !searchQuery && (
+              <PremiumGate hasPremium={hasPremium} onSubscribe={handleSubscribe}>
+                <BudgetFlowChart
+                  budgets={visibleBudgets}
+                  transactions={normalizedTransactions}
+                  theme={state.settings.theme as 'light' | 'dark'}
+                />
+              </PremiumGate>
+            )}
+
+            {searchQuery ? (
+              <SearchResults
+                searchQuery={searchQuery}
+                currentMonthTransactions={currentMonthTransactions}
+                pastTransactions={pastTransactions}
+                futureTransactions={futureTransactions}
+                allTransactions={normalizedTransactions}
+                currentUserName={state.user?.name || ''}
+                isSharedAccount={isSharedAccount}
+                budgets={state.budgets}
+                onTransactionTap={(tx) => setSelectedTx(tx)}
+              />
+            ) : (
+              <DashboardBudgetSectionsList
+                budgets={state.budgets}
+                transactions={currentMonthWithProjected}
+                expandedBudgets={expandedBudgets}
+                isFocusMode={isFocusMode}
+                focusedBudgetId={focusedBudgetId}
+                leisureAdjustments={leisureAdjustments}
+                settings={state.settings}
+                currentUserName={state.user?.name || ''}
+                isSharedAccount={isSharedAccount}
+                scrollContainerRef={scrollContainerRef}
+                budgetRefs={budgetRefs}
+                onToggleExpand={toggleExpand}
+                onTransactionTap={(tx) => setSelectedTx(tx)}
+                onUpdateBudget={onUpdateBudget}
+              />
+            )}
+          </main>
+
+          <DashboardBottomBar
+            onGoHome={handleGoHome}
+            onAddTransaction={() => setIsAddingTx(true)}
+            onOpenParsing={() => setShowParsing(true)}
+            activeView="home"
+            shouldAnimate={shouldAnimateBottomBarRef.current}
+          />
+
+          {showSettings && (
+            <DashboardSettingsModal
+              isSharedAccount={isSharedAccount}
+              settings={state.settings}
+              user={state.user}
+              isLinkingPartner={isLinkingPartner}
+              partnerLinkEmail={partnerLinkEmail}
+              budgets={state.budgets}
+              transactions={normalizedTransactions}
+              onChangePartnerLinkEmail={setPartnerLinkEmail}
+              onClose={() => {
+                setShowSettings(false);
+                setIsLinkingPartner(false);
+              }}
+              onUpdateSettings={updateSettings}
+              onUpdateUserIncome={updateUserIncome}
+              onConnectPartner={handleConnectPartner}
+              onDisconnectPartner={handleDisconnectPartner}
+              onToggleLinkingPartner={setIsLinkingPartner}
+              onSignOut={onSignOut}
+              onSaveBudgetLimit={saveBudgetLimit}
+              saveBudgetVisibility={saveBudgetVisibility}
+              hasPremium={hasPremium}
+              onSubscribe={handleSubscribe}
+            />
+          )}
+
+          {isAddingTx && (
+            <TransactionForm
+              onClose={() => {
+                setIsAddingTx(false);
+              }}
+              onSave={handleAddTransactionWithToast}
+              budgets={visibleBudgets}
+              userId={state.user?.id || '1'}
+              userName={state.user?.name || 'User'}
+              isSharedAccount={isSharedAccount}
+              vendorHistory={vendorHistory}
+            />
+          )}
+
+          {showSubscribeModal && (
+            <SubscribeModal
+              onClose={() => setShowSubscribeModal(false)}
+              onSubscribe={() => {
+                setShowSubscribeModal(false);
+                handleSubscribe();
+              }}
+            />
+          )}
+
+          {toastMessage && (
+            <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[200] animate-in fade-in slide-in-from-bottom-4 duration-300">
+              <div className="bg-emerald-600 text-white px-6 py-3 rounded-2xl shadow-xl shadow-emerald-500/20 text-xs font-black uppercase tracking-widest text-center max-w-xs">
+                {toastMessage}
+              </div>
+            </div>
+          )}
+        </PageShell>
       )}
-    </PageShell>
-    )}
 
       {selectedTx && (
         <TransactionActionModal
@@ -660,7 +620,6 @@ const Dashboard: React.FC<DashboardProps> = ({
           onVendorOverrideUpdated={handleVendorOverrideUpdated}
         />
       )}
-
     </>
   );
 };
