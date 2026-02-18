@@ -313,14 +313,10 @@ export const useTransactionOps = ({
             }),
           });
 
-          // Update UI state: move from pending to show as rejected
+          // Remove rejected transaction from UI state
           setAppState(prev => ({
             ...prev,
-            pendingTransactions: (prev.pendingTransactions || []).map(p =>
-              p.id === pendingId
-                ? { ...p, status: 'rejected' as const, rejection_reason: dupResult.reason, reviewed_at: new Date().toISOString() }
-                : p,
-            ),
+            pendingTransactions: (prev.pendingTransactions || []).filter(p => p.id !== pendingId),
           }));
 
           console.log(`[approvePending] Duplicate detected: ${dupResult.reason}`);

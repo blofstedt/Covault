@@ -368,6 +368,49 @@ export const useDataLoading = ({
 
           // Load partner's transactions and merge with existing user transactions
           await loadTransactions(partnerId, { merge: true });
+
+          // Remap partner transaction budget_ids to match the current user's budget IDs.
+          // Each user has their own budget rows (with unique UUIDs) for the same category
+          // names, so partner transactions reference the partner's budget IDs which won't
+          // match the logged-in user's budget IDs without remapping.
+          try {
+            const partnerBudgetsRes = await fetch(
+              `${REST_BASE}/budgets?select=id,category&user_id=eq.${partnerId}`,
+              { headers: await getAuthHeaders() },
+            );
+            if (partnerBudgetsRes.ok) {
+              const partnerBudgets: { id: string; category: string }[] = await partnerBudgetsRes.json();
+              // Build partner budget ID → category name mapping
+              const partnerIdToCategory = new Map<string, string>();
+              for (const pb of partnerBudgets) {
+                partnerIdToCategory.set(pb.id, pb.category.toLowerCase());
+              }
+
+              if (partnerIdToCategory.size > 0) {
+                setAppState(prev => {
+                  // Build category name → user budget ID mapping from the user's budgets
+                  const categoryToUserId = new Map<string, string>();
+                  for (const b of prev.budgets) {
+                    categoryToUserId.set(b.name.toLowerCase(), b.id);
+                  }
+
+                  const remapped = prev.transactions.map(tx => {
+                    if (tx.user_id !== partnerId || !tx.budget_id) return tx;
+                    const catName = partnerIdToCategory.get(tx.budget_id);
+                    if (!catName) return tx;
+                    const userBudgetId = categoryToUserId.get(catName);
+                    if (!userBudgetId || userBudgetId === tx.budget_id) return tx;
+                    return { ...tx, budget_id: userBudgetId };
+                  });
+
+                  return { ...prev, transactions: remapped };
+                });
+                console.log('[loadHouseholdLink] remapped partner transaction budget IDs');
+              }
+            }
+          } catch (remapErr: any) {
+            console.warn('[loadHouseholdLink] budget remap failed:', remapErr?.message || remapErr);
+          }
         }
       } catch (err: any) {
         console.error('[loadHouseholdLink]', err?.message || err);
