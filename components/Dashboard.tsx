@@ -176,19 +176,62 @@ const Dashboard: React.FC<DashboardProps> = ({
    *  2) For each transaction, set budget_id using that map.
    *  3) Normalize amount, date, and userName.
    */
-  const normalizedTransactions: Transaction[] = useMemo(() => {
-    // 1) Build category_id -> budget_id map from state.budgets
-    const categoryToBudgetId = new Map<string, string>();
-    (state.budgets || []).forEach((b: any) => {
-      const catId =
-        b.category_id ??
-        b.categoryId ??
-        (typeof b.category === 'object' ? b.category?.id : undefined);
+const normalizedTransactions: Transaction[] = useMemo(() => {
 
-      if (catId && b.id) {
-        categoryToBudgetId.set(String(catId), String(b.id));
-      }
-    });
+  const categoryToBudgetId = new Map<string, string>();
+
+  (state.budgets || []).forEach((b: any) => {
+
+    const catId =
+      b.category_id ??
+      b.categoryId ??
+      b.category?.id ??
+      b.category ??
+      null;
+
+    if (catId && b.id) {
+      categoryToBudgetId.set(String(catId), String(b.id));
+    }
+
+  });
+
+  return (state.transactions || []).map((tx: any) => {
+
+    const rawCategoryId =
+      tx.category_id ??
+      tx.categoryId ??
+      tx.category?.id ??
+      tx.category ??
+      null;
+
+    const mappedBudgetId =
+      rawCategoryId != null
+        ? categoryToBudgetId.get(String(rawCategoryId))
+        : null;
+
+    const amount =
+      typeof tx.amount === 'number'
+        ? tx.amount
+        : Number(tx.amount ?? 0);
+
+    const date =
+      typeof tx.date === 'string'
+        ? tx.date.slice(0, 10)
+        : tx.date instanceof Date
+        ? tx.date.toISOString().slice(0, 10)
+        : '';
+
+    return {
+      ...tx,
+      amount: Number.isFinite(amount) ? amount : 0,
+      date,
+      userName: tx.userName ?? tx.user_name,
+      budget_id: tx.budget_id ?? mappedBudgetId ?? null,
+    };
+
+  }) as Transaction[];
+
+}, [state.transactions, state.budgets]);
 
     const list = (state.transactions || []).map((tx: any) => {
       // Normalize amount to a number
