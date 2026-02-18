@@ -148,6 +148,10 @@ const App: React.FC = () => {
   // Runs unconditionally so that banking apps are discovered as soon as
   // the user opens the app — not only after notifications are enabled.
   useEffect(() => {
+    autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
+  }, []);
+  
+  useEffect(() => {
     if (appState.settings.notificationsEnabled) {
       autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
     }
