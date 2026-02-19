@@ -36,6 +36,7 @@ const Dashboard: React.FC<Props> = ({
   const [showParsing, setShowParsing] = useState(false);
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [expandedBudgets, setExpandedBudgets] = useState<Set<string>>(new Set());
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -73,6 +74,18 @@ const Dashboard: React.FC<Props> = ({
     );
 
   }, [normalizedTransactions, searchQuery]);
+
+  const handleToggleBudgetExpand = (budgetId: string) => {
+    setExpandedBudgets((prev) => {
+      const next = new Set(prev);
+      if (next.has(budgetId)) {
+        next.delete(budgetId);
+      } else {
+        next.add(budgetId);
+      }
+      return next;
+    });
+  };
 
 
   /**
@@ -129,7 +142,9 @@ const Dashboard: React.FC<Props> = ({
         <DashboardBudgetSectionsList
           budgets={state.budgets}
           transactions={currentMonthTransactions}
+          expandedBudgets={expandedBudgets}
           scrollContainerRef={scrollRef}
+          onToggleExpand={handleToggleBudgetExpand}
           onTransactionTap={setSelectedTx}
           onUpdateBudget={onUpdateBudget}
         />
