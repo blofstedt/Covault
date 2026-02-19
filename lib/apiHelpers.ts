@@ -5,23 +5,43 @@ export const REST_BASE = `${supabaseUrl}/rest/v1`;
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-export const getAuthHeaders = async (): Promise<Record<string, string>> => {
+let cachedAccessToken = '';
+
+export const setCachedAccessToken = (token?: string | null) => {
+  cachedAccessToken = token || '';
+};
+
+export const clearCachedAccessToken = () => {
+  cachedAccessToken = '';
+};
+
+const readAccessToken = async (): Promise<string> => {
+  if (cachedAccessToken) return cachedAccessToken;
+
   // During initial sign-in, auth state can update before the access token is
   // immediately available to `getSession()`. Retry briefly to avoid firing
   // unauthenticated REST calls that return 401 and leave dashboard data empty.
-  let token = '';
-  for (let attempt = 0; attempt < 4; attempt++) {
+  for (let attempt = 0; attempt < 8; attempt++) {
     const {
       data: { session },
     } = await supabase.auth.getSession();
 
-    token = session?.access_token || '';
-    if (token) break;
+    const token = session?.access_token || '';
+    if (token) {
+      cachedAccessToken = token;
+      return token;
+    }
 
-    if (attempt < 3) {
-      await sleep(150);
+    if (attempt < 7) {
+      await sleep(200);
     }
   }
+
+  return '';
+};
+
+export const getAuthHeaders = async (): Promise<Record<string, string>> => {
+  const token = await readAccessToken();
 
   return {
     apikey: supabaseAnonKey || '',

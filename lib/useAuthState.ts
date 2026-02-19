@@ -1,6 +1,7 @@
 // lib/useAuthState.ts
 import React, { useCallback, useEffect, useRef } from 'react';
 import { supabase } from './supabase';
+import { clearCachedAccessToken, setCachedAccessToken } from './apiHelpers';
 import type { AppState, User } from '../types';
 
 export type AuthStatus = 'loading' | 'unauthenticated' | 'onboarding' | 'authenticated';
@@ -114,11 +115,13 @@ export const useAuthState = ({
 
     // Initial session check
     supabase.auth.getSession().then(({ data: { session } }) => {
+      setCachedAccessToken(session?.access_token);
       if (session?.user) {
         // Check 14-day window
         if (!isSessionValid()) {
           supabase.auth.signOut();
           clearSessionTimestamp();
+          clearCachedAccessToken();
           lastLoadedUserIdRef.current = null;
           loadUserDataPromiseRef.current = null;
           loadingUserIdRef.current = null;
@@ -140,6 +143,8 @@ export const useAuthState = ({
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
+        setCachedAccessToken(session.access_token);
+
         if (event === 'SIGNED_IN') {
           markSessionStart();
         }
@@ -151,6 +156,7 @@ export const useAuthState = ({
         maybeLoadUserData(session.user.id);
       } else {
         clearSessionTimestamp();
+        clearCachedAccessToken();
         lastLoadedUserIdRef.current = null;
         loadUserDataPromiseRef.current = null;
         loadingUserIdRef.current = null;
