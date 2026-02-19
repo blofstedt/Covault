@@ -19,8 +19,53 @@ if (!isSupabaseConfigured) {
 }
 
 // Optional: very simple stub to avoid hard crashes in local dev
-const createStubClient = () =>
-  ({
+const createStubClient = () => {
+  const queryBuilder = {
+    select() {
+      return queryBuilder;
+    },
+    eq() {
+      return queryBuilder;
+    },
+    or() {
+      return queryBuilder;
+    },
+    gte() {
+      return queryBuilder;
+    },
+    ilike() {
+      return queryBuilder;
+    },
+    order() {
+      return queryBuilder;
+    },
+    limit() {
+      return queryBuilder;
+    },
+    insert() {
+      return queryBuilder;
+    },
+    update() {
+      return queryBuilder;
+    },
+    delete() {
+      return queryBuilder;
+    },
+    async maybeSingle() {
+      return {
+        data: null,
+        error: { message: 'Supabase is not configured.' },
+      };
+    },
+    async single() {
+      return {
+        data: null,
+        error: { message: 'Supabase is not configured.' },
+      };
+    },
+  };
+
+  return {
     auth: {
       async getSession() {
         console.warn('[supabase] Stub client in use: getSession');
@@ -44,26 +89,7 @@ const createStubClient = () =>
     },
     from() {
       console.warn('[supabase] Stub client in use: from');
-      return {
-        select: () => this,
-        eq: () => this,
-        or: () => this,
-        gte: () => this,
-        ilike: () => this,
-        order: () => this,
-        limit: () => this,
-        insert: () => this,
-        update: () => this,
-        delete: () => this,
-        maybeSingle: async () => ({
-          data: null,
-          error: { message: 'Supabase is not configured.' },
-        }),
-        single: async () => ({
-          data: null,
-          error: { message: 'Supabase is not configured.' },
-        }),
-      };
+      return queryBuilder;
     },
     functions: {
       async invoke() {
@@ -71,7 +97,8 @@ const createStubClient = () =>
         return { data: null, error: { message: 'Supabase is not configured.' } };
       },
     },
-  }) as unknown as ReturnType<typeof createClient>;
+  } as unknown as ReturnType<typeof createClient>;
+};
 
 // ✅ Create and export the real Supabase client (or stub if misconfigured)
 export const supabase = isSupabaseConfigured
