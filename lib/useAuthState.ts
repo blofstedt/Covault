@@ -49,13 +49,13 @@ export const useAuthState = ({
   const pendingUserIdRef = useRef<string | null>(null);
 
   const maybeLoadUserData = useCallback(
-    (userId: string) => {
-      if (lastLoadedUserIdRef.current === userId) {
+    (userId: string, { forceReload = false }: { forceReload?: boolean } = {}) => {
+      if (!forceReload && lastLoadedUserIdRef.current === userId) {
         return loadUserDataPromiseRef.current ?? Promise.resolve();
       }
 
       if (loadUserDataPromiseRef.current) {
-        if (loadingUserIdRef.current === userId) {
+        if (!forceReload && loadingUserIdRef.current === userId) {
           return loadUserDataPromiseRef.current;
         }
         pendingUserIdRef.current = userId;
@@ -132,7 +132,7 @@ export const useAuthState = ({
 
         mergeUser(mapUser(session.user));
         setAuthState('authenticated');
-        maybeLoadUserData(session.user.id);
+        maybeLoadUserData(session.user.id, { forceReload: true });
       } else {
         setAuthState('unauthenticated');
       }
@@ -153,7 +153,9 @@ export const useAuthState = ({
         setAuthState(prev =>
           prev === 'unauthenticated' ? 'onboarding' : 'authenticated',
         );
-        maybeLoadUserData(session.user.id);
+        maybeLoadUserData(session.user.id, {
+          forceReload: event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED',
+        });
       } else {
         clearSessionTimestamp();
         clearCachedAccessToken();
