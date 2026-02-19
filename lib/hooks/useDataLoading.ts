@@ -2,7 +2,7 @@
 import { useCallback, useState } from 'react';
 import { SYSTEM_CATEGORIES } from '../../constants';
 import type { BudgetCategory, Transaction, PendingTransaction } from '../../types';
-import { REST_BASE, getAuthHeaders, DEFAULT_BUDGET_LIMIT, DEFAULT_MONTHLY_INCOME } from '../apiHelpers';
+import { REST_BASE, getAuthHeaders, DEFAULT_MONTHLY_INCOME } from '../apiHelpers';
 import { useFromSupabaseTransaction } from './transactionMappers';
 import { deduplicatePendingTransactions } from '../notificationProcessor';
 import type { UseUserDataParams } from './types';
@@ -81,8 +81,9 @@ export const useDataLoading = ({
             setCategoriesLoaded(true);
             return;
           }
-          console.error('[loadUserBudgets] failed:', body.slice(0, 200));
-          setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
+          const msg = `[loadUserBudgets] failed (${res.status}): ${body.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
           setCategoriesLoaded(true);
           return;
         }
@@ -118,12 +119,10 @@ export const useDataLoading = ({
           };
         });
 
-        // Ensure all system categories are present (fallback for newly seeded ones)
-        const loadedNames = new Set(budgets.map(b => b.name));
-        for (const sysCat of SYSTEM_CATEGORIES) {
-          if (!loadedNames.has(sysCat.name)) {
-            budgets.push({ ...sysCat });
-          }
+        if (budgets.length === 0) {
+          const msg = '[loadUserBudgets] no budgets found for user after load/seed';
+          console.warn(msg);
+          setDbError(msg);
         }
 
         setAppState(prev => ({
@@ -138,12 +137,13 @@ export const useDataLoading = ({
         console.log('[loadUserBudgets] loaded:', budgets.map(b => ({ id: b.id, name: b.name, limit: b.totalLimit })));
         setCategoriesLoaded(true);
       } catch (err: any) {
-        console.error('[loadUserBudgets] exception:', err?.message || err);
-        setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
+        const msg = `[loadUserBudgets] exception: ${err?.message || err}`;
+        console.error(msg);
+        setDbError(msg);
         setCategoriesLoaded(true);
       }
     },
-    [setAppState, ensureDefaultBudgets],
+    [setAppState, ensureDefaultBudgets, setDbError],
   );
 
   // Load user settings from Supabase (monthly_income, etc.)
