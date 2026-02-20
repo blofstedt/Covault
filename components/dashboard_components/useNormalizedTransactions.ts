@@ -35,10 +35,12 @@ export function normalizeTransactions(
       tx.category ??
       null;
 
-    const mappedBudgetId =
-      rawCategoryId != null
-        ? categoryToBudget.get(String(rawCategoryId))
-        : null;
+    const mappedBudgetId = rawCategoryId != null
+      ? (
+        categoryToBudget.get(String(rawCategoryId)) ||
+        (budgetIds.has(String(rawCategoryId)) ? String(rawCategoryId) : null)
+      )
+      : null;
 
     const amount =
       typeof tx.amount === 'number'

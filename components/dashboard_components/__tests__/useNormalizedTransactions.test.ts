@@ -49,4 +49,28 @@ describe('normalizeTransactions', () => {
 
     expect(normalized[0].budget_id).toBe('b1');
   });
+
+  it('maps category_id directly when transactions are not yet transformed', () => {
+    const budgets: any[] = [
+      { id: 'housing-id', name: 'Housing', totalLimit: 1000 },
+      { id: 'other-id', name: 'Other', totalLimit: 1000 },
+    ];
+
+    const transactions: any[] = [
+      {
+        id: 't1',
+        user_id: 'u1',
+        vendor: 'Landlord',
+        amount: 1200,
+        date: '2026-02-10',
+        category_id: 'housing-id',
+        is_projected: false,
+        created_at: '2026-02-10T00:00:00.000Z',
+      },
+    ];
+
+    const normalized = normalizeTransactions(transactions as any, budgets as any);
+
+    expect(normalized[0].budget_id).toBe('housing-id');
+  });
 });
