@@ -11,6 +11,7 @@ import DashboardBalanceSection from './dashboard_components/DashboardBalanceSect
 import DashboardBudgetSectionsList from './dashboard_components/DashboardBudgetSectionsList';
 import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import BudgetFlowChart from './dashboard_components/BudgetFlowChart';
+import DashboardSettingsModal from './dashboard_components/DashboardSettingsModal';
 
 import useNormalizedTransactions from './dashboard_components/useNormalizedTransactions';
 import useDashboardTotals from './dashboard_components/useDashboardTotals';
@@ -22,6 +23,13 @@ interface Props {
   onUpdateTransaction: (t: Transaction) => void;
   onDeleteTransaction: (id: string) => void;
   onUpdateBudget: (b: BudgetCategory) => void;
+  onSignOut?: () => void;
+  saveBudgetLimit?: (categoryId: string, newLimit: number) => void;
+  saveUserIncome?: (income: number) => void;
+  saveTheme?: (theme: 'light' | 'dark') => void;
+  saveBudgetVisibility?: (categoryId: string, visible: boolean) => void;
+  onLinkPartner?: (partnerEmail: string) => Promise<void>;
+  onUnlinkPartner?: () => Promise<void>;
 }
 
 const Dashboard: React.FC<Props> = ({
@@ -31,11 +39,21 @@ const Dashboard: React.FC<Props> = ({
   onUpdateTransaction,
   onDeleteTransaction,
   onUpdateBudget,
+  onSignOut,
+  saveBudgetLimit,
+  saveUserIncome,
+  saveTheme,
+  saveBudgetVisibility,
+  onLinkPartner,
+  onUnlinkPartner,
 }) => {
 
   const [showParsing, setShowParsing] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isLinkingPartner, setIsLinkingPartner] = useState(false);
+  const [partnerLinkEmail, setPartnerLinkEmail] = useState('');
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -108,7 +126,7 @@ const Dashboard: React.FC<Props> = ({
     <>
       <PageShell showGlow>
 
-        <DashboardHeader />
+        <DashboardHeader onOpenSettings={() => setShowSettings(true)} />
 
         <DashboardBalanceSection
           remainingMoney={remainingMoney}
@@ -152,6 +170,51 @@ const Dashboard: React.FC<Props> = ({
           onClose={() => setSelectedTx(null)}
           onEdit={onUpdateTransaction}
           onDelete={() => onDeleteTransaction(selectedTx.id)}
+        />
+      )}
+
+      {showSettings && (
+        <DashboardSettingsModal
+          isSharedAccount={!state.user?.budgetingSolo}
+          settings={state.settings}
+          user={state.user}
+          isLinkingPartner={isLinkingPartner}
+          partnerLinkEmail={partnerLinkEmail}
+          budgets={state.budgets}
+          transactions={state.transactions}
+          onChangePartnerLinkEmail={setPartnerLinkEmail}
+          onClose={() => setShowSettings(false)}
+          onUpdateSettings={(key, value) => {
+            setState(prev => ({
+              ...prev,
+              settings: {
+                ...prev.settings,
+                [key]: value,
+              },
+            }));
+
+            if (key === 'theme' && (value === 'light' || value === 'dark')) {
+              saveTheme?.(value);
+            }
+          }}
+          onUpdateUserIncome={(income) => saveUserIncome?.(income)}
+          onConnectPartner={async () => {
+            if (!partnerLinkEmail.trim()) return;
+            await onLinkPartner?.(partnerLinkEmail.trim());
+            setIsLinkingPartner(false);
+            setPartnerLinkEmail('');
+          }}
+          onDisconnectPartner={async () => {
+            await onUnlinkPartner?.();
+            setIsLinkingPartner(false);
+            setPartnerLinkEmail('');
+          }}
+          onToggleLinkingPartner={(value) => setIsLinkingPartner(value)}
+          onSignOut={() => onSignOut?.()}
+          onSaveBudgetLimit={(categoryId, newLimit) => saveBudgetLimit?.(categoryId, newLimit)}
+          saveBudgetVisibility={(categoryId, visible) => saveBudgetVisibility?.(categoryId, visible)}
+          hasPremium={true}
+          onSubscribe={() => {}}
         />
       )}
 
