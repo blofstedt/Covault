@@ -32,54 +32,37 @@ const Dashboard: React.FC<Props> = ({
   onDeleteTransaction,
   onUpdateBudget,
 }) => {
-
   const [showParsing, setShowParsing] = useState(false);
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [expandedBudgets, setExpandedBudgets] = useState<Set<string>>(new Set());
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const budgetRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
-  /**
-   * FIXED NORMALIZATION
-   */
-  const normalizedTransactions = useNormalizedTransactions(
-    state.transactions,
-    state.budgets
-  );
+  const normalizedTransactions = useNormalizedTransactions(state.transactions, state.budgets);
 
-  /**
-   * SAFE TOTAL CALCULATIONS
-   */
-  const {
-    currentMonthTransactions,
-    projectedTransactions,
-    remainingMoney,
-  } = useDashboardTotals(
+  const { currentMonthTransactions, remainingMoney } = useDashboardTotals(
     normalizedTransactions,
-    state.user?.monthlyIncome || 0
+    state.user?.monthlyIncome || 0,
   );
 
-  /**
-   * SEARCH FILTER
-   */
   const filteredTransactions = useMemo(() => {
-
     if (!searchQuery) return normalizedTransactions;
-
     const q = searchQuery.toLowerCase();
-
-    return normalizedTransactions.filter(
-      t => t.vendor?.toLowerCase().includes(q)
-    );
-
+    return normalizedTransactions.filter(t => t.vendor?.toLowerCase().includes(q));
   }, [normalizedTransactions, searchQuery]);
 
+  const toggleExpand = (id: string) => {
+    setExpandedBudgets(prev => {
+      if (prev.has(id)) {
+        return new Set();
+      }
+      return new Set([id]);
+    });
+  };
 
-  /**
-   * PARSING SCREEN
-   */
   if (showParsing) {
-
     return (
       <TransactionParsing
         enabled={state.settings.notificationsEnabled}
@@ -88,60 +71,62 @@ const Dashboard: React.FC<Props> = ({
             ...prev,
             settings: {
               ...prev.settings,
-              notificationsEnabled: enabled
-            }
+              notificationsEnabled: enabled,
+            },
           }))
         }
         onBack={() => setShowParsing(false)}
-        allTransactions={normalizedTransactions}
+        allTransactions={filteredTransactions}
         budgets={state.budgets}
         userId={state.user?.id}
       />
     );
-
   }
 
-  /**
-   * MAIN DASHBOARD
-   */
   return (
     <>
       <PageShell showGlow>
-
-        <DashboardHeader />
+        <DashboardHeader onOpenSettings={() => {}} />
 
         <DashboardBalanceSection
+          isSharedAccount={!state.user?.budgetingSolo}
           remainingMoney={remainingMoney}
           searchQuery={searchQuery}
           onSearchQueryChange={setSearchQuery}
         />
 
         <PremiumGate hasPremium={true}>
-
           <BudgetFlowChart
             budgets={state.budgets}
             transactions={normalizedTransactions}
             theme={state.settings.theme}
           />
-
         </PremiumGate>
 
         <DashboardBudgetSectionsList
           budgets={state.budgets}
           transactions={currentMonthTransactions}
+          expandedBudgets={expandedBudgets}
+          isFocusMode={false}
+          focusedBudgetId={null}
+          leisureAdjustments={0}
+          settings={state.settings}
+          currentUserName={state.user?.name || ''}
+          isSharedAccount={!state.user?.budgetingSolo}
           scrollContainerRef={scrollRef}
+          budgetRefs={budgetRefs}
+          onToggleExpand={toggleExpand}
           onTransactionTap={setSelectedTx}
           onUpdateBudget={onUpdateBudget}
         />
 
         <DashboardBottomBar
+          onGoHome={() => setShowParsing(false)}
           onAddTransaction={() => {}}
           onOpenParsing={() => setShowParsing(true)}
           activeView="home"
         />
-
       </PageShell>
-
 
       {selectedTx && (
         <TransactionActionModal
@@ -154,10 +139,8 @@ const Dashboard: React.FC<Props> = ({
           onDelete={() => onDeleteTransaction(selectedTx.id)}
         />
       )}
-
     </>
   );
-
 };
 
 export default Dashboard;
