@@ -345,10 +345,17 @@ export async function loadBankingAppsFromDB(): Promise<Record<string, string>> {
   try {
     const { REST_BASE, getAuthHeaders } = await import('./apiHelpers');
     const headers = await getAuthHeaders();
-    const res = await fetch(
-      `${REST_BASE}/known_banking_apps?select=package_name,display_name&is_active=eq.true`,
+    let res = await fetch(
+      `${REST_BASE}/banks?select=package_name,display_name`,
       { headers },
     );
+
+    if (!res.ok) {
+      res = await fetch(
+        `${REST_BASE}/known_banking_apps?select=package_name,display_name&is_active=eq.true`,
+        { headers },
+      );
+    }
     if (!res.ok) {
       console.warn('[loadBankingApps] DB unavailable, using hardcoded fallback');
       return { ...KNOWN_BANKING_APPS };
