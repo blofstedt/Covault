@@ -44,11 +44,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
     <div
       ref={scrollContainerRef}
       className={`flex-1 flex flex-col ${
-        isFocusMode
-          ? 'overflow-hidden'
-          : expandedBudgets.size > 0
-          ? 'overflow-y-auto'
-          : 'overflow-hidden'
+        isFocusMode ? 'overflow-hidden' : 'overflow-y-auto'
       } mt-1 pb-24 no-scrollbar scroll-smooth h-full transition-all duration-500 gap-2`}
     >
       {budgets
@@ -90,7 +86,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
                 }
               }}
               className={`flex flex-col ${
-                isExpanded ? 'flex-[100] min-h-[70vh]' : 'flex-1 min-h-0'
+                isExpanded ? 'min-h-[70vh]' : 'min-h-[84px]'
               }`}
               style={{
                 animationDelay: `${index * 40}ms`,
