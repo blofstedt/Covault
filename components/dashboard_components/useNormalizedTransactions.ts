@@ -7,12 +7,17 @@ export function normalizeTransactions(
 ): Transaction[] {
   const categoryToBudget = new Map<string, string>();
   const budgetIds = new Set<string>();
+  const budgetNameToId = new Map<string, string>();
   const otherBudgetId =
     budgets.find((b: any) => String(b?.name || '').toLowerCase() === 'other')?.id || null;
 
   budgets.forEach((b: any) => {
     if (b?.id) {
-      budgetIds.add(String(b.id));
+      const normalizedId = String(b.id);
+      budgetIds.add(normalizedId);
+      if (typeof b?.name === 'string' && b.name.trim()) {
+        budgetNameToId.set(b.name.trim().toLowerCase(), normalizedId);
+      }
     }
 
     const catId =
@@ -50,7 +55,13 @@ export function normalizeTransactions(
         ? tx.date.slice(0, 10)
         : '';
 
-    const initialBudgetId = tx.budget_id ?? mappedBudgetId ?? null;
+    const rawBudgetValue = tx.budget_id ?? tx.Budget ?? tx.budget ?? null;
+    const budgetIdFromName =
+      typeof rawBudgetValue === 'string'
+        ? budgetNameToId.get(rawBudgetValue.trim().toLowerCase())
+        : null;
+
+    const initialBudgetId = budgetIdFromName ?? rawBudgetValue ?? mappedBudgetId ?? null;
     const hasValidBudgetId =
       initialBudgetId != null && budgetIds.has(String(initialBudgetId));
 
