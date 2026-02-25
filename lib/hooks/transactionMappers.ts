@@ -11,7 +11,7 @@ const VALID_RECURRENCES = [
 ];
 
 // Build the object Supabase expects — only columns that exist in the table
-export const useToSupabaseTransaction = () =>
+export const useToSupabaseTransaction = (budgets: { id: string; name: string }[] = []) =>
   useCallback((tx: Transaction) => {
     // Extract the YYYY-MM-DD portion directly from the date string to avoid
     // timezone-related date shifts that occur when round-tripping through the
@@ -34,20 +34,27 @@ export const useToSupabaseTransaction = () =>
       }
     }
 
+    const budgetName = budgets.find(b => b.id === tx.budget_id)?.name || tx.budget_id;
+
     const row: Record<string, any> = {
       id: tx.id,
       user_id: tx.user_id,
       vendor: tx.vendor,
       amount: Number(tx.amount),
       date: dateStr,
-      category_id: tx.budget_id,
-      recurrence: recurrence,
-      label: tx.label || 'Manual',
       is_projected: tx.is_projected ?? false,
+      // New schema (support lowercase/uppercase budget column variants)
+      budget: budgetName,
+      Budget: budgetName,
+      type: tx.label || 'Manual',
+      recur: recurrence,
+      // Legacy schema compatibility
+      category_id: tx.budget_id,
+      label: tx.label || 'Manual',
+      recurrence: recurrence,
     };
 
     if (tx.userName) row.user_name = tx.userName;
-    if (tx.description !== undefined) row.description = tx.description || null;
 
     return row;
   }, []);
@@ -55,13 +62,14 @@ export const useToSupabaseTransaction = () =>
 // Convert Supabase transaction to app format
 export const useFromSupabaseTransaction = () =>
   useCallback((row: any): Transaction => {
-    // Validate recurrence value from database
+    // Validate recurrence value from database (supports recur or recurrence)
     let recurrence: Recurrence = Recurrence.ONE_TIME;
-    if (row.recurrence) {
-      if (VALID_RECURRENCES.includes(row.recurrence as Recurrence)) {
-        recurrence = row.recurrence as Recurrence;
+    const recurrenceRaw = row.recur || row.recurrence;
+    if (recurrenceRaw) {
+      if (VALID_RECURRENCES.includes(recurrenceRaw as Recurrence)) {
+        recurrence = recurrenceRaw as Recurrence;
       } else {
-        console.warn(`Invalid recurrence value "${row.recurrence}" from database, using "${Recurrence.ONE_TIME}"`);
+        console.warn(`Invalid recurrence value "${recurrenceRaw}" from database, using "${Recurrence.ONE_TIME}"`);
       }
     }
 
@@ -76,12 +84,11 @@ export const useFromSupabaseTransaction = () =>
       date: typeof row.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.date)
         ? row.date + 'T12:00:00.000Z'
         : new Date(row.date).toISOString(),
-      budget_id: row.category_id,
+      budget_id: row.category_id || row.budget_id || row.Budget || row.budget || null,
       recurrence: recurrence,
-      label: row.label,
+      label: row.label || row.type || 'Manual',
       is_projected: row.is_projected,
       userName: row.user_name || '',
-      description: row.description || '',
       created_at: row.created_at,
     };
   }, []);

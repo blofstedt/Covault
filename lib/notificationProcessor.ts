@@ -436,7 +436,7 @@ export async function checkDuplicateTransaction(
   // Fetch existing transactions for this vendor and approximate amount
   const { data: existing, error } = await supabase
     .from('transactions')
-    .select('id, vendor, amount, date, recurrence')
+    .select('id, vendor, amount, date, recurrence, recur')
     .eq('user_id', userId)
     .ilike('vendor', vendor);
 
@@ -463,7 +463,7 @@ export async function checkDuplicateTransaction(
   const toleranceMs = RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY;
 
   for (const tx of amountMatches) {
-    const recurrence = (tx.recurrence || '').toLowerCase();
+    const recurrence = ((tx.recur || tx.recurrence) || '').toLowerCase();
     if (recurrence !== 'monthly' && recurrence !== 'biweekly') continue;
 
     const txDateMs = new Date(tx.date).getTime();
@@ -652,7 +652,7 @@ export async function processNotificationWithAI(
   const today = new Date().toISOString().slice(0, 10);
   const { data: existingTx } = await supabase
     .from('transactions')
-    .select('id, vendor, amount, date, label, recurrence')
+    .select('id, vendor, amount, date, label, type, recurrence, recur')
     .eq('user_id', userId)
     .ilike('vendor', vendor);
 
@@ -668,7 +668,7 @@ export async function processNotificationWithAI(
     const toleranceMs = RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY;
 
     for (const tx of amountMatches) {
-      const recurrence = (tx.recurrence || '').toLowerCase();
+      const recurrence = ((tx.recur || tx.recurrence) || '').toLowerCase();
       if (recurrence !== 'monthly' && recurrence !== 'biweekly') continue;
 
       const txDateMs = new Date(tx.date).getTime();
@@ -691,7 +691,8 @@ export async function processNotificationWithAI(
 
     if (duplicateToday) {
       // Distinguish manual vs AI duplicates
-      const isAIDuplicate = duplicateToday.label === 'AI' || duplicateToday.label === 'Auto-Added';
+      const txType = duplicateToday.label || duplicateToday.type;
+      const isAIDuplicate = txType === 'AI' || txType === 'Auto-Added' || txType === 'Automatic';
       const skipReason = isAIDuplicate ? 'duplicate_ai' as const : 'duplicate_manual' as const;
       const reason = isAIDuplicate
         ? `Duplicate transaction found: ${vendor} for $${amount.toFixed(2)} was already recorded by AI`
@@ -798,6 +799,10 @@ export async function processNotificationWithAI(
       vendor: finalVendorName,
       amount,
       date: today,
+      budget: categoryName || 'Other',
+      Budget: categoryName || 'Other',
+      type: 'AI',
+      recur: 'One-time',
       category_id: categoryId,
       recurrence: 'One-time',
       label: 'AI',
