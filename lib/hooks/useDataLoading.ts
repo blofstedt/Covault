@@ -35,20 +35,33 @@ export const useDataLoading = ({
         const missing = SYSTEM_CATEGORIES.filter(sc => !existingCategories.has(sc.name));
         if (missing.length === 0) return;
 
-        const rows = missing.map(sc => ({
-          user_id: userId,
-          category: sc.name,
-          limit_amount: sc.totalLimit,
-          visible: true,
+        const newRows = missing.map(sc => ({
+          user_uuid: userId,
+          budget: sc.name,
+          amount: sc.totalLimit,
+          Visible: true,
         }));
 
-        // Use upsert with on_conflict to avoid creating duplicate rows
         (headers as any)['Prefer'] = 'return=representation,resolution=ignore-duplicates';
-        const res = await fetch(`${REST_BASE}/budgets?on_conflict=user_id,category`, {
+        let res = await fetch(`${REST_BASE}/budgets?on_conflict=user_uuid,budget`, {
           method: 'POST',
           headers,
-          body: JSON.stringify(rows),
+          body: JSON.stringify(newRows),
         });
+
+        if (!res.ok) {
+          const legacyRows = missing.map(sc => ({
+            user_id: userId,
+            category: sc.name,
+            limit_amount: sc.totalLimit,
+            visible: true,
+          }));
+          res = await fetch(`${REST_BASE}/budgets?on_conflict=user_id,category`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(legacyRows),
+          });
+        }
 
         if (!res.ok) {
           const body = await res.text();
@@ -68,10 +81,17 @@ export const useDataLoading = ({
     async (userId: string) => {
       try {
         const headers = await getAuthHeaders();
-        const res = await fetch(
-          `${REST_BASE}/budgets?select=*&user_id=eq.${userId}`,
+        let res = await fetch(
+          `${REST_BASE}/budgets?select=*&user_uuid=eq.${userId}`,
           { headers },
         );
+
+        if (!res.ok) {
+          res = await fetch(
+            `${REST_BASE}/budgets?select=*&user_id=eq.${userId}`,
+            { headers },
+          );
+        }
         const body = await res.text();
 
         if (!res.ok) {
@@ -90,16 +110,22 @@ export const useDataLoading = ({
         const rows = JSON.parse(body);
 
         // Ensure all default budgets exist in the table
-        const existingCategories = new Set<string>(rows.map((r: any) => r.category));
+        const existingCategories = new Set<string>(rows.map((r: any) => r.category || r.budget).filter(Boolean));
         await ensureDefaultBudgets(userId, existingCategories);
 
         // If we just seeded new budgets, re-fetch to get their IDs
         let finalRows = rows;
         if (SYSTEM_CATEGORIES.some(sc => !existingCategories.has(sc.name))) {
-          const refetchRes = await fetch(
-            `${REST_BASE}/budgets?select=*&user_id=eq.${userId}`,
+          let refetchRes = await fetch(
+            `${REST_BASE}/budgets?select=*&user_uuid=eq.${userId}`,
             { headers },
           );
+          if (!refetchRes.ok) {
+            refetchRes = await fetch(
+              `${REST_BASE}/budgets?select=*&user_id=eq.${userId}`,
+              { headers },
+            );
+          }
           if (refetchRes.ok) {
             finalRows = JSON.parse(await refetchRes.text());
           }
@@ -108,13 +134,14 @@ export const useDataLoading = ({
         // Build budgets directly from the budgets table rows
         const hiddenCategoryIds: string[] = [];
         const budgets: BudgetCategory[] = finalRows.map((row: any) => {
-          if (row.visible === false) {
-            hiddenCategoryIds.push(row.id);
+          const isVisible = row.visible ?? row.Visible ?? true;
+          if (isVisible === false) {
+            hiddenCategoryIds.push(String(row.id));
           }
           return {
-            id: row.id,
-            name: row.category,
-            totalLimit: Number(row.limit_amount) || 0,
+            id: String(row.id),
+            name: row.category || row.budget || 'Other',
+            totalLimit: Number(row.limit_amount ?? row.amount) || 0,
           };
         });
 
@@ -393,32 +420,40 @@ export const useDataLoading = ({
         const headers = await getAuthHeaders();
 
         // 1. Fetch the logged-in user's budgets (valid target IDs)
-        const userBudgetsRes = await fetch(
-          `${REST_BASE}/budgets?select=id,category&user_id=eq.${userId}`,
+        let userBudgetsRes = await fetch(
+          `${REST_BASE}/budgets?select=id,category,budget&user_uuid=eq.${userId}`,
           { headers },
         );
+        if (!userBudgetsRes.ok) {
+          userBudgetsRes = await fetch(
+            `${REST_BASE}/budgets?select=id,category,budget&user_id=eq.${userId}`,
+            { headers },
+          );
+        }
         if (!userBudgetsRes.ok) return;
-        const userBudgets: { id: string; category: string }[] = await userBudgetsRes.json();
+        const userBudgets: { id: string; category?: string; budget?: string }[] = await userBudgetsRes.json();
         if (userBudgets.length === 0) return;
 
         const userBudgetIds = new Set(userBudgets.map(b => b.id));
         const categoryToUserBudgetId = new Map<string, string>();
         for (const b of userBudgets) {
-          categoryToUserBudgetId.set(b.category.toLowerCase(), b.id);
+          const categoryName = (b.category || b.budget || '').toLowerCase();
+          if (categoryName) categoryToUserBudgetId.set(categoryName, String(b.id));
         }
 
         // 2. Fetch ALL accessible budgets (own + partner via RLS).
         //    This lets us resolve stale IDs that belong to a partner.
         const allBudgetsRes = await fetch(
-          `${REST_BASE}/budgets?select=id,category`,
+          `${REST_BASE}/budgets?select=id,category,budget`,
           { headers },
         );
         if (!allBudgetsRes.ok) return;
-        const allBudgets: { id: string; category: string }[] = await allBudgetsRes.json();
+        const allBudgets: { id: string; category?: string; budget?: string }[] = await allBudgetsRes.json();
 
         const anyIdToCategory = new Map<string, string>();
         for (const b of allBudgets) {
-          anyIdToCategory.set(b.id, b.category.toLowerCase());
+          const categoryName = (b.category || b.budget || '').toLowerCase();
+          if (categoryName) anyIdToCategory.set(String(b.id), categoryName);
         }
 
         // 3. Remap in a single state update

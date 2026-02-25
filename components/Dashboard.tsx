@@ -11,6 +11,7 @@ import DashboardBalanceSection from './dashboard_components/DashboardBalanceSect
 import DashboardBudgetSectionsList from './dashboard_components/DashboardBudgetSectionsList';
 import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import BudgetFlowChart from './dashboard_components/BudgetFlowChart';
+import DashboardSettingsModal from './dashboard_components/DashboardSettingsModal';
 
 import useNormalizedTransactions from './dashboard_components/useNormalizedTransactions';
 import useDashboardTotals from './dashboard_components/useDashboardTotals';
@@ -22,17 +23,33 @@ interface Props {
   onUpdateTransaction: (t: Transaction) => void;
   onDeleteTransaction: (id: string) => void;
   onUpdateBudget: (b: BudgetCategory) => void;
+  onSignOut: () => Promise<void>;
+  saveBudgetLimit: (categoryId: string, newLimit: number) => Promise<void>;
+  saveUserIncome: (income: number) => Promise<void>;
+  saveTheme: (theme: 'light' | 'dark') => Promise<void>;
+  saveBudgetVisibility: (categoryId: string, visible: boolean) => Promise<void>;
+  onLinkPartner: (partnerEmail: string) => Promise<void>;
+  onUnlinkPartner: () => Promise<void>;
 }
 
 const Dashboard: React.FC<Props> = ({
   state,
   setState,
-  onAddTransaction,
   onUpdateTransaction,
   onDeleteTransaction,
   onUpdateBudget,
+  onSignOut,
+  saveBudgetLimit,
+  saveUserIncome,
+  saveTheme,
+  saveBudgetVisibility,
+  onLinkPartner,
+  onUnlinkPartner,
 }) => {
   const [showParsing, setShowParsing] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [isLinkingPartner, setIsLinkingPartner] = useState(false);
+  const [partnerLinkEmail, setPartnerLinkEmail] = useState('');
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedBudgets, setExpandedBudgets] = useState<Set<string>>(new Set());
