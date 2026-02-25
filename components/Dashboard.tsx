@@ -118,6 +118,7 @@ const Dashboard: React.FC<Props> = ({
     <>
       <PageShell showGlow>
         <DashboardHeader onOpenSettings={() => setShowSettings(true)} />
+        <DashboardHeader onOpenSettings={() => {}} />
 
         <DashboardBalanceSection
           isSharedAccount={!state.user?.budgetingSolo}

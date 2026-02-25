@@ -52,6 +52,14 @@ export const useToSupabaseTransaction = (budgets: { id: string; name: string }[]
       category_id: tx.budget_id,
       label: tx.label || 'Manual',
       recurrence: recurrence,
+      recurrence: recurrence,
+      is_projected: tx.is_projected ?? false,
+      // New schema
+      Budget: budgetName,
+      type: tx.label || 'Manual',
+      // Legacy schema compatibility
+      category_id: tx.budget_id,
+      label: tx.label || 'Manual',
     };
 
     if (tx.userName) row.user_name = tx.userName;
