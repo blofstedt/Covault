@@ -12,6 +12,7 @@ import DashboardBudgetSectionsList from './dashboard_components/DashboardBudgetS
 import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import BudgetFlowChart from './dashboard_components/BudgetFlowChart';
 import DashboardSettingsModal from './dashboard_components/DashboardSettingsModal';
+import SearchResults from './dashboard_components/SearchResults';
 
 import useNormalizedTransactions from './dashboard_components/useNormalizedTransactions';
 import useDashboardTotals from './dashboard_components/useDashboardTotals';
@@ -71,6 +72,19 @@ const Dashboard: React.FC<Props> = ({
     return normalizedTransactions.filter(t => t.vendor?.toLowerCase().includes(q));
   }, [normalizedTransactions, searchQuery]);
 
+  const now = new Date();
+  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  const pastTransactions = useMemo(
+    () => normalizedTransactions.filter((t) => t.date?.slice(0, 7) < monthKey),
+    [normalizedTransactions, monthKey],
+  );
+
+  const futureTransactions = useMemo(
+    () => normalizedTransactions.filter((t) => t.date?.slice(0, 7) > monthKey),
+    [normalizedTransactions, monthKey],
+  );
+
   const toggleExpand = (id: string) => {
     setExpandedBudgets(prev => {
       if (prev.has(id)) {
@@ -129,30 +143,46 @@ const Dashboard: React.FC<Props> = ({
           onSearchQueryChange={setSearchQuery}
         />
 
-        <PremiumGate hasPremium={true}>
-          <BudgetFlowChart
+        {searchQuery.trim() ? (
+          <SearchResults
+            searchQuery={searchQuery}
+            currentMonthTransactions={currentMonthTransactions}
+            pastTransactions={pastTransactions}
+            futureTransactions={futureTransactions}
+            allTransactions={normalizedTransactions}
+            currentUserName={state.user?.name || ''}
+            isSharedAccount={!state.user?.budgetingSolo}
             budgets={state.budgets}
-            transactions={normalizedTransactions}
-            theme={state.settings.theme}
+            onTransactionTap={setSelectedTx}
           />
-        </PremiumGate>
+        ) : (
+          <>
+            <PremiumGate hasPremium={true}>
+              <BudgetFlowChart
+                budgets={state.budgets}
+                transactions={normalizedTransactions}
+                theme={state.settings.theme}
+              />
+            </PremiumGate>
 
-        <DashboardBudgetSectionsList
-          budgets={state.budgets}
-          transactions={currentMonthTransactions}
-          expandedBudgets={expandedBudgets}
-          isFocusMode={false}
-          focusedBudgetId={null}
-          leisureAdjustments={0}
-          settings={state.settings}
-          currentUserName={state.user?.name || ''}
-          isSharedAccount={!state.user?.budgetingSolo}
-          scrollContainerRef={scrollRef}
-          budgetRefs={budgetRefs}
-          onToggleExpand={toggleExpand}
-          onTransactionTap={setSelectedTx}
-          onUpdateBudget={onUpdateBudget}
-        />
+            <DashboardBudgetSectionsList
+              budgets={state.budgets}
+              transactions={currentMonthTransactions}
+              expandedBudgets={expandedBudgets}
+              isFocusMode={false}
+              focusedBudgetId={null}
+              leisureAdjustments={0}
+              settings={state.settings}
+              currentUserName={state.user?.name || ''}
+              isSharedAccount={!state.user?.budgetingSolo}
+              scrollContainerRef={scrollRef}
+              budgetRefs={budgetRefs}
+              onToggleExpand={toggleExpand}
+              onTransactionTap={setSelectedTx}
+              onUpdateBudget={onUpdateBudget}
+            />
+          </>
+        )}
 
         <DashboardBottomBar
           onGoHome={() => setShowParsing(false)}
