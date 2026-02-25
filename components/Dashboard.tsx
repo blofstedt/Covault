@@ -11,6 +11,7 @@ import DashboardBalanceSection from './dashboard_components/DashboardBalanceSect
 import DashboardBudgetSectionsList from './dashboard_components/DashboardBudgetSectionsList';
 import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import BudgetFlowChart from './dashboard_components/BudgetFlowChart';
+import DashboardSettingsModal from './dashboard_components/DashboardSettingsModal';
 
 import useNormalizedTransactions from './dashboard_components/useNormalizedTransactions';
 import useDashboardTotals from './dashboard_components/useDashboardTotals';
@@ -22,64 +23,77 @@ interface Props {
   onUpdateTransaction: (t: Transaction) => void;
   onDeleteTransaction: (id: string) => void;
   onUpdateBudget: (b: BudgetCategory) => void;
+  onSignOut: () => Promise<void>;
+  saveBudgetLimit: (categoryId: string, newLimit: number) => Promise<void>;
+  saveUserIncome: (income: number) => Promise<void>;
+  saveTheme: (theme: 'light' | 'dark') => Promise<void>;
+  saveBudgetVisibility: (categoryId: string, visible: boolean) => Promise<void>;
+  onLinkPartner: (partnerEmail: string) => Promise<void>;
+  onUnlinkPartner: () => Promise<void>;
 }
 
 const Dashboard: React.FC<Props> = ({
   state,
   setState,
-  onAddTransaction,
   onUpdateTransaction,
   onDeleteTransaction,
   onUpdateBudget,
+  onSignOut,
+  saveBudgetLimit,
+  saveUserIncome,
+  saveTheme,
+  saveBudgetVisibility,
+  onLinkPartner,
+  onUnlinkPartner,
 }) => {
-
   const [showParsing, setShowParsing] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [isLinkingPartner, setIsLinkingPartner] = useState(false);
+  const [partnerLinkEmail, setPartnerLinkEmail] = useState('');
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [expandedBudgets, setExpandedBudgets] = useState<Set<string>>(new Set());
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const budgetRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
-  /**
-   * FIXED NORMALIZATION
-   */
-  const normalizedTransactions = useNormalizedTransactions(
-    state.transactions,
-    state.budgets
-  );
+  const normalizedTransactions = useNormalizedTransactions(state.transactions, state.budgets);
 
-  /**
-   * SAFE TOTAL CALCULATIONS
-   */
-  const {
-    currentMonthTransactions,
-    projectedTransactions,
-    remainingMoney,
-  } = useDashboardTotals(
+  const { currentMonthTransactions, remainingMoney } = useDashboardTotals(
     normalizedTransactions,
-    state.user?.monthlyIncome || 0
+    state.user?.monthlyIncome || 0,
   );
 
-  /**
-   * SEARCH FILTER
-   */
   const filteredTransactions = useMemo(() => {
-
     if (!searchQuery) return normalizedTransactions;
-
     const q = searchQuery.toLowerCase();
-
-    return normalizedTransactions.filter(
-      t => t.vendor?.toLowerCase().includes(q)
-    );
-
+    return normalizedTransactions.filter(t => t.vendor?.toLowerCase().includes(q));
   }, [normalizedTransactions, searchQuery]);
 
+  const toggleExpand = (id: string) => {
+    setExpandedBudgets(prev => {
+      if (prev.has(id)) {
+        return new Set();
+      }
+      return new Set([id]);
+    });
+  };
 
-  /**
-   * PARSING SCREEN
-   */
+  const handleUpdateSettings = (key: string, value: any) => {
+    setState(prev => ({
+      ...prev,
+      settings: {
+        ...prev.settings,
+        [key]: value,
+      },
+    }));
+
+    if (key === 'theme' && (value === 'light' || value === 'dark')) {
+      saveTheme(value).catch((e) => console.error('[Dashboard] saveTheme failed:', e));
+    }
+  };
+
   if (showParsing) {
-
     return (
       <TransactionParsing
         enabled={state.settings.notificationsEnabled}
@@ -88,60 +102,86 @@ const Dashboard: React.FC<Props> = ({
             ...prev,
             settings: {
               ...prev.settings,
-              notificationsEnabled: enabled
-            }
+              notificationsEnabled: enabled,
+            },
           }))
         }
         onBack={() => setShowParsing(false)}
-        allTransactions={normalizedTransactions}
+        allTransactions={filteredTransactions}
         budgets={state.budgets}
         userId={state.user?.id}
       />
     );
-
   }
 
-  /**
-   * MAIN DASHBOARD
-   */
   return (
     <>
       <PageShell showGlow>
-
-        <DashboardHeader />
+        <DashboardHeader onOpenSettings={() => setShowSettings(true)} />
 
         <DashboardBalanceSection
+          isSharedAccount={!state.user?.budgetingSolo}
           remainingMoney={remainingMoney}
           searchQuery={searchQuery}
           onSearchQueryChange={setSearchQuery}
         />
 
         <PremiumGate hasPremium={true}>
-
           <BudgetFlowChart
             budgets={state.budgets}
             transactions={normalizedTransactions}
             theme={state.settings.theme}
           />
-
         </PremiumGate>
 
         <DashboardBudgetSectionsList
           budgets={state.budgets}
           transactions={currentMonthTransactions}
+          expandedBudgets={expandedBudgets}
+          isFocusMode={false}
+          focusedBudgetId={null}
+          leisureAdjustments={0}
+          settings={state.settings}
+          currentUserName={state.user?.name || ''}
+          isSharedAccount={!state.user?.budgetingSolo}
           scrollContainerRef={scrollRef}
+          budgetRefs={budgetRefs}
+          onToggleExpand={toggleExpand}
           onTransactionTap={setSelectedTx}
           onUpdateBudget={onUpdateBudget}
         />
 
         <DashboardBottomBar
+          onGoHome={() => setShowParsing(false)}
           onAddTransaction={() => {}}
           onOpenParsing={() => setShowParsing(true)}
           activeView="home"
         />
-
       </PageShell>
 
+      {showSettings && (
+        <DashboardSettingsModal
+          isSharedAccount={!state.user?.budgetingSolo}
+          settings={state.settings}
+          user={state.user}
+          isLinkingPartner={isLinkingPartner}
+          partnerLinkEmail={partnerLinkEmail}
+          budgets={state.budgets}
+          transactions={normalizedTransactions}
+          onChangePartnerLinkEmail={setPartnerLinkEmail}
+          onClose={() => setShowSettings(false)}
+          onUpdateSettings={handleUpdateSettings}
+          onUpdateUserIncome={(income) => saveUserIncome(income)}
+          onConnectPartner={() => onLinkPartner(partnerLinkEmail)}
+          onDisconnectPartner={onUnlinkPartner}
+          onToggleLinkingPartner={setIsLinkingPartner}
+          onSignOut={onSignOut}
+          onSaveBudgetLimit={saveBudgetLimit}
+          saveBudgetVisibility={saveBudgetVisibility}
+          hasPremium={true}
+          onSubscribe={() => {}}
+        />
+      )}
 
       {selectedTx && (
         <TransactionActionModal
@@ -154,10 +194,8 @@ const Dashboard: React.FC<Props> = ({
           onDelete={() => onDeleteTransaction(selectedTx.id)}
         />
       )}
-
     </>
   );
-
 };
 
 export default Dashboard;

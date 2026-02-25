@@ -120,11 +120,6 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
               </div>
 
               {/* Description */}
-              {transaction.description && (
-                <span className="text-[9px] font-medium text-slate-400 dark:text-slate-500 italic truncate max-w-[200px]">
-                  {transaction.description}
-                </span>
-              )}
 
             </div>
           </div>
