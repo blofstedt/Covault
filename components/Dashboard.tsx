@@ -79,6 +79,20 @@ const Dashboard: React.FC<Props> = ({
     });
   };
 
+  const handleUpdateSettings = (key: string, value: any) => {
+    setState(prev => ({
+      ...prev,
+      settings: {
+        ...prev.settings,
+        [key]: value,
+      },
+    }));
+
+    if (key === 'theme' && (value === 'light' || value === 'dark')) {
+      saveTheme(value).catch((e) => console.error('[Dashboard] saveTheme failed:', e));
+    }
+  };
+
   if (showParsing) {
     return (
       <TransactionParsing
@@ -103,6 +117,7 @@ const Dashboard: React.FC<Props> = ({
   return (
     <>
       <PageShell showGlow>
+        <DashboardHeader onOpenSettings={() => setShowSettings(true)} />
         <DashboardHeader onOpenSettings={() => {}} />
 
         <DashboardBalanceSection
@@ -144,6 +159,30 @@ const Dashboard: React.FC<Props> = ({
           activeView="home"
         />
       </PageShell>
+
+      {showSettings && (
+        <DashboardSettingsModal
+          isSharedAccount={!state.user?.budgetingSolo}
+          settings={state.settings}
+          user={state.user}
+          isLinkingPartner={isLinkingPartner}
+          partnerLinkEmail={partnerLinkEmail}
+          budgets={state.budgets}
+          transactions={normalizedTransactions}
+          onChangePartnerLinkEmail={setPartnerLinkEmail}
+          onClose={() => setShowSettings(false)}
+          onUpdateSettings={handleUpdateSettings}
+          onUpdateUserIncome={(income) => saveUserIncome(income)}
+          onConnectPartner={() => onLinkPartner(partnerLinkEmail)}
+          onDisconnectPartner={onUnlinkPartner}
+          onToggleLinkingPartner={setIsLinkingPartner}
+          onSignOut={onSignOut}
+          onSaveBudgetLimit={saveBudgetLimit}
+          saveBudgetVisibility={saveBudgetVisibility}
+          hasPremium={true}
+          onSubscribe={() => {}}
+        />
+      )}
 
       {selectedTx && (
         <TransactionActionModal

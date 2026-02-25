@@ -61,6 +61,7 @@ export const useUserSettings = ({
           'Prefer': 'return=representation',
         };
         let patchRes = await fetch(
+          `${REST_BASE}/budgets?user_uuid=eq.${userId}&budget=eq.${encodeURIComponent(categoryName)}`,
           `${REST_BASE}/budgets?id=eq.${encodeURIComponent(categoryId)}`,
           {
             method: 'PATCH',
@@ -73,6 +74,7 @@ export const useUserSettings = ({
 
         if (!patchRes.ok) {
           patchRes = await fetch(
+            `${REST_BASE}/budgets?user_uuid=eq.${userId}&budget=eq.${encodeURIComponent(categoryName)}`,
             `${REST_BASE}/budgets?id=eq.${encodeURIComponent(categoryId)}`,
             {
               method: 'PATCH',
@@ -379,6 +381,7 @@ export const useUserSettings = ({
           'Prefer': 'return=representation',
         };
         let patchRes = await fetch(
+          `${REST_BASE}/budgets?user_uuid=eq.${userId}&budget=eq.${encodeURIComponent(categoryName)}`,
           `${REST_BASE}/budgets?id=eq.${encodeURIComponent(categoryId)}`,
           {
             method: 'PATCH',
@@ -391,6 +394,7 @@ export const useUserSettings = ({
 
         if (!patchRes.ok) {
           patchRes = await fetch(
+            `${REST_BASE}/budgets?user_uuid=eq.${userId}&budget=eq.${encodeURIComponent(categoryName)}`,
             `${REST_BASE}/budgets?id=eq.${encodeURIComponent(categoryId)}`,
             {
               method: 'PATCH',
@@ -436,11 +440,10 @@ export const useUserSettings = ({
             method: 'POST',
             headers: postHeaders,
             body: JSON.stringify({
-              user_id: userId,
-              category: categoryName,
-              limit_amount: category.totalLimit,
-              visible,
-              is_household: !appState.user?.budgetingSolo,
+              user_uuid: userId,
+              budget: categoryName,
+              amount: category.totalLimit,
+              Visible: visible,
             }),
           },
         );

@@ -13,6 +13,12 @@ function mergeTransactions(existing: Transaction[], incoming: Transaction[]): Tr
   return [...existing.filter(t => !incomingIds.has(t.id)), ...incoming];
 }
 
+const toBudgetId = (row: any): string => {
+  if (row?.id !== undefined && row?.id !== null) return String(row.id);
+  const name = (row?.category || row?.budget || 'other').toString().toLowerCase();
+  return `budget:${name}`;
+};
+
 export const useDataLoading = ({
   setAppState,
   setDbError,
@@ -136,6 +142,10 @@ export const useDataLoading = ({
         const budgets: BudgetCategory[] = finalRows.map((row: any) => {
           const isVisible = row.visible ?? row.Visible ?? true;
           if (isVisible === false) {
+            hiddenCategoryIds.push(toBudgetId(row));
+          }
+          return {
+            id: toBudgetId(row),
             hiddenCategoryIds.push(String(row.id));
           }
           return {
@@ -421,29 +431,38 @@ export const useDataLoading = ({
 
         // 1. Fetch the logged-in user's budgets (valid target IDs)
         let userBudgetsRes = await fetch(
+          `${REST_BASE}/budgets?select=category,budget&user_uuid=eq.${userId}`,
           `${REST_BASE}/budgets?select=id,category,budget&user_uuid=eq.${userId}`,
           { headers },
         );
         if (!userBudgetsRes.ok) {
           userBudgetsRes = await fetch(
+            `${REST_BASE}/budgets?select=category,budget&user_id=eq.${userId}`,
             `${REST_BASE}/budgets?select=id,category,budget&user_id=eq.${userId}`,
             { headers },
           );
         }
         if (!userBudgetsRes.ok) return;
+        const userBudgets: { category?: string; budget?: string; id?: string }[] = await userBudgetsRes.json();
         const userBudgets: { id: string; category?: string; budget?: string }[] = await userBudgetsRes.json();
         if (userBudgets.length === 0) return;
 
-        const userBudgetIds = new Set(userBudgets.map(b => b.id));
+        const userBudgetIds = new Set(userBudgets.map(b => toBudgetId(b)));
         const categoryToUserBudgetId = new Map<string, string>();
         for (const b of userBudgets) {
           const categoryName = (b.category || b.budget || '').toLowerCase();
+          if (categoryName) categoryToUserBudgetId.set(categoryName, toBudgetId(b));
           if (categoryName) categoryToUserBudgetId.set(categoryName, String(b.id));
         }
 
         // 2. Fetch ALL accessible budgets (own + partner via RLS).
         //    This lets us resolve stale IDs that belong to a partner.
         const allBudgetsRes = await fetch(
+          `${REST_BASE}/budgets?select=category,budget`,
+          { headers },
+        );
+        if (!allBudgetsRes.ok) return;
+        const allBudgets: { category?: string; budget?: string; id?: string }[] = await allBudgetsRes.json();
           `${REST_BASE}/budgets?select=id,category,budget`,
           { headers },
         );
@@ -453,6 +472,7 @@ export const useDataLoading = ({
         const anyIdToCategory = new Map<string, string>();
         for (const b of allBudgets) {
           const categoryName = (b.category || b.budget || '').toLowerCase();
+          if (categoryName) anyIdToCategory.set(toBudgetId(b), categoryName);
           if (categoryName) anyIdToCategory.set(String(b.id), categoryName);
         }
 

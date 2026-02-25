@@ -42,6 +42,16 @@ export const useToSupabaseTransaction = (budgets: { id: string; name: string }[]
       vendor: tx.vendor,
       amount: Number(tx.amount),
       date: dateStr,
+      is_projected: tx.is_projected ?? false,
+      // New schema (support lowercase/uppercase budget column variants)
+      budget: budgetName,
+      Budget: budgetName,
+      type: tx.label || 'Manual',
+      recur: recurrence,
+      // Legacy schema compatibility
+      category_id: tx.budget_id,
+      label: tx.label || 'Manual',
+      recurrence: recurrence,
       recurrence: recurrence,
       is_projected: tx.is_projected ?? false,
       // New schema
@@ -60,13 +70,14 @@ export const useToSupabaseTransaction = (budgets: { id: string; name: string }[]
 // Convert Supabase transaction to app format
 export const useFromSupabaseTransaction = () =>
   useCallback((row: any): Transaction => {
-    // Validate recurrence value from database
+    // Validate recurrence value from database (supports recur or recurrence)
     let recurrence: Recurrence = Recurrence.ONE_TIME;
-    if (row.recurrence) {
-      if (VALID_RECURRENCES.includes(row.recurrence as Recurrence)) {
-        recurrence = row.recurrence as Recurrence;
+    const recurrenceRaw = row.recur || row.recurrence;
+    if (recurrenceRaw) {
+      if (VALID_RECURRENCES.includes(recurrenceRaw as Recurrence)) {
+        recurrence = recurrenceRaw as Recurrence;
       } else {
-        console.warn(`Invalid recurrence value "${row.recurrence}" from database, using "${Recurrence.ONE_TIME}"`);
+        console.warn(`Invalid recurrence value "${recurrenceRaw}" from database, using "${Recurrence.ONE_TIME}"`);
       }
     }
 
