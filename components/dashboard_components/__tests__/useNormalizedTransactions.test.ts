@@ -26,6 +26,31 @@ describe('normalizeTransactions', () => {
     expect(normalized[0].budget_id).toBe('other-id');
   });
 
+
+  it('maps legacy budget name fields to matching budget IDs', () => {
+    const budgets: any[] = [
+      { id: 'groceries-id', name: 'Groceries', totalLimit: 1000 },
+      { id: 'other-id', name: 'Other', totalLimit: 1000 },
+    ];
+
+    const transactions: any[] = [
+      {
+        id: 't1',
+        user_id: 'u1',
+        vendor: 'Costco',
+        amount: '42.50',
+        date: '2026-02-10T11:12:13.000Z',
+        budget: 'Groceries',
+      },
+    ];
+
+    const normalized = normalizeTransactions(transactions as any, budgets as any);
+
+    expect(normalized[0].budget_id).toBe('groceries-id');
+    expect(normalized[0].amount).toBe(42.5);
+    expect(normalized[0].date).toBe('2026-02-10');
+  });
+
   it('keeps valid budget IDs unchanged', () => {
     const budgets: any[] = [
       { id: 'b1', name: 'Groceries', totalLimit: 1000 },

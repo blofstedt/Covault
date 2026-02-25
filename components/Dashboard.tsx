@@ -35,6 +35,7 @@ interface Props {
 const Dashboard: React.FC<Props> = ({
   state,
   setState,
+  onAddTransaction,
   onUpdateTransaction,
   onDeleteTransaction,
   onUpdateBudget,
@@ -107,6 +108,8 @@ const Dashboard: React.FC<Props> = ({
           }))
         }
         onBack={() => setShowParsing(false)}
+        onGoHome={() => setShowParsing(false)}
+        onAddTransaction={onAddTransaction}
         allTransactions={filteredTransactions}
         budgets={state.budgets}
         userId={state.user?.id}
@@ -118,7 +121,6 @@ const Dashboard: React.FC<Props> = ({
     <>
       <PageShell showGlow>
         <DashboardHeader onOpenSettings={() => setShowSettings(true)} />
-        <DashboardHeader onOpenSettings={() => {}} />
 
         <DashboardBalanceSection
           isSharedAccount={!state.user?.budgetingSolo}
@@ -154,7 +156,7 @@ const Dashboard: React.FC<Props> = ({
 
         <DashboardBottomBar
           onGoHome={() => setShowParsing(false)}
-          onAddTransaction={() => {}}
+          onAddTransaction={onAddTransaction}
           onOpenParsing={() => setShowParsing(true)}
           activeView="home"
         />
