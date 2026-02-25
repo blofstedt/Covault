@@ -1,6 +1,7 @@
 // lib/useAuthState.ts
 import React, { useCallback, useEffect, useRef } from 'react';
 import { supabase } from './supabase';
+import { clearCachedAccessToken, setCachedAccessToken } from './apiHelpers';
 import type { AppState, User } from '../types';
 
 export type AuthStatus = 'loading' | 'unauthenticated' | 'onboarding' | 'authenticated';
@@ -48,13 +49,13 @@ export const useAuthState = ({
   const pendingUserIdRef = useRef<string | null>(null);
 
   const maybeLoadUserData = useCallback(
-    (userId: string) => {
-      if (lastLoadedUserIdRef.current === userId) {
+    (userId: string, { forceReload = false }: { forceReload?: boolean } = {}) => {
+      if (!forceReload && lastLoadedUserIdRef.current === userId) {
         return loadUserDataPromiseRef.current ?? Promise.resolve();
       }
 
       if (loadUserDataPromiseRef.current) {
-        if (loadingUserIdRef.current === userId) {
+        if (!forceReload && loadingUserIdRef.current === userId) {
           return loadUserDataPromiseRef.current;
         }
         pendingUserIdRef.current = userId;
@@ -114,11 +115,13 @@ export const useAuthState = ({
 
     // Initial session check
     supabase.auth.getSession().then(({ data: { session } }) => {
+      setCachedAccessToken(session?.access_token);
       if (session?.user) {
         // Check 14-day window
         if (!isSessionValid()) {
           supabase.auth.signOut();
           clearSessionTimestamp();
+          clearCachedAccessToken();
           lastLoadedUserIdRef.current = null;
           loadUserDataPromiseRef.current = null;
           loadingUserIdRef.current = null;
@@ -129,7 +132,7 @@ export const useAuthState = ({
 
         mergeUser(mapUser(session.user));
         setAuthState('authenticated');
-        maybeLoadUserData(session.user.id);
+        maybeLoadUserData(session.user.id, { forceReload: true });
       } else {
         setAuthState('unauthenticated');
       }
@@ -140,6 +143,8 @@ export const useAuthState = ({
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
+        setCachedAccessToken(session.access_token);
+
         if (event === 'SIGNED_IN') {
           markSessionStart();
         }
@@ -148,9 +153,12 @@ export const useAuthState = ({
         setAuthState(prev =>
           prev === 'unauthenticated' ? 'onboarding' : 'authenticated',
         );
-        maybeLoadUserData(session.user.id);
+        maybeLoadUserData(session.user.id, {
+          forceReload: event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED',
+        });
       } else {
         clearSessionTimestamp();
+        clearCachedAccessToken();
         lastLoadedUserIdRef.current = null;
         loadUserDataPromiseRef.current = null;
         loadingUserIdRef.current = null;
