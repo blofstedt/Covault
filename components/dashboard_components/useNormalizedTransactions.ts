@@ -9,8 +9,12 @@ export default function useNormalizedTransactions(
   return useMemo(() => {
 
     const categoryToBudget = new Map<string, string>();
+    const budgetNameToId = new Map<string, string>();
 
     budgets.forEach((b: any) => {
+      if (typeof b?.name === 'string' && b?.id) {
+        budgetNameToId.set(b.name.toLowerCase(), String(b.id));
+      }
 
       const catId =
         b.category_id ??
@@ -45,6 +49,15 @@ export default function useNormalizedTransactions(
           ? categoryToBudget.get(String(rawCategoryId))
           : null;
 
+      const rawBudgetValue = tx.budget_id ?? tx.Budget ?? tx.budget ?? null;
+      const budgetIdFromName = typeof rawBudgetValue === 'string'
+        ? budgetNameToId.get(rawBudgetValue.toLowerCase())
+        : null;
+      const isLikelyId = typeof rawBudgetValue === 'string'
+        ? /^[0-9a-f-]{8,}$/i.test(rawBudgetValue) || /^\d+$/.test(rawBudgetValue)
+        : false;
+      const budgetIdDirect = isLikelyId ? String(rawBudgetValue) : null;
+
       const amount =
         typeof tx.amount === 'number'
           ? tx.amount
@@ -71,7 +84,8 @@ export default function useNormalizedTransactions(
           '',
 
         budget_id:
-          tx.budget_id ??
+          budgetIdFromName ??
+          budgetIdDirect ??
           mappedBudgetId ??
           null,
 

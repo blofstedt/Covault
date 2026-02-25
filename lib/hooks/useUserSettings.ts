@@ -60,21 +60,32 @@ export const useUserSettings = ({
           ...headers,
           'Prefer': 'return=representation',
         };
-        const encodedCategory = encodeURIComponent(categoryName);
-        const patchRes = await fetch(
-          `${REST_BASE}/budgets?user_id=eq.${userId}&category=eq.${encodedCategory}`,
+        let patchRes = await fetch(
+          `${REST_BASE}/budgets?user_uuid=eq.${userId}&budget=eq.${encodeURIComponent(categoryName)}`,
           {
             method: 'PATCH',
             headers: patchHeaders,
-            body: JSON.stringify({
-              limit_amount: newLimit,
-              visible,
-              is_household: !appState.user?.budgetingSolo,
-            }),
+            body: JSON.stringify({ amount: newLimit, Visible: visible }),
           },
         );
 
-        const patchBody = await patchRes.text();
+        let patchBody = await patchRes.text();
+
+        if (!patchRes.ok) {
+          patchRes = await fetch(
+            `${REST_BASE}/budgets?user_uuid=eq.${userId}&budget=eq.${encodeURIComponent(categoryName)}`,
+            {
+              method: 'PATCH',
+              headers: patchHeaders,
+              body: JSON.stringify({
+                limit_amount: newLimit,
+                visible,
+                is_household: !appState.user?.budgetingSolo,
+              }),
+            },
+          );
+          patchBody = await patchRes.text();
+        }
 
         if (!patchRes.ok) {
           const msg = `[saveBudgetLimit] PATCH failed (${patchRes.status}): ${patchBody.slice(0, 200)}`;
@@ -102,22 +113,39 @@ export const useUserSettings = ({
           ...headers,
           'Prefer': 'return=representation',
         };
-        const postRes = await fetch(
+        let postRes = await fetch(
           `${REST_BASE}/budgets`,
           {
             method: 'POST',
             headers: postHeaders,
             body: JSON.stringify({
-              user_id: userId,
-              category: categoryName,
-              limit_amount: newLimit,
-              visible,
-              is_household: !appState.user?.budgetingSolo,
+              user_uuid: userId,
+              budget: categoryName,
+              amount: newLimit,
+              Visible: visible,
             }),
           },
         );
 
-        const postBody = await postRes.text();
+        let postBody = await postRes.text();
+
+        if (!postRes.ok) {
+          postRes = await fetch(
+            `${REST_BASE}/budgets`,
+            {
+              method: 'POST',
+              headers: postHeaders,
+              body: JSON.stringify({
+                user_id: userId,
+                category: categoryName,
+                limit_amount: newLimit,
+                visible,
+                is_household: !appState.user?.budgetingSolo,
+              }),
+            },
+          );
+          postBody = await postRes.text();
+        }
 
         if (!postRes.ok) {
           const msg = `[saveBudgetLimit] INSERT failed (${postRes.status}): ${postBody.slice(0, 200)}`;
@@ -350,21 +378,32 @@ export const useUserSettings = ({
           ...headers,
           'Prefer': 'return=representation',
         };
-        const encodedCategory = encodeURIComponent(categoryName);
-        const patchRes = await fetch(
-          `${REST_BASE}/budgets?user_id=eq.${userId}&category=eq.${encodedCategory}`,
+        let patchRes = await fetch(
+          `${REST_BASE}/budgets?user_uuid=eq.${userId}&budget=eq.${encodeURIComponent(categoryName)}`,
           {
             method: 'PATCH',
             headers: patchHeaders,
-            body: JSON.stringify({
-              limit_amount: category.totalLimit,
-              visible,
-              is_household: !appState.user?.budgetingSolo,
-            }),
+            body: JSON.stringify({ amount: category.totalLimit, Visible: visible }),
           },
         );
 
-        const patchBody = await patchRes.text();
+        let patchBody = await patchRes.text();
+
+        if (!patchRes.ok) {
+          patchRes = await fetch(
+            `${REST_BASE}/budgets?user_uuid=eq.${userId}&budget=eq.${encodeURIComponent(categoryName)}`,
+            {
+              method: 'PATCH',
+              headers: patchHeaders,
+              body: JSON.stringify({
+                limit_amount: category.totalLimit,
+                visible,
+                is_household: !appState.user?.budgetingSolo,
+              }),
+            },
+          );
+          patchBody = await patchRes.text();
+        }
 
         if (!patchRes.ok) {
           console.error('[saveBudgetVisibility] PATCH failed:', patchBody.slice(0, 200));
@@ -397,11 +436,10 @@ export const useUserSettings = ({
             method: 'POST',
             headers: postHeaders,
             body: JSON.stringify({
-              user_id: userId,
-              category: categoryName,
-              limit_amount: category.totalLimit,
-              visible,
-              is_household: !appState.user?.budgetingSolo,
+              user_uuid: userId,
+              budget: categoryName,
+              amount: category.totalLimit,
+              Visible: visible,
             }),
           },
         );
