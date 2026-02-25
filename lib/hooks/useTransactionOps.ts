@@ -13,7 +13,7 @@ export const useTransactionOps = ({
   setDbError,
   categoriesLoaded,
 }: UseUserDataParams & { categoriesLoaded: boolean }) => {
-  const toSupabaseTransaction = useToSupabaseTransaction();
+  const toSupabaseTransaction = useToSupabaseTransaction(appState.budgets);
   const fromSupabaseTransaction = useFromSupabaseTransaction();
 
   // Add transaction

@@ -66,7 +66,6 @@ export interface Transaction {
   label?: TransactionLabel | 'Auto-Added' | 'Manual' | 'Auto-Added + Edited' | 'AI';
   is_projected: boolean;
   userName?: string;
-  description?: string;
   created_at: string;
 
 }

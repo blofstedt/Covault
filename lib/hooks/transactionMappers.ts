@@ -11,7 +11,7 @@ const VALID_RECURRENCES = [
 ];
 
 // Build the object Supabase expects — only columns that exist in the table
-export const useToSupabaseTransaction = () =>
+export const useToSupabaseTransaction = (budgets: { id: string; name: string }[] = []) =>
   useCallback((tx: Transaction) => {
     // Extract the YYYY-MM-DD portion directly from the date string to avoid
     // timezone-related date shifts that occur when round-tripping through the
@@ -34,20 +34,25 @@ export const useToSupabaseTransaction = () =>
       }
     }
 
+    const budgetName = budgets.find(b => b.id === tx.budget_id)?.name || tx.budget_id;
+
     const row: Record<string, any> = {
       id: tx.id,
       user_id: tx.user_id,
       vendor: tx.vendor,
       amount: Number(tx.amount),
       date: dateStr,
-      category_id: tx.budget_id,
       recurrence: recurrence,
-      label: tx.label || 'Manual',
       is_projected: tx.is_projected ?? false,
+      // New schema
+      Budget: budgetName,
+      type: tx.label || 'Manual',
+      // Legacy schema compatibility
+      category_id: tx.budget_id,
+      label: tx.label || 'Manual',
     };
 
     if (tx.userName) row.user_name = tx.userName;
-    if (tx.description !== undefined) row.description = tx.description || null;
 
     return row;
   }, []);
@@ -76,12 +81,11 @@ export const useFromSupabaseTransaction = () =>
       date: typeof row.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.date)
         ? row.date + 'T12:00:00.000Z'
         : new Date(row.date).toISOString(),
-      budget_id: row.category_id,
+      budget_id: row.category_id || row.budget_id || row.Budget || row.budget || null,
       recurrence: recurrence,
-      label: row.label,
+      label: row.label || row.type || 'Manual',
       is_projected: row.is_projected,
       userName: row.user_name || '',
-      description: row.description || '',
       created_at: row.created_at,
     };
   }, []);
