@@ -142,10 +142,10 @@ export const useDataLoading = ({
         const budgets: BudgetCategory[] = finalRows.map((row: any) => {
           const isVisible = row.visible ?? row.Visible ?? true;
           if (isVisible === false) {
-            hiddenCategoryIds.push(toBudgetId(row));
+            hiddenCategoryIds.push(String(row.id));
           }
           return {
-            id: toBudgetId(row),
+            id: String(row.id),
             name: row.category || row.budget || 'Other',
             totalLimit: Number(row.limit_amount ?? row.amount) || 0,
           };
@@ -427,39 +427,39 @@ export const useDataLoading = ({
 
         // 1. Fetch the logged-in user's budgets (valid target IDs)
         let userBudgetsRes = await fetch(
-          `${REST_BASE}/budgets?select=category,budget&user_uuid=eq.${userId}`,
+          `${REST_BASE}/budgets?select=id,category,budget&user_uuid=eq.${userId}`,
           { headers },
         );
         if (!userBudgetsRes.ok) {
           userBudgetsRes = await fetch(
-            `${REST_BASE}/budgets?select=category,budget&user_id=eq.${userId}`,
+            `${REST_BASE}/budgets?select=id,category,budget&user_id=eq.${userId}`,
             { headers },
           );
         }
         if (!userBudgetsRes.ok) return;
-        const userBudgets: { category?: string; budget?: string; id?: string }[] = await userBudgetsRes.json();
+        const userBudgets: { id: string; category?: string; budget?: string }[] = await userBudgetsRes.json();
         if (userBudgets.length === 0) return;
 
         const userBudgetIds = new Set(userBudgets.map(b => toBudgetId(b)));
         const categoryToUserBudgetId = new Map<string, string>();
         for (const b of userBudgets) {
           const categoryName = (b.category || b.budget || '').toLowerCase();
-          if (categoryName) categoryToUserBudgetId.set(categoryName, toBudgetId(b));
+          if (categoryName) categoryToUserBudgetId.set(categoryName, String(b.id));
         }
 
         // 2. Fetch ALL accessible budgets (own + partner via RLS).
         //    This lets us resolve stale IDs that belong to a partner.
         const allBudgetsRes = await fetch(
-          `${REST_BASE}/budgets?select=category,budget`,
+          `${REST_BASE}/budgets?select=id,category,budget`,
           { headers },
         );
         if (!allBudgetsRes.ok) return;
-        const allBudgets: { category?: string; budget?: string; id?: string }[] = await allBudgetsRes.json();
+        const allBudgets: { id: string; category?: string; budget?: string }[] = await allBudgetsRes.json();
 
         const anyIdToCategory = new Map<string, string>();
         for (const b of allBudgets) {
           const categoryName = (b.category || b.budget || '').toLowerCase();
-          if (categoryName) anyIdToCategory.set(toBudgetId(b), categoryName);
+          if (categoryName) anyIdToCategory.set(String(b.id), categoryName);
         }
 
         // 3. Remap in a single state update

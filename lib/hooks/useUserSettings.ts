@@ -61,7 +61,7 @@ export const useUserSettings = ({
           'Prefer': 'return=representation',
         };
         let patchRes = await fetch(
-          `${REST_BASE}/budgets?user_uuid=eq.${userId}&budget=eq.${encodeURIComponent(categoryName)}`,
+          `${REST_BASE}/budgets?id=eq.${encodeURIComponent(categoryId)}`,
           {
             method: 'PATCH',
             headers: patchHeaders,
@@ -73,7 +73,7 @@ export const useUserSettings = ({
 
         if (!patchRes.ok) {
           patchRes = await fetch(
-            `${REST_BASE}/budgets?user_uuid=eq.${userId}&budget=eq.${encodeURIComponent(categoryName)}`,
+            `${REST_BASE}/budgets?id=eq.${encodeURIComponent(categoryId)}`,
             {
               method: 'PATCH',
               headers: patchHeaders,
@@ -379,7 +379,7 @@ export const useUserSettings = ({
           'Prefer': 'return=representation',
         };
         let patchRes = await fetch(
-          `${REST_BASE}/budgets?user_uuid=eq.${userId}&budget=eq.${encodeURIComponent(categoryName)}`,
+          `${REST_BASE}/budgets?id=eq.${encodeURIComponent(categoryId)}`,
           {
             method: 'PATCH',
             headers: patchHeaders,
@@ -391,7 +391,7 @@ export const useUserSettings = ({
 
         if (!patchRes.ok) {
           patchRes = await fetch(
-            `${REST_BASE}/budgets?user_uuid=eq.${userId}&budget=eq.${encodeURIComponent(categoryName)}`,
+            `${REST_BASE}/budgets?id=eq.${encodeURIComponent(categoryId)}`,
             {
               method: 'PATCH',
               headers: patchHeaders,

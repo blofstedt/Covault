@@ -10,16 +10,16 @@ interface DashboardSettingsShape {
 interface DashboardBudgetSectionsListProps {
   budgets: BudgetCategory[];
   transactions: Transaction[];
-  expandedBudgets: Set<string>;
-  isFocusMode: boolean;
-  focusedBudgetId: string | null;
-  leisureAdjustments: number;
-  settings: DashboardSettingsShape;
-  currentUserName: string;
-  isSharedAccount: boolean;
+  expandedBudgets?: Set<string>;
+  isFocusMode?: boolean;
+  focusedBudgetId?: string | null;
+  leisureAdjustments?: number;
+  settings?: DashboardSettingsShape;
+  currentUserName?: string;
+  isSharedAccount?: boolean;
   scrollContainerRef: React.RefObject<HTMLDivElement>;
-  budgetRefs: React.MutableRefObject<Map<string, HTMLDivElement>>;
-  onToggleExpand: (id: string) => void;
+  budgetRefs?: React.MutableRefObject<Map<string, HTMLDivElement>>;
+  onToggleExpand?: (id: string) => void;
   onTransactionTap: (tx: Transaction) => void;
   onUpdateBudget: (b: BudgetCategory) => void;
 }
@@ -27,13 +27,13 @@ interface DashboardBudgetSectionsListProps {
 const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = ({
   budgets,
   transactions,
-  expandedBudgets,
-  isFocusMode,
-  focusedBudgetId,
-  leisureAdjustments,
-  settings,
-  currentUserName,
-  isSharedAccount,
+  expandedBudgets = new Set<string>(),
+  isFocusMode = false,
+  focusedBudgetId = null,
+  leisureAdjustments = 0,
+  settings = { useLeisureAsBuffer: true },
+  currentUserName = '',
+  isSharedAccount = false,
   scrollContainerRef,
   budgetRefs,
   onToggleExpand,
@@ -80,9 +80,9 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
               id={index === 0 ? 'first-budget-card' : undefined}
               ref={(el) => {
                 if (el) {
-                  budgetRefs.current.set(budget.id, el);
+                  budgetRefs?.current.set(budget.id, el);
                 } else {
-                  budgetRefs.current.delete(budget.id);
+                  budgetRefs?.current.delete(budget.id);
                 }
               }}
               className={`flex flex-col ${
@@ -97,7 +97,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
                 budget={displayBudget}
                 transactions={budgetTxs}
                 isExpanded={isExpanded}
-                onToggle={() => onToggleExpand(budget.id)}
+                onToggle={() => onToggleExpand?.(budget.id)}
                 onUpdateBudget={onUpdateBudget}
                 onTransactionTap={(tx) => onTransactionTap(tx)}
                 currentUserName={currentUserName}
