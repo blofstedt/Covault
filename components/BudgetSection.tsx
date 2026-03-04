@@ -20,6 +20,7 @@ interface BudgetSectionProps {
   currentUserName: string;
   isSharedView: boolean;
   allBudgets?: BudgetCategory[];
+  useCompactCollapsedStyles?: boolean;
 }
 
 const BudgetSection: React.FC<BudgetSectionProps> = ({
@@ -32,6 +33,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
   currentUserName,
   isSharedView,
   allBudgets,
+  useCompactCollapsedStyles = false,
 }) => {
 
   const getAmountForThisBudget = (tx: Transaction) => {
@@ -116,19 +118,25 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
       <div
         onClick={onToggle}
         className={`relative z-10 flex-1 flex items-center justify-between cursor-pointer active:scale-[0.99] ${
-          isExpanded ? 'flex-none py-10 px-8' : 'py-2 px-6'
+          isExpanded
+            ? 'flex-none py-10 px-8'
+            : useCompactCollapsedStyles
+              ? 'py-1.5 px-4'
+              : 'py-2 px-6'
         }`}
         style={{
           transition: 'all 0.5s cubic-bezier(0.32, 0.72, 0, 1)',
         }}
       >
         {/* LEFT SIDE: ICON + NAME */}
-        <div className="flex items-center space-x-4">
+        <div className={`flex items-center ${useCompactCollapsedStyles && !isExpanded ? 'space-x-2.5' : 'space-x-4'}`}>
           <div
-            className={`p-2 rounded-2xl transition-all duration-300 ${
+            className={`rounded-2xl transition-all duration-300 ${
               isExpanded
                 ? 'text-white shadow-lg scale-110 p-3.5'
-                : 'bg-white/80 dark:bg-slate-800 shadow-sm'
+                : useCompactCollapsedStyles
+                  ? 'p-1.5 bg-white/80 dark:bg-slate-800 shadow-sm'
+                  : 'p-2 bg-white/80 dark:bg-slate-800 shadow-sm'
             }`}
             style={isExpanded
               ? { backgroundColor: budgetColor }
@@ -139,13 +147,13 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           </div>
 
           <div className="flex flex-col text-left">
-            <h3 className="text-sm font-black tracking-tight leading-none uppercase transition-colors duration-300 text-slate-500 dark:text-slate-100">
+            <h3 className={`font-black tracking-tight leading-none uppercase transition-colors duration-300 text-slate-500 dark:text-slate-100 ${useCompactCollapsedStyles && !isExpanded ? 'text-[12px]' : 'text-sm'}`}>
               {budget.name}
             </h3>
 
             {!isExpanded && (
               <span
-                className="text-[10px] font-black uppercase tracking-[0.15em] mt-1 transition-colors duration-300 text-slate-400 dark:text-slate-500"
+                className={`font-black uppercase tracking-[0.15em] mt-1 transition-colors duration-300 text-slate-400 dark:text-slate-500 ${useCompactCollapsedStyles ? 'text-[9px]' : 'text-[10px]'}`}
               >
                 {isDanger
                   ? `Over: $${Math.max(0, total - budget.totalLimit).toFixed(0)}`
@@ -182,7 +190,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
             </>
           ) : (
             <span
-              className="text-sm font-black tracking-tight transition-colors duration-300 text-slate-500 dark:text-slate-100"
+              className={`font-black tracking-tight transition-colors duration-300 text-slate-500 dark:text-slate-100 ${useCompactCollapsedStyles ? 'text-xs' : 'text-sm'}`}
               aria-label={`${budget.totalLimit} dollar budget`}
             >
               ${budget.totalLimit}

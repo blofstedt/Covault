@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { BudgetCategory, Transaction } from '../../types';
 import BudgetSection from '../BudgetSection';
 
@@ -39,28 +39,34 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
   onToggleExpand,
   onTransactionTap,
   onUpdateBudget,
-}) => {
+) => {
+  const visibleBudgets = useMemo(() =>
+    budgets
+      .filter((budget) => !isFocusMode || budget.id === focusedBudgetId)
+      .filter((budget) => {
+        const hiddenCategories: string[] = settings.hiddenCategories || [];
+        return !hiddenCategories.includes(budget.id);
+      })
+      .sort((a, b) => {
+        const aIsOther = a.name.toLowerCase() === 'other';
+        const bIsOther = b.name.toLowerCase() === 'other';
+        if (aIsOther && !bIsOther) return 1;
+        if (!aIsOther && bIsOther) return -1;
+        return 0;
+      }),
+    [budgets, isFocusMode, focusedBudgetId, settings.hiddenCategories],
+  );
+
+  const allCollapsed = expandedBudgets.size === 0;
+
   return (
     <div
       ref={scrollContainerRef}
       className={`flex-1 flex flex-col ${
-        isFocusMode ? 'overflow-hidden' : 'overflow-y-auto'
+        isFocusMode || allCollapsed ? 'overflow-hidden' : 'overflow-y-auto'
       } mt-1 pb-24 no-scrollbar scroll-smooth h-full transition-all duration-500 gap-2`}
     >
-      {budgets
-        .filter((budget) => !isFocusMode || budget.id === focusedBudgetId)
-        .filter((budget) => {
-          const hiddenCategories: string[] = settings.hiddenCategories || [];
-          return !hiddenCategories.includes(budget.id);
-        })
-        .sort((a, b) => {
-          const aIsOther = a.name.toLowerCase() === 'other';
-          const bIsOther = b.name.toLowerCase() === 'other';
-          if (aIsOther && !bIsOther) return 1;
-          if (!aIsOther && bIsOther) return -1;
-          return 0;
-        })
-        .map((budget, index) => {
+      {visibleBudgets.map((budget, index) => {
           const budgetTxs = transactions.filter(
             (t) =>
               t.budget_id === budget.id
@@ -74,6 +80,8 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
               ? { ...budget, externalDeduction: leisureAdjustments }
               : budget;
 
+          const shouldAutoFitClosedCards = allCollapsed && !isFocusMode;
+
           return (
             <div
               key={budget.id}
@@ -86,7 +94,11 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
                 }
               }}
               className={`flex flex-col ${
-                isExpanded ? 'min-h-[70vh]' : 'min-h-[84px]'
+                isExpanded
+                  ? 'min-h-[70vh]'
+                  : shouldAutoFitClosedCards
+                    ? 'flex-1 basis-0 min-h-0'
+                    : 'min-h-[84px]'
               }`}
               style={{
                 animationDelay: `${index * 40}ms`,
@@ -103,6 +115,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
                 currentUserName={currentUserName}
                 isSharedView={isSharedAccount}
                 allBudgets={budgets}
+                useCompactCollapsedStyles={shouldAutoFitClosedCards}
               />
             </div>
           );
