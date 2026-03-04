@@ -39,7 +39,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
   onToggleExpand,
   onTransactionTap,
   onUpdateBudget,
-) => {
+}) => {
   const visibleBudgets = useMemo(() =>
     budgets
       .filter((budget) => !isFocusMode || budget.id === focusedBudgetId)
