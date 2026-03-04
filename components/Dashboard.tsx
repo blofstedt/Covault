@@ -61,10 +61,21 @@ const Dashboard: React.FC<Props> = ({
 
   const normalizedTransactions = useNormalizedTransactions(state.transactions, state.budgets);
 
-  const { currentMonthTransactions, remainingMoney } = useDashboardTotals(
+  const { currentMonthTransactions, projectedTransactions, remainingMoney } = useDashboardTotals(
     normalizedTransactions,
     state.user?.monthlyIncome || 0,
   );
+
+  const now = new Date();
+  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  const currentMonthBudgetTransactions = useMemo(() => {
+    const currentMonthProjected = projectedTransactions.filter(
+      (t) => t.date?.slice(0, 7) === monthKey,
+    );
+
+    return [...currentMonthTransactions, ...currentMonthProjected];
+  }, [currentMonthTransactions, projectedTransactions, monthKey]);
 
   const filteredTransactions = useMemo(() => {
     if (!searchQuery) return normalizedTransactions;
@@ -72,8 +83,6 @@ const Dashboard: React.FC<Props> = ({
     return normalizedTransactions.filter(t => t.vendor?.toLowerCase().includes(q));
   }, [normalizedTransactions, searchQuery]);
 
-  const now = new Date();
-  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
   const pastTransactions = useMemo(
     () => normalizedTransactions.filter((t) => t.date?.slice(0, 7) < monthKey),
@@ -167,7 +176,7 @@ const Dashboard: React.FC<Props> = ({
 
             <DashboardBudgetSectionsList
               budgets={state.budgets}
-              transactions={currentMonthTransactions}
+              transactions={currentMonthBudgetTransactions}
               expandedBudgets={expandedBudgets}
               isFocusMode={false}
               focusedBudgetId={null}
