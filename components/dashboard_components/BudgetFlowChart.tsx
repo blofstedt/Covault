@@ -101,11 +101,6 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       // Extract YYYY-MM directly from the date string to avoid timezone shifts
       const txMonthKey = rawDate.slice(0, 7);
 
-      // Include projected transactions only for the current month
-      if (tx.is_projected) {
-        if (txMonthKey !== currentMonthKey) continue;
-      }
-
       const amount = Number(tx.amount) || 0;
       if (amount === 0) continue;
 
