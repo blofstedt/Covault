@@ -9,25 +9,37 @@ function addMonths(date: Date, months: number): Date {
   return d;
 }
 
+function toIsoDay(value: string | Date): string {
+  if (typeof value === 'string') return value.slice(0, 10);
+  return value.toISOString().slice(0, 10);
+}
+
+function normalizeRecurrence(tx: Transaction): string {
+  const raw = ((tx as any).recur ?? tx.recurrence ?? '').toString().trim().toLowerCase();
+  if (raw === 'monthly') return 'monthly';
+  if (raw === 'biweekly') return 'biweekly';
+  return 'one-time';
+}
+
 /**
- * Generate projected recurring transactions (Biweekly / Monthly)
- * from existing real transactions, **only in the future**.
+ * Generate projected recurring transactions from existing transactions.
  *
- * Limits:
- * - Biweekly: next 2 occurrences
- * - Monthly: next 1 occurrence
- *
- * These are display-only and never saved to the DB.
- * When their date arrives they "solidify" into actual transactions.
+ * Rules:
+ * - Monthly + Biweekly recurrences are projected.
+ * - Current-month occurrences remain visible even if their day has already passed.
+ * - Project up to 6 months ahead so forward months can render in UI/chart.
+ * - Display-only (never written to DB).
  */
 export function generateProjectedTransactions(base: Transaction[]): Transaction[] {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Avoid duplicating real transactions
+  const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  const horizon = addMonths(today, 6);
+
   const realKeys = new Set(
     base.map((tx) => {
-      const isoDate = new Date(tx.date).toISOString().slice(0, 10);
+      const isoDate = toIsoDay(tx.date);
       return `${tx.vendor}|${tx.amount}|${isoDate}|${tx.budget_id}`;
     }),
   );
@@ -35,57 +47,38 @@ export function generateProjectedTransactions(base: Transaction[]): Transaction[
   const projected: Transaction[] = [];
 
   for (const tx of base) {
-    if (tx.recurrence === 'One-time') continue;
-    if (tx.is_projected) continue; // don't chain off generated ones
+    const recurrence = normalizeRecurrence(tx);
+    if (recurrence === 'one-time') continue;
 
-    const maxOccurrences = tx.recurrence === 'Biweekly' ? 2 : 1;
-    let count = 0;
+    // Don't chain off projected entries generated in-app.
+    // Keep DB rows eligible when they carry recurrence data.
+    if (tx.is_projected && String(tx.id || '').startsWith('projected-')) continue;
 
-    let current = new Date(tx.date);
+    let current = new Date(toIsoDay(tx.date));
+    if (Number.isNaN(current.getTime())) continue;
 
-    // Fast-forward past occurrences to avoid unnecessary iterations for old transactions
-    if (tx.recurrence === 'Biweekly') {
-      const diffMs = today.getTime() - current.getTime();
-      if (diffMs > 0) {
-        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-        const periodsToSkip = Math.max(0, Math.floor(diffDays / 14) - 1);
-        current = new Date(current);
-        current.setDate(current.getDate() + periodsToSkip * 14);
-      }
-    } else if (tx.recurrence === 'Monthly') {
-      if (current < today) {
-        const monthsDiff =
-          (today.getFullYear() - current.getFullYear()) * 12 +
-          (today.getMonth() - current.getMonth());
-        if (monthsDiff > 1) {
-          current = addMonths(current, monthsDiff - 1);
-        }
-      }
-    }
-
-    while (count < maxOccurrences) {
-      if (tx.recurrence === 'Biweekly') {
+    while (true) {
+      if (recurrence === 'biweekly') {
         current = new Date(current);
         current.setDate(current.getDate() + 14);
-      } else if (tx.recurrence === 'Monthly') {
-        current = addMonths(current, 1);
       } else {
-        break;
+        current = addMonths(current, 1);
       }
 
-      const isoDate = current.toISOString().slice(0, 10);
+      if (current > horizon) break;
+
+      const isoDate = toIsoDay(current);
+      const monthKey = isoDate.slice(0, 7);
+      const isCurrentMonthOccurrence = monthKey === currentMonthKey;
       const key = `${tx.vendor}|${tx.amount}|${isoDate}|${tx.budget_id}`;
 
-      if (current >= today && !realKeys.has(key)) {
+      if ((current >= today || isCurrentMonthOccurrence) && !realKeys.has(key)) {
         projected.push({
           ...tx,
           id: `projected-${tx.id}-${isoDate}`,
           date: isoDate,
           is_projected: true,
         });
-        count++;
-      } else if (current >= today) {
-        count++;
       }
     }
   }

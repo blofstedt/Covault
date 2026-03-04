@@ -44,17 +44,17 @@ export default function useDashboardTotals(
       0
     );
 
-    const projected = projectedTransactions.reduce(
-      (sum, t) => sum + t.amount,
-      0
-    );
+    const projectedCurrentMonth = projectedTransactions
+      .filter((t) => t.date?.slice(0, 7) === currentMonth)
+      .reduce((sum, t) => sum + t.amount, 0);
 
-    return monthlyIncome - spent - projected;
+    return monthlyIncome - spent - projectedCurrentMonth;
 
   }, [
     monthlyIncome,
     currentMonthTransactions,
-    projectedTransactions
+    projectedTransactions,
+    currentMonth
   ]);
 
 
