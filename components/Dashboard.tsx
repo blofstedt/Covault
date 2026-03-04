@@ -169,7 +169,7 @@ const Dashboard: React.FC<Props> = ({
             <PremiumGate hasPremium={true}>
               <BudgetFlowChart
                 budgets={state.budgets}
-                transactions={normalizedTransactions}
+                transactions={currentMonthBudgetTransactions}
                 theme={state.settings.theme}
               />
             </PremiumGate>

@@ -69,7 +69,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
   return (
     <div
-      className={`flex-1 h-full overflow-hidden rounded-[2rem] border relative flex flex-col bg-white dark:bg-slate-900 ${
+      className={`flex-1 h-full min-h-0 overflow-hidden rounded-[2rem] border relative flex flex-col bg-white dark:bg-slate-900 ${
         isExpanded
           ? 'shadow-2xl'
           : 'border-slate-100 dark:border-slate-800/60 shadow-sm'
@@ -202,7 +202,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
       {/* EXPANDED TRANSACTIONS LIST */}
       {isExpanded && (
         <div 
-          className="flex-1 overflow-y-auto no-scrollbar px-6 pb-12 relative z-10"
+          className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-6 pb-12 relative z-10"
           style={{
             animation: 'budgetContentReveal 0.5s cubic-bezier(0.32, 0.72, 0, 1) forwards',
           }}
