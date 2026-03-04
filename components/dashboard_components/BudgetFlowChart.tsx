@@ -6,6 +6,7 @@ import { getBudgetGradient, getBudgetColor } from '../../lib/budgetColors';
 interface BudgetFlowChartProps {
   budgets: BudgetCategory[];
   transactions: Transaction[];
+  monthlyIncome?: number;
   theme?: 'light' | 'dark';
 }
 
@@ -50,7 +51,7 @@ function getWindowedMonthKeys(monthKeys: string[], currentMonthKey: string, maxM
   return monthKeys.slice(start, start + maxMonths);
 }
 
-const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions, theme = 'light' }) => {
+const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions, monthlyIncome = 0, theme = 'light' }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -82,6 +83,8 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
   const totalBudgetLimit = useMemo(() => {
     return safeBudgets.reduce((sum, b) => sum + (b.totalLimit || 0), 0);
   }, [safeBudgets]);
+
+  const thresholdValue = monthlyIncome > 0 ? monthlyIncome : totalBudgetLimit;
 
   // Aggregate transactions into monthly data by category
   const chartData: MonthlyBudgetData[] = useMemo(() => {
@@ -208,7 +211,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     const x = d3.scalePoint().domain(chartData.map((d) => d.month)).range([0, innerWidth]).padding(0.1);
 
     const maxTotal = d3.max(chartData, (d) => d.total) || 1;
-    const yMax = Math.max(maxTotal, totalBudgetLimit) * 1.15;
+    const yMax = Math.max(maxTotal, thresholdValue) * 1.15;
 
     const y = d3
       .scaleLinear()
@@ -248,8 +251,8 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .style('fill', (_d, i) => `url(#bfc-grad-${i})`)
       .attr('fill-opacity', 0.75);
 
-    // Budget limit line (dashed)
-    const budgetY = y(totalBudgetLimit);
+    // Income threshold line (dashed)
+    const budgetY = y(thresholdValue);
     svg
       .append('line')
       .attr('x1', 0)
@@ -270,7 +273,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .attr('font-weight', '700')
       .attr('letter-spacing', '0.1em')
       .attr('fill', isDarkTheme ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.2)')
-      .text('LIMIT');
+      .text('INCOME');
 
     // Month labels on the x-axis
     chartData.forEach((d) => {
@@ -432,7 +435,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         svgNode.removeEventListener('touchcancel', handleEnd);
       }
     };
-  }, [chartData, categoryNames, totalBudgetLimit, theme]);
+  }, [chartData, categoryNames, thresholdValue, theme]);
 
   const activeMonthData = hoveredMonthIdx !== null ? chartData[hoveredMonthIdx] : null;
   const activeCatAmount =
