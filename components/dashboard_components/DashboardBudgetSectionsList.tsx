@@ -121,10 +121,6 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
           );
         })}
 
-      {/* Spacer when some budgets are expanded and we're not in full focus mode */}
-      {!isFocusMode && expandedBudgets.size > 0 && (
-        <div className="h-[60vh] flex-none pointer-events-none" />
-      )}
     </div>
   );
 };
