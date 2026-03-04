@@ -77,6 +77,15 @@ const Dashboard: React.FC<Props> = ({
     return [...currentMonthTransactions, ...currentMonthProjected];
   }, [currentMonthTransactions, projectedTransactions, monthKey]);
 
+  const chartTransactions = useMemo(() => {
+    const existingIds = new Set(normalizedTransactions.map((t) => t.id));
+    const currentMonthProjected = projectedTransactions.filter(
+      (t) => t.date?.slice(0, 7) === monthKey && !existingIds.has(t.id),
+    );
+
+    return [...normalizedTransactions, ...currentMonthProjected];
+  }, [normalizedTransactions, projectedTransactions, monthKey]);
+
   const filteredTransactions = useMemo(() => {
     if (!searchQuery) return normalizedTransactions;
     const q = searchQuery.toLowerCase();
@@ -169,6 +178,7 @@ const Dashboard: React.FC<Props> = ({
             <PremiumGate hasPremium={true}>
               <BudgetFlowChart
                 budgets={state.budgets}
+                transactions={chartTransactions}
                 transactions={currentMonthBudgetTransactions}
                 theme={state.settings.theme}
               />

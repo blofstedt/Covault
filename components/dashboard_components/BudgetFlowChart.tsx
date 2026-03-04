@@ -11,6 +11,7 @@ interface BudgetFlowChartProps {
 
 interface MonthlyBudgetData {
   month: string;
+  monthKey: string;
   total: number;
   budgetLimit: number;
   [key: string]: number | string;
@@ -30,6 +31,23 @@ function formatMonthLabel(key: string): string {
   const [year, month] = key.split('-');
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${months[parseInt(month, 10) - 1]} ${year}`;
+}
+
+function getWindowedMonthKeys(monthKeys: string[], currentMonthKey: string, maxMonths = 6): string[] {
+  if (monthKeys.length <= maxMonths) return monthKeys;
+
+  let currentIdx = monthKeys.indexOf(currentMonthKey);
+
+  if (currentIdx < 0) {
+    currentIdx = monthKeys.findIndex((key) => key > currentMonthKey);
+    if (currentIdx < 0) currentIdx = monthKeys.length - 1;
+  }
+
+  const halfWindow = Math.floor(maxMonths / 2);
+  let start = currentIdx - halfWindow;
+  start = Math.max(0, Math.min(start, monthKeys.length - maxMonths));
+
+  return monthKeys.slice(start, start + maxMonths);
 }
 
 const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions, theme = 'light' }) => {
@@ -105,11 +123,15 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     // Sort month keys chronologically
     const sortedMonths = Array.from(monthMap.keys()).sort();
 
+    // Keep at most 6 months and center current month when possible
+    const displayMonths = getWindowedMonthKeys(sortedMonths, currentMonthKey, 6);
+
     // Build the data array
-    const data = sortedMonths.map((monthKey) => {
+    const data = displayMonths.map((monthKey) => {
       const catMap = monthMap.get(monthKey)!;
       const entry: MonthlyBudgetData = {
         month: formatMonthLabel(monthKey),
+        monthKey,
         total: 0,
         budgetLimit: totalBudgetLimit,
       };
@@ -123,11 +145,12 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       return entry;
     });
 
-    // If no spending data, create a synthetic current-month entry with zero spending
-    // so the chart always renders the budget corridor and threshold lines
+    // If no transaction months exist, create a synthetic current-month entry
+    // so the chart can still render its baseline.
     if (data.length === 0) {
       const entry: MonthlyBudgetData = {
         month: formatMonthLabel(currentMonthKey),
+        monthKey: currentMonthKey,
         total: 0,
         budgetLimit: totalBudgetLimit,
       };
@@ -135,39 +158,6 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         entry[name] = 0;
       }
       data.push(entry);
-    }
-
-    // Pad to at least 3 months so the chart always has a nice spread.
-    // Fill missing months with zero spending.
-    if (data.length < 3) {
-      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-      const makeEmpty = (label: string): MonthlyBudgetData => {
-        const entry: MonthlyBudgetData = {
-          month: label,
-          total: 0,
-          budgetLimit: totalBudgetLimit,
-        };
-        for (const name of categoryNames) {
-          entry[name] = 0;
-        }
-        return entry;
-      };
-
-      const getAdjacentLabel = (refLabel: string, offset: number): string => {
-        const parts = refLabel.split(' ');
-        const mIdx = monthNames.indexOf(parts[0]);
-        const yr = parseInt(parts[1], 10);
-        if (mIdx < 0 || isNaN(yr)) return refLabel;
-        const d = new Date(yr, mIdx + offset, 1);
-        return `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
-      };
-
-      while (data.length < 3) {
-        const firstLabel = data[0].month;
-        const priorLabel = getAdjacentLabel(firstLabel, -1);
-        data.unshift(makeEmpty(priorLabel));
-      }
     }
 
     return data;
