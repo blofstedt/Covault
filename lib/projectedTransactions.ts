@@ -23,6 +23,7 @@ function addMonths(date: Date, months: number): Date {
 export function generateProjectedTransactions(base: Transaction[]): Transaction[] {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
 
   // Avoid duplicating real transactions
   const realKeys = new Set(
@@ -74,9 +75,11 @@ export function generateProjectedTransactions(base: Transaction[]): Transaction[
       }
 
       const isoDate = current.toISOString().slice(0, 10);
+      const monthKey = isoDate.slice(0, 7);
       const key = `${tx.vendor}|${tx.amount}|${isoDate}|${tx.budget_id}`;
+      const isCurrentMonthOccurrence = monthKey === currentMonthKey;
 
-      if (current >= today && !realKeys.has(key)) {
+      if ((current >= today || isCurrentMonthOccurrence) && !realKeys.has(key)) {
         projected.push({
           ...tx,
           id: `projected-${tx.id}-${isoDate}`,
@@ -84,7 +87,7 @@ export function generateProjectedTransactions(base: Transaction[]): Transaction[
           is_projected: true,
         });
         count++;
-      } else if (current >= today) {
+      } else if (current >= today || isCurrentMonthOccurrence) {
         count++;
       }
     }
