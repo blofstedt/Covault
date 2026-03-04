@@ -38,7 +38,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
   budgetRefs,
   onToggleExpand,
   onTransactionTap,
-  onUpdateBudget,
+  onUpdateBudget
 ) => {
   const visibleBudgets = useMemo(() =>
     budgets
