@@ -57,16 +57,19 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
     [budgets, isFocusMode, focusedBudgetId, settings.hiddenCategories],
   );
 
+  const expandedBudgetId = expandedBudgets.size > 0 ? Array.from(expandedBudgets)[0] : null;
+  const budgetsToRender = expandedBudgetId
+    ? visibleBudgets.filter((budget) => budget.id === expandedBudgetId)
+    : visibleBudgets;
+
   const allCollapsed = expandedBudgets.size === 0;
 
   return (
     <div
       ref={scrollContainerRef}
-      className={`flex-1 flex flex-col ${
-        isFocusMode || allCollapsed ? 'overflow-hidden' : 'overflow-y-auto'
-      } mt-1 pb-24 no-scrollbar scroll-smooth h-full transition-all duration-500 gap-2`}
+      className="flex-1 min-h-0 flex flex-col overflow-hidden mt-1 pb-24 no-scrollbar scroll-smooth h-full transition-all duration-500 gap-2"
     >
-      {visibleBudgets.map((budget, index) => {
+      {budgetsToRender.map((budget, index) => {
           const budgetTxs = transactions.filter(
             (t) =>
               t.budget_id === budget.id
@@ -95,7 +98,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
               }}
               className={`flex flex-col ${
                 isExpanded
-                  ? 'min-h-[70vh]'
+                  ? 'flex-1 min-h-0'
                   : shouldAutoFitClosedCards
                     ? 'flex-1 basis-0 min-h-0'
                     : 'min-h-[84px]'
