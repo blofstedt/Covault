@@ -4,6 +4,7 @@ import type { Transaction } from '../../types';
 import { REST_BASE, getAuthHeaders } from '../apiHelpers';
 import { formatVendorName } from '../formatVendorName';
 import { checkDuplicateTransaction } from '../notificationProcessor';
+import { markReviewQueueStatus, upsertVendorMapEntry } from '../localNotificationMemory';
 import { useToSupabaseTransaction, useFromSupabaseTransaction } from './transactionMappers';
 import type { UseUserDataParams } from './types';
 
@@ -159,6 +160,19 @@ export const useTransactionOps = ({
           console.error(msg);
           setDbError(msg);
         } else {
+          markReviewQueueStatus(updatedTx.id, 'reviewed');
+          const mappedBudget = appState.budgets.find(b => b.id === updatedTx.budget_id)?.name || 'Other';
+          const vendorDisplay = formatVendorName(updatedTx.vendor || 'Unknown');
+          const vendorKey = vendorDisplay.toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (vendorKey) {
+            upsertVendorMapEntry({
+              vendor_key: vendorKey,
+              vendor_display: vendorDisplay,
+              budget: mappedBudget,
+              updated_at: new Date().toISOString(),
+            });
+          }
+
           // Verify that rows were actually updated
           let updatedRows: any[] = [];
           try {
