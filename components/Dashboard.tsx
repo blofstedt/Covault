@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { AppState, Transaction, BudgetCategory } from '../types';
 
 import PageShell from './ui/PageShell';
@@ -16,6 +16,7 @@ import SearchResults from './dashboard_components/SearchResults';
 
 import useNormalizedTransactions from './dashboard_components/useNormalizedTransactions';
 import useDashboardTotals from './dashboard_components/useDashboardTotals';
+import { getNeedsReviewCount, getReviewQueueChangedEventName } from '../lib/localNotificationMemory';
 
 interface Props {
   state: AppState;
@@ -85,6 +86,17 @@ const Dashboard: React.FC<Props> = ({
 
     return [...normalizedTransactions, ...currentMonthProjected];
   }, [normalizedTransactions, projectedTransactions, monthKey]);
+
+
+  const [needsReviewCount, setNeedsReviewCount] = useState(0);
+
+  useEffect(() => {
+    const refresh = () => setNeedsReviewCount(getNeedsReviewCount());
+    refresh();
+    const eventName = getReviewQueueChangedEventName();
+    window.addEventListener(eventName, refresh);
+    return () => window.removeEventListener(eventName, refresh);
+  }, []);
 
   const filteredTransactions = useMemo(() => {
     if (!searchQuery) return normalizedTransactions;
@@ -208,6 +220,7 @@ const Dashboard: React.FC<Props> = ({
           onAddTransaction={onAddTransaction}
           onOpenParsing={() => setShowParsing(true)}
           activeView="home"
+          pendingCount={needsReviewCount}
         />
       </PageShell>
 

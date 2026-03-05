@@ -11,6 +11,7 @@ import PageShell from './ui/PageShell';
 import { supabase } from '../lib/supabase';
 import { covaultNotification } from '../lib/covaultNotification';
 import { KNOWN_BANKING_APPS } from '../lib/bankingApps';
+import { getNeedsReviewCount, getNeedsReviewIdSet, getReviewQueueChangedEventName } from '../lib/localNotificationMemory';
 
 /** Delay (ms) after scanning to allow notification processing before reloading data */
 const SCAN_PROCESSING_DELAY_MS = 2000;
@@ -75,6 +76,21 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       loadMonitoredBanks();
     }
   }, [enabled, loadMonitoredBanks]);
+
+
+  const [needsReviewCount, setNeedsReviewCount] = useState(0);
+  const [needsReviewIds, setNeedsReviewIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const refreshReviewQueue = () => {
+      setNeedsReviewCount(getNeedsReviewCount());
+      setNeedsReviewIds(getNeedsReviewIdSet());
+    };
+    refreshReviewQueue();
+    const eventName = getReviewQueueChangedEventName();
+    window.addEventListener(eventName, refreshReviewQueue);
+    return () => window.removeEventListener(eventName, refreshReviewQueue);
+  }, []);
 
   // ── AI-entered transactions (label === 'AI') ──
   const aiTransactions = useMemo(
@@ -192,6 +208,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                 onClear={() => setClearTarget('entered')}
                 onRefresh={handleRefresh}
                 isRefreshing={isRefreshing}
+                needsReviewIds={needsReviewIds}
               />
             </>
           ) : (
@@ -205,6 +222,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         onAddTransaction={onAddTransaction}
         onOpenParsing={onBack}
         activeView="parsing"
+        pendingCount={needsReviewCount}
       />
 
       {/* Clear confirmation modal */}

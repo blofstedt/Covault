@@ -12,9 +12,9 @@
 //   7. Insert into transactions table with 'AI' label
 
 import { supabase } from './supabase';
-import { REST_BASE, getAuthHeaders } from './apiHelpers';
 import { formatVendorName } from './formatVendorName';
-import { extractWithAI } from './aiExtractor';
+import { parseNotificationText } from './deviceTransactionParser';
+import { addToReviewQueue, getVendorMapEntry } from './localNotificationMemory';
 import type { PendingTransaction } from '../types';
 
 // ─── Constants ───────────────────────────────────────────────────
@@ -524,16 +524,16 @@ export interface AIProcessingResult {
 }
 
 /**
- * Process a notification using the AI pipeline.
+ * Process a notification using the on-device parsing pipeline.
  *
  * Steps:
  *   1. In-memory dedup (fast, prevents re-processing during scans)
  *   2. Duplicate detection (check transactions + pending_transactions tables)
- *   3. AI extraction (vendor, amount, transaction classification)
+ *   3. Deterministic extraction (vendor, amount, transaction classification)
  *   4. Non-transaction filtering
  *   5. Duplicate detection (same vendor + amount pair in existing transactions)
- *   6. Category assignment: vendor_overrides first, then AI suggestion
- *   7. Insert directly into transactions table with 'AI' label
+ *   6. Category assignment from device-side vendor map (fallback: Other)
+ *   7. Insert directly into transactions table with 'AI' label and mark for review
  */
 export async function processNotificationWithAI(
   userId: string,
@@ -595,43 +595,26 @@ export async function processNotificationWithAI(
     };
   }
 
-  // ── Step 2: AI Extraction ──
-  const categoryNames = availableCategories.map(c => c.name);
-  const aiResult = await extractWithAI(input.rawNotification, categoryNames);
+  // ── Step 2: Deterministic extraction ──
+  const parsed = parseNotificationText(input.rawNotification);
 
-  if (!aiResult.vendor && !aiResult.amount) {
-    console.log('[AI pipeline] AI could not extract data');
-    const reason = aiResult.rejectionReason || 'Could not extract transaction data';
+  if (!parsed.isOutgoing) {
+    const reason = parsed.rejectionReason || 'Not an outgoing transaction notification';
     // Add to in-memory cache so we don't re-process this notification
     recentlyProcessedCache.set(inMemoryKey, Date.now());
     return {
       processed: true,
       isTransaction: false,
-      skipReason: 'extraction_failed',
-      rejectionReason: reason,
-      bankName: input.bankName,
-    };
-  }
-
-  // ── Step 3: Reject non-transactions ──
-  if (!aiResult.isTransaction) {
-    console.log('[AI pipeline] Not a transaction:', aiResult.rejectionReason);
-    const reason = aiResult.rejectionReason || 'Not cost-related notification';
-    // Add to in-memory cache so we don't re-process this notification
-    recentlyProcessedCache.set(inMemoryKey, Date.now());
-    return {
-      processed: true,
-      isTransaction: false,
-      vendor: aiResult.vendor || undefined,
-      amount: aiResult.amount || undefined,
+      vendor: parsed.vendorDisplay || undefined,
+      amount: parsed.amount || undefined,
       skipReason: 'not_transaction',
       rejectionReason: reason,
       bankName: input.bankName,
     };
   }
 
-  const vendor = aiResult.vendor || input.fallbackVendor || null;
-  const amount = aiResult.amount ?? input.fallbackAmount ?? 0;
+  const vendor = parsed.vendorDisplay || input.fallbackVendor || null;
+  const amount = parsed.amount ?? input.fallbackAmount ?? 0;
 
   // ── Step 3b: Reject if no vendor could be identified ──
   if (!vendor) {
@@ -712,51 +695,22 @@ export async function processNotificationWithAI(
     }
   }
 
-  // ── Step 5: Category assignment + vendor name override ──
+  // ── Step 5: Category assignment (device-side vendor_map) ──
   let categoryId: string | null = null;
   let categoryName: string | null = null;
-  // The display vendor name — may be overridden by vendor_overrides
   let displayVendor: string = vendor;
 
-  // First check vendor_overrides for category_id, proper_name, and vendor_name
-  try {
-    const headers = await getAuthHeaders();
-    const res = await fetch(
-      `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=ilike.${encodeURIComponent(vendor)}&limit=1`,
-      { headers },
-    );
-    if (res.ok) {
-      const rows = await res.json();
-      if (Array.isArray(rows) && rows.length > 0) {
-        const override = rows[0];
-        categoryId = override.category_id;
-        const matchedCat = availableCategories.find(c => c.id === categoryId);
-        categoryName = matchedCat?.name || null;
-        // Use proper_name if available, otherwise use vendor_name from override
-        if (override.proper_name) {
-          displayVendor = override.proper_name;
-          console.log(`[AI pipeline] Vendor override proper_name: ${vendor} → ${displayVendor} (${categoryName})`);
-        } else if (override.vendor_name) {
-          displayVendor = override.vendor_name;
-          console.log(`[AI pipeline] Vendor override vendor_name: ${vendor} → ${displayVendor} (${categoryName})`);
-        } else {
-          console.log(`[AI pipeline] Vendor override found: ${vendor} → ${categoryName}`);
-        }
+  if (parsed.vendorKey) {
+    const vendorMapEntry = getVendorMapEntry(parsed.vendorKey);
+    if (vendorMapEntry) {
+      displayVendor = vendorMapEntry.vendor_display || displayVendor;
+      const matchedCategory = availableCategories.find(
+        (c) => c.name.toLowerCase() === vendorMapEntry.budget.toLowerCase(),
+      );
+      if (matchedCategory) {
+        categoryId = matchedCategory.id;
+        categoryName = matchedCategory.name;
       }
-    }
-  } catch (err) {
-    console.warn('[AI pipeline] Error checking vendor overrides:', err);
-  }
-
-  // If no vendor override, use AI suggestion
-  if (!categoryId && aiResult.suggestedCategory) {
-    const matchedCat = availableCategories.find(
-      c => c.name.toLowerCase() === aiResult.suggestedCategory!.toLowerCase(),
-    );
-    if (matchedCat) {
-      categoryId = matchedCat.id;
-      categoryName = matchedCat.name;
-      console.log(`[AI pipeline] AI suggested category: ${categoryName}`);
     }
   }
 
@@ -802,9 +756,9 @@ export async function processNotificationWithAI(
       budget: categoryName || 'Other',
       Budget: categoryName || 'Other',
       type: 'AI',
-      recur: 'One-time',
+      recur: parsed.recurrence,
       category_id: categoryId,
-      recurrence: 'One-time',
+      recurrence: parsed.recurrence,
       label: 'AI',
       is_projected: false,
     });
@@ -821,41 +775,8 @@ export async function processNotificationWithAI(
     };
   }
 
-  // Also save/update vendor_override for future categorization
-  try {
-    const headers = await getAuthHeaders();
-    (headers as any)['Prefer'] = 'return=representation';
-
-    // Try to update existing override first
-    const patchRes = await fetch(
-      `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(finalVendorName)}`,
-      {
-        method: 'PATCH',
-        headers,
-        body: JSON.stringify({ category_id: categoryId }),
-      },
-    );
-    const patchBody = await patchRes.text();
-    let patchedRows: any[] = [];
-    try { patchedRows = patchBody ? JSON.parse(patchBody) : []; } catch (e) { console.warn('[AI pipeline] vendor_override PATCH parse error:', e); patchedRows = []; }
-
-    if (!patchRes.ok || !Array.isArray(patchedRows) || patchedRows.length === 0) {
-      // Insert new override
-      await fetch(`${REST_BASE}/vendor_overrides`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          user_id: userId,
-          vendor_name: finalVendorName,
-          category_id: categoryId,
-        }),
-      });
-    }
-  } catch (err) {
-    console.warn('[AI pipeline] vendor_override save failed:', err);
-  }
-
   console.log(`[AI pipeline] Transaction saved: ${finalVendorName} $${amount} → ${categoryName}`);
+  addToReviewQueue(transactionId);
 
   // Add to in-memory cache to prevent re-processing on rescan
   recentlyProcessedCache.set(inMemoryKey, Date.now());
