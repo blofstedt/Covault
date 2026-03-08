@@ -33,6 +33,8 @@ interface Props {
   saveBudgetVisibility: (categoryId: string, visible: boolean) => Promise<void>;
   onLinkPartner: (partnerEmail: string) => Promise<void>;
   onUnlinkPartner: () => Promise<void>;
+  onRefreshNotifications?: () => Promise<void>;
+  onReloadTransactions?: (userId: string) => Promise<void>;
 }
 
 const Dashboard: React.FC<Props> = ({
@@ -49,6 +51,8 @@ const Dashboard: React.FC<Props> = ({
   saveBudgetVisibility,
   onLinkPartner,
   onUnlinkPartner,
+  onRefreshNotifications,
+  onReloadTransactions,
 }) => {
   const [showParsing, setShowParsing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -156,9 +160,12 @@ const Dashboard: React.FC<Props> = ({
         onBack={() => setShowParsing(false)}
         onGoHome={() => setShowParsing(false)}
         onAddTransaction={onAddTransaction}
-        allTransactions={filteredTransactions}
+        allTransactions={normalizedTransactions}
+        onTransactionTap={setSelectedTx}
         budgets={state.budgets}
         userId={state.user?.id}
+        onRefreshNotifications={onRefreshNotifications}
+        onReloadTransactions={onReloadTransactions}
       />
     );
   }

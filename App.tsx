@@ -256,17 +256,8 @@ const App: React.FC = () => {
           saveBudgetVisibility={saveBudgetVisibility}
           onLinkPartner={handleLinkPartner}
           onUnlinkPartner={handleUnlinkPartner}
-          onGenerateLinkCode={handleGenerateLinkCode}
-          onJoinWithCode={handleJoinWithCode}
-          onApprovePendingTransaction={handleApprovePendingTransaction}
-          onRejectPendingTransaction={handleRejectPendingTransaction}
-          onClearFilteredNotifications={handleClearFilteredNotifications}
-          onClearApprovedTransactions={handleClearApprovedTransactions}
           onRefreshNotifications={refreshNotifications}
-          onReloadPendingTransactions={loadPendingTransactions}
           onReloadTransactions={loadTransactions}
-          isLoadingData={isLoadingData}
-          secondsUntilNextScan={secondsUntilNextScan}
         />
       )}
     </div>
