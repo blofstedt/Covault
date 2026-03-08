@@ -60,22 +60,32 @@ export const useUserSettings = ({
           ...headers,
           'Prefer': 'return=representation',
         };
-        let patchRes = await fetch(
+        const patchQueries = [
           `${REST_BASE}/budgets?user_uuid=eq.${userId}&budget=eq.${encodeURIComponent(categoryName)}`,
-          `${REST_BASE}/budgets?id=eq.${encodeURIComponent(categoryId)}`,
-          {
-            method: 'PATCH',
-            headers: patchHeaders,
-            body: JSON.stringify({ amount: newLimit, Visible: visible }),
-          },
-        );
+          `${REST_BASE}/budgets?user_id=eq.${userId}&category=eq.${encodeURIComponent(categoryName)}`,
+          categoryId.startsWith('budget:')
+            ? null
+            : `${REST_BASE}/budgets?id=eq.${encodeURIComponent(categoryId)}`,
+        ].filter(Boolean) as string[];
 
-        let patchBody = await patchRes.text();
+        let patchRes: Response | null = null;
+        let patchBody = '';
 
-        if (!patchRes.ok) {
+        for (const patchUrl of patchQueries) {
           patchRes = await fetch(
-            `${REST_BASE}/budgets?user_uuid=eq.${userId}&budget=eq.${encodeURIComponent(categoryName)}`,
-            `${REST_BASE}/budgets?id=eq.${encodeURIComponent(categoryId)}`,
+            patchUrl,
+            {
+              method: 'PATCH',
+              headers: patchHeaders,
+              body: JSON.stringify({ amount: newLimit, Visible: visible }),
+            },
+          );
+          patchBody = await patchRes.text();
+
+          if (patchRes.ok) break;
+
+          patchRes = await fetch(
+            patchUrl,
             {
               method: 'PATCH',
               headers: patchHeaders,
@@ -87,10 +97,13 @@ export const useUserSettings = ({
             },
           );
           patchBody = await patchRes.text();
+
+          if (patchRes.ok) break;
         }
 
-        if (!patchRes.ok) {
-          const msg = `[saveBudgetLimit] PATCH failed (${patchRes.status}): ${patchBody.slice(0, 200)}`;
+        if (!patchRes || !patchRes.ok) {
+          const status = patchRes?.status ?? 'unknown';
+          const msg = `[saveBudgetLimit] PATCH failed (${status}): ${patchBody.slice(0, 200)}`;
           console.error(msg);
           setDbError(msg);
           rollback();
@@ -380,22 +393,32 @@ export const useUserSettings = ({
           ...headers,
           'Prefer': 'return=representation',
         };
-        let patchRes = await fetch(
+        const patchQueries = [
           `${REST_BASE}/budgets?user_uuid=eq.${userId}&budget=eq.${encodeURIComponent(categoryName)}`,
-          `${REST_BASE}/budgets?id=eq.${encodeURIComponent(categoryId)}`,
-          {
-            method: 'PATCH',
-            headers: patchHeaders,
-            body: JSON.stringify({ amount: category.totalLimit, Visible: visible }),
-          },
-        );
+          `${REST_BASE}/budgets?user_id=eq.${userId}&category=eq.${encodeURIComponent(categoryName)}`,
+          categoryId.startsWith('budget:')
+            ? null
+            : `${REST_BASE}/budgets?id=eq.${encodeURIComponent(categoryId)}`,
+        ].filter(Boolean) as string[];
 
-        let patchBody = await patchRes.text();
+        let patchRes: Response | null = null;
+        let patchBody = '';
 
-        if (!patchRes.ok) {
+        for (const patchUrl of patchQueries) {
           patchRes = await fetch(
-            `${REST_BASE}/budgets?user_uuid=eq.${userId}&budget=eq.${encodeURIComponent(categoryName)}`,
-            `${REST_BASE}/budgets?id=eq.${encodeURIComponent(categoryId)}`,
+            patchUrl,
+            {
+              method: 'PATCH',
+              headers: patchHeaders,
+              body: JSON.stringify({ amount: category.totalLimit, Visible: visible }),
+            },
+          );
+          patchBody = await patchRes.text();
+
+          if (patchRes.ok) break;
+
+          patchRes = await fetch(
+            patchUrl,
             {
               method: 'PATCH',
               headers: patchHeaders,
@@ -407,11 +430,13 @@ export const useUserSettings = ({
             },
           );
           patchBody = await patchRes.text();
+
+          if (patchRes.ok) break;
         }
 
-        if (!patchRes.ok) {
+        if (!patchRes || !patchRes.ok) {
           console.error('[saveBudgetVisibility] PATCH failed:', patchBody.slice(0, 200));
-          setDbError(`[saveBudgetVisibility] PATCH failed (${patchRes.status})`);
+          setDbError(`[saveBudgetVisibility] PATCH failed (${patchRes?.status ?? 'unknown'})`);
           rollback();
           return;
         }
