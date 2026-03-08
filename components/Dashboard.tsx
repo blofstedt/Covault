@@ -4,6 +4,7 @@ import { AppState, Transaction, BudgetCategory } from '../types';
 import PageShell from './ui/PageShell';
 import TransactionParsing from './TransactionParsing';
 import TransactionActionModal from './TransactionActionModal';
+import TransactionForm from './TransactionForm';
 import PremiumGate from './PremiumGate';
 
 import DashboardHeader from './dashboard_components/DashboardHeader';
@@ -54,6 +55,7 @@ const Dashboard: React.FC<Props> = ({
   const [isLinkingPartner, setIsLinkingPartner] = useState(false);
   const [partnerLinkEmail, setPartnerLinkEmail] = useState('');
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
+  const [showTransactionForm, setShowTransactionForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedBudgets, setExpandedBudgets] = useState<Set<string>>(new Set());
 
@@ -217,7 +219,7 @@ const Dashboard: React.FC<Props> = ({
 
         <DashboardBottomBar
           onGoHome={() => setShowParsing(false)}
-          onAddTransaction={onAddTransaction}
+          onAddTransaction={() => setShowTransactionForm(true)}
           onOpenParsing={() => setShowParsing(true)}
           activeView="home"
           pendingCount={needsReviewCount}
@@ -257,6 +259,20 @@ const Dashboard: React.FC<Props> = ({
           onClose={() => setSelectedTx(null)}
           onEdit={onUpdateTransaction}
           onDelete={() => onDeleteTransaction(selectedTx.id)}
+        />
+      )}
+
+      {showTransactionForm && state.user?.id && (
+        <TransactionForm
+          onClose={() => setShowTransactionForm(false)}
+          onSave={(tx) => {
+            onAddTransaction(tx);
+            setShowTransactionForm(false);
+          }}
+          budgets={state.budgets}
+          userId={state.user.id}
+          userName={state.user?.name || ''}
+          isSharedAccount={!state.user?.budgetingSolo}
         />
       )}
     </>
