@@ -61,46 +61,51 @@ export const resolveBudgetIdFromRow = (row: any): string | null => {
 };
 
 // Build the object Supabase expects — only columns that exist in the table
+export const toSupabaseTransaction = (
+  tx: Transaction,
+  budgets: { id: string; name: string }[] = [],
+) => {
+  // Extract the YYYY-MM-DD portion directly from the date string to avoid
+  // timezone-related date shifts that occur when round-tripping through the
+  // Date constructor (e.g. "2025-03-01T00:00:00Z" parsed in UTC-8 becomes
+  // Feb 28 locally).
+  const dateStr = tx.date.slice(0, 10);
+
+  // Validate required fields
+  if (!tx.budget_id) {
+    throw new Error(`Transaction must have a valid budget_id (category_id). Got: ${tx.budget_id}`);
+  }
+
+  // Validate and set recurrence value
+  let recurrence: string = Recurrence.ONE_TIME;
+  if (tx.recurrence) {
+    if (VALID_RECURRENCES.includes(tx.recurrence as Recurrence)) {
+      recurrence = tx.recurrence;
+    } else {
+      console.warn(`Invalid recurrence value "${tx.recurrence}", defaulting to "${Recurrence.ONE_TIME}"`);
+    }
+  }
+
+  const budgetName = resolveBudgetNameForInsert(tx.budget_id, budgets);
+
+  const row: Record<string, any> = {
+    id: tx.id,
+    user_id: tx.user_id,
+    vendor: tx.vendor,
+    amount: Number(tx.amount),
+    date: dateStr,
+    is_projected: tx.is_projected ?? false,
+    // Current schema columns (public.transactions)
+    budget: budgetName,
+    type: tx.label || 'Manual',
+    recur: recurrence,
+  };
+
+  return row;
+};
+
 export const useToSupabaseTransaction = (budgets: { id: string; name: string }[] = []) =>
-  useCallback((tx: Transaction) => {
-    // Extract the YYYY-MM-DD portion directly from the date string to avoid
-    // timezone-related date shifts that occur when round-tripping through the
-    // Date constructor (e.g. "2025-03-01T00:00:00Z" parsed in UTC-8 becomes
-    // Feb 28 locally).
-    const dateStr = tx.date.slice(0, 10);
-
-    // Validate required fields
-    if (!tx.budget_id) {
-      throw new Error(`Transaction must have a valid budget_id (category_id). Got: ${tx.budget_id}`);
-    }
-
-    // Validate and set recurrence value
-    let recurrence: string = Recurrence.ONE_TIME;
-    if (tx.recurrence) {
-      if (VALID_RECURRENCES.includes(tx.recurrence as Recurrence)) {
-        recurrence = tx.recurrence;
-      } else {
-        console.warn(`Invalid recurrence value "${tx.recurrence}", defaulting to "${Recurrence.ONE_TIME}"`);
-      }
-    }
-
-    const budgetName = resolveBudgetNameForInsert(tx.budget_id, budgets);
-
-    const row: Record<string, any> = {
-      id: tx.id,
-      user_id: tx.user_id,
-      vendor: tx.vendor,
-      amount: Number(tx.amount),
-      date: dateStr,
-      is_projected: tx.is_projected ?? false,
-      // Current schema columns (public.transactions)
-      budget: budgetName,
-      type: tx.label || 'Manual',
-      recur: recurrence,
-    };
-
-    return row;
-  }, []);
+  useCallback((tx: Transaction) => toSupabaseTransaction(tx, budgets), [budgets]);
 
 // Convert Supabase transaction to app format
 export const useFromSupabaseTransaction = () =>
