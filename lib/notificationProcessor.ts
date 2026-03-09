@@ -27,9 +27,8 @@ const RECURRING_DATE_TOLERANCE_DAYS = 3;
 
 /** Milliseconds per day */
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
-/** Milliseconds per hour — window for duplicate detection */
-const MS_PER_HOUR = 60 * 60 * 1000;
+/** Milliseconds per minute — strict duplicate matching window */
+const MS_PER_MINUTE = 60 * 1000;
 
 /**
  * In-memory cache of recently processed notification keys.
@@ -144,10 +143,8 @@ function generateFingerprintHash(
  * the transactions and pending_transactions tables directly.
  *
  * A notification is considered a duplicate if a record with the same
- * amount exists within a 1-hour window of the notification timestamp.
- * The vendor is also checked: the existing vendor must contain a word
- * from the notification text (keyword match) OR be an exact
- * case-insensitive match.
+ * vendor + amount exists within a ±1 minute window of the notification
+ * timestamp.
  *
  * This replaces the old fingerprint-table approach, which required a
  * separate Supabase table and could silently drop notifications when
@@ -159,11 +156,11 @@ async function checkAlreadyProcessed(
   vendor: string | null,
   notificationTimestamp: number,
 ): Promise<boolean> {
-  if (amount == null) return false;
+  if (amount == null || vendor == null) return false;
 
-  const windowStart = new Date(notificationTimestamp - MS_PER_HOUR).toISOString();
-  const windowEnd   = new Date(notificationTimestamp + MS_PER_HOUR).toISOString();
-  const today = new Date().toISOString().slice(0, 10);
+  const windowStart = new Date(notificationTimestamp - MS_PER_MINUTE).toISOString();
+  const windowEnd   = new Date(notificationTimestamp + MS_PER_MINUTE).toISOString();
+  const normalizedVendor = normalizeVendorForDedup(vendor);
 
   // ── Check transactions table ──
   // Query 1: created_at within the notification time window
@@ -177,28 +174,8 @@ async function checkAlreadyProcessed(
   if (txRows && txRows.length > 0) {
     for (const tx of txRows) {
       if (Math.abs(Number(tx.amount) - amount) < AMOUNT_TOLERANCE) {
-        if (vendorMatches(tx.vendor, vendor)) {
+        if (normalizeVendorForDedup(tx.vendor) === normalizedVendor) {
           console.log(`[dedup] Duplicate found in transactions: ${tx.vendor} $${tx.amount}`);
-          return true;
-        }
-      }
-    }
-  }
-
-  // Query 2: same amount + vendor on today's date (catches duplicates where
-  // the notification timestamp and created_at don't overlap, e.g. delayed
-  // processing or re-scanning old notifications)
-  const { data: todayTxRows } = await supabase
-    .from('transactions')
-    .select('id, vendor, amount, date')
-    .eq('user_id', userId)
-    .eq('date', today);
-
-  if (todayTxRows && todayTxRows.length > 0) {
-    for (const tx of todayTxRows) {
-      if (Math.abs(Number(tx.amount) - amount) < AMOUNT_TOLERANCE) {
-        if (vendorMatches(tx.vendor, vendor)) {
-          console.log(`[dedup] Duplicate found in today's transactions: ${tx.vendor} $${tx.amount}`);
           return true;
         }
       }
@@ -216,7 +193,7 @@ async function checkAlreadyProcessed(
   if (ptRows && ptRows.length > 0) {
     for (const pt of ptRows) {
       if (Math.abs(Number(pt.extracted_amount) - amount) < AMOUNT_TOLERANCE) {
-        if (vendorMatches(pt.extracted_vendor, vendor)) {
+        if (normalizeVendorForDedup(pt.extracted_vendor) === normalizedVendor) {
           console.log(`[dedup] Duplicate found in pending_transactions: ${pt.extracted_vendor} $${pt.extracted_amount}`);
           return true;
         }
@@ -225,6 +202,11 @@ async function checkAlreadyProcessed(
   }
 
   return false;
+}
+
+function normalizeVendorForDedup(vendor: string | null): string {
+  if (!vendor) return '';
+  return vendor.toLowerCase().replace(/\s+/g, ' ').replace(/[^a-z0-9 ]/g, '').trim();
 }
 
 /**
@@ -633,46 +615,25 @@ export async function processNotificationWithAI(
     };
   }
 
-  // ── Step 4: Duplicate detection (vendor + amount pair) ──
+  // ── Step 4: Duplicate detection (exact vendor + amount within same minute) ──
   const today = new Date().toISOString().slice(0, 10);
+  const dedupWindowStart = new Date(notifTimestamp - MS_PER_MINUTE).toISOString();
+  const dedupWindowEnd = new Date(notifTimestamp + MS_PER_MINUTE).toISOString();
+  const normalizedVendor = normalizeVendorForDedup(vendor);
+
   const { data: existingTx } = await supabase
     .from('transactions')
-    .select('id, vendor, amount, date, label, type, recurrence, recur')
+    .select('id, vendor, amount, date, label, type, recurrence, recur, created_at')
     .eq('user_id', userId)
-    .ilike('vendor', vendor);
+    .gte('created_at', dedupWindowStart)
+    .lte('created_at', dedupWindowEnd);
 
   if (existingTx && existingTx.length > 0) {
-    // Filter to matching amounts
-    const amountMatches = existingTx.filter(
-      (tx) => Math.abs(Number(tx.amount) - amount) < AMOUNT_TOLERANCE,
-    );
-
-    // Check recurring transactions first: same vendor + amount within ±3 days
-    // → update the existing transaction's date to today (not a duplicate)
-    const todayMs = new Date(today).getTime();
-    const toleranceMs = RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY;
-
-    for (const tx of amountMatches) {
-      const recurrence = ((tx.recur || tx.recurrence) || '').toLowerCase();
-      if (recurrence !== 'monthly' && recurrence !== 'biweekly') continue;
-
-      const txDateMs = new Date(tx.date).getTime();
-      if (Math.abs(todayMs - txDateMs) <= toleranceMs) {
-        // Update the existing recurring transaction's date to today
-        await supabase
-          .from('transactions')
-          .update({ date: today })
-          .eq('id', tx.id);
-        console.log(`[AI pipeline] Updated recurring transaction ${tx.id} date to ${today}`);
-        // Not a duplicate — the recurring entry is refreshed
-        break;
-      }
-    }
-
-    // Check one-time duplicates: same vendor + amount + same day
-    const duplicateToday = amountMatches.find(
-      (tx) => tx.date === today,
-    );
+    const duplicateToday = existingTx.find((tx) => {
+      const vendorMatch = normalizeVendorForDedup(tx.vendor) === normalizedVendor;
+      const amountMatch = Math.abs(Number(tx.amount) - amount) < AMOUNT_TOLERANCE;
+      return vendorMatch && amountMatch;
+    });
 
     if (duplicateToday) {
       // Distinguish manual vs AI duplicates

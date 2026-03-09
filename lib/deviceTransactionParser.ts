@@ -3,14 +3,16 @@ import { formatVendorName } from './formatVendorName';
 const STOP_PHRASES = [
   'verification code', 'security code', 'one-time', 'otp', 'passcode', '2fa', 'password', 'login', 'signed in', 'new device',
   'statement', 'e-statement', 'payment due', 'due date',
+  'account balance', 'available balance', 'current balance', 'balance is',
   'refund', 'reversal', 'credited', 'deposit', 'payroll', 'salary', 'interest', 'cashback', 'dividend', 'e-transfer received', 'etransfer received', 'received',
   'available credit', 'credit limit',
 ];
 
 const GO_PHRASES = [
   'spent', 'purchase', 'purchased', 'debit', 'debit purchase', 'pos', 'tap', 'tapped', 'charged', 'charge', 'authorized', 'approved',
-  'payment', 'bill payment', 'paid', 'payment to',
+  'payment', 'bill payment', 'bill paid', 'paid', 'payment to',
   'transfer to', 'sent to', 'e-transfer sent', 'etransfer sent', 'interac e-transfer sent',
+  'cost', 'costs', 'pre-authorized debit', 'preauthorized debit',
   'withdrawal', 'atm withdrawal',
 ];
 
@@ -24,14 +26,13 @@ export interface ParsedNotification {
   recurrence: 'One-time' | 'Biweekly' | 'Monthly';
   rejectionReason?: string;
 }
-
 interface AmountCandidate {
   value: number;
   startIndex: number;
   endIndex: number;
 }
 
-const outgoingHints = /(spent|charged|purchase|purchased|debit|payment|paid|withdrawal|transfer|sent)/;
+const outgoingHints = /(spent|charged|purchase|purchased|debit|payment|paid|withdrawal|transfer|sent|cost)/;
 const balanceHints = /(balance|available|limit|remaining|credit limit|available credit|owing)/;
 
 function collapseWhitespace(value: string): string {
@@ -46,10 +47,22 @@ export function findAllAmounts(text: string): AmountCandidate[] {
     const whole = rawWhole.replace(/[\s,]/g, '');
     const value = Number.parseFloat(`${whole}.${decimals}`);
     if (!Number.isFinite(value)) continue;
+
+    const start = match.index || 0;
+    const rawMatch = match[0] || '';
+    const prevChar = start > 0 ? text[start - 1] : '';
+    const hasCurrencyMarker = /^\s*(?:\$|cad\s*)/i.test(rawMatch);
+    const hasExplicitDecimals = Boolean(match[2]);
+
+    // Ignore store/terminal IDs (e.g. #5028) and bare integers that are
+    // unlikely to represent money unless explicitly currency-marked.
+    if (prevChar === '#') continue;
+    if (!hasCurrencyMarker && !hasExplicitDecimals) continue;
+
     candidates.push({
       value,
-      startIndex: match.index || 0,
-      endIndex: (match.index || 0) + match[0].length,
+      startIndex: start,
+      endIndex: start + rawMatch.length,
     });
   }
   return candidates;
