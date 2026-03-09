@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { Transaction, BudgetCategory } from '../../types';
+import { SYSTEM_CATEGORIES } from '../../constants';
 
 export function normalizeTransactions(
   transactions: Transaction[],
@@ -8,6 +9,9 @@ export function normalizeTransactions(
   const categoryToBudget = new Map<string, string>();
   const budgetIds = new Set<string>();
   const budgetNameToId = new Map<string, string>();
+  const systemCategoryIdToName = new Map<string, string>(
+    SYSTEM_CATEGORIES.map(category => [String(category.id).toLowerCase(), category.name.trim().toLowerCase()]),
+  );
   const otherBudgetId =
     budgets.find((b: any) => String(b?.name || '').toLowerCase() === 'other')?.id || null;
 
@@ -54,6 +58,58 @@ export function normalizeTransactions(
       typeof tx.date === 'string'
         ? tx.date.slice(0, 10)
         : '';
+
+    const rawBudgetIdValue = tx.budget_id ?? null;
+    const rawBudgetNameValue = tx.Budget ?? tx.budget ?? null;
+
+    const normalizedBudgetIdValue =
+      typeof rawBudgetIdValue === 'string'
+        ? rawBudgetIdValue.trim().toLowerCase()
+        : null;
+
+    const normalizedBudgetNameValue =
+      typeof rawBudgetNameValue === 'string'
+        ? rawBudgetNameValue.trim().toLowerCase()
+        : null;
+
+    const budgetIdFromBudgetColumn =
+      normalizedBudgetNameValue
+        ? budgetNameToId.get(normalizedBudgetNameValue)
+        : null;
+
+    const budgetIdFromBudgetIdName =
+      normalizedBudgetIdValue
+        ? budgetNameToId.get(normalizedBudgetIdValue)
+        : null;
+
+    const systemCategoryNameFromId =
+      normalizedBudgetIdValue
+        ? systemCategoryIdToName.get(normalizedBudgetIdValue)
+        : null;
+
+    const budgetIdFromSystemCategoryId =
+      systemCategoryNameFromId
+        ? budgetNameToId.get(systemCategoryNameFromId)
+        : null;
+
+    const budgetIdFromPrefixedBudgetId =
+      normalizedBudgetIdValue && normalizedBudgetIdValue.startsWith('budget:')
+        ? budgetNameToId.get(normalizedBudgetIdValue.slice('budget:'.length).replace(/-/g, ' '))
+        : null;
+
+    const rawBudgetId =
+      rawBudgetIdValue != null && budgetIds.has(String(rawBudgetIdValue))
+        ? String(rawBudgetIdValue)
+        : null;
+
+    const initialBudgetId =
+      budgetIdFromBudgetColumn ??
+      budgetIdFromBudgetIdName ??
+      budgetIdFromSystemCategoryId ??
+      budgetIdFromPrefixedBudgetId ??
+      mappedBudgetId ??
+      rawBudgetId ??
+      null;
 
     const rawBudgetValue = tx.budget_id ?? tx.Budget ?? tx.budget ?? null;
     const normalizedRawBudget =
