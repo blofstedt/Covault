@@ -101,6 +101,7 @@ function cleanVendor(raw: string): string {
   vendor = vendor.replace(/\s*\([^)]*\)\s*$/, '');
   vendor = vendor.replace(/\s*(#\s*\d+|store\s*\d+|pos\s*\d+|terminal\s*\w+)\s*$/i, '');
   vendor = vendor.replace(/\s*ending\s*\d{2,4}\s*$/i, '');
+  vendor = vendor.replace(/\s+(monthly|biweekly|bi-weekly|weekly|subscription|recurring)\s*$/i, '');
   vendor = collapseWhitespace(vendor);
   return vendor;
 }
