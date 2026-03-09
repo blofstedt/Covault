@@ -146,27 +146,55 @@ const Dashboard: React.FC<Props> = ({
 
   if (showParsing) {
     return (
-      <TransactionParsing
-        enabled={state.settings.notificationsEnabled}
-        onToggle={(enabled) =>
-          setState(prev => ({
-            ...prev,
-            settings: {
-              ...prev.settings,
-              notificationsEnabled: enabled,
-            },
-          }))
-        }
-        onBack={() => setShowParsing(false)}
-        onGoHome={() => setShowParsing(false)}
-        onAddTransaction={onAddTransaction}
-        allTransactions={normalizedTransactions}
-        onTransactionTap={setSelectedTx}
-        budgets={state.budgets}
-        userId={state.user?.id}
-        onRefreshNotifications={onRefreshNotifications}
-        onReloadTransactions={onReloadTransactions}
-      />
+      <>
+        <TransactionParsing
+          enabled={state.settings.notificationsEnabled}
+          onToggle={(enabled) =>
+            setState(prev => ({
+              ...prev,
+              settings: {
+                ...prev.settings,
+                notificationsEnabled: enabled,
+              },
+            }))
+          }
+          onBack={() => setShowParsing(false)}
+          onGoHome={() => setShowParsing(false)}
+          onAddTransaction={() => setShowTransactionForm(true)}
+          allTransactions={normalizedTransactions}
+          onTransactionTap={setSelectedTx}
+          budgets={state.budgets}
+          userId={state.user?.id}
+          onRefreshNotifications={onRefreshNotifications}
+          onReloadTransactions={onReloadTransactions}
+        />
+
+        {selectedTx && (
+          <TransactionActionModal
+            transaction={selectedTx}
+            budgets={state.budgets}
+            currentUserName={state.user?.name || ''}
+            isSharedAccount={!state.user?.budgetingSolo}
+            onClose={() => setSelectedTx(null)}
+            onEdit={onUpdateTransaction}
+            onDelete={() => onDeleteTransaction(selectedTx.id)}
+          />
+        )}
+
+        {showTransactionForm && state.user?.id && (
+          <TransactionForm
+            onClose={() => setShowTransactionForm(false)}
+            onSave={(tx) => {
+              onAddTransaction(tx);
+              setShowTransactionForm(false);
+            }}
+            budgets={state.budgets}
+            userId={state.user.id}
+            userName={state.user?.name || ''}
+            isSharedAccount={!state.user?.budgetingSolo}
+          />
+        )}
+      </>
     );
   }
 
