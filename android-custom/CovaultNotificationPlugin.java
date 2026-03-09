@@ -49,6 +49,7 @@ public class CovaultNotificationPlugin extends Plugin {
                             event.put("source_app", json.optString("source_app", ""));
                             event.put("raw_text", json.optString("raw_text", ""));
                             event.put("timestamp", json.optLong("timestamp", System.currentTimeMillis()));
+                            event.put("from_scan", json.optBoolean("from_scan", false));
 
                             // Send to JavaScript listeners
                             notifyListeners("transactionDetected", event);

@@ -75,8 +75,7 @@ public class NotificationListener extends NotificationListenerService {
             }
             Log.i(TAG, "scanActiveNotifications: scanning " + activeNotifications.length + " active notifications");
             for (StatusBarNotification sbn : activeNotifications) {
-                // Re-use the same logic as onNotificationPosted
-                onNotificationPosted(sbn);
+                handleNotificationPosted(sbn, true);
             }
         } catch (Exception e) {
             Log.e(TAG, "Error scanning active notifications", e);
@@ -472,6 +471,10 @@ public class NotificationListener extends NotificationListenerService {
 
     @Override
     public void onNotificationPosted(StatusBarNotification sbn) {
+        handleNotificationPosted(sbn, false);
+    }
+
+    private void handleNotificationPosted(StatusBarNotification sbn, boolean fromScan) {
         String packageName = sbn.getPackageName();
 
         // Ignore our own notifications (e.g. guide notification)
@@ -516,7 +519,7 @@ public class NotificationListener extends NotificationListenerService {
         // Broadcast to the local TypeScript pipeline which will classify
         // as transaction or non-transaction — non-transactions will appear in
         // the rejected card so the user can see what was processed.
-        broadcastTransaction(packageName, amount, vendor, fullText, sbn.getPostTime());
+        broadcastTransaction(packageName, amount, vendor, fullText, sbn.getPostTime(), fromScan);
     }
 
     @Override
@@ -572,7 +575,7 @@ public class NotificationListener extends NotificationListenerService {
         return null;
     }
 
-    private void broadcastTransaction(String sourceApp, Double amount, String vendor, String rawText, long postTime) {
+    private void broadcastTransaction(String sourceApp, Double amount, String vendor, String rawText, long postTime, boolean fromScan) {
         try {
             JSONObject transaction = new JSONObject();
             transaction.put("source_app", sourceApp);
@@ -584,6 +587,7 @@ public class NotificationListener extends NotificationListenerService {
             // Use the notification's original post time (stable across rescans)
             // instead of System.currentTimeMillis() which changes each time
             transaction.put("timestamp", postTime);
+            transaction.put("from_scan", fromScan);
 
             // Broadcast to the app
             Intent intent = new Intent("com.covault.app.TRANSACTION_DETECTED");

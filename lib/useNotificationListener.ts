@@ -76,6 +76,7 @@ export const useNotificationListener = ({
                   notificationTimestamp: event.timestamp,
                   fallbackVendor: event.vendor,
                   fallbackAmount: event.amount,
+                  forceReprocess: event.from_scan === true || event.fromScan === true,
                 }, availableCategories);
 
                 // Notify parsing UI about the result
