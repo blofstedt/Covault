@@ -55,15 +55,48 @@ export function normalizeTransactions(
         ? tx.date.slice(0, 10)
         : '';
 
-    const rawBudgetValue = tx.budget_id ?? tx.Budget ?? tx.budget ?? null;
-    const budgetIdFromName =
-      typeof rawBudgetValue === 'string'
-        ? budgetNameToId.get(rawBudgetValue.trim().toLowerCase())
+    const rawBudgetIdValue = tx.budget_id ?? null;
+    const rawBudgetNameValue = tx.Budget ?? tx.budget ?? null;
+
+    const normalizedBudgetIdValue =
+      typeof rawBudgetIdValue === 'string'
+        ? rawBudgetIdValue.trim().toLowerCase()
         : null;
 
-    const initialBudgetId = budgetIdFromName ?? rawBudgetValue ?? mappedBudgetId ?? null;
-    const hasValidBudgetId =
-      initialBudgetId != null && budgetIds.has(String(initialBudgetId));
+    const normalizedBudgetNameValue =
+      typeof rawBudgetNameValue === 'string'
+        ? rawBudgetNameValue.trim().toLowerCase()
+        : null;
+
+    const budgetIdFromBudgetColumn =
+      normalizedBudgetNameValue
+        ? budgetNameToId.get(normalizedBudgetNameValue)
+        : null;
+
+    const budgetIdFromBudgetIdName =
+      normalizedBudgetIdValue
+        ? budgetNameToId.get(normalizedBudgetIdValue)
+        : null;
+
+    const budgetIdFromPrefixedBudgetId =
+      normalizedBudgetIdValue && normalizedBudgetIdValue.startsWith('budget:')
+        ? budgetNameToId.get(normalizedBudgetIdValue.slice('budget:'.length).replace(/-/g, ' '))
+        : null;
+
+    const rawBudgetId =
+      rawBudgetIdValue != null && budgetIds.has(String(rawBudgetIdValue))
+        ? String(rawBudgetIdValue)
+        : null;
+
+    const initialBudgetId =
+      budgetIdFromBudgetColumn ??
+      budgetIdFromBudgetIdName ??
+      budgetIdFromPrefixedBudgetId ??
+      mappedBudgetId ??
+      rawBudgetId ??
+      null;
+
+    const hasValidBudgetId = initialBudgetId != null && budgetIds.has(String(initialBudgetId));
 
     return {
       ...tx,
