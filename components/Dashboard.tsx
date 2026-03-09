@@ -19,6 +19,11 @@ import useNormalizedTransactions from './dashboard_components/useNormalizedTrans
 import useDashboardTotals from './dashboard_components/useDashboardTotals';
 import { getNeedsReviewCount, getReviewQueueChangedEventName } from '../lib/localNotificationMemory';
 
+interface VendorHistoryItem {
+  vendor: string;
+  budget_id: string;
+}
+
 interface Props {
   state: AppState;
   setState: React.Dispatch<React.SetStateAction<AppState>>;
@@ -145,6 +150,55 @@ const Dashboard: React.FC<Props> = ({
     }
   };
 
+  const vendorHistory = useMemo<VendorHistoryItem[]>(() => {
+    const activeUserName = (state.user?.name || '').trim().toLowerCase();
+    if (!activeUserName) return [];
+
+    const latestByVendor = new Map<string, { vendor: string; budget_id: string; sortKey: number }>();
+
+    normalizedTransactions.forEach((tx) => {
+      const txUserName = (tx.userName || '').trim().toLowerCase();
+      const vendorName = (tx.vendor || '').trim();
+      if (!vendorName || !tx.budget_id || txUserName !== activeUserName) return;
+
+      const timestamp = new Date(tx.date || tx.created_at || 0).getTime();
+      const normalizedVendor = vendorName.toLowerCase();
+      const existing = latestByVendor.get(normalizedVendor);
+
+      if (!existing || timestamp >= existing.sortKey) {
+        latestByVendor.set(normalizedVendor, {
+          vendor: vendorName,
+          budget_id: tx.budget_id,
+          sortKey: Number.isFinite(timestamp) ? timestamp : 0,
+        });
+      }
+    });
+
+    return Array.from(latestByVendor.values())
+      .sort((a, b) => b.sortKey - a.sortKey)
+      .map(({ vendor, budget_id }) => ({ vendor, budget_id }));
+  }, [normalizedTransactions, state.user?.name]);
+
+  useEffect(() => {
+    if (!searchQuery.trim()) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      const searchField = document.getElementById('search-field');
+      const searchResults = document.getElementById('search-results-panel');
+
+      if (searchField?.contains(target) || searchResults?.contains(target)) {
+        return;
+      }
+
+      setSearchQuery('');
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [searchQuery]);
+
+
   if (showParsing) {
     return (
       <>
@@ -176,6 +230,7 @@ const Dashboard: React.FC<Props> = ({
             budgets={state.budgets}
             currentUserName={state.user?.name || ''}
             isSharedAccount={!state.user?.budgetingSolo}
+            vendorHistory={vendorHistory}
             onClose={() => setSelectedTx(null)}
             onEdit={onUpdateTransaction}
             onDelete={() => onDeleteTransaction(selectedTx.id)}
@@ -193,6 +248,7 @@ const Dashboard: React.FC<Props> = ({
             userId={state.user.id}
             userName={state.user?.name || ''}
             isSharedAccount={!state.user?.budgetingSolo}
+            vendorHistory={vendorHistory}
           />
         )}
       </>
@@ -301,6 +357,7 @@ const Dashboard: React.FC<Props> = ({
           budgets={state.budgets}
           currentUserName={state.user?.name || ''}
           isSharedAccount={!state.user?.budgetingSolo}
+          vendorHistory={vendorHistory}
           onClose={() => setSelectedTx(null)}
           onEdit={onUpdateTransaction}
           onDelete={() => onDeleteTransaction(selectedTx.id)}
@@ -318,6 +375,7 @@ const Dashboard: React.FC<Props> = ({
           userId={state.user.id}
           userName={state.user?.name || ''}
           isSharedAccount={!state.user?.budgetingSolo}
+          vendorHistory={vendorHistory}
         />
       )}
     </>

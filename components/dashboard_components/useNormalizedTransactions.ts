@@ -49,6 +49,13 @@ export function normalizeTransactions(
         ? categoryToBudget.get(String(rawCategoryId))
         : null;
 
+    const mappedBudgetIdFromSystemCategory =
+      rawCategoryId != null
+        ? budgetNameToId.get(
+            systemCategoryIdToName.get(String(rawCategoryId).toLowerCase()) || '',
+          )
+        : null;
+
     const amount =
       typeof tx.amount === 'number'
         ? tx.amount
@@ -105,6 +112,7 @@ export function normalizeTransactions(
     const initialBudgetId =
       budgetIdFromBudgetColumn ??
       budgetIdFromBudgetIdName ??
+      mappedBudgetIdFromSystemCategory ??
       budgetIdFromSystemCategoryId ??
       budgetIdFromPrefixedBudgetId ??
       mappedBudgetId ??

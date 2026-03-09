@@ -3,11 +3,17 @@ import { Transaction, BudgetCategory } from '../types';
 import TransactionForm from './TransactionForm';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 
+interface VendorHistoryItem {
+  vendor: string;
+  budget_id: string;
+}
+
 interface TransactionActionModalProps {
   transaction: Transaction;
   budgets: BudgetCategory[];
   currentUserName: string;
   isSharedAccount: boolean;
+  vendorHistory?: VendorHistoryItem[];
   onClose: () => void;
   onEdit: (tx: Transaction) => void;
   onDelete: () => void;
@@ -19,6 +25,7 @@ const TransactionActionModal: React.FC<TransactionActionModalProps> = ({
   budgets,
   currentUserName,
   isSharedAccount,
+  vendorHistory = [],
   onClose,
   onEdit,
   onDelete,
@@ -63,6 +70,7 @@ const TransactionActionModal: React.FC<TransactionActionModalProps> = ({
       userName={currentUserName}
       initialTransaction={transaction}
       isSharedAccount={isSharedAccount}
+      vendorHistory={vendorHistory}
       onDelete={() => setShowDeleteConfirm(true)}
       onVendorOverrideUpdated={onVendorOverrideUpdated}
     />
