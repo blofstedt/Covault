@@ -95,6 +95,8 @@ export interface NotificationInput {
   fallbackVendor?: string;
   /** Fallback amount from native plugin (used if AI fails) */
   fallbackAmount?: number;
+  /** True when user manually triggered a refresh scan of active notifications */
+  forceReprocess?: boolean;
 }
 
 export interface ProcessingResult {
@@ -558,7 +560,7 @@ export async function processNotificationWithAI(
     input.rawNotification,
     notifTimestamp,
   );
-  if (recentlyProcessedCache.has(inMemoryKey)) {
+  if (!input.forceReprocess && recentlyProcessedCache.has(inMemoryKey)) {
     console.log('[AI pipeline] In-memory dedup hit, skipping');
     return {
       processed: false,
