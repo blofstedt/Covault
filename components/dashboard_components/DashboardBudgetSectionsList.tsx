@@ -58,10 +58,6 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
   );
 
   const expandedBudgetId = expandedBudgets.size > 0 ? Array.from(expandedBudgets)[0] : null;
-  const budgetsToRender = expandedBudgetId
-    ? visibleBudgets.filter((budget) => budget.id === expandedBudgetId)
-    : visibleBudgets;
-
   const allCollapsed = expandedBudgets.size === 0;
 
   return (
@@ -69,7 +65,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
       ref={scrollContainerRef}
       className="flex-1 min-h-0 flex flex-col overflow-hidden mt-1 pb-24 no-scrollbar scroll-smooth h-full transition-all duration-500 gap-2"
     >
-      {budgetsToRender.map((budget, index) => {
+      {visibleBudgets.map((budget, index) => {
           const budgetTxs = transactions.filter(
             (t) =>
               t.budget_id === budget.id
@@ -96,16 +92,18 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
                   budgetRefs?.current.delete(budget.id);
                 }
               }}
-              className={`flex flex-col ${
-                isExpanded
-                  ? 'flex-1 min-h-0'
+              className={`flex flex-col transition-all duration-500 ease-in-out transform-gpu ${
+                expandedBudgetId
+                  ? isExpanded
+                    ? 'flex-1 min-h-0 opacity-100 scale-100 max-h-[1000px]'
+                    : 'flex-none min-h-0 max-h-0 opacity-0 scale-[0.98] overflow-hidden pointer-events-none'
                   : shouldAutoFitClosedCards
-                    ? 'flex-1 basis-0 min-h-0'
-                    : 'min-h-[84px]'
+                    ? 'flex-1 basis-0 min-h-0 opacity-100 scale-100 max-h-[1000px]'
+                    : 'min-h-[84px] opacity-100 scale-100 max-h-[1000px]'
               }`}
               style={{
                 animationDelay: `${index * 40}ms`,
-                transition: 'flex 0.5s cubic-bezier(0.32, 0.72, 0, 1), min-height 0.5s cubic-bezier(0.32, 0.72, 0, 1)',
+                transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
               }}
             >
               <BudgetSection
