@@ -160,7 +160,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   const hasAnyResults = filteredCurrent.length > 0 || filteredPast.length > 0 || filteredFuture.length > 0;
 
   return (
-    <div className="flex-1 overflow-y-auto no-scrollbar mt-3">
+    <div id="search-results-panel" className="flex-1 overflow-y-auto no-scrollbar mt-3">
       <div className="px-2 pb-8 space-y-4">
         <div className="flex items-center justify-between px-1">
           <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 dark:text-slate-600">

@@ -121,6 +121,28 @@ describe('normalizeTransactions', () => {
     expect(normalized[0].budget_id).toBe('groceries-id');
   });
 
+  it('maps system category UUID category_id values to matching budget IDs', () => {
+    const budgets: any[] = [
+      { id: 'transport-user-id', name: 'Transport', totalLimit: 1000 },
+      { id: 'other-id', name: 'Other', totalLimit: 1000 },
+    ];
+
+    const transactions: any[] = [
+      {
+        id: 't1',
+        user_id: 'u1',
+        vendor: 'Parking Garage',
+        amount: 35,
+        date: '2026-03-04',
+        category_id: '33333333-3333-3333-3333-333333333333',
+      },
+    ];
+
+    const normalized = normalizeTransactions(transactions as any, budgets as any);
+
+    expect(normalized[0].budget_id).toBe('transport-user-id');
+  });
+
   it('keeps valid budget IDs unchanged', () => {
     const budgets: any[] = [
       { id: 'b1', name: 'Groceries', totalLimit: 1000 },
