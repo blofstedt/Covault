@@ -76,6 +76,29 @@ describe('normalizeTransactions', () => {
     expect(normalized[0].budget_id).toBe('housing-id');
   });
 
+
+  it('maps system category UUID budget_id values to user budget IDs', () => {
+    const budgets: any[] = [
+      { id: 'housing-user-id', name: 'Housing', totalLimit: 1000 },
+      { id: 'other-id', name: 'Other', totalLimit: 1000 },
+    ];
+
+    const transactions: any[] = [
+      {
+        id: 't1',
+        user_id: 'u1',
+        vendor: 'Landlord',
+        amount: 1200,
+        date: '2026-02-01',
+        budget_id: '11111111-1111-1111-1111-111111111111',
+      },
+    ];
+
+    const normalized = normalizeTransactions(transactions as any, budgets as any);
+
+    expect(normalized[0].budget_id).toBe('housing-user-id');
+  });
+
   it('maps prefixed legacy budget IDs to matching budget IDs', () => {
     const budgets: any[] = [
       { id: 'groceries-id', name: 'Groceries', totalLimit: 1000 },
