@@ -21,6 +21,10 @@ function normalizeRecurrence(tx: Transaction): string {
   return 'one-time';
 }
 
+function getTransactionBudgetId(tx: Transaction): string | undefined {
+  return tx.budget_id ?? (tx as any).category_id;
+}
+
 /**
  * Generate projected recurring transactions from existing transactions.
  *
@@ -40,7 +44,7 @@ export function generateProjectedTransactions(base: Transaction[]): Transaction[
   const realKeys = new Set(
     base.map((tx) => {
       const isoDate = toIsoDay(tx.date);
-      return `${tx.vendor}|${tx.amount}|${isoDate}|${tx.budget_id}`;
+      return `${tx.vendor}|${tx.amount}|${isoDate}|${getTransactionBudgetId(tx) || ''}`;
     }),
   );
 
@@ -70,11 +74,13 @@ export function generateProjectedTransactions(base: Transaction[]): Transaction[
       const isoDate = toIsoDay(current);
       const monthKey = isoDate.slice(0, 7);
       const isCurrentMonthOccurrence = monthKey === currentMonthKey;
-      const key = `${tx.vendor}|${tx.amount}|${isoDate}|${tx.budget_id}`;
+      const budgetId = getTransactionBudgetId(tx);
+      const key = `${tx.vendor}|${tx.amount}|${isoDate}|${budgetId || ''}`;
 
       if ((current >= today || isCurrentMonthOccurrence) && !realKeys.has(key)) {
         projected.push({
           ...tx,
+          budget_id: budgetId,
           id: `projected-${tx.id}-${isoDate}`,
           date: isoDate,
           is_projected: true,

@@ -18,6 +18,8 @@ import SearchResults from './dashboard_components/SearchResults';
 import useNormalizedTransactions from './dashboard_components/useNormalizedTransactions';
 import useDashboardTotals from './dashboard_components/useDashboardTotals';
 import { getNeedsReviewCount, getReviewQueueChangedEventName } from '../lib/localNotificationMemory';
+import { supabase } from '../lib/supabase';
+import { resolveBudgetIdFromRow } from '../lib/hooks/transactionMappers';
 
 interface VendorHistoryItem {
   vendor: string;
@@ -66,6 +68,8 @@ const Dashboard: React.FC<Props> = ({
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [showTransactionForm, setShowTransactionForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [remoteVendorHistory, setRemoteVendorHistory] = useState<VendorHistoryItem[]>([]);
   const [expandedBudgets, setExpandedBudgets] = useState<Set<string>>(new Set());
   const hasExpandedBudget = expandedBudgets.size > 0;
 
@@ -151,15 +155,16 @@ const Dashboard: React.FC<Props> = ({
   };
 
   const vendorHistory = useMemo<VendorHistoryItem[]>(() => {
+    const activeUserId = state.user?.id;
     const activeUserName = (state.user?.name || '').trim().toLowerCase();
-    if (!activeUserName) return [];
-
     const latestByVendor = new Map<string, { vendor: string; budget_id: string; sortKey: number }>();
 
     normalizedTransactions.forEach((tx) => {
-      const txUserName = (tx.userName || '').trim().toLowerCase();
+      const belongsToUser = activeUserId
+        ? tx.user_id === activeUserId
+        : (tx.userName || '').trim().toLowerCase() === activeUserName;
       const vendorName = (tx.vendor || '').trim();
-      if (!vendorName || !tx.budget_id || txUserName !== activeUserName) return;
+      if (!belongsToUser || !vendorName || !tx.budget_id) return;
 
       const timestamp = new Date(tx.date || tx.created_at || 0).getTime();
       const normalizedVendor = vendorName.toLowerCase();
@@ -174,13 +179,69 @@ const Dashboard: React.FC<Props> = ({
       }
     });
 
+    remoteVendorHistory.forEach((item) => {
+      if (!item.vendor || !item.budget_id) return;
+      const normalizedVendor = item.vendor.toLowerCase();
+      const existing = latestByVendor.get(normalizedVendor);
+      if (!existing) {
+        latestByVendor.set(normalizedVendor, {
+          vendor: item.vendor,
+          budget_id: item.budget_id,
+          sortKey: 0,
+        });
+      }
+    });
+
     return Array.from(latestByVendor.values())
       .sort((a, b) => b.sortKey - a.sortKey)
       .map(({ vendor, budget_id }) => ({ vendor, budget_id }));
-  }, [normalizedTransactions, state.user?.name]);
+  }, [normalizedTransactions, remoteVendorHistory, state.user?.id, state.user?.name]);
 
   useEffect(() => {
-    if (!searchQuery.trim()) return;
+    const userId = state.user?.id;
+    if (!userId) {
+      setRemoteVendorHistory([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadVendorHistory = async () => {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('vendor, budget, budget_id, category_id, date, created_at, user_id')
+        .eq('user_id', userId)
+        .order('date', { ascending: false })
+        .limit(250);
+
+      if (cancelled || error || !data) return;
+
+      const byVendor = new Map<string, VendorHistoryItem>();
+      for (const row of data) {
+        const vendor = String(row.vendor || '').trim();
+        if (!vendor) continue;
+
+        const budgetId = resolveBudgetIdFromRow(row);
+        if (!budgetId) continue;
+
+        const key = vendor.toLowerCase();
+        if (!byVendor.has(key)) {
+          byVendor.set(key, { vendor, budget_id: budgetId });
+        }
+      }
+
+      setRemoteVendorHistory(Array.from(byVendor.values()));
+    };
+
+    loadVendorHistory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [state.user?.id]);
+
+  useEffect(() => {
+    if (!isSearchOpen && !searchQuery.trim()) return;
 
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as Node | null;
@@ -192,11 +253,12 @@ const Dashboard: React.FC<Props> = ({
       }
 
       setSearchQuery('');
+      setIsSearchOpen(false);
     };
 
     document.addEventListener('pointerdown', handlePointerDown);
     return () => document.removeEventListener('pointerdown', handlePointerDown);
-  }, [searchQuery]);
+  }, [isSearchOpen, searchQuery]);
 
 
   if (showParsing) {
@@ -264,7 +326,12 @@ const Dashboard: React.FC<Props> = ({
           isSharedAccount={!state.user?.budgetingSolo}
           remainingMoney={remainingMoney}
           searchQuery={searchQuery}
-          onSearchQueryChange={setSearchQuery}
+          isSearchOpen={isSearchOpen}
+          onSearchQueryChange={(value) => {
+            setSearchQuery(value);
+            if (value.trim()) setIsSearchOpen(true);
+          }}
+          onSearchOpenChange={setIsSearchOpen}
         />
 
         {searchQuery.trim() ? (
