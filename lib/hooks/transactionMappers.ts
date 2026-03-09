@@ -2,6 +2,7 @@
 import { useCallback } from 'react';
 import type { Transaction } from '../../types';
 import { Recurrence } from '../../types';
+import { SYSTEM_CATEGORIES } from '../../constants';
 
 // Valid recurrence values that must match the database CHECK constraint
 const VALID_RECURRENCES = [
@@ -9,6 +10,55 @@ const VALID_RECURRENCES = [
   Recurrence.BIWEEKLY,
   Recurrence.MONTHLY,
 ];
+
+const normalizeBudgetName = (value: string) => value.trim().toLowerCase();
+
+const systemCategoryIdByName = new Map(
+  SYSTEM_CATEGORIES.map(category => [normalizeBudgetName(category.name), category.id]),
+);
+
+export const resolveBudgetNameForInsert = (
+  budgetId: string | null,
+  budgets: { id: string; name: string }[] = [],
+): string => {
+  if (!budgetId) {
+    throw new Error(`Transaction must have a valid budget_id (category_id). Got: ${budgetId}`);
+  }
+
+  const directIdMatch = budgets.find(b => b.id === budgetId);
+  if (directIdMatch?.name) return directIdMatch.name;
+
+  const normalizedInput = normalizeBudgetName(budgetId);
+  const nameMatch = budgets.find(b => normalizeBudgetName(b.name) === normalizedInput);
+  if (nameMatch?.name) return nameMatch.name;
+
+  if (budgetId.startsWith('budget:')) {
+    const fromPrefixedId = budgetId.slice('budget:'.length).replace(/-/g, ' ');
+    const prefixedMatch = budgets.find(
+      b => normalizeBudgetName(b.name) === normalizeBudgetName(fromPrefixedId),
+    );
+    if (prefixedMatch?.name) return prefixedMatch.name;
+  }
+
+  throw new Error(
+    `Cannot map budget_id "${budgetId}" to a valid budget name for transactions.budget`,
+  );
+};
+
+export const resolveBudgetIdFromRow = (row: any): string | null => {
+  if (row.category_id) return String(row.category_id);
+  if (row.budget_id) return String(row.budget_id);
+
+  const budgetRaw = row.Budget || row.budget;
+  if (!budgetRaw) return null;
+
+  const budgetName = String(budgetRaw);
+  const normalizedName = normalizeBudgetName(budgetName);
+  const systemId = systemCategoryIdByName.get(normalizedName);
+  if (systemId) return systemId;
+
+  return `budget:${normalizedName.replace(/\s+/g, '-')}`;
+};
 
 // Build the object Supabase expects — only columns that exist in the table
 export const useToSupabaseTransaction = (budgets: { id: string; name: string }[] = []) =>
@@ -34,12 +84,7 @@ export const useToSupabaseTransaction = (budgets: { id: string; name: string }[]
       }
     }
 
-    const budgetName = budgets.find(b => b.id === tx.budget_id)?.name;
-    if (!budgetName) {
-      throw new Error(
-        `Cannot map budget_id "${tx.budget_id}" to a valid budget name for transactions.budget`,
-      );
-    }
+    const budgetName = resolveBudgetNameForInsert(tx.budget_id, budgets);
 
     const row: Record<string, any> = {
       id: tx.id,
@@ -82,7 +127,7 @@ export const useFromSupabaseTransaction = () =>
       date: typeof row.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.date)
         ? row.date + 'T12:00:00.000Z'
         : new Date(row.date).toISOString(),
-      budget_id: row.category_id || row.budget_id || row.Budget || row.budget || null,
+      budget_id: resolveBudgetIdFromRow(row),
       recurrence: recurrence,
       label: row.label || row.type || 'Manual',
       is_projected: row.is_projected,
