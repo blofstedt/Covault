@@ -27,4 +27,26 @@ describe('deviceTransactionParser', () => {
     expect(result.amount).toBe(40);
     expect(result.vendorDisplay).toBe('Alex');
   });
+
+  it('parses spent notifications with store suffix ids (real-world case)', () => {
+    const result = parseNotificationText('TIM HORTONS #5028 You spent $7.34 with your credit card.');
+    expect(result.isOutgoing).toBe(true);
+    expect(result.amount).toBe(7.34);
+    expect(result.vendorDisplay).toBe('Tim Hortons');
+  });
+
+  it('ignores store number ids as amount candidates', () => {
+    const text = 'TIM HORTONS #5028 You spent $7.34 with your credit card.';
+    const candidates = findAllAmounts(text);
+    const picked = pickAmount(candidates, text.toLowerCase());
+    expect(picked).toBe(7.34);
+  });
+
+  it('supports outgoing cost wording', () => {
+    const result = parseNotificationText('This transaction costs $19.99 at Uber Eats');
+    expect(result.isOutgoing).toBe(true);
+    expect(result.amount).toBe(19.99);
+    expect(result.vendorDisplay).toBe('Uber Eats');
+  });
+
 });
