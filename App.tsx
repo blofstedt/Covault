@@ -10,7 +10,7 @@ import { useAuthState, AuthStatus } from './lib/useAuthState';
 import { useDeepLinks } from './lib/useDeepLinks';
 import { useNotificationListener } from './lib/useNotificationListener';
 import { covaultNotification, autoDetectAndSaveMonitoredApps } from './lib/covaultNotification';
-import { KNOWN_BANKING_APPS } from './lib/bankingApps';
+import { loadBankingAppsFromDB } from './lib/bankingApps';
 import { useAppTheme } from './lib/useAppTheme';
 import { useUserData } from './lib/useUserData';
 
@@ -136,21 +136,26 @@ const App: React.FC = () => {
 
   const [secondsUntilNextScan, setSecondsUntilNextScan] = useState<number | null>(null);
 
-  const refreshNotifications = useCallback(async () => {
-    if (!Capacitor.isNativePlatform()) return; // Safety check
-    await autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
+  const refreshMonitoredAppsAndScan = useCallback(async () => {
+    const bankingApps = await loadBankingAppsFromDB();
+    await autoDetectAndSaveMonitoredApps(bankingApps);
     if (covaultNotification) {
       await covaultNotification.scanActiveNotifications();
     }
-    setSecondsUntilNextScan(SCAN_INTERVAL_S);
   }, []);
 
-  // Fixed: Only run banking detection on actual Android/iOS devices
+  const refreshNotifications = useCallback(async () => {
+    if (!Capacitor.isNativePlatform()) return; // Safety check
+    await refreshMonitoredAppsAndScan();
+    setSecondsUntilNextScan(SCAN_INTERVAL_S);
+  }, [refreshMonitoredAppsAndScan]);
+
+  // Run a detection + scan pass on app start so pre-existing notifications
+  // can be processed immediately after install/re-open.
   useEffect(() => {
-    if (Capacitor.isNativePlatform()) {
-      autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
-    }
-  }, []);
+    if (!Capacitor.isNativePlatform() || !appState.settings.notificationsEnabled) return;
+    refreshMonitoredAppsAndScan();
+  }, [appState.settings.notificationsEnabled, refreshMonitoredAppsAndScan]);
 
   const prevNotificationsEnabled = useRef(appState.settings.notificationsEnabled);
   useEffect(() => {
@@ -163,10 +168,7 @@ const App: React.FC = () => {
     if (!wasEnabled && isEnabled && Capacitor.isNativePlatform()) {
       const userId = appState.user?.id;
       (async () => {
-        await autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
-        if (covaultNotification) {
-          await covaultNotification.scanActiveNotifications();
-        }
+        await refreshMonitoredAppsAndScan();
         if (userId) {
           timeoutId = setTimeout(() => loadTransactions(userId), SCAN_PROCESSING_DELAY_MS);
         }
@@ -176,7 +178,7 @@ const App: React.FC = () => {
     return () => {
       if (timeoutId != null) clearTimeout(timeoutId);
     };
-  }, [appState.settings.notificationsEnabled, appState.user?.id, loadTransactions]);
+  }, [appState.settings.notificationsEnabled, appState.user?.id, loadTransactions, refreshMonitoredAppsAndScan]);
 
   useEffect(() => {
     if (!appState.settings.notificationsEnabled || !covaultNotification || !Capacitor.isNativePlatform()) {
@@ -186,10 +188,14 @@ const App: React.FC = () => {
 
     setSecondsUntilNextScan(SCAN_INTERVAL_S);
 
+    // Immediately process existing notifications when parsing is already enabled.
+    refreshMonitoredAppsAndScan().catch(e => {
+      console.warn('[initial periodic scan] Error:', e);
+    });
+
     const intervalId = setInterval(async () => {
       try {
-        await autoDetectAndSaveMonitoredApps(KNOWN_BANKING_APPS);
-        await covaultNotification.scanActiveNotifications();
+        await refreshMonitoredAppsAndScan();
       } catch (e) {
         console.warn('[periodic scan] Error:', e);
       }
@@ -204,7 +210,7 @@ const App: React.FC = () => {
       clearInterval(intervalId);
       clearInterval(tickId);
     };
-  }, [appState.settings.notificationsEnabled]);
+  }, [appState.settings.notificationsEnabled, refreshMonitoredAppsAndScan]);
 
   useAppTheme(appState.settings.theme);
 

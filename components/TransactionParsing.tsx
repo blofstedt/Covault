@@ -10,7 +10,7 @@ import PageShell from './ui/PageShell';
 
 import { supabase } from '../lib/supabase';
 import { covaultNotification } from '../lib/covaultNotification';
-import { KNOWN_BANKING_APPS } from '../lib/bankingApps';
+import { loadBankingAppsFromDB } from '../lib/bankingApps';
 import { getNeedsReviewCount, getNeedsReviewIdSet, getReviewQueueChangedEventName } from '../lib/localNotificationMemory';
 
 /** Delay (ms) after scanning to allow notification processing before reloading data */
@@ -57,11 +57,12 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   const loadMonitoredBanks = useCallback(async () => {
     if (!covaultNotification) return;
     try {
+      const knownBankingApps = await loadBankingAppsFromDB();
       const { apps: packageNames } = await covaultNotification.getMonitoredApps();
       const bankMap = new Map<string, string>();
       for (const pkg of packageNames) {
-        if (pkg in KNOWN_BANKING_APPS) {
-          bankMap.set(pkg, KNOWN_BANKING_APPS[pkg]);
+        if (pkg in knownBankingApps) {
+          bankMap.set(pkg, knownBankingApps[pkg]);
         }
       }
       setMonitoredBanks(bankMap);
