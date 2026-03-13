@@ -49,4 +49,11 @@ describe('deviceTransactionParser', () => {
     expect(result.vendorDisplay).toBe('Uber Eats');
   });
 
+  it('accepts one-time purchase wording as outgoing spend', () => {
+    const result = parseNotificationText('One-time purchase at Steam for $35.00');
+    expect(result.isOutgoing).toBe(true);
+    expect(result.amount).toBe(35);
+    expect(result.vendorDisplay).toBe('Steam');
+  });
+
 });
