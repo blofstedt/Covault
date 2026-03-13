@@ -1,7 +1,7 @@
 import { formatVendorName } from './formatVendorName';
 
 const STOP_PHRASES = [
-  'verification code', 'security code', 'one-time', 'otp', 'passcode', '2fa', 'password', 'login', 'signed in', 'new device',
+  'verification code', 'security code', 'otp', 'passcode', '2fa', 'password', 'login', 'signed in', 'new device',
   'statement', 'e-statement', 'payment due', 'due date',
   'account balance', 'available balance', 'current balance', 'balance is',
   'refund', 'reversal', 'credited', 'deposit', 'payroll', 'salary', 'interest', 'cashback', 'dividend', 'e-transfer received', 'etransfer received', 'received',
@@ -143,11 +143,13 @@ export function parseNotificationText(text: string): ParsedNotification {
   const hasGo = GO_PHRASES.some(p => tLower.includes(p));
   const amountCandidates = findAllAmounts(t);
 
-  if (hasStop || amountCandidates.length === 0 || !hasGo) {
+  const shouldReject = amountCandidates.length === 0 || !hasGo || (hasStop && !hasGo);
+
+  if (shouldReject) {
     return {
       isOutgoing: false,
       recurrence: 'One-time',
-      rejectionReason: hasStop ? 'Contains stop phrase' : 'Missing amount or outgoing keywords',
+      rejectionReason: hasStop && !hasGo ? 'Contains stop phrase' : 'Missing amount or outgoing keywords',
     };
   }
 

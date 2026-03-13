@@ -24,15 +24,16 @@ afterEach(() => {
 });
 
 describe('generateProjectedTransactions', () => {
-  it('keeps a monthly projected occurrence visible for current month even when day already passed', () => {
+  it('does not keep projected occurrences once the projected date is today or in the past', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-03-20T12:00:00Z'));
 
     const projected = generateProjectedTransactions([
-      makeTransaction({ date: '2026-02-01', recurrence: 'Monthly' }),
+      makeTransaction({ date: '2026-02-20', recurrence: 'Monthly' }),
     ]);
 
-    expect(projected.map((tx) => tx.date)).toContain('2026-03-01');
+    expect(projected.map((tx) => tx.date)).not.toContain('2026-03-20');
+    expect(projected.map((tx) => tx.date)).toContain('2026-04-20');
   });
 
   it('projects six monthly occurrences ahead and supports legacy recur field on projected DB rows', () => {

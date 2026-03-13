@@ -391,7 +391,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           <div className="space-y-3">
             <div className="flex items-center justify-between px-2">
               <span className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">
-                {isAITransaction ? 'Select Budget' : (selectedIds.size > 1 ? 'Slide to Allocate' : 'Target Vault (Max 2)')}
+                {isAITransaction ? 'Select Budget' : (selectedIds.size > 1 ? 'Slide to Allocate' : 'Target Vault')}
               </span>
               {selectedIds.size > 1 && !isAITransaction && (
                 <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded-full animate-pulse">
