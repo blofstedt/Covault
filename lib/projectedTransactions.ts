@@ -31,14 +31,14 @@ function getTransactionBudgetId(tx: Transaction): string | undefined {
  * Rules:
  * - Monthly + Biweekly recurrences are projected.
  * - Only future occurrences are projected (today and past are treated as elapsed/real timeline).
- * - Project up to 6 months ahead so forward months can render in UI/chart.
+ * - Project up to 3 months ahead as a rolling horizon.
  * - Display-only (never written to DB).
  */
 export function generateProjectedTransactions(base: Transaction[]): Transaction[] {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const horizon = addMonths(today, 6);
+  const horizon = addMonths(today, 3);
 
   const realKeys = new Set(
     base.map((tx) => {

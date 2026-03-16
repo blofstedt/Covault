@@ -36,7 +36,7 @@ describe('generateProjectedTransactions', () => {
     expect(projected.map((tx) => tx.date)).toContain('2026-04-20');
   });
 
-  it('projects six monthly occurrences ahead and supports legacy recur field on projected DB rows', () => {
+  it('projects a rolling three-month monthly horizon and supports legacy recur field on projected DB rows', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-03-20T12:00:00Z'));
 
@@ -54,9 +54,6 @@ describe('generateProjectedTransactions', () => {
       '2026-03-28',
       '2026-04-28',
       '2026-05-28',
-      '2026-06-28',
-      '2026-07-28',
-      '2026-08-28',
     ]);
   });
 
