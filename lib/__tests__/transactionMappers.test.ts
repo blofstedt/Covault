@@ -41,6 +41,12 @@ describe('transactionMappers budget resolution', () => {
     expect(resolveBudgetIdFromRow({ budget: 'Housing' })).toBe('11111111-1111-1111-1111-111111111111');
   });
 
+  it('prefers budget text over legacy category_id when both are present', () => {
+    expect(resolveBudgetIdFromRow({ budget: 'Housing', category_id: 'stale-id' })).toBe(
+      '11111111-1111-1111-1111-111111111111',
+    );
+  });
+
   it('falls back to normalized budget: prefixed ids for non-system categories', () => {
     expect(resolveBudgetIdFromRow({ budget: 'Emergency Fund' })).toBe('budget:emergency-fund');
   });
