@@ -13,6 +13,34 @@ const VALID_RECURRENCES = [
 
 const normalizeBudgetName = (value: string) => value.trim().toLowerCase();
 
+const toLocalIsoDay = (value: Date) => {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const toIsoDay = (value: unknown): string => {
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+    return value.slice(0, 10);
+  }
+
+  const parsed = new Date(String(value));
+  if (Number.isNaN(parsed.getTime())) return '';
+  return parsed.toISOString().slice(0, 10);
+};
+
+export const shouldSolidifyProjectedTransaction = (
+  isProjected: boolean,
+  transactionDate: unknown,
+  now: Date = new Date(),
+) => {
+  if (!isProjected) return false;
+  const txIsoDay = toIsoDay(transactionDate);
+  if (!txIsoDay) return false;
+  return txIsoDay <= toLocalIsoDay(now);
+};
+
 const systemCategoryIdByName = new Map(
   SYSTEM_CATEGORIES.map(category => [normalizeBudgetName(category.name), category.id]),
 );
@@ -121,6 +149,8 @@ export const useFromSupabaseTransaction = () =>
       }
     }
 
+    const shouldSolidify = shouldSolidifyProjectedTransaction(row.is_projected, row.date);
+
     return {
       id: row.id,
       user_id: row.user_id,
@@ -135,7 +165,7 @@ export const useFromSupabaseTransaction = () =>
       budget_id: resolveBudgetIdFromRow(row),
       recurrence: recurrence,
       label: row.label || row.type || 'Manual',
-      is_projected: row.is_projected,
+      is_projected: shouldSolidify ? false : row.is_projected,
       userName: row.user_name || '',
       created_at: row.created_at,
     };
