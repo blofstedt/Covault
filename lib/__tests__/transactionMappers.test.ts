@@ -1,11 +1,36 @@
 import { describe, expect, it } from 'vitest';
-import { resolveBudgetIdFromRow, resolveBudgetNameForInsert, toSupabaseTransaction } from '../hooks/transactionMappers';
+import {
+  resolveBudgetIdFromRow,
+  resolveBudgetNameForInsert,
+  shouldSolidifyProjectedTransaction,
+  toSupabaseTransaction,
+} from '../hooks/transactionMappers';
 
 const budgets = [
   { id: '11111111-1111-1111-1111-111111111111', name: 'Housing' },
   { id: 'budget:groceries', name: 'Groceries' },
   { id: 'custom-id', name: 'Emergency Fund' },
 ];
+
+describe('shouldSolidifyProjectedTransaction', () => {
+  const now = new Date('2026-03-20T00:01:00.000Z');
+
+  it('solidifies projected transactions dated today', () => {
+    expect(shouldSolidifyProjectedTransaction(true, '2026-03-20', now)).toBe(true);
+  });
+
+  it('solidifies projected transactions dated before today', () => {
+    expect(shouldSolidifyProjectedTransaction(true, '2026-03-19', now)).toBe(true);
+  });
+
+  it('does not solidify projected transactions dated after today', () => {
+    expect(shouldSolidifyProjectedTransaction(true, '2026-03-21', now)).toBe(false);
+  });
+
+  it('does not solidify non-projected transactions', () => {
+    expect(shouldSolidifyProjectedTransaction(false, '2026-03-19', now)).toBe(false);
+  });
+});
 
 describe('transactionMappers budget resolution', () => {
   it('resolves DB category id directly when present', () => {
