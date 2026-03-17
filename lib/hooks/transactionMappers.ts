@@ -74,18 +74,21 @@ export const resolveBudgetNameForInsert = (
 };
 
 export const resolveBudgetIdFromRow = (row: any): string | null => {
-  if (row.category_id) return String(row.category_id);
   if (row.budget_id) return String(row.budget_id);
 
   const budgetRaw = row.Budget || row.budget;
-  if (!budgetRaw) return null;
+  if (budgetRaw) {
+    const budgetName = String(budgetRaw);
+    const normalizedName = normalizeBudgetName(budgetName);
+    const systemId = systemCategoryIdByName.get(normalizedName);
+    if (systemId) return systemId;
 
-  const budgetName = String(budgetRaw);
-  const normalizedName = normalizeBudgetName(budgetName);
-  const systemId = systemCategoryIdByName.get(normalizedName);
-  if (systemId) return systemId;
+    return `budget:${normalizedName.replace(/\s+/g, '-')}`;
+  }
 
-  return `budget:${normalizedName.replace(/\s+/g, '-')}`;
+  // Keep legacy category_id as a final fallback for older rows.
+  if (row.category_id) return String(row.category_id);
+  return null;
 };
 
 // Build the object Supabase expects — only columns that exist in the table

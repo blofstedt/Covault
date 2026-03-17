@@ -8,6 +8,31 @@ import { markReviewQueueStatus, upsertVendorMapEntry } from '../localNotificatio
 import { useToSupabaseTransaction, useFromSupabaseTransaction } from './transactionMappers';
 import type { UseUserDataParams } from './types';
 
+
+const PROJECTED_TRANSACTION_ID_REGEX = /^projected-(.+)-(\d{4}-\d{2}-\d{2})$/;
+
+export const getSourceTransactionIdFromProjectedId = (transactionId: string): string | null => {
+  const match = PROJECTED_TRANSACTION_ID_REGEX.exec(String(transactionId || ''));
+  return match ? match[1] : null;
+};
+
+export const buildPersistedUpdateTransaction = (
+  updatedTx: Transaction,
+  sourceTx?: Transaction,
+): Transaction => {
+  if (!sourceTx) return updatedTx;
+  return {
+    ...sourceTx,
+    vendor: updatedTx.vendor,
+    amount: updatedTx.amount,
+    budget_id: updatedTx.budget_id,
+    recurrence: updatedTx.recurrence,
+    label: updatedTx.label || sourceTx.label,
+    userName: updatedTx.userName || sourceTx.userName,
+    is_projected: false,
+  };
+};
+
 export const useTransactionOps = ({
   appState,
   setAppState,
@@ -119,32 +144,45 @@ export const useTransactionOps = ({
   // Update transaction
   const handleUpdateTransaction = useCallback(
     async (updatedTx: Transaction) => {
+      const sourceTransactionId = getSourceTransactionIdFromProjectedId(updatedTx.id);
+      const isProjectedEdit = Boolean(sourceTransactionId);
+      const originalTx = appState.transactions.find(t => t.id === (sourceTransactionId || updatedTx.id));
+
+      if (isProjectedEdit && !originalTx) {
+        const msg = `[updateTransaction] Could not find source transaction for projected id ${updatedTx.id}`;
+        console.error(msg);
+        setDbError(msg);
+        return;
+      }
+
+      const txToPersist = buildPersistedUpdateTransaction(updatedTx, originalTx);
+
       // Check if this was an AI transaction being re-categorized or renamed
-      const originalTx = appState.transactions.find(t => t.id === updatedTx.id);
       const isAI = originalTx?.label === 'AI';
-      const isAIRecategorize = isAI && updatedTx.budget_id !== originalTx.budget_id;
-      const isAIVendorRename = isAI && originalTx && formatVendorName(updatedTx.vendor) !== formatVendorName(originalTx.vendor);
+      const isAIRecategorize = isAI && txToPersist.budget_id !== originalTx?.budget_id;
+      const isAIVendorRename = isAI && originalTx && formatVendorName(txToPersist.vendor) !== formatVendorName(originalTx.vendor);
 
       setAppState(prev => ({
         ...prev,
         transactions: prev.transactions.map(t =>
-          t.id === updatedTx.id ? updatedTx : t,
+          t.id === txToPersist.id ? txToPersist : t,
         ),
       }));
 
       try {
-        const row = toSupabaseTransaction(updatedTx);
+        const row = toSupabaseTransaction(txToPersist);
         console.log(
           '[update] id:',
-          updatedTx.id,
+          txToPersist.id,
           'payload:',
           JSON.stringify(row),
+          isProjectedEdit ? `(from projected ${updatedTx.id})` : '',
         );
 
         const headers = await getAuthHeaders();
         (headers as any)['Prefer'] = 'return=representation';
         const res = await fetch(
-          `${REST_BASE}/transactions?id=eq.${updatedTx.id}`,
+          `${REST_BASE}/transactions?id=eq.${txToPersist.id}`,
           { method: 'PATCH', headers, body: JSON.stringify(row) },
         );
         const body = await res.text();
@@ -160,9 +198,9 @@ export const useTransactionOps = ({
           console.error(msg);
           setDbError(msg);
         } else {
-          markReviewQueueStatus(updatedTx.id, 'reviewed');
-          const mappedBudget = appState.budgets.find(b => b.id === updatedTx.budget_id)?.name || 'Other';
-          const vendorDisplay = formatVendorName(updatedTx.vendor || 'Unknown');
+          markReviewQueueStatus(txToPersist.id, 'reviewed');
+          const mappedBudget = appState.budgets.find(b => b.id === txToPersist.budget_id)?.name || 'Other';
+          const vendorDisplay = formatVendorName(txToPersist.vendor || 'Unknown');
           const vendorKey = vendorDisplay.toLowerCase().replace(/[^a-z0-9]/g, '');
           if (vendorKey) {
             upsertVendorMapEntry({
@@ -183,26 +221,26 @@ export const useTransactionOps = ({
             setDbError(msg);
             return;
           }
-          
+
           if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
-            const msg = `[updateTransaction] no rows updated for transaction ${updatedTx.id}`;
+            const msg = `[updateTransaction] no rows updated for transaction ${txToPersist.id}`;
             console.error(msg);
             setDbError(msg);
           }
 
           // If AI transaction was re-categorized or vendor renamed, update vendor_overrides
-          if ((isAIRecategorize || isAIVendorRename) && appState.user?.id) {
+          if ((isAIRecategorize || isAIVendorRename) && appState.user?.id && originalTx) {
             try {
               const overrideHeaders = await getAuthHeaders();
               (overrideHeaders as any)['Prefer'] = 'return=representation';
               // Use the original vendor name as the key for lookup
-              const originalVendorName = formatVendorName(originalTx!.vendor);
-              const newVendorName = formatVendorName(updatedTx.vendor);
+              const originalVendorName = formatVendorName(originalTx.vendor);
+              const newVendorName = formatVendorName(txToPersist.vendor);
 
               // Build the update payload
               const overridePayload: Record<string, string> = {};
-              if (isAIRecategorize && updatedTx.budget_id) {
-                overridePayload.category_id = updatedTx.budget_id;
+              if (isAIRecategorize && txToPersist.budget_id) {
+                overridePayload.category_id = txToPersist.budget_id;
               }
               if (isAIVendorRename) {
                 overridePayload.proper_name = newVendorName;
@@ -229,14 +267,14 @@ export const useTransactionOps = ({
                   body: JSON.stringify({
                     user_id: appState.user.id,
                     vendor_name: originalVendorName,
-                    category_id: updatedTx.budget_id || originalTx!.budget_id,
+                    category_id: txToPersist.budget_id || originalTx.budget_id,
                     ...(isAIVendorRename ? { proper_name: newVendorName } : {}),
                   }),
                 });
               }
               console.log('[update] vendor_override saved for AI transaction:', originalVendorName,
                 isAIVendorRename ? `→ proper_name: ${newVendorName}` : '',
-                isAIRecategorize ? `→ category_id: ${updatedTx.budget_id}` : '');
+                isAIRecategorize ? `→ category_id: ${txToPersist.budget_id}` : '');
             } catch (overrideErr: any) {
               console.warn('[update] vendor_override save failed:', overrideErr?.message || overrideErr);
             }
@@ -248,7 +286,7 @@ export const useTransactionOps = ({
         setDbError(msg);
       }
     },
-    [appState.transactions, appState.user, setAppState, setDbError, toSupabaseTransaction],
+    [appState.transactions, appState.user, appState.budgets, setAppState, setDbError, toSupabaseTransaction],
   );
 
   // Delete transaction
