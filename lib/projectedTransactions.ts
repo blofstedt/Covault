@@ -30,7 +30,9 @@ function getTransactionBudgetId(tx: Transaction): string | undefined {
  *
  * Rules:
  * - Monthly + Biweekly recurrences are projected.
- * - Only future occurrences are projected (today and past are treated as elapsed/real timeline).
+ * - Future occurrences are projected.
+ * - Current-month occurrences are also projected so the dashboard can show
+ *   full in-month recurring expectations under each budget.
  * - Project up to 3 months ahead as a rolling horizon.
  * - Display-only (never written to DB).
  */
@@ -39,6 +41,7 @@ export function generateProjectedTransactions(base: Transaction[]): Transaction[
   today.setHours(0, 0, 0, 0);
 
   const horizon = addMonths(today, 3);
+  const currentMonthKey = toIsoDay(today).slice(0, 7);
 
   const realKeys = new Set(
     base.map((tx) => {
@@ -74,7 +77,10 @@ export function generateProjectedTransactions(base: Transaction[]): Transaction[
       const budgetId = getTransactionBudgetId(tx);
       const key = `${tx.vendor}|${tx.amount}|${isoDate}|${budgetId || ''}`;
 
-      if (current > today && !realKeys.has(key)) {
+      const projectedMonthKey = isoDate.slice(0, 7);
+      const isCurrentMonth = projectedMonthKey === currentMonthKey;
+
+      if ((current > today || isCurrentMonth) && !realKeys.has(key)) {
         projected.push({
           ...tx,
           budget_id: budgetId,
