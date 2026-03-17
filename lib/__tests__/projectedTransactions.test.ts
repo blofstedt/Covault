@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 describe('generateProjectedTransactions', () => {
-  it('keeps recurring occurrences inside the current month, even if the date has passed', () => {
+  it('includes current-month recurring occurrences and solidifies ones on/before today', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-03-20T12:00:00Z'));
 
@@ -36,6 +36,10 @@ describe('generateProjectedTransactions', () => {
     expect(projected.map((tx) => tx.date)).toContain('2026-03-20');
     expect(projected.map((tx) => tx.date)).toContain('2026-03-15');
     expect(projected.map((tx) => tx.date)).toContain('2026-04-20');
+
+    expect(projected.find((tx) => tx.date === '2026-03-20')?.is_projected).toBe(false);
+    expect(projected.find((tx) => tx.date === '2026-03-15')?.is_projected).toBe(false);
+    expect(projected.find((tx) => tx.date === '2026-04-20')?.is_projected).toBe(true);
   });
 
   it('projects a rolling three-month monthly horizon and supports legacy recur field on projected DB rows', () => {
