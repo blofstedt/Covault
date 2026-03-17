@@ -11,3 +11,12 @@ export function parseLocalDate(dateStr: string): Date {
   const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
   return new Date(y, m - 1, d);
 }
+
+
+/**
+ * Return a YYYY-MM key using local calendar parsing semantics.
+ */
+export function getLocalMonthKey(dateStr: string): string {
+  const d = parseLocalDate(dateStr);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}

@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Transaction } from '../../types';
 import { generateProjectedTransactions } from '../../lib/projectedTransactions';
+import { getLocalMonthKey } from '../../lib/dateUtils';
 
 function getCurrentMonth() {
 
@@ -22,7 +23,7 @@ export default function useDashboardTotals(
   const currentMonthTransactions = useMemo(() => {
 
     return transactions.filter(
-      t => t.date?.slice(0, 7) === currentMonth
+      t => typeof t.date === 'string' && getLocalMonthKey(t.date) === currentMonth
     );
 
   }, [transactions]);
@@ -45,7 +46,7 @@ export default function useDashboardTotals(
     );
 
     const projectedCurrentMonth = projectedTransactions
-      .filter((t) => t.date?.slice(0, 7) === currentMonth)
+      .filter((t) => typeof t.date === 'string' && getLocalMonthKey(t.date) === currentMonth)
       .reduce((sum, t) => sum + t.amount, 0);
 
     return monthlyIncome - spent - projectedCurrentMonth;

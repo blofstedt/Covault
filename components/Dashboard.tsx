@@ -20,6 +20,7 @@ import useDashboardTotals from './dashboard_components/useDashboardTotals';
 import { getNeedsReviewCount, getReviewQueueChangedEventName } from '../lib/localNotificationMemory';
 import { supabase } from '../lib/supabase';
 import { resolveBudgetIdFromRow } from '../lib/hooks/transactionMappers';
+import { getLocalMonthKey } from '../lib/dateUtils';
 
 interface VendorHistoryItem {
   vendor: string;
@@ -88,7 +89,7 @@ const Dashboard: React.FC<Props> = ({
 
   const currentMonthBudgetTransactions = useMemo(() => {
     const currentMonthProjected = projectedTransactions.filter(
-      (t) => t.date?.slice(0, 7) === monthKey,
+      (t) => typeof t.date === 'string' && getLocalMonthKey(t.date) === monthKey,
     );
 
     return [...currentMonthTransactions, ...currentMonthProjected];
@@ -97,7 +98,7 @@ const Dashboard: React.FC<Props> = ({
   const chartTransactions = useMemo(() => {
     const existingIds = new Set(normalizedTransactions.map((t) => t.id));
     const currentMonthProjected = projectedTransactions.filter(
-      (t) => t.date?.slice(0, 7) === monthKey && !existingIds.has(t.id),
+      (t) => typeof t.date === 'string' && getLocalMonthKey(t.date) === monthKey && !existingIds.has(t.id),
     );
 
     return [...normalizedTransactions, ...currentMonthProjected];
@@ -122,12 +123,12 @@ const Dashboard: React.FC<Props> = ({
 
 
   const pastTransactions = useMemo(
-    () => normalizedTransactions.filter((t) => t.date?.slice(0, 7) < monthKey),
+    () => normalizedTransactions.filter((t) => typeof t.date === 'string' && getLocalMonthKey(t.date) < monthKey),
     [normalizedTransactions, monthKey],
   );
 
   const futureTransactions = useMemo(
-    () => normalizedTransactions.filter((t) => t.date?.slice(0, 7) > monthKey),
+    () => normalizedTransactions.filter((t) => typeof t.date === 'string' && getLocalMonthKey(t.date) > monthKey),
     [normalizedTransactions, monthKey],
   );
 
