@@ -4,7 +4,7 @@ const STOP_PHRASES = [
   'verification code', 'security code', 'otp', 'passcode', '2fa', 'password', 'login', 'signed in', 'new device',
   'statement', 'e-statement', 'payment due', 'due date',
   'account balance', 'available balance', 'current balance', 'balance is',
-  'refund', 'reversal', 'credited', 'deposit', 'payroll', 'salary', 'interest', 'cashback', 'dividend', 'e-transfer received', 'etransfer received', 'received',
+  'refund', 'reversal', 'credited', 'deposit', 'payroll', 'salary', 'interest', 'cashback', 'dividend', 'e-transfer received', 'etransfer received', 'transfer received', 'money received',
   'available credit', 'credit limit',
 ];
 
@@ -142,8 +142,13 @@ export function parseNotificationText(text: string): ParsedNotification {
   const hasStop = STOP_PHRASES.some(p => tLower.includes(p));
   const hasGo = GO_PHRASES.some(p => tLower.includes(p));
   const amountCandidates = findAllAmounts(t);
+  const hasDollarSign = /\$\d/.test(t);
 
-  const shouldReject = amountCandidates.length === 0 || !hasGo || (hasStop && !hasGo);
+  // Reject if: no amounts at all, OR stop-phrase present with no go-phrase
+  // and no dollar sign (banking apps often just say "$12.34 at Vendor")
+  const shouldReject = amountCandidates.length === 0
+    || (hasStop && !hasGo)
+    || (!hasGo && !hasDollarSign);
 
   if (shouldReject) {
     return {

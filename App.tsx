@@ -6,13 +6,13 @@ import Onboarding from './components/Onboarding';
 import FullScreenLoader from './components/FullScreenLoader';
 import type { AppState, BudgetCategory, Transaction, PendingTransaction } from './types';
 import { supabase } from './lib/supabase';
-import { useAuthState, AuthStatus } from './lib/useAuthState';
-import { useDeepLinks } from './lib/useDeepLinks';
-import { useNotificationListener } from './lib/useNotificationListener';
+import { useAuthState, AuthStatus } from './lib/hooks/useAuthState';
+import { useDeepLinks } from './lib/hooks/useDeepLinks';
+import { useNotificationListener } from './lib/hooks/useNotificationListener';
 import { covaultNotification, autoDetectAndSaveMonitoredApps } from './lib/covaultNotification';
 import { loadBankingAppsFromDB } from './lib/bankingApps';
-import { useAppTheme } from './lib/useAppTheme';
-import { useUserData } from './lib/useUserData';
+import { useAppTheme } from './lib/hooks/useAppTheme';
+import { useUserData } from './lib/hooks/useUserData';
 
 const SETTINGS_KEY = 'covault_settings';
 const SCAN_PROCESSING_DELAY_MS = 2000;

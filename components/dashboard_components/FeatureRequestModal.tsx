@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { ThumbsUp } from 'lucide-react';
-import { FeatureRequest } from '../../lib/useFeatureRequests';
+import { FeatureRequest } from '../../lib/hooks/useFeatureRequests';
 import { CloseButton, Spinner } from '../shared';
 
 const ADMIN_EMAIL = 'mostlydecentdev@gmail.com';

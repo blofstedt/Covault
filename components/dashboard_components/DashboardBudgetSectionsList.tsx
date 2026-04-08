@@ -92,18 +92,17 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
                   budgetRefs?.current.delete(budget.id);
                 }
               }}
-              className={`flex flex-col transition-all duration-500 ease-in-out transform-gpu ${
+              className={`flex flex-col transform-gpu ${
                 expandedBudgetId
                   ? isExpanded
-                    ? 'flex-1 min-h-0 opacity-100 scale-100 max-h-[1000px]'
-                    : 'flex-none min-h-0 max-h-0 opacity-0 scale-[0.98] overflow-hidden pointer-events-none'
+                    ? 'flex-1 min-h-0 opacity-100 scale-100 transition-[opacity,transform] duration-500 ease-out'
+                    : 'flex-none h-0 opacity-0 scale-[0.97] overflow-hidden pointer-events-none transition-[opacity,transform,height] duration-300 ease-in'
                   : shouldAutoFitClosedCards
-                    ? 'flex-1 basis-0 min-h-0 opacity-100 scale-100 max-h-[1000px]'
-                    : 'min-h-[84px] opacity-100 scale-100 max-h-[1000px]'
+                    ? 'flex-1 basis-0 min-h-0 opacity-100 scale-100 transition-[opacity,transform] duration-500 ease-out'
+                    : 'min-h-[84px] opacity-100 scale-100 transition-[opacity,transform] duration-500 ease-out'
               }`}
               style={{
                 animationDelay: `${index * 40}ms`,
-                transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
               }}
             >
               <BudgetSection

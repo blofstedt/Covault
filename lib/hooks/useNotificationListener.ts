@@ -1,11 +1,11 @@
 // lib/useNotificationListener.ts
 import { useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
-import type { Transaction, User, PendingTransaction, BudgetCategory } from '../types';
-import { covaultNotification } from './covaultNotification';
-import { processNotificationWithAI } from './notificationProcessor';
-import type { AIProcessingResult } from './notificationProcessor';
-import { KNOWN_BANKING_APPS } from './bankingApps';
+import type { Transaction, User, PendingTransaction, BudgetCategory } from '../../types';
+import { covaultNotification } from '../covaultNotification';
+import { processNotificationWithAI } from '../notificationProcessor';
+import type { AIProcessingResult } from '../notificationProcessor';
+import { getBankingApps } from '../bankingApps';
 
 export interface UseNotificationListenerParams {
   user: User | null;
@@ -59,8 +59,9 @@ export const useNotificationListener = ({
             const bankAppId = (event.bankAppId || event.source_app)?.toLowerCase();
             // Resolve a friendly bank name from the package ID so the UI
             // shows "BMO" instead of "com.bmo.mobile".
+            const bankingApps = getBankingApps();
             const bankName = event.bankName
-              || (bankAppId && KNOWN_BANKING_APPS[bankAppId])
+              || (bankAppId && bankingApps[bankAppId])
               || event.source_app
               || bankAppId
               || 'Unknown Bank';

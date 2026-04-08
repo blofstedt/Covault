@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from './supabase';
+import { supabase } from '../supabase';
 
 export interface FeatureRequest {
   id: number;

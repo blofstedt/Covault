@@ -57,27 +57,10 @@ function getGenerator(): Promise<Text2TextGenerationPipeline> {
 }
 
 /**
- * Override function for testing — allows injecting a mock AI generator.
- * When set, aiGenerate uses this instead of the real model.
- */
-let _aiGenerateOverride: ((prompt: string, maxTokens?: number) => Promise<string>) | null = null;
-
-/**
- * Set a mock AI generator for testing. Pass null to restore real model.
- */
-export function _setAIGenerateForTesting(fn: ((prompt: string, maxTokens?: number) => Promise<string>) | null): void {
-  _aiGenerateOverride = fn;
-}
-
-/**
  * Run an AI prompt through the Flan-T5 model.
  * Returns the generated text string.
  */
 async function aiGenerate(prompt: string, maxTokens = 64): Promise<string> {
-  // Use test override if set
-  if (_aiGenerateOverride) {
-    return _aiGenerateOverride(prompt, maxTokens);
-  }
   const generator = await getGenerator();
   const output = await generator(prompt, {
     max_new_tokens: maxTokens,

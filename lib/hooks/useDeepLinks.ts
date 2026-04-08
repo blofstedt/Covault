@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
-import { supabase } from './supabase';
+import { supabase } from '../supabase';
 
 /**
  * Parse OAuth callback from deep link URL

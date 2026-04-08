@@ -329,48 +329,51 @@ export const KNOWN_BANKING_APPS: Record<string, string> = {
   'com.paysend.app': 'Paysend',
 };
 
-export interface CovaultNotificationPlugin {
-  requestAccess(): Promise<void>;
-  isEnabled(): Promise<{ enabled: boolean }>;
-  getInstalledApps(): Promise<{ apps: Array<{ packageName: string; name: string }> }>;
-  saveMonitoredApps(options: { apps: any }): Promise<void>;
-  getMonitoredApps(): Promise<{ apps: string[] }>;
+/**
+ * Module-level cache of banking apps loaded from Supabase.
+ * Populated by loadBankingAppsFromDB() on app start.
+ * Falls back to KNOWN_BANKING_APPS until the DB load completes.
+ */
+let cachedBankingApps: Record<string, string> = { ...KNOWN_BANKING_APPS };
+
+/**
+ * Get the current banking apps map (DB-sourced after load, hardcoded fallback before).
+ * Synchronous — safe to call from render paths and event handlers.
+ */
+export function getBankingApps(): Record<string, string> {
+  return cachedBankingApps;
 }
 
 /**
- * Load banking apps from the known_banking_apps table in Supabase.
- * Falls back to the hardcoded KNOWN_BANKING_APPS if the DB is unavailable.
+ * Load banking apps from the public.banks table in Supabase.
+ * Updates the module-level cache so subsequent getBankingApps() calls
+ * return DB data. Falls back to the hardcoded list if the DB is unavailable.
  */
 export async function loadBankingAppsFromDB(): Promise<Record<string, string>> {
   try {
     const { REST_BASE, getAuthHeaders } = await import('./apiHelpers');
     const headers = await getAuthHeaders();
-    let res = await fetch(
+    const res = await fetch(
       `${REST_BASE}/banks?select=package_name,display_name`,
       { headers },
     );
 
     if (!res.ok) {
-      res = await fetch(
-        `${REST_BASE}/known_banking_apps?select=package_name,display_name&is_active=eq.true`,
-        { headers },
-      );
-    }
-    if (!res.ok) {
       console.warn('[loadBankingApps] DB unavailable, using hardcoded fallback');
-      return { ...KNOWN_BANKING_APPS };
+      return cachedBankingApps;
     }
     const rows: Array<{ package_name: string; display_name: string }> = await res.json();
     if (!rows || rows.length === 0) {
-      return { ...KNOWN_BANKING_APPS };
+      return cachedBankingApps;
     }
     const apps: Record<string, string> = {};
     for (const row of rows) {
       apps[row.package_name] = row.display_name;
     }
+    cachedBankingApps = apps;
     return apps;
   } catch {
     console.warn('[loadBankingApps] Error loading from DB, using hardcoded fallback');
-    return { ...KNOWN_BANKING_APPS };
+    return cachedBankingApps;
   }
 }

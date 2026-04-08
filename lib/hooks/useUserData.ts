@@ -2,11 +2,11 @@
 // Facade hook that composes sub-hooks for data loading, transactions,
 // household linking, and user settings.
 import type React from 'react';
-import type { AppState } from '../types';
-import { useDataLoading } from './hooks/useDataLoading';
-import { useTransactionOps } from './hooks/useTransactionOps';
-import { useHouseholdLinking } from './hooks/useHouseholdLinking';
-import { useUserSettings } from './hooks/useUserSettings';
+import type { AppState } from '../../types';
+import { useDataLoading } from './useDataLoading';
+import { useTransactionOps } from './useTransactionOps';
+import { useHouseholdLinking } from './useHouseholdLinking';
+import { useUserSettings } from './useUserSettings';
 
 interface UseUserDataParams {
   appState: AppState;

@@ -1,8 +1,8 @@
 // lib/useAuthState.ts
 import React, { useCallback, useEffect, useRef } from 'react';
-import { supabase } from './supabase';
-import { clearCachedAccessToken, setCachedAccessToken } from './apiHelpers';
-import type { AppState, User } from '../types';
+import { supabase } from '../supabase';
+import { clearCachedAccessToken, setCachedAccessToken } from '../apiHelpers';
+import type { AppState, User } from '../../types';
 
 export type AuthStatus = 'loading' | 'unauthenticated' | 'onboarding' | 'authenticated';
 

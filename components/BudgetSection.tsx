@@ -28,7 +28,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
   transactions,
   isExpanded,
   onToggle,
-  onUpdateBudget,
+  onUpdateBudget: _onUpdateBudget,
   onTransactionTap,
   currentUserName,
   isSharedView,
@@ -76,7 +76,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
       }`}
       style={{
         borderColor: isExpanded ? budgetColor : undefined,
-        transition: 'all 0.5s cubic-bezier(0.32, 0.72, 0, 1)',
+        transition: 'border-color 0.4s ease, box-shadow 0.4s ease',
       }}
     >
       {/* CLEAN BACKGROUND BARS (NO WAVES / ANIMATIONS) */}
@@ -125,7 +125,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
               : 'py-2 px-6'
         }`}
         style={{
-          transition: 'all 0.5s cubic-bezier(0.32, 0.72, 0, 1)',
+          transition: 'padding 0.4s ease, flex 0.4s ease',
         }}
       >
         {/* LEFT SIDE: ICON + NAME */}
