@@ -24,10 +24,6 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
   showBudgetIcon = false,
 }) => {
 
-  const displayAmount = useMemo(() => {
-    return transaction.amount;
-  }, [transaction]);
-
   const budget = useMemo(() => {
     if (!budgets || !showBudgetIcon) return null;
     const budgetId = transaction.budget_id;
@@ -132,7 +128,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
                   : 'text-slate-500 dark:text-slate-50'
               }`}
             >
-              ${displayAmount.toFixed(2)}
+              ${transaction.amount.toFixed(2)}
             </div>
           </div>
         </div>

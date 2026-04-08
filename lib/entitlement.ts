@@ -43,28 +43,6 @@ export const trialDaysRemaining = (user: User | null): number => {
 };
 
 /**
- * Returns true when the user's trial has expired and they don't have an active
- * subscription (and they are not the admin). Used to trigger the "Upgrade now!"
- * prompt on every app open.
- */
-export const shouldShowUpgradePrompt = (user: User | null): boolean => {
-  if (!user) return false;
-  if (user.email === ADMIN_EMAIL) return false;
-  if (user.subscription_status === 'active') return false;
-
-  // Trial expired or never started
-  if (user.trial_ends_at) {
-    const trialEnd = new Date(user.trial_ends_at).getTime();
-    if (Date.now() >= trialEnd) return true;
-  }
-
-  // No trial data and no subscription — prompt
-  if (!user.trial_ends_at && (user.subscription_status as string) !== 'active') return true;
-
-  return false;
-};
-
-/**
  * Premium feature identifiers used for gating.
  */
 export type PremiumFeature =

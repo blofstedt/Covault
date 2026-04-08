@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import SettingsCard from './ui/SettingsCard';
 import ToggleSwitch from './ui/ToggleSwitch';
-import { KNOWN_BANKING_APPS } from '../lib/bankingApps';
-import type { CovaultNotificationPlugin } from '../lib/bankingApps';
+import { getBankingApps } from '../lib/bankingApps';
+import type { CovaultNotificationPlugin } from '../lib/covaultNotification';
 
 interface NotificationSettingsProps {
   enabled: boolean;
@@ -42,11 +42,12 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
       // Always scan for installed banking apps regardless of permission
       // so the user can see their apps are detected on this device.
       const { apps: installed } = await plugin.getInstalledApps();
-      const bankApps = installed.filter(a => a.packageName in KNOWN_BANKING_APPS);
+      const bankingApps = getBankingApps();
+      const bankApps = installed.filter(a => a.packageName in bankingApps);
       // Use our friendly names
       const named = bankApps.map(a => ({
         packageName: a.packageName,
-        name: KNOWN_BANKING_APPS[a.packageName] || a.name,
+        name: bankingApps[a.packageName] || a.name,
       }));
       named.sort((a, b) => a.name.localeCompare(b.name));
       setInstalledBankApps(named);
