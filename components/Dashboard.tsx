@@ -15,7 +15,6 @@ import BudgetFlowChart from './dashboard_components/BudgetFlowChart';
 import DashboardSettingsModal from './dashboard_components/DashboardSettingsModal';
 import SearchResults from './dashboard_components/SearchResults';
 import SmartCardDeck from './dashboard_components/SmartCardDeck';
-import SavingsGoalBar from './dashboard_components/SavingsGoalBar';
 
 import useNormalizedTransactions from './dashboard_components/useNormalizedTransactions';
 import useDashboardTotals from './dashboard_components/useDashboardTotals';
@@ -392,21 +391,6 @@ const Dashboard: React.FC<Props> = ({
           />
         ) : (
           <>
-            {/* Savings goal — compact bar between balance and chart */}
-            <div
-              className={`transition-all duration-500 ease-in-out overflow-hidden px-2 ${
-                hasExpandedBudget
-                  ? 'max-h-0 opacity-0 pointer-events-none'
-                  : 'max-h-40 opacity-100'
-              }`}
-            >
-              <SavingsGoalBar
-                monthlyIncome={state.user?.monthlyIncome || 0}
-                totalSpent={totalSpent}
-                totalProjected={totalProjected}
-              />
-            </div>
-
             <div
               className={`transition-all duration-500 ease-in-out overflow-hidden ${
                 hasExpandedBudget
@@ -515,6 +499,7 @@ const Dashboard: React.FC<Props> = ({
           cards={smartCards}
           onDismiss={() => {}}
           onAllDismissed={() => setShowSmartCards(false)}
+          userId={state.user?.id}
         />
       )}
     </>

@@ -16,7 +16,7 @@ const GO_PHRASES = [
   'withdrawal', 'atm withdrawal',
 ];
 
-const amountRegex = /(?<!\w)(?:\$|cad\s*)?\s*([0-9]{1,3}(?:[,\s][0-9]{3})*|[0-9]+)(?:[.,]([0-9]{2}))?(?!\w)/gi;
+const amountRegex = /(?<!\w)(?:\$|cad\s*)\s*([0-9]{1,3}(?:,[0-9]{3})*|[0-9]+)(?:[.,]([0-9]{1,2}))?(?!\w)|(?<!\w)([0-9]{1,3}(?:,[0-9]{3})*|[0-9]+)(?:\.([0-9]{2}))(?!\w)/gi;
 
 export interface ParsedNotification {
   isOutgoing: boolean;
@@ -42,17 +42,19 @@ function collapseWhitespace(value: string): string {
 export function findAllAmounts(text: string): AmountCandidate[] {
   const candidates: AmountCandidate[] = [];
   for (const match of text.matchAll(amountRegex)) {
-    const rawWhole = match[1] || '';
-    const decimals = match[2] || '00';
-    const whole = rawWhole.replace(/[\s,]/g, '');
+    // Groups 1,2 = currency-prefixed ($X or CAD X): whole, decimals
+    // Groups 3,4 = bare number with explicit .XX decimals: whole, decimals
+    const rawWhole = match[1] || match[3] || '';
+    const decimals = match[2] || match[4] || '00';
+    const whole = rawWhole.replace(/,/g, '');
     const value = Number.parseFloat(`${whole}.${decimals}`);
-    if (!Number.isFinite(value)) continue;
+    if (!Number.isFinite(value) || value <= 0) continue;
 
     const start = match.index || 0;
     const rawMatch = match[0] || '';
     const prevChar = start > 0 ? text[start - 1] : '';
     const hasCurrencyMarker = /^\s*(?:\$|cad\s*)/i.test(rawMatch);
-    const hasExplicitDecimals = Boolean(match[2]);
+    const hasExplicitDecimals = Boolean(match[2] || match[4]);
 
     // Ignore store/terminal IDs (e.g. #5028) and bare integers that are
     // unlikely to represent money unless explicitly currency-marked.
@@ -75,7 +77,7 @@ export function pickAmount(candidates: AmountCandidate[], tLower: string): numbe
   let bestIdx = 0;
   let bestScore = Number.NEGATIVE_INFINITY;
   candidates.forEach((c, idx) => {
-    const window = tLower.slice(Math.max(0, c.startIndex - 35), Math.min(tLower.length, c.endIndex + 35));
+    const window = tLower.slice(Math.max(0, c.startIndex - 70), Math.min(tLower.length, c.endIndex + 70));
     let score = 0;
     if (outgoingHints.test(window)) score += 5;
     if (balanceHints.test(window)) score -= 6;
@@ -104,8 +106,15 @@ function extractVendorRaw(text: string): string {
     return (m[2] || m[1] || '').trim();
   }
 
-  const cutoff = text.search(/\b(you|spent|charged|purchase|payment|transfer|withdrawal)\b/i);
-  if (cutoff > 0) return text.slice(0, cutoff).trim();
+  // Fallback: look for text AFTER an amount+keyword pattern like "$12.34 at VENDOR"
+  const afterAmount = text.match(/\$[\d,.]+\s+(?:at|from|to|@)\s+([A-Za-z0-9&'./#\- ]{2,60})/i);
+  if (afterAmount) return afterAmount[1].trim();
+
+  // Last resort: try to extract a capitalized word sequence (likely a vendor name)
+  // near a dollar amount — don't use the fallback that captures everything before a keyword
+  const nearDollar = text.match(/\$[\d,.]+[^A-Za-z]*([A-Z][A-Za-z0-9&'.\- ]{1,59})/i);
+  if (nearDollar) return nearDollar[1].trim();
+
   return 'Unknown';
 }
 

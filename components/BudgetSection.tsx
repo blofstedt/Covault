@@ -135,17 +135,19 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
         {/* LEFT SIDE: ICON + NAME */}
         <div className={`flex items-center ${useCompactCollapsedStyles && !isExpanded ? 'space-x-2.5' : 'space-x-4'}`}>
           <div
-            className={`rounded-2xl transition-all duration-300 ${
+            className={`rounded-2xl ${
               isExpanded
-                ? 'text-white shadow-lg scale-110 p-3.5'
+                ? 'text-white shadow-lg p-3.5'
                 : useCompactCollapsedStyles
                   ? 'p-1.5 bg-white/80 dark:bg-slate-800 shadow-sm'
                   : 'p-2 bg-white/80 dark:bg-slate-800 shadow-sm'
             }`}
-            style={isExpanded
-              ? { backgroundColor: budgetColor }
-              : { color: budgetColor }
-            }
+            style={{
+              ...(isExpanded
+                ? { backgroundColor: budgetColor }
+                : { color: budgetColor }),
+              transition: 'padding 0.3s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease',
+            }}
           >
             {getBudgetIcon(budget.name)}
           </div>

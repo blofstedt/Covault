@@ -22,11 +22,7 @@ function getGradient(name: string, index: number): [string, string] {
   return getBudgetGradient(name, index);
 }
 
-// Tooltip vertical positioning: base offset above chart + extra shift when thumb is near the top
-const TOOLTIP_BASE_OFFSET = 100;
-const TOOLTIP_MAX_THUMB_OFFSET = 50;
-// Fallback maximum upward offset so the tooltip never escapes into the header
-const TOOLTIP_MAX_UPWARD_FALLBACK = 140;
+// Tooltip vertical positioning is now handled by absolute positioning above the chart
 
 function formatMonthLabel(key: string): string {
   const [year, month] = key.split('-');
@@ -251,6 +247,34 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .style('fill', (_d, i) => `url(#bfc-grad-${i})`)
       .attr('fill-opacity', 0.75);
 
+    // ── Savings area: hatched white region between top of bands and income line ──
+    // Create a hatched pattern for the savings area (mirroring budget projected bars)
+    const savingsPattern = defs.append('pattern')
+      .attr('id', 'bfc-savings-hatch')
+      .attr('patternUnits', 'userSpaceOnUse')
+      .attr('width', 6)
+      .attr('height', 6)
+      .attr('patternTransform', 'rotate(45)');
+    savingsPattern.append('line')
+      .attr('x1', 0).attr('y1', 0).attr('x2', 0).attr('y2', 6)
+      .attr('stroke', isDarkTheme ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.5)')
+      .attr('stroke-width', 1.5);
+
+    // Build savings area path: top of stacked bands → income threshold
+    const savingsArea = d3
+      .area<MonthlyBudgetData>()
+      .x((d) => x(d.month) || 0)
+      .y0((d) => y(d.total))
+      .y1(() => budgetY)
+      .curve(d3.curveCatmullRom.alpha(0.5));
+
+    svg.append('path')
+      .datum(chartData)
+      .attr('class', 'bfc-savings')
+      .attr('d', savingsArea)
+      .style('fill', 'url(#bfc-savings-hatch)')
+      .attr('fill-opacity', 0.6);
+
     // Income threshold line (dashed)
     const budgetY = y(thresholdValue);
     svg
@@ -309,21 +333,39 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     // Shared update function for month/category selection
     const updateSelection = (monthIdx: number, my: number) => {
       const xPos = x(chartData[monthIdx].month) || 0;
+      const monthTotal = chartData[monthIdx].total;
+      const topOfBandsY = y(monthTotal);
 
+      // Check if finger is in the savings area (between top of bands and income line)
       let foundCat: string | null = null;
-      for (const layer of stackedData) {
-        const point = layer[monthIdx];
-        const y0 = y(point[0]);
-        const y1 = y(point[1]);
-        if (my >= Math.min(y0, y1) && my <= Math.max(y0, y1)) {
-          foundCat = layer.key;
-          break;
+      if (my >= Math.min(budgetY, topOfBandsY) && my <= Math.max(budgetY, topOfBandsY) && thresholdValue > monthTotal) {
+        foundCat = '__savings__';
+      }
+
+      if (!foundCat) {
+        for (const layer of stackedData) {
+          const point = layer[monthIdx];
+          const y0 = y(point[0]);
+          const y1 = y(point[1]);
+          if (my >= Math.min(y0, y1) && my <= Math.max(y0, y1)) {
+            foundCat = layer.key;
+            break;
+          }
         }
       }
 
-      // If finger is outside all bands, find the closest category by vertical distance
+      // If finger is outside all bands and savings, find the closest by vertical distance
       if (!foundCat) {
         let minDist = Infinity;
+        // Check savings area distance
+        if (thresholdValue > monthTotal) {
+          const savingsMid = (budgetY + topOfBandsY) / 2;
+          const savingsDist = Math.abs(my - savingsMid);
+          if (savingsDist < minDist) {
+            minDist = savingsDist;
+            foundCat = '__savings__';
+          }
+        }
         for (const layer of stackedData) {
           const point = layer[monthIdx];
           const y0 = y(point[0]);
@@ -351,7 +393,13 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         .selectAll('.bfc-band')
         .transition()
         .duration(100)
-        .attr('fill-opacity', (d: any) => (foundCat && d.key === foundCat ? 0.95 : 0.25));
+        .attr('fill-opacity', (d: any) => (foundCat && foundCat !== '__savings__' && d.key === foundCat ? 0.95 : 0.25));
+
+      // Highlight savings area
+      svg.select('.bfc-savings')
+        .transition()
+        .duration(100)
+        .attr('fill-opacity', foundCat === '__savings__' ? 0.9 : 0.6);
     };
 
     // Interaction handler for mouse events
@@ -438,32 +486,25 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
   }, [chartData, categoryNames, thresholdValue, theme]);
 
   const activeMonthData = hoveredMonthIdx !== null ? chartData[hoveredMonthIdx] : null;
+  const isSavingsSelected = activeCategory === '__savings__';
   const activeCatAmount =
-    activeCategory && activeMonthData && typeof activeMonthData[activeCategory] === 'number'
-      ? (activeMonthData[activeCategory] as number)
-      : 0;
+    isSavingsSelected && activeMonthData
+      ? Math.max(0, thresholdValue - activeMonthData.total)
+      : activeCategory && activeMonthData && typeof activeMonthData[activeCategory] === 'number'
+        ? (activeMonthData[activeCategory] as number)
+        : 0;
   const categoryPercentage =
-    activeCategory && activeMonthData && activeMonthData.total > 0
-      ? Math.round((activeCatAmount / activeMonthData.total) * 100)
-      : 0;
+    isSavingsSelected && activeMonthData && thresholdValue > 0
+      ? Math.round((activeCatAmount / thresholdValue) * 100)
+      : activeCategory && activeMonthData && activeMonthData.total > 0
+        ? Math.round((activeCatAmount / activeMonthData.total) * 100)
+        : 0;
 
-  const activeCatIndex = activeCategory ? categoryNames.indexOf(activeCategory) : -1;
-  const activeCatGradient = activeCategory ? getGradient(activeCategory, activeCatIndex) : null;
-  const activeCatColor = activeCategory ? getBudgetColor(activeCategory, activeCatIndex) : null;
-
-  // Dynamically compute the maximum upward offset so the tooltip never goes above
-  // the bottom of the "Remaining Balance" header.
-  const tooltipMaxUpward = useMemo(() => {
-    if (!wrapperRef.current) return TOOLTIP_MAX_UPWARD_FALLBACK;
-    const balanceHeader = document.getElementById('balance-header');
-    if (!balanceHeader) return TOOLTIP_MAX_UPWARD_FALLBACK;
-    const wrapperTop = wrapperRef.current.getBoundingClientRect().top;
-    const headerBottom = balanceHeader.getBoundingClientRect().bottom;
-    const available = wrapperTop - headerBottom;
-    return Math.max(0, available);
-    // Re-compute whenever the tooltip becomes visible (activeCategory changes)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeCategory, chartHeight]);
+  const activeCatIndex = activeCategory && !isSavingsSelected ? categoryNames.indexOf(activeCategory) : -1;
+  const activeCatGradient = activeCategory && !isSavingsSelected ? getGradient(activeCategory, activeCatIndex) : null;
+  const activeCatColor = isSavingsSelected
+    ? (theme === 'dark' ? '#ffffff' : '#94a3b8')
+    : activeCategory ? getBudgetColor(activeCategory, activeCatIndex) : null;
 
   // No data fallback
   if (chartData.length === 0) {
@@ -489,29 +530,26 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
   return (
     <div id="spending-flow-chart" className="w-full mb-1 shrink-0">
       <div className="relative" ref={wrapperRef}>
-        {/* Tooltip card — moves up as the user's thumb moves up so it never obscures the card */}
+        {/* Tooltip card — floats ABOVE the chart, positioned on the opposite side of the finger */}
         {activeCategory && mouseCoords && activeMonthData && (
           <div
-            className="absolute z-50 pointer-events-none transition-all duration-200 ease-out"
+            className="absolute z-50 pointer-events-none"
             style={{
-              transform: `translate(${mouseCoords.x}px, 0px)`,
-              left: 0,
-              top: `${Math.max(-tooltipMaxUpward, -TOOLTIP_BASE_OFFSET - (chartHeight > 0 ? (1 - mouseCoords.y / chartHeight) * TOOLTIP_MAX_THUMB_OFFSET : 0))}px`,
+              // Position horizontally based on finger X, but flip to opposite side
+              left: mouseCoords.x > chartWidth * 0.5
+                ? Math.max(8, mouseCoords.x - 170) // finger on right → tooltip on left
+                : Math.min(chartWidth - 158, mouseCoords.x + 20), // finger on left → tooltip on right
+              // Position above the chart container entirely
+              bottom: '100%',
+              marginBottom: 8,
+              transition: 'left 0.15s ease-out, bottom 0.15s ease-out',
             }}
           >
             <div
-              className={`absolute p-2.5 w-[150px] backdrop-blur-xl rounded-xl flex flex-col gap-2 ${
+              className={`p-2.5 w-[150px] backdrop-blur-xl rounded-xl flex flex-col gap-2 ${
                 theme === 'dark'
                   ? 'bg-slate-900/95 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.9)]'
                   : 'bg-white/95 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.15)]'
-              } ${
-                mouseCoords.x > chartWidth * 0.7
-                  ? '-translate-x-[130%]'
-                  : mouseCoords.x < chartWidth * 0.3
-                    ? 'translate-x-[30%]'
-                    : mouseCoords.x > chartWidth / 2
-                      ? '-translate-x-[125%]'
-                      : 'translate-x-[25%]'
               }`}
               style={{
                 borderWidth: '1.5px',
@@ -544,7 +582,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
               <div className="flex items-center gap-2">
                 <div className="flex-1 min-w-0">
                   <h4 className={`text-[8px] font-bold tracking-widest uppercase truncate mb-0.5 ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'}`}>
-                    {activeCategory}
+                    {isSavingsSelected ? 'Savings' : activeCategory}
                   </h4>
                   <div className={`text-base font-black tracking-tighter leading-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
                     ${activeCatAmount.toFixed(0)}
@@ -555,9 +593,11 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
                     className="absolute bottom-0 left-0 w-full rounded-full transition-all duration-500 ease-out"
                     style={{
                       height: `${categoryPercentage}%`,
-                      background: activeCatGradient
-                        ? `linear-gradient(to top, ${activeCatGradient[1]}, ${activeCatGradient[0]})`
-                        : '#10b981',
+                      background: isSavingsSelected
+                        ? (theme === 'dark' ? 'rgba(255,255,255,0.5)' : '#94a3b8')
+                        : activeCatGradient
+                          ? `linear-gradient(to top, ${activeCatGradient[1]}, ${activeCatGradient[0]})`
+                          : '#10b981',
                     }}
                   />
                 </div>
