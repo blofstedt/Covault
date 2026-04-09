@@ -7,13 +7,13 @@ interface DashboardHeaderProps {
 const DashboardHeader: React.FC<DashboardHeaderProps> = ({ onOpenSettings }) => {
   return (
     <div
-      className="relative flex items-center justify-end h-8 px-3"
+      className="relative flex items-center justify-end h-12 px-3 z-20 shrink-0"
       style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.5rem)' }}
     >
       <button
         id="settings-button"
         onClick={onOpenSettings}
-        className="p-2.5 transition-colors active:scale-90 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-xl text-slate-400 hover:text-emerald-600"
+        className="p-3 -m-1 transition-colors active:scale-90 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-xl text-slate-400 hover:text-emerald-600"
       >
         <svg
           className="w-7 h-7"

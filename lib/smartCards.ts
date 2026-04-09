@@ -261,7 +261,7 @@ export function generateVendorSuggestionCards(
       const catName = budgetMap.get(topId) || 'this category';
 
       cards.push({
-        id: `vendor-suggest-${vendor}-${topId}`,
+        id: `vendor-suggest-${vendor}-${topId}-${currentMonthKey()}`,
         type: 'vendor-suggestion',
         title: 'Smart Category',
         body: `Always categorize "${displayVendor}" as ${catName}?`,

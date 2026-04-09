@@ -40,13 +40,16 @@ const SWIPE_THRESHOLD = 80;
 /** Extract vendor name and category ID from a vendor-suggestion card ID */
 function parseVendorSuggestion(card: SmartCard): { vendor: string; categoryId: string } | null {
   if (card.type !== 'vendor-suggestion') return null;
-  // id format: vendor-suggest-<vendor>-<categoryId>
+  // id format: vendor-suggest-<vendor>-<categoryId>-<YYYY-MM>
   const prefix = 'vendor-suggest-';
   if (!card.id.startsWith(prefix)) return null;
   const rest = card.id.slice(prefix.length);
-  const lastDash = rest.lastIndexOf('-');
+  // Strip the trailing month key (e.g. "-2026-04")
+  const monthMatch = rest.match(/-(\d{4}-\d{2})$/);
+  const core = monthMatch ? rest.slice(0, -monthMatch[0].length) : rest;
+  const lastDash = core.lastIndexOf('-');
   if (lastDash < 0) return null;
-  return { vendor: rest.slice(0, lastDash), categoryId: rest.slice(lastDash + 1) };
+  return { vendor: core.slice(0, lastDash), categoryId: core.slice(lastDash + 1) };
 }
 
 const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDismissed, userId }) => {
@@ -223,18 +226,15 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
           </span>
         </div>
 
-        {/* Stacked cards behind — animate up as top card is swiped */}
+        {/* Stacked cards behind — scale up smoothly when top card is dismissed */}
         {activeCards.slice(1, 4).map((card, i) => {
           const depth = i + 1;
-          // As the top card is swiped, the next card scales up and moves into position
-          const restScale = 1 - depth * 0.04;
-          const restY = depth * 12;
-          const targetScale = 1 - (depth - 1) * 0.04;
-          const targetY = (depth - 1) * 12;
+          // Cards sit behind at progressively smaller scales
+          const restScale = 1 - depth * 0.05;
+          const targetScale = 1 - (depth - 1) * 0.05;
           const scale = restScale + (targetScale - restScale) * swipeProgress;
-          const translateY = restY + (targetY - restY) * swipeProgress;
-          const restOpacity = 1 - depth * 0.15;
-          const targetOpacity = 1 - (depth - 1) * 0.15;
+          const restOpacity = 1 - depth * 0.12;
+          const targetOpacity = 1 - (depth - 1) * 0.12;
           const cardOpacity = restOpacity + (targetOpacity - restOpacity) * swipeProgress;
 
           return (
@@ -242,10 +242,13 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
               key={card.id}
               className={`absolute inset-0 bg-white dark:bg-slate-900 rounded-[2.5rem] border shadow-xl overflow-hidden ${accentBorder[card.accent] || accentBorder.blue}`}
               style={{
-                transform: `scale(${scale}) translateY(${translateY}px)`,
+                transform: `scale(${scale})`,
                 opacity: cardOpacity,
                 zIndex: 10 - depth,
-                transition: isDragging ? 'none' : 'transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.35s ease',
+                transformOrigin: 'center center',
+                transition: isDragging
+                  ? 'none'
+                  : 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.4s ease',
               }}
             >
               {/* Accent strip */}
@@ -268,12 +271,15 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
 
         {/* Top card — draggable */}
         <div
+          key={topCard.id}
           ref={cardRef}
           className={`absolute inset-0 bg-white dark:bg-slate-900 rounded-[2.5rem] border shadow-2xl overflow-hidden select-none touch-none ${accentBorder[topCard.accent] || accentBorder.blue}`}
           style={{
             transform: topTransform,
             opacity: isExiting ? 0 : opacity,
-            transition: isDragging ? 'none' : 'transform 0.25s cubic-bezier(0.25,1,0.5,1), opacity 0.25s ease',
+            transition: isDragging
+              ? 'none'
+              : 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease',
             zIndex: 20,
             cursor: isDragging ? 'grabbing' : 'grab',
           }}
