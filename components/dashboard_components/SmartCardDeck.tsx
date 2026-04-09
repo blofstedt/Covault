@@ -59,8 +59,6 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
   const [isDragging, setIsDragging] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   const [exitDirection, setExitDirection] = useState<'left' | 'right' | 'up' | 'down'>('right');
-  // Suppress transition on the new top card for one frame after advancing
-  const [suppressTransition, setSuppressTransition] = useState(false);
 
   const startPos = useRef({ x: 0, y: 0 });
   const cardRef = useRef<HTMLDivElement>(null);
@@ -87,18 +85,10 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
     dismissCard(card.id);
     onDismiss(card.id);
 
-    setSuppressTransition(true);
     setIsExiting(false);
     setDragX(0);
     setDragY(0);
     setCurrentIndex((i) => i + 1);
-
-    // Allow one frame for the DOM to update, then re-enable transitions
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        setSuppressTransition(false);
-      });
-    });
 
     setTimeout(() => { isDismissingRef.current = false; }, 50);
   }, [cards, currentIndex, onDismiss]);
@@ -140,16 +130,10 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
 
     dismissCard(card.id);
     onDismiss(card.id);
-    setSuppressTransition(true);
     setIsExiting(false);
     setDragX(0);
     setDragY(0);
     setCurrentIndex((i) => i + 1);
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        setSuppressTransition(false);
-      });
-    });
     setTimeout(() => { isDismissingRef.current = false; }, 50);
   }, [cards, currentIndex, userId, advanceCard, onDismiss]);
 
@@ -242,18 +226,15 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
           </span>
         </div>
 
-        {/* Stacked cards behind — animate up as top card is swiped */}
+        {/* Stacked cards behind — scale up smoothly when top card is dismissed */}
         {activeCards.slice(1, 4).map((card, i) => {
           const depth = i + 1;
-          // As the top card is swiped, the next card scales up and moves into position
-          const restScale = 1 - depth * 0.04;
-          const restY = depth * 12;
-          const targetScale = 1 - (depth - 1) * 0.04;
-          const targetY = (depth - 1) * 12;
+          // Cards sit behind at progressively smaller scales
+          const restScale = 1 - depth * 0.05;
+          const targetScale = 1 - (depth - 1) * 0.05;
           const scale = restScale + (targetScale - restScale) * swipeProgress;
-          const translateY = restY + (targetY - restY) * swipeProgress;
-          const restOpacity = 1 - depth * 0.15;
-          const targetOpacity = 1 - (depth - 1) * 0.15;
+          const restOpacity = 1 - depth * 0.12;
+          const targetOpacity = 1 - (depth - 1) * 0.12;
           const cardOpacity = restOpacity + (targetOpacity - restOpacity) * swipeProgress;
 
           return (
@@ -261,10 +242,13 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
               key={card.id}
               className={`absolute inset-0 bg-white dark:bg-slate-900 rounded-[2.5rem] border shadow-xl overflow-hidden ${accentBorder[card.accent] || accentBorder.blue}`}
               style={{
-                transform: `scale(${scale}) translateY(${translateY}px)`,
+                transform: `scale(${scale})`,
                 opacity: cardOpacity,
                 zIndex: 10 - depth,
-                transition: isDragging ? 'none' : 'transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.35s ease',
+                transformOrigin: 'center center',
+                transition: isDragging
+                  ? 'none'
+                  : 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.4s ease',
               }}
             >
               {/* Accent strip */}
@@ -292,7 +276,9 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
           style={{
             transform: topTransform,
             opacity: isExiting ? 0 : opacity,
-            transition: isDragging || suppressTransition ? 'none' : 'transform 0.25s cubic-bezier(0.25,1,0.5,1), opacity 0.25s ease',
+            transition: isDragging
+              ? 'none'
+              : 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease',
             zIndex: 20,
             cursor: isDragging ? 'grabbing' : 'grab',
           }}
