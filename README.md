@@ -170,32 +170,6 @@ npm run cap:sync
 npm run cap:build
 ```
 
-## Developer Mode
-
-A secret developer mode is available on **desktop/web only** for quickly previewing UI screens with fake data.
-
-### How to Activate
-
-1. Open the app in a desktop browser
-2. On any screen, type **`developer`** on your keyboard (don't click into any input field first)
-3. A yellow **🛠 Dev Mode** panel appears in the top-right corner
-
-### How to Deactivate
-
-- Click the **Exit** button in the Dev Mode panel, **or**
-- Type **`developer`** again on your keyboard from any screen
-
-### Features
-
-| Feature | Description |
-|---------|-------------|
-| **Screen Jumping** | Instantly switch between Auth, Onboarding, Dashboard, and Transaction Parsing screens |
-| **Solo / Joint Toggle** | Switch the user mode between single user and joint (couples) budgeting |
-| **Parsing Toggle** | Switch between notification parsing enabled and disabled views |
-| **Fake Data** | All data shown in developer mode is fake — no real database calls are made |
-
-> **Note:** Developer mode is not available on native Android. It only activates when a physical keyboard is detected (desktop browsers).
-
 ## Architecture
 
 - **Frontend**: React 19 with TypeScript

@@ -6,11 +6,14 @@ import type { BudgetCategory, Transaction } from '../types';
 // Settings shape
 interface NotificationSettingsShape {
   app_notifications_enabled?: boolean;
+  smart_notifications_enabled?: boolean;
 }
 
 // LocalStorage keys to avoid spamming notifications
 function makeBudgetAlertKey(userId: string, budgetId: string) {
-  return `covault_alert_budget_${userId}_${budgetId}`;
+  const now = new Date();
+  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  return `covault_alert_budget_${userId}_${budgetId}_${month}`;
 }
 
 function makeBalanceAlertKey(userId: string) {
@@ -87,7 +90,7 @@ export async function checkAndTriggerAppNotifications({
 }: CheckArgs) {
   try {
     if (!Capacitor.isNativePlatform()) return;
-    if (!settings?.app_notifications_enabled) return;
+    if (!settings?.app_notifications_enabled && !settings?.smart_notifications_enabled) return;
     if (!userId) return;
 
     // Check each budget for overspend
@@ -98,7 +101,7 @@ export async function checkAndTriggerAppNotifications({
       const spent = getSpentForBudget(budget.id, transactions);
       const ratio = spent / limit;
 
-      if (ratio >= 0.9) {
+      if (ratio >= 0.8) {
         const key = makeBudgetAlertKey(userId, budget.id);
         const alreadySent =
           typeof localStorage !== 'undefined' && localStorage.getItem(key) === '1';
@@ -133,4 +136,22 @@ export async function checkAndTriggerAppNotifications({
   } catch (e) {
     console.error('[appNotifications] check error', e);
   }
+}
+
+/**
+ * Send a push notification when a partner adds a transaction.
+ */
+export async function sendPartnerActivityNotification(
+  partnerName: string,
+  vendor: string,
+  amount: number,
+  settings: NotificationSettingsShape,
+) {
+  if (!Capacitor.isNativePlatform()) return;
+  if (!settings?.smart_notifications_enabled) return;
+
+  await sendNotification(
+    'Partner Activity',
+    `${partnerName} added $${Math.abs(amount).toFixed(2)} at ${vendor}.`,
+  );
 }
