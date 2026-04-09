@@ -40,13 +40,16 @@ const SWIPE_THRESHOLD = 80;
 /** Extract vendor name and category ID from a vendor-suggestion card ID */
 function parseVendorSuggestion(card: SmartCard): { vendor: string; categoryId: string } | null {
   if (card.type !== 'vendor-suggestion') return null;
-  // id format: vendor-suggest-<vendor>-<categoryId>
+  // id format: vendor-suggest-<vendor>-<categoryId>-<YYYY-MM>
   const prefix = 'vendor-suggest-';
   if (!card.id.startsWith(prefix)) return null;
   const rest = card.id.slice(prefix.length);
-  const lastDash = rest.lastIndexOf('-');
+  // Strip the trailing month key (e.g. "-2026-04")
+  const monthMatch = rest.match(/-(\d{4}-\d{2})$/);
+  const core = monthMatch ? rest.slice(0, -monthMatch[0].length) : rest;
+  const lastDash = core.lastIndexOf('-');
   if (lastDash < 0) return null;
-  return { vendor: rest.slice(0, lastDash), categoryId: rest.slice(lastDash + 1) };
+  return { vendor: core.slice(0, lastDash), categoryId: core.slice(lastDash + 1) };
 }
 
 const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDismissed, userId }) => {

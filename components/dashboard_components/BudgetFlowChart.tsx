@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import * as d3 from 'd3';
 import { BudgetCategory, Transaction } from '../../types';
 import { getBudgetGradient, getBudgetColor } from '../../lib/budgetColors';
@@ -537,16 +538,14 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
   return (
     <div id="spending-flow-chart" className="w-full mb-1 shrink-0">
       <div className="relative" ref={wrapperRef}>
-        {/* Tooltip card — fixed overlay that follows finger, on top of all UI */}
-        {activeCategory && screenCoords && activeMonthData && (
+        {/* Tooltip card — portaled to body, follows finger, on top of all UI */}
+        {activeCategory && screenCoords && activeMonthData && createPortal(
           <div
             className="fixed z-[200] pointer-events-none"
             style={{
-              // Horizontal: flip to opposite side of finger
               left: screenCoords.x > window.innerWidth * 0.5
                 ? Math.max(8, screenCoords.x - 170)
                 : Math.min(window.innerWidth - 158, screenCoords.x + 20),
-              // Vertical: follow finger, offset above it
               top: Math.max(8, screenCoords.y - 160),
               transition: 'left 0.1s ease-out, top 0.1s ease-out',
             }}
@@ -631,7 +630,8 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
                 </div>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body,
         )}
 
         {/* Chart container */}
