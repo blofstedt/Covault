@@ -416,11 +416,11 @@ public class NotificationListener extends NotificationListenerService {
 
     // Patterns to extract transaction amount
     private static final Pattern[] AMOUNT_PATTERNS = {
-        Pattern.compile("\\$([\\d,]+\\.\\d{2})"),                    // $123.45 (USD or CAD)
-        Pattern.compile("(?:USD|CAD)\\s*([\\d,]+\\.\\d{2})"),        // USD 123.45 or CAD 123.45
-        Pattern.compile("([\\d,]+\\.\\d{2})\\s*(?:USD|CAD|dollars?)"), // 123.45 USD/CAD
-        Pattern.compile("(?:charged|spent|paid|purchase|transaction)\\s*(?:of)?\\s*\\$?([\\d,]+\\.\\d{2})", Pattern.CASE_INSENSITIVE),
-        Pattern.compile("(?:amount|total)\\s*:?\\s*\\$?([\\d,]+\\.\\d{2})", Pattern.CASE_INSENSITIVE)
+        Pattern.compile("\\$([\\d,]+(?:\\.\\d{1,2})?)"),                    // $123, $123.4, $123.45
+        Pattern.compile("(?:USD|CAD)\\s*([\\d,]+(?:\\.\\d{1,2})?)"),        // USD 123 or CAD 123.45
+        Pattern.compile("([\\d,]+(?:\\.\\d{1,2})?)\\s*(?:USD|CAD|dollars?)"), // 123.45 USD/CAD
+        Pattern.compile("(?:charged|spent|paid|purchase|transaction|withdrawal|debit)\\s*(?:of)?\\s*\\$?([\\d,]+(?:\\.\\d{1,2})?)", Pattern.CASE_INSENSITIVE),
+        Pattern.compile("(?:amount|total)\\s*:?\\s*\\$?([\\d,]+(?:\\.\\d{1,2})?)", Pattern.CASE_INSENSITIVE)
     };
 
     // Patterns to extract vendor/merchant name
@@ -567,7 +567,7 @@ public class NotificationListener extends NotificationListenerService {
                 String vendor = matcher.group(1).trim();
                 // Clean up the vendor name
                 vendor = vendor.replaceAll("\\s+", " ");
-                if (vendor.length() > 2 && vendor.length() < 50) {
+                if (vendor.length() >= 2 && vendor.length() < 60) {
                     return vendor;
                 }
             }

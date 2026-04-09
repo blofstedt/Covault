@@ -60,7 +60,7 @@ function buildInMemoryDedupKey(
   notificationTimestamp: number,
 ): string {
   // Extract amount from raw text for keying
-  const amountMatch = rawNotification.match(/\$([\d,]+\.?\d{0,2})/);
+  const amountMatch = rawNotification.match(/\$([\d,]+(?:\.\d{1,2})?)/);
   const amount = amountMatch ? amountMatch[1].replace(/,/g, '') : 'no-amount';
   return `${bankAppId}|${amount}|${notificationTimestamp}`;
 }
@@ -158,8 +158,8 @@ async function checkAlreadyProcessed(
 ): Promise<boolean> {
   if (amount == null || vendor == null) return false;
 
-  const windowStart = new Date(notificationTimestamp - MS_PER_MINUTE).toISOString();
-  const windowEnd   = new Date(notificationTimestamp + MS_PER_MINUTE).toISOString();
+  const windowStart = new Date(notificationTimestamp - 5 * MS_PER_MINUTE).toISOString();
+  const windowEnd   = new Date(notificationTimestamp + 5 * MS_PER_MINUTE).toISOString();
   const normalizedVendor = normalizeVendorForDedup(vendor);
 
   // ── Check transactions table ──
@@ -420,7 +420,7 @@ export async function checkDuplicateTransaction(
   // Fetch existing transactions for this vendor and approximate amount
   const { data: existing, error } = await supabase
     .from('transactions')
-    .select('id, vendor, amount, date, recurrence, recur')
+    .select('id, vendor, amount, date, recurrence, recur, created_at')
     .eq('user_id', userId)
     .ilike('vendor', vendor);
 
@@ -469,9 +469,11 @@ export async function checkDuplicateTransaction(
     }
   }
 
-  // Rule 2: One-time transactions — same vendor + amount + exact same day
+  // Rule 2: One-time transactions — same vendor + amount within ±5 minutes
+  const nowMs = Date.now();
   for (const tx of amountMatches) {
-    if (tx.date === today) {
+    const txCreatedMs = tx.created_at ? new Date(tx.created_at).getTime() : 0;
+    if (txCreatedMs > 0 && Math.abs(nowMs - txCreatedMs) <= 5 * MS_PER_MINUTE) {
       return {
         isDuplicate: true,
         reason: 'Duplicate transaction found in manually recorded transactions',
@@ -555,9 +557,9 @@ export async function processNotificationWithAI(
   // ── Step 1: Duplicate Detection ──
   // Extract a quick amount from the raw text for the duplicate check.
   let quickAmount: number | null = null;
-  const quickAmountMatch = input.rawNotification.match(/\$([\d,]+\.?\d{0,2})/);
+  const quickAmountMatch = input.rawNotification.match(/\$([\d,]+(?:\.\d{1,2})?)/);
   if (quickAmountMatch) {
-    quickAmount = parseFloat(quickAmountMatch[1].replace(',', ''));
+    quickAmount = parseFloat(quickAmountMatch[1].replace(/,/g, ''));
   }
 
   const isDuplicate = await checkAlreadyProcessed(
@@ -615,10 +617,10 @@ export async function processNotificationWithAI(
     };
   }
 
-  // ── Step 4: Duplicate detection (exact vendor + amount within same minute) ──
+  // ── Step 4: Duplicate detection (exact vendor + amount within ±5 minutes) ──
   const today = new Date().toISOString().slice(0, 10);
-  const dedupWindowStart = new Date(notifTimestamp - MS_PER_MINUTE).toISOString();
-  const dedupWindowEnd = new Date(notifTimestamp + MS_PER_MINUTE).toISOString();
+  const dedupWindowStart = new Date(notifTimestamp - 5 * MS_PER_MINUTE).toISOString();
+  const dedupWindowEnd = new Date(notifTimestamp + 5 * MS_PER_MINUTE).toISOString();
   const normalizedVendor = normalizeVendorForDedup(vendor);
 
   const { data: existingTx } = await supabase
@@ -658,12 +660,36 @@ export async function processNotificationWithAI(
     }
   }
 
-  // ── Step 5: Category assignment (device-side vendor_map) ──
+  // ── Step 5: Category assignment ──
+  // Priority: server vendor_overrides → localStorage vendorMap → "Other" → first available
   let categoryId: string | null = null;
   let categoryName: string | null = null;
   let displayVendor: string = vendor;
 
-  if (parsed.vendorKey) {
+  // 5a: Check server-side vendor_overrides table
+  const normalizedLookup = normalizeVendorForDedup(vendor);
+  if (normalizedLookup) {
+    const { data: overrideRows } = await supabase
+      .from('vendor_overrides')
+      .select('category_id')
+      .eq('user_id', userId)
+      .ilike('vendor_name', vendor)
+      .limit(1);
+
+    if (overrideRows && overrideRows.length > 0) {
+      const overrideCat = availableCategories.find(
+        (c) => c.id === overrideRows[0].category_id,
+      );
+      if (overrideCat) {
+        categoryId = overrideCat.id;
+        categoryName = overrideCat.name;
+        console.log(`[AI pipeline] vendor_overrides match: ${vendor} → ${categoryName}`);
+      }
+    }
+  }
+
+  // 5b: Check localStorage vendor map
+  if (!categoryId && parsed.vendorKey) {
     const vendorMapEntry = getVendorMapEntry(parsed.vendorKey);
     if (vendorMapEntry) {
       displayVendor = vendorMapEntry.vendor_display || displayVendor;
@@ -677,9 +703,8 @@ export async function processNotificationWithAI(
     }
   }
 
-  // Fallback to first available category if neither found one
+  // 5c: Fallback to "Other" or first available category
   if (!categoryId && availableCategories.length > 0) {
-    // Try to find "Other" category first
     const otherCat = availableCategories.find(
       c => c.name.toLowerCase() === 'other',
     );
