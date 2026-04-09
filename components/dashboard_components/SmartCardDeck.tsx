@@ -271,6 +271,7 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
 
         {/* Top card — draggable */}
         <div
+          key={topCard.id}
           ref={cardRef}
           className={`absolute inset-0 bg-white dark:bg-slate-900 rounded-[2.5rem] border shadow-2xl overflow-hidden select-none touch-none ${accentBorder[topCard.accent] || accentBorder.blue}`}
           style={{
