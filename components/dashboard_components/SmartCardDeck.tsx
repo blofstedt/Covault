@@ -56,6 +56,8 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
   const [isDragging, setIsDragging] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   const [exitDirection, setExitDirection] = useState<'left' | 'right' | 'up' | 'down'>('right');
+  // Suppress transition on the new top card for one frame after advancing
+  const [suppressTransition, setSuppressTransition] = useState(false);
 
   const startPos = useRef({ x: 0, y: 0 });
   const cardRef = useRef<HTMLDivElement>(null);
@@ -82,10 +84,18 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
     dismissCard(card.id);
     onDismiss(card.id);
 
+    setSuppressTransition(true);
     setIsExiting(false);
     setDragX(0);
     setDragY(0);
     setCurrentIndex((i) => i + 1);
+
+    // Allow one frame for the DOM to update, then re-enable transitions
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setSuppressTransition(false);
+      });
+    });
 
     setTimeout(() => { isDismissingRef.current = false; }, 50);
   }, [cards, currentIndex, onDismiss]);
@@ -127,10 +137,16 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
 
     dismissCard(card.id);
     onDismiss(card.id);
+    setSuppressTransition(true);
     setIsExiting(false);
     setDragX(0);
     setDragY(0);
     setCurrentIndex((i) => i + 1);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setSuppressTransition(false);
+      });
+    });
     setTimeout(() => { isDismissingRef.current = false; }, 50);
   }, [cards, currentIndex, userId, advanceCard, onDismiss]);
 
@@ -273,7 +289,7 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
           style={{
             transform: topTransform,
             opacity: isExiting ? 0 : opacity,
-            transition: isDragging ? 'none' : 'transform 0.25s cubic-bezier(0.25,1,0.5,1), opacity 0.25s ease',
+            transition: isDragging || suppressTransition ? 'none' : 'transform 0.25s cubic-bezier(0.25,1,0.5,1), opacity 0.25s ease',
             zIndex: 20,
             cursor: isDragging ? 'grabbing' : 'grab',
           }}
