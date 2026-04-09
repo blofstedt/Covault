@@ -392,10 +392,10 @@ const Dashboard: React.FC<Props> = ({
         ) : (
           <>
             <div
-              className={`transition-all duration-500 ease-in-out ${
+              className={`transition-all duration-500 ease-in-out overflow-hidden ${
                 hasExpandedBudget
-                  ? 'max-h-0 opacity-0 -translate-y-2 pointer-events-none mb-0 overflow-hidden'
-                  : 'max-h-[520px] opacity-100 translate-y-0 mb-2 overflow-visible'
+                  ? 'max-h-0 opacity-0 -translate-y-2 pointer-events-none mb-0'
+                  : 'max-h-[520px] opacity-100 translate-y-0 mb-2'
               }`}
               aria-hidden={hasExpandedBudget}
             >

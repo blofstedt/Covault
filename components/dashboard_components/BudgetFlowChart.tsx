@@ -54,6 +54,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [hoveredMonthIdx, setHoveredMonthIdx] = useState<number | null>(null);
   const [mouseCoords, setMouseCoords] = useState<{ x: number; y: number } | null>(null);
+  const [screenCoords, setScreenCoords] = useState<{ x: number; y: number } | null>(null);
   const [chartWidth, setChartWidth] = useState(0);
   const [chartHeight, setChartHeight] = useState(0);
   const safeBudgets = Array.isArray(budgets) ? budgets : [];
@@ -407,6 +408,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     // Interaction handler for mouse events
     const handleInteraction = (event: any) => {
       const [mx, my] = d3.pointer(event, svg.node());
+      setScreenCoords({ x: event.clientX, y: event.clientY });
       const domain = x.domain();
       if (domain.length < 2) {
         setHoveredMonthIdx(0);
@@ -428,6 +430,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     const handleTouchStart = (event: any) => {
       event.preventDefault();
       const touch = event.touches[0] || event.changedTouches[0];
+      setScreenCoords({ x: touch.clientX, y: touch.clientY });
       const [mx, my] = d3.pointer(touch, svg.node());
       const domain = x.domain();
       if (domain.length < 2) {
@@ -447,6 +450,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     const handleTouchMove = (event: any) => {
       event.preventDefault();
       const touch = event.touches[0] || event.changedTouches[0];
+      setScreenCoords({ x: touch.clientX, y: touch.clientY });
       const [mx, my] = d3.pointer(touch, svg.node());
       const domain = x.domain();
       if (domain.length < 2) return;
@@ -460,6 +464,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       setActiveCategory(null);
       setHoveredMonthIdx(null);
       setMouseCoords(null);
+      setScreenCoords(null);
       scrubber.style('opacity', 0);
       scrubberDot.style('opacity', 0);
       svg.selectAll('.bfc-band').transition().duration(300).attr('fill-opacity', 0.75);
@@ -532,19 +537,18 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
   return (
     <div id="spending-flow-chart" className="w-full mb-1 shrink-0">
       <div className="relative" ref={wrapperRef}>
-        {/* Tooltip card — floats ABOVE the chart, positioned on the opposite side of the finger */}
-        {activeCategory && mouseCoords && activeMonthData && (
+        {/* Tooltip card — fixed overlay that follows finger, on top of all UI */}
+        {activeCategory && screenCoords && activeMonthData && (
           <div
-            className="absolute z-50 pointer-events-none"
+            className="fixed z-[200] pointer-events-none"
             style={{
-              // Position horizontally based on finger X, but flip to opposite side
-              left: mouseCoords.x > chartWidth * 0.5
-                ? Math.max(8, mouseCoords.x - 170) // finger on right → tooltip on left
-                : Math.min(chartWidth - 158, mouseCoords.x + 20), // finger on left → tooltip on right
-              // Position above the chart container entirely
-              bottom: '100%',
-              marginBottom: 8,
-              transition: 'left 0.15s ease-out, bottom 0.15s ease-out',
+              // Horizontal: flip to opposite side of finger
+              left: screenCoords.x > window.innerWidth * 0.5
+                ? Math.max(8, screenCoords.x - 170)
+                : Math.min(window.innerWidth - 158, screenCoords.x + 20),
+              // Vertical: follow finger, offset above it
+              top: Math.max(8, screenCoords.y - 160),
+              transition: 'left 0.1s ease-out, top 0.1s ease-out',
             }}
           >
             <div
