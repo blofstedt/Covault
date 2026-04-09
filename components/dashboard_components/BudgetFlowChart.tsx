@@ -248,6 +248,9 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .attr('fill-opacity', 0.75);
 
     // ── Savings area: hatched white region between top of bands and income line ──
+    // Income threshold Y position (must be computed before savings area uses it)
+    const budgetY = y(thresholdValue);
+
     // Create a hatched pattern for the savings area (mirroring budget projected bars)
     const savingsPattern = defs.append('pattern')
       .attr('id', 'bfc-savings-hatch')
@@ -276,7 +279,6 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .attr('fill-opacity', 0.6);
 
     // Income threshold line (dashed)
-    const budgetY = y(thresholdValue);
     svg
       .append('line')
       .attr('x1', 0)
