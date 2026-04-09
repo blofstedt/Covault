@@ -101,6 +101,8 @@ export interface AppState {
     notificationsEnabled: boolean;
     hiddenCategories: string[]; // IDs of hidden budget categories
     app_notifications_enabled: boolean;
+    smart_cards_enabled: boolean;
+    smart_notifications_enabled: boolean;
   };
 }
 

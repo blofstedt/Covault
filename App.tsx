@@ -13,6 +13,7 @@ import { covaultNotification, autoDetectAndSaveMonitoredApps } from './lib/covau
 import { loadBankingAppsFromDB } from './lib/bankingApps';
 import { useAppTheme } from './lib/hooks/useAppTheme';
 import { useUserData } from './lib/hooks/useUserData';
+import { executeRecurringTransactions } from './lib/recurringExecutor';
 
 const SETTINGS_KEY = 'covault_settings';
 const SCAN_PROCESSING_DELAY_MS = 2000;
@@ -28,6 +29,8 @@ const DEFAULT_SETTINGS = {
   notificationsEnabled: false,
   app_notifications_enabled: false,
   hiddenCategories: [] as string[],
+  smart_cards_enabled: true,
+  smart_notifications_enabled: true,
 };
 
 // Fixed: Added check for 'window' so Vercel doesn't crash during build
@@ -103,6 +106,23 @@ const App: React.FC = () => {
 
   useAuthState({ setAppState, setAuthState, loadUserData: loadUserDataWithState });
   useDeepLinks();
+
+  // Auto-execute recurring transactions once per day on app open
+  const recurringRanRef = useRef(false);
+  useEffect(() => {
+    const userId = appState.user?.id;
+    if (!userId || appState.transactions.length === 0 || recurringRanRef.current) return;
+    recurringRanRef.current = true;
+
+    executeRecurringTransactions(userId, appState.transactions).then((inserted) => {
+      if (inserted.length > 0) {
+        setAppState((prev) => ({
+          ...prev,
+          transactions: [...inserted, ...prev.transactions],
+        }));
+      }
+    });
+  }, [appState.user?.id, appState.transactions]);
 
   const handlePendingTransactionCreated = useCallback((pending: PendingTransaction) => {
     setAppState(prev => {

@@ -76,7 +76,9 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
       }`}
       style={{
         borderColor: isExpanded ? budgetColor : undefined,
-        transition: 'border-color 0.4s ease, box-shadow 0.4s ease',
+        transition: isExpanded
+          ? 'border-color 0.5s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.5s cubic-bezier(0.22, 1, 0.36, 1)'
+          : 'border-color 0.3s cubic-bezier(0.4, 0, 1, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 1, 1)',
       }}
     >
       {/* CLEAN BACKGROUND BARS (NO WAVES / ANIMATIONS) */}
@@ -125,7 +127,9 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
               : 'py-2 px-6'
         }`}
         style={{
-          transition: 'padding 0.4s ease, flex 0.4s ease',
+          transition: isExpanded
+            ? 'padding 0.5s cubic-bezier(0.22, 1, 0.36, 1), flex 0.5s cubic-bezier(0.22, 1, 0.36, 1)'
+            : 'padding 0.3s cubic-bezier(0.4, 0, 1, 1), flex 0.3s cubic-bezier(0.4, 0, 1, 1)',
         }}
       >
         {/* LEFT SIDE: ICON + NAME */}
@@ -204,7 +208,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
         <div 
           className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-6 pb-12 relative z-10"
           style={{
-            animation: 'budgetContentReveal 0.5s cubic-bezier(0.32, 0.72, 0, 1) forwards',
+            animation: 'budgetContentReveal 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards',
           }}
           onClick={(e) => {
             // If clicking on the blank space (the div itself), collapse the budget

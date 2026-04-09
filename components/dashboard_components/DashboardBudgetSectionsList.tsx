@@ -92,17 +92,21 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
                   budgetRefs?.current.delete(budget.id);
                 }
               }}
-              className={`flex flex-col transform-gpu ${
+              className={`flex flex-col transform-gpu will-change-[transform,opacity] ${
                 expandedBudgetId
                   ? isExpanded
-                    ? 'flex-1 min-h-0 opacity-100 scale-100 transition-[opacity,transform] duration-500 ease-out'
-                    : 'flex-none h-0 opacity-0 scale-[0.97] overflow-hidden pointer-events-none transition-[opacity,transform,height] duration-300 ease-in'
+                    ? 'flex-1 min-h-0 opacity-100 scale-100'
+                    : 'flex-none h-0 opacity-0 scale-95 overflow-hidden pointer-events-none'
                   : shouldAutoFitClosedCards
-                    ? 'flex-1 basis-0 min-h-0 opacity-100 scale-100 transition-[opacity,transform] duration-500 ease-out'
-                    : 'min-h-[84px] opacity-100 scale-100 transition-[opacity,transform] duration-500 ease-out'
+                    ? 'flex-1 basis-0 min-h-0 opacity-100 scale-100'
+                    : 'min-h-[84px] opacity-100 scale-100'
               }`}
               style={{
-                animationDelay: `${index * 40}ms`,
+                transition: expandedBudgetId
+                  ? isExpanded
+                    ? 'opacity 0.45s cubic-bezier(0.22, 1, 0.36, 1), transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)'
+                    : `opacity 0.25s cubic-bezier(0.4, 0, 1, 1) ${index * 30}ms, transform 0.3s cubic-bezier(0.4, 0, 1, 1) ${index * 30}ms, height 0.3s cubic-bezier(0.4, 0, 1, 1) ${index * 30}ms`
+                  : `opacity 0.4s cubic-bezier(0.22, 1, 0.36, 1) ${index * 50}ms, transform 0.45s cubic-bezier(0.22, 1, 0.36, 1) ${index * 50}ms`,
               }}
             >
               <BudgetSection
