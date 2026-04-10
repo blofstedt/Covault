@@ -95,7 +95,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
 
   // ── AI-entered transactions (label === 'AI') ──
   const aiTransactions = useMemo(
-    () => allTransactions.filter((tx) => tx.label === 'AI'),
+    () => allTransactions.filter((tx) => tx.label === 'Automatic' && !tx.caught_cleared),
     [allTransactions],
   );
 
@@ -145,13 +145,17 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     if (!userId) return;
     const aiIds = aiTransactions.map((tx) => tx.id);
     if (aiIds.length === 0) return;
-    const { error } = await supabase.from('transactions').delete().in('id', aiIds);
+    const { error } = await supabase
+      .from('transactions')
+      .update({ caught_cleared: true })
+      .in('id', aiIds);
     if (error) {
       console.error('[TransactionParsing] Error clearing entered:', error);
       return;
     }
     onClearEntered?.();
-  }, [userId, aiTransactions, onClearEntered]);
+    await onReloadTransactions?.(userId);
+  }, [userId, aiTransactions, onClearEntered, onReloadTransactions]);
 
   // ── Refresh handler ──
   const handleRefresh = useCallback(async () => {

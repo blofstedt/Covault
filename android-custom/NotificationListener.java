@@ -425,9 +425,14 @@ public class NotificationListener extends NotificationListenerService {
 
     // Patterns to extract vendor/merchant name
     private static final Pattern[] VENDOR_PATTERNS = {
+        // "VENDOR - You spent $X" / "VENDOR – You charged $X" (e.g. Wealthsimple)
+        // Must come first so the clean vendor name is captured before the spending phrase.
+        Pattern.compile("^([A-Za-z0-9&'./# -]{2,60}?)\\s*[-\\u2013\\u2014]\\s*(?:[Yy]ou\\s+)?(?:spent|charged|paid|purchased)\\b", Pattern.CASE_INSENSITIVE),
         Pattern.compile("(?:at|from|to|@)\\s+([A-Za-z0-9\\s&'.-]+?)\\s+(?:for|on|\\$|USD|CAD|charged)", Pattern.CASE_INSENSITIVE),
         Pattern.compile("(?:purchase|transaction|payment)\\s+(?:at|from)\\s+([A-Za-z0-9\\s&'.-]+)", Pattern.CASE_INSENSITIVE),
-        Pattern.compile("([A-Z][A-Za-z0-9\\s&'.-]+?)\\s+\\$[\\d,]+\\.\\d{2}"),
+        // Vendor before dollar amount — stop before spending verbs so we don't
+        // capture "AMZN MKTP CA You spent" instead of just "AMZN MKTP CA".
+        Pattern.compile("([A-Z][A-Za-z0-9\\s&'.-]+?)\\s+(?:(?:you\\s+)?(?:spent|charged|paid|purchased)\\s+)?\\$[\\d,]+\\.\\d{2}", Pattern.CASE_INSENSITIVE),
         Pattern.compile("(?:merchant|vendor|store)\\s*:?\\s*([A-Za-z0-9\\s&'.-]+)", Pattern.CASE_INSENSITIVE)
     };
 

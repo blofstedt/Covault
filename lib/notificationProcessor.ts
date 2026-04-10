@@ -420,7 +420,7 @@ export async function checkDuplicateTransaction(
   // Fetch existing transactions for this vendor and approximate amount
   const { data: existing, error } = await supabase
     .from('transactions')
-    .select('id, vendor, amount, date, recurrence, recur, created_at')
+    .select('id, vendor, amount, date, recur, created_at')
     .eq('user_id', userId)
     .ilike('vendor', vendor);
 
@@ -447,7 +447,7 @@ export async function checkDuplicateTransaction(
   const toleranceMs = RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY;
 
   for (const tx of amountMatches) {
-    const recurrence = ((tx.recur || tx.recurrence) || '').toLowerCase();
+    const recurrence = (tx.recur || '').toLowerCase();
     if (recurrence !== 'monthly' && recurrence !== 'biweekly') continue;
 
     const txDateMs = new Date(tx.date).getTime();
@@ -599,7 +599,12 @@ export async function processNotificationWithAI(
     };
   }
 
-  const vendor = parsed.vendorDisplay || input.fallbackVendor || null;
+  // Use the deterministic extraction result unless it failed ('Unknown'), in which
+  // case fall back to whatever the native plugin extracted from the notification title.
+  const extractedVendor = (parsed.vendorDisplay && parsed.vendorDisplay !== 'Unknown')
+    ? parsed.vendorDisplay
+    : null;
+  const vendor = extractedVendor || input.fallbackVendor || null;
   const amount = parsed.amount ?? input.fallbackAmount ?? 0;
 
   // ── Step 3b: Reject if no vendor could be identified ──
@@ -625,7 +630,7 @@ export async function processNotificationWithAI(
 
   const { data: existingTx } = await supabase
     .from('transactions')
-    .select('id, vendor, amount, date, label, type, recurrence, recur, created_at')
+    .select('id, vendor, amount, type, created_at')
     .eq('user_id', userId)
     .gte('created_at', dedupWindowStart)
     .lte('created_at', dedupWindowEnd);
@@ -639,8 +644,7 @@ export async function processNotificationWithAI(
 
     if (duplicateToday) {
       // Distinguish manual vs AI duplicates
-      const txType = duplicateToday.label || duplicateToday.type;
-      const isAIDuplicate = txType === 'AI' || txType === 'Auto-Added' || txType === 'Automatic';
+      const isAIDuplicate = duplicateToday.type === 'Automatic';
       const skipReason = isAIDuplicate ? 'duplicate_ai' as const : 'duplicate_manual' as const;
       const reason = isAIDuplicate
         ? `Duplicate transaction found: ${vendor} for $${amount.toFixed(2)} was already recorded by AI`
@@ -666,24 +670,30 @@ export async function processNotificationWithAI(
   let categoryName: string | null = null;
   let displayVendor: string = vendor;
 
-  // 5a: Check server-side vendor_overrides table
-  const normalizedLookup = normalizeVendorForDedup(vendor);
-  if (normalizedLookup) {
+  // 5a: Check server-side overrides table
+  // Schema: overrides(id, user_id, proper_name text, category_id Budgets-enum)
+  // proper_name is the canonical vendor name; category_id is the budget enum value (e.g. 'Groceries')
+  if (vendor) {
     const { data: overrideRows } = await supabase
-      .from('vendor_overrides')
-      .select('category_id')
+      .from('overrides')
+      .select('category_id, proper_name')
       .eq('user_id', userId)
-      .ilike('vendor_name', vendor)
+      .ilike('proper_name', vendor)
       .limit(1);
 
     if (overrideRows && overrideRows.length > 0) {
+      const overrideBudgetName = overrideRows[0].category_id as string; // e.g. 'Groceries'
       const overrideCat = availableCategories.find(
-        (c) => c.id === overrideRows[0].category_id,
+        (c) => c.name.toLowerCase() === (overrideBudgetName || '').toLowerCase(),
       );
       if (overrideCat) {
         categoryId = overrideCat.id;
         categoryName = overrideCat.name;
-        console.log(`[AI pipeline] vendor_overrides match: ${vendor} → ${categoryName}`);
+        // Use the stored proper_name as the display vendor if available
+        if (overrideRows[0].proper_name) {
+          displayVendor = overrideRows[0].proper_name;
+        }
+        console.log(`[AI pipeline] overrides match: ${vendor} → ${categoryName}`);
       }
     }
   }
@@ -741,13 +751,10 @@ export async function processNotificationWithAI(
       vendor: finalVendorName,
       amount,
       date: today,
+      // Use the same column names as toSupabaseTransaction (the known-working manual insert path)
       budget: categoryName || 'Other',
-      Budget: categoryName || 'Other',
-      type: 'AI',
+      type: 'Automatic',
       recur: parsed.recurrence,
-      category_id: categoryId,
-      recurrence: parsed.recurrence,
-      label: 'AI',
       is_projected: false,
     });
 

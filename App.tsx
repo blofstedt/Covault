@@ -88,6 +88,7 @@ const App: React.FC = () => {
     saveUserIncome,
     saveTheme,
     saveBudgetVisibility,
+    saveSettingToDb,
   } = useUserData({ appState, setAppState, setDbError });
 
   const loadUserDataWithState = useCallback(
@@ -280,6 +281,7 @@ const App: React.FC = () => {
           saveUserIncome={saveUserIncome}
           saveTheme={saveTheme}
           saveBudgetVisibility={saveBudgetVisibility}
+          saveSettingToDb={saveSettingToDb}
           onLinkPartner={handleLinkPartner}
           onUnlinkPartner={handleUnlinkPartner}
           onRefreshNotifications={refreshNotifications}

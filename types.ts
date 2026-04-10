@@ -49,10 +49,8 @@ export enum Recurrence {
 }
 
 export enum TransactionLabel {
-  AUTO_ADDED = 'Auto-Added',
+  AUTOMATIC = 'Automatic',
   MANUAL = 'Manual',
-  EDITED = 'Auto-Added + Edited',
-  AI = 'AI',
 }
 
 export interface Transaction {
@@ -63,8 +61,9 @@ export interface Transaction {
   date: string;
   budget_id: string | null;
   recurrence?: Recurrence | 'One-time' | 'Biweekly' | 'Monthly';
-  label?: TransactionLabel | 'Auto-Added' | 'Manual' | 'Auto-Added + Edited' | 'AI';
+  label?: 'Automatic' | 'Manual';
   is_projected: boolean;
+  caught_cleared?: boolean;
   userName?: string;
   created_at: string;
 

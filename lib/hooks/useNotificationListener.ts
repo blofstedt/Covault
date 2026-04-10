@@ -100,7 +100,7 @@ export const useNotificationListener = ({
                     date: new Date().toISOString().slice(0, 10),
                     budget_id: result.categoryId || null,
                     is_projected: false,
-                    label: 'AI',
+                    label: 'Automatic',
                     userName: user.name || 'User',
                     created_at: new Date().toISOString(),
                   };
@@ -132,7 +132,7 @@ export const useNotificationListener = ({
               date: new Date().toISOString().slice(0, 10),
               budget_id: null,
               is_projected: false,
-              label: 'AI',
+              label: 'Automatic',
               userName: user.name || 'User',
               created_at: new Date().toISOString(),
             };

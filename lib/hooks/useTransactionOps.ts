@@ -158,7 +158,7 @@ export const useTransactionOps = ({
       const txToPersist = buildPersistedUpdateTransaction(updatedTx, originalTx);
 
       // Check if this was an AI transaction being re-categorized or renamed
-      const isAI = originalTx?.label === 'AI';
+      const isAI = originalTx?.label === 'Automatic';
       const isAIRecategorize = isAI && txToPersist.budget_id !== originalTx?.budget_id;
       const isAIVendorRename = isAI && originalTx && formatVendorName(txToPersist.vendor) !== formatVendorName(originalTx.vendor);
 
@@ -228,55 +228,46 @@ export const useTransactionOps = ({
             setDbError(msg);
           }
 
-          // If AI transaction was re-categorized or vendor renamed, update vendor_overrides
+          // If AI transaction was re-categorized or vendor renamed, update the overrides table
+          // and localStorage so future notifications from the same vendor auto-categorize.
+          // overrides schema: (id, user_id, proper_name text, category_id Budgets-enum)
           if ((isAIRecategorize || isAIVendorRename) && appState.user?.id && originalTx) {
+            const originalVendorName = formatVendorName(originalTx.vendor);
+            const newVendorName = formatVendorName(txToPersist.vendor);
+            const budgetName = appState.budgets.find(b => b.id === txToPersist.budget_id)?.name || mappedBudget;
+
+            // Persist to localStorage vendor map
+            const vendorKey = newVendorName.toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (vendorKey) {
+              upsertVendorMapEntry({ vendor_key: vendorKey, vendor_display: newVendorName, budget: budgetName, updated_at: new Date().toISOString() });
+            }
+
+            // Persist to DB overrides table (upsert by proper_name)
             try {
               const overrideHeaders = await getAuthHeaders();
               (overrideHeaders as any)['Prefer'] = 'return=representation';
-              // Use the original vendor name as the key for lookup
-              const originalVendorName = formatVendorName(originalTx.vendor);
-              const newVendorName = formatVendorName(txToPersist.vendor);
+              const overridePayload: Record<string, string> = { category_id: budgetName };
+              if (isAIVendorRename) overridePayload.proper_name = newVendorName;
 
-              // Build the update payload
-              const overridePayload: Record<string, string> = {};
-              if (isAIRecategorize && txToPersist.budget_id) {
-                overridePayload.category_id = txToPersist.budget_id;
-              }
-              if (isAIVendorRename) {
-                overridePayload.proper_name = newVendorName;
-              }
-
-              // Try to update existing override (match on original vendor name)
               const patchRes = await fetch(
-                `${REST_BASE}/vendor_overrides?user_id=eq.${appState.user.id}&vendor_name=eq.${encodeURIComponent(originalVendorName)}`,
-                {
-                  method: 'PATCH',
-                  headers: overrideHeaders,
-                  body: JSON.stringify(overridePayload),
-                },
+                `${REST_BASE}/overrides?user_id=eq.${appState.user.id}&proper_name=ilike.${encodeURIComponent(originalVendorName)}`,
+                { method: 'PATCH', headers: overrideHeaders, body: JSON.stringify(overridePayload) },
               );
               const patchBody = await patchRes.text();
               let patchedRows: any[] = [];
-              try { patchedRows = patchBody ? JSON.parse(patchBody) : []; } catch (e) { console.warn('[update] vendor_override PATCH parse error:', e); patchedRows = []; }
+              try { patchedRows = patchBody ? JSON.parse(patchBody) : []; } catch { patchedRows = []; }
 
               if (!patchRes.ok || !Array.isArray(patchedRows) || patchedRows.length === 0) {
-                // Insert new override
-                await fetch(`${REST_BASE}/vendor_overrides`, {
+                // No existing override — insert new one
+                await fetch(`${REST_BASE}/overrides`, {
                   method: 'POST',
                   headers: overrideHeaders,
-                  body: JSON.stringify({
-                    user_id: appState.user.id,
-                    vendor_name: originalVendorName,
-                    category_id: txToPersist.budget_id || originalTx.budget_id,
-                    ...(isAIVendorRename ? { proper_name: newVendorName } : {}),
-                  }),
+                  body: JSON.stringify({ user_id: appState.user.id, proper_name: newVendorName, category_id: budgetName }),
                 });
               }
-              console.log('[update] vendor_override saved for AI transaction:', originalVendorName,
-                isAIVendorRename ? `→ proper_name: ${newVendorName}` : '',
-                isAIRecategorize ? `→ category_id: ${txToPersist.budget_id}` : '');
+              console.log('[update] override saved:', newVendorName, '→', budgetName);
             } catch (overrideErr: any) {
-              console.warn('[update] vendor_override save failed:', overrideErr?.message || overrideErr);
+              console.warn('[update] override save failed:', overrideErr?.message || overrideErr);
             }
           }
         }
@@ -407,14 +398,16 @@ export const useTransactionOps = ({
         // Use local date to avoid UTC conversion shifting the date forward by a day
         const txDate = new Date(pending.extracted_timestamp || pending.posted_at || new Date());
         const dateStr = `${txDate.getFullYear()}-${String(txDate.getMonth() + 1).padStart(2, '0')}-${String(txDate.getDate()).padStart(2, '0')}`;
+        // Resolve budget name from the budget id in app state (DB stores name, not id)
+        const approvedBudgetName = appState.budgets.find(b => b.id === categoryId)?.name || 'Other';
         const transactionRow = {
           user_id: userId,
           vendor: formatVendorName(pending.extracted_vendor),
           amount: Number(pending.extracted_amount),
           date: dateStr,
-          category_id: categoryId,
-          recurrence: 'One-time',
-          label: 'Auto-Added',
+          budget: approvedBudgetName,
+          type: 'Automatic',
+          recur: 'One-time',
           is_projected: false,
         };
 
@@ -445,7 +438,7 @@ export const useTransactionOps = ({
           return;
         }
 
-        const savedTransaction = { ...fromSupabaseTransaction(savedRow), label: 'Auto-Added' as const };
+        const savedTransaction = { ...fromSupabaseTransaction(savedRow), label: 'Automatic' as const };
         console.log('[approvePending] transaction inserted, id:', savedTransaction.id);
 
         // 2) Mark pending transaction as reviewed and approved
@@ -466,59 +459,39 @@ export const useTransactionOps = ({
           // Transaction was created, so continue even if PATCH fails
         }
 
-        // 3) Save vendor_override so future transactions from this vendor auto-categorize
+        // 3) Save vendor override so future notifications auto-categorize
+        // overrides schema: (id, user_id, proper_name text, category_id Budgets-enum)
+        const trimmedPreferredName = preferredName?.trim() || null;
+        const vendorDisplay = trimmedPreferredName || formatVendorName(pending.extracted_vendor);
+        const vendorKey = vendorDisplay.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+        // Save to localStorage
+        if (vendorKey) {
+          upsertVendorMapEntry({ vendor_key: vendorKey, vendor_display: vendorDisplay, budget: approvedBudgetName, updated_at: new Date().toISOString() });
+        }
+
+        // Save to DB overrides table (upsert by proper_name)
         try {
           const overrideHeaders = await getAuthHeaders();
           (overrideHeaders as any)['Prefer'] = 'return=representation';
-          const trimmedPreferredName = preferredName?.trim() || null;
-          const overridePatchBody: Record<string, any> = { category_id: categoryId };
-          if (trimmedPreferredName) {
-            overridePatchBody.proper_name = trimmedPreferredName;
-          }
-          // Try to update existing override
-          const patchOverrideRes = await fetch(
-            `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(formatVendorName(pending.extracted_vendor))}`,
-            {
-              method: 'PATCH',
-              headers: overrideHeaders,
-              body: JSON.stringify(overridePatchBody),
-            },
+          const patchRes = await fetch(
+            `${REST_BASE}/overrides?user_id=eq.${userId}&proper_name=ilike.${encodeURIComponent(formatVendorName(pending.extracted_vendor))}`,
+            { method: 'PATCH', headers: overrideHeaders, body: JSON.stringify({ category_id: approvedBudgetName, proper_name: vendorDisplay }) },
           );
-          const patchOverrideBody = await patchOverrideRes.text();
+          const patchBody = await patchRes.text();
           let patchedRows: any[] = [];
-          try {
-            patchedRows = patchOverrideBody ? JSON.parse(patchOverrideBody) : [];
-          } catch (parseErr) {
-            console.warn('[approvePending] vendor_override PATCH response parse error:', parseErr);
-            patchedRows = [];
-          }
-          if (!patchOverrideRes.ok || !Array.isArray(patchedRows) || patchedRows.length === 0) {
-            // No existing override found, insert a new one
-            const overrideInsertBody: Record<string, any> = {
-              user_id: userId,
-              vendor_name: formatVendorName(pending.extracted_vendor),
-              category_id: categoryId,
-            };
-            if (trimmedPreferredName) {
-              overrideInsertBody.proper_name = trimmedPreferredName;
-            }
-            const postRes = await fetch(`${REST_BASE}/vendor_overrides`, {
+          try { patchedRows = patchBody ? JSON.parse(patchBody) : []; } catch { patchedRows = []; }
+
+          if (!patchRes.ok || !Array.isArray(patchedRows) || patchedRows.length === 0) {
+            await fetch(`${REST_BASE}/overrides`, {
               method: 'POST',
               headers: overrideHeaders,
-              body: JSON.stringify(overrideInsertBody),
+              body: JSON.stringify({ user_id: userId, proper_name: vendorDisplay, category_id: approvedBudgetName }),
             });
-            if (!postRes.ok) {
-              const postBody = await postRes.text();
-              console.warn('[approvePending] vendor_override POST failed:', postRes.status, postBody.slice(0, 200));
-            } else {
-              console.log('[approvePending] vendor_override saved for', pending.extracted_vendor);
-            }
-          } else {
-            console.log('[approvePending] vendor_override updated for', pending.extracted_vendor);
           }
+          console.log('[approvePending] override saved for', vendorDisplay, '→', approvedBudgetName);
         } catch (overrideErr: any) {
-          // Non-critical: log but don't fail the approval
-          console.warn('[approvePending] vendor_override save failed:', overrideErr?.message || overrideErr);
+          console.warn('[approvePending] override save failed:', overrideErr?.message || overrideErr);
         }
 
         // 4) Update UI state: add transaction + remove from pending list
@@ -535,7 +508,7 @@ export const useTransactionOps = ({
         setDbError(msg);
       }
     },
-    [appState.user, appState.pendingTransactions, fromSupabaseTransaction, setAppState, setDbError],
+    [appState.user, appState.budgets, appState.pendingTransactions, fromSupabaseTransaction, setAppState, setDbError],
   );
 
   // Reject a pending transaction
@@ -643,7 +616,7 @@ export const useTransactionOps = ({
         const res = await fetch(`${REST_BASE}/transactions?id=in.(${idList})`, {
           method: 'PATCH',
           headers,
-          body: JSON.stringify({ label: 'Manual' }),
+          body: JSON.stringify({ type: 'Manual' }),
         });
         if (!res.ok) {
           const body = await res.text();

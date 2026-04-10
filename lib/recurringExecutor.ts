@@ -6,6 +6,21 @@
 import { supabase } from './supabase';
 import type { Transaction } from '../types';
 
+/**
+ * Resolve a budget_id (e.g. 'budget:groceries') to the enum name ('Groceries')
+ * that the transactions.budget column expects.
+ */
+function budgetIdToName(budgetId: string | null): string {
+  if (!budgetId) return 'Other';
+  // 'budget:groceries' -> 'Groceries'
+  if (budgetId.startsWith('budget:')) {
+    const name = budgetId.slice('budget:'.length).replace(/-/g, ' ');
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  }
+  // Already a plain name or UUID fallback
+  return budgetId;
+}
+
 const LAST_RUN_KEY = 'covault_recurring_last_run';
 
 function todayStr(): string {
@@ -84,7 +99,7 @@ export async function executeRecurringTransactions(
     vendor: string;
     amount: number;
     date: string;
-    budget_id: string | null;
+    budget: string;
     recur: string;
     type: string;
     is_projected: boolean;
@@ -104,9 +119,9 @@ export async function executeRecurringTransactions(
       vendor: tx.vendor,
       amount: tx.amount,
       date: dueDate,
-      budget_id: tx.budget_id,
+      budget: budgetIdToName(tx.budget_id),
       recur: rec,
-      type: 'Auto-Added',
+      type: 'Automatic',
       is_projected: false,
     });
 
@@ -138,9 +153,9 @@ export async function executeRecurringTransactions(
     vendor: row.vendor,
     amount: Number(row.amount),
     date: row.date,
-    budget_id: row.budget_id ?? row.category_id ?? null,
+    budget_id: row.budget ? `budget:${row.budget.toLowerCase()}` : null,
     recurrence: row.recur,
-    label: 'Auto-Added',
+    label: 'Automatic' as const,
     is_projected: false,
     created_at: row.created_at || new Date().toISOString(),
   }));

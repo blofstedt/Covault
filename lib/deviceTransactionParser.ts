@@ -106,14 +106,31 @@ function extractVendorRaw(text: string): string {
     return (m[2] || m[1] || '').trim();
   }
 
+  // "VENDOR - You spent $X" / "VENDOR – You charged $X" etc.
+  // Handles Wealthsimple and any bank that puts the merchant name before a dash
+  // and a spending phrase (e.g. "AMZN MKTP CA - You spent $36.64 with your credit card.")
+  const vendorBeforeSpending = text.match(
+    /^([A-Za-z0-9&'./#\- ]{2,60}?)\s*[-–—]\s*(?:you\s+)?(?:spent|charged|paid|purchased)\b/i,
+  );
+  if (vendorBeforeSpending) {
+    const candidate = vendorBeforeSpending[1].trim();
+    if (candidate.length >= 2) return candidate;
+  }
+
   // Fallback: look for text AFTER an amount+keyword pattern like "$12.34 at VENDOR"
   const afterAmount = text.match(/\$[\d,.]+\s+(?:at|from|to|@)\s+([A-Za-z0-9&'./#\- ]{2,60})/i);
   if (afterAmount) return afterAmount[1].trim();
 
-  // Last resort: try to extract a capitalized word sequence (likely a vendor name)
-  // near a dollar amount — don't use the fallback that captures everything before a keyword
+  // Last resort: try to extract a capitalized word sequence near a dollar amount.
+  // Reject matches that start with common prepositions/articles — those are almost
+  // always false positives like "with your credit card" or "from your account".
   const nearDollar = text.match(/\$[\d,.]+[^A-Za-z]*([A-Z][A-Za-z0-9&'.\- ]{1,59})/i);
-  if (nearDollar) return nearDollar[1].trim();
+  if (nearDollar) {
+    const candidate = nearDollar[1].trim();
+    if (!/^(?:with|from|on|using|via|by|through|for|and|the|a|an|your|my|our)\b/i.test(candidate)) {
+      return candidate;
+    }
+  }
 
   return 'Unknown';
 }

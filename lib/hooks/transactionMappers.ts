@@ -74,8 +74,6 @@ export const resolveBudgetNameForInsert = (
 };
 
 export const resolveBudgetIdFromRow = (row: any): string | null => {
-  if (row.budget_id) return String(row.budget_id);
-
   const budgetRaw = row.Budget || row.budget;
   if (budgetRaw) {
     const budgetName = String(budgetRaw);
@@ -86,8 +84,6 @@ export const resolveBudgetIdFromRow = (row: any): string | null => {
     return `budget:${normalizedName.replace(/\s+/g, '-')}`;
   }
 
-  // Keep legacy category_id as a final fallback for older rows.
-  if (row.category_id) return String(row.category_id);
   return null;
 };
 
@@ -127,8 +123,9 @@ export const toSupabaseTransaction = (
     date: dateStr,
     is_projected: tx.is_projected ?? false,
     // Current schema columns (public.transactions)
+    // type enum only has 'Manual' and 'Automatic' — map AI/Automatic labels to 'Automatic'
     budget: budgetName,
-    type: tx.label || 'Manual',
+    type: tx.label === 'Automatic' ? 'Automatic' : 'Manual',
     recur: recurrence,
   };
 
@@ -167,8 +164,10 @@ export const useFromSupabaseTransaction = () =>
         : new Date(row.date).toISOString(),
       budget_id: resolveBudgetIdFromRow(row),
       recurrence: recurrence,
-      label: row.label || row.type || 'Manual',
+      // Map DB type enum ('Automatic'|'Manual') to app-level label.
+      label: row.type === 'Automatic' ? 'Automatic' : 'Manual',
       is_projected: shouldSolidify ? false : row.is_projected,
+      caught_cleared: row.caught_cleared === true,
       userName: row.user_name || '',
       created_at: row.created_at,
     };
