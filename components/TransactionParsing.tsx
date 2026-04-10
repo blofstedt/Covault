@@ -95,7 +95,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
 
   // ── AI-entered transactions (label === 'AI') ──
   const aiTransactions = useMemo(
-    () => allTransactions.filter((tx) => tx.label === 'AI'),
+    () => allTransactions.filter((tx) => tx.label === 'Automatic'),
     [allTransactions],
   );
 

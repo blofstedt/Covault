@@ -252,7 +252,7 @@ const Dashboard: React.FC<Props> = ({
     const loadVendorHistory = async () => {
       const { data, error } = await supabase
         .from('transactions')
-        .select('vendor, budget, budget_id, category_id, date, created_at, user_id')
+        .select('vendor, budget, date, created_at, user_id')
         .eq('user_id', userId)
         .order('date', { ascending: false })
         .limit(250);

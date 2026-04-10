@@ -37,6 +37,15 @@ interface SmartCardDeckProps {
 
 const SWIPE_THRESHOLD = 80;
 
+/** Convert app-format budget ID ('budget:groceries') to DB Budgets enum ('Groceries'). */
+function budgetIdToName(budgetId: string): string {
+  if (budgetId.startsWith('budget:')) {
+    const name = budgetId.slice('budget:'.length).replace(/-/g, ' ');
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  }
+  return budgetId;
+}
+
 /** Extract vendor name and category ID from a vendor-suggestion card ID */
 function parseVendorSuggestion(card: SmartCard): { vendor: string; categoryId: string } | null {
   if (card.type !== 'vendor-suggestion') return null;
@@ -107,21 +116,23 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
     try {
       const headers = await getAuthHeaders();
       (headers as any)['Prefer'] = 'return=representation';
+      // category_id in DB is a Budgets enum e.g. 'Groceries', not the app-format 'budget:groceries'
+      const dbCategoryId = budgetIdToName(parsed.categoryId);
       // Upsert: try insert, fallback to patch
-      const res = await fetch(`${REST_BASE}/vendor_overrides`, {
+      const res = await fetch(`${REST_BASE}/overrides`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
           user_id: userId,
-          vendor_name: parsed.vendor,
-          category_id: parsed.categoryId,
+          proper_name: parsed.vendor,
+          category_id: dbCategoryId,
         }),
       });
       if (!res.ok) {
         // If conflict, update existing
         await fetch(
-          `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(parsed.vendor)}`,
-          { method: 'PATCH', headers, body: JSON.stringify({ category_id: parsed.categoryId }) },
+          `${REST_BASE}/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(parsed.vendor)}`,
+          { method: 'PATCH', headers, body: JSON.stringify({ category_id: dbCategoryId }) },
         );
       }
     } catch (e) {

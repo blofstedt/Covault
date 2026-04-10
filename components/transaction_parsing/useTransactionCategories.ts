@@ -74,7 +74,7 @@ export function useTransactionCategories({
   const vendorOverrideByName = useMemo(() => {
     const map = new Map<string, VendorOverride>();
     for (const vo of vendorOverrides) {
-      map.set(vo.vendor_name.toLowerCase(), vo);
+      map.set(vo.proper_name.toLowerCase(), vo);
     }
     return map;
   }, [vendorOverrides]);
@@ -84,8 +84,8 @@ export function useTransactionCategories({
     const vendorSet = new Map<string, string>();
     for (const vo of vendorOverrides) {
       if (!vo.category_id) continue;
-      const key = vo.vendor_name.toLowerCase();
-      if (!vendorSet.has(key)) vendorSet.set(key, vo.vendor_name);
+      const key = vo.proper_name.toLowerCase();
+      if (!vendorSet.has(key)) vendorSet.set(key, vo.proper_name);
     }
     return Array.from(vendorSet.values()).sort((a, b) => a.localeCompare(b));
   }, [vendorOverrides]);
@@ -93,7 +93,7 @@ export function useTransactionCategories({
   // Approved transactions: auto-detected from captured notifications
   const approvedTransactions = useMemo(
     () => autoDetectedTransactions.filter(
-      (tx) => tx.budget_id && !tx.is_projected && (tx.label === 'Auto-Added' || tx.label === 'Auto-Added + Edited'),
+      (tx) => tx.budget_id && !tx.is_projected && tx.label === 'Automatic',
     ),
     [autoDetectedTransactions],
   );

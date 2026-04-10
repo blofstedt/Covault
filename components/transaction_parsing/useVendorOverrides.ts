@@ -4,10 +4,12 @@ import { BudgetCategory } from '../../types';
 
 export interface VendorOverride {
   id: string;
-  vendor_name: string;
+  /** Vendor lookup key — maps to `overrides.proper_name` in DB */
+  proper_name: string;
+  /** Budget in app format: 'budget:groceries' (converted from DB's Budgets enum) */
   category_id: string;
+  /** Human-readable category name resolved from category_id (not in DB) */
   category_name?: string;
-  proper_name?: string;
 }
 
 interface UseVendorOverridesOptions {
@@ -27,7 +29,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
       const headers = await getAuthHeaders();
 
       const overridesRes = await fetch(
-        `${REST_BASE}/vendor_overrides?select=*&user_id=eq.${userId}&order=vendor_name`,
+        `${REST_BASE}/overrides?select=*&user_id=eq.${userId}&order=proper_name`,
         { headers, cache: 'no-store' },
       );
       if (!overridesRes.ok) {
@@ -36,28 +38,13 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
       }
       const data = await overridesRes.json();
 
-      // Load all budgets to resolve category names
-      const catsRes = await fetch(
-        `${REST_BASE}/budgets?select=id,category`,
-        { headers, cache: 'no-store' },
-      );
-      let cats: any[] = [];
-      if (catsRes.ok) {
-        cats = await catsRes.json();
-      } else {
-        console.error('[TransactionParsing] Error loading budgets for name resolution:', catsRes.status);
-      }
-      const catNameById = new Map<string, string>();
-      for (const c of cats) {
-        catNameById.set(c.id, c.category);
-      }
-
+      // category_id in DB is a Budgets enum value e.g. 'Groceries'.
+      // Convert to app format 'budget:groceries' so it matches b.id comparisons elsewhere.
       const overrides: VendorOverride[] = (data || []).map((row: any) => ({
         id: row.id,
-        vendor_name: row.vendor_name,
-        category_id: row.category_id,
-        category_name: catNameById.get(row.category_id) ?? undefined,
-        proper_name: row.proper_name ?? undefined,
+        proper_name: row.proper_name,
+        category_id: row.category_id ? `budget:${(row.category_id as string).toLowerCase()}` : '',
+        category_name: row.category_id || undefined,
       }));
       setVendorOverrides(overrides);
     } catch (err: any) {
@@ -76,7 +63,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
       if (!userId) return;
 
       const deletedOverride = vendorOverrides.find((vo) => vo.id === overrideId);
-      const vendorName = deletedOverride?.vendor_name;
+      const properName = deletedOverride?.proper_name;
 
       setVendorOverrides((prev) => prev.filter((vo) => vo.id !== overrideId));
       setExpandedVendorCategory(null);
@@ -86,10 +73,10 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
         (headers as any)['Prefer'] = 'return=representation';
         let url: string;
 
-        if (overrideId.startsWith('temp-') && vendorName) {
-          url = `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(vendorName)}`;
+        if (overrideId.startsWith('temp-') && properName) {
+          url = `${REST_BASE}/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(properName)}`;
         } else {
-          url = `${REST_BASE}/vendor_overrides?id=eq.${overrideId}&user_id=eq.${userId}`;
+          url = `${REST_BASE}/overrides?id=eq.${overrideId}&user_id=eq.${userId}`;
         }
 
         const res = await fetch(url, { method: 'DELETE', headers });
@@ -125,16 +112,19 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
   const handleSetVendorCategory = useCallback(
     async (vendorName: string, categoryId: string) => {
       if (!userId) return;
-      
+
+      // categoryId is in app format 'budget:groceries'; find the budget to get DB name 'Groceries'
       const category = budgets.find((b) => b.id === categoryId);
       if (!category) {
         console.error('[TransactionParsing] Invalid category ID:', categoryId);
         return;
       }
       const categoryName = category.name;
-      
+      // DB expects the Budgets enum value (e.g. 'Groceries'), not the app-format id
+      const dbCategoryId = categoryName;
+
       const existing = vendorOverrides.find(
-        (vo) => vo.vendor_name.toLowerCase() === vendorName.toLowerCase(),
+        (vo) => vo.proper_name.toLowerCase() === vendorName.toLowerCase(),
       );
 
       try {
@@ -150,13 +140,13 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
             )
           );
 
-          // Use vendor_name-based URL when override has a temp ID (not yet synced with DB)
+          // Use proper_name-based URL when override has a temp ID (not yet synced with DB)
           const url = existing.id.startsWith('temp-')
-            ? `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(existing.vendor_name)}`
-            : `${REST_BASE}/vendor_overrides?id=eq.${existing.id}&user_id=eq.${userId}`;
+            ? `${REST_BASE}/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(existing.proper_name)}`
+            : `${REST_BASE}/overrides?id=eq.${existing.id}&user_id=eq.${userId}`;
           const res = await fetch(
             url,
-            { method: 'PATCH', headers, body: JSON.stringify({ category_id: categoryId }) },
+            { method: 'PATCH', headers, body: JSON.stringify({ category_id: dbCategoryId }) },
           );
 
           const body = await res.text();
@@ -186,16 +176,16 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
           const tempId = `temp-${crypto.randomUUID()}`;
           const newOverride: VendorOverride = {
             id: tempId,
-            vendor_name: vendorName,
+            proper_name: vendorName,
             category_id: categoryId,
             category_name: categoryName,
           };
           setVendorOverrides((prev) => [...prev, newOverride]);
 
-          const insertRes = await fetch(`${REST_BASE}/vendor_overrides`, {
+          const insertRes = await fetch(`${REST_BASE}/overrides`, {
             method: 'POST',
             headers,
-            body: JSON.stringify({ user_id: userId, vendor_name: vendorName, category_id: categoryId }),
+            body: JSON.stringify({ user_id: userId, proper_name: vendorName, category_id: dbCategoryId }),
           });
 
           if (insertRes.ok) {
@@ -211,8 +201,8 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
             }
           } else {
             const updateRes = await fetch(
-              `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(vendorName)}`,
-              { method: 'PATCH', headers, body: JSON.stringify({ category_id: categoryId }) },
+              `${REST_BASE}/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(vendorName)}`,
+              { method: 'PATCH', headers, body: JSON.stringify({ category_id: dbCategoryId }) },
             );
 
             if (updateRes.ok) {
@@ -250,7 +240,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
       if (!userId) return;
 
       const existing = vendorOverrides.find(
-        (vo) => vo.vendor_name.toLowerCase() === vendorName.toLowerCase(),
+        (vo) => vo.proper_name.toLowerCase() === vendorName.toLowerCase(),
       );
       if (!existing) return;
 
@@ -260,7 +250,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
       setVendorOverrides((prev) =>
         prev.map((vo) =>
           vo.id === existing.id
-            ? { ...vo, proper_name: newProperName ?? undefined }
+            ? { ...vo, proper_name: newProperName ?? existing.proper_name }
             : vo
         )
       );
@@ -268,10 +258,10 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
       try {
         const headers = await getAuthHeaders();
         (headers as any)['Prefer'] = 'return=representation';
-        // Use vendor_name-based URL when override has a temp ID (not yet synced with DB)
+        // Use proper_name-based URL when override has a temp ID (not yet synced with DB)
         const url = existing.id.startsWith('temp-')
-          ? `${REST_BASE}/vendor_overrides?user_id=eq.${userId}&vendor_name=eq.${encodeURIComponent(existing.vendor_name)}`
-          : `${REST_BASE}/vendor_overrides?id=eq.${existing.id}&user_id=eq.${userId}`;
+          ? `${REST_BASE}/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(existing.proper_name)}`
+          : `${REST_BASE}/overrides?id=eq.${existing.id}&user_id=eq.${userId}`;
         const res = await fetch(
           url,
           { method: 'PATCH', headers, body: JSON.stringify({ proper_name: newProperName }) },
@@ -292,7 +282,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
           return;
         }
 
-        const actualValue = data[0].proper_name ?? undefined;
+        const actualValue = data[0].proper_name ?? existing.proper_name;
         const realId = data[0].id ?? existing.id;
         setVendorOverrides((prev) =>
           prev.map((vo) =>
@@ -317,14 +307,14 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
 
   // ── Optimistically upsert a vendor override in local state (no DB call) ──
   const upsertLocalVendorOverride = useCallback(
-    (vendorName: string, categoryId: string, properName?: string) => {
+    (vendorName: string, categoryId: string, categoryNameOverride?: string) => {
       const category = budgets.find((b) => b.id === categoryId);
       if (!category) return;
-      const categoryName = category.name;
+      const categoryName = categoryNameOverride || category.name;
 
       setVendorOverrides((prev) => {
         const existingIdx = prev.findIndex(
-          (vo) => vo.vendor_name.toLowerCase() === vendorName.toLowerCase(),
+          (vo) => vo.proper_name.toLowerCase() === vendorName.toLowerCase(),
         );
         if (existingIdx >= 0) {
           // Update existing override
@@ -333,7 +323,6 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
             ...updated[existingIdx],
             category_id: categoryId,
             category_name: categoryName,
-            ...(properName ? { proper_name: properName } : {}),
           };
           return updated;
         }
@@ -342,10 +331,9 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
           ...prev,
           {
             id: `temp-${crypto.randomUUID()}`,
-            vendor_name: vendorName,
+            proper_name: vendorName,
             category_id: categoryId,
             category_name: categoryName,
-            ...(properName ? { proper_name: properName } : {}),
           },
         ];
       });

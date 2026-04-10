@@ -70,7 +70,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const [showCalendar, setShowCalendar] = useState(false);
   const [splitBlockMessage, setSplitBlockMessage] = useState<string | null>(null);
 
-  const isAITransaction = initialTransaction?.label === 'AI';
+  const isAITransaction = initialTransaction?.label === 'Automatic';
   const amountInputRef = useRef<HTMLInputElement>(null);
 
   const CLOSE_ANIMATION_MS = 250;
