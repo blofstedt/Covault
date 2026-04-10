@@ -68,13 +68,11 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
-  const [splitBlockMessage, setSplitBlockMessage] = useState<string | null>(null);
 
   const isAITransaction = initialTransaction?.label === 'Automatic';
   const amountInputRef = useRef<HTMLInputElement>(null);
 
   const CLOSE_ANIMATION_MS = 250;
-  const TOAST_DISMISS_MS = 3000;
 
   const handleClose = () => {
     setIsClosing(true);
@@ -98,11 +96,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const selectSuggestion = (item: VendorHistoryItem) => {
     setVendor(item.vendor);
     setShowSuggestions(false);
-    // Auto-select the last-used budget for this vendor
-    if (!initialTransaction) {
-      if (item.budget_id) {
-        setSelectedIds(new Set([item.budget_id]));
-      }
+    if (!initialTransaction && item.budget_id) {
+      setSelectedId(item.budget_id);
     }
   };
 
@@ -111,173 +106,26 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     weekday: 'short', month: 'short', day: 'numeric'
   });
 
-  // Track selected budget IDs
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => {
-    if (initialTransaction?.budget_id) {
-      return new Set([initialTransaction.budget_id]);
-    }
-    return new Set();
-  });
+  const [selectedId, setSelectedId] = useState<string | null>(
+    initialTransaction?.budget_id ?? null
+  );
 
-  const [splits, setSplits] = useState<Record<string, number>>(() => {
-    const amountVal = parseFloat(initialTransaction?.amount.toString() || '0');
-    const res: Record<string, number> = {};
-    if (initialTransaction?.budget_id) {
-      res[initialTransaction.budget_id] = amountVal;
-    }
-    return res;
-  });
-
-  const [activeSlideId, setActiveSlideId] = useState<string | null>(null);
-  const slideStartRef = useRef<{ x: number, initialSplit: number } | null>(null);
-  const trackRef = useRef<Map<string, HTMLButtonElement>>(new Map());
-  const hasMovedRef = useRef<boolean>(false);
+  const toggleCategory = (id: string) => {
+    setSelectedId(prev => (prev === id ? null : id));
+  };
 
   const amount = parseFloat(amountStr) || 0;
 
-  // Sync splits when amount or selectedIds change
-  useEffect(() => {
-    const ids = Array.from(selectedIds) as string[];
-    if (ids.length === 0) {
-      setSplits({});
-      return;
-    }
-
-    if (ids.length === 1) {
-      setSplits({ [ids[0]]: amount });
-      return;
-    }
-
-    const currentSum = (Object.values(splits) as number[]).reduce((a: number, b: number) => a + b, 0);
-    const splitKeys = Object.keys(splits) as string[];
-    const setKeys = Array.from(selectedIds) as string[];
-
-    const needsReset = splitKeys.length !== setKeys.length || !setKeys.every(k => splitKeys.includes(k));
-
-    if (needsReset) {
-      const equalShare = amount / ids.length;
-      const newSplits: Record<string, number> = {};
-      ids.forEach(id => { newSplits[id] = equalShare; });
-      setSplits(newSplits);
-    } else if (Math.abs(currentSum - amount) > 0.01) {
-      const scale = currentSum === 0 ? 1 / ids.length : amount / currentSum;
-      const newSplits: Record<string, number> = {};
-      ids.forEach(id => {
-        newSplits[id] = (splits[id] || (amount / ids.length)) * scale;
-      });
-      setSplits(newSplits);
-    }
-  }, [amount, selectedIds]);
-
-  const toggleCategory = (id: string) => {
-    // Block splitting for AI transactions
-    if (isAITransaction && selectedIds.size >= 1 && !selectedIds.has(id)) {
-      // For AI transactions, replace the category (no split allowed)
-      setSplitBlockMessage('Budget splitting is not available for AI transactions');
-      setTimeout(() => setSplitBlockMessage(null), TOAST_DISMISS_MS);
-      // Allow reassignment but not split
-      const next = new Set([id]);
-      setSelectedIds(next);
-      return;
-    }
-
-    const next = new Set(selectedIds);
-    if (next.has(id)) {
-      next.delete(id);
-    } else {
-      // When a single budget is already selected and the user taps a different one,
-      // replace the selection (reassign) rather than entering split mode
-      if (next.size === 1) {
-        next.clear();
-      }
-      if (next.size < 2) {
-        next.add(id);
-      }
-    }
-    setSelectedIds(next);
-  };
-
-  const handlePointerDown = (e: React.PointerEvent, id: string) => {
-    if (document.activeElement instanceof HTMLInputElement) {
-      document.activeElement.blur();
-    }
-
-    e.preventDefault();
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    setActiveSlideId(id);
-    hasMovedRef.current = false;
-    slideStartRef.current = { x: e.clientX, initialSplit: splits[id] || 0 };
-  };
-
-  const handlePointerMove = (e: React.PointerEvent, id: string) => {
-    if (activeSlideId !== id || !slideStartRef.current) return;
-
-    if (!selectedIds.has(id) || selectedIds.size < 2) return;
-
-    const deltaX = e.clientX - slideStartRef.current.x;
-
-    if (Math.abs(deltaX) > 5) {
-      hasMovedRef.current = true;
-    }
-
-    if (!hasMovedRef.current) return;
-
-    const rect = trackRef.current.get(id)?.getBoundingClientRect();
-    if (!rect) return;
-
-    const deltaAmount = (deltaX / rect.width) * amount;
-    let newVal = Math.max(0, Math.min(amount, slideStartRef.current.initialSplit + deltaAmount));
-
-    const otherIds = (Array.from(selectedIds) as string[]).filter(sid => sid !== id);
-    if (otherIds.length === 0) return;
-
-    const diff = newVal - (splits[id] || 0);
-    const otherSum = otherIds.reduce((sum: number, sid: string) => sum + (splits[sid] || 0), 0);
-
-    const newSplits = { ...splits };
-    newSplits[id] = newVal;
-
-    if (otherSum > 0) {
-      otherIds.forEach(sid => {
-        newSplits[sid] = Math.max(0, (splits[sid] || 0) - (diff * ((splits[sid] || 0) / otherSum)));
-      });
-    } else {
-      otherIds.forEach(sid => {
-        newSplits[sid] = Math.max(0, (amount - newVal) / otherIds.length);
-      });
-    }
-
-    const finalSum = (Object.values(newSplits) as number[]).reduce((a: number, b: number) => a + b, 0);
-    if (Math.abs(finalSum - amount) > 0.001) {
-      const adjustment = amount - finalSum;
-      const firstOtherId = otherIds[0];
-      newSplits[firstOtherId] = Math.max(0, (newSplits[firstOtherId] || 0) + adjustment);
-    }
-
-    setSplits(newSplits);
-  };
-
-  const handlePointerUp = (e: React.PointerEvent, id: string) => {
-    if (activeSlideId === id) {
-      if (!hasMovedRef.current) {
-        toggleCategory(id);
-      }
-    }
-    setActiveSlideId(null);
-    slideStartRef.current = null;
-    hasMovedRef.current = false;
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!amount || amount <= 0 || selectedIds.size === 0) return;
+    if (!amount || amount <= 0 || !selectedId) return;
 
     const tx: Transaction = {
       id: initialTransaction?.id || generateUUID(),
       vendor: formatVendorName(vendor || 'Untitled Vendor'),
-      amount: amount,
+      amount,
       date: date + 'T12:00:00.000Z',
-      budget_id: (Array.from(selectedIds) as string[])[0],
+      budget_id: selectedId,
       recurrence,
       label: initialTransaction
         ? (initialTransaction.label === TransactionLabel.AUTO_ADDED || initialTransaction.label === TransactionLabel.EDITED
@@ -307,7 +155,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     onClose();
   };
 
-  const isFormValid = amount > 0 && selectedIds.size > 0 && vendor.trim() !== '';
+  const isFormValid = amount > 0 && selectedId !== null && vendor.trim() !== '';
 
   return (
     <div className={`fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-xl transition-opacity duration-250 ${isClosing ? 'opacity-0' : 'animate-in fade-in duration-300'}`}>
@@ -342,7 +190,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                   placeholder="0.00"
                   value={amountStr}
                   onChange={e => setAmountStr(e.target.value)}
-                  readOnly={false}
                   className="bg-transparent text-center text-3xl font-black tracking-tighter outline-none text-slate-500 dark:text-slate-50 placeholder-slate-200 dark:placeholder-slate-800 w-auto min-w-[1ch]"
                   style={{ width: amountStr ? `${amountStr.length + 0.5}ch` : '4ch' }}
                 />
@@ -385,74 +232,41 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                 </div>
               )}
             </div>
-
           </div>
 
           <div className="space-y-3">
             <div className="flex items-center justify-between px-2">
               <span className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">
-                {isAITransaction ? 'Select Budget' : (selectedIds.size > 1 ? 'Slide to Allocate' : 'Target Vault')}
+                Target Vault
               </span>
-              {selectedIds.size > 1 && !isAITransaction && (
-                <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded-full animate-pulse">
-                  SPLIT ACTIVE
-                </span>
-              )}
             </div>
 
             <div id="tutorial-budget-grid" className="flex flex-col gap-1.5">
               {[budgets.slice(0, 3), budgets.slice(3)].map((row, rowIdx) => (
                 <div key={rowIdx} className="flex justify-center gap-1.5">
                   {row.map(b => {
-                    const isSelected = selectedIds.has(b.id);
-                    const isMaxSelected = selectedIds.size >= 2;
-                    const isSplit = selectedIds.size > 1;
-                    const share = isSelected ? (splits[b.id] || 0) : 0;
-                    const percentage = amount > 0 ? (share / amount) * 100 : 0;
-                    const isSliding = activeSlideId === b.id;
+                    const isSelected = selectedId === b.id;
 
                     return (
                       <button
                         key={b.id}
-                        ref={el => { if (el) trackRef.current.set(b.id, el); else trackRef.current.delete(b.id); }}
                         type="button"
-                        onPointerDown={e => handlePointerDown(e, b.id)}
-                        onPointerMove={e => handlePointerMove(e, b.id)}
-                        onPointerUp={e => handlePointerUp(e, b.id)}
-                        onPointerCancel={e => handlePointerUp(e, b.id)}
-                        style={{
-                          background: isSelected
-                            ? `linear-gradient(to right, rgba(16, 185, 129, 0.4) ${percentage}%, transparent ${percentage}%)`
-                            : 'transparent'
-                        }}
+                        onClick={() => toggleCategory(b.id)}
                         className={`
-                          relative group flex items-center justify-center p-2 rounded-2xl transition-all overflow-hidden border w-[calc(25%-5px)] aspect-square
+                          relative flex items-center justify-center p-2 rounded-2xl transition-all border w-[calc(25%-5px)] aspect-square active:scale-95
                           ${isSelected
-                            ? 'border-emerald-500/50 shadow-lg shadow-emerald-500/10'
-                            : (isMaxSelected ? 'bg-slate-50/50 dark:bg-slate-900/50 border-slate-50 dark:border-slate-900 opacity-40 text-slate-300' : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-400')
+                            ? 'border-emerald-500/50 bg-emerald-50/60 dark:bg-emerald-900/20 shadow-lg shadow-emerald-500/10'
+                            : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-400'
                           }
-                          ${isSliding ? 'scale-[1.05] ring-2 ring-emerald-500/40' : 'active:scale-95'}
-                          touch-none
                         `}
                       >
-                        {isSelected && (
-                          <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                            <div className={`liquid-edge liquid-active`} style={{ left: `${percentage}%`, transform: 'translateX(-50%)', opacity: 0.4 }} />
-                          </div>
-                        )}
-
-                        <div className={`relative z-10 flex flex-col items-center justify-center transition-transform ${isSliding ? 'scale-110' : ''}`}>
-                          <div className={`flex items-center justify-center w-5 h-5 ${isSelected ? 'text-emerald-600 dark:text-emerald-400' : ''} ${isSelected && isSplit ? 'opacity-30' : ''}`}>
+                        <div className="flex flex-col items-center justify-center">
+                          <div className={`flex items-center justify-center w-5 h-5 ${isSelected ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>
                             {getBudgetIcon(b.name)}
                           </div>
-                          <span className={`text-[9px] font-black uppercase tracking-tighter mt-1.5 leading-none text-center ${isSelected ? 'text-emerald-700 dark:text-emerald-300' : ''} ${isSelected && isSplit ? 'opacity-30' : ''}`}>
+                          <span className={`text-[9px] font-black uppercase tracking-tighter mt-1.5 leading-none text-center ${isSelected ? 'text-emerald-700 dark:text-emerald-300' : ''}`}>
                             {b.name}
                           </span>
-                          {isSelected && isSplit && (
-                            <span className="absolute inset-0 flex items-center justify-center text-[11px] font-black text-emerald-800 dark:text-emerald-200">
-                              ${share.toFixed(2)}
-                            </span>
-                          )}
                         </div>
                       </button>
                     );
@@ -492,7 +306,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                 ))}
               </div>
             </div>
-
           </div>
 
           <button
@@ -535,15 +348,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           onChange={setDate}
           onClose={() => setShowCalendar(false)}
         />
-      )}
-
-      {/* Split block message for AI transactions */}
-      {splitBlockMessage && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[200] animate-in fade-in slide-in-from-bottom-4 duration-300">
-          <div className="bg-amber-600 text-white px-6 py-3 rounded-2xl shadow-xl shadow-amber-500/20 text-xs font-black uppercase tracking-widest text-center max-w-xs">
-            {splitBlockMessage}
-          </div>
-        </div>
       )}
     </div>
   );

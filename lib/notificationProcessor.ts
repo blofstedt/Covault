@@ -559,7 +559,10 @@ export async function processNotificationWithAI(
   // (app restart, hot reload). This localStorage-backed check ensures a
   // notification that was already processed is never re-inserted after the
   // user clears it from the <> page and the app is closed/reopened.
-  if (!input.forceReprocess && isNotificationProcessed(inMemoryKey)) {
+  // NOTE: forceReprocess does NOT bypass this — it only bypasses the
+  // in-memory TTL cache so rescans can retry recently-rejected notifications,
+  // but a notification that was successfully inserted must never be re-inserted.
+  if (isNotificationProcessed(inMemoryKey)) {
     console.log('[AI pipeline] Persistent dedup hit, skipping');
     // Warm the in-memory cache so subsequent checks in this session are fast
     recentlyProcessedCache.set(inMemoryKey, Date.now());

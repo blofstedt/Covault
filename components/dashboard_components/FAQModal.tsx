@@ -24,10 +24,6 @@ const FAQ_ITEMS: FAQItem[] = [
     answer: "Tap the + button in the center of the bottom bar. Fill in the amount, vendor name, and choose a budget category, then tap Save."
   },
   {
-    question: "How do I split a transaction between two budgets?",
-    answer: "When adding or editing a transaction, select two budget categories. A split slider will appear, letting you drag to adjust how much of the amount goes to each category."
-  },
-  {
     question: "How do I delete a transaction?",
     answer: "Tap on any transaction in the budget list to open the action menu, then tap 'Delete.' You'll be asked to confirm before it's removed."
   },

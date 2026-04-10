@@ -16,7 +16,6 @@ interface TutorialProps {
   onShowPlaceholderTransaction?: (show: boolean) => void;
   onShowTransactionModal?: (show: boolean) => void;
   onOpenTransactionForm?: (open: boolean) => void;
-  onDemoSplit?: () => void;
   firstBudgetId?: string;
 }
 
@@ -28,7 +27,6 @@ const Tutorial: React.FC<TutorialProps> = ({
   onShowPlaceholderTransaction,
   onShowTransactionModal,
   onOpenTransactionForm,
-  onDemoSplit,
   firstBudgetId,
 }) => {
   const [step, setStep] = useState(0);
@@ -87,22 +85,9 @@ const Tutorial: React.FC<TutorialProps> = ({
       target: "tutorial-vendor-field",
     },
     {
-      // Step 7: Budget selection
+      // Step 7: Budget selection — tapping Next closes the form
       title: "Choose a Budget",
-      content: "Select which budget category this expense belongs to. You can pick up to two categories to split the transaction between them.",
-      target: "tutorial-budget-grid",
-    },
-    {
-      // Step 8: Split demo - visually demonstrate split transactions
-      title: "Splitting in Action",
-      content: "Watch how selecting two budgets lets you split a transaction. The colored fill on each card shows how the amount is divided — drag left or right to adjust the split in real time.",
-      target: "tutorial-budget-grid",
-      animation: "demo-split",
-    },
-    {
-      // Step 9: Close form, then move on
-      title: "Splitting Budgets",
-      content: "Splitting is great when a single expense belongs to more than one category, allowing you to divide it up as roughly or precisely as you like. You can also edit or delete any transaction by tapping it in the main dashboard under the budget it belongs to.",
+      content: "Select which budget category this expense belongs to. You can edit or delete any transaction by tapping it in the main dashboard.",
       target: "tutorial-budget-grid",
       animation: "close-transaction-form",
     },
@@ -293,29 +278,6 @@ const Tutorial: React.FC<TutorialProps> = ({
     }, 500);
   }, [onOpenTransactionForm, advanceToNextStep]);
 
-  // Run the split demo animation
-  const SPLIT_DEMO_DURATION_MS = 2500;
-  const runSplitDemoAnimation = useCallback(() => {
-    setIsAnimating(true);
-    let cancelled = false;
-
-    const cleanup = () => {
-      cancelled = true;
-      setIsAnimating(false);
-    };
-    animationCleanupRef.current = cleanup;
-
-    // Trigger the split demo in the transaction form
-    onDemoSplit?.();
-
-    // Wait for the demo to play, then advance
-    setTimeout(() => {
-      if (cancelled) return;
-      setIsAnimating(false);
-      animationCleanupRef.current = null;
-      advanceToNextStep();
-    }, SPLIT_DEMO_DURATION_MS);
-  }, [onDemoSplit, advanceToNextStep]);
 
   useEffect(() => {
     if (tooltipRef.current) {
@@ -373,11 +335,6 @@ const Tutorial: React.FC<TutorialProps> = ({
     }
     if (currentStepData.animation === 'close-transaction-form') {
       runCloseTransactionFormAnimation();
-      return;
-    }
-
-    if (currentStepData.animation === 'demo-split') {
-      runSplitDemoAnimation();
       return;
     }
 
