@@ -2,6 +2,7 @@ import React from 'react';
 import { Transaction } from '../../types';
 import { parseLocalDate } from '../../lib/dateUtils';
 import type { VendorOverride } from './useVendorOverrides';
+import { toVendorKey } from '../../lib/deviceTransactionParser';
 import ParsingCard from '../ui/ParsingCard';
 import { EmptyState } from '../shared';
 
@@ -39,7 +40,7 @@ const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
     {approvedTransactions.length > 0 ? (
       <div className="space-y-2">
         {approvedTransactions.map((tx) => {
-          const vo = vendorOverrideByName.get(tx.vendor.toLowerCase());
+          const vo = vendorOverrideByName.get(toVendorKey(tx.vendor));
 
           return (
           <button

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { PendingTransaction, BudgetCategory } from '../../types';
 import type { VendorOverride } from './useVendorOverrides';
 import { formatVendorName } from '../../lib/formatVendorName';
+import { toVendorKey } from '../../lib/deviceTransactionParser';
 import ParsingCard from '../ui/ParsingCard';
 import { EmptyState } from '../shared';
 
@@ -52,7 +53,7 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
       <div className="space-y-2">
         {toReviewCount > 0 ? toReviewTransactions.map((pt) => {
           const isExpanded = expandedPendingId === pt.id;
-          const vendorOverride = vendorOverrideByName.get(pt.extracted_vendor.toLowerCase());
+          const vendorOverride = vendorOverrideByName.get(toVendorKey(pt.extracted_vendor));
           const defaultCategoryName = vendorOverride?.category_id
             ? (vendorOverride.category_name || categoryNameById.get(vendorOverride.category_id))
             : undefined;

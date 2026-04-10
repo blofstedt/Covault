@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { BudgetCategory } from '../../types';
 import type { VendorOverride } from './useVendorOverrides';
+import { toVendorKey } from '../../lib/deviceTransactionParser';
 import ParsingCard from '../ui/ParsingCard';
 
 interface VendorCategoryRulesCardProps {
@@ -42,7 +43,7 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
     >
       <div className="space-y-2">
         {allVendors.map((vendorName) => {
-          const vo = vendorOverrideByName.get(vendorName.toLowerCase());
+          const vo = vendorOverrideByName.get(toVendorKey(vendorName));
           const hasCategory = vo && vo.category_id;
           const isExpanded = expandedVendorCategory === vendorName;
           const displayName = vo?.proper_name || vendorName;
