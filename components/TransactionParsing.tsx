@@ -227,7 +227,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         onAddTransaction={onAddTransaction}
         onOpenParsing={onBack}
         activeView="parsing"
-        pendingCount={needsReviewCount}
+        pendingCount={aiTransactions.length}
       />
 
       {/* Clear confirmation modal */}

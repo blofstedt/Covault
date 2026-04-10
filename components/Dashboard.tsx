@@ -18,11 +18,10 @@ import SmartCardDeck from './dashboard_components/SmartCardDeck';
 
 import useNormalizedTransactions from './dashboard_components/useNormalizedTransactions';
 import useDashboardTotals from './dashboard_components/useDashboardTotals';
-import { getNeedsReviewCount, getReviewQueueChangedEventName } from '../lib/localNotificationMemory';
+import { getLocalMonthKey } from '../lib/dateUtils';
 import { collectSmartCards } from '../lib/smartCards';
 import { supabase } from '../lib/supabase';
 import { resolveBudgetIdFromRow } from '../lib/hooks/transactionMappers';
-import { getLocalMonthKey } from '../lib/dateUtils';
 
 interface VendorHistoryItem {
   vendor: string;
@@ -149,15 +148,13 @@ const Dashboard: React.FC<Props> = ({
     }
   }, [smartCards.length, state.settings.smart_cards_enabled]);
 
-  const [needsReviewCount, setNeedsReviewCount] = useState(0);
-
-  useEffect(() => {
-    const refresh = () => setNeedsReviewCount(getNeedsReviewCount());
-    refresh();
-    const eventName = getReviewQueueChangedEventName();
-    window.addEventListener(eventName, refresh);
-    return () => window.removeEventListener(eventName, refresh);
-  }, []);
+  // Badge count: number of AI-caught transactions not yet cleared.
+  // Derived directly from app state so it automatically decreases when
+  // a transaction is deleted (optimistic removal) or cleared (reload).
+  const aiTransactionsCount = useMemo(
+    () => state.transactions.filter(tx => tx.label === 'Automatic' && !tx.caught_cleared).length,
+    [state.transactions],
+  );
 
   const filteredTransactions = useMemo(() => {
     if (!searchQuery) return normalizedTransactions;
@@ -447,7 +444,7 @@ const Dashboard: React.FC<Props> = ({
           onAddTransaction={() => setShowTransactionForm(true)}
           onOpenParsing={() => setShowParsing(true)}
           activeView="home"
-          pendingCount={needsReviewCount}
+          pendingCount={aiTransactionsCount}
         />
       </PageShell>
 
