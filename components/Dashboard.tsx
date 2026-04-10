@@ -41,6 +41,7 @@ interface Props {
   saveUserIncome: (income: number) => Promise<void>;
   saveTheme: (theme: 'light' | 'dark') => Promise<void>;
   saveBudgetVisibility: (categoryId: string, visible: boolean) => Promise<void>;
+  saveSettingToDb: (dbKey: string, value: boolean | string | number) => Promise<void>;
   onLinkPartner: (partnerEmail: string) => Promise<void>;
   onUnlinkPartner: () => Promise<void>;
   onRefreshNotifications?: () => Promise<void>;
@@ -59,6 +60,7 @@ const Dashboard: React.FC<Props> = ({
   saveUserIncome,
   saveTheme,
   saveBudgetVisibility,
+  saveSettingToDb,
   onLinkPartner,
   onUnlinkPartner,
   onRefreshNotifications,
@@ -183,6 +185,14 @@ const Dashboard: React.FC<Props> = ({
     });
   };
 
+  // Map from app-state setting keys to DB column names
+  const SETTING_DB_KEYS: Record<string, string> = {
+    rolloverEnabled: 'rollover_enabled',
+    useLeisureAsBuffer: 'leisure_buffer_enabled',
+    showSavingsInsight: 'show_savings_insight',
+    app_notifications_enabled: 'app_notifications_enabled',
+  };
+
   const handleUpdateSettings = (key: string, value: any) => {
     setState(prev => ({
       ...prev,
@@ -194,6 +204,10 @@ const Dashboard: React.FC<Props> = ({
 
     if (key === 'theme' && (value === 'light' || value === 'dark')) {
       saveTheme(value).catch((e) => console.error('[Dashboard] saveTheme failed:', e));
+    } else if (SETTING_DB_KEYS[key] !== undefined) {
+      saveSettingToDb(SETTING_DB_KEYS[key], value).catch(
+        (e) => console.error(`[Dashboard] saveSettingToDb(${key}) failed:`, e),
+      );
     }
   };
 

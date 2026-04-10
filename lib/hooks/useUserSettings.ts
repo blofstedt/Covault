@@ -491,10 +491,37 @@ export const useUserSettings = ({
     [appState.user, appState.budgets, setAppState, setDbError],
   );
 
+  // Save a single boolean setting to the Supabase settings table
+  const saveSettingToDb = useCallback(
+    async (dbKey: string, value: boolean | string | number) => {
+      const userId = appState.user?.id;
+      if (!userId) return;
+      try {
+        const headers = await getAuthHeaders();
+        (headers as any)['Prefer'] = 'return=representation';
+        const res = await fetch(`${REST_BASE}/settings?user_id=eq.${userId}`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({ [dbKey]: value }),
+        });
+        if (!res.ok) {
+          const body = await res.text();
+          console.error(`[saveSettingToDb] ${dbKey} failed (${res.status}): ${body.slice(0, 200)}`);
+        } else {
+          console.log(`[saveSettingToDb] ${dbKey} = ${value}`);
+        }
+      } catch (err: any) {
+        console.error(`[saveSettingToDb] exception: ${err?.message || err}`);
+      }
+    },
+    [appState.user],
+  );
+
   return {
     saveBudgetLimit,
     saveUserIncome,
     saveTheme,
     saveBudgetVisibility,
+    saveSettingToDb,
   };
 };

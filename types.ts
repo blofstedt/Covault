@@ -63,6 +63,7 @@ export interface Transaction {
   recurrence?: Recurrence | 'One-time' | 'Biweekly' | 'Monthly';
   label?: 'Automatic' | 'Manual';
   is_projected: boolean;
+  caught_cleared?: boolean;
   userName?: string;
   created_at: string;
 

@@ -186,7 +186,7 @@ export const useDataLoading = ({
       try {
         const headers = await getAuthHeaders();
         const res = await fetch(
-          `${REST_BASE}/settings?select=monthly_income,theme_selected,trial_started_at,trial_ends_at,trial_consumed,subscription_status&user_id=eq.${userId}`,
+          `${REST_BASE}/settings?select=monthly_income,theme_selected,trial_started_at,trial_ends_at,trial_consumed,subscription_status,rollover_enabled,leisure_buffer_enabled,show_savings_insight,app_notifications_enabled,budgeting_solo&user_id=eq.${userId}`,
           { 
             headers,
             cache: 'no-store' // Prevent caching to always get fresh data
@@ -231,11 +231,19 @@ export const useDataLoading = ({
                   trial_ends_at,
                   trial_consumed,
                   subscription_status,
+                  // Only use DB value if partner_id hasn't already set budgetingSolo=false
+                  budgetingSolo: prev.user.budgetingSolo === false
+                    ? false
+                    : (rows[0].budgeting_solo ?? prev.user.budgetingSolo),
                 }
               : null,
             settings: {
               ...prev.settings,
               theme: theme as 'light' | 'dark',
+              rolloverEnabled: rows[0].rollover_enabled ?? prev.settings.rolloverEnabled,
+              useLeisureAsBuffer: rows[0].leisure_buffer_enabled ?? prev.settings.useLeisureAsBuffer,
+              showSavingsInsight: rows[0].show_savings_insight ?? prev.settings.showSavingsInsight,
+              app_notifications_enabled: rows[0].app_notifications_enabled ?? prev.settings.app_notifications_enabled,
             },
           }));
 
