@@ -16,7 +16,6 @@ interface TutorialProps {
   onShowPlaceholderTransaction?: (show: boolean) => void;
   onShowTransactionModal?: (show: boolean) => void;
   onOpenTransactionForm?: (open: boolean) => void;
-  onDemoSplit?: () => void;
   firstBudgetId?: string;
 }
 
@@ -28,7 +27,6 @@ const Tutorial: React.FC<TutorialProps> = ({
   onShowPlaceholderTransaction,
   onShowTransactionModal,
   onOpenTransactionForm,
-  onDemoSplit,
   firstBudgetId,
 }) => {
   const [step, setStep] = useState(0);
@@ -87,22 +85,9 @@ const Tutorial: React.FC<TutorialProps> = ({
       target: "tutorial-vendor-field",
     },
     {
-      // Step 7: Budget selection
+      // Step 7: Budget selection — tapping Next closes the form
       title: "Choose a Budget",
-      content: "Select which budget category this expense belongs to. You can pick up to two categories to split the transaction between them.",
-      target: "tutorial-budget-grid",
-    },
-    {
-      // Step 8: Split demo - visually demonstrate split transactions
-      title: "Splitting in Action",
-      content: "Watch how selecting two budgets lets you split a transaction. The colored fill on each card shows how the amount is divided — drag left or right to adjust the split in real time.",
-      target: "tutorial-budget-grid",
-      animation: "demo-split",
-    },
-    {
-      // Step 9: Close form, then move on
-      title: "Splitting Budgets",
-      content: "Splitting is great when a single expense belongs to more than one category, allowing you to divide it up as roughly or precisely as you like. You can also edit or delete any transaction by tapping it in the main dashboard under the budget it belongs to.",
+      content: "Select which budget category this expense belongs to. You can edit or delete any transaction by tapping it in the main dashboard.",
       target: "tutorial-budget-grid",
       animation: "close-transaction-form",
     },
@@ -293,29 +278,6 @@ const Tutorial: React.FC<TutorialProps> = ({
     }, 500);
   }, [onOpenTransactionForm, advanceToNextStep]);
 
-  // Run the split demo animation
-  const SPLIT_DEMO_DURATION_MS = 2500;
-  const runSplitDemoAnimation = useCallback(() => {
-    setIsAnimating(true);
-    let cancelled = false;
-
-    const cleanup = () => {
-      cancelled = true;
-      setIsAnimating(false);
-    };
-    animationCleanupRef.current = cleanup;
-
-    // Trigger the split demo in the transaction form
-    onDemoSplit?.();
-
-    // Wait for the demo to play, then advance
-    setTimeout(() => {
-      if (cancelled) return;
-      setIsAnimating(false);
-      animationCleanupRef.current = null;
-      advanceToNextStep();
-    }, SPLIT_DEMO_DURATION_MS);
-  }, [onDemoSplit, advanceToNextStep]);
 
   useEffect(() => {
     if (tooltipRef.current) {
@@ -376,11 +338,6 @@ const Tutorial: React.FC<TutorialProps> = ({
       return;
     }
 
-    if (currentStepData.animation === 'demo-split') {
-      runSplitDemoAnimation();
-      return;
-    }
-
     const nextStep = step + 1;
     if (nextStep < steps.length) {
       setStep(nextStep);
@@ -413,7 +370,7 @@ const Tutorial: React.FC<TutorialProps> = ({
                 <path d="M9 18l6-6-6-6" />
               </svg>
             </div>
-            <h3 className="text-xl font-black text-slate-600 dark:text-slate-100 uppercase tracking-tight">Skip Walkthrough?</h3>
+            <h3 className="text-xl font-bold text-slate-600 dark:text-slate-100 tracking-tight">Skip Walkthrough?</h3>
             <p className="text-slate-400 dark:text-slate-500 font-medium text-sm leading-relaxed">
               You can always re-run the tutorial from the Settings menu by tapping the gear icon.
             </p>
@@ -421,13 +378,13 @@ const Tutorial: React.FC<TutorialProps> = ({
           <div className="flex flex-col space-y-3">
             <button
               onClick={onComplete}
-              className="w-full py-4 bg-slate-500 dark:bg-slate-700 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-lg active:scale-95 transition-all"
+              className="w-full py-4 bg-slate-500 dark:bg-slate-700 text-white rounded-2xl font-semibold text-xs tracking-wide shadow-lg active:scale-[0.97] transition-all duration-200"
             >
               Skip for Now
             </button>
             <button
               onClick={() => setShowSkipConfirm(false)}
-              className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-lg shadow-emerald-600/20 active:scale-95 transition-all"
+              className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-semibold text-xs tracking-wide shadow-lg shadow-emerald-600/20 active:scale-[0.97] transition-all duration-200"
             >
               Continue Walkthrough
             </button>
@@ -528,8 +485,8 @@ const Tutorial: React.FC<TutorialProps> = ({
             </div>
 
             <div className="space-y-3 text-center">
-              <span className="text-[9px] font-black text-emerald-500 uppercase tracking-[0.3em]">Step {step + 1} of {steps.length}</span>
-              <h3 className="text-lg font-black text-slate-600 dark:text-slate-100 uppercase tracking-tight leading-tight">
+              <span className="text-[9px] font-semibold text-emerald-500 tracking-wide">Step {step + 1} of {steps.length}</span>
+              <h3 className="text-lg font-bold text-slate-600 dark:text-slate-100 tracking-tight leading-tight">
                 {currentStep.title}
               </h3>
               <p className="text-slate-500 dark:text-slate-400 font-medium text-[13px] leading-relaxed">
@@ -540,14 +497,14 @@ const Tutorial: React.FC<TutorialProps> = ({
             <div className="flex space-x-3">
               <button
                 onClick={handleSkip}
-                className="flex-1 py-3.5 bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest active:scale-95 transition-all"
+                className="flex-1 py-3.5 bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500 rounded-2xl font-semibold text-[10px] tracking-wide active:scale-[0.97] transition-all duration-200"
               >
                 Skip
               </button>
               <button
                 onClick={handleNext}
                 disabled={isAnimating}
-                className={`flex-[2] py-3.5 bg-emerald-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-emerald-600/20 active:scale-95 transition-all ${isAnimating ? 'opacity-50 cursor-not-allowed' : ''}`}
+                className={`flex-[2] py-3.5 bg-emerald-600 text-white rounded-2xl font-semibold text-[10px] tracking-wide shadow-lg shadow-emerald-600/20 active:scale-[0.97] transition-all duration-200 ${isAnimating ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 {step === steps.length - 1 ? "Get Started" : "Next"}
               </button>

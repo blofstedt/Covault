@@ -67,7 +67,7 @@ const ParsingCard: React.FC<ParsingCardProps> = ({
 }) => (
   <div
     id={id}
-    className={`bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border ${borderColors[colorScheme]} ${className}`}
+    className={`bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] ${borderColors[colorScheme]} ${className}`}
   >
     <div className="flex items-center space-x-3 mb-4">
       <div className={`p-2 ${iconBgColors[colorScheme]} rounded-xl`}>
@@ -84,7 +84,7 @@ const ParsingCard: React.FC<ParsingCardProps> = ({
         </svg>
       </div>
       <div className="flex-1">
-        <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+        <h3 className="text-xs font-semibold tracking-wide text-slate-500 dark:text-slate-400">
           {title}
         </h3>
         <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
@@ -92,7 +92,7 @@ const ParsingCard: React.FC<ParsingCardProps> = ({
         </p>
       </div>
       {count !== undefined && count > 0 && (
-        <span className={`text-xs font-black ${badgeColors[colorScheme]} px-2.5 py-1 rounded-full`}>
+        <span className={`text-xs font-extrabold ${badgeColors[colorScheme]} px-2.5 py-1 rounded-full`}>
           {count}
         </span>
       )}

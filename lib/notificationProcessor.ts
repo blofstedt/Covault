@@ -14,7 +14,7 @@
 import { supabase } from './supabase';
 import { formatVendorName } from './formatVendorName';
 import { parseNotificationText } from './deviceTransactionParser';
-import { addToReviewQueue, getVendorMapEntry } from './localNotificationMemory';
+import { addToReviewQueue, getVendorMapEntry, isNotificationProcessed, markNotificationProcessed } from './localNotificationMemory';
 import type { PendingTransaction } from '../types';
 
 // ─── Constants ───────────────────────────────────────────────────
@@ -554,6 +554,26 @@ export async function processNotificationWithAI(
     };
   }
 
+  // ── Step 0b: Persistent dedup (survives app restarts) ──
+  // The in-memory cache above is cleared every time the JS module re-loads
+  // (app restart, hot reload). This localStorage-backed check ensures a
+  // notification that was already processed is never re-inserted after the
+  // user clears it from the <> page and the app is closed/reopened.
+  // NOTE: forceReprocess does NOT bypass this — it only bypasses the
+  // in-memory TTL cache so rescans can retry recently-rejected notifications,
+  // but a notification that was successfully inserted must never be re-inserted.
+  if (isNotificationProcessed(inMemoryKey)) {
+    console.log('[AI pipeline] Persistent dedup hit, skipping');
+    // Warm the in-memory cache so subsequent checks in this session are fast
+    recentlyProcessedCache.set(inMemoryKey, Date.now());
+    return {
+      processed: false,
+      isTransaction: false,
+      skipReason: 'duplicate_fingerprint',
+      bankName: input.bankName,
+    };
+  }
+
   // ── Step 1: Duplicate Detection ──
   // Extract a quick amount from the raw text for the duplicate check.
   let quickAmount: number | null = null;
@@ -586,8 +606,8 @@ export async function processNotificationWithAI(
 
   if (!parsed.isOutgoing) {
     const reason = parsed.rejectionReason || 'Not an outgoing transaction notification';
-    // Add to in-memory cache so we don't re-process this notification
     recentlyProcessedCache.set(inMemoryKey, Date.now());
+    markNotificationProcessed(inMemoryKey);
     return {
       processed: true,
       isTransaction: false,
@@ -612,6 +632,7 @@ export async function processNotificationWithAI(
     const reason = 'No vendor name found in notification';
     console.log('[AI pipeline] Skipped: no vendor identified');
     recentlyProcessedCache.set(inMemoryKey, Date.now());
+    markNotificationProcessed(inMemoryKey);
     return {
       processed: true,
       isTransaction: false,
@@ -650,8 +671,8 @@ export async function processNotificationWithAI(
         ? `Duplicate transaction found: ${vendor} for $${amount.toFixed(2)} was already recorded by AI`
         : `Duplicate transaction found: ${vendor} for $${amount.toFixed(2)} matches a manually recorded transaction`;
       console.log(`[AI pipeline] ${reason}`);
-      // Add to in-memory cache to prevent re-processing
       recentlyProcessedCache.set(inMemoryKey, Date.now());
+      markNotificationProcessed(inMemoryKey);
       return {
         processed: true,
         isTransaction: true,
@@ -773,7 +794,9 @@ export async function processNotificationWithAI(
   console.log(`[AI pipeline] Transaction saved: ${finalVendorName} $${amount} → ${categoryName}`);
   addToReviewQueue(transactionId);
 
-  // Add to in-memory cache to prevent re-processing on rescan
+  // Persist to localStorage so this notification is never re-processed
+  // after app restart (the in-memory cache below is cleared on reload).
+  markNotificationProcessed(inMemoryKey);
   recentlyProcessedCache.set(inMemoryKey, Date.now());
 
   return {

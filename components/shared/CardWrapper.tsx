@@ -19,7 +19,7 @@ const borderMap = {
 const CardWrapper: React.FC<CardWrapperProps> = ({ id, color = 'slate', children, spacing = 'md' }) => (
   <div
     id={id}
-    className={`bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border ${borderMap[color]} ${spacing === 'sm' ? 'space-y-3' : 'space-y-4'}`}
+    className={`bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] ${borderMap[color]} ${spacing === 'sm' ? 'space-y-3' : 'space-y-4'}`}
   >
     {children}
   </div>

@@ -1,11 +1,14 @@
 import { useState, useCallback, useEffect } from 'react';
 import { REST_BASE, getAuthHeaders } from '../../lib/apiHelpers';
 import { BudgetCategory } from '../../types';
+import { toVendorKey } from '../../lib/deviceTransactionParser';
 
 export interface VendorOverride {
   id: string;
-  /** Vendor lookup key — maps to `overrides.proper_name` in DB */
+  /** Display name for the vendor (user-editable, e.g. 'Amazon') */
   proper_name: string;
+  /** Normalized raw vendor key for matching incoming transactions (e.g. 'amznmktpca') */
+  match_key?: string;
   /** Budget in app format: 'budget:groceries' (converted from DB's Budgets enum) */
   category_id: string;
   /** Human-readable category name resolved from category_id (not in DB) */
@@ -43,6 +46,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
       const overrides: VendorOverride[] = (data || []).map((row: any) => ({
         id: row.id,
         proper_name: row.proper_name,
+        match_key: row.match_key || undefined,
         category_id: row.category_id ? `budget:${(row.category_id as string).toLowerCase()}` : '',
         category_name: row.category_id || undefined,
       }));
@@ -185,7 +189,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
           const insertRes = await fetch(`${REST_BASE}/overrides`, {
             method: 'POST',
             headers,
-            body: JSON.stringify({ user_id: userId, proper_name: vendorName, category_id: dbCategoryId }),
+            body: JSON.stringify({ user_id: userId, proper_name: vendorName, match_key: toVendorKey(vendorName), category_id: dbCategoryId }),
           });
 
           if (insertRes.ok) {
@@ -332,6 +336,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
           {
             id: `temp-${crypto.randomUUID()}`,
             proper_name: vendorName,
+            match_key: toVendorKey(vendorName),
             category_id: categoryId,
             category_name: categoryName,
           },

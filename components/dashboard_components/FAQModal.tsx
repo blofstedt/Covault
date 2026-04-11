@@ -24,10 +24,6 @@ const FAQ_ITEMS: FAQItem[] = [
     answer: "Tap the + button in the center of the bottom bar. Fill in the amount, vendor name, and choose a budget category, then tap Save."
   },
   {
-    question: "How do I split a transaction between two budgets?",
-    answer: "When adding or editing a transaction, select two budget categories. A split slider will appear, letting you drag to adjust how much of the amount goes to each category."
-  },
-  {
     question: "How do I delete a transaction?",
     answer: "Tap on any transaction in the budget list to open the action menu, then tap 'Delete.' You'll be asked to confirm before it's removed."
   },
@@ -124,7 +120,7 @@ const FAQModal: React.FC<FAQModalProps> = ({ onClose }) => {
       <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl animate-in zoom-in-95 duration-500 max-h-[85vh] flex flex-col border border-slate-100 dark:border-slate-800/60 overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between p-6 pb-4">
-          <h2 className="text-lg font-black text-slate-700 dark:text-slate-100 tracking-tight uppercase">
+          <h2 className="text-lg font-bold text-slate-700 dark:text-slate-100 tracking-tight">
             Frequently Asked
           </h2>
           <CloseButton onClick={onClose} size="sm" />

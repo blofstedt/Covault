@@ -9,7 +9,7 @@ const ReportSection: React.FC = () => {
 
       <button
         disabled
-        className="w-full py-3 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 text-slate-400 dark:text-slate-500 text-xs font-black uppercase tracking-[0.15em] cursor-not-allowed flex items-center justify-center gap-1.5"
+        className="w-full py-3 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 text-slate-400 dark:text-slate-500 text-xs font-semibold tracking-wide cursor-not-allowed flex items-center justify-center gap-1.5"
       >
         <svg
           className="w-4 h-4"

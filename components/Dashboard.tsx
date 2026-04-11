@@ -14,15 +14,15 @@ import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import BudgetFlowChart from './dashboard_components/BudgetFlowChart';
 import DashboardSettingsModal from './dashboard_components/DashboardSettingsModal';
 import SearchResults from './dashboard_components/SearchResults';
-import SmartCardDeck from './dashboard_components/SmartCardDeck';
+import InlineSmartCard from './dashboard_components/InlineSmartCard';
+import MonthlyPulseCard from './dashboard_components/MonthlyPulseCard';
 
 import useNormalizedTransactions from './dashboard_components/useNormalizedTransactions';
 import useDashboardTotals from './dashboard_components/useDashboardTotals';
-import { getNeedsReviewCount, getReviewQueueChangedEventName } from '../lib/localNotificationMemory';
+import { getLocalMonthKey } from '../lib/dateUtils';
 import { collectSmartCards } from '../lib/smartCards';
 import { supabase } from '../lib/supabase';
 import { resolveBudgetIdFromRow } from '../lib/hooks/transactionMappers';
-import { getLocalMonthKey } from '../lib/dateUtils';
 
 interface VendorHistoryItem {
   vendor: string;
@@ -149,15 +149,13 @@ const Dashboard: React.FC<Props> = ({
     }
   }, [smartCards.length, state.settings.smart_cards_enabled]);
 
-  const [needsReviewCount, setNeedsReviewCount] = useState(0);
-
-  useEffect(() => {
-    const refresh = () => setNeedsReviewCount(getNeedsReviewCount());
-    refresh();
-    const eventName = getReviewQueueChangedEventName();
-    window.addEventListener(eventName, refresh);
-    return () => window.removeEventListener(eventName, refresh);
-  }, []);
+  // Badge count: number of AI-caught transactions not yet cleared.
+  // Derived directly from app state so it automatically decreases when
+  // a transaction is deleted (optimistic removal) or cleared (reload).
+  const aiTransactionsCount = useMemo(
+    () => state.transactions.filter(tx => tx.label === 'Automatic' && !tx.caught_cleared).length,
+    [state.transactions],
+  );
 
   const filteredTransactions = useMemo(() => {
     if (!searchQuery) return normalizedTransactions;
@@ -409,7 +407,7 @@ const Dashboard: React.FC<Props> = ({
               className={`transition-all duration-500 ease-in-out overflow-hidden ${
                 hasExpandedBudget
                   ? 'max-h-0 opacity-0 -translate-y-2 pointer-events-none mb-0'
-                  : 'max-h-[520px] opacity-100 translate-y-0 mb-2'
+                  : 'max-h-[300px] opacity-100 translate-y-0 mb-2'
               }`}
               aria-hidden={hasExpandedBudget}
             >
@@ -421,6 +419,30 @@ const Dashboard: React.FC<Props> = ({
                   theme={state.settings.theme}
                 />
               </PremiumGate>
+            </div>
+
+            <div
+              className={`transition-all duration-500 ease-in-out overflow-hidden ${
+                hasExpandedBudget
+                  ? 'max-h-0 opacity-0 pointer-events-none'
+                  : 'max-h-[200px] opacity-100'
+              }`}
+              aria-hidden={hasExpandedBudget}
+            >
+              {showSmartCards && smartCards.length > 0 && (
+                <InlineSmartCard
+                  cards={smartCards}
+                  onDismiss={(id) => {}}
+                  onAllDismissed={() => setShowSmartCards(false)}
+                  userId={state.user?.id}
+                  theme={state.settings.theme}
+                />
+              )}
+              <MonthlyPulseCard
+                budgets={state.budgets}
+                transactions={currentMonthBudgetTransactions}
+                theme={state.settings.theme}
+              />
             </div>
 
             <DashboardBudgetSectionsList
@@ -447,7 +469,7 @@ const Dashboard: React.FC<Props> = ({
           onAddTransaction={() => setShowTransactionForm(true)}
           onOpenParsing={() => setShowParsing(true)}
           activeView="home"
-          pendingCount={needsReviewCount}
+          pendingCount={aiTransactionsCount}
         />
       </PageShell>
 
@@ -505,15 +527,6 @@ const Dashboard: React.FC<Props> = ({
           userName={state.user?.name || ''}
           isSharedAccount={!state.user?.budgetingSolo}
           vendorHistory={vendorHistory}
-        />
-      )}
-
-      {showSmartCards && smartCards.length > 0 && (
-        <SmartCardDeck
-          cards={smartCards}
-          onDismiss={() => {}}
-          onAllDismissed={() => setShowSmartCards(false)}
-          userId={state.user?.id}
         />
       )}
     </>

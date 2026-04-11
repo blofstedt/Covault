@@ -128,13 +128,13 @@ const BudgetLimitsSection: React.FC<BudgetLimitsSectionProps> = ({
                     />
                   </>
                 ) : (
-                  <span className="text-[11px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-wider">Hidden</span>
+                  <span className="text-[11px] font-medium text-slate-400 dark:text-slate-600 tracking-wide">Hidden</span>
                 )}
                 {onToggleHideCategory && (
                   <button
                     type="button"
                     onClick={() => onToggleHideCategory(budget.id)}
-                    className={`p-2 rounded-xl transition-all active:scale-90 shrink-0 ${
+                    className={`p-2 rounded-xl transition-all duration-200 active:scale-[0.97] shrink-0 ${
                       isHidden
                         ? 'text-slate-400 dark:text-slate-600 hover:text-emerald-500'
                         : 'text-slate-300 dark:text-slate-600 hover:text-slate-500'

@@ -25,7 +25,7 @@ const CapturedNotificationsCard: React.FC<CapturedNotificationsCardProps> = ({
     >
       {Array.from(capturedByBank.entries()).map(([bankName, notifications]) => (
         <div key={bankName} className="space-y-2">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-1">
+          <p className="text-[11px] font-semibold tracking-wide text-slate-400 dark:text-slate-500 px-1">
             {bankName}
           </p>
 
@@ -33,10 +33,10 @@ const CapturedNotificationsCard: React.FC<CapturedNotificationsCardProps> = ({
             <button
               key={pt.id}
               onClick={() => onSetupNotification(pt)}
-              className="w-full flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-blue-100 dark:border-blue-800/30 transition-all active:scale-[0.98]"
+              className="w-full flex items-center justify-between p-4 bg-white/60 dark:bg-slate-800/40 backdrop-blur-sm rounded-2xl border border-blue-100 dark:border-blue-800/30 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] transition-all duration-200 active:scale-[0.98] hover:shadow-md"
             >
               <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center shrink-0">
+                <div className="w-9 h-9 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center shrink-0">
                   <svg className="w-4 h-4 text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                   </svg>
@@ -51,7 +51,7 @@ const CapturedNotificationsCard: React.FC<CapturedNotificationsCardProps> = ({
                 </div>
               </div>
               <div className="shrink-0 ml-2">
-                <span className="text-[11px] font-black uppercase tracking-wider text-blue-500 dark:text-blue-400">
+                <span className="text-[11px] font-semibold tracking-wide text-blue-500 dark:text-blue-400">
                   Set up
                 </span>
               </div>

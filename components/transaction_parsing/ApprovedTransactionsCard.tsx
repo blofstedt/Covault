@@ -2,6 +2,7 @@ import React from 'react';
 import { Transaction } from '../../types';
 import { parseLocalDate } from '../../lib/dateUtils';
 import type { VendorOverride } from './useVendorOverrides';
+import { toVendorKey } from '../../lib/deviceTransactionParser';
 import ParsingCard from '../ui/ParsingCard';
 import { EmptyState } from '../shared';
 
@@ -27,7 +28,7 @@ const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
     headerAction={approvedTransactions.length > 0 && onClear && (
       <button
         onClick={onClear}
-        className="p-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-all active:scale-95"
+        className="p-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-all duration-200 active:scale-[0.97]"
         title="Clear all approved transactions"
       >
         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -39,16 +40,16 @@ const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
     {approvedTransactions.length > 0 ? (
       <div className="space-y-2">
         {approvedTransactions.map((tx) => {
-          const vo = vendorOverrideByName.get(tx.vendor.toLowerCase());
+          const vo = vendorOverrideByName.get(toVendorKey(tx.vendor));
 
           return (
           <button
             key={tx.id}
             onClick={() => onTransactionTap?.(tx)}
-            className="w-full flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800/60 transition-all active:scale-[0.98]"
+            className="w-full flex items-center justify-between p-4 bg-white/60 dark:bg-slate-800/40 backdrop-blur-sm rounded-2xl border border-slate-100 dark:border-slate-800/60 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] transition-all duration-200 active:scale-[0.98] hover:shadow-md"
           >
             <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center">
+              <div className="w-9 h-9 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center">
                 <svg className="w-4 h-4 text-emerald-600 dark:text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
@@ -63,7 +64,7 @@ const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
               </div>
             </div>
             <div className="text-right">
-              <span className="text-sm font-black text-slate-700 dark:text-slate-200">
+              <span className="text-sm font-extrabold font-mono text-slate-700 dark:text-slate-200">
                 ${tx.amount.toFixed(2)}
               </span>
             </div>

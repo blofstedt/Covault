@@ -69,15 +69,15 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
     return (
       <StepWrapper className="justify-center text-center space-y-12">
         <div className="space-y-4 animate-nest">
-          <h2 className="text-4xl font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">Who is this for?</h2>
-          <p className="text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest text-xs">Clarity for yourself or confidence together.</p>
+          <h2 className="text-4xl font-bold text-slate-600 dark:text-slate-100 tracking-tight">Who is this for?</h2>
+          <p className="text-slate-400 dark:text-slate-500 font-medium tracking-wide text-xs">Clarity for yourself or confidence together.</p>
         </div>
 
         <div className="space-y-6">
           <button
             type="button"
             onClick={handleFinishSolo}
-            className="w-full p-8 rounded-[3rem] bg-white dark:bg-slate-900 border-2 border-transparent hover:border-emerald-500 transition-all active:scale-95 flex items-center space-x-6 text-left shadow-2xl shadow-slate-200/20 dark:shadow-none"
+            className="w-full p-8 rounded-[3rem] bg-white dark:bg-slate-900 border-2 border-transparent hover:border-emerald-500 transition-all duration-200 active:scale-[0.97] flex items-center space-x-6 text-left shadow-2xl shadow-slate-200/20 dark:shadow-none ring-1 ring-inset ring-white/10 dark:ring-white/[0.04]"
           >
             <div className="w-16 h-16 bg-slate-50 dark:bg-slate-800 rounded-2xl flex items-center justify-center shadow-sm">
               <svg className="w-8 h-8 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -85,15 +85,15 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
               </svg>
             </div>
             <div className="flex-1">
-              <div className="font-black text-xl text-slate-500 dark:text-slate-100 mb-1 uppercase tracking-tight">Just Me</div>
-              <div className="text-xs text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest">Personal budget tracking.</div>
+              <div className="font-bold text-xl text-slate-600 dark:text-slate-100 mb-1 tracking-tight">Just Me</div>
+              <div className="text-xs text-slate-400 dark:text-slate-500 font-medium tracking-wide">Personal budget tracking.</div>
             </div>
           </button>
 
           <button
             type="button"
             onClick={() => setStep(step + 1)}
-            className="w-full p-8 rounded-[3rem] bg-white dark:bg-slate-900 border-2 border-transparent hover:border-emerald-500 transition-all active:scale-95 flex items-center space-x-6 text-left shadow-2xl shadow-slate-200/20 dark:shadow-none"
+            className="w-full p-8 rounded-[3rem] bg-white dark:bg-slate-900 border-2 border-transparent hover:border-emerald-500 transition-all duration-200 active:scale-[0.97] flex items-center space-x-6 text-left shadow-2xl shadow-slate-200/20 dark:shadow-none ring-1 ring-inset ring-white/10 dark:ring-white/[0.04]"
           >
             <div className="w-16 h-16 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl flex items-center justify-center shadow-sm">
               <svg className="w-8 h-8 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -101,8 +101,8 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
               </svg>
             </div>
             <div className="flex-1">
-              <div className="font-black text-xl text-slate-500 dark:text-slate-100 mb-1 uppercase tracking-tight">Couples</div>
-              <div className="text-xs text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest">Combined budgeting together.</div>
+              <div className="font-bold text-xl text-slate-600 dark:text-slate-100 mb-1 tracking-tight">Couples</div>
+              <div className="text-xs text-slate-400 dark:text-slate-500 font-medium tracking-wide">Combined budgeting together.</div>
             </div>
           </button>
         </div>
@@ -115,8 +115,8 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
     return (
       <StepWrapper className="justify-center text-center space-y-12">
         <div className="space-y-4 animate-nest">
-          <h2 className="text-4xl font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">Invite Partner</h2>
-          <p className="text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest text-xs">Enter your partner's email to send an invite.</p>
+          <h2 className="text-4xl font-bold text-slate-600 dark:text-slate-100 tracking-tight">Invite Partner</h2>
+          <p className="text-slate-400 dark:text-slate-500 font-medium tracking-wide text-xs">Enter your partner's email to send an invite.</p>
         </div>
 
         <div className="space-y-8">
@@ -134,7 +134,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
            <button
               disabled={!partnerEmail.includes('@')}
               onClick={handleFinishCouples}
-              className="w-full py-6 bg-emerald-600 text-white rounded-[2rem] font-black text-lg shadow-2xl shadow-emerald-500/20 active:scale-95 disabled:opacity-30 transition-all uppercase tracking-widest"
+              className="w-full py-6 bg-emerald-600 text-white rounded-[2rem] font-semibold text-lg shadow-2xl shadow-emerald-500/20 active:scale-[0.97] disabled:opacity-30 transition-all duration-200 tracking-wide"
             >
               Send Invite
             </button>
@@ -142,14 +142,14 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
 
         <button
           onClick={handleFinishCouples}
-          className="text-slate-400 dark:text-slate-600 font-black text-[10px] uppercase tracking-[0.3em] hover:text-emerald-500 transition-colors"
+          className="text-slate-400 dark:text-slate-600 font-medium text-[10px] tracking-wide hover:text-emerald-500 transition-colors"
         >
           Skip for now
         </button>
 
         <button
           onClick={() => setStep(step - 1)}
-          className="text-slate-400 dark:text-slate-600 font-black text-[10px] uppercase tracking-[0.3em]"
+          className="text-slate-400 dark:text-slate-600 font-medium text-[10px] tracking-wide"
         >
           Go Back
         </button>
@@ -166,8 +166,8 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
            {steps[step].icon}
         </div>
         <div className="text-center space-y-6 max-w-xs animate-nest" style={{ animationDelay: '0.2s' }}>
-          <h2 className="text-3xl font-black text-slate-500 dark:text-slate-100 tracking-tighter leading-tight uppercase">{steps[step].title}</h2>
-          <p className="text-slate-400 dark:text-slate-500 font-bold text-sm uppercase tracking-widest leading-relaxed">{steps[step].content}</p>
+          <h2 className="text-3xl font-bold text-slate-600 dark:text-slate-100 tracking-tighter leading-tight">{steps[step].title}</h2>
+          <p className="text-slate-400 dark:text-slate-500 font-medium text-sm tracking-wide leading-relaxed">{steps[step].content}</p>
         </div>
       </div>
 
@@ -180,7 +180,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         <button
           type="button"
           onClick={handleNextIntro}
-          className="w-20 h-20 bg-emerald-600 rounded-[2.5rem] flex items-center justify-center text-white shadow-2xl active:scale-90 transition-all"
+          className="w-20 h-20 bg-emerald-600 rounded-[2.5rem] flex items-center justify-center text-white shadow-2xl active:scale-[0.97] transition-all duration-200"
         >
           <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" />

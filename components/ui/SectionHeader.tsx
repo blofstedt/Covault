@@ -12,7 +12,7 @@ interface SectionHeaderProps {
  */
 const SectionHeader: React.FC<SectionHeaderProps> = ({ title, subtitle, className = '' }) => (
   <div className={`flex flex-col ${className}`}>
-    <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+    <span className="text-xs font-semibold tracking-wide text-slate-500 dark:text-slate-400">
       {title}
     </span>
     {subtitle && (

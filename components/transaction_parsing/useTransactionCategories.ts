@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { PendingTransaction, BudgetCategory, Transaction } from '../../types';
 import type { VendorOverride } from './useVendorOverrides';
+import { toVendorKey } from '../../lib/deviceTransactionParser';
 
 /** Tolerance for comparing monetary amounts (e.g., vendor+amount matching). */
 const AMOUNT_MATCH_TOLERANCE = 0.01;
@@ -70,21 +71,28 @@ export function useTransactionCategories({
     return map;
   }, [budgets]);
 
-  // Build a lookup: vendor name → vendor override
+  // Build a lookup: normalized vendor key → vendor override.
+  // Keyed by both match_key (raw extracted vendor, e.g. 'amznmktpca') and
+  // toVendorKey(proper_name) (display name, e.g. 'amazon') so lookups work
+  // whether the caller has the raw transaction vendor or the display name.
   const vendorOverrideByName = useMemo(() => {
     const map = new Map<string, VendorOverride>();
     for (const vo of vendorOverrides) {
-      map.set(vo.proper_name.toLowerCase(), vo);
+      // Primary: match_key set at override-creation time from the raw extracted vendor
+      if (vo.match_key) map.set(vo.match_key, vo);
+      // Secondary: normalized proper_name — supports VendorCategoryRulesCard lookups
+      // and backwards-compat for overrides created before match_key was introduced
+      map.set(toVendorKey(vo.proper_name), vo);
     }
     return map;
   }, [vendorOverrides]);
 
-  // All unique vendor names from vendor overrides that have a category set.
+  // All unique vendor display names from vendor overrides that have a category set.
   const allVendors = useMemo(() => {
     const vendorSet = new Map<string, string>();
     for (const vo of vendorOverrides) {
       if (!vo.category_id) continue;
-      const key = vo.proper_name.toLowerCase();
+      const key = toVendorKey(vo.proper_name);
       if (!vendorSet.has(key)) vendorSet.set(key, vo.proper_name);
     }
     return Array.from(vendorSet.values()).sort((a, b) => a.localeCompare(b));

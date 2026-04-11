@@ -67,54 +67,66 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
   const budgetColor = getBudgetColor(budget.name);
 
+  // Danger escalation: color shifts as spending approaches/exceeds limit
+  const spentPercent = budget.totalLimit > 0 ? (total / budget.totalLimit) * 100 : 0;
+  const isWarning = spentPercent > 80 && spentPercent <= 100;
+  const isOver = spentPercent > 100;
+
   return (
     <div
-      className={`flex-1 h-full min-h-0 overflow-hidden rounded-[2rem] border relative flex flex-col bg-white dark:bg-slate-900 ${
+      className={`flex-1 h-full min-h-0 overflow-hidden rounded-[2rem] relative flex flex-col ${
         isExpanded
-          ? 'shadow-2xl'
-          : 'border-slate-100 dark:border-slate-800/60 shadow-sm'
+          ? 'bg-white dark:bg-slate-900 shadow-2xl border'
+          : 'bg-white/70 dark:bg-slate-900/70 shadow-sm border border-slate-200/40 dark:border-slate-700/30'
       }`}
       style={{
-        borderColor: isExpanded ? budgetColor : undefined,
+        borderColor: isExpanded
+          ? budgetColor
+          : undefined,
         transition: isExpanded
           ? 'border-color 0.5s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.5s cubic-bezier(0.22, 1, 0.36, 1)'
           : 'border-color 0.3s cubic-bezier(0.4, 0, 1, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 1, 1)',
       }}
     >
-      {/* CLEAN BACKGROUND BARS (NO WAVES / ANIMATIONS) */}
+      {/* GRADIENT BACKGROUND BARS WITH GLOW EDGE */}
       <div className="absolute inset-0 z-0 pointer-events-none flex">
-        {/* Spent (includes shield/external deduction) — filled with budget color at 50% opacity and brighter stroke */}
+        {/* Spent bar — gradient fill with glow edge at boundary */}
         <div
           style={{
             width: `${spentWidth}%`,
-            backgroundColor: `${budgetColor}66`,
-            borderRight: spentWidth > 0 && spentWidth < 100 ? `1px solid ${budgetColor}40` : 'none',
+            background: `linear-gradient(90deg, ${budgetColor}55 0%, ${budgetColor}70 100%)`,
           }}
-          className="h-full transition-all duration-300"
-        />
+          className="h-full transition-all duration-500 ease-out relative"
+        >
+          {/* Glow edge at spending boundary */}
+          {spentWidth > 0 && spentWidth < 100 && (
+            <div
+              className="absolute right-0 top-0 h-full w-[3px] transition-all duration-500"
+              style={{
+                background: budgetColor,
+                boxShadow: `0 0 6px ${budgetColor}50, 0 0 12px ${budgetColor}20`,
+              }}
+            />
+          )}
+        </div>
 
-        {/* Projected - with fine slanted lines /// using budget color */}
+        {/* Projected — dot-grid pattern */}
         <div
           style={{ width: `${projectedWidth}%` }}
-          className="h-full transition-all duration-300 relative"
+          className="h-full transition-all duration-500 ease-out relative"
         >
-          {/* Base color layer */}
-          <div className="absolute inset-0" style={{ backgroundColor: `${budgetColor}1A` }} />
-          {/* Fine slanted lines overlay pattern /// */}
-          <div 
-            className="absolute inset-0 bg-repeat"
+          <div className="absolute inset-0" style={{ backgroundColor: `${budgetColor}12` }} />
+          <div
+            className="absolute inset-0"
             style={{
-              backgroundImage: `repeating-linear-gradient(
-                45deg,
-                transparent,
-                transparent 3px,
-                ${budgetColor}4D 3px,
-                ${budgetColor}4D 4px
-              )`
+              backgroundImage: `radial-gradient(circle, ${budgetColor}30 1px, transparent 1px)`,
+              backgroundSize: '6px 6px',
             }}
           />
         </div>
       </div>
+
+      {/* Thin accent progress bar removed — the gradient fill IS the bar */}
 
       {/* HEADER / SUMMARY */}
       <div
@@ -123,8 +135,8 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           isExpanded
             ? 'flex-none py-10 px-8'
             : useCompactCollapsedStyles
-              ? 'py-1.5 px-4'
-              : 'py-2 px-6'
+              ? 'py-1.5 px-3'
+              : 'py-2 px-4'
         }`}
         style={{
           transition: isExpanded
@@ -133,14 +145,14 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
         }}
       >
         {/* LEFT SIDE: ICON + NAME */}
-        <div className={`flex items-center ${useCompactCollapsedStyles && !isExpanded ? 'space-x-2.5' : 'space-x-4'}`}>
+        <div className={`flex items-center ${useCompactCollapsedStyles && !isExpanded ? 'space-x-2' : 'space-x-3'}`}>
           <div
-            className={`rounded-2xl ${
+            className={`rounded-2xl flex items-center justify-center shrink-0 ${
               isExpanded
                 ? 'text-white shadow-lg p-3.5'
                 : useCompactCollapsedStyles
-                  ? 'p-1.5 bg-white/80 dark:bg-slate-800 shadow-sm'
-                  : 'p-2 bg-white/80 dark:bg-slate-800 shadow-sm'
+                  ? 'p-1'
+                  : 'p-1.5'
             }`}
             style={{
               ...(isExpanded
@@ -153,16 +165,22 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           </div>
 
           <div className="flex flex-col text-left">
-            <h3 className={`font-black tracking-tight leading-none uppercase transition-colors duration-300 text-slate-500 dark:text-slate-100 ${useCompactCollapsedStyles && !isExpanded ? 'text-[12px]' : 'text-sm'}`}>
+            <h3 className={`font-bold tracking-tight leading-none transition-colors duration-300 text-slate-600 dark:text-slate-100 ${useCompactCollapsedStyles && !isExpanded ? 'text-[12px]' : 'text-sm'}`}>
               {budget.name}
             </h3>
 
             {!isExpanded && (
               <span
-                className={`font-black uppercase tracking-[0.15em] mt-1 transition-colors duration-300 text-slate-400 dark:text-slate-500 ${useCompactCollapsedStyles ? 'text-[9px]' : 'text-[10px]'}`}
+                className={`font-bold tracking-wide mt-1 transition-colors duration-300 ${
+                  isOver
+                    ? 'text-rose-500 dark:text-rose-400'
+                    : isWarning
+                      ? 'text-amber-500 dark:text-amber-400'
+                      : 'text-slate-400 dark:text-slate-500'
+                } ${useCompactCollapsedStyles ? 'text-[9px]' : 'text-[10px]'}`}
               >
                 {isDanger
-                  ? `Over: $${Math.max(0, total - budget.totalLimit).toFixed(0)}`
+                  ? `Over by $${Math.max(0, total - budget.totalLimit).toFixed(0)}`
                   : `$${Math.max(0, budget.totalLimit - total).toFixed(0)} left`}
               </span>
             )}
@@ -175,7 +193,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
             <>
               <div className="flex items-baseline space-x-1">
                 <span
-                  className="text-sm font-black mr-2 tracking-tight transition-colors duration-300 text-slate-500"
+                  className="text-sm font-bold font-mono mr-2 tracking-tight transition-colors duration-300 text-slate-500"
                 >
                   ${total.toFixed(0)}
                   <span className="mx-1.5 opacity-30 font-medium text-slate-400">
@@ -183,13 +201,13 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                   </span>
                 </span>
 
-                <span className="text-xl font-black tracking-tighter leading-none transition-colors duration-300 text-slate-500 dark:text-slate-100">
+                <span className="text-xl font-extrabold font-mono tracking-tighter leading-none transition-colors duration-300 text-slate-600 dark:text-slate-100">
                   ${budget.totalLimit}
                 </span>
               </div>
 
               <span
-                className="text-[10px] font-bold uppercase tracking-widest mt-0.5 transition-colors duration-300 text-slate-400 dark:text-slate-500"
+                className="text-[10px] font-medium tracking-wide mt-0.5 transition-colors duration-300 text-slate-400 dark:text-slate-500"
               >
                 Vault Capacity
               </span>
@@ -221,8 +239,8 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
         >
           <div className="py-6 space-y-4">
             <div className="flex items-center justify-between px-2">
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] transition-colors duration-300 text-slate-400 dark:text-slate-500">
-                {isSharedView ? 'Our Activity History' : 'Activity History'}
+              <span className="text-[10px] font-semibold tracking-wide transition-colors duration-300 text-slate-400 dark:text-slate-500">
+                {isSharedView ? 'Our Activity' : 'Activity'}
               </span>
             </div>
 

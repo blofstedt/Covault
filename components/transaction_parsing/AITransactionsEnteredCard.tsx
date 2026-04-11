@@ -47,28 +47,28 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
               <button
                 key={tx.id}
                 onClick={() => onTransactionTap?.(tx)}
-                className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-all active:scale-[0.98] cursor-pointer text-left ${
+                className={`w-full flex items-center justify-between p-4 rounded-2xl border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] transition-all duration-200 active:scale-[0.98] cursor-pointer text-left hover:shadow-md ${
                   isForReview
                     ? 'bg-amber-50/70 dark:bg-amber-900/15 border-amber-200 dark:border-amber-700/40'
-                    : 'bg-emerald-50/50 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-800/30'
+                    : 'bg-white/60 dark:bg-emerald-900/10 backdrop-blur-sm border-emerald-100 dark:border-emerald-800/30'
                 }`}
               >
                 <div className="flex items-center space-x-3">
-                  <div className="w-8 h-8 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center">
+                  <div className="w-9 h-9 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center">
                     {budgetName ? <span className="text-emerald-600 dark:text-emerald-400 w-4 h-4">{getBudgetIcon(budgetName)}</span> : <svg className="w-4 h-4 text-emerald-600 dark:text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="20 6 9 17 4 12" /></svg>}
                   </div>
                   <div className="text-left min-w-0">
                     <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate max-w-[160px]">{tx.vendor}</p>
                     <div className="flex items-center gap-1.5 mt-0.5">
-                      {isForReview && <span className="text-[9px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-wider">For Review</span>}
-                      {budgetName && <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">{budgetName}</span>}
+                      {isForReview && <span className="text-[9px] font-semibold text-amber-600 dark:text-amber-400 tracking-wide">For Review</span>}
+                      {budgetName && <span className="text-[9px] font-semibold text-emerald-600 dark:text-emerald-400 tracking-wide">{budgetName}</span>}
                       <span className="text-[9px] text-slate-400 dark:text-slate-500">{parseLocalDate(tx.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
                     </div>
                   </div>
                 </div>
                 <div className="text-right shrink-0">
-                  <span className="text-sm font-black text-slate-700 dark:text-slate-200">${tx.amount.toFixed(2)}</span>
-                  <p className="text-[8px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mt-0.5">AI</p>
+                  <span className="text-sm font-extrabold font-mono text-slate-700 dark:text-slate-200">${tx.amount.toFixed(2)}</span>
+                  <p className="text-[8px] font-semibold tracking-wide text-emerald-600 dark:text-emerald-400 mt-0.5">AI</p>
                 </div>
               </button>
             );

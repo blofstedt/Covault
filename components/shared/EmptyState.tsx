@@ -14,7 +14,7 @@ const EmptyState: React.FC<EmptyStateProps> = ({ icon, message, description, siz
         {icon}
       </div>
     )}
-    <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+    <p className="text-xs font-medium text-slate-400 dark:text-slate-500 tracking-wide">
       {message}
     </p>
     {description && (

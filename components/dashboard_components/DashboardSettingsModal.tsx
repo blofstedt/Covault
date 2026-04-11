@@ -89,11 +89,11 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
     <div className="fixed inset-0 z-[110] bg-slate-900/40 backdrop-blur-lg flex items-center justify-center p-6 animate-in fade-in duration-300">
       <div
         ref={settingsScrollRef}
-        className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-[3rem] p-10 space-y-8 shadow-2xl animate-in zoom-in-95 duration-500 max-h-[85vh] overflow-y-auto no-scrollbar border border-slate-100 dark:border-slate-800/60"
+        className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-[3rem] p-10 space-y-8 shadow-2xl animate-in zoom-in-95 duration-500 max-h-[85vh] overflow-y-auto no-scrollbar border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] border-slate-100 dark:border-slate-800/60"
       >
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">
+          <h2 className="text-2xl font-bold text-slate-600 dark:text-slate-100 tracking-tight">
             Vault Settings
           </h2>
           <div className="flex items-center space-x-2">
@@ -106,7 +106,7 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           <button
             id="faq-button"
             onClick={() => setShowFAQ(true)}
-            className="w-full py-5 bg-slate-50 dark:bg-slate-800/30 border-2 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 text-xs font-black rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors uppercase tracking-[0.2em] shadow-sm active:scale-95"
+            className="w-full py-5 bg-slate-50 dark:bg-slate-800/30 border-2 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 text-xs font-semibold rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-all duration-200 tracking-wide shadow-sm active:scale-[0.98]"
           >
             Frequently Asked
           </button>
@@ -200,8 +200,8 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
 
           {/* Version */}
           <div className="text-center pt-4">
-            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-700 uppercase tracking-[0.1em]">
-              Version 3.0 • Covault simplified
+            <p className="text-[10px] font-medium text-slate-400 dark:text-slate-700 tracking-wide">
+              Version 3.0 · Covault
             </p>
           </div>
         </div>

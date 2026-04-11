@@ -165,7 +165,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
     const container = containerRef.current;
     const width = container.clientWidth;
-    const height = Math.min(150, width * 0.35);
+    const height = Math.min(Math.max(120, window.innerHeight * 0.2), width * 0.45);
     const margin = { top: 12, right: 0, bottom: 20, left: 0 };
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
@@ -187,8 +187,8 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         .attr('y1', '0%')
         .attr('x2', '0%')
         .attr('y2', '100%');
-      grad.append('stop').attr('offset', '0%').attr('stop-color', c0).attr('stop-opacity', 0.9);
-      grad.append('stop').attr('offset', '100%').attr('stop-color', c1).attr('stop-opacity', 0.6);
+      grad.append('stop').attr('offset', '0%').attr('stop-color', c0).attr('stop-opacity', 0.95);
+      grad.append('stop').attr('offset', '100%').attr('stop-color', c1).attr('stop-opacity', 0.75);
     });
 
     const svg = svgElement
@@ -228,7 +228,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         .attr('x2', innerWidth)
         .attr('y1', y(val))
         .attr('y2', y(val))
-        .attr('stroke', isDarkTheme ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)')
+        .attr('stroke', isDarkTheme ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)')
         .attr('stroke-width', 1);
     });
 
@@ -239,15 +239,44 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .y1((d) => y(d[1]))
       .curve(d3.curveCatmullRom.alpha(0.5));
 
-    // Draw stacked area bands
+    // Draw stacked area bands with highlight strokes
     const layerGroup = svg.selectAll('.bfc-layer').data(stackedData).enter().append('g').attr('class', 'bfc-layer');
+
+    // Create area generator for the top edge (stroke)
+    const topLine = d3
+      .line<d3.SeriesPoint<MonthlyBudgetData>>()
+      .x((d) => x(d.data.month) || 0)
+      .y((d) => y(d[1]))
+      .curve(d3.curveCatmullRom.alpha(0.5));
+
+    // Hairline gap area — shrink each band by 1px on y0 to create visual separation
+    const areaWithGap = d3
+      .area<d3.SeriesPoint<MonthlyBudgetData>>()
+      .x((d) => x(d.data.month) || 0)
+      .y0((d) => y(d[0]) - 1)
+      .y1((d) => y(d[1]))
+      .curve(d3.curveCatmullRom.alpha(0.5));
 
     layerGroup
       .append('path')
       .attr('class', 'bfc-band')
-      .attr('d', area)
+      .attr('d', areaWithGap)
       .style('fill', (_d, i) => `url(#bfc-grad-${i})`)
-      .attr('fill-opacity', 0.75);
+      .attr('fill-opacity', 0.85);
+
+    // Highlight stroke along the top edge of each band
+    layerGroup
+      .append('path')
+      .attr('class', 'bfc-band-stroke')
+      .attr('d', topLine)
+      .style('fill', 'none')
+      .style('stroke', (_d, i) => {
+        const [c0] = getGradient(categoryNames[i], i);
+        return c0;
+      })
+      .style('stroke-width', 1.5)
+      .style('stroke-opacity', 0.6)
+      .style('filter', 'drop-shadow(0 0 2px rgba(0,0,0,0.15))');
 
     // ── Savings area: hatched white region between top of bands and income line ──
     // Income threshold Y position (must be computed before savings area uses it)
@@ -262,7 +291,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .attr('patternTransform', 'rotate(45)');
     savingsPattern.append('line')
       .attr('x1', 0).attr('y1', 0).attr('x2', 0).attr('y2', 6)
-      .attr('stroke', isDarkTheme ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.5)')
+      .attr('stroke', isDarkTheme ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.06)')
       .attr('stroke-width', 1.5);
 
     // Build savings area path: top of stacked bands → income threshold
@@ -280,27 +309,39 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .style('fill', 'url(#bfc-savings-hatch)')
       .attr('fill-opacity', 0.6);
 
-    // Income threshold line (dashed)
+    // Income threshold line (dotted, stronger)
     svg
       .append('line')
       .attr('x1', 0)
       .attr('x2', innerWidth)
       .attr('y1', budgetY)
       .attr('y2', budgetY)
-      .attr('stroke', isDarkTheme ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.12)')
-      .attr('stroke-width', 1)
-      .attr('stroke-dasharray', '4 6');
+      .attr('stroke', isDarkTheme ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.18)')
+      .attr('stroke-width', 1.5)
+      .attr('stroke-dasharray', '2 4');
 
-    // Small "Budget" label on the threshold line
+    // "INCOME" chip label on the threshold line
+    const labelX = innerWidth - 4;
+    const labelY = budgetY - 6;
+    svg
+      .append('rect')
+      .attr('x', labelX - 38)
+      .attr('y', labelY - 8)
+      .attr('width', 42)
+      .attr('height', 14)
+      .attr('rx', 4)
+      .attr('fill', isDarkTheme ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)')
+      .attr('stroke', isDarkTheme ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)')
+      .attr('stroke-width', 0.5);
     svg
       .append('text')
-      .attr('x', innerWidth - 4)
-      .attr('y', budgetY - 4)
-      .attr('text-anchor', 'end')
+      .attr('x', labelX - 17)
+      .attr('y', labelY + 2)
+      .attr('text-anchor', 'middle')
       .attr('font-size', '7px')
       .attr('font-weight', '700')
-      .attr('letter-spacing', '0.1em')
-      .attr('fill', isDarkTheme ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.2)')
+      .attr('letter-spacing', '0.08em')
+      .attr('fill', isDarkTheme ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)')
       .text('INCOME');
 
     // Month labels on the x-axis
@@ -311,10 +352,10 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         .attr('x', xPos)
         .attr('y', innerHeight + 14)
         .attr('text-anchor', 'middle')
-        .attr('font-size', '8px')
+        .attr('font-size', '9px')
         .attr('font-weight', '600')
-        .attr('letter-spacing', '0.05em')
-        .attr('fill', isDarkTheme ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)')
+        .attr('letter-spacing', '0.04em')
+        .attr('fill', isDarkTheme ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.45)')
         .text(d.month.split(' ')[0]);
     });
 
@@ -397,7 +438,14 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         .selectAll('.bfc-band')
         .transition()
         .duration(100)
-        .attr('fill-opacity', (d: any) => (foundCat && foundCat !== '__savings__' && d.key === foundCat ? 0.95 : 0.25));
+        .attr('fill-opacity', (d: any) => (foundCat && foundCat !== '__savings__' && d.key === foundCat ? 0.95 : 0.2));
+
+      // Dim strokes for non-selected bands
+      svg
+        .selectAll('.bfc-band-stroke')
+        .transition()
+        .duration(100)
+        .style('stroke-opacity', (_d: any, i: number) => (foundCat && foundCat !== '__savings__' && categoryNames[i] === foundCat ? 0.9 : 0.1));
 
       // Highlight savings area
       svg.select('.bfc-savings')
@@ -468,7 +516,8 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       setScreenCoords(null);
       scrubber.style('opacity', 0);
       scrubberDot.style('opacity', 0);
-      svg.selectAll('.bfc-band').transition().duration(300).attr('fill-opacity', 0.75);
+      svg.selectAll('.bfc-band').transition().duration(300).attr('fill-opacity', 0.85);
+      svg.selectAll('.bfc-band-stroke').transition().duration(300).style('stroke-opacity', 0.6);
     };
 
     svgElement.on('mousemove', handleInteraction).on('mouseleave', handleEnd);
@@ -520,7 +569,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       <div id="spending-flow-chart" className="w-full mb-2">
         <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-md rounded-3xl p-4 border-2 border-slate-100 dark:border-slate-800 shadow-lg">
           <div className="mb-3">
-            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
+            <h3 className="text-[10px] font-semibold tracking-wide text-slate-400 dark:text-slate-500">
               Spending Flow
             </h3>
           </div>
@@ -536,7 +585,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
   }
 
   return (
-    <div id="spending-flow-chart" className="w-full mb-1 shrink-0">
+    <div id="spending-flow-chart" className="w-full mb-1 shrink-0 px-4">
       <div className="relative" ref={wrapperRef}>
         {/* Tooltip card — portaled to body, follows finger, on top of all UI */}
         {activeCategory && screenCoords && activeMonthData && createPortal(
@@ -564,13 +613,13 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
             >
               <div className="flex justify-between items-center">
                 <span
-                  className="text-[10px] font-black uppercase tracking-widest"
+                  className="text-[10px] font-semibold tracking-wide"
                   style={{ color: activeCatColor || (theme === 'dark' ? '#6ee7b7' : '#059669') }}
                 >
                   {activeMonthData.month}
                 </span>
                 <div
-                  className={`px-2 py-0.5 rounded-full border text-[8px] font-black uppercase tracking-widest ${
+                  className={`px-2 py-0.5 rounded-full border text-[8px] font-bold tracking-wide ${
                     activeMonthData.total > totalBudgetLimit
                       ? theme === 'dark'
                         ? 'bg-white text-[#030a08] border-white'
@@ -586,7 +635,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
               <div className="flex items-center gap-2">
                 <div className="flex-1 min-w-0">
-                  <h4 className={`text-[8px] font-bold tracking-widest uppercase truncate mb-0.5 ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'}`}>
+                  <h4 className={`text-[8px] font-semibold tracking-wide truncate mb-0.5 ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'}`}>
                     {isSavingsSelected ? 'Savings' : activeCategory}
                   </h4>
                   <div className={`text-base font-black tracking-tighter leading-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
@@ -610,11 +659,11 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
               <div className={`pt-1.5 border-t grid grid-cols-2 gap-2 ${theme === 'dark' ? 'border-white/10' : 'border-slate-200'}`}>
                 <div className="flex flex-col">
-                  <span className={`text-[7px] font-black uppercase tracking-tighter mb-0.5 ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'}`}>Part</span>
+                  <span className={`text-[7px] font-semibold tracking-tight mb-0.5 ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'}`}>Part</span>
                   <span className={`text-[11px] font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{categoryPercentage}%</span>
                 </div>
                 <div className="flex flex-col text-right">
-                  <span className={`text-[7px] font-black uppercase tracking-tighter mb-0.5 ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'}`}>Total</span>
+                  <span className={`text-[7px] font-semibold tracking-tight mb-0.5 ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'}`}>Total</span>
                   <span
                     className={`text-[11px] font-black ${
                       activeMonthData.total > totalBudgetLimit
@@ -645,7 +694,6 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
               />
             </div>
           </div>
-
         </div>
       </div>
     </div>

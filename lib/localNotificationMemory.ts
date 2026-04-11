@@ -16,6 +16,10 @@ interface ReviewQueueEntry {
 const VENDOR_MAP_KEY = 'covault_vendor_map_v1';
 const REVIEW_QUEUE_KEY = 'covault_review_queue_v1';
 const REVIEW_QUEUE_EVENT = 'covault-review-queue-changed';
+const PROCESSED_NOTIFS_KEY = 'covault_processed_notifs_v1';
+
+/** Max entries to keep in the processed-notifications set (oldest trimmed beyond this) */
+const MAX_PROCESSED_NOTIFS = 500;
 
 function canUseStorage(): boolean {
   return typeof window !== 'undefined' && typeof localStorage !== 'undefined';
@@ -94,4 +98,25 @@ export function getNeedsReviewIdSet(): Set<string> {
       .filter(item => item.status === 'needs_review')
       .map(item => item.transaction_id),
   );
+}
+
+// ── Processed notification keys ─────────────────────────────────────────────
+// Persists across app restarts so the same bank notification is never
+// re-inserted after the user clears it from the <> page.
+// Keys are: `bankAppId|amount|notificationTimestamp`
+
+export function isNotificationProcessed(key: string): boolean {
+  const keys = readJson<string[]>(PROCESSED_NOTIFS_KEY, []);
+  return keys.includes(key);
+}
+
+export function markNotificationProcessed(key: string): void {
+  let keys = readJson<string[]>(PROCESSED_NOTIFS_KEY, []);
+  if (keys.includes(key)) return;
+  keys.push(key);
+  // Trim oldest entries if we've exceeded the cap
+  if (keys.length > MAX_PROCESSED_NOTIFS) {
+    keys = keys.slice(keys.length - MAX_PROCESSED_NOTIFS);
+  }
+  writeJson(PROCESSED_NOTIFS_KEY, keys);
 }

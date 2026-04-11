@@ -9,7 +9,7 @@ const STOP_PHRASES = [
 ];
 
 const GO_PHRASES = [
-  'spent', 'purchase', 'purchased', 'debit', 'debit purchase', 'pos', 'tap', 'tapped', 'charged', 'charge', 'authorized', 'approved',
+  'spend', 'spent', 'purchase', 'purchased', 'debit', 'debit purchase', 'pos', 'tap', 'tapped', 'charged', 'charge', 'authorized', 'approved',
   'payment', 'bill payment', 'bill paid', 'paid', 'payment to',
   'transfer to', 'sent to', 'e-transfer sent', 'etransfer sent', 'interac e-transfer sent',
   'cost', 'costs', 'pre-authorized debit', 'preauthorized debit',
@@ -32,11 +32,31 @@ interface AmountCandidate {
   endIndex: number;
 }
 
-const outgoingHints = /(spent|charged|purchase|purchased|debit|payment|paid|withdrawal|transfer|sent|cost)/;
+const outgoingHints = /(spend|spent|charged|purchase|purchased|debit|payment|paid|withdrawal|transfer|sent|cost)/;
 const balanceHints = /(balance|available|limit|remaining|credit limit|available credit|owing)/;
 
 function collapseWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Strip emoji and non-text Unicode symbols before regex vendor extraction.
+ * Some banking apps (e.g. Wealthsimple) insert emoji between the merchant
+ * name and the transaction description, which breaks character-class patterns.
+ */
+function stripEmoji(text: string): string {
+  return text
+    // Supplementary Multilingual Plane — emoji, symbols, pictographs (U+1F000–U+1FFFF)
+    .replace(/[\u{1F000}-\u{1FFFF}]/gu, ' ')
+    // Miscellaneous Symbols, Dingbats, Arrows, Geometric Shapes (U+2600–U+27BF, U+2B00–U+2BFF)
+    .replace(/[\u2600-\u27BF\u2B00-\u2BFF]/g, ' ')
+    // Variation selectors (make text emoji render as pictograph)
+    .replace(/[\uFE00-\uFE0F]/g, '')
+    // Zero-width joiner (used in multi-codepoint emoji sequences)
+    .replace(/\u200D/g, '')
+    // Collapse extra whitespace introduced by removals above
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 }
 
 export function findAllAmounts(text: string): AmountCandidate[] {
@@ -92,42 +112,72 @@ export function pickAmount(candidates: AmountCandidate[], tLower: string): numbe
   return candidates[bestIdx].value;
 }
 
+/**
+ * Trim common prepositions/articles that signal the end of a vendor name when
+ * a greedy pattern has over-captured (e.g. "Amazon for your order" → "Amazon").
+ */
+function trimAtPreposition(vendor: string): string {
+  return vendor.split(/\s+(?=(?:for|on|with|using|via|ending|was|is|has|and|from)\b)/i)[0].trim();
+}
+
 function extractVendorRaw(text: string): string {
-  const patterns: RegExp[] = [
-    /\b at \s+([A-Za-z0-9&'./#\- ]{2,60})/i,
-    /\bmerchant\b[:\s-]+([A-Za-z0-9&'./#\- ]{2,60})/i,
-    /\b(payment|paid)\s+to\s+([A-Za-z0-9&'./#\- ]{2,60}?)(?=\s+(?:for|on|using|via|ending)\b|$)/i,
-    /\b(transfer|e-?transfer|interac e-?transfer)\b.*?\bto\b\s+([A-Za-z0-9&'./#\- ]{2,60}?)(?=\s+(?:for|on|using|via|ending)\b|$)/i,
-  ];
+  // Strip emoji/symbols so they don't break character-class patterns or act
+  // as unexpected delimiters between merchant name and description text.
+  const t = stripEmoji(text);
 
-  for (const pattern of patterns) {
-    const m = text.match(pattern);
-    if (!m) continue;
-    return (m[2] || m[1] || '').trim();
-  }
+  // Vendor character class used across patterns:
+  // ASCII alphanumeric + common punctuation + accented Latin (À–ÿ) + space + hyphen
+  // NOTE: hyphen must appear last in the class bracket to be literal, not a range marker
 
-  // "VENDOR - You spent $X" / "VENDOR – You charged $X" etc.
-  // Handles Wealthsimple and any bank that puts the merchant name before a dash
-  // and a spending phrase (e.g. "AMZN MKTP CA - You spent $36.64 with your credit card.")
-  const vendorBeforeSpending = text.match(
-    /^([A-Za-z0-9&'./#\- ]{2,60}?)\s*[-–—]\s*(?:you\s+)?(?:spent|charged|paid|purchased)\b/i,
+  // ── Pattern 1: "... at VENDOR ..." ────────────────────────────────────────
+  // Used by TD, RBC, BMO, CIBC, Scotiabank, Desjardins, and many others.
+  const atMatch = t.match(/\bat\s+([A-Za-z0-9&'./#\u00C0-\u00FF -]{2,60})/i);
+  if (atMatch) return trimAtPreposition(atMatch[1].trim());
+
+  // ── Pattern 2: "Merchant: VENDOR" / "Merchant - VENDOR" ───────────────────
+  const merchantMatch = t.match(/\bmerchant\b[:\s-]+([A-Za-z0-9&'./#\u00C0-\u00FF -]{2,60})/i);
+  if (merchantMatch) return trimAtPreposition(merchantMatch[1].trim());
+
+  // ── Pattern 3: "payment to VENDOR" / "paid to VENDOR" ────────────────────
+  const paidToMatch = t.match(
+    /\b(?:payment|paid)\s+to\s+([A-Za-z0-9&'./#\u00C0-\u00FF -]{2,60}?)(?=\s+(?:for|on|using|via|ending)\b|[.,]|$)/i,
   );
-  if (vendorBeforeSpending) {
-    const candidate = vendorBeforeSpending[1].trim();
+  if (paidToMatch) return paidToMatch[1].trim();
+
+  // ── Pattern 4: "e-transfer / transfer to VENDOR" ─────────────────────────
+  const transferMatch = t.match(
+    /\b(?:e-?transfer|interac\s+e-?transfer|transfer)\b.*?\bto\b\s+([A-Za-z0-9&'./#\u00C0-\u00FF -]{2,60}?)(?=\s+(?:for|on|using|via|ending)\b|[.,]|$)/i,
+  );
+  if (transferMatch) return transferMatch[1].trim();
+
+  // ── Pattern 5: "VENDOR [dash] you spend/spent/charged/paid/purchased …" ───
+  // Handles Wealthsimple and any bank that leads with the merchant name.
+  // The dash separator is optional — catches both:
+  //   "AMZN MKTP CA - You spent $36.64 with your credit card."
+  //   "AMZN MKTP CA 🛍️ You spend $27.29 with your credit card."
+  //   (emoji already stripped to a space by stripEmoji above)
+  const beforeSpendingMatch = t.match(
+    /^([A-Za-z0-9&'./#\u00C0-\u00FF -]{2,60}?)\s*[-–—]?\s*(?:you\s+)?(?:spend\b|spent\b|charg(?:e|ed)\b|paid\b|purchas(?:e|ed)\b|authorized\b)/i,
+  );
+  if (beforeSpendingMatch) {
+    // Strip any trailing dash that bled into the capture group
+    const candidate = beforeSpendingMatch[1].trim().replace(/\s*[-–—]+$/, '').trim();
     if (candidate.length >= 2) return candidate;
   }
 
-  // Fallback: look for text AFTER an amount+keyword pattern like "$12.34 at VENDOR"
-  const afterAmount = text.match(/\$[\d,.]+\s+(?:at|from|to|@)\s+([A-Za-z0-9&'./#\- ]{2,60})/i);
-  if (afterAmount) return afterAmount[1].trim();
+  // ── Pattern 6: "$X.XX at/from/to VENDOR" ─────────────────────────────────
+  const afterAmountMatch = t.match(
+    /\$[\d,.]+\s+(?:at|from|to|@)\s+([A-Za-z0-9&'./#\u00C0-\u00FF -]{2,60})/i,
+  );
+  if (afterAmountMatch) return trimAtPreposition(afterAmountMatch[1].trim());
 
-  // Last resort: try to extract a capitalized word sequence near a dollar amount.
-  // Reject matches that start with common prepositions/articles — those are almost
-  // always false positives like "with your credit card" or "from your account".
-  const nearDollar = text.match(/\$[\d,.]+[^A-Za-z]*([A-Z][A-Za-z0-9&'.\- ]{1,59})/i);
+  // ── Last resort: capitalized word sequence after an amount ────────────────
+  // Reject matches that start with pronouns or prepositions — those indicate
+  // we've landed in the description text rather than the merchant name.
+  const nearDollar = t.match(/\$[\d,.]+[^A-Za-z]*([A-Z][A-Za-z0-9&'.\- ]{1,59})/);
   if (nearDollar) {
     const candidate = nearDollar[1].trim();
-    if (!/^(?:with|from|on|using|via|by|through|for|and|the|a|an|your|my|our)\b/i.test(candidate)) {
+    if (!/^(?:with|from|on|using|via|by|through|for|and|the|a|an|your|my|our|you)\b/i.test(candidate)) {
       return candidate;
     }
   }
@@ -141,21 +191,30 @@ function cleanVendor(raw: string): string {
   vendor = vendor.replace(/\s*(#\s*\d+|store\s*\d+|pos\s*\d+|terminal\s*\w+)\s*$/i, '');
   vendor = vendor.replace(/\s*ending\s*\d{2,4}\s*$/i, '');
   vendor = vendor.replace(/\s+(monthly|biweekly|bi-weekly|weekly|subscription|recurring)\s*$/i, '');
+  // Strip any trailing dash/separator that leaked from format patterns
+  vendor = vendor.replace(/\s*[-–—]+\s*$/, '');
   vendor = collapseWhitespace(vendor);
   return vendor;
 }
 
-function toVendorKey(vendor: string): string {
+export function toVendorKey(vendor: string): string {
   return vendor.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+/**
+ * Title-case a vendor name, preserving fully-uppercase abbreviations/acronyms
+ * of any length (e.g. AMZN, MKTP, CA, TD, RBC, BMO, VISA, TD-VISA).
+ * A word is treated as an acronym when it contains no lowercase letters but
+ * has at least one uppercase letter.
+ */
 function titleCaseVendor(vendor: string): string {
   if (!vendor.trim()) return 'Unknown';
   return vendor
-    .split(' ')
+    .split(/\s+/)
     .filter(Boolean)
     .map(word => {
-      if (word.length <= 3 && word === word.toUpperCase()) return word;
+      // Preserve all-uppercase abbreviations/acronyms of any length
+      if (!/[a-z]/.test(word) && /[A-Z]/.test(word)) return word;
       return word[0].toUpperCase() + word.slice(1).toLowerCase();
     })
     .join(' ');
