@@ -74,10 +74,10 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
   return (
     <div
-      className={`flex-1 h-full min-h-0 overflow-hidden rounded-[2rem] border relative flex flex-col bg-white dark:bg-slate-900 ${
+      className={`flex-1 h-full min-h-0 overflow-hidden rounded-[2rem] border relative flex flex-col ${
         isExpanded
-          ? 'shadow-2xl'
-          : 'shadow-sm'
+          ? 'bg-white dark:bg-slate-900 shadow-2xl'
+          : 'bg-white/70 dark:bg-slate-900/70 shadow-sm'
       }`}
       style={{
         borderColor: isExpanded
@@ -141,28 +141,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
         </div>
       </div>
 
-      {/* Thin accent progress bar (visible in collapsed state) */}
-      {!isExpanded && (
-        <div className="absolute bottom-0 left-0 right-0 h-[3px] z-[1] pointer-events-none">
-          <div
-            className="h-full rounded-full transition-all duration-500 ease-out"
-            style={{
-              width: `${Math.min(100, spentWidth + projectedWidth)}%`,
-              background: isOver
-                ? 'linear-gradient(90deg, rgba(244,63,94,0.5), rgba(244,63,94,0.8))'
-                : isWarning
-                  ? `linear-gradient(90deg, ${budgetColor}, rgba(251,191,36,0.8))`
-                  : budgetColor,
-              boxShadow: isOver
-                ? '0 0 6px rgba(244,63,94,0.4)'
-                : isWarning
-                  ? '0 0 6px rgba(251,191,36,0.3)'
-                  : `0 0 4px ${budgetColor}40`,
-              opacity: 0.8,
-            }}
-          />
-        </div>
-      )}
+      {/* Thin accent progress bar removed — the gradient fill IS the bar */}
 
       {/* HEADER / SUMMARY */}
       <div
@@ -171,8 +150,8 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           isExpanded
             ? 'flex-none py-10 px-8'
             : useCompactCollapsedStyles
-              ? 'py-1.5 px-4'
-              : 'py-2 px-6'
+              ? 'py-1.5 px-3'
+              : 'py-2 px-4'
         }`}
         style={{
           transition: isExpanded
@@ -181,14 +160,14 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
         }}
       >
         {/* LEFT SIDE: ICON + NAME */}
-        <div className={`flex items-center ${useCompactCollapsedStyles && !isExpanded ? 'space-x-2.5' : 'space-x-4'}`}>
+        <div className={`flex items-center ${useCompactCollapsedStyles && !isExpanded ? 'space-x-2' : 'space-x-3'}`}>
           <div
-            className={`rounded-2xl ${
+            className={`rounded-2xl flex items-center justify-center shrink-0 ${
               isExpanded
                 ? 'text-white shadow-lg p-3.5'
                 : useCompactCollapsedStyles
-                  ? 'p-1.5 bg-white/80 dark:bg-slate-800 shadow-sm'
-                  : 'p-2 bg-white/80 dark:bg-slate-800 shadow-sm'
+                  ? 'p-1'
+                  : 'p-1.5'
             }`}
             style={{
               ...(isExpanded
