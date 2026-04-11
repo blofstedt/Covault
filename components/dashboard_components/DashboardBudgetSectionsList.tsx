@@ -63,10 +63,10 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
   return (
     <div
       ref={scrollContainerRef}
-      className={`flex-1 min-h-0 overflow-y-auto mt-1 px-4 no-scrollbar scroll-smooth transition-all duration-500 ${
+      className={`flex-1 min-h-0 mt-1 px-4 no-scrollbar scroll-smooth transition-all duration-500 ${
         expandedBudgetId
-          ? 'flex flex-col pb-24 lg:pb-20 lg:overflow-hidden'
-          : 'flex flex-col lg:grid lg:grid-cols-2 lg:auto-rows-fr gap-2 pb-24 lg:pb-20'
+          ? 'flex flex-col overflow-y-auto lg:overflow-y-hidden pb-24 lg:pb-0'
+          : 'flex flex-col lg:grid lg:grid-cols-2 lg:auto-rows-fr gap-2 overflow-y-auto pb-24 lg:pb-20'
       }`}
     >
       {visibleBudgets.map((budget, index) => {

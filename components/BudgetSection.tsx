@@ -226,7 +226,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
       {/* EXPANDED TRANSACTIONS LIST */}
       {isExpanded && (
         <div 
-          className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-6 pb-12 relative z-10"
+          className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-6 pb-12 lg:pb-28 relative z-10"
           style={{
             animation: 'budgetContentReveal 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards',
           }}
