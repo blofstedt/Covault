@@ -165,7 +165,11 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
     const container = containerRef.current;
     const width = container.clientWidth;
-    const height = Math.min(Math.max(120, window.innerHeight * 0.2), width * 0.45);
+    // On desktop (lg+), use more vertical space; on mobile, keep compact
+    const isDesktop = window.innerWidth >= 1024;
+    const height = isDesktop
+      ? Math.min(Math.max(200, window.innerHeight * 0.4), width * 0.65)
+      : Math.min(Math.max(120, window.innerHeight * 0.2), width * 0.45);
     const margin = { top: 12, right: 0, bottom: 20, left: 0 };
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
