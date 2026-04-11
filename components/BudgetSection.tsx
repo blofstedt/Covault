@@ -74,19 +74,14 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
   return (
     <div
-      className={`flex-1 h-full min-h-0 overflow-hidden rounded-[2rem] border relative flex flex-col ${
+      className={`flex-1 h-full min-h-0 overflow-hidden rounded-[2rem] relative flex flex-col ${
         isExpanded
-          ? 'bg-white dark:bg-slate-900 shadow-2xl'
-          : 'bg-white/70 dark:bg-slate-900/70 shadow-sm'
+          ? 'bg-white dark:bg-slate-900 shadow-2xl border'
+          : 'bg-white/70 dark:bg-slate-900/70 shadow-sm border border-slate-200/40 dark:border-slate-700/30'
       }`}
       style={{
         borderColor: isExpanded
           ? budgetColor
-          : isOver
-            ? 'rgba(244,63,94,0.4)'
-            : undefined,
-        boxShadow: isOver && !isExpanded
-          ? '0 0 0 1px rgba(244,63,94,0.15), 0 1px 2px rgba(0,0,0,0.05)'
           : undefined,
         transition: isExpanded
           ? 'border-color 0.5s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.5s cubic-bezier(0.22, 1, 0.36, 1)'
@@ -99,9 +94,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
         <div
           style={{
             width: `${spentWidth}%`,
-            background: isOver
-              ? `linear-gradient(90deg, ${budgetColor}50 0%, rgba(244,63,94,0.35) 100%)`
-              : `linear-gradient(90deg, ${budgetColor}55 0%, ${budgetColor}70 100%)`,
+            background: `linear-gradient(90deg, ${budgetColor}55 0%, ${budgetColor}70 100%)`,
           }}
           className="h-full transition-all duration-500 ease-out relative"
         >
@@ -110,16 +103,8 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
             <div
               className="absolute right-0 top-0 h-full w-[3px] transition-all duration-500"
               style={{
-                background: isWarning
-                  ? 'rgba(251,191,36,0.7)'
-                  : isOver
-                    ? 'rgba(244,63,94,0.7)'
-                    : budgetColor,
-                boxShadow: isWarning
-                  ? '0 0 8px rgba(251,191,36,0.4), 0 0 16px rgba(251,191,36,0.15)'
-                  : isOver
-                    ? '0 0 8px rgba(244,63,94,0.5), 0 0 20px rgba(244,63,94,0.2)'
-                    : `0 0 6px ${budgetColor}50, 0 0 12px ${budgetColor}20`,
+                background: budgetColor,
+                boxShadow: `0 0 6px ${budgetColor}50, 0 0 12px ${budgetColor}20`,
               }}
             />
           )}
