@@ -23,7 +23,7 @@ const DashboardBottomBar: React.FC<DashboardBottomBarProps> = ({
       className="fixed bottom-0 left-0 right-0 z-40 px-6 pb-5 pt-2 flex flex-col items-center pointer-events-none pb-safe-bottom"
     >
       <div
-        className={`w-auto max-w-xs lg:max-w-[33vw] backdrop-blur-3xl border rounded-full px-3 py-1.5 lg:px-6 lg:py-2.5 pointer-events-auto shadow-2xl ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] transition-all duration-700 bg-white/90 dark:bg-slate-900/90 border-slate-100 dark:border-slate-800/60 ${
+        className={`w-auto max-w-xs lg:w-1/3 lg:max-w-none backdrop-blur-3xl border rounded-full px-3 py-1.5 lg:px-6 lg:py-2.5 pointer-events-auto shadow-2xl ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] transition-all duration-700 bg-white/90 dark:bg-slate-900/90 border-slate-100 dark:border-slate-800/60 ${
           shouldAnimate ? 'animate-nest' : ''
         }`}
         style={shouldAnimate ? { animationDelay: '0.4s' } : undefined}
