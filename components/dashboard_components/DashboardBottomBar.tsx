@@ -28,7 +28,7 @@ const DashboardBottomBar: React.FC<DashboardBottomBarProps> = ({
         }`}
         style={shouldAnimate ? { animationDelay: '0.4s' } : undefined}
       >
-        <div className="flex items-center gap-1 w-full">
+        <div className="flex items-center justify-center gap-1 lg:justify-evenly lg:gap-0 w-full">
           {/* Home Button */}
           <button
             onClick={onGoHome}
