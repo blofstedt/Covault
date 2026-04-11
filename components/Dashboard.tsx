@@ -375,28 +375,21 @@ const Dashboard: React.FC<Props> = ({
   return (
     <>
       <PageShell showGlow>
-        {/* On desktop: header and balance sit side-by-side; on mobile: stacked */}
-        <div className="shrink-0 lg:flex lg:items-center lg:justify-between lg:px-6">
-          <div className="lg:hidden">
-            <DashboardHeader onOpenSettings={() => setShowSettings(true)} />
-          </div>
+        {/* Header: cog top-right on all sizes */}
+        <DashboardHeader onOpenSettings={() => setShowSettings(true)} />
 
-          <DashboardBalanceSection
-            isSharedAccount={!state.user?.budgetingSolo}
-            remainingMoney={remainingMoney}
-            searchQuery={searchQuery}
-            isSearchOpen={isSearchOpen}
-            onSearchQueryChange={(value) => {
-              setSearchQuery(value);
-              if (value.trim()) setIsSearchOpen(true);
-            }}
-            onSearchOpenChange={setIsSearchOpen}
-          />
-
-          <div className="hidden lg:block">
-            <DashboardHeader onOpenSettings={() => setShowSettings(true)} />
-          </div>
-        </div>
+        {/* Balance + search: always centered */}
+        <DashboardBalanceSection
+          isSharedAccount={!state.user?.budgetingSolo}
+          remainingMoney={remainingMoney}
+          searchQuery={searchQuery}
+          isSearchOpen={isSearchOpen}
+          onSearchQueryChange={(value) => {
+            setSearchQuery(value);
+            if (value.trim()) setIsSearchOpen(true);
+          }}
+          onSearchOpenChange={setIsSearchOpen}
+        />
 
         {searchQuery.trim() ? (
           <SearchResults
@@ -411,53 +404,52 @@ const Dashboard: React.FC<Props> = ({
             onTransactionTap={setSelectedTx}
           />
         ) : (
-          <div className="flex-1 min-h-0 flex flex-col lg:flex-row lg:gap-6 lg:px-6">
-            {/* Left column: chart + pulse/smart cards */}
-            <div className="flex flex-col lg:flex-1 lg:min-h-0 lg:max-w-[55%]">
-              <div
-                className={`transition-all duration-500 ease-in-out overflow-hidden ${
-                  hasExpandedBudget
-                    ? 'max-h-0 opacity-0 -translate-y-2 pointer-events-none mb-0 lg:max-h-none lg:opacity-100 lg:translate-y-0 lg:pointer-events-auto lg:mb-4'
-                    : 'max-h-[300px] opacity-100 translate-y-0 mb-2 lg:max-h-none lg:mb-4'
-                }`}
-                aria-hidden={hasExpandedBudget}
-              >
-                <PremiumGate hasPremium={true}>
-                  <BudgetFlowChart
-                    budgets={state.budgets}
-                    transactions={chartTransactions}
-                    monthlyIncome={state.user?.monthlyIncome || 0}
-                    theme={state.settings.theme}
-                  />
-                </PremiumGate>
-              </div>
-
-              <div
-                className={`transition-all duration-500 ease-in-out overflow-hidden ${
-                  hasExpandedBudget
-                    ? 'max-h-0 opacity-0 pointer-events-none lg:max-h-none lg:opacity-100 lg:pointer-events-auto'
-                    : 'max-h-[200px] opacity-100 lg:max-h-none'
-                }`}
-                aria-hidden={hasExpandedBudget}
-              >
-                {showSmartCards && smartCards.length > 0 && (
-                  <InlineSmartCard
-                    cards={smartCards}
-                    onDismiss={(id) => {}}
-                    onAllDismissed={() => setShowSmartCards(false)}
-                    userId={state.user?.id}
-                    theme={state.settings.theme}
-                  />
-                )}
-                <MonthlyPulseCard
+          <div className="flex-1 min-h-0 flex flex-col lg:px-6">
+            {/* Chart: full width on desktop */}
+            <div
+              className={`transition-all duration-500 ease-in-out overflow-hidden shrink-0 ${
+                hasExpandedBudget
+                  ? 'max-h-0 opacity-0 -translate-y-2 pointer-events-none mb-0 lg:max-h-0 lg:opacity-0'
+                  : 'max-h-[300px] opacity-100 translate-y-0 mb-2 lg:max-h-none lg:mb-3'
+              }`}
+              aria-hidden={hasExpandedBudget}
+            >
+              <PremiumGate hasPremium={true}>
+                <BudgetFlowChart
                   budgets={state.budgets}
-                  transactions={currentMonthBudgetTransactions}
+                  transactions={chartTransactions}
+                  monthlyIncome={state.user?.monthlyIncome || 0}
                   theme={state.settings.theme}
                 />
-              </div>
+              </PremiumGate>
             </div>
 
-            {/* Right column: budget bars */}
+            {/* Pulse / smart cards: full width */}
+            <div
+              className={`transition-all duration-500 ease-in-out overflow-hidden shrink-0 ${
+                hasExpandedBudget
+                  ? 'max-h-0 opacity-0 pointer-events-none lg:max-h-0 lg:opacity-0'
+                  : 'max-h-[200px] opacity-100 lg:max-h-none'
+              }`}
+              aria-hidden={hasExpandedBudget}
+            >
+              {showSmartCards && smartCards.length > 0 && (
+                <InlineSmartCard
+                  cards={smartCards}
+                  onDismiss={(id) => {}}
+                  onAllDismissed={() => setShowSmartCards(false)}
+                  userId={state.user?.id}
+                  theme={state.settings.theme}
+                />
+              )}
+              <MonthlyPulseCard
+                budgets={state.budgets}
+                transactions={currentMonthBudgetTransactions}
+                theme={state.settings.theme}
+              />
+            </div>
+
+            {/* Budget bars: vertical list on mobile, 2-col grid on desktop */}
             <DashboardBudgetSectionsList
               budgets={state.budgets}
               transactions={currentMonthBudgetTransactions}
