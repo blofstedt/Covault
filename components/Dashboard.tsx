@@ -378,7 +378,7 @@ const Dashboard: React.FC<Props> = ({
         {/* Header: cog top-right on all sizes — collapse when budget expanded */}
         <div
           className={`shrink-0 transition-all duration-500 ease-in-out overflow-hidden ${
-            hasExpandedBudget ? 'max-h-0 opacity-0' : 'max-h-20 opacity-100'
+            hasExpandedBudget ? 'max-h-0 opacity-0' : 'max-h-24 opacity-100'
           }`}
         >
           <DashboardHeader onOpenSettings={() => setShowSettings(true)} />
@@ -445,20 +445,24 @@ const Dashboard: React.FC<Props> = ({
               }`}
               aria-hidden={hasExpandedBudget}
             >
-              {showSmartCards && smartCards.length > 0 && (
-                <InlineSmartCard
-                  cards={smartCards}
-                  onDismiss={(id) => {}}
-                  onAllDismissed={() => setShowSmartCards(false)}
-                  userId={state.user?.id}
+              <div className="relative">
+                <MonthlyPulseCard
+                  budgets={state.budgets}
+                  transactions={currentMonthBudgetTransactions}
                   theme={state.settings.theme}
                 />
-              )}
-              <MonthlyPulseCard
-                budgets={state.budgets}
-                transactions={currentMonthBudgetTransactions}
-                theme={state.settings.theme}
-              />
+                {showSmartCards && smartCards.length > 0 && (
+                  <div className="absolute inset-0 z-10">
+                    <InlineSmartCard
+                      cards={smartCards}
+                      onDismiss={(id) => {}}
+                      onAllDismissed={() => setShowSmartCards(false)}
+                      userId={state.user?.id}
+                      theme={state.settings.theme}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Budget bars: vertical list on mobile, 2-col grid on desktop */}

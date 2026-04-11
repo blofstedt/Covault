@@ -80,7 +80,7 @@ const VENDOR_CORRECTIONS: Record<string, string> = {
   'amazon.ca': 'Amazon', 'amazon.com': 'Amazon', 'amzn digital': 'Amazon',
   'amazon prime': 'Amazon Prime', 'prime video': 'Amazon Prime',
   'wm supercenter': 'Walmart', 'wal-mart': 'Walmart', 'wal mart': 'Walmart',
-  'walmrt': 'Walmart', 'walmart supercenter': 'Walmart',
+  'walmrt': 'Walmart', 'walmart supercenter': 'Walmart', 'walmart store': 'Walmart',
   'mcdonald\'s': 'McDonald\'s', 'mcdonalds': 'McDonald\'s', 'mcdnlds': 'McDonald\'s',
   'mcd\'s': 'McDonald\'s', 'mcd': 'McDonald\'s',
   'starbux': 'Starbucks', 'sbux': 'Starbucks', 'starbuck': 'Starbucks',

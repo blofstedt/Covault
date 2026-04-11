@@ -123,7 +123,24 @@ function trimAtPreposition(vendor: string): string {
 function extractVendorRaw(text: string): string {
   // Strip emoji/symbols so they don't break character-class patterns or act
   // as unexpected delimiters between merchant name and description text.
-  const t = stripEmoji(text);
+  let t = stripEmoji(text);
+
+  // Strip known bank name prefixes (e.g. "Wealthsimple", "TD", "BMO") from
+  // the start of the notification so they don't interfere with vendor extraction.
+  const BANK_NAME_PREFIXES = [
+    'bmo', 'scotiabank', 'td', 'td bank', 'rbc', 'cibc',
+    'wealthsimple', 'tangerine', 'simplii', 'national bank',
+    'desjardins', 'chase', 'wells fargo', 'bank of america',
+    'amex', 'american express', 'capital one', 'discover',
+    'citi', 'citibank', 'hsbc', 'barclays', 'usaa',
+  ];
+  const tLowerPrefix = t.toLowerCase();
+  for (const prefix of BANK_NAME_PREFIXES) {
+    if (tLowerPrefix.startsWith(prefix + ' ') && t.length > prefix.length + 3) {
+      t = t.slice(prefix.length + 1).trim();
+      break;
+    }
+  }
 
   // Vendor character class used across patterns:
   // ASCII alphanumeric + common punctuation + accented Latin (À–ÿ) + space + hyphen

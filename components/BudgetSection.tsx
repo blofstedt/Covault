@@ -133,7 +133,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
         onClick={onToggle}
         className={`relative z-10 flex-1 flex items-center justify-between cursor-pointer active:scale-[0.99] ${
           isExpanded
-            ? 'flex-none py-10 px-8'
+            ? 'flex-none py-6 px-8'
             : useCompactCollapsedStyles
               ? 'py-1.5 px-3'
               : 'py-2 px-4'

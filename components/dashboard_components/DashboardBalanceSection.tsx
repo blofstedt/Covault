@@ -45,7 +45,7 @@ const DashboardBalanceSection: React.FC<DashboardBalanceSectionProps> = ({
       {isSearchOpen ? (
         <div
           id="search-field"
-          className="relative mt-2 w-full max-w-[200px] z-10 animate-nest"
+          className="relative mt-2 w-full max-w-[280px] z-10 animate-nest"
           style={{ animationDelay: '0.1s' }}
         >
           <input
