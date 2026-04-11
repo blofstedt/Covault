@@ -28,7 +28,7 @@ const SetupInfoCard: React.FC<SetupInfoCardProps> = ({ enabled, onToggle }) => (
         </div>
 
         <div className="flex-1">
-          <h2 className="text-lg font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase mb-2">
+          <h2 className="text-lg font-bold text-slate-600 dark:text-slate-100 tracking-tight mb-2">
             Transaction Detection
           </h2>
           <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
@@ -49,7 +49,7 @@ const SetupInfoCard: React.FC<SetupInfoCardProps> = ({ enabled, onToggle }) => (
       </div>
     </CardWrapper>
     <div className="bg-slate-100 dark:bg-slate-800/50 rounded-2xl p-4 space-y-3">
-      <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+      <h3 className="text-xs font-semibold tracking-wide text-slate-500 dark:text-slate-400">
         How it works
       </h3>
 

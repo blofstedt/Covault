@@ -14,7 +14,7 @@ const RolloverSection: React.FC<RolloverSectionProps> = ({
   return (
     <SettingsCard id="settings-rollover-container" className="flex items-center justify-between">
       <div className="flex flex-col">
-        <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+        <span className="text-xs font-semibold tracking-wide text-slate-500 dark:text-slate-400">
           Budget Rollover
         </span>
         <span className="text-[11px] text-slate-400 dark:text-slate-500 font-medium mt-0.5 leading-relaxed">

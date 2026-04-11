@@ -142,7 +142,7 @@ const SavingsGoalBar: React.FC<SavingsGoalBarProps> = ({
           setEditTarget('');
           setIsEditing(true);
         }}
-        className="w-full py-2.5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 hover:text-emerald-500 transition-colors"
+        className="w-full py-2.5 text-[10px] font-semibold tracking-wide text-slate-400 dark:text-slate-500 hover:text-emerald-500 transition-colors"
       >
         + Set Savings Goal
       </button>
@@ -153,7 +153,7 @@ const SavingsGoalBar: React.FC<SavingsGoalBarProps> = ({
   if (isEditing) {
     return (
       <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60 space-y-3">
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
+        <p className="text-[10px] font-semibold tracking-wide text-slate-400 dark:text-slate-500">
           Savings Goal
         </p>
         <input
@@ -175,13 +175,13 @@ const SavingsGoalBar: React.FC<SavingsGoalBarProps> = ({
         <div className="flex gap-2">
           <button
             onClick={handleSave}
-            className="flex-1 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest active:scale-95 transition-all"
+            className="flex-1 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl text-xs font-semibold tracking-wide active:scale-[0.97] transition-all duration-200"
           >
             Save
           </button>
           <button
             onClick={() => setIsEditing(false)}
-            className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-2xl text-xs font-black uppercase tracking-widest active:scale-95 transition-all"
+            className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-2xl text-xs font-semibold tracking-wide active:scale-[0.97] transition-all duration-200"
           >
             Cancel
           </button>
@@ -189,7 +189,7 @@ const SavingsGoalBar: React.FC<SavingsGoalBarProps> = ({
         {goal && (
           <button
             onClick={handleDelete}
-            className="w-full py-2 text-[10px] font-bold uppercase tracking-wider text-rose-400 hover:text-rose-500 transition-colors"
+            className="w-full py-2 text-[10px] font-semibold tracking-wide text-rose-400 hover:text-rose-500 transition-colors"
           >
             Remove Goal
           </button>
@@ -210,7 +210,7 @@ const SavingsGoalBar: React.FC<SavingsGoalBarProps> = ({
     >
       <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-emerald-200 dark:border-emerald-800/40 space-y-2">
         <div className="flex items-center justify-between">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400">
+          <p className="text-[10px] font-semibold tracking-wide text-emerald-600 dark:text-emerald-400">
             🎯 {goal!.name}
           </p>
           <p className="text-[10px] font-black text-slate-400 dark:text-slate-500">

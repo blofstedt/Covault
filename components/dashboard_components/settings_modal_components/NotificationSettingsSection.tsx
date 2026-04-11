@@ -263,19 +263,19 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
       {enabled && permissionGranted && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 tracking-wide">
               Your Banking Apps ({installedBankApps.length} found)
             </span>
             <div className="flex space-x-2">
               <button
                 onClick={selectAll}
-                className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase"
+                className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400"
               >
                 All
               </button>
               <button
                 onClick={selectNone}
-                className="text-[10px] font-bold text-slate-400 uppercase"
+                className="text-[10px] font-semibold text-slate-400"
               >
                 None
               </button>
@@ -300,7 +300,7 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
                   <button
                     key={app.packageName}
                     onClick={() => toggleApp(app.packageName)}
-                    className={`flex items-center space-x-2 px-3 py-2.5 rounded-xl text-left transition-all active:scale-95 border ${
+                    className={`flex items-center space-x-2 px-3 py-2.5 rounded-xl text-left transition-all duration-200 active:scale-[0.97] border ${
                       selected
                         ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-300 dark:border-emerald-700/50'
                         : 'bg-slate-100 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/30'

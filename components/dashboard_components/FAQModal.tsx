@@ -120,7 +120,7 @@ const FAQModal: React.FC<FAQModalProps> = ({ onClose }) => {
       <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl animate-in zoom-in-95 duration-500 max-h-[85vh] flex flex-col border border-slate-100 dark:border-slate-800/60 overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between p-6 pb-4">
-          <h2 className="text-lg font-black text-slate-700 dark:text-slate-100 tracking-tight uppercase">
+          <h2 className="text-lg font-bold text-slate-700 dark:text-slate-100 tracking-tight">
             Frequently Asked
           </h2>
           <CloseButton onClick={onClose} size="sm" />

@@ -17,7 +17,7 @@ const AppNotificationsSection: React.FC<AppNotificationsSectionProps> = ({
       <div className="flex items-center justify-between">
         {/* LEFT TEXT */}
         <div className="flex flex-col">
-          <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+          <span className="text-[11px] font-semibold tracking-wide text-slate-500 dark:text-slate-400">
             App Notifications
           </span>
 

@@ -18,7 +18,7 @@ const PREMIUM_FEATURES: PremiumFeature[] = [
 const SubscribeModal: React.FC<SubscribeModalProps> = ({ onClose, onSubscribe }) => {
   return (
     <div className="fixed inset-0 z-[200] bg-slate-900/50 backdrop-blur-lg flex items-center justify-center p-6 animate-in fade-in duration-300">
-      <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-[2rem] p-8 space-y-6 shadow-2xl animate-in zoom-in-95 duration-500 border border-slate-100 dark:border-slate-800/60">
+      <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-[2rem] p-8 space-y-6 shadow-2xl animate-in zoom-in-95 duration-500 border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] border-slate-100 dark:border-slate-800/60">
         {/* Icon */}
         <div className="flex justify-center">
           <div className="w-16 h-16 bg-emerald-50 dark:bg-emerald-900/30 rounded-2xl flex items-center justify-center">
@@ -29,7 +29,7 @@ const SubscribeModal: React.FC<SubscribeModalProps> = ({ onClose, onSubscribe })
         </div>
 
         {/* Title */}
-        <h2 className="text-2xl font-black text-slate-700 dark:text-slate-100 tracking-tight text-center">
+        <h2 className="text-2xl font-bold text-slate-700 dark:text-slate-100 tracking-tight text-center">
           Subscribe for More!
         </h2>
 
@@ -58,13 +58,13 @@ const SubscribeModal: React.FC<SubscribeModalProps> = ({ onClose, onSubscribe })
         <div className="space-y-3 pt-2">
           <button
             onClick={onSubscribe}
-            className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl text-sm font-black uppercase tracking-widest shadow-lg shadow-emerald-500/30 active:scale-95 transition-all"
+            className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl text-sm font-semibold tracking-wide shadow-lg shadow-emerald-500/30 active:scale-[0.97] transition-all duration-200"
           >
             Upgrade Now!
           </button>
           <button
             onClick={onClose}
-            className="w-full py-3 text-slate-400 dark:text-slate-500 text-[11px] font-bold uppercase tracking-widest hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+            className="w-full py-3 text-slate-400 dark:text-slate-500 text-[11px] font-medium tracking-wide hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
           >
             Maybe Later
           </button>

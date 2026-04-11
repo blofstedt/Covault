@@ -59,14 +59,14 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
             : undefined;
 
           return (
-            <div key={pt.id} className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800/60 overflow-hidden">
+            <div key={pt.id} className="bg-white/60 dark:bg-slate-800/40 backdrop-blur-sm rounded-2xl border border-slate-100 dark:border-slate-800/60 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] overflow-hidden">
               {/* Card header */}
               <button
                 onClick={() => onSetExpandedPendingId(isExpanded ? null : pt.id)}
-                className="w-full flex items-center justify-between p-4 transition-all active:scale-[0.99]"
+                className="w-full flex items-center justify-between p-4 transition-all duration-200 active:scale-[0.99]"
               >
                 <div className="flex items-center space-x-3 min-w-0 flex-1">
-                  <div className="w-8 h-8 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center shrink-0">
+                  <div className="w-9 h-9 bg-amber-100 dark:bg-amber-900/30 rounded-xl flex items-center justify-center shrink-0">
                     <svg className="w-4 h-4 text-amber-600 dark:text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
                     </svg>
@@ -81,15 +81,15 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
                   </div>
                 </div>
                 <div className="text-right shrink-0 ml-3">
-                  <span className="text-sm font-black text-slate-700 dark:text-slate-200">
+                  <span className="text-sm font-extrabold font-mono text-slate-700 dark:text-slate-200">
                     ${pt.extracted_amount.toFixed(2)}
                   </span>
                   {defaultCategoryName ? (
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mt-0.5">
+                    <p className="text-[11px] font-semibold tracking-wide text-emerald-600 dark:text-emerald-400 mt-0.5">
                       {defaultCategoryName}
                     </p>
                   ) : (
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-amber-500 dark:text-amber-400 mt-0.5">
+                    <p className="text-[11px] font-semibold tracking-wide text-amber-500 dark:text-amber-400 mt-0.5">
                       {isExpanded ? 'Collapse' : 'Tap to categorize'}
                     </p>
                   )}
@@ -100,8 +100,8 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
               {isExpanded && (
                 <div className="px-4 pb-4 space-y-3 border-t border-slate-100 dark:border-slate-800/60 pt-3">
                   {/* Notification text preview */}
-                  <div className="bg-slate-100 dark:bg-slate-800/80 rounded-xl p-3">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Detected</p>
+                  <div className="bg-slate-100/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-xl p-3 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04]">
+                    <p className="text-[11px] font-semibold tracking-wide text-slate-500 dark:text-slate-400 mb-1">Detected</p>
                     <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed line-clamp-3">
                       {pt.extracted_vendor} — ${pt.extracted_amount}
                     </p>
@@ -109,19 +109,19 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
 
                   {/* Preferred name input */}
                   <div>
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Preferred Name</p>
+                    <p className="text-[11px] font-semibold tracking-wide text-slate-500 dark:text-slate-400 mb-1">Preferred Name</p>
                     <input
                       type="text"
                       placeholder={pt.extracted_vendor}
                       value={preferredNames[pt.id] ?? ''}
                       onChange={(e) => setPreferredNames(prev => ({ ...prev, [pt.id]: e.target.value }))}
-                      className="w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 placeholder-slate-300 dark:placeholder-slate-600 outline-none focus:border-amber-400 dark:focus:border-amber-500 transition-colors"
+                      className="w-full px-3 py-2 text-xs font-medium rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 placeholder-slate-300 dark:placeholder-slate-600 outline-none focus:border-amber-400 dark:focus:border-amber-500 transition-colors ring-1 ring-inset ring-white/10 dark:ring-white/[0.04]"
                     />
                   </div>
 
                   {/* Category picker */}
                   <div>
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Assign Category</p>
+                    <p className="text-[11px] font-semibold tracking-wide text-slate-500 dark:text-slate-400 mb-2">Assign Category</p>
                     <div className="flex flex-wrap gap-1.5">
                       {budgets.map((b) => (
                         <button
@@ -129,7 +129,7 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
                           onClick={() => {
                             setSelectedCategories(prev => ({ ...prev, [pt.id]: b.id }));
                           }}
-                          className={`px-3 py-1.5 text-[11px] font-bold rounded-full border transition-all active:scale-95 ${
+                          className={`px-3 py-1.5 text-[11px] font-bold rounded-full border transition-all duration-200 active:scale-[0.97] ${
                             selectedCategories[pt.id] === b.id
                               ? 'bg-emerald-500 text-white border-emerald-600'
                               : vendorOverride?.category_id === b.id
@@ -159,7 +159,7 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
                       // Reload vendor overrides to sync with DB (replaces temp ID with real one)
                       await onLoadVendorOverrides();
                     }}
-                    className={`w-full py-2.5 text-[11px] font-bold uppercase tracking-wider rounded-xl border transition-all active:scale-[0.98] ${
+                    className={`w-full py-2.5 text-[11px] font-semibold tracking-wide rounded-xl border transition-all active:scale-[0.98] ${
                       selectedCategories[pt.id]
                         ? 'text-white bg-emerald-500 border-emerald-600 hover:bg-emerald-600 dark:bg-emerald-600 dark:border-emerald-700 dark:hover:bg-emerald-700'
                         : 'text-slate-400 dark:text-slate-600 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 cursor-not-allowed'
@@ -173,7 +173,7 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
                     onClick={() => {
                       onRejectConfirm(pt.id);
                     }}
-                    className="w-full py-2 text-[11px] font-bold uppercase tracking-wider text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/10 rounded-xl border border-red-200 dark:border-red-800/30 transition-all active:scale-[0.98] hover:bg-red-100 dark:hover:bg-red-900/20"
+                    className="w-full py-2 text-[11px] font-semibold tracking-wide text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/10 rounded-xl border border-red-200 dark:border-red-800/30 transition-all active:scale-[0.98] hover:bg-red-100 dark:hover:bg-red-900/20"
                   >
                     Reject
                   </button>
@@ -198,7 +198,7 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
     <button
       onClick={onScanForTransactions}
       disabled={isScanning}
-      className="w-full py-2.5 text-[11px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800/40 transition-all active:scale-[0.98] hover:bg-amber-100 dark:hover:bg-amber-900/30 disabled:opacity-50"
+      className="w-full py-2.5 text-[11px] font-semibold tracking-wide text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800/40 transition-all active:scale-[0.98] hover:bg-amber-100 dark:hover:bg-amber-900/30 disabled:opacity-50"
     >
       {isScanning ? 'Scanning…' : 'Scan for Transactions'}
     </button>

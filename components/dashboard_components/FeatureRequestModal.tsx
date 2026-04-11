@@ -63,7 +63,7 @@ const FeatureRequestModal: React.FC<FeatureRequestModalProps> = ({
       <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl animate-in zoom-in-95 duration-500 max-h-[85vh] flex flex-col border border-slate-100 dark:border-slate-800/60 overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between p-6 pb-4">
-          <h2 className="text-lg font-black text-slate-700 dark:text-slate-100 tracking-tight uppercase">
+          <h2 className="text-lg font-bold text-slate-700 dark:text-slate-100 tracking-tight">
             Feature Requests
           </h2>
           <CloseButton onClick={onClose} size="sm" />
@@ -73,7 +73,7 @@ const FeatureRequestModal: React.FC<FeatureRequestModalProps> = ({
         <div className="flex mx-6 mb-4 bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
           <button
             onClick={() => setActiveTab('requested')}
-            className={`flex-1 text-[11px] font-black uppercase tracking-widest py-2.5 rounded-lg transition-all ${
+            className={`flex-1 text-[11px] font-semibold tracking-wide py-2.5 rounded-lg transition-all ${
               activeTab === 'requested'
                 ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm'
                 : 'text-slate-400 dark:text-slate-500'
@@ -83,7 +83,7 @@ const FeatureRequestModal: React.FC<FeatureRequestModalProps> = ({
           </button>
           <button
             onClick={() => setActiveTab('implemented')}
-            className={`flex-1 text-[11px] font-black uppercase tracking-widest py-2.5 rounded-lg transition-all ${
+            className={`flex-1 text-[11px] font-semibold tracking-wide py-2.5 rounded-lg transition-all ${
               activeTab === 'implemented'
                 ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm'
                 : 'text-slate-400 dark:text-slate-500'
@@ -123,14 +123,14 @@ const FeatureRequestModal: React.FC<FeatureRequestModalProps> = ({
                       {isAdmin && (
                         <button
                           onClick={() => onUpdateStatus(item.id, 'implemented')}
-                          className="text-[9px] font-bold text-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-1 rounded-lg uppercase tracking-wider hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors"
+                          className="text-[9px] font-semibold text-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-1 rounded-lg tracking-wide hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors"
                         >
                           ✓ Done
                         </button>
                       )}
                       <button
                         onClick={() => onToggleVote(item.id)}
-                        className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all active:scale-95 ${
+                        className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all duration-200 active:scale-[0.97] ${
                           voted
                             ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400'
                             : 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 hover:text-emerald-500'
@@ -163,7 +163,7 @@ const FeatureRequestModal: React.FC<FeatureRequestModalProps> = ({
                   {isAdmin && (
                     <button
                       onClick={() => onUpdateStatus(item.id, 'requested')}
-                      className="text-[9px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg uppercase tracking-wider hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                      className="text-[9px] font-semibold text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg tracking-wide hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                     >
                       Undo
                     </button>
@@ -179,7 +179,7 @@ const FeatureRequestModal: React.FC<FeatureRequestModalProps> = ({
           <div className="p-6 pt-3 border-t border-slate-100 dark:border-slate-800">
             {similar.length > 0 && (
               <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200/60 dark:border-amber-800/30">
-                <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-1.5">
+                <p className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 tracking-wide mb-1.5">
                   Someone already suggested this!
                 </p>
                 {similar.slice(0, 2).map((s) => (
@@ -208,7 +208,7 @@ const FeatureRequestModal: React.FC<FeatureRequestModalProps> = ({
               <button
                 onClick={handleSubmit}
                 disabled={!newRequest.trim()}
-                className="px-4 py-3 bg-emerald-500 text-white text-xs font-bold rounded-xl hover:bg-emerald-600 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed uppercase tracking-wider"
+                className="px-4 py-3 bg-emerald-500 text-white text-xs font-semibold rounded-xl hover:bg-emerald-600 active:scale-[0.97] transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed tracking-wide"
               >
                 Send
               </button>

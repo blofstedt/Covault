@@ -14,7 +14,7 @@ const SupportFeedbackSection: React.FC<SupportFeedbackSectionProps> = ({
     <div className="pt-8 space-y-6">
       <div className="flex items-center justify-between px-2">
         <div className="h-px flex-1 bg-slate-100 dark:bg-slate-800" />
-        <span className="text-[11px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-[0.2em] px-4">
+        <span className="text-[11px] font-semibold text-slate-300 dark:text-slate-600 tracking-wide px-4">
           Support &amp; Feedback
         </span>
         <div className="h-px flex-1 bg-slate-100 dark:bg-slate-800" />
@@ -41,7 +41,7 @@ const SupportFeedbackSection: React.FC<SupportFeedbackSectionProps> = ({
               />
             </svg>
           </div>
-          <span className="text-[11px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest whitespace-nowrap">
+          <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 tracking-wide whitespace-nowrap">
             Report a Problem
           </span>
           <svg
@@ -81,7 +81,7 @@ const SupportFeedbackSection: React.FC<SupportFeedbackSectionProps> = ({
                 />
               </svg>
             </div>
-            <span className="text-[11px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest whitespace-nowrap">
+            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 tracking-wide whitespace-nowrap">
               Request a Feature
             </span>
             <svg

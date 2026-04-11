@@ -91,19 +91,19 @@ const CalendarPicker: React.FC<CalendarPickerProps> = ({ value, onChange, onClos
           <button
             type="button"
             onClick={prevMonth}
-            className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 active:scale-90 transition-transform"
+            className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 active:scale-[0.97] transition-transform duration-200"
           >
             <svg className="w-4 h-4 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
               <path d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <span className="text-xs font-black uppercase tracking-widest text-slate-500 dark:text-slate-100">
+          <span className="text-xs font-semibold tracking-wide text-slate-500 dark:text-slate-100">
             {monthLabel}
           </span>
           <button
             type="button"
             onClick={nextMonth}
-            className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 active:scale-90 transition-transform"
+            className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 active:scale-[0.97] transition-transform duration-200"
           >
             <svg className="w-4 h-4 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 5l7 7-7 7" />
@@ -114,7 +114,7 @@ const CalendarPicker: React.FC<CalendarPickerProps> = ({ value, onChange, onClos
         {/* Day-of-week headers */}
         <div className="grid grid-cols-7 mb-1">
           {DAYS.map((d) => (
-            <div key={d} className="text-center text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-600 py-1">
+            <div key={d} className="text-center text-[9px] font-semibold tracking-wide text-slate-400 dark:text-slate-600 py-1">
               {d}
             </div>
           ))}
@@ -131,7 +131,7 @@ const CalendarPicker: React.FC<CalendarPickerProps> = ({ value, onChange, onClos
                 type="button"
                 onClick={() => handleSelect(day)}
                 className={`
-                  aspect-square flex items-center justify-center rounded-xl text-xs font-bold transition-all active:scale-90
+                  aspect-square flex items-center justify-center rounded-xl text-xs font-bold transition-all duration-200 active:scale-[0.97]
                   ${isSelected(day)
                     ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20'
                     : isToday(day)
@@ -156,14 +156,14 @@ const CalendarPicker: React.FC<CalendarPickerProps> = ({ value, onChange, onClos
               onChange(`${today.getFullYear()}-${mm}-${dd}`);
               onClose();
             }}
-            className="flex-1 py-2.5 text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl active:scale-95 transition-all"
+            className="flex-1 py-2.5 text-[10px] font-semibold tracking-wide text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl active:scale-[0.97] transition-all duration-200"
           >
             Today
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-xl active:scale-95 transition-all"
+            className="flex-1 py-2.5 text-[10px] font-semibold tracking-wide text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-xl active:scale-[0.97] transition-all duration-200"
           >
             Cancel
           </button>

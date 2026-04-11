@@ -159,19 +159,19 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
   return (
     <div className={`fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-xl transition-opacity duration-250 ${isClosing ? 'opacity-0' : 'animate-in fade-in duration-300'}`}>
-      <div id="tutorial-transaction-form" className={`w-full max-w-sm bg-white dark:bg-slate-900 rounded-[3rem] p-6 space-y-4 shadow-2xl border border-slate-100 dark:border-slate-800/60 max-h-[90vh] overflow-y-auto no-scrollbar transition-all duration-250 ${isClosing ? 'opacity-0 scale-95' : 'animate-in zoom-in-95 duration-300'}`}>
+      <div id="tutorial-transaction-form" className={`w-full max-w-sm bg-white dark:bg-slate-900 rounded-[3rem] p-6 space-y-4 shadow-2xl border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] border-slate-100 dark:border-slate-800/60 max-h-[90vh] overflow-y-auto no-scrollbar transition-all duration-250 ${isClosing ? 'opacity-0 scale-95' : 'animate-in zoom-in-95 duration-300'}`}>
         <div className="flex items-center justify-between">
           <div className="flex flex-col">
-            <h2 className="text-lg font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">
+            <h2 className="text-lg font-bold text-slate-600 dark:text-slate-100 tracking-tight">
               {initialTransaction ? 'Edit Entry' : 'New Entry'}
             </h2>
             {isSharedAccount && (
-              <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mt-1">
+              <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 tracking-wide mt-1">
                 Recording as {userName}
               </span>
             )}
             {isAITransaction && (
-              <span className="text-[10px] font-black text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded-full uppercase tracking-widest mt-1 inline-block">
+              <span className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded-full tracking-wide mt-1 inline-block">
                 AI Transaction
               </span>
             )}
@@ -224,7 +224,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                         </div>
                         <span className="text-sm font-bold text-slate-500 dark:text-slate-200 capitalize">{s.vendor}</span>
                         {budget && (
-                          <span className="text-[10px] font-bold text-slate-400 ml-auto uppercase tracking-wider">{budget.name}</span>
+                          <span className="text-[10px] font-semibold text-slate-400 ml-auto tracking-wide">{budget.name}</span>
                         )}
                       </button>
                     );
@@ -236,7 +236,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
           <div className="space-y-3">
             <div className="flex items-center justify-between px-2">
-              <span className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">
+              <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 tracking-wide">
                 Target Vault
               </span>
             </div>
@@ -253,7 +253,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                         type="button"
                         onClick={() => toggleCategory(b.id)}
                         className={`
-                          relative flex items-center justify-center p-2 rounded-2xl transition-all border w-[calc(25%-5px)] aspect-square active:scale-95
+                          relative flex items-center justify-center p-2 rounded-2xl transition-all duration-200 border w-[calc(25%-5px)] aspect-square active:scale-[0.97]
                           ${isSelected
                             ? 'border-emerald-500/50 bg-emerald-50/60 dark:bg-emerald-900/20 shadow-lg shadow-emerald-500/10'
                             : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-400'
@@ -264,7 +264,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                           <div className={`flex items-center justify-center w-5 h-5 ${isSelected ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>
                             {getBudgetIcon(b.name)}
                           </div>
-                          <span className={`text-[9px] font-black uppercase tracking-tighter mt-1.5 leading-none text-center ${isSelected ? 'text-emerald-700 dark:text-emerald-300' : ''}`}>
+                          <span className={`text-[9px] font-bold tracking-tight mt-1.5 leading-none text-center ${isSelected ? 'text-emerald-700 dark:text-emerald-300' : ''}`}>
                             {b.name}
                           </span>
                         </div>
@@ -282,7 +282,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
               onClick={() => setShowCalendar(true)}
               className="relative flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 cursor-pointer active:scale-[0.98] transition-all"
             >
-              <span className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Date</span>
+              <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 tracking-wide ml-1">Date</span>
               <div className="flex items-center space-x-2">
                 <span className="text-sm font-bold text-slate-500 dark:text-slate-100">{formattedDate}</span>
                 <svg className="w-4 h-4 text-slate-300 dark:text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -292,14 +292,14 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             </div>
 
             <div className="space-y-3">
-              <span className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] px-2 text-center block">Recurrence</span>
+              <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 tracking-wide px-2 text-center block">Recurrence</span>
               <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl">
                 {['One-time', 'Biweekly', 'Monthly'].map(r => (
                   <button
                     key={r}
                     type="button"
                     onClick={() => setRecurrence(r as Recurrence)}
-                    className={`flex-1 py-2.5 text-[11px] font-black rounded-xl transition-all uppercase tracking-widest ${recurrence === r ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-slate-400'}`}
+                    className={`flex-1 py-2.5 text-[11px] font-semibold rounded-xl transition-all tracking-wide ${recurrence === r ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-slate-400'}`}
                   >
                     {r}
                   </button>
@@ -311,7 +311,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           <button
             type="submit"
             disabled={!isFormValid}
-            className={`w-full py-3 rounded-2xl font-black text-xs shadow-xl active:scale-95 transition-all uppercase tracking-[0.15em] mt-1 ${isFormValid ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 opacity-50 cursor-not-allowed'}`}
+            className={`w-full py-3 rounded-2xl font-semibold text-xs shadow-xl active:scale-[0.97] transition-all duration-200 tracking-wide mt-1 ${isFormValid ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 opacity-50 cursor-not-allowed'}`}
           >
             {initialTransaction ? 'Update Transaction' : 'Confirm Entry'}
           </button>
@@ -321,7 +321,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             <button
               type="button"
               onClick={onDelete}
-              className="w-full py-3 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-500 dark:text-slate-400 rounded-2xl font-black text-xs active:scale-95 transition-all uppercase tracking-[0.15em] flex items-center justify-center space-x-2 mt-1"
+              className="w-full py-3 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-500 dark:text-slate-400 rounded-2xl font-semibold text-xs active:scale-[0.97] transition-all duration-200 tracking-wide flex items-center justify-center space-x-2 mt-1"
             >
               <svg
                 className="w-4 h-4"

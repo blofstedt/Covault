@@ -227,7 +227,7 @@ const ImportTransactionsSection: React.FC<ImportTransactionsSectionProps> = ({
       <button
         onClick={() => fileInputRef.current?.click()}
         disabled={importing || !userId}
-        className={`w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl text-xs font-black uppercase tracking-[0.15em] transition-all active:scale-[0.97] ${
+        className={`w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl text-xs font-semibold tracking-wide transition-all duration-200 active:scale-[0.97] ${
           importing
             ? 'bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-wait'
             : status === 'success'

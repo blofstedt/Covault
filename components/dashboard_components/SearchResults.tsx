@@ -40,7 +40,7 @@ const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
         className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-slate-100/90 dark:bg-slate-900/80 border border-slate-200/60 dark:border-slate-800/80 active:scale-[0.99] transition-all"
       >
         <div className="flex flex-col items-start text-left">
-          <span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+          <span className="text-[10px] font-semibold tracking-wide text-slate-400 dark:text-slate-500">
             {title}
           </span>
           <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 mt-0.5">
@@ -163,7 +163,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     <div id="search-results-panel" className="flex-1 overflow-y-auto no-scrollbar mt-3">
       <div className="px-2 pb-8 space-y-4">
         <div className="flex items-center justify-between px-1">
-          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 dark:text-slate-600">
+          <span className="text-[10px] font-semibold tracking-wide text-slate-300 dark:text-slate-600">
             Search Results
           </span>
           <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500">
@@ -174,7 +174,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
         {filteredCurrent.length > 0 && (
           <div className="space-y-2">
             <div className="px-1">
-              <span className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+              <span className="text-[9px] font-semibold tracking-wide text-slate-400 dark:text-slate-500">
                 This Month
               </span>
             </div>

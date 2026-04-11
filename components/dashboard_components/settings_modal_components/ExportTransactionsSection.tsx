@@ -150,7 +150,7 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
 
       <div className="flex gap-3 mb-4">
         <div className="flex-1">
-          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+          <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 tracking-wide block mb-1">
             From
           </label>
           <button
@@ -162,7 +162,7 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
           </button>
         </div>
         <div className="flex-1">
-          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+          <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 tracking-wide block mb-1">
             To
           </label>
           <button
@@ -193,7 +193,7 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
       <button
         onClick={handleExport}
         disabled={filteredCount === 0}
-        className={`w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl text-xs font-black uppercase tracking-[0.15em] transition-all active:scale-[0.97] ${
+        className={`w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl text-xs font-semibold tracking-wide transition-all duration-200 active:scale-[0.97] ${
           exported
             ? 'bg-emerald-500 text-white'
             : filteredCount === 0

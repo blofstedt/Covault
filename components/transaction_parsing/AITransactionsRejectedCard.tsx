@@ -56,9 +56,9 @@ const AITransactionsRejectedCard: React.FC<AITransactionsRejectedCardProps> = ({
       {rejectedTransactions.length > 0 ? (
         <div className="space-y-2">
           {rejectedTransactions.map((item) => (
-            <div key={item.id} className="w-full flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800/60">
+            <div key={item.id} className="w-full flex items-center justify-between p-4 bg-white/60 dark:bg-slate-800/40 backdrop-blur-sm rounded-2xl border border-slate-100 dark:border-slate-800/60 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04]">
               <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-slate-100 dark:bg-slate-800/50 rounded-full flex items-center justify-center">
+                <div className="w-9 h-9 bg-slate-100 dark:bg-slate-800/50 rounded-xl flex items-center justify-center">
                   <svg className="w-4 h-4 text-slate-400 dark:text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <line x1="18" y1="6" x2="6" y2="18" />
                     <line x1="6" y1="6" x2="18" y2="18" />
@@ -75,11 +75,11 @@ const AITransactionsRejectedCard: React.FC<AITransactionsRejectedCardProps> = ({
               </div>
               <div className="text-right shrink-0">
                 {item.amount != null && (
-                  <span className="text-sm font-black text-slate-700 dark:text-slate-200">
+                  <span className="text-sm font-extrabold font-mono text-slate-700 dark:text-slate-200">
                     ${item.amount.toFixed(2)}
                   </span>
                 )}
-                <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mt-0.5">
+                <p className="text-[8px] font-semibold tracking-wide text-slate-400 dark:text-slate-500 mt-0.5">
                   Rejected
                 </p>
               </div>

@@ -191,7 +191,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}
       >
         <div className="flex items-center justify-center">
-          <h1 className="text-xl font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">
+          <h1 className="text-xl font-bold text-slate-500 dark:text-slate-100 tracking-tight">
             Transaction Parsing
           </h1>
         </div>

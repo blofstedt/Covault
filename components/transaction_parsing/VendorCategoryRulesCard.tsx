@@ -49,13 +49,13 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
           const displayName = vo?.proper_name || vendorName;
 
           return (
-            <div key={vendorName} className="bg-violet-50 dark:bg-violet-900/10 rounded-2xl border border-violet-100 dark:border-violet-800/30 overflow-hidden">
+            <div key={vendorName} className="bg-white/60 dark:bg-violet-900/10 backdrop-blur-sm rounded-2xl border border-violet-100 dark:border-violet-800/30 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] overflow-hidden">
               <div
                 role="button"
                 tabIndex={0}
                 onClick={() => onSetExpandedVendorCategory(isExpanded ? null : vendorName)}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSetExpandedVendorCategory(isExpanded ? null : vendorName); } }}
-                className="w-full flex items-center justify-between p-3 transition-all active:scale-[0.99] cursor-pointer"
+                className="w-full flex items-center justify-between p-3 transition-all duration-200 active:scale-[0.99] cursor-pointer"
               >
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">
@@ -85,7 +85,7 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
                   {/* Proper name editor */}
                   {vo && (
                     <div>
-                      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                      <p className="text-[11px] font-semibold tracking-wide text-slate-500 dark:text-slate-400 mb-1">
                         Display Name
                       </p>
                       {editingProperName === vendorName ? (
@@ -111,13 +111,13 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
                               onSetProperName(vendorName, properNameDraft);
                               setEditingProperName(null);
                             }}
-                            className="px-2 py-1 text-[11px] font-bold rounded-lg bg-violet-500 text-white hover:bg-violet-600 transition-all active:scale-95"
+                            className="px-2 py-1 text-[11px] font-bold rounded-lg bg-violet-500 text-white hover:bg-violet-600 transition-all duration-200 active:scale-[0.97]"
                           >
                             Save
                           </button>
                           <button
                             onClick={() => setEditingProperName(null)}
-                            className="px-2 py-1 text-[11px] font-bold rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 transition-all active:scale-95"
+                            className="px-2 py-1 text-[11px] font-bold rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 transition-all duration-200 active:scale-[0.97]"
                           >
                             Cancel
                           </button>
@@ -128,7 +128,7 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
                             setProperNameDraft(vo.proper_name ?? '');
                             setEditingProperName(vendorName);
                           }}
-                          className="w-full flex items-center gap-1.5 px-2 py-1.5 text-xs rounded-lg border border-dashed border-violet-200 dark:border-violet-800/40 text-slate-600 dark:text-slate-300 hover:bg-violet-100 dark:hover:bg-violet-900/30 transition-all active:scale-95"
+                          className="w-full flex items-center gap-1.5 px-2 py-1.5 text-xs rounded-lg border border-dashed border-violet-200 dark:border-violet-800/40 text-slate-600 dark:text-slate-300 hover:bg-violet-100 dark:hover:bg-violet-900/30 transition-all duration-200 active:scale-[0.97]"
                         >
                           <svg className="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                             <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
@@ -142,7 +142,7 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
                     </div>
                   )}
 
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <p className="text-[11px] font-semibold tracking-wide text-slate-500 dark:text-slate-400">
                     Select Default Category
                   </p>
                   <div className="flex flex-wrap gap-1.5">
@@ -150,7 +150,7 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
                       <button
                         key={b.id}
                         onClick={() => onSetVendorCategory(vendorName, b.id)}
-                        className={`px-3 py-1.5 text-xs font-bold rounded-full border transition-all active:scale-95 ${
+                        className={`px-3 py-1.5 text-xs font-bold rounded-full border transition-all duration-200 active:scale-[0.97] ${
                           vo?.category_id === b.id
                             ? 'bg-violet-500 text-white border-violet-600'
                             : 'bg-violet-50 dark:bg-violet-900/20 border-violet-200 dark:border-violet-800/40 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40'
@@ -163,7 +163,7 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
                   {vo && (
                     <button
                       onClick={() => onDeleteVendorOverride(vo.id)}
-                      className="w-full flex items-center justify-center gap-1.5 px-3 py-2 mt-2 text-xs font-bold rounded-xl border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40 transition-all active:scale-95"
+                      className="w-full flex items-center justify-center gap-1.5 px-3 py-2 mt-2 text-xs font-bold rounded-xl border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40 transition-all duration-200 active:scale-[0.97]"
                       title="Delete this vendor category rule"
                     >
                       <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">

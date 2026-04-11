@@ -13,7 +13,7 @@ interface SettingsCardProps {
 const SettingsCard: React.FC<SettingsCardProps> = ({ id, children, className = '' }) => (
   <div
     id={id}
-    className={`p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60 ${className}`}
+    className={`p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800/60 ring-1 ring-inset ring-white/10 dark:ring-white/[0.03] ${className}`}
   >
     {children}
   </div>

@@ -14,7 +14,7 @@ const CloseButton: React.FC<CloseButtonProps> = ({ onClick, disabled = false, si
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`${sizeClasses} bg-slate-100 dark:bg-slate-800 rounded-full transition-transform active:scale-90 ${
+      className={`${sizeClasses} bg-slate-100 dark:bg-slate-800 rounded-full transition-transform duration-200 active:scale-[0.97] ${
         disabled ? 'opacity-20 cursor-not-allowed' : ''
       }`}
     >

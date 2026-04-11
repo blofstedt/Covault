@@ -370,7 +370,7 @@ const Tutorial: React.FC<TutorialProps> = ({
                 <path d="M9 18l6-6-6-6" />
               </svg>
             </div>
-            <h3 className="text-xl font-black text-slate-600 dark:text-slate-100 uppercase tracking-tight">Skip Walkthrough?</h3>
+            <h3 className="text-xl font-bold text-slate-600 dark:text-slate-100 tracking-tight">Skip Walkthrough?</h3>
             <p className="text-slate-400 dark:text-slate-500 font-medium text-sm leading-relaxed">
               You can always re-run the tutorial from the Settings menu by tapping the gear icon.
             </p>
@@ -378,13 +378,13 @@ const Tutorial: React.FC<TutorialProps> = ({
           <div className="flex flex-col space-y-3">
             <button
               onClick={onComplete}
-              className="w-full py-4 bg-slate-500 dark:bg-slate-700 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-lg active:scale-95 transition-all"
+              className="w-full py-4 bg-slate-500 dark:bg-slate-700 text-white rounded-2xl font-semibold text-xs tracking-wide shadow-lg active:scale-[0.97] transition-all duration-200"
             >
               Skip for Now
             </button>
             <button
               onClick={() => setShowSkipConfirm(false)}
-              className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-lg shadow-emerald-600/20 active:scale-95 transition-all"
+              className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-semibold text-xs tracking-wide shadow-lg shadow-emerald-600/20 active:scale-[0.97] transition-all duration-200"
             >
               Continue Walkthrough
             </button>
@@ -485,8 +485,8 @@ const Tutorial: React.FC<TutorialProps> = ({
             </div>
 
             <div className="space-y-3 text-center">
-              <span className="text-[9px] font-black text-emerald-500 uppercase tracking-[0.3em]">Step {step + 1} of {steps.length}</span>
-              <h3 className="text-lg font-black text-slate-600 dark:text-slate-100 uppercase tracking-tight leading-tight">
+              <span className="text-[9px] font-semibold text-emerald-500 tracking-wide">Step {step + 1} of {steps.length}</span>
+              <h3 className="text-lg font-bold text-slate-600 dark:text-slate-100 tracking-tight leading-tight">
                 {currentStep.title}
               </h3>
               <p className="text-slate-500 dark:text-slate-400 font-medium text-[13px] leading-relaxed">
@@ -497,14 +497,14 @@ const Tutorial: React.FC<TutorialProps> = ({
             <div className="flex space-x-3">
               <button
                 onClick={handleSkip}
-                className="flex-1 py-3.5 bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest active:scale-95 transition-all"
+                className="flex-1 py-3.5 bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500 rounded-2xl font-semibold text-[10px] tracking-wide active:scale-[0.97] transition-all duration-200"
               >
                 Skip
               </button>
               <button
                 onClick={handleNext}
                 disabled={isAnimating}
-                className={`flex-[2] py-3.5 bg-emerald-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-emerald-600/20 active:scale-95 transition-all ${isAnimating ? 'opacity-50 cursor-not-allowed' : ''}`}
+                className={`flex-[2] py-3.5 bg-emerald-600 text-white rounded-2xl font-semibold text-[10px] tracking-wide shadow-lg shadow-emerald-600/20 active:scale-[0.97] transition-all duration-200 ${isAnimating ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 {step === steps.length - 1 ? "Get Started" : "Next"}
               </button>

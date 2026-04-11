@@ -232,7 +232,7 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
       <div className="relative w-full max-w-md" style={{ height: 300 }}>
         {/* Card counter */}
         <div className="absolute -top-8 left-0 right-0 text-center">
-          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/60">
+          <span className="text-[10px] font-semibold tracking-wide text-white/60">
             {currentIndex + 1} / {cards.length}
           </span>
         </div>
@@ -268,7 +268,7 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
               <div className="p-8 pl-10 flex flex-col justify-center h-full">
                 <div className="flex items-center gap-3 mb-3">
                   <span className="text-2xl">{accentIcon[card.accent] || '💡'}</span>
-                  <h3 className="text-sm font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">
+                  <h3 className="text-sm font-bold text-slate-500 dark:text-slate-100 tracking-tight">
                     {card.title}
                   </h3>
                 </div>
@@ -305,7 +305,7 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
           <div className="p-8 pl-10 flex flex-col justify-center h-full">
             <div className="flex items-center gap-3 mb-4">
               <span className="text-2xl">{accentIcon[topCard.accent] || '💡'}</span>
-              <h3 className="text-sm font-black text-slate-500 dark:text-slate-100 tracking-tight uppercase">
+              <h3 className="text-sm font-bold text-slate-500 dark:text-slate-100 tracking-tight">
                 {topCard.title}
               </h3>
             </div>
@@ -317,14 +317,14 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
             {isVendorCard ? (
               <div className="flex gap-3 mt-6">
                 <button
-                  className="flex-1 py-3 rounded-2xl bg-emerald-500 text-white text-xs font-black uppercase tracking-[0.15em] active:scale-95 transition-transform"
+                  className="flex-1 py-3 rounded-2xl bg-emerald-500 text-white text-xs font-semibold tracking-wide active:scale-[0.97] transition-all duration-200"
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => { e.stopPropagation(); handleVendorAccept(); }}
                 >
                   Yes
                 </button>
                 <button
-                  className="flex-1 py-3 rounded-2xl bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-300 text-xs font-black uppercase tracking-[0.15em] active:scale-95 transition-transform"
+                  className="flex-1 py-3 rounded-2xl bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-300 text-xs font-semibold tracking-wide active:scale-[0.97] transition-all duration-200"
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => { e.stopPropagation(); advanceCard(); }}
                 >
@@ -332,7 +332,7 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
                 </button>
               </div>
             ) : (
-              <p className="mt-6 text-[9px] font-black uppercase tracking-[0.2em] text-slate-300 dark:text-slate-600">
+              <p className="mt-6 text-[9px] font-medium tracking-wide text-slate-300 dark:text-slate-600">
                 Swipe to dismiss
               </p>
             )}

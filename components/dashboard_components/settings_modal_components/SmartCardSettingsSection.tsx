@@ -23,7 +23,7 @@ const SmartCardSettingsSection: React.FC<SmartCardSettingsSectionProps> = ({
       {/* Toggle: Smart card modal */}
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs font-black text-slate-500 dark:text-slate-300 uppercase tracking-wider">
+          <p className="text-xs font-semibold text-slate-500 dark:text-slate-300 tracking-wide">
             Insight Cards
           </p>
           <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500 mt-0.5">
@@ -36,7 +36,7 @@ const SmartCardSettingsSection: React.FC<SmartCardSettingsSectionProps> = ({
       {/* Toggle: Smart push notifications */}
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs font-black text-slate-500 dark:text-slate-300 uppercase tracking-wider">
+          <p className="text-xs font-semibold text-slate-500 dark:text-slate-300 tracking-wide">
             Smart Notifications
           </p>
           <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500 mt-0.5">

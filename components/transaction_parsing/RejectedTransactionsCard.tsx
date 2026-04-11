@@ -22,9 +22,9 @@ const RejectedTransactionsCard: React.FC<RejectedTransactionsCardProps> = ({
       {rejectedTransactions.length > 0 ? (
         <div className="space-y-2">
           {rejectedTransactions.map((pt) => (
-            <div key={pt.id} className="w-full flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800/60">
+            <div key={pt.id} className="w-full flex items-center justify-between p-4 bg-white/60 dark:bg-slate-800/40 backdrop-blur-sm rounded-2xl border border-slate-100 dark:border-slate-800/60 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04]">
               <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center">
+                <div className="w-9 h-9 bg-red-100 dark:bg-red-900/30 rounded-xl flex items-center justify-center">
                   <svg className="w-4 h-4 text-red-600 dark:text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <line x1="18" y1="6" x2="6" y2="18" />
                     <line x1="6" y1="6" x2="18" y2="18" />
@@ -40,10 +40,10 @@ const RejectedTransactionsCard: React.FC<RejectedTransactionsCardProps> = ({
                 </div>
               </div>
               <div className="text-right shrink-0">
-                <span className="text-sm font-black text-slate-700 dark:text-slate-200">
+                <span className="text-sm font-extrabold font-mono text-slate-700 dark:text-slate-200">
                   ${pt.extracted_amount.toFixed(2)}
                 </span>
-                <p className="text-[8px] font-bold uppercase tracking-wider text-red-500 dark:text-red-400 mt-0.5">
+                <p className="text-[8px] font-semibold tracking-wide text-red-500 dark:text-red-400 mt-0.5">
                   Rejected
                 </p>
               </div>

@@ -48,7 +48,7 @@ const VaultSharingSection: React.FC<VaultSharingSectionProps> = ({
               </svg>
             </div>
             <div className="flex flex-col">
-              <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
+              <span className="text-[11px] font-semibold text-slate-400 tracking-wide">
                 Linked With
               </span>
               <span className="text-xs font-bold text-slate-500 dark:text-slate-200 truncate max-w-[160px]">
@@ -58,7 +58,7 @@ const VaultSharingSection: React.FC<VaultSharingSectionProps> = ({
           </div>
           <button
             onClick={onDisconnectPartner}
-            className="w-full py-4 bg-rose-50 dark:bg-rose-900/20 text-rose-500 text-xs font-black rounded-2xl hover:bg-rose-100 transition-colors uppercase tracking-widest"
+            className="w-full py-4 bg-rose-50 dark:bg-rose-900/20 text-rose-500 text-xs font-semibold rounded-2xl hover:bg-rose-100 transition-all duration-200 tracking-wide"
           >
             Disconnect Partner
           </button>
@@ -79,7 +79,7 @@ const VaultSharingSection: React.FC<VaultSharingSectionProps> = ({
                 <button
                   disabled={!partnerLinkEmail.includes('@')}
                   onClick={onConnectPartner}
-                  className="flex-1 py-4 bg-emerald-600 text-white text-xs font-black rounded-2xl shadow-lg shadow-emerald-500/10 active:scale-95 transition-all uppercase tracking-widest disabled:opacity-30"
+                  className="flex-1 py-4 bg-emerald-600 text-white text-xs font-semibold rounded-2xl shadow-lg shadow-emerald-500/10 active:scale-[0.97] transition-all duration-200 tracking-wide disabled:opacity-30"
                 >
                   Send Request
                 </button>
@@ -88,7 +88,7 @@ const VaultSharingSection: React.FC<VaultSharingSectionProps> = ({
                     onToggleLinkingPartner(false);
                     onChangePartnerLinkEmail('');
                   }}
-                  className="px-6 py-4 bg-slate-100 dark:bg-slate-700 text-slate-400 text-xs font-black rounded-2xl active:scale-95 transition-all uppercase tracking-widest"
+                  className="px-6 py-4 bg-slate-100 dark:bg-slate-700 text-slate-400 text-xs font-semibold rounded-2xl active:scale-[0.97] transition-all duration-200 tracking-wide"
                 >
                   Cancel
                 </button>
@@ -97,7 +97,7 @@ const VaultSharingSection: React.FC<VaultSharingSectionProps> = ({
           ) : (
             <button
               onClick={() => onToggleLinkingPartner(true)}
-              className="w-full py-5 bg-white dark:bg-slate-900 border-2 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-black rounded-2xl hover:bg-emerald-50 transition-colors uppercase tracking-[0.15em] shadow-sm active:scale-95"
+              className="w-full py-5 bg-white dark:bg-slate-900 border-2 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-semibold rounded-2xl hover:bg-emerald-50 transition-all duration-200 tracking-wide shadow-sm active:scale-[0.97]"
             >
               + Link a Partner
             </button>
