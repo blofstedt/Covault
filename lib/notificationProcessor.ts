@@ -158,18 +158,19 @@ async function checkAlreadyProcessed(
 ): Promise<boolean> {
   if (amount == null || vendor == null) return false;
 
-  const windowStart = new Date(notificationTimestamp - 5 * MS_PER_MINUTE).toISOString();
-  const windowEnd   = new Date(notificationTimestamp + 5 * MS_PER_MINUTE).toISOString();
   const normalizedVendor = normalizeVendorForDedup(vendor);
 
   // ── Check transactions table ──
-  // Query 1: created_at within the notification time window
+  // Query by `date` (the transaction date) rather than `created_at` (DB insert time).
+  // A notification might be rescanned long after the original was processed,
+  // so comparing against `created_at` with a narrow window misses the duplicate.
+  // Instead, check if the same vendor+amount was already recorded today.
+  const today = new Date().toISOString().slice(0, 10);
   const { data: txRows } = await supabase
     .from('transactions')
-    .select('id, vendor, amount, created_at')
+    .select('id, vendor, amount, date')
     .eq('user_id', userId)
-    .gte('created_at', windowStart)
-    .lte('created_at', windowEnd);
+    .eq('date', today);
 
   if (txRows && txRows.length > 0) {
     for (const tx of txRows) {
@@ -183,12 +184,15 @@ async function checkAlreadyProcessed(
   }
 
   // ── Check pending_transactions table ──
+  // Use the notification_timestamp column (bigint ms) for a tighter match.
+  const windowStartMs = notificationTimestamp - 5 * MS_PER_MINUTE;
+  const windowEndMs   = notificationTimestamp + 5 * MS_PER_MINUTE;
   const { data: ptRows } = await supabase
     .from('pending_transactions')
-    .select('id, extracted_vendor, extracted_amount, created_at')
+    .select('id, extracted_vendor, extracted_amount, notification_timestamp')
     .eq('user_id', userId)
-    .gte('created_at', windowStart)
-    .lte('created_at', windowEnd);
+    .gte('notification_timestamp', windowStartMs)
+    .lte('notification_timestamp', windowEndMs);
 
   if (ptRows && ptRows.length > 0) {
     for (const pt of ptRows) {
@@ -469,11 +473,9 @@ export async function checkDuplicateTransaction(
     }
   }
 
-  // Rule 2: One-time transactions — same vendor + amount within ±5 minutes
-  const nowMs = Date.now();
+  // Rule 2: One-time transactions — same vendor + amount on the same date
   for (const tx of amountMatches) {
-    const txCreatedMs = tx.created_at ? new Date(tx.created_at).getTime() : 0;
-    if (txCreatedMs > 0 && Math.abs(nowMs - txCreatedMs) <= 5 * MS_PER_MINUTE) {
+    if (tx.date === today) {
       return {
         isDuplicate: true,
         reason: 'Duplicate transaction found in manually recorded transactions',
@@ -643,18 +645,15 @@ export async function processNotificationWithAI(
     };
   }
 
-  // ── Step 4: Duplicate detection (exact vendor + amount within ±5 minutes) ──
+  // ── Step 4: Duplicate detection (exact vendor + amount today) ──
   const today = new Date().toISOString().slice(0, 10);
-  const dedupWindowStart = new Date(notifTimestamp - 5 * MS_PER_MINUTE).toISOString();
-  const dedupWindowEnd = new Date(notifTimestamp + 5 * MS_PER_MINUTE).toISOString();
   const normalizedVendor = normalizeVendorForDedup(vendor);
 
   const { data: existingTx } = await supabase
     .from('transactions')
-    .select('id, vendor, amount, type, created_at')
+    .select('id, vendor, amount, type, date')
     .eq('user_id', userId)
-    .gte('created_at', dedupWindowStart)
-    .lte('created_at', dedupWindowEnd);
+    .eq('date', today);
 
   if (existingTx && existingTx.length > 0) {
     const duplicateToday = existingTx.find((tx) => {
