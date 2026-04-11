@@ -404,7 +404,7 @@ const Dashboard: React.FC<Props> = ({
         ) : (
           <div className="flex-1 min-h-0 flex flex-col lg:flex-row lg:gap-4 lg:px-4">
             {/* Left column: chart + pulse/smart cards */}
-            <div className="flex flex-col shrink-0 lg:w-1/2 lg:max-w-[600px] lg:overflow-y-auto lg:no-scrollbar lg:pb-24">
+            <div className="flex flex-col shrink-0 lg:w-1/2 lg:max-w-[600px] lg:overflow-y-auto lg:no-scrollbar lg:justify-center">
               <div
                 className={`transition-all duration-500 ease-in-out overflow-hidden ${
                   hasExpandedBudget

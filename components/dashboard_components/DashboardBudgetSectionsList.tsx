@@ -63,7 +63,11 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
   return (
     <div
       ref={scrollContainerRef}
-      className="flex-1 min-h-0 flex flex-col overflow-y-auto mt-1 pb-24 px-4 no-scrollbar scroll-smooth transition-all duration-500 gap-2"
+      className={`flex-1 min-h-0 flex flex-col overflow-y-auto mt-1 px-4 no-scrollbar scroll-smooth transition-all duration-500 gap-2 ${
+        expandedBudgetId
+          ? 'pb-24 lg:overflow-hidden lg:pb-0'
+          : 'pb-24 lg:pb-4'
+      }`}
     >
       {visibleBudgets.map((budget, index) => {
           const budgetTxs = transactions.filter(
@@ -97,7 +101,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
                   ? isExpanded
                     ? 'flex-1 min-h-0 opacity-100 scale-100'
                     : 'flex-none h-0 opacity-0 scale-95 overflow-hidden pointer-events-none'
-                  : 'flex-none opacity-100 scale-100'
+                  : 'flex-1 opacity-100 scale-100'
               }`}
               style={{
                 transition: expandedBudgetId
