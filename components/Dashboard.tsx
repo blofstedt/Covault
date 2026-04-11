@@ -14,7 +14,8 @@ import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import BudgetFlowChart from './dashboard_components/BudgetFlowChart';
 import DashboardSettingsModal from './dashboard_components/DashboardSettingsModal';
 import SearchResults from './dashboard_components/SearchResults';
-import SmartCardDeck from './dashboard_components/SmartCardDeck';
+import InlineSmartCard from './dashboard_components/InlineSmartCard';
+import MonthlyPulseCard from './dashboard_components/MonthlyPulseCard';
 
 import useNormalizedTransactions from './dashboard_components/useNormalizedTransactions';
 import useDashboardTotals from './dashboard_components/useDashboardTotals';
@@ -420,6 +421,30 @@ const Dashboard: React.FC<Props> = ({
               </PremiumGate>
             </div>
 
+            <div
+              className={`transition-all duration-500 ease-in-out overflow-hidden ${
+                hasExpandedBudget
+                  ? 'max-h-0 opacity-0 pointer-events-none'
+                  : 'max-h-[200px] opacity-100'
+              }`}
+              aria-hidden={hasExpandedBudget}
+            >
+              {showSmartCards && smartCards.length > 0 && (
+                <InlineSmartCard
+                  cards={smartCards}
+                  onDismiss={(id) => {}}
+                  onAllDismissed={() => setShowSmartCards(false)}
+                  userId={state.user?.id}
+                  theme={state.settings.theme}
+                />
+              )}
+              <MonthlyPulseCard
+                budgets={state.budgets}
+                transactions={currentMonthBudgetTransactions}
+                theme={state.settings.theme}
+              />
+            </div>
+
             <DashboardBudgetSectionsList
               budgets={state.budgets}
               transactions={currentMonthBudgetTransactions}
@@ -502,15 +527,6 @@ const Dashboard: React.FC<Props> = ({
           userName={state.user?.name || ''}
           isSharedAccount={!state.user?.budgetingSolo}
           vendorHistory={vendorHistory}
-        />
-      )}
-
-      {showSmartCards && smartCards.length > 0 && (
-        <SmartCardDeck
-          cards={smartCards}
-          onDismiss={() => {}}
-          onAllDismissed={() => setShowSmartCards(false)}
-          userId={state.user?.id}
         />
       )}
     </>

@@ -695,35 +695,6 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
             </div>
           </div>
         </div>
-
-        {/* Legend pill row */}
-        <div className="flex items-center justify-center gap-2 mt-1.5 flex-wrap px-2">
-          {categoryNames.map((name, i) => {
-            const color = getBudgetColor(name, i);
-            return (
-              <button
-                key={name}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-semibold tracking-wide transition-all duration-200 border ${
-                  activeCategory === name
-                    ? 'opacity-100 scale-105 shadow-sm'
-                    : activeCategory && activeCategory !== name
-                      ? 'opacity-30'
-                      : 'opacity-70 hover:opacity-100'
-                } ${theme === 'dark'
-                  ? 'bg-slate-800/60 border-slate-700/50 text-slate-300'
-                  : 'bg-white/80 border-slate-200/60 text-slate-600'
-                }`}
-                style={activeCategory === name ? { borderColor: color, boxShadow: `0 0 6px ${color}30` } : undefined}
-                onMouseEnter={() => setActiveCategory(name)}
-                onMouseLeave={() => { if (!hoveredMonthIdx) setActiveCategory(null); }}
-              >
-                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-                {name}
-              </button>
-            );
-          })}
-        </div>
-      </div>
     </div>
   );
 };
