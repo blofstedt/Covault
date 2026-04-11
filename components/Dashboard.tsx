@@ -375,19 +375,28 @@ const Dashboard: React.FC<Props> = ({
   return (
     <>
       <PageShell showGlow>
-        <DashboardHeader onOpenSettings={() => setShowSettings(true)} />
+        {/* On desktop: header and balance sit side-by-side; on mobile: stacked */}
+        <div className="shrink-0 lg:flex lg:items-center lg:justify-between lg:px-6">
+          <div className="lg:hidden">
+            <DashboardHeader onOpenSettings={() => setShowSettings(true)} />
+          </div>
 
-        <DashboardBalanceSection
-          isSharedAccount={!state.user?.budgetingSolo}
-          remainingMoney={remainingMoney}
-          searchQuery={searchQuery}
-          isSearchOpen={isSearchOpen}
-          onSearchQueryChange={(value) => {
-            setSearchQuery(value);
-            if (value.trim()) setIsSearchOpen(true);
-          }}
-          onSearchOpenChange={setIsSearchOpen}
-        />
+          <DashboardBalanceSection
+            isSharedAccount={!state.user?.budgetingSolo}
+            remainingMoney={remainingMoney}
+            searchQuery={searchQuery}
+            isSearchOpen={isSearchOpen}
+            onSearchQueryChange={(value) => {
+              setSearchQuery(value);
+              if (value.trim()) setIsSearchOpen(true);
+            }}
+            onSearchOpenChange={setIsSearchOpen}
+          />
+
+          <div className="hidden lg:block">
+            <DashboardHeader onOpenSettings={() => setShowSettings(true)} />
+          </div>
+        </div>
 
         {searchQuery.trim() ? (
           <SearchResults
@@ -402,14 +411,14 @@ const Dashboard: React.FC<Props> = ({
             onTransactionTap={setSelectedTx}
           />
         ) : (
-          <div className="flex-1 min-h-0 flex flex-col lg:flex-row lg:gap-4 lg:px-4">
+          <div className="flex-1 min-h-0 flex flex-col lg:flex-row lg:gap-6 lg:px-6">
             {/* Left column: chart + pulse/smart cards */}
-            <div className="flex flex-col shrink-0 lg:shrink lg:flex-1 lg:min-h-0 lg:w-1/2 lg:max-w-[600px] lg:overflow-y-auto lg:no-scrollbar lg:justify-center">
+            <div className="flex flex-col lg:flex-1 lg:min-h-0 lg:max-w-[55%]">
               <div
-                className={`transition-all duration-500 ease-in-out overflow-hidden lg:flex-1 lg:min-h-0 lg:flex lg:flex-col lg:justify-center ${
+                className={`transition-all duration-500 ease-in-out overflow-hidden ${
                   hasExpandedBudget
-                    ? 'max-h-0 opacity-0 -translate-y-2 pointer-events-none mb-0 lg:max-h-none lg:opacity-100 lg:translate-y-0 lg:pointer-events-auto lg:mb-2'
-                    : 'max-h-[300px] opacity-100 translate-y-0 mb-2 lg:max-h-none'
+                    ? 'max-h-0 opacity-0 -translate-y-2 pointer-events-none mb-0 lg:max-h-none lg:opacity-100 lg:translate-y-0 lg:pointer-events-auto lg:mb-4'
+                    : 'max-h-[300px] opacity-100 translate-y-0 mb-2 lg:max-h-none lg:mb-4'
                 }`}
                 aria-hidden={hasExpandedBudget}
               >
