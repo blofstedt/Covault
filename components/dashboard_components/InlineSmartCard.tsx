@@ -78,9 +78,10 @@ const InlineSmartCard: React.FC<InlineSmartCardProps> = ({ cards, onDismiss, onA
     if (!parsed) return;
 
     try {
+      const authHeaders = await getAuthHeaders();
       await fetch(`${REST_BASE}/vendor-overrides`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ user_id: userId, vendor_name: parsed.vendor, category_id: parsed.categoryId }),
       });
     } catch { /* ignore */ }

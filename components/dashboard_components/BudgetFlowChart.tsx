@@ -695,6 +695,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
             </div>
           </div>
         </div>
+      </div>
     </div>
   );
 };
