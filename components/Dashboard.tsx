@@ -402,49 +402,53 @@ const Dashboard: React.FC<Props> = ({
             onTransactionTap={setSelectedTx}
           />
         ) : (
-          <>
-            <div
-              className={`transition-all duration-500 ease-in-out overflow-hidden ${
-                hasExpandedBudget
-                  ? 'max-h-0 opacity-0 -translate-y-2 pointer-events-none mb-0'
-                  : 'max-h-[300px] opacity-100 translate-y-0 mb-2'
-              }`}
-              aria-hidden={hasExpandedBudget}
-            >
-              <PremiumGate hasPremium={true}>
-                <BudgetFlowChart
+          <div className="flex-1 min-h-0 flex flex-col lg:flex-row lg:gap-4 lg:px-4">
+            {/* Left column: chart + pulse/smart cards */}
+            <div className="flex flex-col shrink-0 lg:w-1/2 lg:max-w-[600px] lg:overflow-y-auto lg:no-scrollbar lg:pb-24">
+              <div
+                className={`transition-all duration-500 ease-in-out overflow-hidden ${
+                  hasExpandedBudget
+                    ? 'max-h-0 opacity-0 -translate-y-2 pointer-events-none mb-0 lg:max-h-none lg:opacity-100 lg:translate-y-0 lg:pointer-events-auto lg:mb-2'
+                    : 'max-h-[300px] opacity-100 translate-y-0 mb-2 lg:max-h-none'
+                }`}
+                aria-hidden={hasExpandedBudget}
+              >
+                <PremiumGate hasPremium={true}>
+                  <BudgetFlowChart
+                    budgets={state.budgets}
+                    transactions={chartTransactions}
+                    monthlyIncome={state.user?.monthlyIncome || 0}
+                    theme={state.settings.theme}
+                  />
+                </PremiumGate>
+              </div>
+
+              <div
+                className={`transition-all duration-500 ease-in-out overflow-hidden ${
+                  hasExpandedBudget
+                    ? 'max-h-0 opacity-0 pointer-events-none lg:max-h-none lg:opacity-100 lg:pointer-events-auto'
+                    : 'max-h-[200px] opacity-100 lg:max-h-none'
+                }`}
+                aria-hidden={hasExpandedBudget}
+              >
+                {showSmartCards && smartCards.length > 0 && (
+                  <InlineSmartCard
+                    cards={smartCards}
+                    onDismiss={(id) => {}}
+                    onAllDismissed={() => setShowSmartCards(false)}
+                    userId={state.user?.id}
+                    theme={state.settings.theme}
+                  />
+                )}
+                <MonthlyPulseCard
                   budgets={state.budgets}
-                  transactions={chartTransactions}
-                  monthlyIncome={state.user?.monthlyIncome || 0}
+                  transactions={currentMonthBudgetTransactions}
                   theme={state.settings.theme}
                 />
-              </PremiumGate>
+              </div>
             </div>
 
-            <div
-              className={`transition-all duration-500 ease-in-out overflow-hidden ${
-                hasExpandedBudget
-                  ? 'max-h-0 opacity-0 pointer-events-none'
-                  : 'max-h-[200px] opacity-100'
-              }`}
-              aria-hidden={hasExpandedBudget}
-            >
-              {showSmartCards && smartCards.length > 0 && (
-                <InlineSmartCard
-                  cards={smartCards}
-                  onDismiss={(id) => {}}
-                  onAllDismissed={() => setShowSmartCards(false)}
-                  userId={state.user?.id}
-                  theme={state.settings.theme}
-                />
-              )}
-              <MonthlyPulseCard
-                budgets={state.budgets}
-                transactions={currentMonthBudgetTransactions}
-                theme={state.settings.theme}
-              />
-            </div>
-
+            {/* Right column: budget bars */}
             <DashboardBudgetSectionsList
               budgets={state.budgets}
               transactions={currentMonthBudgetTransactions}
@@ -461,7 +465,7 @@ const Dashboard: React.FC<Props> = ({
               onTransactionTap={setSelectedTx}
               onUpdateBudget={onUpdateBudget}
             />
-          </>
+          </div>
         )}
 
         <DashboardBottomBar
