@@ -4,6 +4,7 @@
 // Uses localStorage to avoid re-processing the same day.
 
 import { supabase } from './supabase';
+import { getLocalToday } from './dateUtils';
 import type { Transaction } from '../types';
 
 /**
@@ -24,7 +25,7 @@ function budgetIdToName(budgetId: string | null): string {
 const LAST_RUN_KEY = 'covault_recurring_last_run';
 
 function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  return getLocalToday();
 }
 
 function toLocalIsoDay(d: Date): string {

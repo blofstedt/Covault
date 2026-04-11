@@ -15,6 +15,7 @@ import { supabase } from './supabase';
 import { formatVendorName } from './formatVendorName';
 import { parseNotificationText } from './deviceTransactionParser';
 import { addToReviewQueue, getVendorMapEntry, isNotificationProcessed, markNotificationProcessed } from './localNotificationMemory';
+import { getLocalToday, parseLocalDate } from './dateUtils';
 import type { PendingTransaction } from '../types';
 
 // ─── Constants ───────────────────────────────────────────────────
@@ -165,7 +166,7 @@ async function checkAlreadyProcessed(
   // A notification might be rescanned long after the original was processed,
   // so comparing against `created_at` with a narrow window misses the duplicate.
   // Instead, check if the same vendor+amount was already recorded today.
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getLocalToday();
   const { data: txRows } = await supabase
     .from('transactions')
     .select('id, vendor, amount, date')
@@ -419,7 +420,7 @@ export async function checkDuplicateTransaction(
 ): Promise<DuplicateCheckResult> {
   const vendor = formatVendorName(pending.extracted_vendor);
   const amount = Number(pending.extracted_amount);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getLocalToday();
 
   // Fetch existing transactions for this vendor and approximate amount
   const { data: existing, error } = await supabase
@@ -447,14 +448,14 @@ export async function checkDuplicateTransaction(
   }
 
   // Rule 1: Recurring transactions (Monthly/Biweekly) — same vendor + amount within ±3 days
-  const todayMs = new Date(today).getTime();
+  const todayMs = parseLocalDate(today).getTime();
   const toleranceMs = RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY;
 
   for (const tx of amountMatches) {
     const recurrence = (tx.recur || '').toLowerCase();
     if (recurrence !== 'monthly' && recurrence !== 'biweekly') continue;
 
-    const txDateMs = new Date(tx.date).getTime();
+    const txDateMs = parseLocalDate(tx.date).getTime();
     if (Math.abs(todayMs - txDateMs) <= toleranceMs) {
       // Update the existing recurring transaction's date to today
       const { error: updateError } = await supabase
@@ -646,7 +647,7 @@ export async function processNotificationWithAI(
   }
 
   // ── Step 4: Duplicate detection (exact vendor + amount today) ──
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getLocalToday();
   const normalizedVendor = normalizeVendorForDedup(vendor);
 
   const { data: existingTx } = await supabase
@@ -758,6 +759,51 @@ export async function processNotificationWithAI(
       rejectionReason: 'No budget category available',
       bankName: input.bankName,
     };
+  }
+
+  // ── Step 5b: Recurring dedup (same vendor + amount within ±3 days) ──
+  // If a recurring transaction already exists nearby, update its date
+  // instead of inserting a duplicate.
+  const recurrence = (parsed.recurrence || '').toLowerCase();
+  if (recurrence === 'monthly' || recurrence === 'biweekly') {
+    const { data: recurCandidates } = await supabase
+      .from('transactions')
+      .select('id, vendor, amount, date, recur')
+      .eq('user_id', userId)
+      .ilike('vendor', formatVendorName(displayVendor));
+
+    if (recurCandidates && recurCandidates.length > 0) {
+      const todayMs = parseLocalDate(today).getTime();
+      const toleranceMs = RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY;
+
+      for (const tx of recurCandidates) {
+        const txRecur = (tx.recur || '').toLowerCase();
+        if (txRecur !== 'monthly' && txRecur !== 'biweekly') continue;
+        if (Math.abs(Number(tx.amount) - amount) >= AMOUNT_TOLERANCE) continue;
+
+        const txDateMs = parseLocalDate(tx.date).getTime();
+        if (Math.abs(todayMs - txDateMs) <= toleranceMs) {
+          // Update the existing recurring transaction's date to today
+          await supabase
+            .from('transactions')
+            .update({ date: today })
+            .eq('id', tx.id);
+
+          console.log(`[AI pipeline] Recurring dedup: updated tx ${tx.id} date to ${today}`);
+          recentlyProcessedCache.set(inMemoryKey, Date.now());
+          markNotificationProcessed(inMemoryKey);
+          return {
+            processed: true,
+            isTransaction: true,
+            vendor: formatVendorName(displayVendor),
+            amount,
+            skipReason: 'duplicate_ai' as const,
+            rejectionReason: `Recurring transaction updated: ${vendor} $${amount.toFixed(2)}`,
+            bankName: input.bankName,
+          };
+        }
+      }
+    }
   }
 
   // ── Step 6: Insert transaction with 'AI' label ──

@@ -6,6 +6,7 @@ import { covaultNotification } from '../covaultNotification';
 import { processNotificationWithAI } from '../notificationProcessor';
 import type { AIProcessingResult } from '../notificationProcessor';
 import { getBankingApps } from '../bankingApps';
+import { getLocalToday } from '../dateUtils';
 
 export interface UseNotificationListenerParams {
   user: User | null;
@@ -97,7 +98,7 @@ export const useNotificationListener = ({
                     user_id: user.id,
                     vendor: result.vendor || 'Unknown',
                     amount: result.amount || 0,
-                    date: new Date().toISOString().slice(0, 10),
+                    date: getLocalToday(),
                     budget_id: result.categoryId || null,
                     is_projected: false,
                     label: 'Automatic',
@@ -129,7 +130,7 @@ export const useNotificationListener = ({
               user_id: user.id,
               vendor,
               amount,
-              date: new Date().toISOString().slice(0, 10),
+              date: getLocalToday(),
               budget_id: null,
               is_projected: false,
               label: 'Automatic',

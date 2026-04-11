@@ -4,6 +4,7 @@
 // so the same card never reappears until a new event triggers it.
 
 import type { Transaction, BudgetCategory } from '../types';
+import { getLocalToday } from './dateUtils';
 
 export type SmartCardType =
   | 'overspend'
@@ -286,7 +287,7 @@ export function generatePartnerActivityCards(
   const cards: SmartCard[] = [];
 
   // Show cards for recent partner transactions (today only)
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = getLocalToday();
 
   for (const tx of transactions) {
     if (tx.user_id === currentUserId) continue; // Skip own transactions
