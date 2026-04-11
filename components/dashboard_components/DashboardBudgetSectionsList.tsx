@@ -63,7 +63,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
   return (
     <div
       ref={scrollContainerRef}
-      className="flex-1 min-h-0 flex flex-col overflow-y-auto mt-1 pb-24 no-scrollbar scroll-smooth transition-all duration-500 gap-2"
+      className="flex-1 min-h-0 flex flex-col overflow-y-auto mt-1 pb-24 px-4 no-scrollbar scroll-smooth transition-all duration-500 gap-2"
     >
       {visibleBudgets.map((budget, index) => {
           const budgetTxs = transactions.filter(

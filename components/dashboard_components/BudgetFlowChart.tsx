@@ -585,7 +585,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
   }
 
   return (
-    <div id="spending-flow-chart" className="w-full mb-1 shrink-0">
+    <div id="spending-flow-chart" className="w-full mb-1 shrink-0 px-4">
       <div className="relative" ref={wrapperRef}>
         {/* Tooltip card — portaled to body, follows finger, on top of all UI */}
         {activeCategory && screenCoords && activeMonthData && createPortal(
