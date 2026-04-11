@@ -375,21 +375,33 @@ const Dashboard: React.FC<Props> = ({
   return (
     <>
       <PageShell showGlow>
-        {/* Header: cog top-right on all sizes */}
-        <DashboardHeader onOpenSettings={() => setShowSettings(true)} />
+        {/* Header: cog top-right on all sizes — collapse when budget expanded */}
+        <div
+          className={`shrink-0 transition-all duration-500 ease-in-out overflow-hidden ${
+            hasExpandedBudget ? 'max-h-0 opacity-0' : 'max-h-20 opacity-100'
+          }`}
+        >
+          <DashboardHeader onOpenSettings={() => setShowSettings(true)} />
+        </div>
 
-        {/* Balance + search: always centered */}
-        <DashboardBalanceSection
-          isSharedAccount={!state.user?.budgetingSolo}
-          remainingMoney={remainingMoney}
-          searchQuery={searchQuery}
-          isSearchOpen={isSearchOpen}
-          onSearchQueryChange={(value) => {
-            setSearchQuery(value);
-            if (value.trim()) setIsSearchOpen(true);
-          }}
-          onSearchOpenChange={setIsSearchOpen}
-        />
+        {/* Balance + search: always centered — collapse when budget expanded */}
+        <div
+          className={`shrink-0 transition-all duration-500 ease-in-out overflow-hidden ${
+            hasExpandedBudget ? 'max-h-0 opacity-0' : 'max-h-40 opacity-100'
+          }`}
+        >
+          <DashboardBalanceSection
+            isSharedAccount={!state.user?.budgetingSolo}
+            remainingMoney={remainingMoney}
+            searchQuery={searchQuery}
+            isSearchOpen={isSearchOpen}
+            onSearchQueryChange={(value) => {
+              setSearchQuery(value);
+              if (value.trim()) setIsSearchOpen(true);
+            }}
+            onSearchOpenChange={setIsSearchOpen}
+          />
+        </div>
 
         {searchQuery.trim() ? (
           <SearchResults
