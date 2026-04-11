@@ -375,19 +375,33 @@ const Dashboard: React.FC<Props> = ({
   return (
     <>
       <PageShell showGlow>
-        <DashboardHeader onOpenSettings={() => setShowSettings(true)} />
+        {/* Header: cog top-right on all sizes — collapse when budget expanded */}
+        <div
+          className={`shrink-0 transition-all duration-500 ease-in-out overflow-hidden ${
+            hasExpandedBudget ? 'max-h-0 opacity-0' : 'max-h-20 opacity-100'
+          }`}
+        >
+          <DashboardHeader onOpenSettings={() => setShowSettings(true)} />
+        </div>
 
-        <DashboardBalanceSection
-          isSharedAccount={!state.user?.budgetingSolo}
-          remainingMoney={remainingMoney}
-          searchQuery={searchQuery}
-          isSearchOpen={isSearchOpen}
-          onSearchQueryChange={(value) => {
-            setSearchQuery(value);
-            if (value.trim()) setIsSearchOpen(true);
-          }}
-          onSearchOpenChange={setIsSearchOpen}
-        />
+        {/* Balance + search: always centered — collapse when budget expanded */}
+        <div
+          className={`shrink-0 transition-all duration-500 ease-in-out overflow-hidden ${
+            hasExpandedBudget ? 'max-h-0 opacity-0' : 'max-h-40 opacity-100'
+          }`}
+        >
+          <DashboardBalanceSection
+            isSharedAccount={!state.user?.budgetingSolo}
+            remainingMoney={remainingMoney}
+            searchQuery={searchQuery}
+            isSearchOpen={isSearchOpen}
+            onSearchQueryChange={(value) => {
+              setSearchQuery(value);
+              if (value.trim()) setIsSearchOpen(true);
+            }}
+            onSearchOpenChange={setIsSearchOpen}
+          />
+        </div>
 
         {searchQuery.trim() ? (
           <SearchResults
@@ -402,12 +416,13 @@ const Dashboard: React.FC<Props> = ({
             onTransactionTap={setSelectedTx}
           />
         ) : (
-          <>
+          <div className="flex-1 min-h-0 flex flex-col lg:px-6">
+            {/* Chart: full width on desktop */}
             <div
-              className={`transition-all duration-500 ease-in-out overflow-hidden ${
+              className={`transition-all duration-500 ease-in-out overflow-hidden shrink-0 ${
                 hasExpandedBudget
-                  ? 'max-h-0 opacity-0 -translate-y-2 pointer-events-none mb-0'
-                  : 'max-h-[300px] opacity-100 translate-y-0 mb-2'
+                  ? 'max-h-0 opacity-0 -translate-y-2 pointer-events-none mb-0 lg:max-h-0 lg:opacity-0'
+                  : 'max-h-[300px] opacity-100 translate-y-0 mb-2 lg:max-h-none lg:mb-3'
               }`}
               aria-hidden={hasExpandedBudget}
             >
@@ -421,11 +436,12 @@ const Dashboard: React.FC<Props> = ({
               </PremiumGate>
             </div>
 
+            {/* Pulse / smart cards: full width */}
             <div
-              className={`transition-all duration-500 ease-in-out overflow-hidden ${
+              className={`transition-all duration-500 ease-in-out overflow-hidden shrink-0 ${
                 hasExpandedBudget
-                  ? 'max-h-0 opacity-0 pointer-events-none'
-                  : 'max-h-[200px] opacity-100'
+                  ? 'max-h-0 opacity-0 pointer-events-none lg:max-h-0 lg:opacity-0'
+                  : 'max-h-[200px] opacity-100 lg:max-h-none'
               }`}
               aria-hidden={hasExpandedBudget}
             >
@@ -445,6 +461,7 @@ const Dashboard: React.FC<Props> = ({
               />
             </div>
 
+            {/* Budget bars: vertical list on mobile, 2-col grid on desktop */}
             <DashboardBudgetSectionsList
               budgets={state.budgets}
               transactions={currentMonthBudgetTransactions}
@@ -461,7 +478,7 @@ const Dashboard: React.FC<Props> = ({
               onTransactionTap={setSelectedTx}
               onUpdateBudget={onUpdateBudget}
             />
-          </>
+          </div>
         )}
 
         <DashboardBottomBar

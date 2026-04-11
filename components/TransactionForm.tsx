@@ -159,7 +159,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
   return (
     <div className={`fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-xl transition-opacity duration-250 ${isClosing ? 'opacity-0' : 'animate-in fade-in duration-300'}`}>
-      <div id="tutorial-transaction-form" className={`w-full max-w-sm bg-white dark:bg-slate-900 rounded-[3rem] p-6 space-y-4 shadow-2xl border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] border-slate-100 dark:border-slate-800/60 max-h-[90vh] overflow-y-auto no-scrollbar transition-all duration-250 ${isClosing ? 'opacity-0 scale-95' : 'animate-in zoom-in-95 duration-300'}`}>
+      <div id="tutorial-transaction-form" className={`w-full max-w-sm lg:max-w-lg bg-white dark:bg-slate-900 rounded-[3rem] p-6 space-y-4 shadow-2xl border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] border-slate-100 dark:border-slate-800/60 max-h-[90vh] overflow-y-auto no-scrollbar transition-all duration-250 ${isClosing ? 'opacity-0 scale-95' : 'animate-in zoom-in-95 duration-300'}`}>
         <div className="flex items-center justify-between">
           <div className="flex flex-col">
             <h2 className="text-lg font-bold text-slate-600 dark:text-slate-100 tracking-tight">
