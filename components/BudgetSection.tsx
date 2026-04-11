@@ -74,7 +74,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
   return (
     <div
-      className={`flex-1 h-full min-h-0 overflow-hidden rounded-[2rem] relative flex flex-col ${
+      className={`flex-1 min-h-0 overflow-hidden rounded-[2rem] relative flex flex-col ${
         isExpanded
           ? 'bg-white dark:bg-slate-900 shadow-2xl border'
           : 'bg-white/70 dark:bg-slate-900/70 shadow-sm border border-slate-200/40 dark:border-slate-700/30'
