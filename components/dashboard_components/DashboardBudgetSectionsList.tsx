@@ -63,9 +63,9 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
   return (
     <div
       ref={scrollContainerRef}
-      className={`flex-1 min-h-0 mt-1 px-4 no-scrollbar ${
+      className={`relative flex-1 min-h-0 mt-1 px-4 no-scrollbar ${
         expandedBudgetId
-          ? 'pb-0 flex flex-col overflow-hidden'
+          ? 'overflow-hidden'
           : 'pb-4 flex flex-col lg:grid lg:grid-cols-2 lg:auto-rows-fr gap-2 overflow-y-auto scroll-smooth transition-all duration-500'
       }`}
     >
@@ -96,18 +96,18 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
                   budgetRefs?.current.delete(budget.id);
                 }
               }}
-              className={`flex flex-col ${
+              className={`${
                 expandedBudgetId
                   ? isExpanded
-                    ? 'flex-1 min-h-0 overflow-hidden opacity-100 lg:col-span-2'
-                    : 'flex-none h-0 opacity-0 scale-95 overflow-hidden pointer-events-none transform-gpu'
-                  : 'flex-1 opacity-100 scale-100 lg:min-h-[80px] transform-gpu will-change-[transform,opacity]'
+                    ? 'absolute inset-0 flex flex-col min-h-0 overflow-hidden opacity-100'
+                    : 'hidden'
+                  : 'flex flex-col flex-1 opacity-100 scale-100 lg:min-h-[80px] transform-gpu will-change-[transform,opacity]'
               }`}
               style={{
                 transition: expandedBudgetId
                   ? isExpanded
-                    ? 'opacity 0.45s cubic-bezier(0.22, 1, 0.36, 1), transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)'
-                    : `opacity 0.25s cubic-bezier(0.4, 0, 1, 1) ${index * 30}ms, transform 0.3s cubic-bezier(0.4, 0, 1, 1) ${index * 30}ms, height 0.3s cubic-bezier(0.4, 0, 1, 1) ${index * 30}ms`
+                    ? 'opacity 0.2s ease-out'
+                    : 'none'
                   : `opacity 0.4s cubic-bezier(0.22, 1, 0.36, 1) ${index * 50}ms, transform 0.45s cubic-bezier(0.22, 1, 0.36, 1) ${index * 50}ms`,
               }}
             >

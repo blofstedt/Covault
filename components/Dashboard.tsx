@@ -488,7 +488,7 @@ const Dashboard: React.FC<Props> = ({
         <div
           aria-hidden="true"
           className="shrink-0"
-          style={{ height: 'calc(env(safe-area-inset-bottom, 0px) + 5.75rem)' }}
+          style={{ height: 'calc(env(safe-area-inset-bottom, 0px) + 6.5rem)' }}
         />
 
         <DashboardBottomBar
