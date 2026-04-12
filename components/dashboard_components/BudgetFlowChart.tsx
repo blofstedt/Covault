@@ -10,7 +10,6 @@ interface BudgetFlowChartProps {
   monthlyIncome?: number;
   theme?: 'light' | 'dark';
   highlightedBudgetId?: string | null;
-  highlightExpanded?: boolean;
 }
 
 interface MonthlyBudgetData {
@@ -50,7 +49,7 @@ function getWindowedMonthKeys(monthKeys: string[], currentMonthKey: string, maxM
   return monthKeys.slice(start, start + maxMonths);
 }
 
-const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions, monthlyIncome = 0, theme = 'light', highlightedBudgetId = null, highlightExpanded = false }) => {
+const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions, monthlyIncome = 0, theme = 'light', highlightedBudgetId = null }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -219,7 +218,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
     const stackedData = stack(chartData);
 
-    const x = d3.scalePoint().domain(chartData.map((d) => d.month)).range([0, innerWidth]).padding(0.1);
+    const x = d3.scalePoint().domain(chartData.map((d) => d.month)).range([0, innerWidth]).padding(0.5);
 
     const maxTotal = d3.max(chartData, (d) => d.total) || 1;
     const yMax = Math.max(maxTotal, thresholdValue) * 1.15;
@@ -328,6 +327,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     // Income threshold line (dotted, stronger)
     svg
       .append('line')
+      .attr('class', 'bfc-income-line')
       .attr('x1', 0)
       .attr('x2', innerWidth)
       .attr('y1', budgetY)
@@ -341,6 +341,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     const labelY = budgetY - 6;
     svg
       .append('rect')
+      .attr('class', 'bfc-income-label')
       .attr('x', labelX - 38)
       .attr('y', labelY - 8)
       .attr('width', 42)
@@ -351,6 +352,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .attr('stroke-width', 0.5);
     svg
       .append('text')
+      .attr('class', 'bfc-income-label')
       .attr('x', labelX - 17)
       .attr('y', labelY + 2)
       .attr('text-anchor', 'middle')
@@ -612,92 +614,117 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
   const highlightedCatColor = highlightedBudgetName ? getBudgetColor(highlightedBudgetName, highlightedCatIndex) : null;
 
   // Apply band highlight/dim when a budget is expanded (separate from touch interaction)
-  // Snaps the chart to show only the highlighted band (as if other categories don't exist)
+  // Snap to solo view on budget open, reverse on close
+  // Fades savings area & income line, shows per-month totals for the category
   useEffect(() => {
     if (!svgRef.current) return;
     const svgElement = d3.select(svgRef.current);
+    const internals = chartInternalsRef.current;
+    const snapMs = 500;
+    const easing = d3.easeCubicOut;
+
+    // Remove any previous solo month labels
+    svgElement.selectAll('.bfc-solo-label').remove();
 
     if (!highlightedBudgetName || activeCategory) {
       if (!activeCategory) {
-        svgElement.selectAll('.bfc-band').transition().duration(300).attr('fill-opacity', 0.85);
-        svgElement.selectAll('.bfc-band-stroke').transition().duration(300).style('stroke-opacity', 0.6);
+        // Reset everything to defaults
+        svgElement.selectAll('.bfc-band').transition().duration(snapMs).ease(easing).attr('fill-opacity', 0.85);
+        svgElement.selectAll('.bfc-band-stroke').transition().duration(snapMs).ease(easing).style('stroke-opacity', 0.6);
         svgElement.selectAll('.bfc-band, .bfc-band-stroke').each(function(this: any) {
           const el = d3.select(this);
           const orig = el.attr('data-original-d');
-          if (orig) el.transition().duration(400).attr('d', orig);
+          if (orig) el.transition().duration(snapMs).ease(easing).attr('d', orig);
         });
+        // Restore savings & income
+        svgElement.select('.bfc-savings').transition().duration(snapMs).ease(easing).attr('fill-opacity', 0.6);
+        svgElement.select('.bfc-income-line').transition().duration(snapMs).ease(easing).style('opacity', 1);
+        svgElement.selectAll('.bfc-income-label').transition().duration(snapMs).ease(easing).style('opacity', 1);
       }
       return;
     }
 
-    const expanded = highlightExpanded;
-    const snapMs = 500;
-    const easing = d3.easeCubicOut;
-    const internals = chartInternalsRef.current;
+    // ── Solo snap: show only the highlighted band ──
 
-    // Dim/hide non-highlighted bands
+    // Hide non-highlighted bands
     svgElement.selectAll('.bfc-band')
       .transition().duration(snapMs).ease(easing)
-      .attr('fill-opacity', (d: any) => d.key === highlightedBudgetName ? 0.95 : (expanded ? 0 : 0.15));
+      .attr('fill-opacity', (d: any) => d.key === highlightedBudgetName ? 0.95 : 0);
     svgElement.selectAll('.bfc-band-stroke')
       .transition().duration(snapMs).ease(easing)
-      .style('stroke-opacity', (_d: any, i: number) => categoryNames[i] === highlightedBudgetName ? 0.9 : (expanded ? 0 : 0.08));
+      .style('stroke-opacity', (_d: any, i: number) => categoryNames[i] === highlightedBudgetName ? 0.9 : 0);
+
+    // Fade out savings area and income line/label
+    svgElement.select('.bfc-savings').transition().duration(snapMs).ease(easing).attr('fill-opacity', 0);
+    svgElement.select('.bfc-income-line').transition().duration(snapMs).ease(easing).style('opacity', 0);
+    svgElement.selectAll('.bfc-income-label').transition().duration(snapMs).ease(easing).style('opacity', 0);
 
     if (!internals) return;
-    const { x, y, innerHeight } = internals;
+    const { stackedData, x, y, innerHeight } = internals;
+    const highlightLayer = stackedData.find(l => l.key === highlightedBudgetName);
+    if (!highlightLayer) return;
 
-    if (expanded) {
-      // Redraw the band from baseline (innerHeight) up to its own values — solo view
-      const soloArea = d3
-        .area<d3.SeriesPoint<MonthlyBudgetData>>()
-        .x((d) => x(d.data.month) || 0)
-        .y0(() => innerHeight)
-        .y1((d) => {
-          const val = d[1] - d[0]; // the category's own value
-          return y(val);
-        })
-        .curve(d3.curveCatmullRom.alpha(0.5));
+    // Morph band to solo view (from baseline, using only its own values)
+    const soloArea = d3
+      .area<d3.SeriesPoint<MonthlyBudgetData>>()
+      .x((d) => x(d.data.month) || 0)
+      .y0(() => innerHeight)
+      .y1((d) => y(d[1] - d[0]))
+      .curve(d3.curveCatmullRom.alpha(0.5));
 
-      const soloLine = d3
-        .line<d3.SeriesPoint<MonthlyBudgetData>>()
-        .x((d) => x(d.data.month) || 0)
-        .y((d) => {
-          const val = d[1] - d[0];
-          return y(val);
-        })
-        .curve(d3.curveCatmullRom.alpha(0.5));
+    const soloLine = d3
+      .line<d3.SeriesPoint<MonthlyBudgetData>>()
+      .x((d) => x(d.data.month) || 0)
+      .y((d) => y(d[1] - d[0]))
+      .curve(d3.curveCatmullRom.alpha(0.5));
 
-      const highlightLayer = internals.stackedData.find(l => l.key === highlightedBudgetName);
-      if (highlightLayer) {
-        const soloPath = soloArea(highlightLayer) || '';
-        const soloStrokePath = soloLine(highlightLayer) || '';
-        const highlightIdx = categoryNames.indexOf(highlightedBudgetName);
+    const soloPath = soloArea(highlightLayer) || '';
+    const soloStrokePath = soloLine(highlightLayer) || '';
+    const highlightIdx = categoryNames.indexOf(highlightedBudgetName);
 
-        svgElement.selectAll('.bfc-band')
-          .filter((d: any) => d.key === highlightedBudgetName)
-          .each(function(this: any) {
-            const el = d3.select(this);
-            if (!el.attr('data-original-d')) el.attr('data-original-d', el.attr('d'));
-            el.transition().duration(snapMs).ease(easing).attr('d', soloPath);
-          });
-
-        svgElement.selectAll('.bfc-band-stroke')
-          .filter((_d: any, i: number) => i === highlightIdx)
-          .each(function(this: any) {
-            const el = d3.select(this);
-            if (!el.attr('data-original-d')) el.attr('data-original-d', el.attr('d'));
-            el.transition().duration(snapMs).ease(easing).attr('d', soloStrokePath);
-          });
-      }
-    } else {
-      // Snap back to stacked position
-      svgElement.selectAll('.bfc-band, .bfc-band-stroke').each(function(this: any) {
+    svgElement.selectAll('.bfc-band')
+      .filter((d: any) => d.key === highlightedBudgetName)
+      .each(function(this: any) {
         const el = d3.select(this);
-        const orig = el.attr('data-original-d');
-        if (orig) el.transition().duration(snapMs).ease(easing).attr('d', orig);
+        if (!el.attr('data-original-d')) el.attr('data-original-d', el.attr('d'));
+        el.transition().duration(snapMs).ease(easing).attr('d', soloPath);
       });
-    }
-  }, [highlightedBudgetName, activeCategory, categoryNames, highlightExpanded]);
+
+    svgElement.selectAll('.bfc-band-stroke')
+      .filter((_d: any, i: number) => i === highlightIdx)
+      .each(function(this: any) {
+        const el = d3.select(this);
+        if (!el.attr('data-original-d')) el.attr('data-original-d', el.attr('d'));
+        el.transition().duration(snapMs).ease(easing).attr('d', soloStrokePath);
+      });
+
+    // Show per-month totals for the highlighted category
+    const isDark = theme === 'dark';
+    const catColor = highlightedCatColor || (isDark ? '#6ee7b7' : '#059669');
+
+    // Access the inner <g> group (first child g of the svg)
+    const innerG = svgElement.select('g');
+
+    highlightLayer.forEach((pt) => {
+      const val = pt[1] - pt[0];
+      if (val === 0) return;
+      const xPos = x(pt.data.month) || 0;
+      const yPos = y(val);
+
+      innerG.append('text')
+        .attr('class', 'bfc-solo-label')
+        .attr('x', xPos)
+        .attr('y', yPos - 8)
+        .attr('text-anchor', 'middle')
+        .attr('font-size', '9px')
+        .attr('font-weight', '800')
+        .attr('fill', catColor)
+        .style('opacity', 0)
+        .text(`$${val.toFixed(0)}`)
+        .transition().delay(200).duration(300).ease(easing)
+        .style('opacity', 1);
+    });
+  }, [highlightedBudgetName, activeCategory, categoryNames, highlightedCatColor, theme]);
 
   // No data fallback
   if (chartData.length === 0) {

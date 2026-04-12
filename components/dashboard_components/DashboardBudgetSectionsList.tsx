@@ -22,7 +22,6 @@ interface DashboardBudgetSectionsListProps {
   onToggleExpand?: (id: string) => void;
   onTransactionTap: (tx: Transaction) => void;
   onUpdateBudget: (b: BudgetCategory) => void;
-  onBudgetScrollProgress?: (scrolled: boolean) => void;
 }
 
 const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = ({
@@ -40,7 +39,6 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
   onToggleExpand,
   onTransactionTap,
   onUpdateBudget,
-  onBudgetScrollProgress,
 }) => {
   const visibleBudgets = useMemo(() =>
     budgets
@@ -124,7 +122,6 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
                 isSharedView={isSharedAccount}
                 allBudgets={budgets}
                 useCompactCollapsedStyles={shouldAutoFitClosedCards}
-                onScrollProgress={isExpanded ? onBudgetScrollProgress : undefined}
               />
             </div>
           );
