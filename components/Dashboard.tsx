@@ -438,12 +438,8 @@ const Dashboard: React.FC<Props> = ({
 
             {/* Pulse / smart cards: full width */}
             <div
-              className={`transition-all duration-500 ease-in-out overflow-hidden shrink-0 ${
-                hasExpandedBudget
-                  ? 'max-h-0 opacity-0 pointer-events-none lg:max-h-0 lg:opacity-0'
-                  : 'max-h-[200px] opacity-100 lg:max-h-none'
-              }`}
-              aria-hidden={hasExpandedBudget}
+              className="transition-all duration-500 ease-in-out overflow-hidden shrink-0 max-h-[200px] opacity-100 lg:max-h-none"
+              aria-hidden={false}
             >
               <div className="relative">
                 <MonthlyPulseCard
@@ -488,7 +484,7 @@ const Dashboard: React.FC<Props> = ({
         <div
           aria-hidden="true"
           className="shrink-0"
-          style={{ height: 'calc(env(safe-area-inset-bottom, 0px) + 6.5rem)' }}
+          style={{ height: 'calc(env(safe-area-inset-bottom, 0px) + 5rem)' }}
         />
 
         <DashboardBottomBar
