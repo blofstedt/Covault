@@ -65,6 +65,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     x: d3.ScalePoint<string>;
     y: d3.ScaleLinear<number, number>;
     innerHeight: number;
+    innerWidth: number;
   } | null>(null);
   const highlightedRef = useRef<string | null>(null);
   const safeBudgets = Array.isArray(budgets) ? budgets : [];
@@ -232,7 +233,35 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     const isDarkTheme = theme === 'dark';
 
     // Store internals for morph animation
-    chartInternalsRef.current = { stackedData, x, y, innerHeight };
+    chartInternalsRef.current = { stackedData, x, y, innerHeight, innerWidth };
+
+    // ── Helpers to extend area/line paths to chart edges ──
+    // Adds anchor points at x=0 and x=innerWidth with the same values as the
+    // first/last data points so CatmullRom curves fill the full container width.
+    const makeExtendedArea = (
+      layer: d3.SeriesPoint<MonthlyBudgetData>[],
+      y0Fn: (d: d3.SeriesPoint<MonthlyBudgetData>) => number,
+      y1Fn: (d: d3.SeriesPoint<MonthlyBudgetData>) => number,
+    ) => {
+      const pts = layer.map(d => ({ x: x(d.data.month) || 0, y0: y0Fn(d), y1: y1Fn(d) }));
+      pts.unshift({ x: 0, y0: pts[0].y0, y1: pts[0].y1 });
+      pts.push({ x: innerWidth, y0: pts[pts.length - 1].y0, y1: pts[pts.length - 1].y1 });
+      return d3.area<{ x: number; y0: number; y1: number }>()
+        .x(d => d.x).y0(d => d.y0).y1(d => d.y1)
+        .curve(d3.curveCatmullRom.alpha(0.5))(pts) || '';
+    };
+
+    const makeExtendedLine = (
+      layer: d3.SeriesPoint<MonthlyBudgetData>[],
+      yFn: (d: d3.SeriesPoint<MonthlyBudgetData>) => number,
+    ) => {
+      const pts = layer.map(d => ({ x: x(d.data.month) || 0, y: yFn(d) }));
+      pts.unshift({ x: 0, y: pts[0].y });
+      pts.push({ x: innerWidth, y: pts[pts.length - 1].y });
+      return d3.line<{ x: number; y: number }>()
+        .x(d => d.x).y(d => d.y)
+        .curve(d3.curveCatmullRom.alpha(0.5))(pts) || '';
+    };
 
     // Subtle horizontal grid lines
     const gridValues = y.ticks(3);
@@ -258,25 +287,10 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     // Draw stacked area bands with highlight strokes
     const layerGroup = svg.selectAll('.bfc-layer').data(stackedData).enter().append('g').attr('class', 'bfc-layer');
 
-    // Create area generator for the top edge (stroke)
-    const topLine = d3
-      .line<d3.SeriesPoint<MonthlyBudgetData>>()
-      .x((d) => x(d.data.month) || 0)
-      .y((d) => y(d[1]))
-      .curve(d3.curveCatmullRom.alpha(0.5));
-
-    // Hairline gap area — shrink each band by 1px on y0 to create visual separation
-    const areaWithGap = d3
-      .area<d3.SeriesPoint<MonthlyBudgetData>>()
-      .x((d) => x(d.data.month) || 0)
-      .y0((d) => y(d[0]) - 1)
-      .y1((d) => y(d[1]))
-      .curve(d3.curveCatmullRom.alpha(0.5));
-
     layerGroup
       .append('path')
       .attr('class', 'bfc-band')
-      .attr('d', areaWithGap)
+      .attr('d', (d: any) => makeExtendedArea(d, (pt: any) => y(pt[0]) - 1, (pt: any) => y(pt[1])))
       .style('fill', (_d, i) => `url(#bfc-grad-${i})`)
       .attr('fill-opacity', 0.85);
 
@@ -284,7 +298,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     layerGroup
       .append('path')
       .attr('class', 'bfc-band-stroke')
-      .attr('d', topLine)
+      .attr('d', (d: any) => makeExtendedLine(d, (pt: any) => y(pt[1])))
       .style('fill', 'none')
       .style('stroke', (_d, i) => {
         const [c0] = getGradient(categoryNames[i], i);
@@ -310,18 +324,22 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .attr('stroke', isDarkTheme ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.06)')
       .attr('stroke-width', 1.5);
 
-    // Build savings area path: top of stacked bands → income threshold
-    const savingsArea = d3
-      .area<MonthlyBudgetData>()
-      .x((d) => x(d.month) || 0)
-      .y0((d) => y(d.total))
-      .y1(() => budgetY)
-      .curve(d3.curveCatmullRom.alpha(0.5));
+    // Build savings area path: top of stacked bands → income threshold (extended to edges)
+    const savingsPts = chartData.map(d => ({
+      x: x(d.month) || 0,
+      y0: y(d.total),
+      y1: budgetY,
+    }));
+    savingsPts.unshift({ x: 0, y0: savingsPts[0].y0, y1: budgetY });
+    savingsPts.push({ x: innerWidth, y0: savingsPts[savingsPts.length - 1].y0, y1: budgetY });
+
+    const extSavingsPath = d3.area<{ x: number; y0: number; y1: number }>()
+      .x(d => d.x).y0(d => d.y0).y1(d => d.y1)
+      .curve(d3.curveCatmullRom.alpha(0.5))(savingsPts) || '';
 
     svg.append('path')
-      .datum(chartData)
       .attr('class', 'bfc-savings')
-      .attr('d', savingsArea)
+      .attr('d', extSavingsPath)
       .style('fill', 'url(#bfc-savings-hatch)')
       .attr('fill-opacity', 0.6);
 
@@ -674,26 +692,27 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     svgElement.selectAll('.bfc-income-label').transition().duration(snapMs).ease(easing).style('opacity', 0);
 
     if (!internals) return;
-    const { stackedData, x, y, innerHeight } = internals;
+    const { stackedData, x, y, innerHeight, innerWidth } = internals;
     const highlightLayer = stackedData.find(l => l.key === highlightedBudgetName);
     if (!highlightLayer) return;
 
-    // Morph band to solo view (from baseline, using only its own values)
-    const soloArea = d3
-      .area<d3.SeriesPoint<MonthlyBudgetData>>()
-      .x((d) => x(d.data.month) || 0)
-      .y0(() => innerHeight)
-      .y1((d) => y(d[1] - d[0]))
-      .curve(d3.curveCatmullRom.alpha(0.5));
+    // Morph band to solo view (from baseline, using only its own values, extended to edges)
+    const soloPts = highlightLayer.map(d => ({
+      x: x(d.data.month) || 0,
+      y0: innerHeight,
+      y1: y(d[1] - d[0]),
+    }));
+    soloPts.unshift({ x: 0, y0: innerHeight, y1: soloPts[0].y1 });
+    soloPts.push({ x: innerWidth, y0: innerHeight, y1: soloPts[soloPts.length - 1].y1 });
 
-    const soloLine = d3
-      .line<d3.SeriesPoint<MonthlyBudgetData>>()
-      .x((d) => x(d.data.month) || 0)
-      .y((d) => y(d[1] - d[0]))
-      .curve(d3.curveCatmullRom.alpha(0.5));
+    const soloPath = d3.area<{ x: number; y0: number; y1: number }>()
+      .x(d => d.x).y0(d => d.y0).y1(d => d.y1)
+      .curve(d3.curveCatmullRom.alpha(0.5))(soloPts) || '';
 
-    const soloPath = soloArea(highlightLayer) || '';
-    const soloStrokePath = soloLine(highlightLayer) || '';
+    const soloLinePts = soloPts.map(d => ({ x: d.x, y: d.y1 }));
+    const soloStrokePath = d3.line<{ x: number; y: number }>()
+      .x(d => d.x).y(d => d.y)
+      .curve(d3.curveCatmullRom.alpha(0.5))(soloLinePts) || '';
     const highlightIdx = categoryNames.indexOf(highlightedBudgetName);
 
     svgElement.selectAll('.bfc-band')
