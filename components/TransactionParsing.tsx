@@ -198,13 +198,15 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       </header>
 
       {/* Main content */}
-      <main className="flex-1 flex flex-col p-4 pb-24 overflow-y-auto relative z-10">
-        <div className="max-w-2xl mx-auto w-full space-y-4">
+      <main className="flex-1 min-h-0 flex flex-col p-4 overflow-hidden relative z-10">
+        <div className="max-w-2xl mx-auto w-full flex-1 min-h-0 flex flex-col gap-4">
           {enabled ? (
             <>
-              <ActiveBanksCard
-                activeBanks={monitoredBanks}
-              />
+              <div className="shrink-0">
+                <ActiveBanksCard
+                  activeBanks={monitoredBanks}
+                />
+              </div>
 
               <AITransactionsEnteredCard
                 aiTransactions={aiTransactions}
@@ -221,6 +223,12 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
           )}
         </div>
       </main>
+
+      <div
+        aria-hidden="true"
+        className="shrink-0"
+        style={{ height: 'calc(env(safe-area-inset-bottom, 0px) + 5rem)' }}
+      />
 
       <DashboardBottomBar
         onGoHome={onGoHome}

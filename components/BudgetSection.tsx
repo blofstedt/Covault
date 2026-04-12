@@ -58,11 +58,11 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
   const spentWidth = Math.min(
     100,
-    budget.totalLimit > 0 ? (spentWithExternal / budget.totalLimit) * 100 : 0,
+    budget.totalLimit > 0 ? (Math.max(0, spentWithExternal) / budget.totalLimit) * 100 : 0,
   );
   const projectedWidth = Math.min(
     100 - spentWidth,
-    budget.totalLimit > 0 ? (projected / budget.totalLimit) * 100 : 0,
+    budget.totalLimit > 0 ? (Math.max(0, projected) / budget.totalLimit) * 100 : 0,
   );
 
   const budgetColor = getBudgetColor(budget.name);
@@ -131,12 +131,12 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
       {/* HEADER / SUMMARY */}
       <div
         onClick={onToggle}
-        className={`relative z-10 flex-1 flex items-center justify-between cursor-pointer active:scale-[0.99] ${
+        className={`relative z-10 flex items-center justify-between cursor-pointer active:scale-[0.99] ${
           isExpanded
-            ? 'flex-none py-10 px-8'
+            ? 'flex-none py-6 px-8'
             : useCompactCollapsedStyles
-              ? 'py-1.5 px-3'
-              : 'py-2 px-4'
+              ? 'flex-1 py-1.5 px-3'
+              : 'flex-1 py-2 px-4'
         }`}
         style={{
           transition: isExpanded
@@ -171,12 +171,12 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
             {!isExpanded && (
               <span
-                className={`font-bold tracking-wide mt-1 transition-colors duration-300 ${
+                className={`tracking-wide mt-1 transition-colors duration-300 ${
                   isOver
-                    ? 'text-rose-500 dark:text-rose-400'
+                    ? 'text-slate-700 dark:text-slate-100 font-extrabold'
                     : isWarning
-                      ? 'text-amber-500 dark:text-amber-400'
-                      : 'text-slate-400 dark:text-slate-500'
+                      ? 'text-slate-500 dark:text-slate-300 font-bold'
+                      : 'text-slate-400 dark:text-slate-500 font-bold'
                 } ${useCompactCollapsedStyles ? 'text-[9px]' : 'text-[10px]'}`}
               >
                 {isDanger
@@ -226,9 +226,13 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
       {/* EXPANDED TRANSACTIONS LIST */}
       {isExpanded && (
         <div 
-          className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-6 pb-12 relative z-10"
+          className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-6 pb-2 relative z-10"
           style={{
-            animation: 'budgetContentReveal 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards',
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehavior: 'contain',
+            overscrollBehaviorY: 'contain',
+            overflowAnchor: 'none',
+            touchAction: 'pan-y',
           }}
           onClick={(e) => {
             // If clicking on the blank space (the div itself), collapse the budget
@@ -237,7 +241,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
             }
           }}
         >
-          <div className="py-6 space-y-4">
+          <div className="pt-1 pb-6 space-y-4">
             <div className="flex items-center justify-between px-2">
               <span className="text-[10px] font-semibold tracking-wide transition-colors duration-300 text-slate-400 dark:text-slate-500">
                 {isSharedView ? 'Our Activity' : 'Activity'}

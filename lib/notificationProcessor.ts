@@ -628,7 +628,9 @@ export async function processNotificationWithAI(
     ? parsed.vendorDisplay
     : null;
   const vendor = extractedVendor || input.fallbackVendor || null;
-  const amount = parsed.amount ?? input.fallbackAmount ?? 0;
+  const rawAmount = parsed.amount ?? input.fallbackAmount ?? 0;
+  // Refunds are stored as negative amounts so they naturally reduce budget totals
+  const amount = parsed.isRefund ? -Math.abs(rawAmount) : rawAmount;
 
   // ── Step 3b: Reject if no vendor could be identified ──
   if (!vendor) {
@@ -692,14 +694,14 @@ export async function processNotificationWithAI(
   let displayVendor: string = vendor;
 
   // 5a: Check server-side overrides table
-  // Schema: overrides(id, user_id, proper_name text, category_id Budgets-enum)
-  // proper_name is the canonical vendor name; category_id is the budget enum value (e.g. 'Groceries')
+  // Schema: vendor_overrides(id, user_id, vendor_name text, proper_name text, category_id uuid)
+  // vendor_name is the raw vendor string to match; proper_name is the canonical display name
   if (vendor) {
     const { data: overrideRows } = await supabase
-      .from('overrides')
+      .from('vendor_overrides')
       .select('category_id, proper_name')
       .eq('user_id', userId)
-      .ilike('proper_name', vendor)
+      .ilike('vendor_name', vendor)
       .limit(1);
 
     if (overrideRows && overrideRows.length > 0) {

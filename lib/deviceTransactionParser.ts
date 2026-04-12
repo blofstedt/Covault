@@ -4,16 +4,33 @@ const STOP_PHRASES = [
   'verification code', 'security code', 'otp', 'passcode', '2fa', 'password', 'login', 'signed in', 'new device',
   'statement', 'e-statement', 'payment due', 'due date',
   'account balance', 'available balance', 'current balance', 'balance is',
-  'refund', 'reversal', 'credited', 'deposit', 'payroll', 'salary', 'interest', 'cashback', 'dividend', 'e-transfer received', 'etransfer received', 'transfer received', 'money received',
+  'deposit', 'payroll', 'salary', 'interest', 'dividend', 'e-transfer received', 'etransfer received', 'transfer received', 'money received',
   'available credit', 'credit limit',
 ];
 
+const REFUND_PHRASES = [
+  'refund', 'reversal', 'credited', 'cashback',
+];
+
 const GO_PHRASES = [
-  'spend', 'spent', 'purchase', 'purchased', 'debit', 'debit purchase', 'pos', 'tap', 'tapped', 'charged', 'charge', 'authorized', 'approved',
+  'spend', 'spent', 'purchase', 'purchased', 'debit', 'debit purchase', 'pos', 'tap', 'tapped', 'charged', 'charge',
   'payment', 'bill payment', 'bill paid', 'paid', 'payment to',
   'transfer to', 'sent to', 'e-transfer sent', 'etransfer sent', 'interac e-transfer sent',
   'cost', 'costs', 'pre-authorized debit', 'preauthorized debit',
   'withdrawal', 'atm withdrawal',
+];
+
+/** Weak GO phrases — ambiguous words that can mean either pre-auth or settled. */
+const WEAK_GO_PHRASES = ['authorized', 'approved'];
+
+const PRE_AUTH_PHRASES = [
+  'authorization hold', 'pre-authorization', 'preauthorization',
+  'temporary hold', 'hold placed', 'pending transaction',
+  'authorization pending', 'pending charge', 'pending purchase',
+];
+
+const SETTLEMENT_PHRASES = [
+  'posted', 'settled', 'cleared', 'processed', 'completed',
 ];
 
 const amountRegex = /(?<!\w)(?:\$|cad\s*)\s*([0-9]{1,3}(?:,[0-9]{3})*|[0-9]+)(?:[.,]([0-9]{1,2}))?(?!\w)|(?<!\w)([0-9]{1,3}(?:,[0-9]{3})*|[0-9]+)(?:\.([0-9]{2}))(?!\w)/gi;
@@ -25,6 +42,8 @@ export interface ParsedNotification {
   vendorKey?: string;
   recurrence: 'One-time' | 'Biweekly' | 'Monthly';
   rejectionReason?: string;
+  isRefund?: boolean;
+  isPreAuth?: boolean;
 }
 interface AmountCandidate {
   value: number;
@@ -123,7 +142,24 @@ function trimAtPreposition(vendor: string): string {
 function extractVendorRaw(text: string): string {
   // Strip emoji/symbols so they don't break character-class patterns or act
   // as unexpected delimiters between merchant name and description text.
-  const t = stripEmoji(text);
+  let t = stripEmoji(text);
+
+  // Strip known bank name prefixes (e.g. "Wealthsimple", "TD", "BMO") from
+  // the start of the notification so they don't interfere with vendor extraction.
+  const BANK_NAME_PREFIXES = [
+    'bmo', 'scotiabank', 'td', 'td bank', 'rbc', 'cibc',
+    'wealthsimple', 'tangerine', 'simplii', 'national bank',
+    'desjardins', 'chase', 'wells fargo', 'bank of america',
+    'amex', 'american express', 'capital one', 'discover',
+    'citi', 'citibank', 'hsbc', 'barclays', 'usaa',
+  ];
+  const tLowerPrefix = t.toLowerCase();
+  for (const prefix of BANK_NAME_PREFIXES) {
+    if (tLowerPrefix.startsWith(prefix + ' ') && t.length > prefix.length + 3) {
+      t = t.slice(prefix.length + 1).trim();
+      break;
+    }
+  }
 
   // Vendor character class used across patterns:
   // ASCII alphanumeric + common punctuation + accented Latin (À–ÿ) + space + hyphen
@@ -225,15 +261,37 @@ export function parseNotificationText(text: string): ParsedNotification {
   const tLower = collapseWhitespace(t.toLowerCase());
 
   const hasStop = STOP_PHRASES.some(p => tLower.includes(p));
-  const hasGo = GO_PHRASES.some(p => tLower.includes(p));
+  const hasStrongGo = GO_PHRASES.some(p => tLower.includes(p));
+  const hasWeakGo = WEAK_GO_PHRASES.some(p => tLower.includes(p));
+  const hasGo = hasStrongGo || hasWeakGo;
+  const hasRefund = REFUND_PHRASES.some(p => tLower.includes(p));
+  const hasPreAuth = PRE_AUTH_PHRASES.some(p => tLower.includes(p));
+  const hasSettlement = SETTLEMENT_PHRASES.some(p => tLower.includes(p));
   const amountCandidates = findAllAmounts(t);
   const hasDollarSign = /\$\d/.test(t);
 
+  // Pre-authorization filtering:
+  // If notification matches a pre-auth phrase OR only has weak GO (authorized/approved)
+  // without any strong GO or settlement phrase, reject it as a pre-auth hold.
+  // A dollar sign alone doesn't override this — "Authorized $50 at Starbucks" is still pre-auth.
+  const isLikelyPreAuth = !hasRefund && !hasSettlement && !hasStrongGo
+    && (hasPreAuth || hasWeakGo);
+
+  if (isLikelyPreAuth && amountCandidates.length > 0) {
+    return {
+      isOutgoing: false,
+      recurrence: 'One-time',
+      rejectionReason: 'Pre-authorization hold (not yet settled)',
+      isPreAuth: true,
+    };
+  }
+
+  // Refund notifications should be accepted, not rejected.
   // Reject if: no amounts at all, OR stop-phrase present with no go-phrase
   // and no dollar sign (banking apps often just say "$12.34 at Vendor")
+  // BUT: never reject if it's a refund notification with an amount
   const shouldReject = amountCandidates.length === 0
-    || (hasStop && !hasGo)
-    || (!hasGo && !hasDollarSign);
+    || (!hasRefund && ((hasStop && !hasGo) || (!hasGo && !hasDollarSign)));
 
   if (shouldReject) {
     return {
@@ -268,5 +326,6 @@ export function parseNotificationText(text: string): ParsedNotification {
     vendorDisplay: vendorDisplay || 'Unknown',
     vendorKey,
     recurrence,
+    isRefund: hasRefund,
   };
 }

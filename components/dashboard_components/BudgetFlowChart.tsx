@@ -9,6 +9,7 @@ interface BudgetFlowChartProps {
   transactions: Transaction[];
   monthlyIncome?: number;
   theme?: 'light' | 'dark';
+  highlightedBudgetId?: string | null;
 }
 
 interface MonthlyBudgetData {
@@ -48,7 +49,7 @@ function getWindowedMonthKeys(monthKeys: string[], currentMonthKey: string, maxM
   return monthKeys.slice(start, start + maxMonths);
 }
 
-const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions, monthlyIncome = 0, theme = 'light' }) => {
+const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions, monthlyIncome = 0, theme = 'light', highlightedBudgetId = null }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -58,6 +59,15 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
   const [screenCoords, setScreenCoords] = useState<{ x: number; y: number } | null>(null);
   const [chartWidth, setChartWidth] = useState(0);
   const [chartHeight, setChartHeight] = useState(0);
+  // Refs to store chart internals for morph animation
+  const chartInternalsRef = useRef<{
+    stackedData: d3.Series<MonthlyBudgetData, string>[];
+    x: d3.ScalePoint<string>;
+    y: d3.ScaleLinear<number, number>;
+    innerHeight: number;
+    innerWidth: number;
+  } | null>(null);
+  const highlightedRef = useRef<string | null>(null);
   const safeBudgets = Array.isArray(budgets) ? budgets : [];
   const safeTransactions = useMemo(() => {
     const txs = Array.isArray(transactions) ? transactions : [];
@@ -210,7 +220,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
     const stackedData = stack(chartData);
 
-    const x = d3.scalePoint().domain(chartData.map((d) => d.month)).range([0, innerWidth]).padding(0.1);
+    const x = d3.scalePoint().domain(chartData.map((d) => d.month)).range([0, innerWidth]).padding(0.25);
 
     const maxTotal = d3.max(chartData, (d) => d.total) || 1;
     const yMax = Math.max(maxTotal, thresholdValue) * 1.15;
@@ -221,6 +231,37 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .range([innerHeight, 0]);
 
     const isDarkTheme = theme === 'dark';
+
+    // Store internals for morph animation
+    chartInternalsRef.current = { stackedData, x, y, innerHeight, innerWidth };
+
+    // ── Helpers to extend area/line paths to chart edges ──
+    // Adds anchor points at x=0 and x=innerWidth with the same values as the
+    // first/last data points so CatmullRom curves fill the full container width.
+    const makeExtendedArea = (
+      layer: d3.SeriesPoint<MonthlyBudgetData>[],
+      y0Fn: (d: d3.SeriesPoint<MonthlyBudgetData>) => number,
+      y1Fn: (d: d3.SeriesPoint<MonthlyBudgetData>) => number,
+    ) => {
+      const pts = layer.map(d => ({ x: x(d.data.month) || 0, y0: y0Fn(d), y1: y1Fn(d) }));
+      pts.unshift({ x: 0, y0: pts[0].y0, y1: pts[0].y1 });
+      pts.push({ x: innerWidth, y0: pts[pts.length - 1].y0, y1: pts[pts.length - 1].y1 });
+      return d3.area<{ x: number; y0: number; y1: number }>()
+        .x(d => d.x).y0(d => d.y0).y1(d => d.y1)
+        .curve(d3.curveCatmullRom.alpha(0.5))(pts) || '';
+    };
+
+    const makeExtendedLine = (
+      layer: d3.SeriesPoint<MonthlyBudgetData>[],
+      yFn: (d: d3.SeriesPoint<MonthlyBudgetData>) => number,
+    ) => {
+      const pts = layer.map(d => ({ x: x(d.data.month) || 0, y: yFn(d) }));
+      pts.unshift({ x: 0, y: pts[0].y });
+      pts.push({ x: innerWidth, y: pts[pts.length - 1].y });
+      return d3.line<{ x: number; y: number }>()
+        .x(d => d.x).y(d => d.y)
+        .curve(d3.curveCatmullRom.alpha(0.5))(pts) || '';
+    };
 
     // Subtle horizontal grid lines
     const gridValues = y.ticks(3);
@@ -246,25 +287,10 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     // Draw stacked area bands with highlight strokes
     const layerGroup = svg.selectAll('.bfc-layer').data(stackedData).enter().append('g').attr('class', 'bfc-layer');
 
-    // Create area generator for the top edge (stroke)
-    const topLine = d3
-      .line<d3.SeriesPoint<MonthlyBudgetData>>()
-      .x((d) => x(d.data.month) || 0)
-      .y((d) => y(d[1]))
-      .curve(d3.curveCatmullRom.alpha(0.5));
-
-    // Hairline gap area — shrink each band by 1px on y0 to create visual separation
-    const areaWithGap = d3
-      .area<d3.SeriesPoint<MonthlyBudgetData>>()
-      .x((d) => x(d.data.month) || 0)
-      .y0((d) => y(d[0]) - 1)
-      .y1((d) => y(d[1]))
-      .curve(d3.curveCatmullRom.alpha(0.5));
-
     layerGroup
       .append('path')
       .attr('class', 'bfc-band')
-      .attr('d', areaWithGap)
+      .attr('d', (d: any) => makeExtendedArea(d, (pt: any) => y(pt[0]) - 1, (pt: any) => y(pt[1])))
       .style('fill', (_d, i) => `url(#bfc-grad-${i})`)
       .attr('fill-opacity', 0.85);
 
@@ -272,7 +298,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     layerGroup
       .append('path')
       .attr('class', 'bfc-band-stroke')
-      .attr('d', topLine)
+      .attr('d', (d: any) => makeExtendedLine(d, (pt: any) => y(pt[1])))
       .style('fill', 'none')
       .style('stroke', (_d, i) => {
         const [c0] = getGradient(categoryNames[i], i);
@@ -298,24 +324,29 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .attr('stroke', isDarkTheme ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.06)')
       .attr('stroke-width', 1.5);
 
-    // Build savings area path: top of stacked bands → income threshold
-    const savingsArea = d3
-      .area<MonthlyBudgetData>()
-      .x((d) => x(d.month) || 0)
-      .y0((d) => y(d.total))
-      .y1(() => budgetY)
-      .curve(d3.curveCatmullRom.alpha(0.5));
+    // Build savings area path: top of stacked bands → income threshold (extended to edges)
+    const savingsPts = chartData.map(d => ({
+      x: x(d.month) || 0,
+      y0: y(d.total),
+      y1: budgetY,
+    }));
+    savingsPts.unshift({ x: 0, y0: savingsPts[0].y0, y1: budgetY });
+    savingsPts.push({ x: innerWidth, y0: savingsPts[savingsPts.length - 1].y0, y1: budgetY });
+
+    const extSavingsPath = d3.area<{ x: number; y0: number; y1: number }>()
+      .x(d => d.x).y0(d => d.y0).y1(d => d.y1)
+      .curve(d3.curveCatmullRom.alpha(0.5))(savingsPts) || '';
 
     svg.append('path')
-      .datum(chartData)
       .attr('class', 'bfc-savings')
-      .attr('d', savingsArea)
+      .attr('d', extSavingsPath)
       .style('fill', 'url(#bfc-savings-hatch)')
       .attr('fill-opacity', 0.6);
 
     // Income threshold line (dotted, stronger)
     svg
       .append('line')
+      .attr('class', 'bfc-income-line')
       .attr('x1', 0)
       .attr('x2', innerWidth)
       .attr('y1', budgetY)
@@ -325,10 +356,11 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .attr('stroke-dasharray', '2 4');
 
     // "INCOME" chip label on the threshold line
-    const labelX = innerWidth - 4;
+    const labelX = innerWidth - 40;
     const labelY = budgetY - 6;
     svg
       .append('rect')
+      .attr('class', 'bfc-income-label')
       .attr('x', labelX - 38)
       .attr('y', labelY - 8)
       .attr('width', 42)
@@ -339,6 +371,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .attr('stroke-width', 0.5);
     svg
       .append('text')
+      .attr('class', 'bfc-income-label')
       .attr('x', labelX - 17)
       .attr('y', labelY + 2)
       .attr('text-anchor', 'middle')
@@ -349,11 +382,13 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .text('INCOME');
 
     // Month labels on the x-axis
-    chartData.forEach((d) => {
+    chartData.forEach((d, idx) => {
       const xPos = x(d.month) || 0;
+      const isFirst = idx === 0;
+      const isLast = idx === chartData.length - 1;
       svg
         .append('text')
-        .attr('x', xPos)
+        .attr('x', isFirst ? xPos + 6 : isLast ? xPos - 6 : xPos)
         .attr('y', innerHeight + 14)
         .attr('text-anchor', 'middle')
         .attr('font-size', '9px')
@@ -460,6 +495,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
     // Interaction handler for mouse events
     const handleInteraction = (event: any) => {
+      if (highlightedRef.current) return;
       const [mx, my] = d3.pointer(event, svg.node());
       setScreenCoords({ x: event.clientX, y: event.clientY });
       const domain = x.domain();
@@ -481,6 +517,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
     // Touch event handlers for drag gestures
     const handleTouchStart = (event: any) => {
+      if (highlightedRef.current) return;
       event.preventDefault();
       const touch = event.touches[0] || event.changedTouches[0];
       setScreenCoords({ x: touch.clientX, y: touch.clientY });
@@ -501,6 +538,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     };
 
     const handleTouchMove = (event: any) => {
+      if (highlightedRef.current) return;
       event.preventDefault();
       const touch = event.touches[0] || event.changedTouches[0];
       setScreenCoords({ x: touch.clientX, y: touch.clientY });
@@ -514,6 +552,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     };
 
     const handleEnd = () => {
+      if (highlightedRef.current) return;
       setActiveCategory(null);
       setHoveredMonthIdx(null);
       setMouseCoords(null);
@@ -566,6 +605,159 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
   const activeCatColor = isSavingsSelected
     ? (theme === 'dark' ? '#ffffff' : '#94a3b8')
     : activeCategory ? getBudgetColor(activeCategory, activeCatIndex) : null;
+
+  // ── Highlighted budget band (when a budget is expanded below) ──
+  const highlightedBudgetName = highlightedBudgetId ? (budgetNameById.get(highlightedBudgetId) || null) : null;
+  highlightedRef.current = highlightedBudgetName;
+
+  // Compute current-month totals for the highlighted budget
+  const highlightedTotals = useMemo(() => {
+    if (!highlightedBudgetId) return null;
+    const budget = safeBudgets.find(b => b.id === highlightedBudgetId);
+    if (!budget) return null;
+
+    const now = new Date();
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    let spent = 0;
+    let projected = 0;
+    for (const tx of safeTransactions) {
+      if (tx.budget_id !== highlightedBudgetId) continue;
+      const rawDate = tx.date;
+      if (!rawDate || rawDate.slice(0, 7) !== currentMonthKey) continue;
+      const amt = Number(tx.amount) || 0;
+      if (tx.is_projected) {
+        projected += amt;
+      } else {
+        spent += amt;
+      }
+    }
+
+    return { spent, projected, limit: budget.totalLimit };
+  }, [highlightedBudgetId, safeBudgets, safeTransactions]);
+
+  const highlightedCatIndex = highlightedBudgetName ? categoryNames.indexOf(highlightedBudgetName) : -1;
+  const highlightedCatColor = highlightedBudgetName ? getBudgetColor(highlightedBudgetName, highlightedCatIndex) : null;
+
+  // Apply band highlight/dim when a budget is expanded (separate from touch interaction)
+  // Snap to solo view on budget open, reverse on close
+  // Fades savings area & income line, shows per-month totals for the category
+  useEffect(() => {
+    if (!svgRef.current) return;
+    const svgElement = d3.select(svgRef.current);
+    const internals = chartInternalsRef.current;
+    const snapMs = 500;
+    const easing = d3.easeCubicOut;
+
+    // Remove any previous solo month labels
+    svgElement.selectAll('.bfc-solo-label').remove();
+
+    if (!highlightedBudgetName || activeCategory) {
+      if (!activeCategory) {
+        // Reset everything to defaults — combine opacity + path in one transition
+        // to avoid D3 transition conflicts that leave bands invisible
+        svgElement.selectAll('.bfc-band').each(function(this: any) {
+          const el = d3.select(this);
+          const orig = el.attr('data-original-d');
+          const t = el.transition().duration(snapMs).ease(easing).attr('fill-opacity', 0.85);
+          if (orig) t.attr('d', orig);
+        });
+        svgElement.selectAll('.bfc-band-stroke').each(function(this: any) {
+          const el = d3.select(this);
+          const orig = el.attr('data-original-d');
+          const t = el.transition().duration(snapMs).ease(easing).style('stroke-opacity', 0.6);
+          if (orig) t.attr('d', orig);
+        });
+        // Restore savings & income
+        svgElement.select('.bfc-savings').transition().duration(snapMs).ease(easing).attr('fill-opacity', 0.6);
+        svgElement.select('.bfc-income-line').transition().duration(snapMs).ease(easing).style('opacity', 1);
+        svgElement.selectAll('.bfc-income-label').transition().duration(snapMs).ease(easing).style('opacity', 1);
+      }
+      return;
+    }
+
+    // ── Solo snap: show only the highlighted band ──
+
+    // Hide non-highlighted bands
+    svgElement.selectAll('.bfc-band')
+      .transition().duration(snapMs).ease(easing)
+      .attr('fill-opacity', (d: any) => d.key === highlightedBudgetName ? 0.95 : 0);
+    svgElement.selectAll('.bfc-band-stroke')
+      .transition().duration(snapMs).ease(easing)
+      .style('stroke-opacity', (_d: any, i: number) => categoryNames[i] === highlightedBudgetName ? 0.9 : 0);
+
+    // Fade out savings area and income line/label
+    svgElement.select('.bfc-savings').transition().duration(snapMs).ease(easing).attr('fill-opacity', 0);
+    svgElement.select('.bfc-income-line').transition().duration(snapMs).ease(easing).style('opacity', 0);
+    svgElement.selectAll('.bfc-income-label').transition().duration(snapMs).ease(easing).style('opacity', 0);
+
+    if (!internals) return;
+    const { stackedData, x, y, innerHeight, innerWidth } = internals;
+    const highlightLayer = stackedData.find(l => l.key === highlightedBudgetName);
+    if (!highlightLayer) return;
+
+    // Morph band to solo view (from baseline, using only its own values, extended to edges)
+    const soloPts = highlightLayer.map(d => ({
+      x: x(d.data.month) || 0,
+      y0: innerHeight,
+      y1: y(d[1] - d[0]),
+    }));
+    soloPts.unshift({ x: 0, y0: innerHeight, y1: soloPts[0].y1 });
+    soloPts.push({ x: innerWidth, y0: innerHeight, y1: soloPts[soloPts.length - 1].y1 });
+
+    const soloPath = d3.area<{ x: number; y0: number; y1: number }>()
+      .x(d => d.x).y0(d => d.y0).y1(d => d.y1)
+      .curve(d3.curveCatmullRom.alpha(0.5))(soloPts) || '';
+
+    const soloLinePts = soloPts.map(d => ({ x: d.x, y: d.y1 }));
+    const soloStrokePath = d3.line<{ x: number; y: number }>()
+      .x(d => d.x).y(d => d.y)
+      .curve(d3.curveCatmullRom.alpha(0.5))(soloLinePts) || '';
+    const highlightIdx = categoryNames.indexOf(highlightedBudgetName);
+
+    svgElement.selectAll('.bfc-band')
+      .filter((d: any) => d.key === highlightedBudgetName)
+      .each(function(this: any) {
+        const el = d3.select(this);
+        if (!el.attr('data-original-d')) el.attr('data-original-d', el.attr('d'));
+        el.transition().duration(snapMs).ease(easing).attr('d', soloPath);
+      });
+
+    svgElement.selectAll('.bfc-band-stroke')
+      .filter((_d: any, i: number) => i === highlightIdx)
+      .each(function(this: any) {
+        const el = d3.select(this);
+        if (!el.attr('data-original-d')) el.attr('data-original-d', el.attr('d'));
+        el.transition().duration(snapMs).ease(easing).attr('d', soloStrokePath);
+      });
+
+    // Show per-month totals for the highlighted category
+    const isDark = theme === 'dark';
+    const catColor = highlightedCatColor || (isDark ? '#6ee7b7' : '#059669');
+
+    // Access the inner <g> group (first child g of the svg)
+    const innerG = svgElement.select('g');
+
+    highlightLayer.forEach((pt) => {
+      const val = pt[1] - pt[0];
+      if (val === 0) return;
+      const xPos = x(pt.data.month) || 0;
+      const yPos = y(val);
+
+      innerG.append('text')
+        .attr('class', 'bfc-solo-label')
+        .attr('x', xPos)
+        .attr('y', yPos - 8)
+        .attr('text-anchor', 'middle')
+        .attr('font-size', '9px')
+        .attr('font-weight', '800')
+        .attr('fill', catColor)
+        .style('opacity', 0)
+        .text(`$${val.toFixed(0)}`)
+        .transition().delay(200).duration(300).ease(easing)
+        .style('opacity', 1);
+    });
+  }, [highlightedBudgetName, activeCategory, categoryNames, highlightedCatColor, theme]);
 
   // No data fallback
   if (chartData.length === 0) {
@@ -691,11 +883,69 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         <div ref={containerRef} className="w-full relative">
           <div className="rounded-2xl p-0.5 overflow-hidden">
             <div className="bg-white dark:bg-slate-900/80 rounded-2xl overflow-hidden relative">
+              {/* Edge fade overlays */}
+              <div className="absolute left-0 top-0 bottom-0 w-10 z-20 pointer-events-none rounded-l-2xl" style={{ background: 'linear-gradient(to right, var(--chart-bg) 30%, transparent)' }} />
+              <div className="absolute right-0 top-0 bottom-0 w-10 z-20 pointer-events-none rounded-r-2xl" style={{ background: 'linear-gradient(to left, var(--chart-bg) 30%, transparent)' }} />
+              <style>{`
+                :root { --chart-bg: #ffffff; }
+                .dark { --chart-bg: rgba(15, 23, 42, 0.8); }
+              `}</style>
               <svg
                 ref={svgRef}
-                className="w-full h-auto overflow-visible cursor-crosshair relative z-10 select-none"
+                className={`w-full h-auto overflow-visible relative z-10 select-none ${highlightedBudgetName ? 'cursor-default' : 'cursor-crosshair'}`}
                 style={{ touchAction: 'none' }}
               />
+
+              {/* Highlighted budget totals overlay */}
+              {highlightedBudgetName && highlightedTotals && !activeCategory && (
+                <div className="absolute top-2 left-0 right-0 z-20 flex justify-center pointer-events-none transition-opacity duration-300">
+                  <div
+                    className={`flex items-center gap-3 px-3 py-1.5 rounded-full backdrop-blur-xl text-[10px] font-semibold ${
+                      theme === 'dark'
+                        ? 'bg-slate-800/90 shadow-lg shadow-black/30'
+                        : 'bg-white/90 shadow-md shadow-slate-200/60'
+                    }`}
+                    style={{
+                      borderWidth: '1.5px',
+                      borderStyle: 'solid',
+                      borderColor: highlightedCatColor
+                        ? `${highlightedCatColor}40`
+                        : theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
+                    }}
+                  >
+                    <span
+                      className="tracking-wide truncate max-w-[80px]"
+                      style={{ color: highlightedCatColor || undefined }}
+                    >
+                      {highlightedBudgetName}
+                    </span>
+                    <span className={`${theme === 'dark' ? 'text-white/30' : 'text-slate-300'}`}>|</span>
+                    <div className="flex items-center gap-1">
+                      <span className={theme === 'dark' ? 'text-white/40' : 'text-slate-400'}>Spent</span>
+                      <span className={theme === 'dark' ? 'text-white' : 'text-slate-900'}>${highlightedTotals.spent.toFixed(0)}</span>
+                    </div>
+                    {highlightedTotals.projected > 0 && (
+                      <>
+                        <span className={`${theme === 'dark' ? 'text-white/30' : 'text-slate-300'}`}>|</span>
+                        <div className="flex items-center gap-1">
+                          <span className={theme === 'dark' ? 'text-white/40' : 'text-slate-400'}>Proj</span>
+                          <span className={theme === 'dark' ? 'text-white/60' : 'text-slate-500'}>${highlightedTotals.projected.toFixed(0)}</span>
+                        </div>
+                      </>
+                    )}
+                    <span className={`${theme === 'dark' ? 'text-white/30' : 'text-slate-300'}`}>|</span>
+                    <div className="flex items-center gap-1">
+                      <span className={theme === 'dark' ? 'text-white/40' : 'text-slate-400'}>Limit</span>
+                      <span
+                        className="font-bold"
+                        style={{ color: highlightedCatColor || (theme === 'dark' ? '#ffffff' : '#0f172a') }}
+                      >
+                        ${highlightedTotals.limit.toFixed(0)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

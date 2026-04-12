@@ -76,7 +76,6 @@ const Dashboard: React.FC<Props> = ({
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [remoteVendorHistory, setRemoteVendorHistory] = useState<VendorHistoryItem[]>([]);
   const [expandedBudgets, setExpandedBudgets] = useState<Set<string>>(new Set());
-  const hasExpandedBudget = expandedBudgets.size > 0;
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const budgetRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -375,33 +374,21 @@ const Dashboard: React.FC<Props> = ({
   return (
     <>
       <PageShell showGlow>
-        {/* Header: cog top-right on all sizes — collapse when budget expanded */}
-        <div
-          className={`shrink-0 transition-all duration-500 ease-in-out overflow-hidden ${
-            hasExpandedBudget ? 'max-h-0 opacity-0' : 'max-h-20 opacity-100'
-          }`}
-        >
-          <DashboardHeader onOpenSettings={() => setShowSettings(true)} />
-        </div>
+        {/* Header: cog top-right on all sizes */}
+        <DashboardHeader onOpenSettings={() => setShowSettings(true)} />
 
-        {/* Balance + search: always centered — collapse when budget expanded */}
-        <div
-          className={`shrink-0 transition-all duration-500 ease-in-out overflow-hidden ${
-            hasExpandedBudget ? 'max-h-0 opacity-0' : 'max-h-40 opacity-100'
-          }`}
-        >
-          <DashboardBalanceSection
-            isSharedAccount={!state.user?.budgetingSolo}
-            remainingMoney={remainingMoney}
-            searchQuery={searchQuery}
-            isSearchOpen={isSearchOpen}
-            onSearchQueryChange={(value) => {
-              setSearchQuery(value);
-              if (value.trim()) setIsSearchOpen(true);
-            }}
-            onSearchOpenChange={setIsSearchOpen}
-          />
-        </div>
+        {/* Balance + search: always centered */}
+        <DashboardBalanceSection
+          isSharedAccount={!state.user?.budgetingSolo}
+          remainingMoney={remainingMoney}
+          searchQuery={searchQuery}
+          isSearchOpen={isSearchOpen}
+          onSearchQueryChange={(value) => {
+            setSearchQuery(value);
+            if (value.trim()) setIsSearchOpen(true);
+          }}
+          onSearchOpenChange={setIsSearchOpen}
+        />
 
         {searchQuery.trim() ? (
           <SearchResults
@@ -416,15 +403,11 @@ const Dashboard: React.FC<Props> = ({
             onTransactionTap={setSelectedTx}
           />
         ) : (
-          <div className="flex-1 min-h-0 flex flex-col lg:px-6">
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden lg:px-6">
             {/* Chart: full width on desktop */}
             <div
-              className={`transition-all duration-500 ease-in-out overflow-hidden shrink-0 ${
-                hasExpandedBudget
-                  ? 'max-h-0 opacity-0 -translate-y-2 pointer-events-none mb-0 lg:max-h-0 lg:opacity-0'
-                  : 'max-h-[300px] opacity-100 translate-y-0 mb-2 lg:max-h-none lg:mb-3'
-              }`}
-              aria-hidden={hasExpandedBudget}
+              className="transition-all duration-500 ease-in-out overflow-hidden shrink-0 max-h-[300px] opacity-100 translate-y-0 mb-2 lg:max-h-none lg:mb-3"
+              aria-hidden={false}
             >
               <PremiumGate hasPremium={true}>
                 <BudgetFlowChart
@@ -432,33 +415,34 @@ const Dashboard: React.FC<Props> = ({
                   transactions={chartTransactions}
                   monthlyIncome={state.user?.monthlyIncome || 0}
                   theme={state.settings.theme}
+                  highlightedBudgetId={expandedBudgets.size > 0 ? Array.from(expandedBudgets)[0] : null}
                 />
               </PremiumGate>
             </div>
 
             {/* Pulse / smart cards: full width */}
             <div
-              className={`transition-all duration-500 ease-in-out overflow-hidden shrink-0 ${
-                hasExpandedBudget
-                  ? 'max-h-0 opacity-0 pointer-events-none lg:max-h-0 lg:opacity-0'
-                  : 'max-h-[200px] opacity-100 lg:max-h-none'
-              }`}
-              aria-hidden={hasExpandedBudget}
+              className="transition-all duration-500 ease-in-out overflow-hidden shrink-0 max-h-[200px] opacity-100 lg:max-h-none"
+              aria-hidden={false}
             >
-              {showSmartCards && smartCards.length > 0 && (
-                <InlineSmartCard
-                  cards={smartCards}
-                  onDismiss={(id) => {}}
-                  onAllDismissed={() => setShowSmartCards(false)}
-                  userId={state.user?.id}
+              <div className="relative">
+                <MonthlyPulseCard
+                  budgets={state.budgets}
+                  transactions={currentMonthBudgetTransactions}
                   theme={state.settings.theme}
                 />
-              )}
-              <MonthlyPulseCard
-                budgets={state.budgets}
-                transactions={currentMonthBudgetTransactions}
-                theme={state.settings.theme}
-              />
+                {showSmartCards && smartCards.length > 0 && (
+                  <div className="absolute inset-0 z-10">
+                    <InlineSmartCard
+                      cards={smartCards}
+                      onDismiss={(id) => {}}
+                      onAllDismissed={() => setShowSmartCards(false)}
+                      userId={state.user?.id}
+                      theme={state.settings.theme}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Budget bars: vertical list on mobile, 2-col grid on desktop */}
@@ -480,6 +464,12 @@ const Dashboard: React.FC<Props> = ({
             />
           </div>
         )}
+
+        <div
+          aria-hidden="true"
+          className="shrink-0"
+          style={{ height: 'calc(env(safe-area-inset-bottom, 0px) + 5rem)' }}
+        />
 
         <DashboardBottomBar
           onGoHome={() => setShowParsing(false)}

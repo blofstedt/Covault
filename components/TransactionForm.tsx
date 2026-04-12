@@ -50,7 +50,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   onVendorOverrideUpdated,
 }) => {
   const [vendor, setVendor] = useState(initialTransaction?.vendor || '');
-  const [amountStr, setAmountStr] = useState(initialTransaction?.amount.toString() || '');
+  const [amountStr, setAmountStr] = useState(initialTransaction ? Math.abs(initialTransaction.amount).toString() : '');
   const [date, setDate] = useState(() => {
     if (initialTransaction?.date) {
       return initialTransaction.date.slice(0, 10);
@@ -65,6 +65,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   });
 
   const [recurrence, setRecurrence] = useState<Recurrence>(initialTransaction?.recurrence || 'One-time');
+  const [isRefund, setIsRefund] = useState(() => initialTransaction ? initialTransaction.amount < 0 : false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
@@ -123,7 +124,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     const tx: Transaction = {
       id: initialTransaction?.id || generateUUID(),
       vendor: formatVendorName(vendor || 'Untitled Vendor'),
-      amount,
+      amount: isRefund ? -Math.abs(amount) : Math.abs(amount),
       date: date + 'T12:00:00.000Z',
       budget_id: selectedId,
       recurrence,
@@ -183,16 +184,42 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           <div className="space-y-3">
             <div id="tutorial-amount-field" className="flex flex-col items-center justify-center py-5 bg-slate-50/50 dark:bg-slate-800/20 rounded-3xl border border-slate-100/50 dark:border-slate-800/30">
               <div className="flex items-center justify-center space-x-1">
-                <span className="text-xl font-black text-slate-300 dark:text-slate-700 select-none">$</span>
+                <span className={`text-xl font-black select-none ${isRefund ? 'text-emerald-400 dark:text-emerald-500' : 'text-slate-300 dark:text-slate-700'}`}>$</span>
                 <input
                   ref={amountInputRef}
                   type="number"
                   placeholder="0.00"
                   value={amountStr}
                   onChange={e => setAmountStr(e.target.value)}
-                  className="bg-transparent text-center text-3xl font-black tracking-tighter outline-none text-slate-500 dark:text-slate-50 placeholder-slate-200 dark:placeholder-slate-800 w-auto min-w-[1ch]"
+                  className={`bg-transparent text-center text-3xl font-black tracking-tighter outline-none placeholder-slate-200 dark:placeholder-slate-800 w-auto min-w-[1ch] ${isRefund ? 'text-emerald-500 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-50'}`}
                   style={{ width: amountStr ? `${amountStr.length + 0.5}ch` : '4ch' }}
                 />
+              </div>
+
+              {/* Expense / Refund toggle */}
+              <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-full mt-3 w-48 mx-auto">
+                <button
+                  type="button"
+                  onClick={() => setIsRefund(false)}
+                  className={`flex-1 py-1.5 text-[10px] font-semibold rounded-full transition-all tracking-wide ${
+                    !isRefund
+                      ? 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-200 shadow-sm'
+                      : 'text-slate-400'
+                  }`}
+                >
+                  Expense
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsRefund(true)}
+                  className={`flex-1 py-1.5 text-[10px] font-semibold rounded-full transition-all tracking-wide ${
+                    isRefund
+                      ? 'bg-emerald-500 text-white shadow-sm'
+                      : 'text-slate-400'
+                  }`}
+                >
+                  Refund
+                </button>
               </div>
             </div>
 

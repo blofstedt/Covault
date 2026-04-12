@@ -64,8 +64,8 @@ const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
               </div>
             </div>
             <div className="text-right">
-              <span className="text-sm font-extrabold font-mono text-slate-700 dark:text-slate-200">
-                ${tx.amount.toFixed(2)}
+              <span className={`text-sm font-extrabold font-mono ${tx.amount < 0 ? 'text-emerald-500 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-200'}`}>
+                {tx.amount < 0 ? '+' : ''}${Math.abs(tx.amount).toFixed(2)}
               </span>
             </div>
           </button>
