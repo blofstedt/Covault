@@ -99,7 +99,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
               className={`${
                 expandedBudgetId
                   ? isExpanded
-                    ? 'absolute inset-0 flex flex-col min-h-0 overflow-hidden opacity-100'
+                    ? 'absolute top-0 right-4 bottom-4 left-4 flex flex-col min-h-0 overflow-hidden opacity-100'
                     : 'hidden'
                   : 'flex flex-col flex-1 opacity-100 scale-100 lg:min-h-[80px] transform-gpu will-change-[transform,opacity]'
               }`}
