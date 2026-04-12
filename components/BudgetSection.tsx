@@ -21,6 +21,7 @@ interface BudgetSectionProps {
   isSharedView: boolean;
   allBudgets?: BudgetCategory[];
   useCompactCollapsedStyles?: boolean;
+  onScrollProgress?: (progress: number) => void;
 }
 
 const BudgetSection: React.FC<BudgetSectionProps> = ({
@@ -34,6 +35,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
   isSharedView,
   allBudgets,
   useCompactCollapsedStyles = false,
+  onScrollProgress,
 }) => {
 
   const getAmountForThisBudget = (tx: Transaction) => {
@@ -233,6 +235,14 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
             overscrollBehaviorY: 'contain',
             overflowAnchor: 'none',
             touchAction: 'pan-y',
+          }}
+          onScroll={(e) => {
+            if (onScrollProgress) {
+              const el = e.currentTarget;
+              const maxScroll = el.scrollHeight - el.clientHeight;
+              const progress = maxScroll > 0 ? Math.min(1, el.scrollTop / Math.min(maxScroll, 150)) : 0;
+              onScrollProgress(progress);
+            }
           }}
           onClick={(e) => {
             // If clicking on the blank space (the div itself), collapse the budget
