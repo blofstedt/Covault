@@ -4,8 +4,12 @@ const STOP_PHRASES = [
   'verification code', 'security code', 'otp', 'passcode', '2fa', 'password', 'login', 'signed in', 'new device',
   'statement', 'e-statement', 'payment due', 'due date',
   'account balance', 'available balance', 'current balance', 'balance is',
-  'refund', 'reversal', 'credited', 'deposit', 'payroll', 'salary', 'interest', 'cashback', 'dividend', 'e-transfer received', 'etransfer received', 'transfer received', 'money received',
+  'deposit', 'payroll', 'salary', 'interest', 'dividend', 'e-transfer received', 'etransfer received', 'transfer received', 'money received',
   'available credit', 'credit limit',
+];
+
+const REFUND_PHRASES = [
+  'refund', 'reversal', 'credited', 'cashback',
 ];
 
 const GO_PHRASES = [
@@ -25,6 +29,7 @@ export interface ParsedNotification {
   vendorKey?: string;
   recurrence: 'One-time' | 'Biweekly' | 'Monthly';
   rejectionReason?: string;
+  isRefund?: boolean;
 }
 interface AmountCandidate {
   value: number;
@@ -243,14 +248,16 @@ export function parseNotificationText(text: string): ParsedNotification {
 
   const hasStop = STOP_PHRASES.some(p => tLower.includes(p));
   const hasGo = GO_PHRASES.some(p => tLower.includes(p));
+  const hasRefund = REFUND_PHRASES.some(p => tLower.includes(p));
   const amountCandidates = findAllAmounts(t);
   const hasDollarSign = /\$\d/.test(t);
 
+  // Refund notifications should be accepted, not rejected.
   // Reject if: no amounts at all, OR stop-phrase present with no go-phrase
   // and no dollar sign (banking apps often just say "$12.34 at Vendor")
+  // BUT: never reject if it's a refund notification with an amount
   const shouldReject = amountCandidates.length === 0
-    || (hasStop && !hasGo)
-    || (!hasGo && !hasDollarSign);
+    || (!hasRefund && ((hasStop && !hasGo) || (!hasGo && !hasDollarSign)));
 
   if (shouldReject) {
     return {
@@ -285,5 +292,6 @@ export function parseNotificationText(text: string): ParsedNotification {
     vendorDisplay: vendorDisplay || 'Unknown',
     vendorKey,
     recurrence,
+    isRefund: hasRefund,
   };
 }

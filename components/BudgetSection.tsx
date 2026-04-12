@@ -58,11 +58,11 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
   const spentWidth = Math.min(
     100,
-    budget.totalLimit > 0 ? (spentWithExternal / budget.totalLimit) * 100 : 0,
+    budget.totalLimit > 0 ? (Math.max(0, spentWithExternal) / budget.totalLimit) * 100 : 0,
   );
   const projectedWidth = Math.min(
     100 - spentWidth,
-    budget.totalLimit > 0 ? (projected / budget.totalLimit) * 100 : 0,
+    budget.totalLimit > 0 ? (Math.max(0, projected) / budget.totalLimit) * 100 : 0,
   );
 
   const budgetColor = getBudgetColor(budget.name);

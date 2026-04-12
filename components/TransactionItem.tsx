@@ -36,6 +36,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
   }, [transaction.date, transaction.is_projected]);
 
   const isOtherUser = isSharedView && transaction.userName !== currentUserName;
+  const isRefund = transaction.amount < 0;
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -51,7 +52,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
         onClick={() => onTap(transaction)}
         onKeyDown={handleKeyDown}
         className="relative z-10 p-5 rounded-[2rem] backdrop-blur-xl border shadow-sm ring-1 ring-inset ring-white/10 dark:ring-white/[0.03] bg-white/80 dark:bg-slate-900/80 border-slate-200/40 dark:border-slate-700/40 cursor-pointer hover:bg-white/90 dark:hover:bg-slate-900/90 active:scale-[0.98] transition-all duration-200 w-full text-left"
-        aria-label={`Transaction: ${transaction.vendor}, ${transaction.amount.toFixed(2)} dollars on ${parseLocalDate(transaction.date).toLocaleDateString()}`}
+        aria-label={`Transaction: ${transaction.vendor}, ${Math.abs(transaction.amount).toFixed(2)} dollars on ${parseLocalDate(transaction.date).toLocaleDateString()}`}
       >
         <div className="flex items-center justify-between">
           {/* Budget icon on the left for search results */}
@@ -113,6 +114,12 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
                     AI
                   </span>
                 )}
+
+                {isRefund && (
+                  <span className="text-[8px] font-bold text-emerald-500 dark:text-emerald-400 tracking-wide bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded-md">
+                    Refund
+                  </span>
+                )}
               </div>
 
               {/* Description */}
@@ -123,12 +130,14 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
           <div className="text-right">
             <div
               className={`text-lg font-black tracking-tighter ${
-                transaction.is_projected
-                  ? 'text-slate-300 dark:text-slate-700'
-                  : 'text-slate-500 dark:text-slate-50'
+                isRefund
+                  ? 'text-emerald-500 dark:text-emerald-400'
+                  : transaction.is_projected
+                    ? 'text-slate-300 dark:text-slate-700'
+                    : 'text-slate-500 dark:text-slate-50'
               }`}
             >
-              ${transaction.amount.toFixed(2)}
+              {isRefund ? '+' : ''}${Math.abs(transaction.amount).toFixed(2)}
             </div>
           </div>
         </div>

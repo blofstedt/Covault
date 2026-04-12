@@ -628,7 +628,9 @@ export async function processNotificationWithAI(
     ? parsed.vendorDisplay
     : null;
   const vendor = extractedVendor || input.fallbackVendor || null;
-  const amount = parsed.amount ?? input.fallbackAmount ?? 0;
+  const rawAmount = parsed.amount ?? input.fallbackAmount ?? 0;
+  // Refunds are stored as negative amounts so they naturally reduce budget totals
+  const amount = parsed.isRefund ? -Math.abs(rawAmount) : rawAmount;
 
   // ── Step 3b: Reject if no vendor could be identified ──
   if (!vendor) {

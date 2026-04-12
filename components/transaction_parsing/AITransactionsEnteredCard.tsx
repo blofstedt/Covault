@@ -77,8 +77,8 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
                   </div>
                 </div>
                 <div className="text-right shrink-0">
-                  <span className="text-sm font-extrabold font-mono text-slate-700 dark:text-slate-200">${tx.amount.toFixed(2)}</span>
-                  <p className="text-[8px] font-semibold tracking-wide text-emerald-600 dark:text-emerald-400 mt-0.5">AI</p>
+                  <span className={`text-sm font-extrabold font-mono ${tx.amount < 0 ? 'text-emerald-500 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-200'}`}>{tx.amount < 0 ? '+' : ''}${Math.abs(tx.amount).toFixed(2)}</span>
+                  <p className="text-[8px] font-semibold tracking-wide text-emerald-600 dark:text-emerald-400 mt-0.5">{tx.amount < 0 ? 'Refund' : 'AI'}</p>
                 </div>
               </button>
             );
