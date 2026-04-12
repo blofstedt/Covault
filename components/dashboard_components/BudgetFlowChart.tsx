@@ -612,24 +612,16 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
   const highlightedCatColor = highlightedBudgetName ? getBudgetColor(highlightedBudgetName, highlightedCatIndex) : null;
 
   // Apply band highlight/dim when a budget is expanded (separate from touch interaction)
-  // Snaps the highlighted band to fill the chart (preserving curve shape) when user scrolls
+  // Snaps the chart to show only the highlighted band (as if other categories don't exist)
   useEffect(() => {
     if (!svgRef.current) return;
     const svgElement = d3.select(svgRef.current);
-    const internals = chartInternalsRef.current;
 
     if (!highlightedBudgetName || activeCategory) {
-      // Reset to defaults when nothing highlighted or when user is touching the chart
       if (!activeCategory) {
         svgElement.selectAll('.bfc-band').transition().duration(300).attr('fill-opacity', 0.85);
         svgElement.selectAll('.bfc-band-stroke').transition().duration(300).style('stroke-opacity', 0.6);
-        // Reset any morphed paths
-        svgElement.selectAll('.bfc-band').each(function(this: any) {
-          const el = d3.select(this);
-          const orig = el.attr('data-original-d');
-          if (orig) el.transition().duration(400).attr('d', orig);
-        });
-        svgElement.selectAll('.bfc-band-stroke').each(function(this: any) {
+        svgElement.selectAll('.bfc-band, .bfc-band-stroke').each(function(this: any) {
           const el = d3.select(this);
           const orig = el.attr('data-original-d');
           if (orig) el.transition().duration(400).attr('d', orig);
@@ -641,101 +633,69 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     const expanded = highlightExpanded;
     const snapMs = 500;
     const easing = d3.easeCubicOut;
+    const internals = chartInternalsRef.current;
 
     // Dim/hide non-highlighted bands
     svgElement.selectAll('.bfc-band')
       .transition().duration(snapMs).ease(easing)
-      .attr('fill-opacity', (d: any) => {
-        if (d.key === highlightedBudgetName) return 0.95;
-        return expanded ? 0 : 0.15;
-      });
+      .attr('fill-opacity', (d: any) => d.key === highlightedBudgetName ? 0.95 : (expanded ? 0 : 0.15));
     svgElement.selectAll('.bfc-band-stroke')
       .transition().duration(snapMs).ease(easing)
-      .style('stroke-opacity', (_d: any, i: number) => {
-        if (categoryNames[i] === highlightedBudgetName) return 0.9;
-        return expanded ? 0 : 0.08;
-      });
+      .style('stroke-opacity', (_d: any, i: number) => categoryNames[i] === highlightedBudgetName ? 0.9 : (expanded ? 0 : 0.08));
 
-    if (internals && expanded) {
-      const { stackedData, x, y, innerHeight } = internals;
-      const highlightLayer = stackedData.find(l => l.key === highlightedBudgetName);
+    if (!internals) return;
+    const { x, y, innerHeight } = internals;
+
+    if (expanded) {
+      // Redraw the band from baseline (innerHeight) up to its own values — solo view
+      const soloArea = d3
+        .area<d3.SeriesPoint<MonthlyBudgetData>>()
+        .x((d) => x(d.data.month) || 0)
+        .y0(() => innerHeight)
+        .y1((d) => {
+          const val = d[1] - d[0]; // the category's own value
+          return y(val);
+        })
+        .curve(d3.curveCatmullRom.alpha(0.5));
+
+      const soloLine = d3
+        .line<d3.SeriesPoint<MonthlyBudgetData>>()
+        .x((d) => x(d.data.month) || 0)
+        .y((d) => {
+          const val = d[1] - d[0];
+          return y(val);
+        })
+        .curve(d3.curveCatmullRom.alpha(0.5));
+
+      const highlightLayer = internals.stackedData.find(l => l.key === highlightedBudgetName);
       if (highlightLayer) {
-        // Find min/max y values of the band to scale proportionally
-        let minY1 = Infinity, maxY0 = -Infinity;
-        for (const pt of highlightLayer) {
-          const py0 = y(pt[0]);
-          const py1 = y(pt[1]);
-          if (py1 < minY1) minY1 = py1; // highest point (y is inverted)
-          if (py0 > maxY0) maxY0 = py0; // lowest point
-        }
-        const bandHeight = maxY0 - minY1;
-        const targetHeight = innerHeight;
-        const scale = bandHeight > 0 ? targetHeight / bandHeight : 1;
-
-        // Build morphed area: stretch the curve proportionally to fill the chart
-        const morphedArea = d3
-          .area<d3.SeriesPoint<MonthlyBudgetData>>()
-          .x((d) => x(d.data.month) || 0)
-          .y0((d) => {
-            const orig = y(d[0]);
-            return (orig - minY1) * scale; // scale from top
-          })
-          .y1((d) => {
-            const orig = y(d[1]);
-            return (orig - minY1) * scale;
-          })
-          .curve(d3.curveCatmullRom.alpha(0.5));
-
-        const morphedPath = morphedArea(highlightLayer) || '';
+        const soloPath = soloArea(highlightLayer) || '';
+        const soloStrokePath = soloLine(highlightLayer) || '';
+        const highlightIdx = categoryNames.indexOf(highlightedBudgetName);
 
         svgElement.selectAll('.bfc-band')
           .filter((d: any) => d.key === highlightedBudgetName)
           .each(function(this: any) {
             const el = d3.select(this);
-            if (!el.attr('data-original-d')) {
-              el.attr('data-original-d', el.attr('d'));
-            }
-            el.transition().duration(snapMs).ease(easing).attr('d', morphedPath);
+            if (!el.attr('data-original-d')) el.attr('data-original-d', el.attr('d'));
+            el.transition().duration(snapMs).ease(easing).attr('d', soloPath);
           });
-
-        // Morph the top stroke to match
-        const morphedLine = d3
-          .line<d3.SeriesPoint<MonthlyBudgetData>>()
-          .x((d) => x(d.data.month) || 0)
-          .y((d) => {
-            const orig = y(d[1]);
-            return (orig - minY1) * scale;
-          })
-          .curve(d3.curveCatmullRom.alpha(0.5));
-
-        const morphedStrokePath = morphedLine(highlightLayer) || '';
-        const highlightIdx = categoryNames.indexOf(highlightedBudgetName);
 
         svgElement.selectAll('.bfc-band-stroke')
           .filter((_d: any, i: number) => i === highlightIdx)
           .each(function(this: any) {
             const el = d3.select(this);
-            if (!el.attr('data-original-d')) {
-              el.attr('data-original-d', el.attr('d'));
-            }
-            el.transition().duration(snapMs).ease(easing).attr('d', morphedStrokePath);
+            if (!el.attr('data-original-d')) el.attr('data-original-d', el.attr('d'));
+            el.transition().duration(snapMs).ease(easing).attr('d', soloStrokePath);
           });
       }
-    } else if (internals && !expanded) {
-      // Snap back to original paths
-      svgElement.selectAll('.bfc-band')
-        .filter((d: any) => d.key === highlightedBudgetName)
-        .each(function(this: any) {
-          const el = d3.select(this);
-          const orig = el.attr('data-original-d');
-          if (orig) el.transition().duration(snapMs).ease(easing).attr('d', orig);
-        });
-      svgElement.selectAll('.bfc-band-stroke')
-        .each(function(this: any) {
-          const el = d3.select(this);
-          const orig = el.attr('data-original-d');
-          if (orig) el.transition().duration(snapMs).ease(easing).attr('d', orig);
-        });
+    } else {
+      // Snap back to stacked position
+      svgElement.selectAll('.bfc-band, .bfc-band-stroke').each(function(this: any) {
+        const el = d3.select(this);
+        const orig = el.attr('data-original-d');
+        if (orig) el.transition().duration(snapMs).ease(easing).attr('d', orig);
+      });
     }
   }, [highlightedBudgetName, activeCategory, categoryNames, highlightExpanded]);
 
