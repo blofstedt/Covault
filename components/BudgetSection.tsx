@@ -171,12 +171,12 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
             {!isExpanded && (
               <span
-                className={`font-bold tracking-wide mt-1 transition-colors duration-300 ${
+                className={`tracking-wide mt-1 transition-colors duration-300 ${
                   isOver
-                    ? 'text-rose-500 dark:text-rose-400'
+                    ? 'text-slate-700 dark:text-slate-100 font-extrabold'
                     : isWarning
-                      ? 'text-amber-500 dark:text-amber-400'
-                      : 'text-slate-400 dark:text-slate-500'
+                      ? 'text-slate-500 dark:text-slate-300 font-bold'
+                      : 'text-slate-400 dark:text-slate-500 font-bold'
                 } ${useCompactCollapsedStyles ? 'text-[9px]' : 'text-[10px]'}`}
               >
                 {isDanger
