@@ -416,7 +416,7 @@ const Dashboard: React.FC<Props> = ({
             onTransactionTap={setSelectedTx}
           />
         ) : (
-          <div className="flex-1 min-h-0 flex flex-col lg:px-6">
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden lg:px-6">
             {/* Chart: full width on desktop */}
             <div
               className={`transition-all duration-500 ease-in-out overflow-hidden shrink-0 ${
