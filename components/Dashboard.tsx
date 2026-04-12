@@ -76,7 +76,6 @@ const Dashboard: React.FC<Props> = ({
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [remoteVendorHistory, setRemoteVendorHistory] = useState<VendorHistoryItem[]>([]);
   const [expandedBudgets, setExpandedBudgets] = useState<Set<string>>(new Set());
-  const hasExpandedBudget = expandedBudgets.size > 0;
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const budgetRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -375,20 +374,16 @@ const Dashboard: React.FC<Props> = ({
   return (
     <>
       <PageShell showGlow>
-        {/* Header: cog top-right on all sizes — collapse when budget expanded */}
+        {/* Header: cog top-right on all sizes */}
         <div
-          className={`shrink-0 transition-all duration-500 ease-in-out overflow-hidden ${
-            hasExpandedBudget ? 'max-h-0 opacity-0' : 'max-h-24 opacity-100'
-          }`}
+          className="shrink-0 transition-all duration-500 ease-in-out overflow-hidden max-h-24 opacity-100"
         >
           <DashboardHeader onOpenSettings={() => setShowSettings(true)} />
         </div>
 
-        {/* Balance + search: always centered — collapse when budget expanded */}
+        {/* Balance + search: always centered */}
         <div
-          className={`shrink-0 transition-all duration-500 ease-in-out overflow-hidden ${
-            hasExpandedBudget ? 'max-h-0 opacity-0' : 'max-h-40 opacity-100'
-          }`}
+          className="shrink-0 transition-all duration-500 ease-in-out overflow-hidden max-h-40 opacity-100"
         >
           <DashboardBalanceSection
             isSharedAccount={!state.user?.budgetingSolo}
@@ -419,12 +414,8 @@ const Dashboard: React.FC<Props> = ({
           <div className="flex-1 min-h-0 flex flex-col overflow-hidden lg:px-6">
             {/* Chart: full width on desktop */}
             <div
-              className={`transition-all duration-500 ease-in-out overflow-hidden shrink-0 ${
-                hasExpandedBudget
-                  ? 'max-h-0 opacity-0 -translate-y-2 pointer-events-none mb-0 lg:max-h-0 lg:opacity-0'
-                  : 'max-h-[300px] opacity-100 translate-y-0 mb-2 lg:max-h-none lg:mb-3'
-              }`}
-              aria-hidden={hasExpandedBudget}
+              className="transition-all duration-500 ease-in-out overflow-hidden shrink-0 max-h-[300px] opacity-100 translate-y-0 mb-2 lg:max-h-none lg:mb-3"
+              aria-hidden={false}
             >
               <PremiumGate hasPremium={true}>
                 <BudgetFlowChart
