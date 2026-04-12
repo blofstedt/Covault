@@ -66,6 +66,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     y: d3.ScaleLinear<number, number>;
     innerHeight: number;
   } | null>(null);
+  const highlightedRef = useRef<string | null>(null);
   const safeBudgets = Array.isArray(budgets) ? budgets : [];
   const safeTransactions = useMemo(() => {
     const txs = Array.isArray(transactions) ? transactions : [];
@@ -363,11 +364,13 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .text('INCOME');
 
     // Month labels on the x-axis
-    chartData.forEach((d) => {
+    chartData.forEach((d, idx) => {
       const xPos = x(d.month) || 0;
+      const isFirst = idx === 0;
+      const isLast = idx === chartData.length - 1;
       svg
         .append('text')
-        .attr('x', xPos)
+        .attr('x', isFirst ? xPos + 6 : isLast ? xPos - 6 : xPos)
         .attr('y', innerHeight + 14)
         .attr('text-anchor', 'middle')
         .attr('font-size', '9px')
@@ -474,6 +477,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
     // Interaction handler for mouse events
     const handleInteraction = (event: any) => {
+      if (highlightedRef.current) return;
       const [mx, my] = d3.pointer(event, svg.node());
       setScreenCoords({ x: event.clientX, y: event.clientY });
       const domain = x.domain();
@@ -495,6 +499,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
     // Touch event handlers for drag gestures
     const handleTouchStart = (event: any) => {
+      if (highlightedRef.current) return;
       event.preventDefault();
       const touch = event.touches[0] || event.changedTouches[0];
       setScreenCoords({ x: touch.clientX, y: touch.clientY });
@@ -515,6 +520,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     };
 
     const handleTouchMove = (event: any) => {
+      if (highlightedRef.current) return;
       event.preventDefault();
       const touch = event.touches[0] || event.changedTouches[0];
       setScreenCoords({ x: touch.clientX, y: touch.clientY });
@@ -583,6 +589,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
   // ── Highlighted budget band (when a budget is expanded below) ──
   const highlightedBudgetName = highlightedBudgetId ? (budgetNameById.get(highlightedBudgetId) || null) : null;
+  highlightedRef.current = highlightedBudgetName;
 
   // Compute current-month totals for the highlighted budget
   const highlightedTotals = useMemo(() => {
