@@ -17,25 +17,48 @@ const DashboardBalanceSection: React.FC<DashboardBalanceSectionProps> = ({
   onSearchQueryChange,
   onSearchOpenChange,
 }) => {
+  const isNegative = remainingMoney < 0;
+
   return (
     <div
       id="balance-header"
       className="flex flex-col items-center justify-center pt-0 pb-2 shrink-0 relative"
     >
+      {/* Soft glow behind balance number */}
+      <div
+        className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-24 rounded-full blur-3xl opacity-20 transition-colors duration-700 pointer-events-none ${
+          isNegative ? 'bg-rose-400' : 'bg-emerald-400'
+        }`}
+      />
+
       <div className="text-center z-10 animate-nest">
-        <span className="text-[10px] font-semibold tracking-wide mb-1 block transition-colors duration-700 text-slate-400 dark:text-slate-500">
+        <span className="text-[10px] font-semibold tracking-widest uppercase mb-1.5 block transition-colors duration-700 text-slate-400 dark:text-slate-500">
           {isSharedAccount ? 'Our Remaining Balance' : 'Remaining Balance'}
         </span>
         <div className="flex items-baseline justify-center space-x-1 transition-colors duration-700">
-          <span className="text-sm font-bold opacity-30 text-slate-500 dark:text-slate-50">
+          <span
+            className="text-2xl font-bold leading-none"
+            style={{
+              background: isNegative
+                ? 'linear-gradient(135deg, #f43f5e, #e11d48)'
+                : 'linear-gradient(135deg, #34d399, #14b8a6)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+            }}
+          >
             $
           </span>
           <span
-            className={`text-4xl font-extrabold font-mono tracking-tighter leading-none transition-colors duration-700 ${
-              remainingMoney < 0
-                ? 'text-rose-500'
-                : 'text-slate-600 dark:text-slate-50'
-            }`}
+            className="text-5xl font-extrabold font-mono tracking-tighter leading-none transition-all duration-700"
+            style={{
+              background: isNegative
+                ? 'linear-gradient(135deg, #f43f5e, #e11d48)'
+                : 'linear-gradient(135deg, #34d399, #14b8a6)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+            }}
           >
             {remainingMoney.toLocaleString()}
           </span>

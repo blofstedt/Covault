@@ -13,11 +13,24 @@ const REFUND_PHRASES = [
 ];
 
 const GO_PHRASES = [
-  'spend', 'spent', 'purchase', 'purchased', 'debit', 'debit purchase', 'pos', 'tap', 'tapped', 'charged', 'charge', 'authorized', 'approved',
+  'spend', 'spent', 'purchase', 'purchased', 'debit', 'debit purchase', 'pos', 'tap', 'tapped', 'charged', 'charge',
   'payment', 'bill payment', 'bill paid', 'paid', 'payment to',
   'transfer to', 'sent to', 'e-transfer sent', 'etransfer sent', 'interac e-transfer sent',
   'cost', 'costs', 'pre-authorized debit', 'preauthorized debit',
   'withdrawal', 'atm withdrawal',
+];
+
+/** Weak GO phrases — ambiguous words that can mean either pre-auth or settled. */
+const WEAK_GO_PHRASES = ['authorized', 'approved'];
+
+const PRE_AUTH_PHRASES = [
+  'authorization hold', 'pre-authorization', 'preauthorization',
+  'temporary hold', 'hold placed', 'pending transaction',
+  'authorization pending', 'pending charge', 'pending purchase',
+];
+
+const SETTLEMENT_PHRASES = [
+  'posted', 'settled', 'cleared', 'processed', 'completed',
 ];
 
 const amountRegex = /(?<!\w)(?:\$|cad\s*)\s*([0-9]{1,3}(?:,[0-9]{3})*|[0-9]+)(?:[.,]([0-9]{1,2}))?(?!\w)|(?<!\w)([0-9]{1,3}(?:,[0-9]{3})*|[0-9]+)(?:\.([0-9]{2}))(?!\w)/gi;
@@ -30,6 +43,7 @@ export interface ParsedNotification {
   recurrence: 'One-time' | 'Biweekly' | 'Monthly';
   rejectionReason?: string;
   isRefund?: boolean;
+  isPreAuth?: boolean;
 }
 interface AmountCandidate {
   value: number;
@@ -247,10 +261,30 @@ export function parseNotificationText(text: string): ParsedNotification {
   const tLower = collapseWhitespace(t.toLowerCase());
 
   const hasStop = STOP_PHRASES.some(p => tLower.includes(p));
-  const hasGo = GO_PHRASES.some(p => tLower.includes(p));
+  const hasStrongGo = GO_PHRASES.some(p => tLower.includes(p));
+  const hasWeakGo = WEAK_GO_PHRASES.some(p => tLower.includes(p));
+  const hasGo = hasStrongGo || hasWeakGo;
   const hasRefund = REFUND_PHRASES.some(p => tLower.includes(p));
+  const hasPreAuth = PRE_AUTH_PHRASES.some(p => tLower.includes(p));
+  const hasSettlement = SETTLEMENT_PHRASES.some(p => tLower.includes(p));
   const amountCandidates = findAllAmounts(t);
   const hasDollarSign = /\$\d/.test(t);
+
+  // Pre-authorization filtering:
+  // If notification matches a pre-auth phrase OR only has weak GO (authorized/approved)
+  // without any strong GO or settlement phrase, reject it as a pre-auth hold.
+  // A dollar sign alone doesn't override this — "Authorized $50 at Starbucks" is still pre-auth.
+  const isLikelyPreAuth = !hasRefund && !hasSettlement && !hasStrongGo
+    && (hasPreAuth || hasWeakGo);
+
+  if (isLikelyPreAuth && amountCandidates.length > 0) {
+    return {
+      isOutgoing: false,
+      recurrence: 'One-time',
+      rejectionReason: 'Pre-authorization hold (not yet settled)',
+      isPreAuth: true,
+    };
+  }
 
   // Refund notifications should be accepted, not rejected.
   // Reject if: no amounts at all, OR stop-phrase present with no go-phrase
