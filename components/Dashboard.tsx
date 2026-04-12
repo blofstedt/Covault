@@ -485,6 +485,12 @@ const Dashboard: React.FC<Props> = ({
           </div>
         )}
 
+        <div
+          aria-hidden="true"
+          className="shrink-0"
+          style={{ height: 'calc(env(safe-area-inset-bottom, 0px) + 5.75rem)' }}
+        />
+
         <DashboardBottomBar
           onGoHome={() => setShowParsing(false)}
           onAddTransaction={() => setShowTransactionForm(true)}
