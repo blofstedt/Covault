@@ -338,7 +338,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .attr('stroke-dasharray', '2 4');
 
     // "INCOME" chip label on the threshold line
-    const labelX = innerWidth - 4;
+    const labelX = innerWidth - 40;
     const labelY = budgetY - 6;
     svg
       .append('rect')
@@ -636,13 +636,19 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
     if (!highlightedBudgetName || activeCategory) {
       if (!activeCategory) {
-        // Reset everything to defaults
-        svgElement.selectAll('.bfc-band').transition().duration(snapMs).ease(easing).attr('fill-opacity', 0.85);
-        svgElement.selectAll('.bfc-band-stroke').transition().duration(snapMs).ease(easing).style('stroke-opacity', 0.6);
-        svgElement.selectAll('.bfc-band, .bfc-band-stroke').each(function(this: any) {
+        // Reset everything to defaults — combine opacity + path in one transition
+        // to avoid D3 transition conflicts that leave bands invisible
+        svgElement.selectAll('.bfc-band').each(function(this: any) {
           const el = d3.select(this);
           const orig = el.attr('data-original-d');
-          if (orig) el.transition().duration(snapMs).ease(easing).attr('d', orig);
+          const t = el.transition().duration(snapMs).ease(easing).attr('fill-opacity', 0.85);
+          if (orig) t.attr('d', orig);
+        });
+        svgElement.selectAll('.bfc-band-stroke').each(function(this: any) {
+          const el = d3.select(this);
+          const orig = el.attr('data-original-d');
+          const t = el.transition().duration(snapMs).ease(easing).style('stroke-opacity', 0.6);
+          if (orig) t.attr('d', orig);
         });
         // Restore savings & income
         svgElement.select('.bfc-savings').transition().duration(snapMs).ease(easing).attr('fill-opacity', 0.6);
