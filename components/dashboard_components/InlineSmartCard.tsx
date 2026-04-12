@@ -191,8 +191,8 @@ const InlineSmartCard: React.FC<InlineSmartCardProps> = ({ cards, onDismiss, onA
       : 'translateX(0)';
   const queuedCards = activeCards.slice(1, 3);
   const cardThemeClass = theme === 'dark'
-    ? 'bg-slate-900/60 border-slate-800/50'
-    : 'bg-white/60 border-slate-200/40';
+    ? 'bg-slate-900 border-slate-800/50'
+    : 'bg-white border-slate-200/40';
 
   return (
     <div className="px-4 mb-2">
