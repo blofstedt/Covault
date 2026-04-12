@@ -375,28 +375,20 @@ const Dashboard: React.FC<Props> = ({
     <>
       <PageShell showGlow>
         {/* Header: cog top-right on all sizes */}
-        <div
-          className="shrink-0 transition-all duration-500 ease-in-out overflow-hidden max-h-24 opacity-100"
-        >
-          <DashboardHeader onOpenSettings={() => setShowSettings(true)} />
-        </div>
+        <DashboardHeader onOpenSettings={() => setShowSettings(true)} />
 
         {/* Balance + search: always centered */}
-        <div
-          className="shrink-0 transition-all duration-500 ease-in-out overflow-hidden max-h-40 opacity-100"
-        >
-          <DashboardBalanceSection
-            isSharedAccount={!state.user?.budgetingSolo}
-            remainingMoney={remainingMoney}
-            searchQuery={searchQuery}
-            isSearchOpen={isSearchOpen}
-            onSearchQueryChange={(value) => {
-              setSearchQuery(value);
-              if (value.trim()) setIsSearchOpen(true);
-            }}
-            onSearchOpenChange={setIsSearchOpen}
-          />
-        </div>
+        <DashboardBalanceSection
+          isSharedAccount={!state.user?.budgetingSolo}
+          remainingMoney={remainingMoney}
+          searchQuery={searchQuery}
+          isSearchOpen={isSearchOpen}
+          onSearchQueryChange={(value) => {
+            setSearchQuery(value);
+            if (value.trim()) setIsSearchOpen(true);
+          }}
+          onSearchOpenChange={setIsSearchOpen}
+        />
 
         {searchQuery.trim() ? (
           <SearchResults
