@@ -423,6 +423,7 @@ const Dashboard: React.FC<Props> = ({
                   transactions={chartTransactions}
                   monthlyIncome={state.user?.monthlyIncome || 0}
                   theme={state.settings.theme}
+                  highlightedBudgetId={expandedBudgets.size > 0 ? Array.from(expandedBudgets)[0] : null}
                 />
               </PremiumGate>
             </div>

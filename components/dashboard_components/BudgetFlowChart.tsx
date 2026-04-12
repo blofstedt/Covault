@@ -9,6 +9,7 @@ interface BudgetFlowChartProps {
   transactions: Transaction[];
   monthlyIncome?: number;
   theme?: 'light' | 'dark';
+  highlightedBudgetId?: string | null;
 }
 
 interface MonthlyBudgetData {
@@ -48,7 +49,7 @@ function getWindowedMonthKeys(monthKeys: string[], currentMonthKey: string, maxM
   return monthKeys.slice(start, start + maxMonths);
 }
 
-const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions, monthlyIncome = 0, theme = 'light' }) => {
+const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions, monthlyIncome = 0, theme = 'light', highlightedBudgetId = null }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -567,6 +568,61 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     ? (theme === 'dark' ? '#ffffff' : '#94a3b8')
     : activeCategory ? getBudgetColor(activeCategory, activeCatIndex) : null;
 
+  // ── Highlighted budget band (when a budget is expanded below) ──
+  const highlightedBudgetName = highlightedBudgetId ? (budgetNameById.get(highlightedBudgetId) || null) : null;
+
+  // Compute current-month totals for the highlighted budget
+  const highlightedTotals = useMemo(() => {
+    if (!highlightedBudgetId) return null;
+    const budget = safeBudgets.find(b => b.id === highlightedBudgetId);
+    if (!budget) return null;
+
+    const now = new Date();
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    let spent = 0;
+    let projected = 0;
+    for (const tx of safeTransactions) {
+      if (tx.budget_id !== highlightedBudgetId) continue;
+      const rawDate = tx.date;
+      if (!rawDate || rawDate.slice(0, 7) !== currentMonthKey) continue;
+      const amt = Number(tx.amount) || 0;
+      if (tx.is_projected) {
+        projected += amt;
+      } else {
+        spent += amt;
+      }
+    }
+
+    return { spent, projected, limit: budget.totalLimit };
+  }, [highlightedBudgetId, safeBudgets, safeTransactions]);
+
+  const highlightedCatIndex = highlightedBudgetName ? categoryNames.indexOf(highlightedBudgetName) : -1;
+  const highlightedCatColor = highlightedBudgetName ? getBudgetColor(highlightedBudgetName, highlightedCatIndex) : null;
+
+  // Apply band highlight/dim when a budget is expanded (separate from touch interaction)
+  useEffect(() => {
+    if (!svgRef.current) return;
+    const svgElement = d3.select(svgRef.current);
+
+    if (!highlightedBudgetName || activeCategory) {
+      // Reset to defaults when nothing highlighted or when user is touching the chart
+      if (!activeCategory) {
+        svgElement.selectAll('.bfc-band').transition().duration(300).attr('fill-opacity', 0.85);
+        svgElement.selectAll('.bfc-band-stroke').transition().duration(300).style('stroke-opacity', 0.6);
+      }
+      return;
+    }
+
+    // Dim all bands except the highlighted one
+    svgElement.selectAll('.bfc-band')
+      .transition().duration(300)
+      .attr('fill-opacity', (d: any) => d.key === highlightedBudgetName ? 0.95 : 0.15);
+    svgElement.selectAll('.bfc-band-stroke')
+      .transition().duration(300)
+      .style('stroke-opacity', (_d: any, i: number) => categoryNames[i] === highlightedBudgetName ? 0.9 : 0.08);
+  }, [highlightedBudgetName, activeCategory, categoryNames]);
+
   // No data fallback
   if (chartData.length === 0) {
     return (
@@ -696,6 +752,57 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
                 className="w-full h-auto overflow-visible cursor-crosshair relative z-10 select-none"
                 style={{ touchAction: 'none' }}
               />
+
+              {/* Highlighted budget totals overlay */}
+              {highlightedBudgetName && highlightedTotals && !activeCategory && (
+                <div className="absolute top-2 left-0 right-0 z-20 flex justify-center pointer-events-none transition-opacity duration-300">
+                  <div
+                    className={`flex items-center gap-3 px-3 py-1.5 rounded-full backdrop-blur-xl text-[10px] font-semibold ${
+                      theme === 'dark'
+                        ? 'bg-slate-800/90 shadow-lg shadow-black/30'
+                        : 'bg-white/90 shadow-md shadow-slate-200/60'
+                    }`}
+                    style={{
+                      borderWidth: '1.5px',
+                      borderStyle: 'solid',
+                      borderColor: highlightedCatColor
+                        ? `${highlightedCatColor}40`
+                        : theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
+                    }}
+                  >
+                    <span
+                      className="tracking-wide truncate max-w-[80px]"
+                      style={{ color: highlightedCatColor || undefined }}
+                    >
+                      {highlightedBudgetName}
+                    </span>
+                    <span className={`${theme === 'dark' ? 'text-white/30' : 'text-slate-300'}`}>|</span>
+                    <div className="flex items-center gap-1">
+                      <span className={theme === 'dark' ? 'text-white/40' : 'text-slate-400'}>Spent</span>
+                      <span className={theme === 'dark' ? 'text-white' : 'text-slate-900'}>${highlightedTotals.spent.toFixed(0)}</span>
+                    </div>
+                    {highlightedTotals.projected > 0 && (
+                      <>
+                        <span className={`${theme === 'dark' ? 'text-white/30' : 'text-slate-300'}`}>|</span>
+                        <div className="flex items-center gap-1">
+                          <span className={theme === 'dark' ? 'text-white/40' : 'text-slate-400'}>Proj</span>
+                          <span className={theme === 'dark' ? 'text-white/60' : 'text-slate-500'}>${highlightedTotals.projected.toFixed(0)}</span>
+                        </div>
+                      </>
+                    )}
+                    <span className={`${theme === 'dark' ? 'text-white/30' : 'text-slate-300'}`}>|</span>
+                    <div className="flex items-center gap-1">
+                      <span className={theme === 'dark' ? 'text-white/40' : 'text-slate-400'}>Limit</span>
+                      <span
+                        className="font-bold"
+                        style={{ color: highlightedCatColor || (theme === 'dark' ? '#ffffff' : '#0f172a') }}
+                      >
+                        ${highlightedTotals.limit.toFixed(0)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
