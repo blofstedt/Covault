@@ -241,7 +241,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
             }
           }}
         >
-          <div className="py-6 space-y-4">
+          <div className="pt-1 pb-6 space-y-4">
             <div className="flex items-center justify-between px-2">
               <span className="text-[10px] font-semibold tracking-wide transition-colors duration-300 text-slate-400 dark:text-slate-500">
                 {isSharedView ? 'Our Activity' : 'Activity'}
