@@ -218,7 +218,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
     const stackedData = stack(chartData);
 
-    const x = d3.scalePoint().domain(chartData.map((d) => d.month)).range([0, innerWidth]).padding(0.5);
+    const x = d3.scalePoint().domain(chartData.map((d) => d.month)).range([0, innerWidth]).padding(0.1);
 
     const maxTotal = d3.max(chartData, (d) => d.total) || 1;
     const yMax = Math.max(maxTotal, thresholdValue) * 1.15;
@@ -850,6 +850,13 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         <div ref={containerRef} className="w-full relative">
           <div className="rounded-2xl p-0.5 overflow-hidden">
             <div className="bg-white dark:bg-slate-900/80 rounded-2xl overflow-hidden relative">
+              {/* Edge fade overlays */}
+              <div className="absolute left-0 top-0 bottom-0 w-6 z-20 pointer-events-none rounded-l-2xl" style={{ background: 'linear-gradient(to right, var(--chart-bg), transparent)' }} />
+              <div className="absolute right-0 top-0 bottom-0 w-6 z-20 pointer-events-none rounded-r-2xl" style={{ background: 'linear-gradient(to left, var(--chart-bg), transparent)' }} />
+              <style>{`
+                :root { --chart-bg: #ffffff; }
+                .dark { --chart-bg: rgba(15, 23, 42, 0.8); }
+              `}</style>
               <svg
                 ref={svgRef}
                 className="w-full h-auto overflow-visible cursor-crosshair relative z-10 select-none"
