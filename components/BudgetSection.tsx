@@ -226,9 +226,8 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
       {/* EXPANDED TRANSACTIONS LIST */}
       {isExpanded && (
         <div 
-          className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-6 pb-12 relative z-10"
+          className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-6 pb-4 relative z-10"
           style={{
-            animation: 'budgetContentReveal 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards',
             WebkitOverflowScrolling: 'touch',
             overscrollBehavior: 'contain',
           }}
@@ -239,7 +238,12 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
             }
           }}
         >
-          <div className="py-6 space-y-4">
+          <div
+            className="py-6 space-y-4"
+            style={{
+              animation: 'budgetContentReveal 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards',
+            }}
+          >
             <div className="flex items-center justify-between px-2">
               <span className="text-[10px] font-semibold tracking-wide transition-colors duration-300 text-slate-400 dark:text-slate-500">
                 {isSharedView ? 'Our Activity' : 'Activity'}
