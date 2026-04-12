@@ -36,7 +36,8 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
   }, [transaction.date, transaction.is_projected]);
 
   const isOtherUser = isSharedView && transaction.userName !== currentUserName;
-  const isRefund = transaction.amount < 0;
+  const txAmount = typeof transaction.amount === 'number' ? transaction.amount : Number(transaction.amount) || 0;
+  const isRefund = txAmount < 0;
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -52,7 +53,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
         onClick={() => onTap(transaction)}
         onKeyDown={handleKeyDown}
         className="relative z-10 p-5 rounded-[2rem] backdrop-blur-xl border shadow-sm ring-1 ring-inset ring-white/10 dark:ring-white/[0.03] bg-white/80 dark:bg-slate-900/80 border-slate-200/40 dark:border-slate-700/40 cursor-pointer hover:bg-white/90 dark:hover:bg-slate-900/90 active:scale-[0.98] transition-all duration-200 w-full text-left"
-        aria-label={`Transaction: ${transaction.vendor}, ${Math.abs(transaction.amount).toFixed(2)} dollars on ${parseLocalDate(transaction.date).toLocaleDateString()}`}
+        aria-label={`Transaction: ${transaction.vendor}, ${Math.abs(txAmount).toFixed(2)} dollars on ${parseLocalDate(transaction.date).toLocaleDateString()}`}
       >
         <div className="flex items-center justify-between">
           {/* Budget icon on the left for search results */}
@@ -137,7 +138,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
                     : 'text-slate-500 dark:text-slate-50'
               }`}
             >
-              {isRefund ? '+' : ''}${Math.abs(transaction.amount).toFixed(2)}
+              {isRefund ? '+' : ''}${Math.abs(txAmount).toFixed(2)}
             </div>
           </div>
         </div>

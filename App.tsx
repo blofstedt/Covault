@@ -4,6 +4,7 @@ import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
 import Onboarding from './components/Onboarding';
 import FullScreenLoader from './components/FullScreenLoader';
+import ErrorBoundary from './components/ErrorBoundary';
 import type { AppState, BudgetCategory, Transaction, PendingTransaction } from './types';
 import { supabase } from './lib/supabase';
 import { useAuthState, AuthStatus } from './lib/hooks/useAuthState';
@@ -265,6 +266,7 @@ const App: React.FC = () => {
   }
 
   return (
+    <ErrorBoundary>
     <div className="min-h-screen w-full bg-slate-50 dark:bg-slate-950 overflow-hidden relative flex flex-col transition-colors duration-300">
       {authState === 'unauthenticated' && <Auth onSignIn={() => setAuthState('authenticated')} />}
       {authState === 'onboarding' && <Onboarding onComplete={handleOnboardingComplete} />}
@@ -289,6 +291,7 @@ const App: React.FC = () => {
         />
       )}
     </div>
+    </ErrorBoundary>
   );
 };
 
