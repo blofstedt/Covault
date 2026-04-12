@@ -63,7 +63,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
   return (
     <div
       ref={scrollContainerRef}
-      className={`relative flex-1 min-h-0 mt-1 px-4 pb-4 no-scrollbar ${
+      className={`relative flex-1 min-h-0 mt-1 px-4 no-scrollbar ${
         expandedBudgetId
           ? 'overflow-hidden'
           : 'flex flex-col lg:grid lg:grid-cols-2 lg:auto-rows-fr gap-2 overflow-y-auto scroll-smooth transition-all duration-500'
@@ -99,7 +99,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
               className={`${
                 expandedBudgetId
                   ? isExpanded
-                    ? 'absolute top-0 right-4 bottom-4 left-4 flex flex-col min-h-0 overflow-hidden opacity-100'
+                    ? 'absolute top-0 right-4 bottom-0 left-4 flex flex-col min-h-0 overflow-hidden opacity-100'
                     : 'hidden'
                   : 'flex flex-col flex-1 opacity-100 scale-100 lg:min-h-[80px] transform-gpu will-change-[transform,opacity]'
               }`}
