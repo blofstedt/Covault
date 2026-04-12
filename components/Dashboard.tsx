@@ -76,7 +76,7 @@ const Dashboard: React.FC<Props> = ({
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [remoteVendorHistory, setRemoteVendorHistory] = useState<VendorHistoryItem[]>([]);
   const [expandedBudgets, setExpandedBudgets] = useState<Set<string>>(new Set());
-  const [budgetScrollProgress, setBudgetScrollProgress] = useState(0);
+  const [budgetScrolled, setBudgetScrolled] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const budgetRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -175,7 +175,7 @@ const Dashboard: React.FC<Props> = ({
   );
 
   const toggleExpand = (id: string) => {
-    setBudgetScrollProgress(0);
+    setBudgetScrolled(false);
     setExpandedBudgets(prev => {
       if (prev.has(id)) {
         return new Set();
@@ -418,7 +418,7 @@ const Dashboard: React.FC<Props> = ({
                   monthlyIncome={state.user?.monthlyIncome || 0}
                   theme={state.settings.theme}
                   highlightedBudgetId={expandedBudgets.size > 0 ? Array.from(expandedBudgets)[0] : null}
-                  highlightMorphProgress={budgetScrollProgress}
+                  highlightExpanded={budgetScrolled}
                 />
               </PremiumGate>
             </div>
@@ -464,7 +464,7 @@ const Dashboard: React.FC<Props> = ({
               onToggleExpand={toggleExpand}
               onTransactionTap={setSelectedTx}
               onUpdateBudget={onUpdateBudget}
-              onBudgetScrollProgress={setBudgetScrollProgress}
+              onBudgetScrollProgress={setBudgetScrolled}
             />
           </div>
         )}

@@ -22,7 +22,7 @@ interface DashboardBudgetSectionsListProps {
   onToggleExpand?: (id: string) => void;
   onTransactionTap: (tx: Transaction) => void;
   onUpdateBudget: (b: BudgetCategory) => void;
-  onBudgetScrollProgress?: (progress: number) => void;
+  onBudgetScrollProgress?: (scrolled: boolean) => void;
 }
 
 const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = ({

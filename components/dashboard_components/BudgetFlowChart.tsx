@@ -10,7 +10,7 @@ interface BudgetFlowChartProps {
   monthlyIncome?: number;
   theme?: 'light' | 'dark';
   highlightedBudgetId?: string | null;
-  highlightMorphProgress?: number;
+  highlightExpanded?: boolean;
 }
 
 interface MonthlyBudgetData {
@@ -50,7 +50,7 @@ function getWindowedMonthKeys(monthKeys: string[], currentMonthKey: string, maxM
   return monthKeys.slice(start, start + maxMonths);
 }
 
-const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions, monthlyIncome = 0, theme = 'light', highlightedBudgetId = null, highlightMorphProgress = 0 }) => {
+const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions, monthlyIncome = 0, theme = 'light', highlightedBudgetId = null, highlightExpanded = false }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -612,7 +612,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
   const highlightedCatColor = highlightedBudgetName ? getBudgetColor(highlightedBudgetName, highlightedCatIndex) : null;
 
   // Apply band highlight/dim when a budget is expanded (separate from touch interaction)
-  // Morphs the highlighted band to fill the full chart as user scrolls down
+  // Snaps the highlighted band to fill the chart (preserving curve shape) when user scrolls
   useEffect(() => {
     if (!svgRef.current) return;
     const svgElement = d3.select(svgRef.current);
@@ -624,51 +624,65 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         svgElement.selectAll('.bfc-band').transition().duration(300).attr('fill-opacity', 0.85);
         svgElement.selectAll('.bfc-band-stroke').transition().duration(300).style('stroke-opacity', 0.6);
         // Reset any morphed paths
-        if (internals) {
-          svgElement.selectAll('.bfc-band').each(function(this: any) {
-            const el = d3.select(this);
-            const orig = el.attr('data-original-d');
-            if (orig) el.transition().duration(300).attr('d', orig);
-          });
-        }
+        svgElement.selectAll('.bfc-band').each(function(this: any) {
+          const el = d3.select(this);
+          const orig = el.attr('data-original-d');
+          if (orig) el.transition().duration(400).attr('d', orig);
+        });
+        svgElement.selectAll('.bfc-band-stroke').each(function(this: any) {
+          const el = d3.select(this);
+          const orig = el.attr('data-original-d');
+          if (orig) el.transition().duration(400).attr('d', orig);
+        });
       }
       return;
     }
 
-    const morphT = highlightMorphProgress;
-    const transitionMs = morphT > 0 ? 60 : 300;
+    const expanded = highlightExpanded;
+    const snapMs = 500;
+    const easing = d3.easeCubicOut;
 
-    // Dim non-highlighted bands (fade toward 0 as morph progresses)
+    // Dim/hide non-highlighted bands
     svgElement.selectAll('.bfc-band')
-      .transition().duration(transitionMs)
+      .transition().duration(snapMs).ease(easing)
       .attr('fill-opacity', (d: any) => {
         if (d.key === highlightedBudgetName) return 0.95;
-        return Math.max(0, 0.15 * (1 - morphT));
+        return expanded ? 0 : 0.15;
       });
     svgElement.selectAll('.bfc-band-stroke')
-      .transition().duration(transitionMs)
+      .transition().duration(snapMs).ease(easing)
       .style('stroke-opacity', (_d: any, i: number) => {
         if (categoryNames[i] === highlightedBudgetName) return 0.9;
-        return Math.max(0, 0.08 * (1 - morphT));
+        return expanded ? 0 : 0.08;
       });
 
-    // Morph highlighted band to fill entire chart area
-    if (internals && morphT > 0) {
+    if (internals && expanded) {
       const { stackedData, x, y, innerHeight } = internals;
       const highlightLayer = stackedData.find(l => l.key === highlightedBudgetName);
       if (highlightLayer) {
+        // Find min/max y values of the band to scale proportionally
+        let minY1 = Infinity, maxY0 = -Infinity;
+        for (const pt of highlightLayer) {
+          const py0 = y(pt[0]);
+          const py1 = y(pt[1]);
+          if (py1 < minY1) minY1 = py1; // highest point (y is inverted)
+          if (py0 > maxY0) maxY0 = py0; // lowest point
+        }
+        const bandHeight = maxY0 - minY1;
+        const targetHeight = innerHeight;
+        const scale = bandHeight > 0 ? targetHeight / bandHeight : 1;
+
+        // Build morphed area: stretch the curve proportionally to fill the chart
         const morphedArea = d3
           .area<d3.SeriesPoint<MonthlyBudgetData>>()
           .x((d) => x(d.data.month) || 0)
           .y0((d) => {
-            const original = y(d[0]);
-            const target = innerHeight; // baseline
-            return original + (target - original) * morphT;
+            const orig = y(d[0]);
+            return (orig - minY1) * scale; // scale from top
           })
           .y1((d) => {
-            const original = y(d[1]);
-            const target = 0; // top of chart
-            return original + (target - original) * morphT;
+            const orig = y(d[1]);
+            return (orig - minY1) * scale;
           })
           .curve(d3.curveCatmullRom.alpha(0.5));
 
@@ -681,17 +695,16 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
             if (!el.attr('data-original-d')) {
               el.attr('data-original-d', el.attr('d'));
             }
-            el.transition().duration(transitionMs).attr('d', morphedPath);
+            el.transition().duration(snapMs).ease(easing).attr('d', morphedPath);
           });
 
-        // Morph the top stroke too
+        // Morph the top stroke to match
         const morphedLine = d3
           .line<d3.SeriesPoint<MonthlyBudgetData>>()
           .x((d) => x(d.data.month) || 0)
           .y((d) => {
-            const original = y(d[1]);
-            const target = 0;
-            return original + (target - original) * morphT;
+            const orig = y(d[1]);
+            return (orig - minY1) * scale;
           })
           .curve(d3.curveCatmullRom.alpha(0.5));
 
@@ -705,26 +718,26 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
             if (!el.attr('data-original-d')) {
               el.attr('data-original-d', el.attr('d'));
             }
-            el.transition().duration(transitionMs).attr('d', morphedStrokePath);
+            el.transition().duration(snapMs).ease(easing).attr('d', morphedStrokePath);
           });
       }
-    } else if (internals && morphT === 0) {
-      // Restore original paths
+    } else if (internals && !expanded) {
+      // Snap back to original paths
       svgElement.selectAll('.bfc-band')
         .filter((d: any) => d.key === highlightedBudgetName)
         .each(function(this: any) {
           const el = d3.select(this);
           const orig = el.attr('data-original-d');
-          if (orig) el.transition().duration(300).attr('d', orig);
+          if (orig) el.transition().duration(snapMs).ease(easing).attr('d', orig);
         });
       svgElement.selectAll('.bfc-band-stroke')
         .each(function(this: any) {
           const el = d3.select(this);
           const orig = el.attr('data-original-d');
-          if (orig) el.transition().duration(300).attr('d', orig);
+          if (orig) el.transition().duration(snapMs).ease(easing).attr('d', orig);
         });
     }
-  }, [highlightedBudgetName, activeCategory, categoryNames, highlightMorphProgress]);
+  }, [highlightedBudgetName, activeCategory, categoryNames, highlightExpanded]);
 
   // No data fallback
   if (chartData.length === 0) {

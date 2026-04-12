@@ -21,7 +21,7 @@ interface BudgetSectionProps {
   isSharedView: boolean;
   allBudgets?: BudgetCategory[];
   useCompactCollapsedStyles?: boolean;
-  onScrollProgress?: (progress: number) => void;
+  onScrollProgress?: (scrolled: boolean) => void;
 }
 
 const BudgetSection: React.FC<BudgetSectionProps> = ({
@@ -238,10 +238,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           }}
           onScroll={(e) => {
             if (onScrollProgress) {
-              const el = e.currentTarget;
-              const maxScroll = el.scrollHeight - el.clientHeight;
-              const progress = maxScroll > 0 ? Math.min(1, el.scrollTop / Math.min(maxScroll, 150)) : 0;
-              onScrollProgress(progress);
+              onScrollProgress(e.currentTarget.scrollTop > 20);
             }
           }}
           onClick={(e) => {
