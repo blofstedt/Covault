@@ -129,8 +129,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       budget_id: selectedId,
       recurrence,
       label: initialTransaction
-        ? (initialTransaction.label === TransactionLabel.AUTO_ADDED || initialTransaction.label === TransactionLabel.EDITED
-          ? TransactionLabel.EDITED
+        ? (initialTransaction.label === 'Automatic' || initialTransaction.label === TransactionLabel.AUTOMATIC
+          ? TransactionLabel.AUTOMATIC
           : TransactionLabel.MANUAL)
         : TransactionLabel.MANUAL,
       user_id: userId,

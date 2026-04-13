@@ -83,9 +83,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
         borderColor: isExpanded
           ? budgetColor
           : undefined,
-        transition: isExpanded
-          ? 'border-color 0.5s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.5s cubic-bezier(0.22, 1, 0.36, 1)'
-          : 'border-color 0.3s cubic-bezier(0.4, 0, 1, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 1, 1)',
+        transition: 'border-color 0.3s ease, box-shadow 0.3s ease',
       }}
     >
       {/* GRADIENT BACKGROUND BARS WITH GLOW EDGE */}
@@ -139,9 +137,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
               : 'flex-1 py-2 px-4'
         }`}
         style={{
-          transition: isExpanded
-            ? 'padding 0.5s cubic-bezier(0.22, 1, 0.36, 1), flex 0.5s cubic-bezier(0.22, 1, 0.36, 1)'
-            : 'padding 0.3s cubic-bezier(0.4, 0, 1, 1), flex 0.3s cubic-bezier(0.4, 0, 1, 1)',
+          willChange: isExpanded ? 'auto' : 'transform, opacity',
         }}
       >
         {/* LEFT SIDE: ICON + NAME */}
@@ -158,7 +154,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
               ...(isExpanded
                 ? { backgroundColor: budgetColor }
                 : { color: budgetColor }),
-              transition: 'padding 0.3s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease',
+              transition: 'background-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease',
             }}
           >
             {getBudgetIcon(budget.name)}
@@ -177,7 +173,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                     : isWarning
                       ? 'text-slate-500 dark:text-slate-300 font-bold'
                       : 'text-slate-400 dark:text-slate-500 font-bold'
-                } ${useCompactCollapsedStyles ? 'text-[9px]' : 'text-[10px]'}`}
+                } ${useCompactCollapsedStyles ? 'text-[10px]' : 'text-[11px]'}`}
               >
                 {isDanger
                   ? `Over by $${Math.max(0, total - budget.totalLimit).toFixed(0)}`
@@ -207,7 +203,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
               </div>
 
               <span
-                className="text-[10px] font-medium tracking-wide mt-0.5 transition-colors duration-300 text-slate-400 dark:text-slate-500"
+                className="text-[11px] font-medium tracking-wide mt-0.5 transition-colors duration-300 text-slate-400 dark:text-slate-500"
               >
                 Vault Capacity
               </span>
@@ -243,7 +239,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
         >
           <div className="pt-1 pb-6 space-y-4">
             <div className="flex items-center justify-between px-2">
-              <span className="text-[10px] font-semibold tracking-wide transition-colors duration-300 text-slate-400 dark:text-slate-500">
+              <span className="text-[11px] font-semibold tracking-wide transition-colors duration-300 text-slate-400 dark:text-slate-500">
                 {isSharedView ? 'Our Activity' : 'Activity'}
               </span>
             </div>

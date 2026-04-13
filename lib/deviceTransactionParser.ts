@@ -33,6 +33,34 @@ const SETTLEMENT_PHRASES = [
   'posted', 'settled', 'cleared', 'processed', 'completed',
 ];
 
+/** Phrases that indicate incoming money (income, not expense). */
+const INCOME_PHRASES = [
+  'e-transfer received', 'etransfer received', 'transfer received',
+  'you got an interac', 'you got a interac', 'you received',
+  'sent you', 'money received', 'deposit received',
+  'deposited the funds', 'direct deposit',
+  'payroll', 'salary',
+];
+
+/**
+ * Non-financial notification patterns that should be rejected before parsing.
+ * Matches crypto price alerts, market data, promos, marketing, etc.
+ */
+const NON_FINANCIAL_PATTERNS: RegExp[] = [
+  // Crypto price alerts: "ETH is down 5.06%", "BTC trading at $45k"
+  /\b(?:ETH|BTC|SOL|ADA|DOT|DOGE|XRP|MATIC|AVAX|LINK|LTC|USDT|USDC|BNB|SHIB)\b.*?\b(?:up|down|trading|price|market|rally|crash|surge|drop|gain|loss|fell|rose|climb)/i,
+  /\b(?:is\s+)?trading\s+at\b/i,
+  /\bmarket\s+cap\b/i,
+  /\bprice\s+alert\b/i,
+  /\b(?:up|down)\s+\d+(?:\.\d+)?%/i,
+  // Promotional / marketing language
+  /\b(?:limited\s+time|act\s+now|don't\s+miss|exclusive\s+offer|flash\s+sale)\b/i,
+  /\b(?:promo\s+code|coupon\s+code|discount\s+code|referral\s+code)\b/i,
+  /\b(?:earn\s+(?:up\s+to|bonus)|free\s+(?:shipping|trial|gift))\b/i,
+  // App feature announcements
+  /\b(?:new\s+feature|update\s+available|what'?s\s+new)\b/i,
+];
+
 const amountRegex = /(?<!\w)(?:\$|cad\s*)\s*([0-9]{1,3}(?:,[0-9]{3})*|[0-9]+)(?:[.,]([0-9]{1,2}))?(?!\w)|(?<!\w)([0-9]{1,3}(?:,[0-9]{3})*|[0-9]+)(?:\.([0-9]{2}))(?!\w)/gi;
 
 export interface ParsedNotification {
@@ -44,6 +72,8 @@ export interface ParsedNotification {
   rejectionReason?: string;
   isRefund?: boolean;
   isPreAuth?: boolean;
+  /** True when this is incoming money (e.g. Interac e-Transfer received) */
+  isIncome?: boolean;
 }
 interface AmountCandidate {
   value: number;
@@ -139,7 +169,7 @@ function trimAtPreposition(vendor: string): string {
   return vendor.split(/\s+(?=(?:for|on|with|using|via|ending|was|is|has|and|from)\b)/i)[0].trim();
 }
 
-function extractVendorRaw(text: string): string {
+function extractVendorRaw(text: string, isRefund?: boolean): string {
   // Strip emoji/symbols so they don't break character-class patterns or act
   // as unexpected delimiters between merchant name and description text.
   let t = stripEmoji(text);
@@ -159,6 +189,28 @@ function extractVendorRaw(text: string): string {
       t = t.slice(prefix.length + 1).trim();
       break;
     }
+  }
+
+  // ── Refund-specific vendor extraction ─────────────────────────────────────
+  // Handles patterns like:
+  //   "$57.74 will be refunded to your credit card from AMZN MKTP CA. Your refund may take..."
+  //   "Refund of $14.23 from AMAZON.CA"
+  //   "Credit card refund - $52.49 from CANADIAN TIRE #611"
+  if (isRefund) {
+    // Strip trailing "Your refund may take..." / "may take up to..." boilerplate
+    const cleaned = t.replace(/\.?\s*your\s+refund\s+may\s+take.*$/i, '').trim();
+
+    // Pattern R1: "from VENDOR" (most common refund pattern)
+    const refundFromMatch = cleaned.match(
+      /\bfrom\s+([A-Za-z0-9&'./#\u00C0-\u00FF -]{2,60}?)(?:\s*[.,]?\s*$)/i,
+    );
+    if (refundFromMatch) return refundFromMatch[1].trim();
+
+    // Pattern R2: "refunded by VENDOR" / "credited by VENDOR"
+    const refundByMatch = cleaned.match(
+      /\b(?:refunded|credited)\s+by\s+([A-Za-z0-9&'./#\u00C0-\u00FF -]{2,60})/i,
+    );
+    if (refundByMatch) return refundByMatch[1].trim();
   }
 
   // Vendor character class used across patterns:
@@ -218,6 +270,29 @@ function extractVendorRaw(text: string): string {
     }
   }
 
+  // ── Heuristic fallback: longest uppercase word sequence ───────────────────
+  // Many bank notifications put merchant names in ALL CAPS. Extract the longest
+  // run of uppercase words (excluding known non-vendor words).
+  const NON_VENDOR_WORDS = new Set([
+    'YOUR', 'CARD', 'ACCOUNT', 'BANK', 'CREDIT', 'DEBIT', 'THE', 'FOR',
+    'WITH', 'FROM', 'VISA', 'MASTERCARD', 'INTERAC', 'AND', 'WAS', 'HAS',
+    'BEEN', 'WILL', 'MAY', 'TAKE', 'DAYS', 'BALANCE', 'TRANSACTION',
+  ]);
+  const capsRuns: string[] = [];
+  const capsRegex = /\b([A-Z][A-Z0-9&'.# -]{1,59})\b/g;
+  let capsMatch;
+  while ((capsMatch = capsRegex.exec(t)) !== null) {
+    const tokens = capsMatch[1].trim().split(/\s+/).filter(w => !NON_VENDOR_WORDS.has(w) && w.length >= 2);
+    if (tokens.length > 0) {
+      capsRuns.push(tokens.join(' '));
+    }
+  }
+  if (capsRuns.length > 0) {
+    // Pick the longest run
+    capsRuns.sort((a, b) => b.length - a.length);
+    return capsRuns[0];
+  }
+
   return 'Unknown';
 }
 
@@ -256,9 +331,51 @@ function titleCaseVendor(vendor: string): string {
     .join(' ');
 }
 
+/**
+ * Extract the sender name from an income / e-Transfer notification.
+ * Handles patterns like:
+ *   "NEISHA WILLIAMS sent you $160.00"
+ *   "You received $50 from JOHN SMITH"
+ *   "e-Transfer from JANE DOE"
+ */
+function extractIncomeSender(text: string): string | null {
+  const t = stripEmoji(text);
+
+  // Pattern I1: "SENDER sent you $X" / "SENDER has sent you"
+  const sentYouMatch = t.match(
+    /([A-Z][A-Za-z\u00C0-\u00FF]+(?: [A-Z][A-Za-z\u00C0-\u00FF]+){0,3})\s+(?:has\s+)?sent\s+you\b/i,
+  );
+  if (sentYouMatch) return sentYouMatch[1].trim();
+
+  // Pattern I2: "from SENDER" at end or before period/comma
+  const fromMatch = t.match(
+    /\bfrom\s+([A-Z][A-Za-z\u00C0-\u00FF]+(?: [A-Z][A-Za-z\u00C0-\u00FF]+){0,3})(?:\s*[.,]|\s*$)/i,
+  );
+  if (fromMatch) return fromMatch[1].trim();
+
+  // Pattern I3: "received from SENDER"
+  const receivedFromMatch = t.match(
+    /\breceived\s+from\s+([A-Z][A-Za-z\u00C0-\u00FF]+(?: [A-Z][A-Za-z\u00C0-\u00FF]+){0,3})/i,
+  );
+  if (receivedFromMatch) return receivedFromMatch[1].trim();
+
+  return null;
+}
+
 export function parseNotificationText(text: string): ParsedNotification {
   const t = text.trim();
   const tLower = collapseWhitespace(t.toLowerCase());
+
+  // ── Early rejection: non-financial notifications ──
+  // Reject crypto price alerts, promotional content, marketing, etc. before
+  // any amount parsing to avoid false positives on dollar amounts in promos.
+  if (NON_FINANCIAL_PATTERNS.some(p => p.test(t))) {
+    return {
+      isOutgoing: false,
+      recurrence: 'One-time',
+      rejectionReason: 'Non-financial notification (crypto/promo/marketing)',
+    };
+  }
 
   const hasStop = STOP_PHRASES.some(p => tLower.includes(p));
   const hasStrongGo = GO_PHRASES.some(p => tLower.includes(p));
@@ -267,8 +384,32 @@ export function parseNotificationText(text: string): ParsedNotification {
   const hasRefund = REFUND_PHRASES.some(p => tLower.includes(p));
   const hasPreAuth = PRE_AUTH_PHRASES.some(p => tLower.includes(p));
   const hasSettlement = SETTLEMENT_PHRASES.some(p => tLower.includes(p));
+  const hasIncome = INCOME_PHRASES.some(p => tLower.includes(p));
   const amountCandidates = findAllAmounts(t);
   const hasDollarSign = /\$\d/.test(t);
+
+  // ── Income detection (Interac e-Transfers, deposits, payroll) ──
+  // Income notifications contain STOP phrases but should NOT be rejected.
+  // Instead, parse them as incoming money with the sender as the "vendor".
+  if (hasIncome && amountCandidates.length > 0) {
+    const pickedAmount = pickAmount(amountCandidates, tLower);
+    if (pickedAmount) {
+      const sender = extractIncomeSender(t);
+      const vendorDisplay = sender
+        ? formatVendorName(titleCaseVendor(sender))
+        : 'Income';
+      const vendorKey = toVendorKey(sender || 'income');
+
+      return {
+        isOutgoing: true, // treated as "valid transaction" for pipeline
+        amount: pickedAmount,
+        vendorDisplay,
+        vendorKey,
+        recurrence: 'One-time',
+        isIncome: true,
+      };
+    }
+  }
 
   // Pre-authorization filtering:
   // If notification matches a pre-auth phrase OR only has weak GO (authorized/approved)
@@ -306,7 +447,7 @@ export function parseNotificationText(text: string): ParsedNotification {
     return { isOutgoing: false, recurrence: 'One-time', rejectionReason: 'Amount not found' };
   }
 
-  const vendorRaw = extractVendorRaw(t);
+  const vendorRaw = extractVendorRaw(t, hasRefund);
   const cleanedVendor = cleanVendor(vendorRaw);
   const vendorDisplay = formatVendorName(titleCaseVendor(cleanedVendor));
   const vendorKey = toVendorKey(cleanedVendor || 'unknown');

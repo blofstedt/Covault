@@ -25,3 +25,5 @@ www
 *.sw?
 .env
 node_modules
+.auth-session.json
+screenshots/

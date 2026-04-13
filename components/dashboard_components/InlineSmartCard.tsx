@@ -191,8 +191,8 @@ const InlineSmartCard: React.FC<InlineSmartCardProps> = ({ cards, onDismiss, onA
       : 'translateX(0)';
   const queuedCards = activeCards.slice(1, 3);
   const cardThemeClass = theme === 'dark'
-    ? 'bg-slate-900/60 border-slate-800/50'
-    : 'bg-white/60 border-slate-200/40';
+    ? 'bg-slate-900 border-slate-700'
+    : 'bg-white border-slate-300';
 
   return (
     <div className="px-4 mb-2">
@@ -222,8 +222,8 @@ const InlineSmartCard: React.FC<InlineSmartCardProps> = ({ cards, onDismiss, onA
                   transition: 'transform 0.26s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease',
                   zIndex: 10 + stackIndex,
                   boxShadow: theme === 'dark'
-                    ? '0 14px 30px rgba(2, 6, 23, 0.22)'
-                    : '0 14px 30px rgba(15, 23, 42, 0.08)',
+                    ? '0 14px 30px rgba(2, 6, 23, 0.4)'
+                    : '0 14px 30px rgba(15, 23, 42, 0.14)',
                 }}
                 aria-hidden="true"
               >
@@ -241,8 +241,8 @@ const InlineSmartCard: React.FC<InlineSmartCardProps> = ({ cards, onDismiss, onA
             cursor: isDragging ? 'grabbing' : 'grab',
             zIndex: 30,
             boxShadow: theme === 'dark'
-              ? '0 20px 40px rgba(2, 6, 23, 0.28)'
-              : '0 20px 40px rgba(15, 23, 42, 0.12)',
+              ? '0 20px 40px rgba(2, 6, 23, 0.45)'
+              : '0 20px 40px rgba(15, 23, 42, 0.16)',
           }}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}

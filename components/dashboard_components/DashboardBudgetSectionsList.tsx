@@ -106,9 +106,9 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
               style={{
                 transition: expandedBudgetId
                   ? isExpanded
-                    ? 'opacity 0.2s ease-out'
+                    ? 'opacity 0.15s ease-out'
                     : 'none'
-                  : `opacity 0.4s cubic-bezier(0.22, 1, 0.36, 1) ${index * 50}ms, transform 0.45s cubic-bezier(0.22, 1, 0.36, 1) ${index * 50}ms`,
+                  : `opacity 0.3s ease ${index * 20}ms, transform 0.3s ease ${index * 20}ms`,
               }}
             >
               <BudgetSection

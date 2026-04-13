@@ -12,7 +12,7 @@
 //   7. Insert into transactions table with 'AI' label
 
 import { supabase } from './supabase';
-import { formatVendorName } from './formatVendorName';
+import { formatVendorName, fuzzyVendorMatch } from './formatVendorName';
 import { parseNotificationText } from './deviceTransactionParser';
 import { addToReviewQueue, getVendorMapEntry, isNotificationProcessed, markNotificationProcessed } from './localNotificationMemory';
 import { getLocalToday, parseLocalDate } from './dateUtils';
@@ -162,22 +162,28 @@ async function checkAlreadyProcessed(
   const normalizedVendor = normalizeVendorForDedup(vendor);
 
   // ── Check transactions table ──
-  // Query by `date` (the transaction date) rather than `created_at` (DB insert time).
-  // A notification might be rescanned long after the original was processed,
-  // so comparing against `created_at` with a narrow window misses the duplicate.
-  // Instead, check if the same vendor+amount was already recorded today.
+  // Query by `date` using a ±3 day window so that recurring transactions
+  // or slightly delayed notifications are caught across all budgets.
   const today = getLocalToday();
+  const todayDate = parseLocalDate(today);
+  const windowStartDate = new Date(todayDate.getTime() - RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY);
+  const windowEndDate = new Date(todayDate.getTime() + RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY);
+  const startDateStr = windowStartDate.toISOString().slice(0, 10);
+  const endDateStr = windowEndDate.toISOString().slice(0, 10);
   const { data: txRows } = await supabase
     .from('transactions')
     .select('id, vendor, amount, date')
     .eq('user_id', userId)
-    .eq('date', today);
+    .gte('date', startDateStr)
+    .lte('date', endDateStr);
 
   if (txRows && txRows.length > 0) {
     for (const tx of txRows) {
       if (Math.abs(Number(tx.amount) - amount) < AMOUNT_TOLERANCE) {
-        if (normalizeVendorForDedup(tx.vendor) === normalizedVendor) {
-          console.log(`[dedup] Duplicate found in transactions: ${tx.vendor} $${tx.amount}`);
+        const exactMatch = normalizeVendorForDedup(tx.vendor) === normalizedVendor;
+        const fuzzyMatch = fuzzyVendorMatch(tx.vendor, vendor);
+        if (exactMatch || fuzzyMatch) {
+          console.log(`[dedup] Duplicate found in transactions: ${tx.vendor} $${tx.amount} (fuzzy=${fuzzyMatch})`);
           return true;
         }
       }
@@ -247,18 +253,17 @@ export function vendorMatches(existingVendor: string | null, newVendor: string |
 /**
  * Build a dedup key from the extracted fields: vendor (lowercased),
  * amount (2 decimal places), and extracted_timestamp truncated to the
- * second.  Two records that share the same key are considered
- * duplicates per the issue requirements (exact same vendor, amount,
- * and time down to the second).
+ * nearest minute (60-second window).  Two records that share the same key
+ * are considered duplicates per the issue requirements.
  */
 function extractedDedupKey(pt: PendingTransaction): string {
   const vendor = (pt.extracted_vendor || '').toLowerCase().trim();
   const amt = Number(pt.extracted_amount);
   const amount = Number.isFinite(amt) ? amt.toFixed(2) : '0.00';
-  // Truncate extracted_timestamp to the second
+  // Truncate extracted_timestamp to the minute (60s window) to catch near-duplicates
   const tsMs = pt.extracted_timestamp ? new Date(pt.extracted_timestamp).getTime() : 0;
-  const tsSec = Math.floor(tsMs / 1000);
-  return `${vendor}|${amount}|${tsSec}`;
+  const tsMinute = Math.floor(tsMs / 60000);
+  return `${vendor}|${amount}|${tsMinute}`;
 }
 
 /**
@@ -377,6 +382,35 @@ export async function deduplicatePendingTransactions(
     }
   }
 
+  // ── Pass 4: Same amount from same app within ±5 minutes ──
+  // Catches duplicates where the bank re-broadcasts the same notification
+  // with slightly different vendor text (e.g., "PUB MOBILE" vs "PUBLIC MOBILE SELF").
+  survivors = pendingTransactions.filter(pt => keepSet.has(pt.id));
+  const appAmountGroups = new Map<string, PendingTransaction[]>();
+
+  for (const pt of survivors) {
+    const amt = Number(pt.extracted_amount);
+    const amount = Number.isFinite(amt) ? amt.toFixed(2) : '0.00';
+    // Group by app + amount + 5-minute window
+    const tsWindow = Math.floor((pt.notification_timestamp || 0) / (5 * MS_PER_MINUTE));
+    const key = `${pt.app_package}|${amount}|${tsWindow}`;
+    const group = appAmountGroups.get(key);
+    if (group) {
+      group.push(pt);
+    } else {
+      appAmountGroups.set(key, [pt]);
+    }
+  }
+
+  for (const group of appAmountGroups.values()) {
+    if (group.length <= 1) continue;
+    group.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    for (let i = 1; i < group.length; i++) {
+      keepSet.delete(group[i].id);
+      idsToDelete.push(group[i].id);
+    }
+  }
+
   // Delete duplicates from the database
   if (idsToDelete.length > 0) {
     console.log(`[dedup] Removing ${idsToDelete.length} duplicate pending transaction(s)`);
@@ -421,13 +455,19 @@ export async function checkDuplicateTransaction(
   const vendor = formatVendorName(pending.extracted_vendor);
   const amount = Number(pending.extracted_amount);
   const today = getLocalToday();
+  const todayMs = parseLocalDate(today).getTime();
+  const toleranceMs = RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY;
 
-  // Fetch existing transactions for this vendor and approximate amount
+  // Query transactions within ±3 days (broader than just exact vendor match)
+  const windowStart = new Date(todayMs - toleranceMs).toISOString().slice(0, 10);
+  const windowEnd = new Date(todayMs + toleranceMs).toISOString().slice(0, 10);
+
   const { data: existing, error } = await supabase
     .from('transactions')
     .select('id, vendor, amount, date, recur, created_at')
     .eq('user_id', userId)
-    .ilike('vendor', vendor);
+    .gte('date', windowStart)
+    .lte('date', windowEnd);
 
   if (error) {
     console.error('[checkDuplicate] Error fetching transactions:', error);
@@ -438,9 +478,10 @@ export async function checkDuplicateTransaction(
     return { isDuplicate: false };
   }
 
-  // Filter to matching amounts
+  // Filter to matching amounts AND fuzzy vendor match
   const amountMatches = existing.filter(
-    (tx) => Math.abs(Number(tx.amount) - amount) < AMOUNT_TOLERANCE,
+    (tx) => Math.abs(Number(tx.amount) - amount) < AMOUNT_TOLERANCE
+      && fuzzyVendorMatch(tx.vendor, vendor),
   );
 
   if (amountMatches.length === 0) {
@@ -448,9 +489,6 @@ export async function checkDuplicateTransaction(
   }
 
   // Rule 1: Recurring transactions (Monthly/Biweekly) — same vendor + amount within ±3 days
-  const todayMs = parseLocalDate(today).getTime();
-  const toleranceMs = RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY;
-
   for (const tx of amountMatches) {
     const recurrence = (tx.recur || '').toLowerCase();
     if (recurrence !== 'monthly' && recurrence !== 'biweekly') continue;
@@ -465,7 +503,6 @@ export async function checkDuplicateTransaction(
 
       if (updateError) {
         console.error('[checkDuplicate] Error updating recurring tx date:', updateError);
-        // Still treat as duplicate even if update fails
       } else {
         console.log(`[checkDuplicate] Updated recurring transaction ${tx.id} date to ${today}`);
       }
@@ -629,8 +666,8 @@ export async function processNotificationWithAI(
     : null;
   const vendor = extractedVendor || input.fallbackVendor || null;
   const rawAmount = parsed.amount ?? input.fallbackAmount ?? 0;
-  // Refunds are stored as negative amounts so they naturally reduce budget totals
-  const amount = parsed.isRefund ? -Math.abs(rawAmount) : rawAmount;
+  // Refunds and income are stored as negative amounts so they naturally reduce budget totals
+  const amount = (parsed.isRefund || parsed.isIncome) ? -Math.abs(rawAmount) : rawAmount;
 
   // ── Step 3b: Reject if no vendor could be identified ──
   if (!vendor) {
@@ -648,21 +685,26 @@ export async function processNotificationWithAI(
     };
   }
 
-  // ── Step 4: Duplicate detection (exact vendor + amount today) ──
+  // ── Step 4: Duplicate detection (fuzzy vendor + amount ±3 days) ──
   const today = getLocalToday();
   const normalizedVendor = normalizeVendorForDedup(vendor);
+  const todayMs = parseLocalDate(today).getTime();
+  const step4WindowStart = new Date(todayMs - RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY).toISOString().slice(0, 10);
+  const step4WindowEnd = new Date(todayMs + RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY).toISOString().slice(0, 10);
 
   const { data: existingTx } = await supabase
     .from('transactions')
     .select('id, vendor, amount, type, date')
     .eq('user_id', userId)
-    .eq('date', today);
+    .gte('date', step4WindowStart)
+    .lte('date', step4WindowEnd);
 
   if (existingTx && existingTx.length > 0) {
     const duplicateToday = existingTx.find((tx) => {
-      const vendorMatch = normalizeVendorForDedup(tx.vendor) === normalizedVendor;
+      const exactMatch = normalizeVendorForDedup(tx.vendor) === normalizedVendor;
+      const fuzzyMatch = fuzzyVendorMatch(tx.vendor, vendor);
       const amountMatch = Math.abs(Number(tx.amount) - amount) < AMOUNT_TOLERANCE;
-      return vendorMatch && amountMatch;
+      return (exactMatch || fuzzyMatch) && amountMatch;
     });
 
     if (duplicateToday) {
@@ -768,22 +810,26 @@ export async function processNotificationWithAI(
   // instead of inserting a duplicate.
   const recurrence = (parsed.recurrence || '').toLowerCase();
   if (recurrence === 'monthly' || recurrence === 'biweekly') {
+    // Query recent transactions broadly, then filter with fuzzy matching
+    const recurWindowStart = new Date(todayMs - RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY).toISOString().slice(0, 10);
+    const recurWindowEnd = new Date(todayMs + RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY).toISOString().slice(0, 10);
     const { data: recurCandidates } = await supabase
       .from('transactions')
       .select('id, vendor, amount, date, recur')
       .eq('user_id', userId)
-      .ilike('vendor', formatVendorName(displayVendor));
+      .gte('date', recurWindowStart)
+      .lte('date', recurWindowEnd);
 
     if (recurCandidates && recurCandidates.length > 0) {
-      const todayMs = parseLocalDate(today).getTime();
-      const toleranceMs = RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY;
-
       for (const tx of recurCandidates) {
         const txRecur = (tx.recur || '').toLowerCase();
         if (txRecur !== 'monthly' && txRecur !== 'biweekly') continue;
         if (Math.abs(Number(tx.amount) - amount) >= AMOUNT_TOLERANCE) continue;
+        // Use fuzzy vendor matching for recurring dedup
+        if (!fuzzyVendorMatch(tx.vendor, displayVendor)) continue;
 
         const txDateMs = parseLocalDate(tx.date).getTime();
+        const toleranceMs = RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY;
         if (Math.abs(todayMs - txDateMs) <= toleranceMs) {
           // Update the existing recurring transaction's date to today
           await supabase
@@ -824,6 +870,7 @@ export async function processNotificationWithAI(
       type: 'Automatic',
       recur: parsed.recurrence,
       is_projected: false,
+      is_income: parsed.isIncome || false,
     });
 
   if (txError) {
