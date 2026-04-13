@@ -736,14 +736,14 @@ export async function processNotificationWithAI(
   let displayVendor: string = vendor;
 
   // 5a: Check server-side overrides table
-  // Schema: vendor_overrides(id, user_id, vendor_name text, proper_name text, category_id uuid)
-  // vendor_name is the raw vendor string to match; proper_name is the canonical display name
+  // Schema: overrides(id, user_id, proper_name text, category_id text)
+  // proper_name is the canonical display vendor name; category_id is the budget category name
   if (vendor) {
     const { data: overrideRows } = await supabase
-      .from('vendor_overrides')
+      .from('overrides')
       .select('category_id, proper_name')
       .eq('user_id', userId)
-      .ilike('vendor_name', vendor)
+      .ilike('proper_name', vendor)
       .limit(1);
 
     if (overrideRows && overrideRows.length > 0) {
@@ -870,7 +870,6 @@ export async function processNotificationWithAI(
       type: 'Automatic',
       recur: parsed.recurrence,
       is_projected: false,
-      is_income: parsed.isIncome || false,
     });
 
   if (txError) {

@@ -22,6 +22,14 @@ interface InlineSmartCardProps {
 const SWIPE_THRESHOLD = 60;
 const STACK_SPREAD = 10;
 
+function budgetIdToName(budgetId: string): string {
+  if (budgetId.startsWith('budget:')) {
+    const name = budgetId.slice('budget:'.length).replace(/-/g, ' ');
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  }
+  return budgetId;
+}
+
 function parseVendorSuggestion(card: SmartCard): { vendor: string; categoryId: string } | null {
   if (card.type !== 'vendor-suggestion') return null;
   const prefix = 'vendor-suggest-';
@@ -144,11 +152,19 @@ const InlineSmartCard: React.FC<InlineSmartCardProps> = ({ cards, onDismiss, onA
 
     try {
       const authHeaders = await getAuthHeaders();
-      await fetch(`${REST_BASE}/vendor-overrides`, {
+      const dbCategoryId = budgetIdToName(parsed.categoryId);
+      const res = await fetch(`${REST_BASE}/overrides`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders },
-        body: JSON.stringify({ user_id: userId, vendor_name: parsed.vendor, category_id: parsed.categoryId }),
+        body: JSON.stringify({ user_id: userId, proper_name: parsed.vendor, category_id: dbCategoryId }),
       });
+      if (!res.ok) {
+        // If conflict, update existing
+        await fetch(
+          `${REST_BASE}/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(parsed.vendor)}`,
+          { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders }, body: JSON.stringify({ category_id: dbCategoryId }) },
+        );
+      }
     } catch { /* ignore */ }
 
     advanceCard();

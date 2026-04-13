@@ -49,9 +49,9 @@ export function fuzzyVendorMatch(a: string, b: string): boolean {
   const tokB = vendorTokens(b);
   if (tokA.length === 0 || tokB.length === 0) return false;
 
-  // Check if any significant token (3+ chars) from one appears in the other
-  const sigA = tokA.filter(t => t.length >= 3);
-  const sigB = tokB.filter(t => t.length >= 3);
+  // Check if any significant token (4+ chars) from one appears in the other
+  const sigA = tokA.filter(t => t.length >= 4);
+  const sigB = tokB.filter(t => t.length >= 4);
 
   for (const t of sigA) {
     if (sigB.some(s => s.includes(t) || t.includes(s))) return true;

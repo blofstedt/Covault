@@ -60,7 +60,7 @@ export const useHouseholdLinking = ({
         
         // Look up the settings row with this link code
         const codeRes = await fetch(
-          `${REST_BASE}/settings?select=user_id,name,email&link_code=eq.${code.toUpperCase()}&limit=1`,
+          `${REST_BASE}/settings?select=user_id,name,email&link_code=eq.${encodeURIComponent(code.toUpperCase())}&limit=1`,
           { headers },
         );
 
@@ -84,11 +84,11 @@ export const useHouseholdLinking = ({
           return;
         }
 
-        // Update both users' settings to link them
+        // Atomically consume the link code (only succeeds if code still matches)
         (headers as any)['Prefer'] = 'return=representation';
 
-        // Update other user's settings
-        await fetch(`${REST_BASE}/settings?user_id=eq.${otherUserId}`, {
+        // Update other user's settings — include link_code filter to prevent race conditions
+        const otherRes = await fetch(`${REST_BASE}/settings?user_id=eq.${otherUserId}&link_code=eq.${encodeURIComponent(code.toUpperCase())}`, {
           method: 'PATCH',
           headers,
           body: JSON.stringify({
@@ -99,6 +99,15 @@ export const useHouseholdLinking = ({
             link_code: null,
           }),
         });
+
+        // If no rows were updated, the code was already consumed
+        const otherBody = await otherRes.text();
+        let otherRows: any[] = [];
+        try { otherRows = otherBody ? JSON.parse(otherBody) : []; } catch { otherRows = []; }
+        if (!otherRes.ok || !Array.isArray(otherRows) || otherRows.length === 0) {
+          setDbError('Link code was already used or expired. Please generate a new one.');
+          return;
+        }
 
         // Update current user's settings
         await fetch(`${REST_BASE}/settings?user_id=eq.${userId}`, {

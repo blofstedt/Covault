@@ -6,7 +6,7 @@
 import type { User } from '../types';
 
 /** Admin email that always receives premium access without paying. */
-const ADMIN_EMAIL = 'itsjustmyemail@gmail.com';
+const ADMIN_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL as string) || '';
 
 /**
  * Returns true when the user has premium access — either through an active

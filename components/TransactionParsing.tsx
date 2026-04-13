@@ -8,8 +8,8 @@ import SetupInfoCard from './transaction_parsing/SetupInfoCard';
 import ClearConfirmModal from './transaction_parsing/ClearConfirmModal';
 import PageShell from './ui/PageShell';
 
-import { supabase } from '../lib/supabase';
 import { covaultNotification } from '../lib/covaultNotification';
+import { REST_BASE, getAuthHeaders } from '../lib/apiHelpers';
 import { loadBankingAppsFromDB } from '../lib/bankingApps';
 import { getNeedsReviewCount, getNeedsReviewIdSet, getReviewQueueChangedEventName } from '../lib/localNotificationMemory';
 
@@ -95,7 +95,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
 
   // ── AI-entered transactions (label === 'AI') ──
   const aiTransactions = useMemo(
-    () => allTransactions.filter((tx) => tx.label === 'Automatic' && !tx.caught_cleared),
+    () => allTransactions.filter((tx) => tx.label === 'Automatic'),
     [allTransactions],
   );
 
@@ -145,12 +145,21 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     if (!userId) return;
     const aiIds = aiTransactions.map((tx) => tx.id);
     if (aiIds.length === 0) return;
-    const { error } = await supabase
-      .from('transactions')
-      .update({ caught_cleared: true })
-      .in('id', aiIds);
-    if (error) {
-      console.error('[TransactionParsing] Error clearing entered:', error);
+    try {
+      const headers = await getAuthHeaders();
+      (headers as any)['Prefer'] = 'return=representation';
+      const idList = aiIds.map(id => `"${id.replace(/"/g, '')}"`).join(',');
+      const res = await fetch(`${REST_BASE}/transactions?id=in.(${idList})`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ caught_cleared: true }),
+      });
+      if (!res.ok) {
+        console.error('[TransactionParsing] Error clearing entered:', res.status);
+        return;
+      }
+    } catch (err) {
+      console.error('[TransactionParsing] Error clearing entered:', err);
       return;
     }
     onClearEntered?.();

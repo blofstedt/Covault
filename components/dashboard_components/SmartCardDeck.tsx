@@ -68,6 +68,7 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
   const [isDragging, setIsDragging] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   const [exitDirection, setExitDirection] = useState<'left' | 'right' | 'up' | 'down'>('right');
+  const [justPromoted, setJustPromoted] = useState(false);
 
   const startPos = useRef({ x: 0, y: 0 });
   const cardRef = useRef<HTMLDivElement>(null);
@@ -84,6 +85,15 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
     }
   }, [activeCards.length, cards.length, onAllDismissed]);
 
+  // Clear justPromoted after one frame so the promoted card doesn't animate in
+  useEffect(() => {
+    if (!justPromoted) return;
+    const raf = requestAnimationFrame(() => {
+      setJustPromoted(false);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [justPromoted]);
+
   const advanceCard = useCallback(() => {
     if (isDismissingRef.current) return;
     isDismissingRef.current = true;
@@ -97,6 +107,7 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
     setIsExiting(false);
     setDragX(0);
     setDragY(0);
+    setJustPromoted(true);
     setCurrentIndex((i) => i + 1);
 
     setTimeout(() => { isDismissingRef.current = false; }, 50);
@@ -144,6 +155,7 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
     setIsExiting(false);
     setDragX(0);
     setDragY(0);
+    setJustPromoted(true);
     setCurrentIndex((i) => i + 1);
     setTimeout(() => { isDismissingRef.current = false; }, 50);
   }, [cards, currentIndex, userId, advanceCard, onDismiss]);
@@ -288,7 +300,7 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
           style={{
             transform: topTransform,
             opacity: isExiting ? 0 : opacity,
-            transition: isDragging
+            transition: isDragging || justPromoted
               ? 'none'
               : 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease',
             zIndex: 20,
