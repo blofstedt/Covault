@@ -198,8 +198,8 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       </header>
 
       {/* Main content */}
-      <main className="flex-1 min-h-0 flex flex-col p-4 overflow-hidden relative z-10">
-        <div className="max-w-2xl mx-auto w-full flex-1 min-h-0 flex flex-col gap-4">
+      <main className="flex-1 min-h-0 flex flex-col p-4 pb-0 overflow-hidden relative z-10">
+        <div className="max-w-2xl mx-auto w-full flex-1 min-h-0 flex flex-col gap-4 overflow-hidden">
           {enabled ? (
             <>
               <div className="shrink-0">

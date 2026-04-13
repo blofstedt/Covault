@@ -122,6 +122,7 @@ export const toSupabaseTransaction = (
     amount: Number(tx.amount),
     date: dateStr,
     is_projected: tx.is_projected ?? false,
+    is_income: tx.is_income ?? false,
     // Current schema columns (public.transactions)
     // type enum only has 'Manual' and 'Automatic' — map AI/Automatic labels to 'Automatic'
     budget: budgetName,
@@ -167,6 +168,7 @@ export const useFromSupabaseTransaction = () =>
       // Map DB type enum ('Automatic'|'Manual') to app-level label.
       label: row.type === 'Automatic' ? 'Automatic' : 'Manual',
       is_projected: shouldSolidify ? false : row.is_projected,
+      is_income: row.is_income === true,
       caught_cleared: row.caught_cleared === true,
       userName: row.user_name || '',
       created_at: row.created_at,

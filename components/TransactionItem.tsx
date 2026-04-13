@@ -70,7 +70,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
               </span>
               {isSharedView && (
                 <span
-                  className={`text-[9px] font-bold px-2 py-0.5 rounded-full tracking-wide transition-colors duration-700 ${
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full tracking-wide transition-colors duration-700 ${
                     isOtherUser
                       ? 'bg-emerald-950 text-emerald-400'
                       : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
@@ -113,7 +113,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
 
               {isRefund && (
                 <span className="text-[8px] font-bold text-emerald-500 dark:text-emerald-400 tracking-wide bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded-md">
-                  Refund
+                  {transaction.is_income ? 'Income' : 'Refund'}
                 </span>
               )}
             </div>

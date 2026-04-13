@@ -422,8 +422,12 @@ const Dashboard: React.FC<Props> = ({
 
             {/* Pulse / smart cards: full width */}
             <div
-              className="transition-all duration-500 ease-in-out overflow-hidden shrink-0 max-h-[200px] opacity-100 lg:max-h-none"
-              aria-hidden={false}
+              className={`transition-all duration-500 ease-in-out overflow-hidden shrink-0 opacity-100 lg:max-h-none ${
+                showSmartCards && smartCards.length > 0
+                  ? 'max-h-[200px]'
+                  : 'max-h-0'
+              }`}
+              aria-hidden={!(showSmartCards && smartCards.length > 0)}
             >
               <div className="relative">
                 <MonthlyPulseCard

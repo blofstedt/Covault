@@ -262,6 +262,14 @@ const NON_TRANSACTION_PATTERNS = [
   /\bcredit\s+score\b/i,
   /\bpassword\b/i,
   /\bsecurity\s+alert\b/i,
+  // Crypto / market data notifications
+  /\b(?:ETH|BTC|SOL|ADA|DOT|DOGE|XRP|MATIC|AVAX|LINK|LTC|BNB|SHIB)\b.*?\b(?:up|down|trading|price|market)/i,
+  /\b(?:is\s+)?trading\s+at\b/i,
+  /\bmarket\s+cap\b/i,
+  /\bprice\s+alert\b/i,
+  // Marketing / promotional
+  /\b(?:limited\s+time|act\s+now|don't\s+miss|exclusive\s+offer)\b/i,
+  /\b(?:promo\s+code|coupon\s+code|discount\s+code)\b/i,
 ];
 
 /**

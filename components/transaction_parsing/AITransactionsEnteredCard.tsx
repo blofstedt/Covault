@@ -70,15 +70,15 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
                   <div className="text-left min-w-0">
                     <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate max-w-[160px]">{tx.vendor}</p>
                     <div className="flex items-center gap-1.5 mt-0.5">
-                      {isForReview && <span className="text-[9px] font-semibold text-amber-600 dark:text-amber-400 tracking-wide">For Review</span>}
-                      {budgetName && <span className="text-[9px] font-semibold text-emerald-600 dark:text-emerald-400 tracking-wide">{budgetName}</span>}
-                      <span className="text-[9px] text-slate-400 dark:text-slate-500">{parseLocalDate(tx.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                      {isForReview && <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 tracking-wide">For Review</span>}
+                      {budgetName && <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 tracking-wide">{budgetName}</span>}
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500">{parseLocalDate(tx.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
                     </div>
                   </div>
                 </div>
                 <div className="text-right shrink-0">
                   <span className={`text-sm font-extrabold font-mono ${tx.amount < 0 ? 'text-emerald-500 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-200'}`}>{tx.amount < 0 ? '+' : ''}${Math.abs(tx.amount).toFixed(2)}</span>
-                  <p className="text-[8px] font-semibold tracking-wide text-emerald-600 dark:text-emerald-400 mt-0.5">{tx.amount < 0 ? 'Refund' : 'AI'}</p>
+                  <p className="text-[10px] font-semibold tracking-wide text-emerald-600 dark:text-emerald-400 mt-0.5">{tx.amount < 0 ? (tx.is_income ? 'Income' : 'Refund') : 'AI'}</p>
                 </div>
               </button>
             );
