@@ -196,7 +196,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     <PageShell>
       {/* Header */}
       <header
-        className="px-6 pt-safe-top pb-2 sticky top-0 z-20 transition-colors bg-transparent border-none backdrop-blur-none relative z-10"
+        className="px-6 pt-safe-top pb-2 shrink-0 z-20 transition-colors bg-transparent border-none backdrop-blur-none relative"
         style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}
       >
         <div className="flex items-center justify-center">
