@@ -35,10 +35,11 @@ const DashboardBalanceSection: React.FC<DashboardBalanceSectionProps> = ({
       />
 
       {/* Balance label + settings cog on one row */}
-      <div className="w-full flex items-center justify-between px-4 z-10 animate-nest mb-0.5">
-        <span className="text-[10px] font-semibold tracking-widest uppercase transition-colors duration-700 text-slate-400 dark:text-slate-500">
+      <div className="w-full flex items-center justify-between px-4 z-10 animate-nest mb-0.5 relative">
+        <span className="absolute left-0 right-0 text-center text-[10px] font-semibold tracking-widest uppercase transition-colors duration-700 text-slate-400 dark:text-slate-500 pointer-events-none">
           {isSharedAccount ? 'Our Remaining Balance' : 'Remaining Balance'}
         </span>
+        <span></span>
         <button
           id="settings-button"
           onClick={onOpenSettings}
