@@ -69,7 +69,7 @@ const ParsingCard: React.FC<ParsingCardProps> = ({
     id={id}
     className={`bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] ${borderColors[colorScheme]} ${className}`}
   >
-    <div className="flex items-center space-x-3 mb-4">
+    <div className="flex items-center space-x-3 mb-4 shrink-0">
       <div className={`p-2 ${iconBgColors[colorScheme]} rounded-xl`}>
         <svg
           className={`w-5 h-5 ${iconTextColors[colorScheme]}`}

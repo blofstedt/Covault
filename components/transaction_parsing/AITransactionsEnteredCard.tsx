@@ -40,7 +40,7 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
     >
       {aiTransactions.length > 0 ? (
         <div
-          className="flex-1 min-h-0 overflow-y-auto no-scrollbar space-y-2 pr-1"
+          className="flex-1 min-h-0 overflow-y-auto no-scrollbar space-y-2 pr-1 pb-2"
           style={{
             WebkitOverflowScrolling: 'touch',
             overscrollBehavior: 'contain',
