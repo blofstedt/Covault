@@ -14,7 +14,6 @@ import BudgetFlowChart from './dashboard_components/BudgetFlowChart';
 import DashboardSettingsModal from './dashboard_components/DashboardSettingsModal';
 import SearchResults from './dashboard_components/SearchResults';
 import InlineSmartCard from './dashboard_components/InlineSmartCard';
-import MonthlyPulseCard from './dashboard_components/MonthlyPulseCard';
 
 import useNormalizedTransactions from './dashboard_components/useNormalizedTransactions';
 import useDashboardTotals from './dashboard_components/useDashboardTotals';
@@ -417,7 +416,7 @@ const Dashboard: React.FC<Props> = ({
               </PremiumGate>
             </div>
 
-            {/* Pulse / smart cards: full width */}
+            {/* Smart cards: full width */}
             <div
               className={`transition-all duration-500 ease-in-out overflow-hidden shrink-0 opacity-100 lg:max-h-none ${
                 showSmartCards && smartCards.length > 0
@@ -426,24 +425,15 @@ const Dashboard: React.FC<Props> = ({
               }`}
               aria-hidden={!(showSmartCards && smartCards.length > 0)}
             >
-              <div className="relative">
-                <MonthlyPulseCard
-                  budgets={state.budgets}
-                  transactions={currentMonthBudgetTransactions}
+              {showSmartCards && smartCards.length > 0 && (
+                <InlineSmartCard
+                  cards={smartCards}
+                  onDismiss={(id) => {}}
+                  onAllDismissed={() => setShowSmartCards(false)}
+                  userId={state.user?.id}
                   theme={state.settings.theme}
                 />
-                {showSmartCards && smartCards.length > 0 && (
-                  <div className="absolute inset-0 z-10">
-                    <InlineSmartCard
-                      cards={smartCards}
-                      onDismiss={(id) => {}}
-                      onAllDismissed={() => setShowSmartCards(false)}
-                      userId={state.user?.id}
-                      theme={state.settings.theme}
-                    />
-                  </div>
-                )}
-              </div>
+              )}
             </div>
 
             {/* Budget bars: vertical list on mobile, 2-col grid on desktop */}

@@ -154,7 +154,7 @@ export const useAuthState = ({
           prev === 'unauthenticated' ? 'onboarding' : 'authenticated',
         );
         maybeLoadUserData(session.user.id, {
-          forceReload: event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED',
+          forceReload: event === 'SIGNED_IN',
         });
       } else {
         clearSessionTimestamp();

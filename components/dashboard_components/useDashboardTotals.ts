@@ -26,7 +26,7 @@ export default function useDashboardTotals(
       t => typeof t.date === 'string' && getLocalMonthKey(t.date) === currentMonth
     );
 
-  }, [transactions]);
+  }, [transactions, currentMonth]);
 
 
   const projectedTransactions = useMemo(() => {

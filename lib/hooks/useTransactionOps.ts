@@ -577,7 +577,7 @@ export const useTransactionOps = ({
       if (ids.length === 0) return;
       try {
         const headers = await getAuthHeaders();
-        const idList = ids.map(id => `"${id}"`).join(',');
+        const idList = ids.map(id => `"${id.replace(/"/g, '')}"`).join(',');
         const res = await fetch(`${REST_BASE}/pending_transactions?id=in.(${idList})`, {
           method: 'DELETE',
           headers,
@@ -612,7 +612,7 @@ export const useTransactionOps = ({
       try {
         const headers = await getAuthHeaders();
         (headers as any)['Prefer'] = 'return=representation';
-        const idList = ids.map(id => `"${id}"`).join(',');
+        const idList = ids.map(id => `"${id.replace(/"/g, '')}"`).join(',');
         const res = await fetch(`${REST_BASE}/transactions?id=in.(${idList})`, {
           method: 'PATCH',
           headers,

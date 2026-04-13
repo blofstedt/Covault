@@ -3,8 +3,8 @@
 // Piggybacks on app open / notification listener events.
 // Uses localStorage to avoid re-processing the same day.
 
-import { supabase } from './supabase';
 import { getLocalToday } from './dateUtils';
+import { REST_BASE, getAuthHeaders } from './apiHelpers';
 import type { Transaction } from '../types';
 
 /**
@@ -135,13 +135,23 @@ export async function executeRecurringTransactions(
     return [];
   }
 
-  const { data, error } = await supabase
-    .from('transactions')
-    .insert(toInsert)
-    .select();
-
-  if (error) {
-    console.error('[recurringExecutor] insert error:', error);
+  let data: any[] | null = null;
+  try {
+    const headers = await getAuthHeaders();
+    (headers as any)['Prefer'] = 'return=representation';
+    const res = await fetch(`${REST_BASE}/transactions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(toInsert),
+    });
+    const body = await res.text();
+    if (!res.ok) {
+      console.error('[recurringExecutor] insert failed:', res.status, body.slice(0, 200));
+      return [];
+    }
+    data = JSON.parse(body);
+  } catch (err: any) {
+    console.error('[recurringExecutor] insert error:', err?.message || err);
     return [];
   }
 

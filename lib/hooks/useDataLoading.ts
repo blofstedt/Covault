@@ -56,7 +56,8 @@ export const useDataLoading = ({
         });
 
         if (!res.ok) {
-          const legacyRows = missing.map(sc => ({
+          // Fallback for alternate schema column names
+          const altRows = missing.map(sc => ({
             user_id: userId,
             category: sc.name,
             limit_amount: sc.totalLimit,
@@ -65,7 +66,7 @@ export const useDataLoading = ({
           res = await fetch(`${REST_BASE}/budgets?on_conflict=user_id,category`, {
             method: 'POST',
             headers,
-            body: JSON.stringify(legacyRows),
+            body: JSON.stringify(altRows),
           });
         }
 

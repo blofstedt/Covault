@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { supabase } from '../../../lib/supabase';
+import { REST_BASE, getAuthHeaders } from '../../../lib/apiHelpers';
 import type { BudgetCategory } from '../../../types';
 import SettingsCard from '../../ui/SettingsCard';
 import SectionHeader from '../../ui/SectionHeader';
@@ -87,7 +87,7 @@ const ImportTransactionsSection: React.FC<ImportTransactionsSectionProps> = ({
       const categoryIdx = headers.indexOf('category');
       const recurrenceIdx = headers.indexOf('recurrence');
 
-      const budgetMap = new Map<string, string>(budgets.map((b) => [b.name.toLowerCase(), b.id]));
+      const budgetMap = new Map<string, string>(budgets.map((b) => [b.name.toLowerCase(), b.name]));
       const validRecurrences = ['one-time', 'biweekly', 'monthly'];
 
       const rows: Array<{
@@ -95,7 +95,7 @@ const ImportTransactionsSection: React.FC<ImportTransactionsSectionProps> = ({
         vendor: string;
         amount: number;
         date: string;
-        budget_id: string;
+        budget: string;
         recur: string;
         type: string;
         is_projected: boolean;
@@ -140,12 +140,11 @@ const ImportTransactionsSection: React.FC<ImportTransactionsSectionProps> = ({
         }
 
         // Match category
-        const budgetId = budgetMap.get(rawCategory.toLowerCase());
-        if (!budgetId) {
+        const budgetName = budgetMap.get(rawCategory.toLowerCase());
+        if (!budgetName) {
           errors.push(`Row ${i + 1}: unknown category "${rawCategory}". Valid: ${budgets.map((b) => b.name).join(', ')}.`);
           continue;
         }
-        const resolvedBudgetId: string = budgetId;
 
         // Recurrence
         const recurrence = rawRecurrence.toLowerCase();
@@ -163,7 +162,7 @@ const ImportTransactionsSection: React.FC<ImportTransactionsSectionProps> = ({
           vendor: vendor.trim(),
           amount,
           date: isoDate,
-          budget_id: resolvedBudgetId,
+          budget: budgetName,
           recur,
           type: 'Manual',
           is_projected: false,
@@ -177,13 +176,19 @@ const ImportTransactionsSection: React.FC<ImportTransactionsSectionProps> = ({
       }
 
       // Insert in batches of 100
+      const authHeaders = await getAuthHeaders();
       let insertedCount = 0;
       for (let i = 0; i < rows.length; i += 100) {
         const batch = rows.slice(i, i + 100);
-        const { error } = await supabase.from('transactions').insert(batch);
-        if (error) {
+        const res = await fetch(`${REST_BASE}/transactions`, {
+          method: 'POST',
+          headers: authHeaders,
+          body: JSON.stringify(batch),
+        });
+        if (!res.ok) {
+          const body = await res.text();
           setStatus('error');
-          setMessage(`Database error at row ${i + 1}: ${error.message}`);
+          setMessage(`Database error at row ${i + 1}: ${body.slice(0, 120)}`);
           return;
         }
         insertedCount += batch.length;
