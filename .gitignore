@@ -24,6 +24,7 @@ www
 *.sln
 *.sw?
 .env
+vercel.env.txt
 node_modules
 .auth-session.json
 screenshots/

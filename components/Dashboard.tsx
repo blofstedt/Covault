@@ -7,7 +7,6 @@ import TransactionActionModal from './TransactionActionModal';
 import TransactionForm from './TransactionForm';
 import PremiumGate from './PremiumGate';
 
-import DashboardHeader from './dashboard_components/DashboardHeader';
 import DashboardBalanceSection from './dashboard_components/DashboardBalanceSection';
 import DashboardBudgetSectionsList from './dashboard_components/DashboardBudgetSectionsList';
 import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
@@ -374,10 +373,7 @@ const Dashboard: React.FC<Props> = ({
   return (
     <>
       <PageShell showGlow>
-        {/* Header: cog top-right on all sizes */}
-        <DashboardHeader onOpenSettings={() => setShowSettings(true)} />
-
-        {/* Balance + search: always centered */}
+        {/* Balance + settings cog + search: combined in one section */}
         <DashboardBalanceSection
           isSharedAccount={!state.user?.budgetingSolo}
           remainingMoney={remainingMoney}
@@ -388,6 +384,7 @@ const Dashboard: React.FC<Props> = ({
             if (value.trim()) setIsSearchOpen(true);
           }}
           onSearchOpenChange={setIsSearchOpen}
+          onOpenSettings={() => setShowSettings(true)}
         />
 
         {searchQuery.trim() ? (
