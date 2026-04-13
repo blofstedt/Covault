@@ -122,7 +122,6 @@ export const toSupabaseTransaction = (
     amount: Number(tx.amount),
     date: dateStr,
     is_projected: tx.is_projected ?? false,
-    is_income: tx.is_income ?? false,
     // Current schema columns (public.transactions)
     // type enum only has 'Manual' and 'Automatic' — map AI/Automatic labels to 'Automatic'
     budget: budgetName,
