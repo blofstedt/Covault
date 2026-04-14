@@ -68,7 +68,7 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
   const [isDragging, setIsDragging] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   const [exitDirection, setExitDirection] = useState<'left' | 'right' | 'up' | 'down'>('right');
-  const [justPromoted, setJustPromoted] = useState(false);
+  const [isPromoting, setIsPromoting] = useState(false);
 
   const startPos = useRef({ x: 0, y: 0 });
   const cardRef = useRef<HTMLDivElement>(null);
@@ -85,14 +85,15 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
     }
   }, [activeCards.length, cards.length, onAllDismissed]);
 
-  // Clear justPromoted after one frame so the promoted card doesn't animate in
+  // After one frame, clear isPromoting so the new top card transitions from its
+  // starting scale(0.95) to full size — the "expand from underneath" effect.
   useEffect(() => {
-    if (!justPromoted) return;
+    if (!isPromoting) return;
     const raf = requestAnimationFrame(() => {
-      setJustPromoted(false);
+      setIsPromoting(false);
     });
     return () => cancelAnimationFrame(raf);
-  }, [justPromoted]);
+  }, [isPromoting]);
 
   const advanceCard = useCallback(() => {
     if (isDismissingRef.current) return;
@@ -107,7 +108,7 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
     setIsExiting(false);
     setDragX(0);
     setDragY(0);
-    setJustPromoted(true);
+    setIsPromoting(true);
     setCurrentIndex((i) => i + 1);
 
     setTimeout(() => { isDismissingRef.current = false; }, 50);
@@ -155,7 +156,7 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
     setIsExiting(false);
     setDragX(0);
     setDragY(0);
-    setJustPromoted(true);
+    setIsPromoting(true);
     setCurrentIndex((i) => i + 1);
     setTimeout(() => { isDismissingRef.current = false; }, 50);
   }, [cards, currentIndex, userId, advanceCard, onDismiss]);
@@ -298,9 +299,11 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
           ref={cardRef}
           className={`absolute inset-0 bg-white dark:bg-slate-900 rounded-[2.5rem] border shadow-2xl overflow-hidden select-none touch-none ${accentBorder[topCard.accent] || accentBorder.blue}`}
           style={{
-            transform: topTransform,
+            transform: isPromoting
+              ? 'translate(0px, 0px) rotate(0deg) scale(0.95)'
+              : topTransform,
             opacity: isExiting ? 0 : opacity,
-            transition: isDragging || justPromoted
+            transition: isPromoting || isDragging
               ? 'none'
               : 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease',
             zIndex: 20,

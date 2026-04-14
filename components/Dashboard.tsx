@@ -19,6 +19,7 @@ import useNormalizedTransactions from './dashboard_components/useNormalizedTrans
 import useDashboardTotals from './dashboard_components/useDashboardTotals';
 import { getLocalMonthKey } from '../lib/dateUtils';
 import { collectSmartCards } from '../lib/smartCards';
+import { checkAndTriggerAppNotifications } from '../lib/appNotifications';
 import { supabase } from '../lib/supabase';
 import { resolveBudgetIdFromRow } from '../lib/hooks/transactionMappers';
 
@@ -146,6 +147,31 @@ const Dashboard: React.FC<Props> = ({
     }
   }, [smartCards.length, state.settings.smart_cards_enabled]);
 
+  // Fire push notifications for budget overruns / low balance whenever the
+  // transaction data changes. appNotifications.ts dedupes via localStorage so
+  // the same alert won't fire more than once per budget per month.
+  useEffect(() => {
+    if (!state.user?.id || !state.budgets.length) return;
+    checkAndTriggerAppNotifications({
+      userId: state.user.id,
+      budgets: state.budgets,
+      transactions: currentMonthBudgetTransactions,
+      totalIncome: state.user.monthlyIncome || 0,
+      remainingMoney,
+      settings: {
+        app_notifications_enabled: state.settings.app_notifications_enabled,
+        smart_notifications_enabled: state.settings.smart_notifications_enabled,
+      },
+    });
+  }, [
+    state.user?.id,
+    state.budgets,
+    currentMonthBudgetTransactions,
+    remainingMoney,
+    state.settings.smart_notifications_enabled,
+    state.settings.app_notifications_enabled,
+  ]);
+
   // Badge count: number of AI-caught transactions not yet cleared.
   // Derived directly from app state so it automatically decreases when
   // a transaction is deleted (optimistic removal) or cleared (reload).
@@ -186,6 +212,7 @@ const Dashboard: React.FC<Props> = ({
     useLeisureAsBuffer: 'leisure_buffer_enabled',
     showSavingsInsight: 'show_savings_insight',
     app_notifications_enabled: 'app_notifications_enabled',
+    smart_notifications_enabled: 'smart_notifications_enabled',
   };
 
   const handleUpdateSettings = (key: string, value: any) => {

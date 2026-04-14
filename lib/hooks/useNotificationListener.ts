@@ -4,6 +4,8 @@ import { Capacitor } from '@capacitor/core';
 import type { Transaction, User, PendingTransaction, BudgetCategory } from '../../types';
 import { covaultNotification } from '../covaultNotification';
 import { processNotificationWithAI } from '../notificationProcessor';
+import { sendPartnerActivityNotification } from '../appNotifications';
+import type { NotificationSettingsShape } from '../appNotifications';
 import type { AIProcessingResult } from '../notificationProcessor';
 import { getBankingApps } from '../bankingApps';
 import { getLocalToday } from '../dateUtils';
@@ -11,6 +13,7 @@ import { getLocalToday } from '../dateUtils';
 export interface UseNotificationListenerParams {
   user: User | null;
   budgets: BudgetCategory[];
+  settings?: NotificationSettingsShape;
   onTransactionDetected: (tx: Transaction) => void;
   onPendingTransactionCreated?: (pending: PendingTransaction) => void;
   /** Called for auto-accepted transactions that are already saved in the DB. */
@@ -28,6 +31,7 @@ export interface UseNotificationListenerParams {
 export const useNotificationListener = ({
   user,
   budgets,
+  settings,
   onTransactionDetected,
   onPendingTransactionCreated,
   onAutoAcceptedTransaction,
@@ -109,6 +113,18 @@ export const useNotificationListener = ({
                     onAutoAcceptedTransaction(tx);
                   } else {
                     onTransactionDetected(tx);
+                  }
+
+                  // If this transaction came from a partner's device (different
+                  // user_id on the event) send a push alert to the current user.
+                  const eventUserId = (event as any).user_id || (event as any).userId;
+                  if (eventUserId && eventUserId !== user.id && user.partnerName) {
+                    sendPartnerActivityNotification(
+                      user.partnerName,
+                      result.vendor || 'Unknown',
+                      result.amount || 0,
+                      settings || {},
+                    );
                   }
                 }
 

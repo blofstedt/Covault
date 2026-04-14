@@ -221,8 +221,8 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
       {/* EXPANDED TRANSACTIONS LIST */}
       {isExpanded && (
-        <div 
-          className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-6 pb-2 relative z-10"
+        <div
+          className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-6 pb-2 relative z-10 animate-in fade-in duration-200"
           style={{
             WebkitOverflowScrolling: 'touch',
             overscrollBehavior: 'contain',

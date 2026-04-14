@@ -63,10 +63,10 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
   return (
     <div
       ref={scrollContainerRef}
-      className={`relative flex-1 min-h-0 mt-1 px-4 no-scrollbar ${
+      className={`relative flex-1 min-h-0 mt-1 px-4 no-scrollbar flex flex-col ${
         expandedBudgetId
           ? 'overflow-hidden'
-          : 'flex flex-col lg:grid lg:grid-cols-2 lg:auto-rows-fr gap-2 overflow-y-auto scroll-smooth transition-all duration-500'
+          : 'overflow-y-auto scroll-smooth gap-2 lg:grid lg:grid-cols-2 lg:auto-rows-fr'
       }`}
     >
       {visibleBudgets.map((budget, index) => {
@@ -96,19 +96,17 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
                   budgetRefs?.current.delete(budget.id);
                 }
               }}
-              className={`${
-                expandedBudgetId
-                  ? isExpanded
-                    ? 'absolute top-0 right-4 bottom-0 left-4 flex flex-col min-h-0 overflow-hidden opacity-100'
-                    : 'hidden'
-                  : 'flex flex-col flex-1 opacity-100 scale-100 lg:min-h-[80px] transform-gpu will-change-[transform,opacity]'
-              }`}
+              className="flex flex-col min-h-0 lg:min-h-[80px]"
               style={{
-                transition: expandedBudgetId
-                  ? isExpanded
-                    ? 'opacity 0.15s ease-out'
-                    : 'none'
-                  : `opacity 0.3s ease ${index * 20}ms, transform 0.3s ease ${index * 20}ms`,
+                // Non-expanded cards shrink to 0 while the expanded one fills all space.
+                // Animating `flex` (flex-grow + flex-basis) is GPU-friendly on modern
+                // engines and avoids the layout-thrash of display:none / absolute swaps.
+                flex: expandedBudgetId && !isExpanded ? '0 0 0px' : '1 1 auto',
+                minHeight: expandedBudgetId ? 0 : undefined,
+                opacity: expandedBudgetId && !isExpanded ? 0 : 1,
+                overflow: 'hidden',
+                pointerEvents: expandedBudgetId && !isExpanded ? 'none' : undefined,
+                transition: 'flex 0.38s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.28s ease',
               }}
             >
               <BudgetSection

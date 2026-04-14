@@ -3,8 +3,7 @@ import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import type { BudgetCategory, Transaction } from '../types';
 
-// Settings shape
-interface NotificationSettingsShape {
+export interface NotificationSettingsShape {
   app_notifications_enabled?: boolean;
   smart_notifications_enabled?: boolean;
 }
