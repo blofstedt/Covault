@@ -150,6 +150,7 @@ const App: React.FC = () => {
   useNotificationListener({
     user: appState.user,
     budgets: appState.budgets,
+    settings: appState.settings,
     onTransactionDetected: handleAddTransaction,
     onPendingTransactionCreated: handlePendingTransactionCreated,
     onAutoAcceptedTransaction: handleAutoAcceptedTransaction,

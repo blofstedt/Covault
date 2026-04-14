@@ -12,14 +12,6 @@ interface FAQModalProps {
 
 const FAQ_ITEMS: FAQItem[] = [
   {
-    question: "How do I link to a partner?",
-    answer: "Open the gear icon to access Vault Settings, then scroll to 'Vault Sharing.' Tap 'Generate Code' to create a link code and share it with your partner, or enter a code they've shared with you."
-  },
-  {
-    question: "How do I edit rules for parsing transactions?",
-    answer: "Go to the transaction parsing view by tapping the angle-brackets icon on the bottom bar. From there, you can configure how bank notifications are parsed into transactions."
-  },
-  {
     question: "How do I add a transaction?",
     answer: "Tap the + button in the center of the bottom bar. Fill in the amount, vendor name, and choose a budget category, then tap Save."
   },
@@ -32,8 +24,16 @@ const FAQ_ITEMS: FAQItem[] = [
     answer: "Tap on the transaction in the budget list. An action modal will appear where you can edit the amount, vendor, category, or date."
   },
   {
+    question: "Can I search for a specific transaction?",
+    answer: "Tap the 'Find entry...' bar just below the balance number at the top of the dashboard. Type a vendor name to filter transactions. Tap outside the bar to close it."
+  },
+  {
     question: "How do I change my monthly income?",
-    answer: "Open Vault Settings via the gear icon and look for the 'Monthly Income' section at the top. Tap the amount to edit it."
+    answer: "Open Vault Settings via the gear icon and find the 'Monthly Income' section at the top. Tap the amount to edit it."
+  },
+  {
+    question: "How is my remaining balance calculated?",
+    answer: "Your balance starts with your monthly income, then subtracts all actual spending and projected future expenses for the current month. It updates in real time as you add transactions."
   },
   {
     question: "How do I set budget limits?",
@@ -44,36 +44,48 @@ const FAQ_ITEMS: FAQItem[] = [
     answer: "In Vault Settings under 'Budget Limits,' tap the eye icon next to any category to hide it from your dashboard and chart."
   },
   {
-    question: "How do I enable dark mode?",
-    answer: "Open Vault Settings and find the 'Dark Interface' toggle. Tap it to switch between light and dark themes."
+    question: "What do the budget cards on the dashboard represent?",
+    answer: "Each budget card is a spending category. The coloured fill shows what you've actually spent this month. A dotted extension shows projected future expenses from recurring transactions. When the fill reaches the edge, you've hit that category's limit."
   },
   {
-    question: "What is the Discretionary Shield?",
-    answer: "When enabled, your Leisure budget absorbs overflow from other overspent categories. It acts as a safety net to protect your essential budgets."
+    question: "How do I read the Spending Flow chart?",
+    answer: "The chart shows your spending across categories over time. Each coloured band is a category. Touch and drag to scrub through months and see breakdowns. Dashed threshold lines mark your total budget limit."
+  },
+  {
+    question: "What are Insight Cards?",
+    answer: "Insight Cards are smart summaries that appear when you open the app. They surface things like a budget nearing its limit, an upcoming recurring bill, or a notable spending trend. Swipe a card to dismiss it. Toggle them on or off under 'Smart Insights' in Vault Settings."
+  },
+  {
+    question: "What are Smart Notifications?",
+    answer: "Smart Notifications are push alerts that fire automatically when a budget hits 80% or exceeds its limit, or your remaining balance goes negative. Enable or disable them under 'Smart Insights' in Vault Settings."
+  },
+  {
+    question: "How do I set up bank notification parsing?",
+    answer: "In Vault Settings, enable the 'Bank Notification Listener.' On Android, Covault can read your banking app notifications and automatically log transactions. You can then review and approve them in the parsing view (the code icon on the bottom bar)."
   },
   {
     question: "What is Budget Rollover?",
     answer: "When rollover is enabled, unspent money in a category carries over to the next month. This lets surplus accumulate across billing cycles."
   },
   {
+    question: "What is the Discretionary Shield?",
+    answer: "When enabled, your Leisure budget absorbs overflow from other overspent categories. It acts as a safety net to protect your essential budgets."
+  },
+  {
+    question: "How do I enable dark mode?",
+    answer: "Open Vault Settings and find the 'Dark Interface' toggle. Tap it to switch between light and dark themes."
+  },
+  {
     question: "How do I export my transactions?",
     answer: "In Vault Settings, find 'Export Transactions.' Choose a date range, then download your data as a CSV file you can open in any spreadsheet app."
   },
   {
-    question: "How do I read the Spending Flow chart?",
-    answer: "The chart shows your spending across categories over time. Each colored band is a category. Touch and hold to scrub through months and see breakdowns. Dashed threshold lines mark your total budget limit."
+    question: "How do I import transactions?",
+    answer: "In Vault Settings, scroll to 'Import Transactions' and tap 'Choose CSV File.' Your CSV needs these columns: Date, Vendor, Amount, Category, and Recurrence. Category names must match your existing budget categories exactly."
   },
   {
-    question: "What do the vials on the dashboard represent?",
-    answer: "Each vial is a budget category. The solid fill shows what you've actually spent. Dashed portions represent projected future expenses. When a vial overflows, you've exceeded that category's limit."
-  },
-  {
-    question: "How do I set up bank notification parsing?",
-    answer: "In Vault Settings, enable the 'Bank Notification Listener.' On Android, Covault can read your banking notifications and auto-log transactions. You can then review and approve them in the parsing view."
-  },
-  {
-    question: "How do I create notification rules?",
-    answer: "In Vault Settings, find 'Notification Rules' and tap the + button. Write rules in plain English like 'Notify me when Groceries is within 10% of its limit.' Each rule can be delivered via push, email, or in-app."
+    question: "How do I link to a partner?",
+    answer: "Open Vault Settings via the gear icon and scroll to 'Vault Sharing.' Tap 'Generate Code' to create a link code and share it with your partner, or enter a code they've shared with you."
   },
   {
     question: "How do I disconnect from a partner?",
@@ -85,19 +97,7 @@ const FAQ_ITEMS: FAQItem[] = [
   },
   {
     question: "How do I suggest a new feature?",
-    answer: "Open Vault Settings via the gear icon and find the 'Support & Feedback' section. Tap 'Request a Feature' to vote on features or submit your own ideas. The most popular requests rise to the top."
-  },
-  {
-    question: "How is my remaining balance calculated?",
-    answer: "Your balance starts with your monthly income, then subtracts all actual spending and projected future expenses for the current month. It updates in real time as you add transactions."
-  },
-  {
-    question: "Can I search for a specific transaction?",
-    answer: "Yes! Tap on the balance area at the top of the dashboard to reveal a search bar. Type a vendor name to filter transactions across all months."
-  },
-  {
-    question: "How do I run the tutorial again?",
-    answer: "Open Vault Settings via the gear icon and tap the 'Run Tutorial' button at the top of the settings panel."
+    answer: "Open Vault Settings via the gear icon and scroll to 'Support & Feedback.' Tap 'Request a Feature' to send an email directly to the development team."
   },
 ];
 
