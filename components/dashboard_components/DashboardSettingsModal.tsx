@@ -190,7 +190,12 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           />
 
           {/* Budget Report */}
-          <ReportSection />
+          <ReportSection
+            budgets={budgets}
+            transactions={transactions}
+            monthlyIncome={user?.monthlyIncome || 0}
+            isSharedAccount={isSharedAccount}
+          />
 
           {/* Support & Feedback — only feature requests are premium */}
           <SupportFeedbackSection hasPremium={hasPremium} onSubscribe={onSubscribe} />
