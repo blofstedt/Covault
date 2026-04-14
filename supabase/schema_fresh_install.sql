@@ -184,6 +184,7 @@ CREATE TABLE public.transactions (
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now(),
   description text,
+  caught_cleared boolean NOT NULL DEFAULT false,
   CONSTRAINT transactions_pkey PRIMARY KEY (id),
   CONSTRAINT transactions_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
 );

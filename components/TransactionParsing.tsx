@@ -93,9 +93,9 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     return () => window.removeEventListener(eventName, refreshReviewQueue);
   }, []);
 
-  // ── AI-entered transactions (label === 'AI') ──
+  // ── AI-entered transactions (label === 'Automatic', not yet cleared) ──
   const aiTransactions = useMemo(
-    () => allTransactions.filter((tx) => tx.label === 'Automatic'),
+    () => allTransactions.filter((tx) => tx.label === 'Automatic' && !tx.caught_cleared),
     [allTransactions],
   );
 
@@ -206,31 +206,29 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         </div>
       </header>
 
-      {/* Main content */}
-      <main className="flex-1 min-h-0 flex flex-col p-4 pb-0 overflow-hidden relative z-10">
-        <div className="max-w-2xl mx-auto w-full flex-1 min-h-0 flex flex-col gap-4 overflow-hidden">
-          {enabled ? (
-            <>
-              <div className="shrink-0">
-                <ActiveBanksCard
-                  activeBanks={monitoredBanks}
-                />
-              </div>
-
-              <AITransactionsEnteredCard
-                aiTransactions={aiTransactions}
-                budgets={budgets}
-                onTransactionTap={onTransactionTap}
-                onClear={() => setClearTarget('entered')}
-                onRefresh={handleRefresh}
-                isRefreshing={isRefreshing}
-                needsReviewIds={needsReviewIds}
+      {/* Main content — single flex container (no extra wrapper) */}
+      <main className="flex-1 min-h-0 flex flex-col p-4 pb-0 max-w-2xl mx-auto w-full relative z-10">
+        {enabled ? (
+          <>
+            <div className="shrink-0 mb-4">
+              <ActiveBanksCard
+                activeBanks={monitoredBanks}
               />
-            </>
-          ) : (
-            <SetupInfoCard enabled={enabled} onToggle={onToggle} />
-          )}
-        </div>
+            </div>
+
+            <AITransactionsEnteredCard
+              aiTransactions={aiTransactions}
+              budgets={budgets}
+              onTransactionTap={onTransactionTap}
+              onClear={() => setClearTarget('entered')}
+              onRefresh={handleRefresh}
+              isRefreshing={isRefreshing}
+              needsReviewIds={needsReviewIds}
+            />
+          </>
+        ) : (
+          <SetupInfoCard enabled={enabled} onToggle={onToggle} />
+        )}
       </main>
 
       <div
