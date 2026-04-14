@@ -141,7 +141,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         </div>
 
         <button
-          onClick={handleFinishCouples}
+          onClick={() => onComplete(false, SYSTEM_CATEGORIES, undefined)}
           className="text-slate-400 dark:text-slate-600 font-medium text-[10px] tracking-wide hover:text-emerald-500 transition-colors"
         >
           Skip for now
