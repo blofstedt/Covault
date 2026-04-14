@@ -127,10 +127,9 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
 
     try {
       const headers = await getAuthHeaders();
-      (headers as any)['Prefer'] = 'return=representation';
-      // category_id in DB is a Budgets enum e.g. 'Groceries', not the app-format 'budget:groceries'
+      // Use merge-duplicates so a single POST handles both insert and update
+      (headers as any)['Prefer'] = 'resolution=merge-duplicates,return=representation';
       const dbCategoryId = budgetIdToName(parsed.categoryId);
-      // Upsert: try insert, fallback to patch
       const res = await fetch(`${REST_BASE}/overrides`, {
         method: 'POST',
         headers,
@@ -141,16 +140,13 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
         }),
       });
       if (!res.ok) {
-        // If conflict, update existing
-        await fetch(
-          `${REST_BASE}/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(parsed.vendor)}`,
-          { method: 'PATCH', headers, body: JSON.stringify({ category_id: dbCategoryId }) },
-        );
+        console.warn('[SmartCard] override upsert responded', res.status);
       }
     } catch (e) {
       console.warn('[SmartCard] vendor override save failed:', e);
     }
 
+    // Always advance the card — save is best-effort
     dismissCard(card.id);
     onDismiss(card.id);
     setIsExiting(false);

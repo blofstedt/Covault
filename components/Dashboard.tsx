@@ -123,6 +123,19 @@ const Dashboard: React.FC<Props> = ({
   const [showSmartCards, setShowSmartCards] = useState(false);
   const smartCardsShownRef = useRef(false);
 
+  // Stable key: only changes when a budget's spending total shifts by ≥$1.
+  // Prevents collectSmartCards from re-running on every reference identity change
+  // of normalizedTransactions / currentMonthBudgetTransactions.
+  const budgetSpendingKey = useMemo(() =>
+    state.budgets.map(b => {
+      const spent = currentMonthBudgetTransactions
+        .filter(tx => tx.budget_id === b.id && !tx.is_projected)
+        .reduce((s, tx) => s + tx.amount, 0);
+      return `${b.id}:${b.totalLimit}:${Math.round(spent)}`;
+    }).join(','),
+    [state.budgets, currentMonthBudgetTransactions],
+  );
+
   const smartCards = useMemo(
     () =>
       collectSmartCards(
@@ -132,7 +145,8 @@ const Dashboard: React.FC<Props> = ({
         state.user?.id,
         state.user?.partnerName,
       ),
-    [state.budgets, normalizedTransactions, currentMonthBudgetTransactions, state.user?.id, state.user?.partnerName],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [budgetSpendingKey, state.user?.id, state.user?.partnerName],
   );
 
   // Show the deck automatically once on mount if there are cards & setting is on
@@ -146,6 +160,13 @@ const Dashboard: React.FC<Props> = ({
       setShowSmartCards(true);
     }
   }, [smartCards.length, state.settings.smart_cards_enabled]);
+
+  // Stable key: changes only when a budget limit is added/removed/modified.
+  // Prevents the notification effect from re-running on every array re-creation.
+  const budgetLimitKey = useMemo(
+    () => state.budgets.map(b => `${b.id}:${b.totalLimit}`).join(','),
+    [state.budgets],
+  );
 
   // Fire push notifications for budget overruns / low balance whenever the
   // transaction data changes. appNotifications.ts dedupes via localStorage so
@@ -163,10 +184,10 @@ const Dashboard: React.FC<Props> = ({
         smart_notifications_enabled: state.settings.smart_notifications_enabled,
       },
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     state.user?.id,
-    state.budgets,
-    currentMonthBudgetTransactions,
+    budgetLimitKey,
     remainingMoney,
     state.settings.smart_notifications_enabled,
     state.settings.app_notifications_enabled,
@@ -403,6 +424,7 @@ const Dashboard: React.FC<Props> = ({
         <DashboardBalanceSection
           isSharedAccount={!state.user?.budgetingSolo}
           remainingMoney={remainingMoney}
+          monthlyIncome={state.user?.monthlyIncome || 0}
           searchQuery={searchQuery}
           isSearchOpen={isSearchOpen}
           onSearchQueryChange={(value) => {
@@ -485,8 +507,7 @@ const Dashboard: React.FC<Props> = ({
 
         <div
           aria-hidden="true"
-          className="shrink-0"
-          style={{ height: 'calc(env(safe-area-inset-bottom, 0px) + 5rem)' }}
+          className="shrink-0 h-[5rem]"
         />
 
         <DashboardBottomBar

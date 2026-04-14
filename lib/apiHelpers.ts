@@ -15,8 +15,18 @@ export const clearCachedAccessToken = () => {
   cachedAccessToken = '';
 };
 
+/** Returns true if the JWT is expired or within 90 seconds of expiry. */
+const isTokenStale = (token: string): boolean => {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return Date.now() > (payload.exp * 1000) - 90_000;
+  } catch {
+    return true;
+  }
+};
+
 const readAccessToken = async (): Promise<string> => {
-  if (cachedAccessToken) return cachedAccessToken;
+  if (cachedAccessToken && !isTokenStale(cachedAccessToken)) return cachedAccessToken;
 
   // During initial sign-in, auth state can update before the access token is
   // immediately available to `getSession()`. Retry briefly to avoid firing

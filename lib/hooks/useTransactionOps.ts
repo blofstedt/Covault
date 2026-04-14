@@ -67,6 +67,8 @@ export const useTransactionOps = ({
 
       try {
         const row = toSupabaseTransaction(tx);
+        // Ensure auto-added transactions appear in the badge until cleared
+        if (tx.label === 'Automatic') (row as any).caught_cleared = false;
         console.log('[insert] payload:', JSON.stringify(row));
 
         const headers = await getAuthHeaders();
@@ -258,10 +260,12 @@ export const useTransactionOps = ({
               try { patchedRows = patchBody ? JSON.parse(patchBody) : []; } catch { patchedRows = []; }
 
               if (!patchRes.ok || !Array.isArray(patchedRows) || patchedRows.length === 0) {
-                // No existing override — insert new one
+                // No existing override — insert, ignoring conflicts from concurrent writes
+                const insertHeaders = { ...overrideHeaders };
+                (insertHeaders as any)['Prefer'] = 'resolution=ignore-duplicates';
                 await fetch(`${REST_BASE}/overrides`, {
                   method: 'POST',
-                  headers: overrideHeaders,
+                  headers: insertHeaders,
                   body: JSON.stringify({ user_id: appState.user.id, proper_name: newVendorName, category_id: budgetName }),
                 });
               }
@@ -409,6 +413,7 @@ export const useTransactionOps = ({
           type: 'Automatic',
           recur: 'One-time',
           is_projected: false,
+          caught_cleared: false,
         };
 
         const insertHeaders = await getAuthHeaders();
@@ -483,9 +488,12 @@ export const useTransactionOps = ({
           try { patchedRows = patchBody ? JSON.parse(patchBody) : []; } catch { patchedRows = []; }
 
           if (!patchRes.ok || !Array.isArray(patchedRows) || patchedRows.length === 0) {
+            // Insert, ignoring conflicts from concurrent writes
+            const insertHeaders = { ...overrideHeaders };
+            (insertHeaders as any)['Prefer'] = 'resolution=ignore-duplicates';
             await fetch(`${REST_BASE}/overrides`, {
               method: 'POST',
-              headers: overrideHeaders,
+              headers: insertHeaders,
               body: JSON.stringify({ user_id: userId, proper_name: vendorDisplay, category_id: approvedBudgetName }),
             });
           }

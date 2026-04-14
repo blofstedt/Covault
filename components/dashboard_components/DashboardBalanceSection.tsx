@@ -3,6 +3,7 @@ import React from 'react';
 interface DashboardBalanceSectionProps {
   isSharedAccount: boolean;
   remainingMoney: number;
+  monthlyIncome: number;
   searchQuery: string;
   isSearchOpen: boolean;
   onSearchQueryChange: (value: string) => void;
@@ -13,6 +14,7 @@ interface DashboardBalanceSectionProps {
 const DashboardBalanceSection: React.FC<DashboardBalanceSectionProps> = ({
   isSharedAccount,
   remainingMoney,
+  monthlyIncome,
   searchQuery,
   isSearchOpen,
   onSearchQueryChange,
@@ -20,6 +22,7 @@ const DashboardBalanceSection: React.FC<DashboardBalanceSectionProps> = ({
   onOpenSettings,
 }) => {
   const isNegative = remainingMoney < 0;
+  const hasNoIncome = monthlyIncome === 0;
 
   return (
     <div
@@ -59,6 +62,15 @@ const DashboardBalanceSection: React.FC<DashboardBalanceSectionProps> = ({
           </svg>
         </button>
       </div>
+
+      {hasNoIncome && (
+        <button
+          onClick={onOpenSettings}
+          className="mb-1 z-10 text-[10px] font-semibold text-slate-400 dark:text-slate-500 tracking-wide hover:text-emerald-500 dark:hover:text-emerald-400 transition-colors"
+        >
+          Set monthly income in Settings →
+        </button>
+      )}
 
       <div className="text-center z-10 animate-nest">
         <div className="flex items-baseline justify-center space-x-1 transition-colors duration-700">
