@@ -74,11 +74,19 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const amountInputRef = useRef<HTMLInputElement>(null);
 
   const CLOSE_ANIMATION_MS = 250;
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleClose = () => {
     setIsClosing(true);
-    setTimeout(() => onClose(), CLOSE_ANIMATION_MS);
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = setTimeout(() => onClose(), CLOSE_ANIMATION_MS);
   };
+
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!initialTransaction) {

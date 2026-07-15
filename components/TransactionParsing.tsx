@@ -103,25 +103,34 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   // after a short delay so newly processed notifications appear.
   const prevEnabled = React.useRef(enabled);
   const reloadTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scanCancelledRef = React.useRef(false);
   useEffect(() => {
     const wasEnabled = prevEnabled.current;
     prevEnabled.current = enabled;
+    scanCancelledRef.current = false;
 
     if (!wasEnabled && enabled) {
       // Notifications were just enabled — refresh after scan has time to process
       (async () => {
-        if (onRefreshNotifications) {
-          await onRefreshNotifications();
-        }
-        reloadTimeoutRef.current = setTimeout(async () => {
-          if (onReloadTransactions && userId) {
-            await onReloadTransactions(userId);
+        try {
+          if (onRefreshNotifications) {
+            await onRefreshNotifications();
           }
-        }, SCAN_PROCESSING_DELAY_MS);
+          if (scanCancelledRef.current) return;
+          reloadTimeoutRef.current = setTimeout(async () => {
+            if (scanCancelledRef.current) return;
+            if (onReloadTransactions && userId) {
+              await onReloadTransactions(userId);
+            }
+          }, SCAN_PROCESSING_DELAY_MS);
+        } catch (e) {
+          console.error('[TransactionParsing] refresh after enable failed:', e);
+        }
       })();
     }
 
     return () => {
+      scanCancelledRef.current = true;
       if (reloadTimeoutRef.current != null) {
         clearTimeout(reloadTimeoutRef.current);
         reloadTimeoutRef.current = null;

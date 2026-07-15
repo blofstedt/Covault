@@ -41,6 +41,11 @@ export const useNotificationListener = ({
     if (!Capacitor.isNativePlatform()) return;
 
     let cleanup: (() => void) | null = null;
+    // If the effect re-runs (e.g. user/budgets reference changes) while
+    // addListener is still resolving, the old listener is already in-flight
+    // and must be removed as soon as the promise settles — otherwise we leak
+    // a native handle per re-render and the user gets duplicate transactions.
+    let cancelled = false;
 
     const setupListener = async () => {
       try {
@@ -158,6 +163,12 @@ export const useNotificationListener = ({
           },
         );
 
+        if (cancelled) {
+          // The effect re-ran while we were awaiting; remove the just-added
+          // listener immediately so we don't accumulate stale handles.
+          handle.remove();
+          return;
+        }
         cleanup = () => handle.remove();
       } catch (e) {
         console.warn(
@@ -170,6 +181,7 @@ export const useNotificationListener = ({
     setupListener();
 
     return () => {
+      cancelled = true;
       cleanup?.();
     };
   }, [user, budgets, onTransactionDetected, onPendingTransactionCreated, onAutoAcceptedTransaction, onAIProcessingResult]);

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import type { SmartCard } from '../../lib/smartCards';
 import { dismissCard } from '../../lib/smartCards';
 import { REST_BASE, getAuthHeaders } from '../../lib/apiHelpers';
@@ -123,6 +123,17 @@ const InlineSmartCard: React.FC<InlineSmartCardProps> = ({ cards, onDismiss, onA
 
   const startX = useRef(0);
   const isDismissingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const guardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+      if (guardTimerRef.current) clearTimeout(guardTimerRef.current);
+    };
+  }, []);
 
   const activeCards = cards.slice(currentIndex);
   const topCard = activeCards[0];
@@ -141,7 +152,8 @@ const InlineSmartCard: React.FC<InlineSmartCardProps> = ({ cards, onDismiss, onA
     setDragX(0);
     setCurrentIndex((i) => i + 1);
 
-    setTimeout(() => { isDismissingRef.current = false; }, 100);
+    if (guardTimerRef.current) clearTimeout(guardTimerRef.current);
+    guardTimerRef.current = setTimeout(() => { isDismissingRef.current = false; }, 100);
   }, [cards, currentIndex, onDismiss]);
 
   const handleVendorAccept = useCallback(async () => {
@@ -189,7 +201,8 @@ const InlineSmartCard: React.FC<InlineSmartCardProps> = ({ cards, onDismiss, onA
 
     if (Math.abs(dragX) > SWIPE_THRESHOLD) {
       setIsExiting(true);
-      setTimeout(advanceCard, 200);
+      if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+      dismissTimerRef.current = setTimeout(advanceCard, 200);
     } else {
       setDragX(0);
     }

@@ -74,12 +74,14 @@ export const useAuthState = ({
           pendingUserIdRef.current = null;
           if (pendingUserId && pendingUserId !== lastLoadedUserIdRef.current) {
             maybeLoadUserData(pendingUserId).catch(error => {
+              // A transient failure here (network blip, RLS hiccup, etc.) must not
+              // sign the user out — the Supabase session is still valid. Just log
+              // and leave the existing app state intact; the next loadUserData
+              // triggered by a SIGNED_IN / token refresh will retry.
               console.error(
                 `[useAuthState] Error loading pending user data for user ${pendingUserId}. This may indicate a network issue or invalid user ID:`,
                 error,
               );
-              setAuthState('unauthenticated');
-              setAppState(prev => ({ ...prev, user: null }));
             });
           }
         });
@@ -108,7 +110,19 @@ export const useAuthState = ({
       setAppState(prev => ({
         ...prev,
         user: prev.user?.id === mappedUser.id
-          ? { ...prev.user, ...mappedUser, monthlyIncome: prev.user.monthlyIncome }
+          ? {
+              // Preserve DB-loaded fields (hasJointAccounts, budgetingSolo,
+              // partnerId/Name/Email, trial_*, subscription_*, monthlyIncome,
+              // etc.) and only refresh the fields that actually come from the
+              // auth session. The previous version spread `...mappedUser`,
+              // which clobbered hasJointAccounts/budgetingSolo on every
+              // TOKEN_REFRESHED / USER_UPDATED event with the mapper's
+              // hard-coded defaults.
+              ...prev.user,
+              id: mappedUser.id,
+              name: mappedUser.name,
+              email: mappedUser.email,
+            }
           : mappedUser,
       }));
     };

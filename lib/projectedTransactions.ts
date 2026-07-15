@@ -1,4 +1,5 @@
 import type { Transaction } from '../types';
+import { parseLocalDate } from './dateUtils';
 
 /**
  * Add months to a Date
@@ -58,7 +59,11 @@ export function generateProjectedTransactions(base: Transaction[]): Transaction[
     // Keep DB rows eligible when they carry recurrence data.
     if (tx.is_projected && String(tx.id || '').startsWith('projected-')) continue;
 
-    let current = new Date(toIsoDay(tx.date));
+    // Build the initial date in the user's local timezone. `new Date("YYYY-MM-DD")`
+    // parses as UTC midnight, which lands on the previous local day for users
+    // in negative-offset timezones and shifts the projected day-of-month after
+    // the first addMonths().
+    let current = parseLocalDate(toIsoDay(tx.date));
     if (Number.isNaN(current.getTime())) continue;
 
     while (true) {

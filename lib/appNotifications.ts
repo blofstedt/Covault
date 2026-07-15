@@ -16,7 +16,11 @@ function makeBudgetAlertKey(userId: string, budgetId: string) {
 }
 
 function makeBalanceAlertKey(userId: string) {
-  return `covault_alert_balance_${userId}`;
+  // Include the month so the user is re-notified if their balance goes
+  // negative again in a later month. Mirrors `makeBudgetAlertKey`.
+  const now = new Date();
+  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  return `covault_alert_balance_${userId}_${month}`;
 }
 
 async function ensurePermission() {

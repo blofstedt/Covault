@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import SettingsCard from './ui/SettingsCard';
 import ToggleSwitch from './ui/ToggleSwitch';
@@ -87,13 +87,18 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
   }, [isNative, checkStatus]);
 
   // Also poll briefly after requesting access (covers cases where resume doesn't fire)
+  const pollCancelledRef = useRef(false);
   const pollForPermission = useCallback(async () => {
     if (!plugin) return;
+    pollCancelledRef.current = false;
     for (let i = 0; i < 20; i++) {
+      if (pollCancelledRef.current) return;
       await new Promise(r => setTimeout(r, 2000));
+      if (pollCancelledRef.current) return;
       try {
         const { enabled: granted } = await plugin.isEnabled();
         if (granted) {
+          if (pollCancelledRef.current) return;
           setPermissionGranted(true);
           checkStatus();
           return;
@@ -101,6 +106,10 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
       } catch { /* ignore */ }
     }
   }, [plugin, checkStatus]);
+
+  useEffect(() => {
+    return () => { pollCancelledRef.current = true; };
+  }, []);
 
   const handleToggle = async () => {
     if (!isNative || !plugin) return;

@@ -55,6 +55,8 @@ const ImportTransactionsSection: React.FC<ImportTransactionsSectionProps> = ({
     if (!userId) {
       setStatus('error');
       setMessage('Not signed in.');
+      // Clear the input so the same file can be re-selected after sign-in.
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
 

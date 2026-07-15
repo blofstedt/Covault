@@ -76,4 +76,22 @@ describe('generateProjectedTransactions', () => {
 
     expect(projected.map((tx) => tx.date)).not.toContain('2026-03-01');
   });
+
+  it('preserves the day-of-month when projecting monthly recurrences (timezone regression)', () => {
+    // Regression: `new Date("YYYY-MM-DD")` parses as UTC midnight, which in
+    // negative-offset timezones (e.g. America/Chicago) lands on the previous
+    // local day. After the first addMonths the local day-of-month is wrong,
+    // so "monthly on the 15th" used to project as "monthly on the 14th" for
+    // any user west of UTC. The fix builds the initial date in local time.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-20T12:00:00Z'));
+
+    const projected = generateProjectedTransactions([
+      makeTransaction({ date: '2026-01-15', recurrence: 'Monthly' }),
+    ]);
+
+    for (const tx of projected) {
+      expect(tx.date.slice(8, 10)).toBe('15');
+    }
+  });
 });
