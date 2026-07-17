@@ -6,6 +6,7 @@ import { formatVendorName } from '../formatVendorName';
 import { checkDuplicateTransaction } from '../notificationProcessor';
 import { markReviewQueueStatus, upsertVendorMapEntry } from '../localNotificationMemory';
 import { useToSupabaseTransaction, useFromSupabaseTransaction } from './transactionMappers';
+import { toLocalIsoDay } from '../dateUtils';
 import type { UseUserDataParams } from './types';
 
 
@@ -384,8 +385,7 @@ export const useTransactionOps = ({
           });
 
           // Update the recurring transaction date in local state
-          const now = new Date();
-          const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+          const todayStr = toLocalIsoDay(new Date());
           setAppState(prev => ({
             ...prev,
             transactions: prev.transactions.map(t =>
@@ -401,7 +401,7 @@ export const useTransactionOps = ({
         // 1) Insert the actual transaction directly into Supabase
         // Use local date to avoid UTC conversion shifting the date forward by a day
         const txDate = new Date(pending.extracted_timestamp || pending.posted_at || new Date());
-        const dateStr = `${txDate.getFullYear()}-${String(txDate.getMonth() + 1).padStart(2, '0')}-${String(txDate.getDate()).padStart(2, '0')}`;
+        const dateStr = toLocalIsoDay(txDate);
         // Resolve budget name from the budget id in app state (DB stores name, not id)
         const approvedBudgetName = appState.budgets.find(b => b.id === categoryId)?.name || 'Other';
         const transactionRow = {

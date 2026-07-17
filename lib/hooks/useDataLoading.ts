@@ -1,5 +1,5 @@
 // lib/hooks/useDataLoading.ts
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { SYSTEM_CATEGORIES } from '../../constants';
 import type { BudgetCategory, Transaction, PendingTransaction } from '../../types';
 import { REST_BASE, getAuthHeaders, DEFAULT_BUDGET_LIMIT, DEFAULT_MONTHLY_INCOME } from '../apiHelpers';
@@ -25,6 +25,14 @@ export const useDataLoading = ({
 }: Pick<UseUserDataParams, 'setAppState' | 'setDbError'>) => {
   const [categoriesLoaded, setCategoriesLoaded] = useState(false);
   const fromSupabaseTransaction = useFromSupabaseTransaction();
+
+  // Ref that always mirrors the latest `appState.transactions`. Needed by
+  // `remapOrphanedTransactions` so it can read the current list without
+  // having to take `appState` as a closure dep (which would re-create the
+  // callback on every state change and trigger the useEffect in App.tsx).
+  // The ref is updated inside `loadTransactions` and `handleAddTransaction`
+  // — see the `[loadTransactions] ...` block below.
+  const transactionsRef = useRef<Transaction[]>([]);
 
   // Load budgets from Supabase (replaces both loadCategories and loadUserBudgets)
   // The budgets table now serves as both categories and per-user budget limits.
@@ -317,11 +325,13 @@ export const useDataLoading = ({
             const mergedTransactions = merge
               ? mergeTransactions(prev.transactions, transactions)
               : transactions;
+            transactionsRef.current = mergedTransactions;
             return { ...prev, transactions: mergedTransactions };
           });
         } else {
           console.log('[loadTransactions] no transactions found');
           if (!merge) {
+            transactionsRef.current = [];
             setAppState(prev => ({ ...prev, transactions: [] }));
           }
         }
@@ -474,22 +484,34 @@ export const useDataLoading = ({
           }
         }
 
-        // 3. Remap in a single state update
+        // 3. Compute the remap in a pure pass first, then commit it to state
+        // in a single setAppState call. The previous version mutated a counter
+        // inside the setAppState updater, which is unsafe under React 18's
+        // concurrent rendering — the updater can run more than once and the
+        // counter would be inflated, producing a misleading log line.
+        const currentTransactions = transactionsRef.current;
+        if (currentTransactions.length === 0) return;
+
+        const remapped: Transaction[] = [];
         let remappedCount = 0;
-        setAppState(prev => {
-          const remapped = prev.transactions.map(tx => {
-            if (!tx.budget_id || userBudgetIds.has(tx.budget_id)) return tx;
-            const catName = anyIdToCategory.get(tx.budget_id);
-            if (!catName) return tx;
-            const correctId = categoryToUserBudgetId.get(catName);
-            if (!correctId) return tx;
+        for (const tx of currentTransactions) {
+          if (!tx.budget_id || userBudgetIds.has(tx.budget_id)) {
+            remapped.push(tx);
+            continue;
+          }
+          const catName = anyIdToCategory.get(tx.budget_id);
+          const correctId = catName ? categoryToUserBudgetId.get(catName) : undefined;
+          if (correctId) {
+            remapped.push({ ...tx, budget_id: correctId });
             remappedCount++;
-            return { ...tx, budget_id: correctId };
-          });
-          return remappedCount > 0 ? { ...prev, transactions: remapped } : prev;
-        });
+          } else {
+            remapped.push(tx);
+          }
+        }
         if (remappedCount > 0) {
           console.log('[remapOrphanedTransactions] remapped', remappedCount, 'transactions');
+          transactionsRef.current = remapped;
+          setAppState(prev => ({ ...prev, transactions: remapped }));
         }
       } catch (err: any) {
         console.warn('[remapOrphanedTransactions] failed:', err?.message || err);
