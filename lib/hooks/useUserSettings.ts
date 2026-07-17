@@ -207,76 +207,99 @@ export const useUserSettings = ({
 
       try {
         const headers = await getAuthHeaders();
-        // Use POST with upsert to handle both insert and update cases
-        // resolution=merge-duplicates will update if row exists (on conflict with primary key)
-        (headers as any)['Prefer'] = 'return=representation,resolution=merge-duplicates';
-        
-        // Upsert to the settings table - will insert if missing or update if exists
-        // PostgREST upsert requires all NOT NULL fields (name, email) even for updates
-        // These fields won't overwrite existing data in UPDATE case as they're part of the user record
-        const res = await fetch(
+        const patchHeaders = { ...headers, 'Prefer': 'return=representation' };
+
+        // PATCH first \u2014 this only updates the columns we specify, so the
+        // existing `subscription_status` row value is preserved and the
+        // settings_subscription_status_check constraint is never touched.
+        // (The previous POST/upsert path failed because it tried to INSERT
+        // with the schema default `\"false\"` for subscription_status, which
+        // violates the check constraint that only allows values like
+        // \"active\".)
+        let res = await fetch(
+          `${REST_BASE}/settings?user_id=eq.${userId}`,
+          {
+            method: 'PATCH',
+            headers: patchHeaders,
+            body: JSON.stringify({ monthly_income: income }),
+          },
+        );
+
+        let updatedRows: any[] = [];
+        try {
+          const text = await res.text();
+          updatedRows = text ? JSON.parse(text) : [];
+        } catch {
+          updatedRows = [];
+        }
+
+        if (res.ok && Array.isArray(updatedRows) && updatedRows.length > 0) {
+          console.log(`[saveUserIncome] PATCH OK: ${income}`);
+          return;
+        }
+
+        // No existing row \u2014 fall back to a full POST that includes all
+        // NOT NULL fields and an explicit subscription_status so the check
+        // constraint is satisfied.
+        if (!res.ok) {
+          const body = await res.text();
+          console.warn(`[saveUserIncome] PATCH failed (${res.status}): ${body.slice(0, 200)} \u2014 trying POST`);
+        } else {
+          console.warn(`[saveUserIncome] PATCH matched 0 rows \u2014 trying POST`);
+        }
+
+        const postHeaders = { ...headers, 'Prefer': 'return=representation' };
+        const postRes = await fetch(
           `${REST_BASE}/settings`,
           {
             method: 'POST',
-            headers,
-            body: JSON.stringify({ 
-              user_id: userId, 
+            headers: postHeaders,
+            body: JSON.stringify({
+              user_id: userId,
               name: userName,
               email: userEmail,
-              monthly_income: income 
+              monthly_income: income,
+              subscription_status: 'active',
             }),
           },
         );
-        
-        if (!res.ok) {
-          const body = await res.text();
-          const msg = `[saveUserIncome] update failed (${res.status}): ${body.slice(0, 200)}`;
+
+        if (!postRes.ok) {
+          const body = await postRes.text();
+          const msg = `[saveUserIncome] POST failed (${postRes.status}): ${body.slice(0, 200)}`;
           console.error(msg);
           setDbError(msg);
-          
-          // Rollback optimistic update on failure
+          setAppState(prev => ({
+            ...prev,
+            user: prev.user ? { ...prev.user, monthlyIncome: previousIncome } : null,
+          }));
+          return;
+        }
+
+        const postBody = await postRes.text();
+        let postRows: any[] = [];
+        try {
+          postRows = postBody ? JSON.parse(postBody) : [];
+        } catch {
+          postRows = [];
+        }
+
+        if (!Array.isArray(postRows) || postRows.length === 0) {
+          const msg = '[saveUserIncome] POST returned no rows';
+          console.error(msg);
+          setDbError(msg);
           setAppState(prev => ({
             ...prev,
             user: prev.user ? { ...prev.user, monthlyIncome: previousIncome } : null,
           }));
         } else {
-          // Check if any rows were actually updated
-          const body = await res.text();
-          let updatedRows: any[] = [];
-          try {
-            updatedRows = body ? JSON.parse(body) : [];
-          } catch (parseErr) {
-            const msg = `[saveUserIncome] failed to parse response: ${body.slice(0, 200)}`;
-            console.error(msg);
-            setDbError(msg);
-            
-            // Rollback optimistic update
-            setAppState(prev => ({
-              ...prev,
-              user: prev.user ? { ...prev.user, monthlyIncome: previousIncome } : null,
-            }));
-            return;
-          }
-          
-          if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
-            const msg = `[saveUserIncome] no rows updated - settings record may not exist for user ${userId}`;
-            console.error(msg);
-            setDbError(msg);
-            
-            // Rollback optimistic update
-            setAppState(prev => ({
-              ...prev,
-              user: prev.user ? { ...prev.user, monthlyIncome: previousIncome } : null,
-            }));
-          } else {
-            console.log(`[saveUserIncome] successfully updated to ${income}`);
-          }
+          console.log(`[saveUserIncome] POST OK: ${income}`);
         }
       } catch (err: any) {
         const msg = `[saveUserIncome] exception: ${err?.message || err}`;
         console.error(msg);
         setDbError(msg);
-        
+
         // Rollback optimistic update on error
         setAppState(prev => ({
           ...prev,
