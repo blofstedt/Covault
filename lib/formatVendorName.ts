@@ -12,6 +12,44 @@ export function formatVendorName(name: string): string {
 }
 
 /**
+ * Normalize a vendor string for duplicate detection.
+ *
+ * Strips common bank-notification suffixes that vary between the auto-detected
+ * charge and a manually entered template. Without this, "Fizz (Tx. Incl.)" and
+ * "Fizz" are treated as different vendors and the system can't recognize them
+ * as the same recurring charge.
+ *
+ * Stripped patterns:
+ *   - Parenthetical suffixes: "(Tx. Incl.)", "(Auto)", "(Online)", "(Pre-Auth)"
+ *   - Trailing transaction metadata: "REF #1234", "TXN 5678"
+ *   - Trailing location codes: "AB", "ON", "QC" (Canadian provinces)
+ *   - Trailing store/terminal numbers: "#1234", "STR 567"
+ */
+export function normalizeVendorForDedup(vendor: string | null | undefined): string {
+  if (!vendor) return '';
+  let v = String(vendor).toLowerCase().trim();
+
+  // Strip parenthetical suffixes: "(Tx. Incl.)", "(Auto)", "(Online)", etc.
+  v = v.replace(/\s*\([^)]*\)\s*/g, ' ');
+
+  // Strip trailing transaction reference numbers
+  v = v.replace(/\s*(?:ref|txn|transaction)[\s#:]*\d+\s*$/i, '');
+
+  // Strip trailing store/location/terminal identifiers
+  v = v.replace(/\s*#\s*\d+\s*$/, '');
+  v = v.replace(/\s+(?:store|str|loc|location|terminal|tml|unit|kiosk)\s*#?\s*\d*$/i, '');
+
+  // Strip trailing Canadian province codes (and common US state abbreviations)
+  v = v.replace(/\s+(?:ab|bc|mb|nb|nl|ns|nt|nu|on|pe|qc|sk|yt)\s*$/i, '');
+  v = v.replace(/\s+(?:ca|us|uk)\s*$/i, '');
+
+  // Collapse whitespace and normalize to lowercase alphanumeric + spaces
+  v = v.replace(/\s+/g, ' ').replace(/[^a-z0-9 ]/g, '').trim();
+
+  return v;
+}
+
+/**
  * Normalize a vendor string into lowercase alphanumeric tokens for comparison.
  */
 function vendorTokens(vendor: string): string[] {

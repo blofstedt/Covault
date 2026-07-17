@@ -177,6 +177,67 @@ export async function executeRecurringTransactions(
     return [];
   }
 
+  // ── Guard against DB-only duplicates ──
+  // The `existingKeys` set above is built from the in-memory `transactions`
+  // list passed in by the caller. If a new transaction was just inserted
+  // directly to the DB (e.g. a manual entry the user typed in before the
+  // app finished loading) the executor's in-memory view is stale and we'd
+  // happily spawn a duplicate. To close that race, query the DB for any
+  // existing transactions in the months we're about to insert into and
+  // drop matching rows from `toInsert`.
+  //
+  // This is what fixed the Netflix Jul 16/Jul 17 race: the executor ran
+  // and saw the April Netflix template, computed a Jul 17 due date, and
+  // spawned it — but the user had already manually added a Jul 16 entry
+  // that wasn't in memory yet. After this guard, the executor queries the
+  // DB, sees the Jul 16 row, and skips the Jul 17 insert.
+  const monthKeys = new Set(toInsert.map(t => t.date.slice(0, 7)));
+  const dbExistingKeys = new Set<string>();
+  for (const monthKey of monthKeys) {
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(
+        `${REST_BASE}/transactions?select=vendor,amount,date&user_id=eq.${userId}&date=like.${monthKey}-*`,
+        { headers },
+      );
+      if (!res.ok) continue;
+      const rows: Array<{ vendor?: string; amount?: number; date?: string }> = await res.json();
+      for (const row of rows) {
+        if (!row.vendor || row.amount == null || !row.date) continue;
+        // Key by vendor (lowercased) + amount + day-of-month. We only
+        // need to dedup within the same month, so a same-day duplicate
+        // is the signal we care about.
+        const day = row.date.slice(8, 10);
+        dbExistingKeys.add(
+          `${String(row.vendor).toLowerCase().trim()}|${Number(row.amount).toFixed(2)}|${day}`,
+        );
+      }
+    } catch (err: any) {
+      console.warn('[recurringExecutor] DB dedup check failed:', err?.message || err);
+      // If the check fails, fall through and insert anyway — a duplicate
+      // is better than missing a charge. The user can clean up manually.
+    }
+  }
+
+  const filtered = toInsert.filter((row) => {
+    const day = row.date.slice(8, 10);
+    const key = `${row.vendor.toLowerCase().trim()}|${Number(row.amount).toFixed(2)}|${day}`;
+    if (dbExistingKeys.has(key)) {
+      console.log(`[recurringExecutor] Skipping ${row.vendor} $${row.amount} on ${row.date} — already in DB`);
+      return false;
+    }
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    console.log('[recurringExecutor] All candidates were DB duplicates; nothing to insert');
+    localStorage.setItem(LAST_RUN_KEY, today);
+    return [];
+  }
+
+  toInsert.length = 0;
+  toInsert.push(...filtered);
+
   let data: any[] | null = null;
   try {
     const headers = await getAuthHeaders();

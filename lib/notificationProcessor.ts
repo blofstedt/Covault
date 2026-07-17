@@ -12,7 +12,7 @@
 //   7. Insert into transactions table with 'AI' label
 
 import { supabase } from './supabase';
-import { formatVendorName, fuzzyVendorMatch } from './formatVendorName';
+import { formatVendorName, fuzzyVendorMatch, normalizeVendorForDedup } from './formatVendorName';
 import { parseNotificationText } from './deviceTransactionParser';
 import { addToReviewQueue, getVendorMapEntry, isNotificationProcessed, markNotificationProcessed } from './localNotificationMemory';
 import { getLocalToday, parseLocalDate } from './dateUtils';
@@ -215,10 +215,10 @@ async function checkAlreadyProcessed(
   return false;
 }
 
-function normalizeVendorForDedup(vendor: string | null): string {
-  if (!vendor) return '';
-  return vendor.toLowerCase().replace(/\s+/g, ' ').replace(/[^a-z0-9 ]/g, '').trim();
-}
+// Re-exported from formatVendorName.ts so existing call sites keep working.
+// The canonical definition strips parenthetical suffixes like "(Tx. Incl.)"
+// and trailing location codes, which the old version did not.
+export { normalizeVendorForDedup } from './formatVendorName';
 
 /**
  * Check whether two vendor names match.
@@ -435,18 +435,42 @@ interface DuplicateCheckResult {
   isDuplicate: boolean;
   /** Reason for rejection, if any */
   reason?: string;
-  /** If a recurring transaction's date was updated, this is its ID */
+  /**
+   * If a recurring transaction's date was updated, this is its ID.
+   * @deprecated The system no longer auto-updates dates — use `skippedExistingId` instead.
+   */
   updatedExistingId?: string;
+  /** If a recurring or one-time exact match was found, this is its ID. The new transaction is skipped. */
+  skippedExistingId?: string;
+  /**
+   * If a vendor matches (after normalization) but the amount is off, this is
+   * the ID of the similar transaction. The new transaction is NOT skipped —
+   * the user gets a soft-dedup warning so they don't miss the new charge.
+   */
+  softDuplicateOfId?: string;
+  /** Vendor of the soft-dup match (for the warning message) */
+  softDuplicateVendor?: string;
+  /** Amount of the soft-dup match */
+  softDuplicateAmount?: number;
 }
 
 /**
  * Check if a pending transaction duplicates an existing transaction.
  *
- * Two rules:
- *   1. Recurring (Monthly/Biweekly): same vendor + amount within ±3 days
- *      → update the existing transaction's date to today and return it.
- *   2. One-time: same vendor + amount + exact same day
- *      → reject as duplicate.
+ * Three outcomes:
+ *   1. Hard skip (isDuplicate: true): same normalized vendor + same amount
+ *      within the window. For recurring templates, this fires for any
+ *      instance in the current month. For one-time, only same-day matches.
+ *      The new transaction is NOT inserted.
+ *   2. Soft skip (softDuplicateOfId): same normalized vendor but the amount
+ *      differs by more than the tolerance. The new transaction IS inserted
+ *      (so the user never misses a charge) and the caller is expected to
+ *      surface a warning in the UI.
+ *   3. No match.
+ *
+ * The system does NOT auto-update the date of the existing recurring row.
+ * Previously a match would silently move your Feb 15 Fizz entry to today;
+ * that's now opt-in via the user moving the row in the UI.
  */
 export async function checkDuplicateTransaction(
   userId: string,
@@ -478,47 +502,55 @@ export async function checkDuplicateTransaction(
     return { isDuplicate: false };
   }
 
-  // Filter to matching amounts AND fuzzy vendor match
-  const amountMatches = existing.filter(
-    (tx) => Math.abs(Number(tx.amount) - amount) < AMOUNT_TOLERANCE
-      && fuzzyVendorMatch(tx.vendor, vendor),
-  );
+  // Use the strong normalizer (strips "(Tx. Incl.)", location codes, etc.)
+  // so "Fizz (Tx. Incl.)" and "Fizz" compare equal.
+  const normalizedIncoming = normalizeVendorForDedup(vendor);
 
-  if (amountMatches.length === 0) {
-    return { isDuplicate: false };
-  }
+  // First pass: find hard matches (same vendor + amount within tolerance).
+  // Recurring matches skip regardless of date distance; one-time only
+  // skip on the exact same day.
+  const hardMatches = existing.filter((tx) => {
+    if (!fuzzyVendorMatch(tx.vendor, vendor)) return false;
+    return Math.abs(Number(tx.amount) - amount) < AMOUNT_TOLERANCE;
+  });
 
-  // Rule 1: Recurring transactions (Monthly/Biweekly) — same vendor + amount within ±3 days
-  for (const tx of amountMatches) {
+  // Rule 1: Recurring — any hard match in the window is a duplicate.
+  for (const tx of hardMatches) {
     const recurrence = (tx.recur || '').toLowerCase();
     if (recurrence !== 'monthly' && recurrence !== 'biweekly') continue;
-
-    const txDateMs = parseLocalDate(tx.date).getTime();
-    if (Math.abs(todayMs - txDateMs) <= toleranceMs) {
-      // Update the existing recurring transaction's date to today
-      const { error: updateError } = await supabase
-        .from('transactions')
-        .update({ date: today })
-        .eq('id', tx.id);
-
-      if (updateError) {
-        console.error('[checkDuplicate] Error updating recurring tx date:', updateError);
-      } else {
-        console.log(`[checkDuplicate] Updated recurring transaction ${tx.id} date to ${today}`);
-      }
-
-      return { isDuplicate: false, updatedExistingId: tx.id };
-    }
+    console.log(`[checkDuplicate] Hard skip: recurring match ${tx.vendor} $${tx.amount} (${tx.date})`);
+    return { isDuplicate: true, reason: `Recurring match: ${tx.vendor} $${tx.amount} on ${tx.date}`, skippedExistingId: tx.id };
   }
 
-  // Rule 2: One-time transactions — same vendor + amount on the same date
-  for (const tx of amountMatches) {
+  // Rule 2: One-time — hard match on the same day only.
+  for (const tx of hardMatches) {
     if (tx.date === today) {
       return {
         isDuplicate: true,
         reason: 'Duplicate transaction found in manually recorded transactions',
+        skippedExistingId: tx.id,
       };
     }
+  }
+
+  // Second pass: find soft matches (same vendor but amount is off). We do
+  // NOT skip these — the user has said they prefer seeing both rows and
+  // deduping manually rather than missing a charge.
+  const softMatches = existing.filter((tx) => {
+    const normalizedExisting = normalizeVendorForDedup(tx.vendor);
+    if (normalizedExisting !== normalizedIncoming) return false;
+    return Math.abs(Number(tx.amount) - amount) >= AMOUNT_TOLERANCE;
+  });
+
+  if (softMatches.length > 0) {
+    const closest = softMatches[0];
+    console.log(`[checkDuplicate] Soft-dup: similar ${closest.vendor} $${closest.amount} (${closest.date}) but new charge is $${amount}`);
+    return {
+      isDuplicate: false,
+      softDuplicateOfId: closest.id,
+      softDuplicateVendor: closest.vendor,
+      softDuplicateAmount: Number(closest.amount),
+    };
   }
 
   return { isDuplicate: false };
@@ -547,6 +579,18 @@ export interface AIProcessingResult {
   skipReason?: 'duplicate_fingerprint' | 'duplicate_vendor_amount' | 'duplicate_manual' | 'duplicate_ai' | 'not_transaction' | 'extraction_failed';
   /** The bank name */
   bankName?: string;
+  /**
+   * If the new transaction looks like a soft duplicate (same vendor after
+   * normalization, but a different amount) the system still inserts it so
+   * the user never misses a charge, and surfaces this warning instead.
+   * The UI should show a "possible duplicate" badge.
+   */
+  softDuplicateOf?: {
+    id: string;
+    vendor: string;
+    amount: number;
+    date: string;
+  };
 }
 
 /**
@@ -574,6 +618,10 @@ export async function processNotificationWithAI(
   };
 
   const notifTimestamp = input.notificationTimestamp || Date.now();
+
+  // Tracks a soft-dup match found in Step 4 so the Step 6 insert can
+  // surface the warning in the returned result. Cleared on every call.
+  let softDupMatch: { id: string; vendor: string; amount: number; date: string } | null = null;
 
   // ── Step 0: In-memory dedup ──
   // Fast check to prevent the same notification from being processed
@@ -727,6 +775,22 @@ export async function processNotificationWithAI(
         bankName: input.bankName,
       };
     }
+
+    // Soft-dup pass: same normalized vendor but the amount is off. We do NOT
+    // skip — the user has said they'd rather see both rows and dedup
+    // manually. Capture the closest match to surface in the parsing UI.
+    const softDup = existingTx.find((tx) => {
+      if (normalizeVendorForDedup(tx.vendor) !== normalizedVendor) return false;
+      return Math.abs(Number(tx.amount) - amount) >= AMOUNT_TOLERANCE;
+    });
+
+    if (softDup) {
+      console.log(`[AI pipeline] Soft-dup: similar ${softDup.vendor} $${softDup.amount} on ${softDup.date}, but new charge is $${amount.toFixed(2)}`);
+      // Fall through to insert the new transaction; the soft-dup info is
+      // attached to the result below in Step 6.
+      // We stash it in a local so the Step 6 insert can include it.
+      (softDupMatch as any) = softDup;
+    }
   }
 
   // ── Step 5: Category assignment ──
@@ -831,13 +895,13 @@ export async function processNotificationWithAI(
         const txDateMs = parseLocalDate(tx.date).getTime();
         const toleranceMs = RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY;
         if (Math.abs(todayMs - txDateMs) <= toleranceMs) {
-          // Update the existing recurring transaction's date to today
-          await supabase
-            .from('transactions')
-            .update({ date: today })
-            .eq('id', tx.id);
-
-          console.log(`[AI pipeline] Recurring dedup: updated tx ${tx.id} date to ${today}`);
+          // Hard skip: a recurring match already exists in the window.
+          // The new transaction is NOT inserted and the existing row's
+          // date is NOT auto-moved (the user can move it manually if they
+          // want). This is the safe-by-default behavior — the user said
+          // they'd rather see a missed dedup than have their data moved
+          // silently.
+          console.log(`[AI pipeline] Recurring dedup: skipping notification; existing tx ${tx.id} (${tx.vendor} $${tx.amount} on ${tx.date}) matches`);
           recentlyProcessedCache.set(inMemoryKey, Date.now());
           markNotificationProcessed(inMemoryKey);
           return {
@@ -846,7 +910,7 @@ export async function processNotificationWithAI(
             vendor: formatVendorName(displayVendor),
             amount,
             skipReason: 'duplicate_ai' as const,
-            rejectionReason: `Recurring transaction updated: ${vendor} $${amount.toFixed(2)}`,
+            rejectionReason: `Recurring match skipped: ${tx.vendor} $${tx.amount.toFixed(2)} on ${tx.date}`,
             bankName: input.bankName,
           };
         }
@@ -901,5 +965,9 @@ export async function processNotificationWithAI(
     categoryId,
     categoryName: categoryName || undefined,
     bankName: input.bankName,
+    // Surface the soft-dup warning from Step 4 so the UI can show a
+    // "possible duplicate" badge. The transaction is still saved — the
+    // user said they prefer seeing both rows over missing a charge.
+    softDuplicateOf: softDupMatch || undefined,
   };
 }

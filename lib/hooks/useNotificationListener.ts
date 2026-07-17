@@ -114,6 +114,19 @@ export const useNotificationListener = ({
                     userName: user.name || 'User',
                     created_at: new Date().toISOString(),
                   };
+
+                  // Soft-dup warning from the AI pipeline. The transaction
+                  // was inserted anyway (the user prefers not to miss
+                  // charges), but the parsing UI should know to surface a
+                  // "possible duplicate" badge so the user can review.
+                  if (result.softDuplicateOf) {
+                    console.warn(
+                      `[notification] ⚠️ Soft-dup: new ${tx.vendor} $${tx.amount} ` +
+                      `looks similar to existing ${result.softDuplicateOf.vendor} $${result.softDuplicateOf.amount} ` +
+                      `on ${result.softDuplicateOf.date}`,
+                    );
+                    (tx as any).softDuplicateOf = result.softDuplicateOf;
+                  }
                   if (onAutoAcceptedTransaction) {
                     onAutoAcceptedTransaction(tx);
                   } else {

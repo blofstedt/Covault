@@ -348,7 +348,12 @@ export const useTransactionOps = ({
         const dupResult = await checkDuplicateTransaction(userId, pending);
 
         if (dupResult.isDuplicate) {
-          // Mark as rejected with reason
+          // Mark as rejected with reason. This path covers both:
+          //   1. One-time same-day exact match (vendor + amount + date)
+          //   2. Recurring match (Monthly/Biweekly) within the ±3 day window
+          // The system no longer auto-updates the existing row's date —
+          // the user moves it manually if they want, per their "don't move
+          // my data silently" preference.
           const rejectHeaders = await getAuthHeaders();
           (rejectHeaders as any)['Prefer'] = 'return=representation';
           await fetch(`${REST_BASE}/pending_transactions?id=eq.${pendingId}`, {
@@ -367,34 +372,7 @@ export const useTransactionOps = ({
             pendingTransactions: (prev.pendingTransactions || []).filter(p => p.id !== pendingId),
           }));
 
-          console.log(`[approvePending] Duplicate detected: ${dupResult.reason}`);
-          return;
-        }
-
-        if (dupResult.updatedExistingId) {
-          // Recurring transaction date was updated — mark pending as approved without new insert
-          const patchHeaders = await getAuthHeaders();
-          (patchHeaders as any)['Prefer'] = 'return=representation';
-          await fetch(`${REST_BASE}/pending_transactions?id=eq.${pendingId}`, {
-            method: 'PATCH',
-            headers: patchHeaders,
-            body: JSON.stringify({
-              status: 'approved',
-              reviewed_at: new Date().toISOString(),
-            }),
-          });
-
-          // Update the recurring transaction date in local state
-          const todayStr = toLocalIsoDay(new Date());
-          setAppState(prev => ({
-            ...prev,
-            transactions: prev.transactions.map(t =>
-              t.id === dupResult.updatedExistingId ? { ...t, date: todayStr } : t,
-            ),
-            pendingTransactions: prev.pendingTransactions?.filter(p => p.id !== pendingId) || [],
-          }));
-
-          console.log(`[approvePending] Updated recurring transaction ${dupResult.updatedExistingId} date`);
+          console.log(`[approvePending] Duplicate skipped: ${dupResult.reason}`);
           return;
         }
 
@@ -445,6 +423,20 @@ export const useTransactionOps = ({
 
         const savedTransaction = { ...fromSupabaseTransaction(savedRow), label: 'Automatic' as const };
         console.log('[approvePending] transaction inserted, id:', savedTransaction.id);
+
+        // Soft-dup warning: same vendor (after normalization) already
+        // exists nearby but with a different amount. We let the new
+        // transaction through — the user said they'd rather see both rows
+        // than miss a charge — but log it loudly so it's easy to spot
+        // during review. A future UI pass can surface this as a badge on
+        // the auto-entered card.
+        if (dupResult.softDuplicateOfId) {
+          console.warn(
+            `[approvePending] ⚠️ Soft-dup: new ${savedTransaction.vendor} $${savedTransaction.amount} ` +
+            `looks similar to existing ${dupResult.softDuplicateVendor} $${dupResult.softDuplicateAmount} ` +
+            `(${dupResult.softDuplicateOfId})`,
+          );
+        }
 
         // 2) Mark pending transaction as reviewed and approved
         const patchHeaders = await getAuthHeaders();
