@@ -272,8 +272,6 @@ export function generateUpcomingBillCards(
 ): SmartCard[] {
   const now = new Date();
   now.setHours(0, 0, 0, 0);
-  const horizon = new Date(now);
-  horizon.setDate(horizon.getDate() + 3);
 
   const budgetMap = new Map(budgets.map((b) => [b.id, b.name]));
   const cards: SmartCard[] = [];
@@ -283,23 +281,22 @@ export function generateUpcomingBillCards(
     if (rec === 'one-time' || !rec) continue;
 
     const dueDate = nextOccurrence(tx.date, rec, now);
-    if (!dueDate || dueDate > horizon) continue;
+    if (!dueDate) continue;
 
     const daysAway = Math.round((dueDate.getTime() - now.getTime()) / 86400000);
-    const when = daysAway === 0 ? 'today' : daysAway === 1 ? 'tomorrow' : `in ${daysAway} days`;
+    // One heads-up at the 3-day mark. No escalation to "due tomorrow" /
+    // "due today" — the user either saw it or didn't.
+    if (daysAway !== 3) continue;
+
     const category = tx.budget_id ? budgetMap.get(tx.budget_id) : undefined;
     const dueDateStr = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}-${String(dueDate.getDate()).padStart(2, '0')}`;
-    // Urgency bucket: one card for "3-2 days out", a different one for
-    // "due in 1 day or today". Dismissing the early-warning card
-    // doesn't suppress the urgent card.
-    const bucket = daysAway <= 1 ? 'urgent' : 'soon';
 
     cards.push({
-      id: `bill-${tx.id}-${dueDateStr}-${bucket}`,
+      id: `bill-${tx.id}-${dueDateStr}`,
       type: 'upcoming-bill',
       title: 'Upcoming Payment',
-      body: `$${Math.abs(tx.amount).toFixed(2)} to ${tx.vendor}${category ? ` (${category})` : ''} is due ${when}.`,
-      accent: daysAway <= 1 ? 'rose' : 'violet',
+      body: `$${Math.abs(tx.amount).toFixed(2)} to ${tx.vendor}${category ? ` (${category})` : ''} is due in 3 days.`,
+      accent: 'violet',
       createdAt: new Date().toISOString(),
     });
   }

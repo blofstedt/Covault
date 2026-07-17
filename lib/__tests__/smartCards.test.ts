@@ -115,32 +115,39 @@ describe('smartCards dismissal model', () => {
     expect(afterMonth.find((c) => c.id === suggestId)).toBeUndefined();
   });
 
-  it('upcoming-bill card gets a fresh ID when urgency bucket changes', () => {
+  it('upcoming-bill card fires only at the 3-day mark', () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-07-15T08:00:00Z'));
 
-    // A monthly bill due on the 17th \u2014 currently 2 days away (bucket "soon").
+    // Monthly bill due on the 18th.
     const transactions = [
       tx({
         id: 'rent',
         vendor: 'Landlord',
         amount: 1800,
-        date: '2026-06-17',
+        date: '2026-06-18',
         recurrence: 'Monthly',
       }),
     ];
-    const cards = collectSmartCards([groceries], [], transactions, 'user-1', undefined);
-    const bill = cards.find((c) => c.type === 'upcoming-bill')!;
-    expect(bill.id).toMatch(/-soon$/);
-    dismissCard(bill.id, 'upcoming-bill');
 
-    // Roll forward to the 16th \u2014 now 1 day away (bucket "urgent"), new ID.
-    vi.setSystemTime(new Date('2026-07-16T08:00:00Z'));
-    const cards2 = collectSmartCards([groceries], [], transactions, 'user-1', undefined);
-    const bill2 = cards2.find((c) => c.type === 'upcoming-bill')!;
-    expect(bill2.id).toMatch(/-urgent$/);
-    // The new "urgent" card was not in the dismissed set, so it shows.
-    expect(cards2.find((c) => c.id === bill2.id)).toBeDefined();
+    // 4 days out: no card.
+    vi.setSystemTime(new Date('2026-07-14T08:00:00Z'));
+    const early = collectSmartCards([groceries], [], transactions, 'user-1', undefined);
+    expect(early.find((c) => c.type === 'upcoming-bill')).toBeUndefined();
+
+    // 3 days out: card appears.
+    vi.setSystemTime(new Date('2026-07-15T08:00:00Z'));
+    const on3 = collectSmartCards([groceries], [], transactions, 'user-1', undefined);
+    const bill = on3.find((c) => c.type === 'upcoming-bill');
+    expect(bill).toBeDefined();
+    expect(bill!.body).toContain('due in 3 days');
+    dismissCard(bill!.id, 'upcoming-bill');
+
+    // 2 days out, 1 day out, due today: no card (no escalation).
+    for (const day of [16, 17, 18]) {
+      vi.setSystemTime(new Date(`2026-07-${day}T08:00:00Z`));
+      const later = collectSmartCards([groceries], [], transactions, 'user-1', undefined);
+      expect(later.find((c) => c.type === 'upcoming-bill')).toBeUndefined();
+    }
   });
 
   it('partner-total card aggregates all partner transactions for the day', () => {
