@@ -35,41 +35,75 @@ function toLocalIsoDay(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-/** Check if a recurring transaction is due today. */
-function isDue(txDate: string, recurrence: string, today: Date): string | null {
-  const rec = recurrence.toLowerCase();
-  if (rec === 'one-time' || !rec) return null;
+/**
+ * Step forward from `from` by one recurrence interval (monthly +14 days,
+ * biweekly +14 days). Returns a NEW Date — the original is not mutated.
+ */
+function stepForward(d: Date, recurrence: string): Date {
+  const next = new Date(d);
+  if (recurrence === 'biweekly') {
+    next.setDate(next.getDate() + 14);
+  } else {
+    // monthly
+    next.setMonth(next.getMonth() + 1);
+  }
+  return next;
+}
 
-  // Strip any timestamp suffix to get just YYYY-MM-DD
+/**
+ * How many months back the executor is allowed to catch up. Anything
+ * older than this is left alone — the user's actual records for those
+ * months are whatever they manually entered. Going forward, missed
+ * instances within this window will be auto-inserted on the next app
+ * open so a missed due date doesn't silently disappear.
+ */
+const MAX_BACKFILL_MONTHS = 2;
+
+function monthsBetween(a: Date, b: Date): number {
+  return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+}
+
+/**
+ * Build the full list of due dates for a recurring transaction from its
+ * base date up to (and including) `today`. Returns an empty array if
+ * the base date is in the future.
+ *
+ * Both Monthly and Biweekly are supported. The previous version of this
+ * function only returned a date if it matched today exactly, which meant
+ * any due date the user happened to miss (e.g. didn't open the app that
+ * day) was lost forever. This version catches up on every missed
+ * instance between the base date and today, subject to a backfill window
+ * (see MAX_BACKFILL_MONTHS) so we don't re-create years of history.
+ */
+function dueDatesUpTo(txDate: string, recurrence: string, today: Date): string[] {
+  const rec = recurrence.toLowerCase();
+  if (rec === 'one-time' || !rec) return [];
+
   const baseStr = txDate.slice(0, 10);
   const parts = baseStr.split('-');
-  if (parts.length < 3) return null;
+  if (parts.length < 3) return [];
   const base = new Date(+parts[0], +parts[1] - 1, +parts[2]);
-  if (isNaN(base.getTime())) return null;
+  if (isNaN(base.getTime())) return [];
+  if (base > today) return [];
 
-  // If base is in the future, never due
-  if (base > today) return null;
+  // Compute the earliest date we're allowed to backfill. Anything earlier
+  // than this is left for the user's existing history.
+  const floor = new Date(today);
+  floor.setMonth(floor.getMonth() - MAX_BACKFILL_MONTHS);
+  floor.setDate(1); // align to month start so we don't get weird mid-month floors
+  const effectiveStart = base > floor ? base : floor;
 
-  const todayStr = toLocalIsoDay(today);
+  // Walk forward from the base, collecting every occurrence on or before today.
+  // Cap at 200 to prevent runaway loops if the recurrence is misconfigured.
+  const out: string[] = [];
   let current = new Date(base);
-
-  while (true) {
-    if (rec === 'biweekly') {
-      current = new Date(current);
-      current.setDate(current.getDate() + 14);
-    } else if (rec === 'monthly') {
-      current = new Date(current);
-      current.setMonth(current.getMonth() + 1);
-    } else {
-      break;
-    }
-
-    const currentStr = toLocalIsoDay(current);
-    if (currentStr === todayStr) return currentStr;
+  for (let i = 0; i < 200; i++) {
+    current = stepForward(current, rec);
     if (current > today) break;
+    if (current < effectiveStart) continue;
+    out.push(toLocalIsoDay(current));
   }
-
-  return null;
+  return out;
 }
 
 /**
@@ -108,26 +142,30 @@ export async function executeRecurringTransactions(
 
   for (const tx of transactions) {
     const rec = ((tx as any).recur ?? tx.recurrence ?? '').toString();
-    const dueDate = isDue(tx.date, rec, now);
-    if (!dueDate) continue;
+    if (!rec || rec.toLowerCase() === 'one-time') continue;
 
-    // Don't re-insert if identical transaction already exists for this date
-    const key = `${tx.vendor}|${tx.amount}|${dueDate}|${tx.budget_id || ''}`;
-    if (existingKeys.has(key)) continue;
+    const dueDates = dueDatesUpTo(tx.date, rec, now);
+    if (dueDates.length === 0) continue;
 
-    toInsert.push({
-      user_id: userId,
-      vendor: tx.vendor,
-      amount: tx.amount,
-      date: dueDate,
-      budget: budgetIdToName(tx.budget_id),
-      recur: rec,
-      type: 'Automatic',
-      is_projected: false,
-    });
+    for (const dueDate of dueDates) {
+      // Don't re-insert if identical transaction already exists for this date
+      const key = `${tx.vendor}|${tx.amount}|${dueDate}|${tx.budget_id || ''}`;
+      if (existingKeys.has(key)) continue;
 
-    // Track to prevent dupes within this batch
-    existingKeys.add(key);
+      toInsert.push({
+        user_id: userId,
+        vendor: tx.vendor,
+        amount: tx.amount,
+        date: dueDate,
+        budget: budgetIdToName(tx.budget_id),
+        recur: rec,
+        type: 'Automatic',
+        is_projected: false,
+      });
+
+      // Track to prevent dupes within this batch
+      existingKeys.add(key);
+    }
   }
 
   if (toInsert.length === 0) {
