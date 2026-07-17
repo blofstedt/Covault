@@ -121,7 +121,11 @@ const Dashboard: React.FC<Props> = ({
 
   // ── Smart Card Deck ─────────────────────────────────────────────
   const [showSmartCards, setShowSmartCards] = useState(false);
-  const smartCardsShownRef = useRef(false);
+  // Track which card IDs have already been shown so the deck re-opens
+  // only when genuinely new cards appear (new spending crossing a
+  // threshold, a new upcoming bill, a fresh vendor suggestion, etc.)
+  // and not on every reference-identity change of the cards array.
+  const shownCardIdsRef = useRef<Set<string>>(new Set());
 
   // Stable key: only changes when a budget's spending total shifts by ≥$1.
   // Prevents collectSmartCards from re-running on every reference identity change
@@ -149,17 +153,19 @@ const Dashboard: React.FC<Props> = ({
     [budgetSpendingKey, state.user?.id, state.user?.partnerName],
   );
 
-  // Show the deck automatically once on mount if there are cards & setting is on
+  // Open the deck the first time cards are available, and re-open it
+  // whenever a card appears whose ID we haven't surfaced before.
   useEffect(() => {
-    if (
-      !smartCardsShownRef.current &&
-      state.settings.smart_cards_enabled &&
-      smartCards.length > 0
-    ) {
-      smartCardsShownRef.current = true;
+    if (!state.settings.smart_cards_enabled) return;
+    if (smartCards.length === 0) return;
+
+    const seen = shownCardIdsRef.current;
+    const hasNewCard = smartCards.some((c) => !seen.has(c.id));
+    if (hasNewCard) {
+      for (const c of smartCards) seen.add(c.id);
       setShowSmartCards(true);
     }
-  }, [smartCards.length, state.settings.smart_cards_enabled]);
+  }, [smartCards, state.settings.smart_cards_enabled]);
 
   // Stable key: changes only when a budget limit is added/removed/modified.
   // Prevents the notification effect from re-running on every array re-creation.

@@ -254,6 +254,20 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
               </span>
             )}
 
+            {!permissionGranted && enabled && (
+              <button
+                type="button"
+                onClick={() => {
+                  // Re-open the system settings page so the user can finish
+                  // granting the special "Notification access" permission.
+                  plugin?.requestAccess();
+                }}
+                className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 border border-amber-300 dark:border-amber-700 text-[10px] font-semibold text-amber-800 dark:text-amber-200 active:scale-[0.97] transition-transform"
+              >
+                Open settings →
+              </button>
+            )}
+
             {!enabled && installedBankApps.length > 0 && (
               <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700">
                 <span className="w-2 h-2 rounded-full bg-blue-500 mr-2" />
@@ -267,6 +281,30 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
 
         <ToggleSwitch enabled={enabled} onToggle={handleToggle} />
       </div>
+
+      {/* Step-by-step help when the special "Notification access" permission
+          isn't granted yet. Android routes this through Settings > Apps >
+          Special app access, which is buried and easy to miss — so we
+          surface the exact steps in-app. */}
+      {isNative && !permissionGranted && (
+        <details
+          className="rounded-2xl border border-amber-200/70 dark:border-amber-800/40 bg-amber-50/60 dark:bg-amber-950/20 px-3 py-2"
+          data-testid="notification-permission-help"
+        >
+          <summary className="cursor-pointer text-[11px] font-semibold text-amber-800 dark:text-amber-300 select-none">
+            How to grant notification access
+          </summary>
+          <ol className="mt-2 space-y-1.5 text-[10px] leading-relaxed text-amber-900/80 dark:text-amber-200/80 list-decimal pl-4">
+            <li>Tap <span className="font-semibold">Open settings</span> above (or the toggle) — Android opens <span className="font-semibold">Settings &gt; Apps &gt; Special app access &gt; Notification access</span>.</li>
+            <li>Find <span className="font-semibold">Covault</span> in the list and tap it.</li>
+            <li>Toggle <span className="font-semibold">Allow notification access</span> on, then confirm <span className="font-semibold">Allow</span> on the system dialog.</li>
+            <li>Come back to Covault — the status pill will turn green automatically (no need to reopen this screen).</li>
+          </ol>
+          <p className="mt-2 text-[10px] text-amber-700/80 dark:text-amber-300/70">
+            This is a one-time setup. The system requirement exists so apps can't read your notifications without your explicit consent.
+          </p>
+        </details>
+      )}
 
       {/* Banking app picker */}
       {enabled && permissionGranted && (

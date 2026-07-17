@@ -20,7 +20,11 @@ interface InlineSmartCardProps {
 }
 
 const SWIPE_THRESHOLD = 60;
-const STACK_SPREAD = 10;
+// How far each queued card sits below the top one, in px. Used to
+// drive the "card in a deck being pushed toward the viewer" animation:
+// the next card is pushed forward (scale up + translateY up) as the
+// top card is swiped away.
+const STACK_TRANSLATE_Y = 14;
 
 function budgetIdToName(budgetId: string): string {
   if (budgetId.startsWith('budget:')) {
@@ -231,15 +235,23 @@ const InlineSmartCard: React.FC<InlineSmartCardProps> = ({ cards, onDismiss, onA
           .reverse()
           .map((card, reverseIndex) => {
             const stackIndex = queuedCards.length - reverseIndex;
-            const translateY = stackIndex === 1
-              ? STACK_SPREAD - dragProgress * 6
-              : STACK_SPREAD * 1.8 - dragProgress * 5;
-            const scale = stackIndex === 1
-              ? 0.985 + dragProgress * 0.015
-              : 0.97 + dragProgress * 0.012;
-            const opacity = stackIndex === 1
-              ? 0.82 + dragProgress * 0.16
-              : 0.58 + dragProgress * 0.12;
+            // stackIndex 1 = the card about to become the top card.
+            // stackIndex 2 = the card behind that one.
+            // We drive both translateY and scale by dragProgress so the
+            // next card visibly "rises and grows" as the top card is
+            // swiped away — like a card in a deck being pushed toward
+            // the viewer rather than sliding in from the side.
+            const baseTranslateY = stackIndex === 1
+              ? STACK_TRANSLATE_Y
+              : STACK_TRANSLATE_Y * 1.7;
+            const baseScale = stackIndex === 1 ? 0.90 : 0.82;
+            const targetScale = stackIndex === 1 ? 1.0 : 0.90;
+            const targetTranslateY = stackIndex === 1 ? 0 : STACK_TRANSLATE_Y;
+            const translateY = baseTranslateY + (targetTranslateY - baseTranslateY) * dragProgress;
+            const scale = baseScale + (targetScale - baseScale) * dragProgress;
+            const baseOpacity = stackIndex === 1 ? 0.85 : 0.55;
+            const targetOpacity = stackIndex === 1 ? 1.0 : 0.85;
+            const opacity = baseOpacity + (targetOpacity - baseOpacity) * dragProgress;
 
             return (
               <div
@@ -247,12 +259,22 @@ const InlineSmartCard: React.FC<InlineSmartCardProps> = ({ cards, onDismiss, onA
                 className={`absolute inset-0 overflow-hidden rounded-2xl border pointer-events-none ${cardThemeClass}`}
                 style={{
                   transform: `translateY(${translateY}px) scale(${scale})`,
+                  transformOrigin: 'center bottom',
                   opacity,
-                  transition: 'transform 0.26s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease',
+                  transition: 'transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.28s ease, box-shadow 0.32s ease',
                   zIndex: 10 + stackIndex,
-                  boxShadow: theme === 'dark'
-                    ? '0 14px 30px rgba(2, 6, 23, 0.4)'
-                    : '0 14px 30px rgba(15, 23, 42, 0.14)',
+                  boxShadow: (() => {
+                    const lift = dragProgress; // 0..1
+                    if (stackIndex === 1) {
+                      // Growing shadow as the card is pushed forward.
+                      return theme === 'dark'
+                        ? `0 ${14 + lift * 10}px ${30 + lift * 12}px rgba(2, 6, 23, ${0.4 + lift * 0.1})`
+                        : `0 ${14 + lift * 10}px ${30 + lift * 12}px rgba(15, 23, 42, ${0.14 + lift * 0.06})`;
+                    }
+                    return theme === 'dark'
+                      ? '0 10px 22px rgba(2, 6, 23, 0.32)'
+                      : '0 10px 22px rgba(15, 23, 42, 0.1)';
+                  })(),
                 }}
                 aria-hidden="true"
               >
