@@ -3,7 +3,7 @@ import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { Transaction, BudgetCategory } from '../../../types';
-import { parseLocalDate } from '../../../lib/dateUtils';
+import { parseLocalDate, getLocalToday, toLocalIsoDay } from '../../../lib/dateUtils';
 import CalendarPicker from '../../CalendarPicker';
 import SettingsCard from '../../ui/SettingsCard';
 import SectionHeader from '../../ui/SectionHeader';
@@ -17,10 +17,16 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
   transactions,
   budgets,
 }) => {
-  const today = new Date().toISOString().split('T')[0];
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .split('T')[0];
+  // Use local date — `new Date().toISOString()` returns the UTC date
+  // which can be off by one day for users in negative-offset timezones
+  // (e.g. America/Chicago after ~6 PM local). This made the default
+  // export range end on "tomorrow" UTC while the user's local clock
+  // still said "today".
+  const today = getLocalToday();
+  const localToday = parseLocalDate(today);
+  const thirtyDaysAgo = toLocalIsoDay(
+    new Date(localToday.getTime() - 30 * 24 * 60 * 60 * 1000)
+  );
 
   const [startDate, setStartDate] = useState(thirtyDaysAgo);
   const [endDate, setEndDate] = useState(today);

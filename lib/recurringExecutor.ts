@@ -3,7 +3,7 @@
 // Piggybacks on app open / notification listener events.
 // Uses localStorage to avoid re-processing the same day.
 
-import { getLocalToday } from './dateUtils';
+import { getLocalToday, toLocalIsoDay } from './dateUtils';
 import { REST_BASE, getAuthHeaders } from './apiHelpers';
 import type { Transaction } from '../types';
 
@@ -28,12 +28,7 @@ function todayStr(): string {
   return getLocalToday();
 }
 
-function toLocalIsoDay(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
+
 
 /**
  * Step forward from `from` by one recurrence interval (monthly +14 days,
@@ -108,17 +103,26 @@ function dueDatesUpTo(txDate: string, recurrence: string, today: Date): string[]
 
 /**
  * Execute any recurring transactions that are due today.
- * Idempotent — skips if already run today.
+ * Idempotent — safe to call multiple times; it will only insert rows
+ * for due dates that don't already exist in the provided transaction list.
+ *
+ * Pass `force: true` to bypass the once-per-day localStorage guard. Use
+ * this when a new recurring template was just added mid-session and you
+ * want its first due instance spawned immediately rather than waiting
+ * for tomorrow's app-open run.
  */
 export async function executeRecurringTransactions(
   userId: string,
   transactions: Transaction[],
+  options: { force?: boolean } = {},
 ): Promise<Transaction[]> {
   const today = todayStr();
 
-  // Only run once per day
-  const lastRun = localStorage.getItem(LAST_RUN_KEY);
-  if (lastRun === today) return [];
+  // Only run once per day unless the caller explicitly forces a re-run.
+  if (!options.force) {
+    const lastRun = localStorage.getItem(LAST_RUN_KEY);
+    if (lastRun === today) return [];
+  }
 
   const now = new Date();
   now.setHours(0, 0, 0, 0);

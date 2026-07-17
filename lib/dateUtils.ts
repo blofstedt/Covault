@@ -35,3 +35,16 @@ export function getLocalMonthKey(dateStr: string): string {
   const d = parseLocalDate(dateStr);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
+
+/**
+ * Format a Date as YYYY-MM-DD using the local calendar (NOT UTC).
+ * Prefer this over `date.toISOString().slice(0, 10)` whenever the
+ * caller wants the user's local day — the UTC slice can roll over
+ * to the wrong day for users in negative-offset timezones.
+ */
+export function toLocalIsoDay(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}

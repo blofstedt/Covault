@@ -15,6 +15,7 @@ import { loadBankingAppsFromDB } from './lib/bankingApps';
 import { useAppTheme } from './lib/hooks/useAppTheme';
 import { useUserData } from './lib/hooks/useUserData';
 import { executeRecurringTransactions } from './lib/recurringExecutor';
+import { sendRecurringCatchUpNotification } from './lib/appNotifications';
 
 const SETTINGS_KEY = 'covault_settings';
 const SCAN_PROCESSING_DELAY_MS = 2000;
@@ -108,12 +109,17 @@ const App: React.FC = () => {
   useAuthState({ setAppState, setAuthState, loadUserData: loadUserDataWithState });
   useDeepLinks();
 
-  // Auto-execute recurring transactions once per day on app open
-  const recurringRanRef = useRef(false);
+  // Auto-execute recurring transactions. The executor itself is
+  // idempotent and gated by a once-per-day localStorage flag, so it's
+  // safe to re-run on every transactions change. We do NOT use a
+  // `useRef` guard here anymore — a ref would prevent the executor
+  // from catching up when the user adds a new recurring template
+  // mid-session (the ref would stay `true` for the rest of the
+  // session, and the new template's first due instance would not
+  // spawn until tomorrow).
   useEffect(() => {
     const userId = appState.user?.id;
-    if (!userId || appState.transactions.length === 0 || recurringRanRef.current) return;
-    recurringRanRef.current = true;
+    if (!userId || appState.transactions.length === 0) return;
 
     executeRecurringTransactions(userId, appState.transactions).then((inserted) => {
       if (inserted.length > 0) {
@@ -121,6 +127,12 @@ const App: React.FC = () => {
           ...prev,
           transactions: [...inserted, ...prev.transactions],
         }));
+        // Surface a local notification so the user knows what just
+        // happened. Best-effort — if notifications aren't permitted,
+        // appNotifications swallows the error.
+        void sendRecurringCatchUpNotification(
+          inserted.map((t) => ({ vendor: t.vendor, amount: Number(t.amount), date: t.date }))
+        );
       }
     });
   }, [appState.user?.id, appState.transactions]);

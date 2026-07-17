@@ -12,7 +12,14 @@ function addMonths(date: Date, months: number): Date {
 
 function toIsoDay(value: string | Date): string {
   if (typeof value === 'string') return value.slice(0, 10);
-  return value.toISOString().slice(0, 10);
+  // Use local date components, NOT toISOString(). The UTC slice
+  // can roll over to the wrong day for users in negative-offset
+  // timezones (e.g. America/Chicago after ~6 PM local), which would
+  // push projected transactions into the wrong month.
+  const y = value.getFullYear();
+  const m = String(value.getMonth() + 1).padStart(2, '0');
+  const d = String(value.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 function normalizeRecurrence(tx: Transaction): string {

@@ -2,6 +2,7 @@
 import { useCallback } from 'react';
 import type { Transaction } from '../../types';
 import { Recurrence } from '../../types';
+import { toLocalIsoDay } from '../dateUtils';
 import { SYSTEM_CATEGORIES } from '../../constants';
 
 // Valid recurrence values that must match the database CHECK constraint
@@ -27,7 +28,7 @@ const toIsoDay = (value: unknown): string => {
 
   const parsed = new Date(String(value));
   if (Number.isNaN(parsed.getTime())) return '';
-  return parsed.toISOString().slice(0, 10);
+  return toLocalIsoDay(parsed);
 };
 
 export const shouldSolidifyProjectedTransaction = (
