@@ -149,7 +149,13 @@ const InlineSmartCard: React.FC<InlineSmartCardProps> = ({ cards, onDismiss, onA
     const card = cards[currentIndex];
     if (!card) { isDismissingRef.current = false; return; }
 
-    dismissCard(card.id);
+    // Vendor-suggestion dismissals are permanent — the user is telling
+    // us "don't ask again for that vendor" (either by tapping No, or by
+    // tapping Yes which saves the override and makes the question moot).
+    // Every other category uses the timestamp-based re-show rule in
+    // lib/smartCards.ts.
+    const permanent = card.type === 'vendor-suggestion';
+    dismissCard(card.id, card.type, permanent);
     onDismiss(card.id);
 
     setIsExiting(false);

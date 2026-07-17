@@ -102,7 +102,7 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
     const card = cards[currentIndex];
     if (!card) { isDismissingRef.current = false; return; }
 
-    dismissCard(card.id);
+    dismissCard(card.id, card.type, card.type === 'vendor-suggestion');
     onDismiss(card.id);
 
     setIsExiting(false);
@@ -147,7 +147,7 @@ const SmartCardDeck: React.FC<SmartCardDeckProps> = ({ cards, onDismiss, onAllDi
     }
 
     // Always advance the card — save is best-effort
-    dismissCard(card.id);
+    dismissCard(card.id, card.type, card.type === 'vendor-suggestion');
     onDismiss(card.id);
     setIsExiting(false);
     setDragX(0);
