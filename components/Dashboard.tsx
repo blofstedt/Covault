@@ -443,7 +443,10 @@ const Dashboard: React.FC<Props> = ({
 
         <div
           aria-hidden="true"
-          className="shrink-0 h-[5rem]"
+          // Match the fixed bottom bar's height (including the device safe-area
+          // inset) so the last budget vial never slides underneath it, plus a
+          // small 8px gap so the spacing matches the `gap-2` between vials.
+          className="shrink-0 h-[calc(env(safe-area-inset-bottom,0px)+5rem+0.5rem)]"
         />
 
         <DashboardBottomBar
