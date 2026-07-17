@@ -216,7 +216,11 @@ const InlineSmartCard: React.FC<InlineSmartCardProps> = ({ cards, onDismiss, onA
 
   const isVendorCard = topCard.type === 'vendor-suggestion';
   const dragProgress = isDragging || isExiting ? Math.min(1, Math.abs(dragX) / 120) : 0;
-  const topOpacity = isDragging ? Math.max(0.3, 1 - Math.abs(dragX) / 150) : isExiting ? 0 : 1;
+  // The top card stays fully opaque the whole time — the user is
+  // physically flinging it away, so fading it out as it goes makes the
+  // interaction feel ghostly. Only fade it once the exit animation has
+  // fully completed (handled inside advanceCard via isExiting reset).
+  const topOpacity = 1;
   const topTransform = isDragging
     ? `translateX(${dragX}px) rotate(${dragX * 0.05}deg)`
     : isExiting
@@ -237,21 +241,26 @@ const InlineSmartCard: React.FC<InlineSmartCardProps> = ({ cards, onDismiss, onA
             const stackIndex = queuedCards.length - reverseIndex;
             // stackIndex 1 = the card about to become the top card.
             // stackIndex 2 = the card behind that one.
-            // We drive both translateY and scale by dragProgress so the
-            // next card visibly "rises and grows" as the top card is
-            // swiped away — like a card in a deck being pushed toward
-            // the viewer rather than sliding in from the side.
+            //
+            // Animation strategy: the queued cards stay perfectly still
+            // (in their stacked position with zero horizontal motion)
+            // while the user drags the top card. Only after the top card
+            // is released and starts its exit fly do the queued cards
+            // rise up from behind to take the vacated slot. This makes
+            // the "replacement" feel like a card being pushed up from
+            // the back of a deck, not sliding in from the side.
+            const riseProgress = isExiting ? 1 : 0;
             const baseTranslateY = stackIndex === 1
               ? STACK_TRANSLATE_Y
               : STACK_TRANSLATE_Y * 1.7;
             const baseScale = stackIndex === 1 ? 0.90 : 0.82;
             const targetScale = stackIndex === 1 ? 1.0 : 0.90;
             const targetTranslateY = stackIndex === 1 ? 0 : STACK_TRANSLATE_Y;
-            const translateY = baseTranslateY + (targetTranslateY - baseTranslateY) * dragProgress;
-            const scale = baseScale + (targetScale - baseScale) * dragProgress;
+            const translateY = baseTranslateY + (targetTranslateY - baseTranslateY) * riseProgress;
+            const scale = baseScale + (targetScale - baseScale) * riseProgress;
             const baseOpacity = stackIndex === 1 ? 0.85 : 0.55;
             const targetOpacity = stackIndex === 1 ? 1.0 : 0.85;
-            const opacity = baseOpacity + (targetOpacity - baseOpacity) * dragProgress;
+            const opacity = baseOpacity + (targetOpacity - baseOpacity) * riseProgress;
 
             return (
               <div
@@ -264,7 +273,7 @@ const InlineSmartCard: React.FC<InlineSmartCardProps> = ({ cards, onDismiss, onA
                   transition: 'transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.28s ease, box-shadow 0.32s ease',
                   zIndex: 10 + stackIndex,
                   boxShadow: (() => {
-                    const lift = dragProgress; // 0..1
+                    const lift = riseProgress; // 0..1, driven by isExiting
                     if (stackIndex === 1) {
                       // Growing shadow as the card is pushed forward.
                       return theme === 'dark'
