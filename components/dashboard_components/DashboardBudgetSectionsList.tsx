@@ -96,17 +96,24 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
                   budgetRefs?.current.delete(budget.id);
                 }
               }}
-              className="flex flex-col min-h-0 lg:min-h-[80px]"
+              className="flex-1 flex flex-col min-h-0 lg:min-h-[80px]"
               style={{
-                // Non-expanded cards shrink to 0 while the expanded one fills all space.
-                // Animating `flex` (flex-grow + flex-basis) is GPU-friendly on modern
-                // engines and avoids the layout-thrash of display:none / absolute swaps.
-                flex: expandedBudgetId && !isExpanded ? '0 0 0px' : '1 1 auto',
-                minHeight: expandedBudgetId ? 0 : undefined,
+                // Smooth expansion: use max-height (a directly-animatable property)
+                // rather than the `flex` shorthand. flex-grow/flex-shrink are integers
+                // and snap rather than interpolate, and `flex-basis: auto` is a
+                // computed value the browser can't always interpolate cleanly. The
+                // previous transition on `flex` therefore looked choppy on the
+                // expand → collapse boundary. flex-1 + max-height gives us a
+                // smoothly-animatable height while still letting the expanded card
+                // fill all available vertical space (max-height: 2000px is a
+                // generous ceiling; the wrapper's flex-1 makes it take whatever
+                // space remains after the collapsed cards collapse to 0).
+                maxHeight: expandedBudgetId && !isExpanded ? '0px' : '2000px',
                 opacity: expandedBudgetId && !isExpanded ? 0 : 1,
                 overflow: 'hidden',
                 pointerEvents: expandedBudgetId && !isExpanded ? 'none' : undefined,
-                transition: 'flex 0.38s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.28s ease',
+                transition: 'max-height 0.42s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.28s ease',
+                willChange: 'max-height, opacity',
               }}
             >
               <BudgetSection

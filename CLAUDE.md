@@ -58,7 +58,7 @@ components/
   NotificationSettings.tsx     # Configure monitored banking apps
   SubscribeModal.tsx           # Premium upsell
   PremiumGate.tsx              # Feature gating
-  dashboard_components/        # Dashboard sub-components (header, balance, budget list, smart cards, etc.)
+  dashboard_components/        # Dashboard sub-components (header, balance, budget list, etc.)
   transaction_parsing/         # Parsing sub-components (ActiveBanksCard, AITransactionsEnteredCard, etc.)
   shared/                      # CardWrapper, CloseButton, EmptyState, Spinner
   ui/                          # ConfirmModal, etc.
@@ -75,7 +75,6 @@ lib/
   budgetColors.ts              # Category color palette
   projectedTransactions.ts     # Recurring transaction projection
   recurringExecutor.ts         # Auto-execute recurring txns daily
-  smartCards.ts                # AI insight card generation
   entitlement.ts               # Trial + subscription logic
   localNotificationMemory.ts   # In-memory dedup cache (2hr TTL)
   apiHelpers.ts                # Supabase query helpers
