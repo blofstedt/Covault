@@ -13,12 +13,10 @@ import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import BudgetFlowChart from './dashboard_components/BudgetFlowChart';
 import DashboardSettingsModal from './dashboard_components/DashboardSettingsModal';
 import SearchResults from './dashboard_components/SearchResults';
-import InlineSmartCard from './dashboard_components/InlineSmartCard';
 
 import useNormalizedTransactions from './dashboard_components/useNormalizedTransactions';
 import useDashboardTotals from './dashboard_components/useDashboardTotals';
 import { getLocalMonthKey } from '../lib/dateUtils';
-import { collectSmartCards } from '../lib/smartCards';
 import { checkAndTriggerAppNotifications } from '../lib/appNotifications';
 import { supabase } from '../lib/supabase';
 import { resolveBudgetIdFromRow } from '../lib/hooks/transactionMappers';
@@ -118,54 +116,6 @@ const Dashboard: React.FC<Props> = ({
 
     return [...normalizedTransactions, ...currentMonthProjected];
   }, [normalizedTransactions, projectedTransactions, monthKey]);
-
-  // ── Smart Card Deck ─────────────────────────────────────────────
-  const [showSmartCards, setShowSmartCards] = useState(false);
-  // Track which card IDs have already been shown so the deck re-opens
-  // only when genuinely new cards appear (new spending crossing a
-  // threshold, a new upcoming bill, a fresh vendor suggestion, etc.)
-  // and not on every reference-identity change of the cards array.
-  const shownCardIdsRef = useRef<Set<string>>(new Set());
-
-  // Stable key: only changes when a budget's spending total shifts by ≥$1.
-  // Prevents collectSmartCards from re-running on every reference identity change
-  // of normalizedTransactions / currentMonthBudgetTransactions.
-  const budgetSpendingKey = useMemo(() =>
-    state.budgets.map(b => {
-      const spent = currentMonthBudgetTransactions
-        .filter(tx => tx.budget_id === b.id && !tx.is_projected)
-        .reduce((s, tx) => s + tx.amount, 0);
-      return `${b.id}:${b.totalLimit}:${Math.round(spent)}`;
-    }).join(','),
-    [state.budgets, currentMonthBudgetTransactions],
-  );
-
-  const smartCards = useMemo(
-    () =>
-      collectSmartCards(
-        state.budgets,
-        normalizedTransactions,
-        currentMonthBudgetTransactions,
-        state.user?.id,
-        state.user?.partnerName,
-      ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [budgetSpendingKey, state.user?.id, state.user?.partnerName],
-  );
-
-  // Open the deck the first time cards are available, and re-open it
-  // whenever a card appears whose ID we haven't surfaced before.
-  useEffect(() => {
-    if (!state.settings.smart_cards_enabled) return;
-    if (smartCards.length === 0) return;
-
-    const seen = shownCardIdsRef.current;
-    const hasNewCard = smartCards.some((c) => !seen.has(c.id));
-    if (hasNewCard) {
-      for (const c of smartCards) seen.add(c.id);
-      setShowSmartCards(true);
-    }
-  }, [smartCards, state.settings.smart_cards_enabled]);
 
   // Stable key: changes only when a budget limit is added/removed/modified.
   // Prevents the notification effect from re-running on every array re-creation.
@@ -469,26 +419,6 @@ const Dashboard: React.FC<Props> = ({
                   highlightedBudgetId={expandedBudgets.size > 0 ? Array.from(expandedBudgets)[0] : null}
                 />
               </PremiumGate>
-            </div>
-
-            {/* Smart cards: full width */}
-            <div
-              className={`transition-all duration-500 ease-in-out overflow-hidden shrink-0 opacity-100 lg:max-h-none ${
-                showSmartCards && smartCards.length > 0
-                  ? 'max-h-[200px]'
-                  : 'max-h-0'
-              }`}
-              aria-hidden={!(showSmartCards && smartCards.length > 0)}
-            >
-              {showSmartCards && smartCards.length > 0 && (
-                <InlineSmartCard
-                  cards={smartCards}
-                  onDismiss={(id) => {}}
-                  onAllDismissed={() => setShowSmartCards(false)}
-                  userId={state.user?.id}
-                  theme={state.settings.theme}
-                />
-              )}
             </div>
 
             {/* Budget bars: vertical list on mobile, 2-col grid on desktop */}

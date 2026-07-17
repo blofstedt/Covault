@@ -11,7 +11,7 @@ import NotificationSettingsSection from './settings_modal_components/Notificatio
 import BudgetLimitsSection from './settings_modal_components/BudgetLimitsSection';
 import ExportTransactionsSection from './settings_modal_components/ExportTransactionsSection';
 import ImportTransactionsSection from './settings_modal_components/ImportTransactionsSection';
-import SmartCardSettingsSection from './settings_modal_components/SmartCardSettingsSection';
+import SmartNotificationsSection from './settings_modal_components/SmartNotificationsSection';
 import ReportSection from './settings_modal_components/ReportSection';
 import { BudgetCategory, Transaction } from '../../types';
 import PremiumGate from '../PremiumGate';
@@ -23,7 +23,6 @@ export interface DashboardSettings {
   useLeisureAsBuffer: boolean;
   notificationsEnabled?: boolean;
   app_notifications_enabled?: boolean;
-  smart_cards_enabled?: boolean;
   smart_notifications_enabled?: boolean;
 
   [key: string]: any;
@@ -152,11 +151,9 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
             onUpdateSettings={onUpdateSettings}
           />
 
-          {/* Smart Insights */}
-          <SmartCardSettingsSection
-            smartCardsEnabled={settings.smart_cards_enabled ?? true}
+          {/* Smart Notifications */}
+          <SmartNotificationsSection
             smartNotificationsEnabled={settings.smart_notifications_enabled ?? true}
-            onToggleSmartCards={() => onUpdateSettings('smart_cards_enabled', !settings.smart_cards_enabled)}
             onToggleSmartNotifications={() => onUpdateSettings('smart_notifications_enabled', !settings.smart_notifications_enabled)}
           />
 

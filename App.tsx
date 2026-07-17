@@ -30,7 +30,6 @@ const DEFAULT_SETTINGS = {
   notificationsEnabled: false,
   app_notifications_enabled: false,
   hiddenCategories: [] as string[],
-  smart_cards_enabled: true,
   smart_notifications_enabled: true,
 };
 
