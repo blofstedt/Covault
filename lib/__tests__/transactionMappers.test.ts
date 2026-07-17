@@ -13,7 +13,13 @@ const budgets = [
 ];
 
 describe('shouldSolidifyProjectedTransaction', () => {
-  const now = new Date('2026-03-20T00:01:00.000Z');
+  // Use noon UTC so the test passes in every common timezone (UTC-12
+  // through UTC+14). The old `00:01:00Z` was the previous local day in
+  // any negative-offset timezone (e.g. America/Chicago), which made
+  // the 'solidifies ... dated today' assertion fail there. The function
+  // compares the tx date to the *local* date, so the test fixture has
+  // to land on the same local day regardless of where it runs.
+  const now = new Date('2026-03-20T12:00:00.000Z');
 
   it('solidifies projected transactions dated today', () => {
     expect(shouldSolidifyProjectedTransaction(true, '2026-03-20', now)).toBe(true);
@@ -33,8 +39,16 @@ describe('shouldSolidifyProjectedTransaction', () => {
 });
 
 describe('transactionMappers budget resolution', () => {
-  it('resolves DB category id directly when present', () => {
-    expect(resolveBudgetIdFromRow({ category_id: 'abc-123' })).toBe('abc-123');
+  it('returns null for rows with no Budget/budget field', () => {
+    // The current schema (public.transactions) uses `Budget` (enum) /
+    // `budget` (legacy alias). The `category_id` fallback was removed in
+    // commit 63b244f because no live row in the current schema uses it.
+    // resolveBudgetIdFromRow now returns null for rows that don't carry
+    // a Budget/budget value, and the caller (toSupabaseTransaction)
+    // is responsible for ensuring the transaction carries a budget_id
+    // before it gets here.
+    expect(resolveBudgetIdFromRow({})).toBeNull();
+    expect(resolveBudgetIdFromRow({ category_id: 'abc-123' })).toBeNull();
   });
 
   it('maps legacy DB budget text values to stable system UUID ids', () => {

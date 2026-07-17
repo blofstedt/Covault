@@ -1,4 +1,21 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+// lib/supabase.ts reads `localStorage` at module load time (inside
+// createClient's auth config). Vitest runs in Node, which has no
+// `localStorage` by default, so we stub one before any module that
+// transitively imports supabase.ts gets evaluated. ES module imports
+// are hoisted, so the stub has to be installed via vi.hoisted to
+// run before the import statements resolve.
+vi.hoisted(() => {
+  let store: Record<string, string> = {};
+  vi.stubGlobal('localStorage', {
+    getItem: (k: string) => (k in store ? store[k] : null),
+    setItem: (k: string, v: string) => { store[k] = v; },
+    removeItem: (k: string) => { delete store[k]; },
+    clear: () => { store = {}; },
+  });
+});
+
 import {
   buildPersistedUpdateTransaction,
   getSourceTransactionIdFromProjectedId,
