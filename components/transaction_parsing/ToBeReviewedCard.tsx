@@ -39,6 +39,18 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
 }) => {
   const [preferredNames, setPreferredNames] = useState<Record<string, string>>({});
   const [selectedCategories, setSelectedCategories] = useState<Record<string, string>>({});
+  // Tracks which card is currently showing the “assigned ✓” animation.
+  // While set, that card renders a green check overlay and the submit
+  // flow is delayed briefly so the user can see the confirmation
+  // before the card is removed from the list.
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const submitTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (submitTimerRef.current) clearTimeout(submitTimerRef.current);
+    };
+  }, []);
 
   return (
   <ParsingCard
@@ -59,7 +71,47 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
             : undefined;
 
           return (
-            <div key={pt.id} className="bg-white/60 dark:bg-slate-800/40 backdrop-blur-sm rounded-2xl border border-slate-100 dark:border-slate-800/60 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] overflow-hidden">
+            <div key={pt.id} className="relative bg-white/60 dark:bg-slate-800/40 backdrop-blur-sm rounded-2xl border border-slate-100 dark:border-slate-800/60 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] overflow-hidden">
+              {/* Cheerful ✓ confirmation overlay shown briefly after a successful
+                  category assignment. Sits on top of the card content so the
+                  user sees the confirmation before the card is removed from
+                  the list. */}
+              {approvingId === pt.id && (
+                <div
+                  className="absolute inset-0 z-10 flex items-center justify-center bg-emerald-50/95 dark:bg-emerald-950/90 backdrop-blur-sm"
+                  data-testid="assigned-confirmation"
+                >
+                  <div className="flex flex-col items-center gap-1 animate-spring">
+                    <div className="w-12 h-12 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-lg ring-4 ring-emerald-200/60 dark:ring-emerald-800/40">
+                      <svg
+                        className="w-7 h-7"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={3}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        style={{
+                          strokeDasharray: 24,
+                          strokeDashoffset: 0,
+                          animation: 'covault-draw-check 0.4s cubic-bezier(0.65, 0, 0.35, 1) forwards',
+                        }}
+                      >
+                        <polyline points="4 12 10 18 20 6" />
+                      </svg>
+                    </div>
+                    <p className="text-[11px] font-bold tracking-wide text-emerald-700 dark:text-emerald-300 mt-1">
+                      Assigned!
+                    </p>
+                  </div>
+                  <style>{`
+                    @keyframes covault-draw-check {
+                      from { stroke-dashoffset: 24; }
+                      to   { stroke-dashoffset: 0; }
+                    }
+                  `}</style>
+                </div>
+              )}
               {/* Card header */}
               <button
                 onClick={() => onSetExpandedPendingId(isExpanded ? null : pt.id)}
@@ -145,19 +197,32 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
 
                   {/* Submit button */}
                   <button
-                    disabled={!selectedCategories[pt.id]}
+                    disabled={!selectedCategories[pt.id] || approvingId === pt.id}
                     onClick={async () => {
                       const categoryId = selectedCategories[pt.id];
-                      if (!categoryId) return;
+                      if (!categoryId || approvingId === pt.id) return;
                       const preferred = preferredNames[pt.id]?.trim() || undefined;
-                      // Create vendor override only on submit (after user confirms)
-                      onUpsertLocalVendorOverride(formatVendorName(pt.extracted_vendor), categoryId, preferred);
-                      await onApprovePending?.(pt.id, categoryId, preferred);
-                      setPreferredNames(prev => { const { [pt.id]: _, ...rest } = prev; return rest; });
-                      setSelectedCategories(prev => { const { [pt.id]: _, ...rest } = prev; return rest; });
-                      onSetExpandedPendingId(null);
-                      // Reload vendor overrides to sync with DB (replaces temp ID with real one)
-                      await onLoadVendorOverrides();
+
+                      // 1. Show the cheerful ✓ overlay immediately so the user
+                      //    gets a clear visual confirmation that the assignment
+                      //    landed.
+                      setApprovingId(pt.id);
+
+                      // 2. After a beat, do the actual work (create override,
+                      //    approve, collapse, reload). The 700ms delay gives
+                      //    the check draw-animation and the spring pop time
+                      //    to play before the card disappears from the list.
+                      if (submitTimerRef.current) clearTimeout(submitTimerRef.current);
+                      submitTimerRef.current = setTimeout(async () => {
+                        onUpsertLocalVendorOverride(formatVendorName(pt.extracted_vendor), categoryId, preferred);
+                        await onApprovePending?.(pt.id, categoryId, preferred);
+                        setPreferredNames(prev => { const { [pt.id]: _, ...rest } = prev; return rest; });
+                        setSelectedCategories(prev => { const { [pt.id]: _, ...rest } = prev; return rest; });
+                        onSetExpandedPendingId(null);
+                        // Reload vendor overrides to sync with DB (replaces temp ID with real one)
+                        await onLoadVendorOverrides();
+                        setApprovingId(null);
+                      }, 700);
                     }}
                     className={`w-full py-2.5 text-[11px] font-semibold tracking-wide rounded-xl border transition-all active:scale-[0.98] ${
                       selectedCategories[pt.id]
@@ -165,7 +230,7 @@ const ToBeReviewedCard: React.FC<ToBeReviewedCardProps> = ({
                         : 'text-slate-400 dark:text-slate-600 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 cursor-not-allowed'
                     }`}
                   >
-                    Submit
+                    {approvingId === pt.id ? 'Assigned ✓' : 'Submit'}
                   </button>
 
                   {/* Reject button */}
