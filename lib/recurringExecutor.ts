@@ -165,6 +165,9 @@ export async function executeRecurringTransactions(
         recur: rec,
         type: 'Automatic',
         is_projected: false,
+        // Mark executor-spawned rows so the dedup logic can distinguish
+        // them from notification-spawned rows of the same vendor+amount.
+        source: 'executor',
       });
 
       // Track to prevent dupes within this batch

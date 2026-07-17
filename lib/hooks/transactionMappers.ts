@@ -130,6 +130,13 @@ export const toSupabaseTransaction = (
     recur: recurrence,
   };
 
+  // Persist the source column when the caller set it. The DB has a default
+  // of 'manual' so missing here is fine for legacy callers, but the new
+  // flows (executor, AI pipeline, import) always set it explicitly.
+  if (tx.source) {
+    row.source = tx.source;
+  }
+
   return row;
 };
 
@@ -172,5 +179,11 @@ export const useFromSupabaseTransaction = () =>
       caught_cleared: row.caught_cleared === true,
       userName: row.user_name || '',
       created_at: row.created_at,
+      // Read the source column if the migration has been applied. Falls
+      // back to undefined for legacy rows (pre-migration).
+      source: (row.source === 'executor' || row.source === 'notification'
+                || row.source === 'manual' || row.source === 'import')
+                ? row.source
+                : undefined,
     };
   }, []);

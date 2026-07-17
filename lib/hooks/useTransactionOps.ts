@@ -60,10 +60,13 @@ export const useTransactionOps = ({
         date: tx.date
       });
 
-      // Optimistic update
+      // Optimistic update. The tx is already passed with the right label by
+      // TransactionForm, so we just make sure source is set to 'manual' for
+      // user-typed entries. The dedup logic uses this to distinguish manual
+      // entries from executor-spawned and notification-inserted rows.
       setAppState(prev => ({
         ...prev,
-        transactions: [tx, ...prev.transactions],
+        transactions: [{ ...tx, source: tx.source ?? 'manual' }, ...prev.transactions],
       }));
 
       try {

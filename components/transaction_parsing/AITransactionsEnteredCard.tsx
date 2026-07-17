@@ -52,13 +52,16 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
           {aiTransactions.map((tx) => {
             const budgetName = tx.budget_id ? (budgetNameById.get(tx.budget_id) || null) : null;
             const isForReview = needsReviewIds.has(tx.id);
+            const softDup = tx.softDuplicateOf;
 
             return (
               <button
                 key={tx.id}
                 onClick={() => onTransactionTap?.(tx)}
                 className={`w-full flex items-center justify-between p-4 rounded-2xl border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] transition-all duration-200 active:scale-[0.98] cursor-pointer text-left hover:shadow-md ${
-                  isForReview
+                  softDup
+                    ? 'bg-amber-50/70 dark:bg-amber-900/15 border-amber-200 dark:border-amber-700/40'
+                    : isForReview
                     ? 'bg-amber-50/70 dark:bg-amber-900/15 border-amber-200 dark:border-amber-700/40'
                     : 'bg-white/60 dark:bg-emerald-900/10 backdrop-blur-sm border-emerald-100 dark:border-emerald-800/30'
                 }`}
@@ -69,7 +72,16 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
                   </div>
                   <div className="text-left min-w-0">
                     <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate max-w-[160px]">{tx.vendor}</p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
+                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                      {softDup && (
+                        <span
+                          className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 dark:text-amber-300 tracking-wide"
+                          title={`Possible duplicate of ${softDup.vendor} $${Math.abs(softDup.amount).toFixed(2)} on ${softDup.date} — tap to review`}
+                        >
+                          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                          Possible dup
+                        </span>
+                      )}
                       {isForReview && <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 tracking-wide">For Review</span>}
                       {budgetName && <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 tracking-wide">{budgetName}</span>}
                       <span className="text-[10px] text-slate-400 dark:text-slate-500">{parseLocalDate(tx.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>

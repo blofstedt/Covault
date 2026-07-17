@@ -101,6 +101,7 @@ const ImportTransactionsSection: React.FC<ImportTransactionsSectionProps> = ({
         recur: string;
         type: string;
         is_projected: boolean;
+        source: string;
       }> = [];
 
       const errors: string[] = [];
@@ -168,6 +169,10 @@ const ImportTransactionsSection: React.FC<ImportTransactionsSectionProps> = ({
           recur,
           type: 'Manual',
           is_projected: false,
+          // Mark imported rows so the dedup logic can distinguish them from
+          // notification-inserted and executor-spawned rows of the same
+          // vendor+amount.
+          source: 'import',
         });
       }
 

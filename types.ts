@@ -53,6 +53,10 @@ export enum TransactionLabel {
   MANUAL = 'Manual',
 }
 
+/** Where a transaction came from. Used by the dedup logic to distinguish
+ *  "two real charges in the same month" from "same charge, different day". */
+export type TransactionSource = 'executor' | 'notification' | 'manual' | 'import';
+
 export interface Transaction {
   id: string;
   user_id: string;
@@ -67,6 +71,18 @@ export interface Transaction {
   caught_cleared?: boolean;
   userName?: string;
   created_at: string;
+  /** Origin of this row. Populated by the writer (executor/AI/manual/import).
+   *  Not persisted on the in-memory type for projected/legacy rows. */
+  source?: TransactionSource;
+  /** Set by the AI pipeline when the new transaction looks like a soft duplicate
+   *  of an existing one (same vendor, different amount). The UI shows a badge.
+   *  This is an in-memory only field — never persisted to DB. */
+  softDuplicateOf?: {
+    id: string;
+    vendor: string;
+    amount: number;
+    date: string;
+  };
 
 }
 
