@@ -4,7 +4,7 @@ import { Capacitor } from '@capacitor/core';
 import type { Transaction, User, PendingTransaction, BudgetCategory } from '../../types';
 import { covaultNotification } from '../covaultNotification';
 import { processNotificationWithAI } from '../notificationProcessor';
-import { sendPartnerActivityNotification } from '../appNotifications';
+import { sendPartnerActivityNotification, sendExpenseCapturedNotification } from '../appNotifications';
 import type { NotificationSettingsShape } from '../appNotifications';
 import type { AIProcessingResult } from '../notificationProcessor';
 import { getBankingApps } from '../bankingApps';
@@ -93,9 +93,22 @@ export const useNotificationListener = ({
             // onListenerConnected and the JS useEffect trigger a scan at
             // app start). Catching it here means the pipeline below never
             // even runs.
+            //
+            // The key is CONTENT-ONLY (no `event.timestamp`). The
+            // timestamp-based key was unstable when the native side fell
+            // back to `System.currentTimeMillis()` for missing fields,
+            // letting two events for the same notification get different
+            // keys and both slip through to the pipeline — the
+            // double-capture bug. See `buildInMemoryDedupKey` in
+            // notificationProcessor.ts for the full rationale.
             const rawNotification = event.rawNotification || event.raw_text;
             const bankAppId = (event.bankAppId || event.source_app)?.toLowerCase();
-            const dedupKey = `${bankAppId || '?'}|${rawNotification || ''}|${event.timestamp || 0}`;
+            let dedupHash = 5381;
+            const text = rawNotification || '';
+            for (let i = 0; i < text.length; i++) {
+              dedupHash = ((dedupHash << 5) + dedupHash + text.charCodeAt(i)) >>> 0;
+            }
+            const dedupKey = `${bankAppId || '?'}|h${dedupHash.toString(36)}`;
             const now = Date.now();
             // Evict expired entries opportunistically
             while (
@@ -181,6 +194,18 @@ export const useNotificationListener = ({
                   } else {
                     onTransactionDetected(tx);
                   }
+
+                  // "Expense captured!" local notification. Gated on
+                  // app_notifications_enabled inside the helper. Skipped
+                  // automatically if the insert was a race-loser (the
+                  // pipeline doesn't return transactionId in that case).
+                  sendExpenseCapturedNotification(
+                    result.transactionId,
+                    result.vendor || 'Unknown',
+                    result.amount || 0,
+                    result.categoryName || null,
+                    settings || {},
+                  );
 
                   // If this transaction came from a partner's device (different
                   // user_id on the event) send a push alert to the current user.

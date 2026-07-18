@@ -39,7 +39,7 @@ async function ensurePermission() {
 // system tints it with `iconColor` at render time. Without these, the
 // status bar shows a generic "(!)" placeholder and the notification
 // looks like it came from an unbranded system app.
-const NOTIF_SMALL_ICON = 'ic_stat_covault';
+const NOTIF_SMALL_ICON = 'ic_stat_covault_mono';
 const NOTIF_ICON_COLOR = '#10B981'; // Covault emerald
 
 async function sendNotification(title: string, body: string) {
@@ -56,9 +56,10 @@ async function sendNotification(title: string, body: string) {
           body,
           schedule: { at: new Date(Date.now() + 1000) },
           // Android-only fields — ignored on iOS.
-          // See android-custom/res/drawable/ic_stat_covault.xml
-          // (vector) and android-custom/res/mipmap-*/ic_stat_covault.png
-          // (raster fallback synced by scripts/sync-android.sh).
+          // See android-custom/res/drawable/ic_stat_covault_mono.xml
+          // (the new monochrome status-bar vector) and
+          // android-custom/res/drawable/ic_stat_covault.xml (legacy
+          // raster fallback synced by scripts/sync-android.sh).
           smallIcon: NOTIF_SMALL_ICON,
           iconColor: NOTIF_ICON_COLOR,
         },
@@ -191,4 +192,72 @@ export async function sendRecurringCatchUpNotification(
       : `Added ${inserted.length} recurring transactions totaling $${total.toFixed(2)}.`;
 
   await sendNotification('Recurring transactions caught up', summary);
+}
+
+/**
+ * Send a local notification when Covault AI auto-captures an expense
+ * from a bank notification. Helps the user notice charges got logged
+ * without them having to open the app.
+ *
+ * Gated on `app_notifications_enabled` so users who turned off
+ * app-level notifications don't get surprised. The notification is
+ * tagged with the transaction ID as its system notification ID so
+ * that:
+ *   - Re-firing for the same transaction (e.g. from a manual rescan
+ *     that won the race-recovery) overwrites the existing
+ *     notification instead of stacking.
+ *   - Tapping the notification can be associated back to the
+ *     transaction in future deep-linking work.
+ */
+export async function sendExpenseCapturedNotification(
+  transactionId: string,
+  vendor: string,
+  amount: number,
+  categoryName: string | null,
+  settings: NotificationSettingsShape,
+) {
+  if (!Capacitor.isNativePlatform()) return;
+  if (!settings?.app_notifications_enabled) return;
+
+  // Negative amounts are refunds/income — the user said they prefer
+  // to be notified about "captured" expenses, which is the common
+  // case. Refunds also get a notification but with a different title
+  // so the user knows it's money coming back, not going out.
+  const isIncome = amount < 0;
+  const absAmount = Math.abs(amount);
+  const categorySuffix = categoryName ? ` → ${categoryName}` : '';
+  const body = isIncome
+    ? `+$${absAmount.toFixed(2)} at ${vendor}${categorySuffix}.`
+    : `$${absAmount.toFixed(2)} at ${vendor}${categorySuffix}.`;
+  const title = isIncome ? 'Income captured!' : 'Expense captured!';
+
+  try {
+    await ensurePermission();
+    // Use a stable, deterministic ID derived from the transaction UUID.
+    // LocalNotifications ID is a 32-bit int, so we hash the UUID and
+    // mask to the positive int range. This means the same transaction
+    // always reuses the same system notification ID, preventing the
+    // same charge from generating multiple notifications if the
+    // pipeline runs twice (e.g. on app restart with a stale listener).
+    let id = 0;
+    for (let i = 0; i < transactionId.length; i++) {
+      id = ((id * 31) + transactionId.charCodeAt(i)) | 0;
+    }
+    id = Math.abs(id);
+
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          id,
+          title,
+          body,
+          schedule: { at: new Date(Date.now() + 1000) },
+          smallIcon: NOTIF_SMALL_ICON,
+          iconColor: NOTIF_ICON_COLOR,
+        },
+      ],
+    });
+  } catch (e) {
+    console.error('[appNotifications] expense-captured schedule error', e);
+  }
 }

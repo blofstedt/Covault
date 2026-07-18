@@ -45,7 +45,7 @@ const MS_PER_MINUTE = 60 * 1000;
  * In-memory cache of recently processed notification keys.
  * Prevents the same notification from being processed multiple times
  * during a scan or when the same notification is re-broadcast.
- * Key: `${bankAppId}|${amount}|${vendorSlug}|${notificationTimestamp}`
+ * Key: `${bankAppId}|h${djb2(rawNotification)}` — see `buildInMemoryDedupKey`.
  * Value: timestamp when the key was added (for cache expiry)
  */
 const recentlyProcessedCache = new Map<string, number>();
@@ -78,29 +78,47 @@ const DEDUP_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 /**
  * Build an in-memory dedup key from the raw notification fields.
- * Uses bankAppId + raw amount + vendor slug + notification timestamp so
- * that identical notifications from the same app are caught before any
- * async DB calls or AI processing.
  *
- * The vendor slug is best-effort — we try to pull the merchant name from
- * the raw text using the same patterns the parser uses, but if we can't
- * we fall back to a stable hash of the full raw text. This way two
- * different transactions that happen to share the same amount (e.g.
- * "Hyundai $458.69" and "Costco $458.69" both arriving in the same scan)
- * get distinct keys and aren't accidentally conflated.
+ * Key format: `bankAppId|<hash of raw text>`.
+ *
+ * Intentionally CONTENT-ONLY — no `notificationTimestamp`. The original
+ * design included the timestamp because Android's `sbn.getPostTime()` is
+ * supposed to be stable across re-broadcasts, but in practice the JS-side
+ * `event.timestamp` can vary when:
+ *   - The native broadcast doesn't include a timestamp and the plugin
+ *     falls back to `System.currentTimeMillis()` (see
+ *     android-custom/CovaultNotificationPlugin.java).
+ *   - The notification is re-fired by a `scanActiveNotifications()` call
+ *     with a different JSON payload shape.
+ *   - Two notification events for the same charge arrive within the
+ *     same second but with sub-second clock differences.
+ * Any of these would make the two invocations get different dedup keys
+ * and BOTH proceed to insert — which is exactly the double-capture bug
+ * the in-flight check was supposed to prevent.
+ *
+ * Same notification text from the same bank → same key, regardless of
+ * how many times it's re-broadcast. Two different transactions that
+ * happen to share the same amount (e.g. "Hyundai $458.69" and
+ * "Costco $458.69") get distinct keys because their raw text differs
+ * and the hash captures that.
+ *
+ * Hash is djb2 — matches the one `extractVendorSlug` uses as its
+ * fallback so we don't pull in a new dependency just for this.
  */
 function buildInMemoryDedupKey(
   bankAppId: string,
   rawNotification: string,
-  notificationTimestamp: number,
+  _notificationTimestamp: number, // kept for API stability; not used
 ): string {
-  // Extract amount from raw text for keying
-  const amountMatch = rawNotification.match(/\$([\d,]+(?:\.\d{1,2})?)/);
-  const amount = amountMatch ? amountMatch[1].replace(/,/g, '') : 'no-amount';
-  // Best-effort vendor slug: pull the first capitalized phrase or a hash
-  // of the text so two different vendors with the same amount get distinct keys.
-  const vendorSlug = extractVendorSlug(rawNotification);
-  return `${bankAppId}|${amount}|${vendorSlug}|${notificationTimestamp}`;
+  // djb2 hash of the full raw text. The bankAppId prefix prevents the
+  // same text from different banks from being conflated (rare, but
+  // possible if a user has two banking apps that both notify on the
+  // same transaction).
+  let hash = 5381;
+  for (let i = 0; i < rawNotification.length; i++) {
+    hash = ((hash << 5) + hash + rawNotification.charCodeAt(i)) >>> 0;
+  }
+  return `${bankAppId || '?'}|h${hash.toString(36)}`;
 }
 
 /**
@@ -1195,6 +1213,79 @@ async function processNotificationWithAIImpl(
       rejectionReason: 'Failed to save transaction',
       bankName: input.bankName,
     };
+  }
+
+  // ── Step 6b: Post-insert race-recovery ──
+  // The in-memory key + in-flight set + pre-insert DB check above catch
+  // most re-broadcasts, but there's still a race window: if two
+  // notifications for the same charge arrive in the same instant (e.g.
+  // both the native `onListenerConnected` scan and the JS useEffect's
+  // `scanActiveNotifications` fire at app start), both invocations can
+  // pass Step 1's pre-insert check BEFORE either has actually written
+  // its row. They then both proceed to Step 6 and both insert — the
+  // exact double-capture bug the user is hitting.
+  //
+  // Recovery: immediately after our insert completes, re-query the
+  // transactions table for any OTHER row matching our vendor + amount
+  // + date. If we find one, we're the loser of the race — the other
+  // row was inserted between our Step 1 check and our Step 6 insert
+  // (or by a parallel invocation that won the in-flight check). Roll
+  // back our insert so the user only sees the winner.
+  //
+  // The `created_at` order isn't strictly required here — the pre-
+  // existing row is the winner by definition (it existed before ours)
+  // — but we use it for clearer log output. We compare vendor after
+  // normalization so that two surface forms of the same merchant
+  // (e.g. "AMZN MKTP" vs "Amazon Prime") are correctly recognized
+  // as duplicates.
+  const { data: raceCheck } = await supabase
+    .from('transactions')
+    .select('id, vendor, amount, date, created_at')
+    .eq('user_id', userId)
+    .eq('date', today)
+    .eq('amount', amount)
+    .neq('id', transactionId);
+
+  if (raceCheck && raceCheck.length > 0) {
+    const normalizedOur = normalizeVendorForDedup(finalVendorName);
+    const race = raceCheck.find(
+      (row) => normalizeVendorForDedup(row.vendor) === normalizedOur,
+    );
+    if (race) {
+      console.warn(
+        `[AI pipeline] ⚠️ Race-recovery: rolling back our insert of ${finalVendorName} $${amount} ` +
+        `(${transactionId}) — duplicate of ${race.id} (${race.vendor} $${race.amount}, created ${race.created_at})`,
+      );
+      const { error: rollbackError } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', transactionId);
+      if (rollbackError) {
+        console.error('[AI pipeline] Race-recovery rollback failed:', rollbackError);
+        // We couldn't roll back, so the user will see both rows. Log
+        // loudly so we know to investigate.
+      }
+      // Still mark as processed so we don't keep retrying.
+      markNotificationProcessed(inMemoryKey);
+      recentlyProcessedCache.set(inMemoryKey, Date.now());
+      return {
+        processed: true,
+        isTransaction: true,
+        vendor: finalVendorName,
+        amount,
+        skipReason: 'duplicate_ai' as const,
+        rejectionReason: 'Duplicate detected after insert (race-recovery rollback)',
+        bankName: input.bankName,
+        // Surface the winning row as the soft-dup so the UI can
+        // show the "possible duplicate" badge.
+        softDuplicateOf: {
+          id: race.id,
+          vendor: race.vendor,
+          amount: Number(race.amount),
+          date: race.date,
+        },
+      };
+    }
   }
 
   console.log(`[AI pipeline] Transaction saved: ${finalVendorName} $${amount} → ${categoryName}`);
