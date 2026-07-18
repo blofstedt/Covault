@@ -29,6 +29,11 @@ interface TransactionParsingProps {
   onRefreshNotifications?: () => Promise<void>;
   onReloadTransactions?: (userId: string) => Promise<void>;
   onClearEntered?: () => void;
+  /** Delete a transaction by ID. Used by the soft-dup badge to remove the
+   *  similar older transaction when the user confirms a duplicate. */
+  onDeleteTransaction?: (id: string) => void;
+  /** Called when a transaction is mutated locally (e.g. soft-dup dismissed). */
+  onTransactionUpdated?: (tx: Transaction) => void;
 }
 
 const TransactionParsing: React.FC<TransactionParsingProps> = ({
@@ -233,6 +238,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               onRefresh={handleRefresh}
               isRefreshing={isRefreshing}
               needsReviewIds={needsReviewIds}
+              onDeleteTransaction={onDeleteTransaction}
             />
           </>
         ) : (

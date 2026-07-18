@@ -120,3 +120,35 @@ export function markNotificationProcessed(key: string): void {
   }
   writeJson(PROCESSED_NOTIFS_KEY, keys);
 }
+
+// ── Dismissed soft-dup pairs ──────────────────────────────────────────────────
+// The dedup pipeline flags transactions as soft duplicates of one another.
+// The user can dismiss the warning ("not a duplicate — keep both"). We persist
+// those dismissals so the warning doesn't come back on the next reload.
+// Key: `${currentTxId}|${similarTxId}`
+
+const DISMISSED_DUPS_KEY = 'covault_dismissed_dups_v1';
+
+/** Max entries to keep in the dismissed set (oldest trimmed beyond this) */
+const MAX_DISMISSED_DUPS = 500;
+
+function dismissedDupKey(currentTxId: string, similarTxId: string): string {
+  return `${currentTxId}|${similarTxId}`;
+}
+
+export function isSoftDupDismissed(currentTxId: string, similarTxId: string): boolean {
+  const keys = readJson<string[]>(DISMISSED_DUPS_KEY, []);
+  return keys.includes(dismissedDupKey(currentTxId, similarTxId));
+}
+
+export function markSoftDupDismissed(currentTxId: string, similarTxId: string): void {
+  let keys = readJson<string[]>(DISMISSED_DUPS_KEY, []);
+  const key = dismissedDupKey(currentTxId, similarTxId);
+  if (keys.includes(key)) return;
+  keys.push(key);
+  if (keys.length > MAX_DISMISSED_DUPS) {
+    keys = keys.slice(keys.length - MAX_DISMISSED_DUPS);
+  }
+  writeJson(DISMISSED_DUPS_KEY, keys);
+}
+

@@ -337,6 +337,7 @@ const Dashboard: React.FC<Props> = ({
           allTransactions={normalizedTransactions}
           onTransactionTap={setSelectedTx}
           budgets={state.budgets}
+          onDeleteTransaction={onDeleteTransaction}
           userId={state.user?.id}
           onRefreshNotifications={onRefreshNotifications}
           onReloadTransactions={onReloadTransactions}

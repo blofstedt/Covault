@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { Transaction, BudgetCategory } from '../../types';
 import ParsingCard from '../ui/ParsingCard';
 import { EmptyState } from '../shared';
 import { getBudgetIcon } from '../dashboard_components/getBudgetIcon';
 import { parseLocalDate } from '../../lib/dateUtils';
+import { isSoftDupDismissed, markSoftDupDismissed } from '../../lib/localNotificationMemory';
+import SoftDuplicateBadge from './SoftDuplicateBadge';
 
 interface AITransactionsEnteredCardProps {
   /** AI-entered transactions (label === 'AI') */
@@ -14,6 +16,8 @@ interface AITransactionsEnteredCardProps {
   onRefresh?: () => void;
   isRefreshing?: boolean;
   needsReviewIds?: Set<string>;
+  /** Delete a transaction by ID. Used by the soft-dup badge to remove the older one. */
+  onDeleteTransaction?: (id: string) => void;
 }
 
 const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
@@ -24,8 +28,39 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
   onRefresh,
   isRefreshing = false,
   needsReviewIds = new Set(),
+  onDeleteTransaction,
 }) => {
   const budgetNameById = new Map<string, string>(budgets.map(b => [b.id, b.name]));
+
+  // Track which transactions the user is currently deleting (per-id loading
+  // state for the soft-dup popover's delete button). This keeps the rest
+  // of the list interactive while one deletion is in flight.
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Local set of dismissed pairs (in addition to localStorage). The
+  // localStorage check survives reloads; this set is just here to force
+  // a re-render immediately after the user dismisses, so the badge
+  // disappears without waiting for the parent to re-fetch.
+  const [localDismissed, setLocalDismissed] = useState<Set<string>>(() => new Set());
+
+  const handleDismissSoftDup = useCallback((currentTxId: string, similarTxId: string) => {
+    markSoftDupDismissed(currentTxId, similarTxId);
+    setLocalDismissed(prev => {
+      const next = new Set(prev);
+      next.add(`${currentTxId}|${similarTxId}`);
+      return next;
+    });
+  }, []);
+
+  const handleDeleteSimilar = useCallback(async (similarTxId: string) => {
+    if (!onDeleteTransaction) return;
+    setDeletingId(similarTxId);
+    try {
+      await onDeleteTransaction(similarTxId);
+    } finally {
+      setDeletingId(null);
+    }
+  }, [onDeleteTransaction]);
 
   return (
     <ParsingCard
@@ -52,7 +87,14 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
           {aiTransactions.map((tx) => {
             const budgetName = tx.budget_id ? (budgetNameById.get(tx.budget_id) || null) : null;
             const isForReview = needsReviewIds.has(tx.id);
-            const softDup = tx.softDuplicateOf;
+            // Show the badge only if the user hasn't previously dismissed
+            // this exact pair. Dismissals are persisted in localStorage
+            // and also tracked in local state for instant UI updates.
+            const softDup = tx.softDuplicateOf
+              && !isSoftDupDismissed(tx.id, tx.softDuplicateOf.id)
+              && !localDismissed.has(`${tx.id}|${tx.softDuplicateOf.id}`)
+              ? tx.softDuplicateOf
+              : null;
 
             return (
               <button
@@ -66,21 +108,31 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
                     : 'bg-white/60 dark:bg-emerald-900/10 backdrop-blur-sm border-emerald-100 dark:border-emerald-800/30'
                 }`}
               >
-                <div className="flex items-center space-x-3">
-                  <div className="w-9 h-9 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center">
+                <div className="flex items-center space-x-3 min-w-0 flex-1">
+                  <div className="w-9 h-9 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center shrink-0">
                     {budgetName ? <span className="text-emerald-600 dark:text-emerald-400 w-4 h-4">{getBudgetIcon(budgetName)}</span> : <svg className="w-4 h-4 text-emerald-600 dark:text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="20 6 9 17 4 12" /></svg>}
                   </div>
-                  <div className="text-left min-w-0">
-                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate max-w-[160px]">{tx.vendor}</p>
+                  <div className="text-left min-w-0 flex-1">
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{tx.vendor}</p>
                     <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                       {softDup && (
-                        <span
-                          className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 dark:text-amber-300 tracking-wide"
-                          title={`Possible duplicate of ${softDup.vendor} $${Math.abs(softDup.amount).toFixed(2)} on ${softDup.date} — tap to review`}
-                        >
-                          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                          Possible dup
-                        </span>
+                        <SoftDuplicateBadge
+                          tx={tx}
+                          similar={softDup}
+                          onDismiss={handleDismissSoftDup}
+                          onDeleteSimilar={handleDeleteSimilar}
+                          onViewSimilar={(similarId) => {
+                            const similar = aiTransactions.find(t => t.id === similarId)
+                              || tx.softDuplicateOf && similarId === tx.softDuplicateOf.id ? tx : null;
+                            // The similar tx is usually NOT in the auto-entered
+                            // list (it's an older one); the best we can do is
+                            // surface its details. Tapping the popover's
+                            // "View" link just closes the popover — users can
+                            // tap the transaction card to open the modal.
+                            // (We keep the button in the popover for symmetry.)
+                          }}
+                          isDeleting={deletingId === softDup.id}
+                        />
                       )}
                       {isForReview && <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 tracking-wide">For Review</span>}
                       {budgetName && <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 tracking-wide">{budgetName}</span>}
