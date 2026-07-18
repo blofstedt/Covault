@@ -12,11 +12,11 @@
     - Drawn as filled shapes / strokes; do not rely on color to
       convey meaning
 
-  This icon mirrors the adaptive launcher icon
-  (ic_covault_foreground.xml) at status-bar scale: rounded vault
-  door + centered dial + diagonal handle. The four compass-point
-  spokes from the launcher are intentionally omitted — at 24dp they
-  would render as sub-pixel artefacts.
+  This icon is a faithful port of components/CovaultIcon.tsx (the
+  in-app React component that renders the actual Covault brand
+  mark on the login screen). The four compass-point ticks from
+  the source SVG are intentionally omitted at this scale because
+  they collapse to sub-pixel artefacts.
 
   iOS is unaffected — smallIcon is an Android-only field.
 -->
@@ -26,20 +26,23 @@
     android:viewportWidth="24"
     android:viewportHeight="24">
 
-    <!-- Vault door: rounded rectangle outline (centered, 18dp safe zone).
-         Outer 12x9 box at 6,7.5 with 1.5dp corner radius, with a 0.75dp
-         white stroke (rendered as outer + inner even-odd path). -->
+    <!-- Rounded square outline (matches CovaultIcon.tsx rect x=3 y=3
+         w=18 h=18 rx=2 strokeWidth=2.5).  Outer rect with transparent
+         inner rect = the white stroke. -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M7.5,7.5 L16.5,7.5 A1,1 0 0 1 17.5,8.5 L17.5,15.5 A1,1 0 0 1 16.5,16.5 L7.5,16.5 A1,1 0 0 1 6.5,15.5 L6.5,8.5 A1,1 0 0 1 7.5,7.5 Z M8.25,8.5 L8.25,15.5 L15.75,15.5 L15.75,8.5 Z" />
+        android:pathData="M5,5 L19,5 A2,2 0 0 1 21,7 L21,17 A2,2 0 0 1 19,19 L5,19 A2,2 0 0 1 3,17 L3,7 A2,2 0 0 1 5,5 Z M5,6.5 L5,17.5 L19,17.5 L19,6.5 Z" />
 
-    <!-- Dial circle (centered at 12,12) — outer ring minus inner disk -->
+    <!-- Centered circle ring (matches CovaultIcon.tsx circle cx=12
+         cy=12 r=4 strokeWidth=2.5). -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M12,9.5 A2.5,2.5 0 1 1 12,14.5 A2.5,2.5 0 1 1 12,9.5 Z M12,10.5 A1.5,1.5 0 1 0 12,13.5 A1.5,1.5 0 1 0 12,10.5 Z" />
+        android:pathData="M12,8 A4,4 0 1 1 12,16 A4,4 0 1 1 12,8 Z M12,9.5 A2.5,2.5 0 1 0 12,14.5 A2.5,2.5 0 1 0 12,9.5 Z" />
 
-    <!-- Diagonal handle -->
+    <!-- Diagonal handle (matches CovaultIcon.tsx path d="M12 12l2 2").
+         Rendered as a thin filled rectangle rotated 45° from (12,12)
+         to (14,14) with strokeWidth=2.5. -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M12,12 L13.3,13.3 L12.95,13.65 L11.65,12.35 Z" />
+        android:pathData="M11,12 L12,11 L15,14 L14,15 Z" />
 </vector>
