@@ -105,6 +105,7 @@ private fun DashboardContent(
     var expandedBudgets by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showForm by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showFAQ by remember { mutableStateOf(false) }
     var editingTx by remember { mutableStateOf<Transaction?>(null) }
     var partnerLinkEmail by remember { mutableStateOf("") }
     var isLinkingPartner by remember { mutableStateOf(false) }
@@ -330,8 +331,13 @@ private fun DashboardContent(
             hasPremium = true,
             onSubscribe = {},
             onImportComplete = { /* Stage 4b-iv: import pipeline */ },
+            onShowFAQ = { showFAQ = true },
             onClose = { showSettings = false },
         )
+    }
+
+    if (showFAQ) {
+        FAQModal(onClose = { showFAQ = false })
     }
 }
 

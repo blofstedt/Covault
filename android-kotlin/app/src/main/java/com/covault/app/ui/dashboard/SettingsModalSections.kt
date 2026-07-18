@@ -854,6 +854,7 @@ fun DashboardSettingsModal(
     hasPremium: Boolean = true,
     onSubscribe: () -> Unit = {},
     onImportComplete: () -> Unit = {},
+    onShowFAQ: () -> Unit = {},
     onClose: () -> Unit,
 ) {
     Box(
@@ -902,7 +903,7 @@ fun DashboardSettingsModal(
                 }
                 Spacer(Modifier.height(16.dp))
 
-                FAQButton(onClick = { /* opens FAQ modal in a later stage */ })
+                FAQButton(onClick = onShowFAQ)
                 Spacer(Modifier.height(12.dp))
 
                 IncomeSection(
@@ -929,10 +930,12 @@ fun DashboardSettingsModal(
 
                 // Premium-gated: notification listener
                 if (hasPremium) {
-                    NotificationSettingsSection(
-                        enabled = settings.notificationsEnabled,
-                        onToggle = { v -> callbacks.onUpdateSettings("notificationsEnabled", v) },
-                    )
+                    PremiumGate(hasPremium = true) {
+                        NotificationSettingsSection(
+                            enabled = settings.notificationsEnabled,
+                            onToggle = { v -> callbacks.onUpdateSettings("notificationsEnabled", v) },
+                        )
+                    }
                     Spacer(Modifier.height(12.dp))
                 }
                 RolloverSection(
@@ -951,10 +954,12 @@ fun DashboardSettingsModal(
                 )
                 Spacer(Modifier.height(12.dp))
                 if (hasPremium) {
-                    DiscretionaryShieldSection(
-                        enabled = settings.useLeisureAsBuffer,
-                        onUpdate = callbacks.onUpdateSettings,
-                    )
+                    PremiumGate(hasPremium = true) {
+                        DiscretionaryShieldSection(
+                            enabled = settings.useLeisureAsBuffer,
+                            onUpdate = callbacks.onUpdateSettings,
+                        )
+                    }
                     Spacer(Modifier.height(12.dp))
                 }
                 VaultSharingSection(
