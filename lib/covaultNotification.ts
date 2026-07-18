@@ -41,6 +41,16 @@ export interface TransactionDetectedEvent {
    * Stable across rescans — used for fingerprint deduplication.
    */
   timestamp?: number;
+
+  /**
+   * True when this event came from an explicit user-triggered rescan of the
+   * active notification shade (vs. a fresh notification being received).
+   * The native side may use either snake_case or camelCase depending on
+   * serialization path, so we accept both.
+   */
+  from_scan?: boolean;
+  /** camelCase alias for `from_scan`. */
+  fromScan?: boolean;
 }
 
 export interface CovaultNotificationPlugin {

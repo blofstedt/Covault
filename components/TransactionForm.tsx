@@ -64,7 +64,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     return `${y}-${m}-${d}`;
   });
 
-  const [recurrence, setRecurrence] = useState<Recurrence>(initialTransaction?.recurrence || 'One-time');
+  const [recurrence, setRecurrence] = useState<Recurrence>(
+    (initialTransaction?.recurrence as Recurrence | undefined) || Recurrence.ONE_TIME,
+  );
   const [isRefund, setIsRefund] = useState(() => initialTransaction ? initialTransaction.amount < 0 : false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
@@ -136,10 +138,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       date: date + 'T12:00:00.000Z',
       budget_id: selectedId,
       recurrence,
-      label: initialTransaction
-        ? (initialTransaction.label === 'Automatic' || initialTransaction.label === TransactionLabel.AUTOMATIC
-          ? TransactionLabel.AUTOMATIC
-          : TransactionLabel.MANUAL)
+      label: initialTransaction && initialTransaction.label === TransactionLabel.AUTOMATIC
+        ? TransactionLabel.AUTOMATIC
         : TransactionLabel.MANUAL,
       user_id: userId,
       userName,

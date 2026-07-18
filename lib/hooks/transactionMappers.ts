@@ -14,13 +14,6 @@ const VALID_RECURRENCES = [
 
 const normalizeBudgetName = (value: string) => value.trim().toLowerCase();
 
-const toLocalIsoDay = (value: Date) => {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, '0');
-  const day = String(value.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
 const toIsoDay = (value: unknown): string => {
   if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) {
     return value.slice(0, 10);

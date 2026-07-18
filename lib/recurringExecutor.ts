@@ -142,6 +142,7 @@ export async function executeRecurringTransactions(
     recur: string;
     type: string;
     is_projected: boolean;
+    source: 'executor';
   }> = [];
 
   for (const tx of transactions) {

@@ -35,26 +35,16 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
-    // 1. SET BASE PATH: Use absolute '/' for web (Vercel) so SPA routes like /terms
-    // and /privacy resolve assets correctly. Capacitor (androidScheme: 'https') also
-    // works with absolute paths since it serves from a local HTTPS origin.
-    base: '/',
-
-    server: {
-      port: 3000,
-      host: '0.0.0.0',
-    },
-
     plugins: [
       react(),
       viteStaticCopy({
         targets: [
           {
-            src: 'sw.js',
+            src: 'manifest.json',
             dest: '.'
           },
           {
-            src: 'manifest.json',
+            src: 'sw.js',
             dest: '.'
           },
           {
@@ -84,25 +74,28 @@ export default defineConfig(({ mode }) => {
     // 2. DEFINE ENV VARIABLES: This replaces process.env and import.meta.env references at build time.
     // Critical for Android builds where env vars need to be embedded into the bundle.
     define: {
-      // Explicitly define Supabase env vars for Android/Capacitor builds
-      // Support both VITE_SUPABASE_URL and VITE_PUBLIC_SUPABASE_URL for compatibility
-      // Use undefined (not string "undefined") when env vars are missing
-      'import.meta.env.VITE_SUPABASE_URL': env.VITE_SUPABASE_URL 
-        ? JSON.stringify(env.VITE_SUPABASE_URL) 
-        : undefined,
-      'import.meta.env.VITE_PUBLIC_SUPABASE_URL': env.VITE_PUBLIC_SUPABASE_URL 
-        ? JSON.stringify(env.VITE_PUBLIC_SUPABASE_URL) 
-        : undefined,
-      'import.meta.env.VITE_SUPABASE_ANON_KEY': env.VITE_SUPABASE_ANON_KEY 
-        ? JSON.stringify(env.VITE_SUPABASE_ANON_KEY) 
-        : undefined,
-      // Resend API key for client-side fallback email sending
-      'import.meta.env.VITE_RESEND_API_KEY': env.VITE_RESEND_API_KEY
-        ? JSON.stringify(env.VITE_RESEND_API_KEY)
-        : undefined,
-      'import.meta.env.VITE_SENDER_EMAIL': env.VITE_SENDER_EMAIL
-        ? JSON.stringify(env.VITE_SENDER_EMAIL)
-        : undefined,
+      // Explicitly define Supabase env vars for Android/Capacitor builds.
+      // Support both VITE_SUPABASE_URL and VITE_PUBLIC_SUPABASE_URL for compatibility.
+      //
+      // IMPORTANT: do NOT use `JSON.stringify(undefined)` as a fallback value.
+      // Vite treats `undefined` keys in `define` by emitting the identifier as-is,
+      // but if a value sneaks through (e.g. the literal string "undefined") it gets
+      // baked into the bundle and the runtime calls
+      //   createClient("undefined", "undefined", ...)
+      // which throws "Invalid supabaseUrl: Must be a valid HTTP or HTTPS URL".
+      // We avoid that by only adding the slot when the env var is actually set.
+      ...(env.VITE_SUPABASE_URL
+        ? { 'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL) }
+        : {}),
+      ...(env.VITE_PUBLIC_SUPABASE_URL
+        ? { 'import.meta.env.VITE_PUBLIC_SUPABASE_URL': JSON.stringify(env.VITE_PUBLIC_SUPABASE_URL) }
+        : {}),
+      ...(env.VITE_SUPABASE_ANON_KEY
+        ? { 'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY) }
+        : {}),
+      // (Removed: VITE_RESEND_API_KEY and VITE_SENDER_EMAIL were
+      //  intended for a send-report Edge Function that has been
+      //  removed from the repo. See SUPABASE_AUDIT.md.)
     },
 
     resolve: {

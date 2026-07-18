@@ -4,8 +4,9 @@ import SubscribeModal from './SubscribeModal';
 interface PremiumGateProps {
   /** Whether the user currently has premium access */
   hasPremium: boolean;
-  /** Called when user taps Subscribe in the modal */
-  onSubscribe: () => void;
+  /** Called when user taps Subscribe in the modal. Optional — only required
+   *  when the user is not yet a premium subscriber. */
+  onSubscribe?: () => void;
   /** The child content — rendered normally when premium, greyed out when locked */
   children: React.ReactNode;
 }
@@ -44,7 +45,7 @@ const PremiumGate: React.FC<PremiumGateProps> = ({
           onClose={() => setShowModal(false)}
           onSubscribe={() => {
             setShowModal(false);
-            onSubscribe();
+            onSubscribe?.();
           }}
         />
       )}

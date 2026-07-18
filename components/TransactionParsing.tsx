@@ -49,6 +49,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   onRefreshNotifications,
   onReloadTransactions,
   onClearEntered,
+  onDeleteTransaction,
 }) => {
   // ── Clear modal state ──
   const [clearTarget, setClearTarget] = useState<'entered' | null>(null);

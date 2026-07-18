@@ -4,6 +4,7 @@ import BudgetSection from '../BudgetSection';
 
 interface DashboardSettingsShape {
   useLeisureAsBuffer: boolean;
+  hiddenCategories?: string[];
   [key: string]: any;
 }
 

@@ -834,7 +834,7 @@ export async function processNotificationWithAI(
 
   const { data: existingTx } = await supabase
     .from('transactions')
-    .select('id, vendor, amount, type, date')
+    .select('id, vendor, amount, type, date, source')
     .eq('user_id', userId)
     .gte('date', step4WindowStart)
     .lte('date', step4WindowEnd);
@@ -1005,7 +1005,7 @@ export async function processNotificationWithAI(
     const recurWindowEnd = new Date(todayMs + RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY).toISOString().slice(0, 10);
     const { data: recurCandidates } = await supabase
       .from('transactions')
-      .select('id, vendor, amount, date, recur')
+      .select('id, vendor, amount, date, recur, source')
       .eq('user_id', userId)
       .gte('date', recurWindowStart)
       .lte('date', recurWindowEnd);
