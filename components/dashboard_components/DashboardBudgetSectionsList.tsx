@@ -64,10 +64,10 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
   return (
     <div
       ref={scrollContainerRef}
-      className={`relative flex-1 min-h-0 mt-1 px-4 no-scrollbar flex flex-col ${
+      className={`relative flex-1 min-h-0 px-4 no-scrollbar flex flex-col ${
         expandedBudgetId
           ? 'overflow-hidden'
-          : 'overflow-y-auto scroll-smooth gap-2 lg:grid lg:grid-cols-2 lg:auto-rows-fr'
+          : 'overflow-y-auto scroll-smooth pt-3 pb-3 gap-3 lg:grid lg:grid-cols-2 lg:auto-rows-fr lg:pt-3 lg:pb-3'
       }`}
     >
       {visibleBudgets.map((budget, index) => {
@@ -102,7 +102,15 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
               // perfectly-smooth expand/collapse to natural content height
               // (no max-height guesswork, no choppy flex interpolation).
               // Slight overshoot via cubic-bezier gives an elastic ease-in-out.
-              className="min-h-0 lg:min-h-[80px] grid budget-row-anim"
+              //
+              // `flex-1` (in addition to the existing `lg:min-h-[80px]`)
+              // makes the row grow to take an equal share of the flex
+              // parent's available space. Combined with the container's
+              // `gap-3` + `pt-3 pb-3` (see above) this gives the closed-
+              // state vials an even distribution: equal padding between
+              // each pair of vials, and equal padding between the chart
+              // and the first vial / the last vial and the toolbar.
+              className="flex-1 min-h-0 lg:min-h-[80px] grid budget-row-anim"
               style={{
                 gridTemplateRows:
                   expandedBudgetId && !isExpanded ? '0fr' : '1fr',
