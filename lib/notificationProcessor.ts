@@ -45,10 +45,27 @@ const MS_PER_MINUTE = 60 * 1000;
  * In-memory cache of recently processed notification keys.
  * Prevents the same notification from being processed multiple times
  * during a scan or when the same notification is re-broadcast.
- * Key: `${bankAppId}|${amount}|${notificationTimestamp}`
+ * Key: `${bankAppId}|${amount}|${vendorSlug}|${notificationTimestamp}`
  * Value: timestamp when the key was added (for cache expiry)
  */
 const recentlyProcessedCache = new Map<string, number>();
+
+/**
+ * Set of notification keys that are CURRENTLY being processed.
+ *
+ * This is the defense against the double-capture race: when a scan fires
+ * the same notification twice in rapid succession (which happens at app
+ * start because BOTH the native NotificationListener.onListenerConnected
+ * and the JS useEffect's refreshMonitoredAppsAndScan trigger a scan),
+ * both invocations reach processNotificationWithAI before the first one
+ * finishes the async insert and marks recentlyProcessedCache.
+ *
+ * The in-flight set is claimed at the very top of processing (before any
+ * await) and released in a finally block. This serializes concurrent
+ * duplicates: the second caller sees the key in the set, returns the
+ * "duplicate" skip, and the first caller continues to insert.
+ */
+const inFlightProcessingKeys = new Set<string>();
 
 /**
  * How long to keep entries in the in-memory dedup cache (ms).
@@ -61,9 +78,16 @@ const DEDUP_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 /**
  * Build an in-memory dedup key from the raw notification fields.
- * Uses bankAppId + raw amount + notification timestamp so that
- * identical notifications from the same app are caught before
- * any async DB calls or AI processing.
+ * Uses bankAppId + raw amount + vendor slug + notification timestamp so
+ * that identical notifications from the same app are caught before any
+ * async DB calls or AI processing.
+ *
+ * The vendor slug is best-effort — we try to pull the merchant name from
+ * the raw text using the same patterns the parser uses, but if we can't
+ * we fall back to a stable hash of the full raw text. This way two
+ * different transactions that happen to share the same amount (e.g.
+ * "Hyundai $458.69" and "Costco $458.69" both arriving in the same scan)
+ * get distinct keys and aren't accidentally conflated.
  */
 function buildInMemoryDedupKey(
   bankAppId: string,
@@ -73,7 +97,36 @@ function buildInMemoryDedupKey(
   // Extract amount from raw text for keying
   const amountMatch = rawNotification.match(/\$([\d,]+(?:\.\d{1,2})?)/);
   const amount = amountMatch ? amountMatch[1].replace(/,/g, '') : 'no-amount';
-  return `${bankAppId}|${amount}|${notificationTimestamp}`;
+  // Best-effort vendor slug: pull the first capitalized phrase or a hash
+  // of the text so two different vendors with the same amount get distinct keys.
+  const vendorSlug = extractVendorSlug(rawNotification);
+  return `${bankAppId}|${amount}|${vendorSlug}|${notificationTimestamp}`;
+}
+
+/**
+ * Pull a short, stable identifier from the notification text for use in the
+ * dedup key. Doesn't need to be a perfect vendor name — it just needs to be
+ * stable across re-broadcasts of the SAME notification and distinct across
+ * different notifications.
+ */
+function extractVendorSlug(rawNotification: string): string {
+  // Try the common "VENDOR - You spent $X" pattern first (Wealthsimple etc.)
+  const dashVendor = rawNotification.match(/^([A-Za-z0-9&'./# -]{2,60}?)\s*[-\u2013\u2014]\s*(?:[Yy]ou\s+)?(?:spent|charged|paid|purchased)/);
+  if (dashVendor) {
+    return dashVendor[1].toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40);
+  }
+  // Try "VENDOR at/from/to $X" patterns
+  const prepositionVendor = rawNotification.match(/(?:at|from|to|@)\s+([A-Za-z0-9&'.-]{2,40}?)\s+(?:for|on|\$|USD|CAD|charged)/i);
+  if (prepositionVendor) {
+    return prepositionVendor[1].toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40);
+  }
+  // Fall back to a stable djb2 hash of the full text. Same notification text
+  // always hashes the same, so this still catches re-broadcasts.
+  let hash = 5381;
+  for (let i = 0; i < rawNotification.length; i++) {
+    hash = ((hash << 5) + hash + rawNotification.charCodeAt(i)) >>> 0;
+  }
+  return `h${hash.toString(36)}`;
 }
 
 /**
@@ -644,6 +697,64 @@ export async function processNotificationWithAI(
 
   const notifTimestamp = input.notificationTimestamp || Date.now();
 
+  // Build the dedup key up-front so the in-flight check can run before
+  // any of the expensive async work below.
+  const inMemoryKey = buildInMemoryDedupKey(
+    input.bankAppId,
+    input.rawNotification,
+    notifTimestamp,
+  );
+
+  // ── Step 0 (pre): In-flight check ──
+  // If another invocation is already processing this exact notification
+  // (e.g. the native onListenerConnected scan and the JS useEffect scan
+  // both fire at app start, or a scan is in flight when the user taps
+  // the manual refresh button), drop the duplicate. This must run BEFORE
+  // the TTL cache check below, otherwise the second caller still
+  // participates in the work and we double-insert.
+  if (!input.forceReprocess && inFlightProcessingKeys.has(inMemoryKey)) {
+    console.log('[AI pipeline] In-flight dedup hit, skipping duplicate invocation');
+    return {
+      processed: false,
+      isTransaction: false,
+      skipReason: 'duplicate_fingerprint',
+      bankName: input.bankName,
+    };
+  }
+
+  // Claim the key for the duration of this call. The try/finally below
+  // guarantees the key is released on every exit path (success, error,
+  // or any of the early returns). Concurrent invocations that arrive
+  // while we're still processing will see the key in the set and bail
+  // out at the check above.
+  inFlightProcessingKeys.add(inMemoryKey);
+  try {
+    return await processNotificationWithAIImpl(
+      userId,
+      input,
+      availableCategories,
+      notifTimestamp,
+      inMemoryKey,
+    );
+  } finally {
+    inFlightProcessingKeys.delete(inMemoryKey);
+  }
+}
+
+/**
+ * Internal implementation of processNotificationWithAI. Lives in its own
+ * function so the outer wrapper can claim/release the in-flight dedup key
+ * around the entire processing pipeline — even though the body has many
+ * early returns and a final await on the insert, the finally block in the
+ * outer wrapper guarantees the key is released exactly once.
+ */
+async function processNotificationWithAIImpl(
+  userId: string,
+  input: NotificationInput,
+  availableCategories: { id: string; name: string }[],
+  notifTimestamp: number,
+  inMemoryKey: string,
+): Promise<AIProcessingResult> {
   // Tracks a soft-dup match found in Step 4 so the Step 6 insert can
   // surface the warning in the returned result. Cleared on every call.
   let softDupMatch: { id: string; vendor: string; amount: number; date: string } | null = null;
@@ -652,11 +763,6 @@ export async function processNotificationWithAI(
   // Fast check to prevent the same notification from being processed
   // multiple times during a scan or rapid re-broadcast.
   evictExpiredCacheEntries();
-  const inMemoryKey = buildInMemoryDedupKey(
-    input.bankAppId,
-    input.rawNotification,
-    notifTimestamp,
-  );
   if (!input.forceReprocess && recentlyProcessedCache.has(inMemoryKey)) {
     console.log('[AI pipeline] In-memory dedup hit, skipping');
     return {

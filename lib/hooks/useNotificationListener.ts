@@ -23,6 +23,28 @@ export interface UseNotificationListenerParams {
 }
 
 /**
+ * Front-line dedup at the listener level. The native side can fire the same
+ * `transactionDetected` event multiple times for the same notification
+ * (e.g. when both the native NotificationListener.onListenerConnected and
+ * the JS useEffect trigger a scan at app start). If the raw text and
+ * timestamp are identical and they arrive within this window, the second
+ * one is dropped immediately — no DB round-trip, no AI inference, no
+ * chance of a double-insert.
+ *
+ * This is a defense-in-depth layer on top of the in-memory + persistent
+ * dedup inside processNotificationWithAI. The two layers are independent:
+ *   - Listener-level dedup catches the event before it ever reaches the
+ *     pipeline (cheapest possible stop).
+ *   - Pipeline-level dedup catches anything that slips through (e.g. a
+ *     re-broadcast on the next app start that's outside this window but
+ *     inside the TTL/DB dedup window).
+ */
+const LISTENER_DEDUP_WINDOW_MS = 30_000;
+
+type ListenerDedupEntry = { key: string; at: number };
+const recentListenerEvents: ListenerDedupEntry[] = [];
+
+/**
  * Hook that listens for transactionDetected events from the native CovaultNotification plugin.
  *
  * Uses the AI processing pipeline:
@@ -64,9 +86,36 @@ export const useNotificationListener = ({
               return;
             }
 
-            // Normalize field names from native broadcast
+            // ── Front-line dedup ──
+            // Drop re-broadcasts of the same notification within a short
+            // window. The native side sometimes fires the same event
+            // twice in rapid succession (e.g. when both the native
+            // onListenerConnected and the JS useEffect trigger a scan at
+            // app start). Catching it here means the pipeline below never
+            // even runs.
             const rawNotification = event.rawNotification || event.raw_text;
             const bankAppId = (event.bankAppId || event.source_app)?.toLowerCase();
+            const dedupKey = `${bankAppId || '?'}|${rawNotification || ''}|${event.timestamp || 0}`;
+            const now = Date.now();
+            // Evict expired entries opportunistically
+            while (
+              recentListenerEvents.length > 0 &&
+              now - recentListenerEvents[0].at > LISTENER_DEDUP_WINDOW_MS
+            ) {
+              recentListenerEvents.shift();
+            }
+            if (recentListenerEvents.some((e) => e.key === dedupKey)) {
+              console.log(
+                '[notification] Listener-level dedup hit, ignoring re-broadcast within',
+                LISTENER_DEDUP_WINDOW_MS,
+                'ms',
+              );
+              return;
+            }
+            recentListenerEvents.push({ key: dedupKey, at: now });
+
+            // rawNotification + bankAppId are already declared above for
+            // the dedup key; reuse them here.
             // Resolve a friendly bank name from the package ID so the UI
             // shows "BMO" instead of "com.bmo.mobile".
             const bankingApps = getBankingApps();

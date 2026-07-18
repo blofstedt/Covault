@@ -674,3 +674,103 @@ describe('In-memory dedup cache prevents duplicate processing', () => {
     expect(result2.processed).toBe(true);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// 8b. IN-FLIGHT DEDUP (concurrent invocations of the same notification)
+// ═══════════════════════════════════════════════════════════════════
+
+describe('In-flight dedup prevents double-insert from concurrent scans', () => {
+  beforeEach(() => {
+    _clearDedupCacheForTesting();
+  });
+
+  it('two concurrent calls with the same input produce exactly one insert', async () => {
+    // Slow the insert down so the in-flight key is still claimed when
+    // the second invocation arrives. This simulates the production
+    // scenario: native onListenerConnected fires its scan, the JS
+    // useEffect also fires its scan, both invocations reach
+    // processNotificationWithAI before the first one's insert completes.
+    let insertCount = 0;
+    const txChain = getChain('transactions');
+    const mockSelectChain = {
+      eq: vi.fn().mockReturnThis(),
+      gte: vi.fn().mockReturnThis(),
+      lte: vi.fn().mockReturnThis(),
+      ilike: vi.fn().mockReturnThis(),
+      then: (resolve: any) => resolve({ data: [], error: null }),
+    };
+    txChain.select = vi.fn().mockReturnValue(mockSelectChain);
+    txChain.insert = vi.fn().mockImplementation(async () => {
+      insertCount++;
+      // Yield to the microtask queue so the second call has a chance
+      // to enter processNotificationWithAI before this resolves.
+      await new Promise((r) => setTimeout(r, 20));
+      return { error: null };
+    });
+
+    const ptChain = getChain('pending_transactions');
+    const mockPtSelectChain = {
+      eq: vi.fn().mockReturnThis(),
+      gte: vi.fn().mockReturnThis(),
+      lte: vi.fn().mockReturnThis(),
+      then: (resolve: any) => resolve({ data: [], error: null }),
+    };
+    ptChain.select = vi.fn().mockReturnValue(mockPtSelectChain);
+
+    const timestamp = Date.now();
+    // Use a notification format that the test parser + AI pipeline accept
+    // as a valid transaction (the same default the existing dedup test
+    // uses). The vendor/amount is irrelevant — what matters is that the
+    // pipeline reaches the insert step so we can count how many inserts
+    // happen under concurrent invocations.
+    const input = makeInput({
+      rawNotification: 'Purchase of $25.00 at Subway',
+      notificationTimestamp: timestamp,
+    });
+
+    // Fire both at the same time — no await between them.
+    const [result1, result2] = await Promise.all([
+      processNotificationWithAI('user-1', input, CATEGORIES),
+      processNotificationWithAI('user-1', input, CATEGORIES),
+    ]);
+
+    // Exactly one insert.
+    expect(insertCount).toBe(1);
+
+    // One should succeed, the other should be deduped.
+    const successes = [result1, result2].filter((r) => r.processed && r.isTransaction);
+    const deduped = [result1, result2].filter((r) => !r.processed);
+    expect(successes.length).toBe(1);
+    expect(deduped.length).toBe(1);
+    expect(deduped[0].skipReason).toBe('duplicate_fingerprint');
+  });
+
+  it('after the first call resolves, the next call is deduped by the in-memory cache', async () => {
+    const txChain = getChain('transactions');
+    const mockSelectChain = {
+      eq: vi.fn().mockReturnThis(),
+      gte: vi.fn().mockReturnThis(),
+      lte: vi.fn().mockReturnThis(),
+      ilike: vi.fn().mockReturnThis(),
+      then: (resolve: any) => resolve({ data: [], error: null }),
+    };
+    txChain.select = vi.fn().mockReturnValue(mockSelectChain);
+    txChain.insert = vi.fn().mockResolvedValue({ error: null });
+
+    const ptChain = getChain('pending_transactions');
+    const mockPtSelectChain = {
+      eq: vi.fn().mockReturnThis(),
+      gte: vi.fn().mockReturnThis(),
+      lte: vi.fn().mockReturnThis(),
+      then: (resolve: any) => resolve({ data: [], error: null }),
+    };
+    ptChain.select = vi.fn().mockReturnValue(mockPtSelectChain);
+
+    const input = makeInput({ notificationTimestamp: Date.now() });
+    const r1 = await processNotificationWithAI('user-1', input, CATEGORIES);
+    const r2 = await processNotificationWithAI('user-1', input, CATEGORIES);
+    expect(r1.processed).toBe(true);
+    expect(r2.processed).toBe(false);
+    expect(r2.skipReason).toBe('duplicate_fingerprint');
+  });
+});
