@@ -18,6 +18,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -72,6 +73,9 @@ fun DashboardScreen(
         transactions = transactions,
         pending = pending,
         onRefresh = { user?.id?.let(viewModel::refresh) },
+        onAddTransaction = { viewModel.addTransaction(it) },
+        onUpdateTransaction = { viewModel.updateTransaction(it) },
+        onDeleteTransaction = { viewModel.deleteTransaction(it) },
     )
 }
 
@@ -84,6 +88,9 @@ private fun DashboardContent(
     transactions: List<Transaction>,
     pending: List<PendingTransaction>,
     onRefresh: () -> Unit,
+    onAddTransaction: (Transaction) -> Unit,
+    onUpdateTransaction: (Transaction) -> Unit,
+    onDeleteTransaction: (String) -> Unit,
 ) {
     val isShared = user?.budgetingSolo == false
     val monthlyIncome = user?.monthlyIncome ?: 0.0
@@ -96,6 +103,26 @@ private fun DashboardContent(
     var searchQuery by remember { mutableStateOf("") }
     var isSearchOpen by remember { mutableStateOf(false) }
     var expandedBudgets by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var showForm by remember { mutableStateOf(false) }
+    var editingTx by remember { mutableStateOf<Transaction?>(null) }
+
+    val monthKey = DateUtils.getLocalMonthKey(LocalDate.now().toString())
+    val currentMonthTransactions = remember(transactions, monthKey) {
+        transactions.filter { DateUtils.getLocalMonthKey(it.date) == monthKey }
+    }
+    val pastTransactions = remember(transactions, monthKey) {
+        transactions.filter { DateUtils.getLocalMonthKey(it.date) < monthKey }
+    }
+    val futureTransactions = remember(transactions, monthKey) {
+        transactions.filter { DateUtils.getLocalMonthKey(it.date) > monthKey }
+    }
+    val isSearching = isSearchOpen && searchQuery.isNotBlank()
+    val vendorHistory = remember(currentMonthTransactions) {
+        currentMonthTransactions
+            .filter { it.budgetId != null }
+            .distinctBy { it.vendor.lowercase() }
+            .map { VendorHistoryItem(it.vendor, it.budgetId!!) }
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(
@@ -152,33 +179,42 @@ private fun DashboardContent(
             val sortedBudgets = remember(budgets) {
                 budgets.sortedBy { it.name.equals("Other", ignoreCase = true) }
             }
-            val currentMonth = remember(transactions) {
-                val monthKey = DateUtils.getLocalMonthKey(LocalDate.now().toString())
-                transactions.filter { DateUtils.getLocalMonthKey(it.date) == monthKey }
-            }
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(sortedBudgets, key = { it.id }) { budget ->
-                    val isExpanded = budget.id in expandedBudgets
-                    val budgetTxs = currentMonth.filter { it.budgetId == budget.id }
-                    BudgetSection(
-                        budget = budget,
-                        transactions = budgetTxs,
-                        isExpanded = isExpanded,
-                        onToggle = {
-                            expandedBudgets = if (isExpanded) emptySet() else setOf(budget.id)
-                        },
-                        onTransactionTap = { /* Stage 4b-ii: open action modal */ },
-                        currentUserName = user?.name.orEmpty(),
-                        isSharedView = isShared,
-                        allBudgets = sortedBudgets,
-                        useCompactCollapsedStyles = expandedBudgets.isEmpty(),
-                    )
+            if (isSearching) {
+                SearchResults(
+                    searchQuery = searchQuery,
+                    currentMonthTransactions = currentMonthTransactions,
+                    pastTransactions = pastTransactions,
+                    futureTransactions = futureTransactions,
+                    currentUserName = user?.name.orEmpty(),
+                    isSharedAccount = isShared,
+                    budgets = sortedBudgets,
+                    onTransactionTap = { tx -> editingTx = tx },
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .weight(1f),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(sortedBudgets, key = { it.id }) { budget ->
+                        val isExpanded = budget.id in expandedBudgets
+                        val budgetTxs = currentMonthTransactions.filter { it.budgetId == budget.id }
+                        BudgetSection(
+                            budget = budget,
+                            transactions = budgetTxs,
+                            isExpanded = isExpanded,
+                            onToggle = {
+                                expandedBudgets = if (isExpanded) emptySet() else setOf(budget.id)
+                            },
+                            onTransactionTap = { tx -> editingTx = tx },
+                            currentUserName = user?.name.orEmpty(),
+                            isSharedView = isShared,
+                            allBudgets = sortedBudgets,
+                            useCompactCollapsedStyles = expandedBudgets.isEmpty(),
+                        )
+                    }
                 }
             }
 
@@ -193,13 +229,56 @@ private fun DashboardContent(
                 .fillMaxWidth(),
         ) {
             DashboardBottomBar(
-                onGoHome = { expandedBudgets = emptySet() },
-                onAddTransaction = { /* Stage 4b-ii: open form */ },
+                onGoHome = {
+                    expandedBudgets = emptySet()
+                    searchQuery = ""
+                    isSearchOpen = false
+                },
+                onAddTransaction = {
+                    editingTx = null
+                    showForm = true
+                },
                 onOpenParsing = { /* Stage 6 */ },
                 activeView = "home",
                 pendingCount = pendingTotal,
             )
         }
+    }
+
+    // ---- Modals ----
+
+    if (showForm && user != null) {
+        TransactionForm(
+            onClose = { showForm = false },
+            onSave = { tx ->
+                onAddTransaction(tx)
+                showForm = false
+            },
+            budgets = budgets,
+            userId = user.id,
+            userName = user.name,
+            isSharedAccount = isShared,
+            vendorHistory = vendorHistory,
+        )
+    }
+
+    editingTx?.let { tx ->
+        TransactionActionModal(
+            transaction = tx,
+            budgets = budgets,
+            currentUserName = user?.name.orEmpty(),
+            isSharedAccount = isShared,
+            vendorHistory = vendorHistory,
+            onClose = { editingTx = null },
+            onEdit = { updated ->
+                onUpdateTransaction(updated)
+                editingTx = null
+            },
+            onDelete = {
+                onDeleteTransaction(tx.id)
+                editingTx = null
+            },
+        )
     }
 }
 
@@ -228,6 +307,9 @@ private fun DashboardScreenPreview() {
             ),
             pending = emptyList(),
             onRefresh = {},
+            onAddTransaction = {},
+            onUpdateTransaction = {},
+            onDeleteTransaction = {},
         )
     }
 }
