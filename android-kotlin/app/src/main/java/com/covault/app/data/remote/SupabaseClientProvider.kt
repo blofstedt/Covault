@@ -4,6 +4,7 @@ import com.covault.app.BuildConfig
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.auth.Auth
+import io.github.jan.supabase.auth.ExternalAuthAction
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.realtime.Realtime
 import io.github.jan.supabase.storage.Storage
@@ -35,9 +36,17 @@ object SupabaseClientProvider {
             supabaseKey = key,
         ) {
             install(Auth) {
-                // We use Custom Tabs + deep link for OAuth on Android,
-                // so we keep PKCE enabled and let supabase-kt handle
-                // the local session storage (DataStore-backed).
+                // Deep link host + scheme match the <intent-filter> in
+                // AndroidManifest.xml. supabase-kt uses these to validate
+                // the OAuth callback URL and persist the session.
+                //
+                // Whitelist this exact scheme://host in the Supabase
+                // dashboard: Authentication -> URL Configuration ->
+                // Redirect URLs.
+                host = "auth"          // matches manifest <data android:host="auth">
+                scheme = "com.covault.app"
+                // Custom Tabs gives a smoother UX than the default browser.
+                defaultExternalAuthAction = ExternalAuthAction.CustomTabs()
                 alwaysAutoRefresh = true
                 autoClearStorage = false
             }

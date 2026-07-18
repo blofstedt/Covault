@@ -40,7 +40,7 @@ class SessionStore @Inject constructor(
 ) {
     private val scope = CoroutineScope(SupervisorJob())
 
-    private val _sessionState = MutableStateFlow<SessionStatus>(SessionStatus.Loading)
+    private val _sessionState = MutableStateFlow<SessionStatus>(SessionStatus.LoadingFromStorage)
     val sessionState: StateFlow<SessionStatus> = _sessionState
 
     init {

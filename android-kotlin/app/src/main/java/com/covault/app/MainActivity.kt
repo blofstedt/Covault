@@ -1,72 +1,68 @@
 package com.covault.app
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
+import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.tooling.preview.Preview
+import com.covault.app.ui.CovaultNavHost
+import com.covault.app.ui.MainViewModel
 import com.covault.app.ui.theme.CovaultTheme
 import dagger.hilt.android.AndroidEntryPoint
+import io.github.jan.supabase.SupabaseClient
+import javax.inject.Inject
 
 /**
- * Single-activity host. All screens are Compose destinations wired up in
- * later stages. Stage 1 only renders a placeholder so the build verifies
- * the toolchain (Compose + Hilt + Material3) end-to-end.
+ * Single-activity host. Wires the navigation graph to the auth state
+ * observed in [MainViewModel], and forwards incoming OAuth deep links
+ * to the supabase-kt client so the auth flow can complete.
  */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject lateinit var supabase: SupabaseClient
+
+    private val mainViewModel: MainViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        handleAuthDeepLink(intent)
         setContent {
             CovaultTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                    color = MaterialTheme.colorScheme.background,
                 ) {
-                    Scaffold { innerPadding ->
-                        Placeholder(modifier = Modifier.padding(innerPadding))
-                    }
+                    CovaultNavHost(mainViewModel = mainViewModel)
                 }
             }
         }
     }
-}
 
-@Composable
-private fun Placeholder(modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = stringResource(id = R.string.placeholder_title),
-            style = MaterialTheme.typography.headlineMedium
-        )
-        Text(
-            text = stringResource(id = R.string.placeholder_subtitle),
-            style = MaterialTheme.typography.bodyMedium
-        )
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // Single-task launch mode means a fresh OAuth callback after the
+        // app is already running lands here. supabase-kt's
+        // handleDeeplinks() will pick up the new session and the
+        // authState flow will emit, which the nav graph listens to.
+        setIntent(intent)
+        handleAuthDeepLink(intent)
     }
-}
 
-@Preview(showBackground = true, name = "Stage 1 Placeholder")
-@Composable
-private fun PlaceholderPreview() {
-    CovaultTheme {
-        Placeholder()
+    private fun handleAuthDeepLink(intent: Intent?) {
+        intent ?: return
+        // The `data` field carries the deep link. supabase-kt's
+        // handleDeeplinks() parses the OAuth code, exchanges it for a
+        // session, and updates the underlying AuthState flow that
+        // SessionStore mirrors into its own StateFlow.
+        runCatching {
+            supabase.handleDeeplinks(intent)
+        }
     }
 }

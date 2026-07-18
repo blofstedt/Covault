@@ -42,7 +42,8 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:scheme="com.covault.app"
-                    android:host="oauth-callback" />
+                    android:host="auth"
+                    android:pathPrefix="/callback" />
             </intent-filter>
         </activity>
     </application>
