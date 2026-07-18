@@ -1,4 +1,4 @@
-const CACHE_NAME = 'covault-cache-v2';
+const CACHE_NAME = 'covault-cache-v3';
 const SHELL_ASSETS = ['./', './index.html', './manifest.json'];
 
 self.addEventListener('install', (event) => {
