@@ -152,3 +152,50 @@ export function markSoftDupDismissed(currentTxId: string, similarTxId: string): 
   writeJson(DISMISSED_DUPS_KEY, keys);
 }
 
+// ── AI extraction cache ──────────────────────────────────────────────────────
+// The on-device Flan-T5 model is slow on first load and slow per call
+// (a few hundred ms). We cache the result of every AI extraction so the
+// same notification text is never re-inferred. Key: a hash of the input
+// text. Value: the full AIExtractionResult.
+
+const AI_CACHE_KEY = 'covault_ai_extraction_cache_v1';
+const MAX_AI_CACHE_ENTRIES = 200;
+
+function aiCacheKey(text: string): string {
+  // Simple djb2 hash — same as the fingerprint hash in notificationProcessor.
+  let hash = 5381;
+  for (let i = 0; i < text.length; i++) {
+    hash = ((hash << 5) + hash + text.charCodeAt(i)) >>> 0;
+  }
+  return `ai:${hash.toString(36)}`;
+}
+
+export interface CachedAIResult {
+  isTransaction: boolean;
+  vendor: string | null;
+  amount: number | null;
+  suggestedCategory: string | null;
+  rejectionReason: string | null;
+  cachedAt: number;
+}
+
+export function getCachedAIResult(text: string): CachedAIResult | null {
+  const all = readJson<Record<string, CachedAIResult>>(AI_CACHE_KEY, {});
+  return all[aiCacheKey(text)] || null;
+}
+
+export function setCachedAIResult(text: string, result: Omit<CachedAIResult, 'cachedAt'>): void {
+  const all = readJson<Record<string, CachedAIResult>>(AI_CACHE_KEY, {});
+  const key = aiCacheKey(text);
+  all[key] = { ...result, cachedAt: Date.now() };
+  // Trim oldest entries if we've exceeded the cap
+  const entries = Object.entries(all);
+  if (entries.length > MAX_AI_CACHE_ENTRIES) {
+    entries.sort((a, b) => a[1].cachedAt - b[1].cachedAt);
+    const trimmed = Object.fromEntries(entries.slice(entries.length - MAX_AI_CACHE_ENTRIES));
+    writeJson(AI_CACHE_KEY, trimmed);
+  } else {
+    writeJson(AI_CACHE_KEY, all);
+  }
+}
+

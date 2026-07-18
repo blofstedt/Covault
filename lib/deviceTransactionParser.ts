@@ -74,6 +74,19 @@ export interface ParsedNotification {
   isPreAuth?: boolean;
   /** True when this is incoming money (e.g. Interac e-Transfer received) */
   isIncome?: boolean;
+  /**
+   * Parser confidence in the extraction, 0..1.
+   * 0.9+ : high — strong go-phrase, clear preposition-based vendor, clean amount
+   * 0.7-0.9 : medium — vendor from a static correction table, or weak go-phrase
+   * 0.5-0.7 : low — vendor guessed from title-case, or amount had multiple candidates
+   * < 0.5 : very low — the AI fallback should kick in for this one
+   */
+  confidence?: number;
+  /**
+   * Why the confidence is what it is. Useful for the UI to explain
+   * "we guessed this" and for the AI fallback to know what to focus on.
+   */
+  confidenceReasons?: string[];
 }
 interface AmountCandidate {
   value: number;
@@ -461,6 +474,51 @@ export function parseNotificationText(text: string): ParsedNotification {
     recurrence = 'Monthly';
   }
 
+  // ── Confidence scoring ──
+  // Higher = the parser is confident in its extraction. The notification
+  // pipeline uses this to decide whether to fall back to the on-device
+  // AI model (low confidence) or trust the regex result outright (high).
+  const confidenceReasons: string[] = [];
+  let confidence = 0.5; // baseline: we extracted something, but it's a guess
+
+  if (hasStrongGo) {
+    confidence += 0.2;
+    confidenceReasons.push('strong go-phrase');
+  } else if (hasWeakGo) {
+    confidence += 0.05;
+    confidenceReasons.push('weak go-phrase (pre-auth?)');
+  } else if (hasDollarSign) {
+    confidence += 0.1;
+    confidenceReasons.push('dollar sign without go-phrase');
+  }
+
+  if (hasSettlement) {
+    confidence += 0.1;
+    confidenceReasons.push('settlement phrase');
+  }
+
+  if (amountCandidates.length === 1) {
+    confidence += 0.1;
+    confidenceReasons.push('single amount candidate');
+  } else if (amountCandidates.length > 1) {
+    confidence -= 0.1;
+    confidenceReasons.push(`multiple amount candidates (${amountCandidates.length})`);
+  }
+
+  if (vendorDisplay && vendorDisplay !== 'Unknown') {
+    // Strong preposition-based extraction → +0.1
+    if (/\b(at|from|to|paid to|with)\s+/i.test(t) && vendorDisplay.length >= 3) {
+      confidence += 0.1;
+      confidenceReasons.push('preposition-based vendor');
+    }
+  } else {
+    confidence -= 0.15;
+    confidenceReasons.push('no vendor extracted');
+  }
+
+  // Clamp to [0, 1]
+  confidence = Math.max(0, Math.min(1, confidence));
+
   return {
     isOutgoing: true,
     amount: pickedAmount,
@@ -468,5 +526,7 @@ export function parseNotificationText(text: string): ParsedNotification {
     vendorKey,
     recurrence,
     isRefund: hasRefund,
+    confidence,
+    confidenceReasons,
   };
 }

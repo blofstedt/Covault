@@ -14,8 +14,9 @@
 import { supabase } from './supabase';
 import { formatVendorName, fuzzyVendorMatch, normalizeVendorForDedup } from './formatVendorName';
 import { parseNotificationText } from './deviceTransactionParser';
-import { addToReviewQueue, getVendorMapEntry, isNotificationProcessed, markNotificationProcessed } from './localNotificationMemory';
+import { addToReviewQueue, getVendorMapEntry, isNotificationProcessed, markNotificationProcessed, getCachedAIResult, setCachedAIResult } from './localNotificationMemory';
 import { getLocalToday, parseLocalDate } from './dateUtils';
+import { extractWithAI } from './aiExtractor';
 import type { PendingTransaction } from '../types';
 
 // ─── Constants ───────────────────────────────────────────────────
@@ -25,6 +26,15 @@ const AMOUNT_TOLERANCE = 0.01;
 
 /** Number of days tolerance for recurring transaction date matching */
 const RECURRING_DATE_TOLERANCE_DAYS = 3;
+
+/**
+ * Below this confidence, the regex parser is considered a guess and the
+ * pipeline falls back to the on-device AI model (extractWithAI). The AI
+ * model is slower to load but produces better extractions on ambiguous
+ * notifications. Above this threshold we trust the regex to keep things
+ * fast for the common case.
+ */
+const AI_FALLBACK_CONFIDENCE_THRESHOLD = 0.65;
 
 /** Milliseconds per day */
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -705,7 +715,7 @@ export async function processNotificationWithAI(
   }
 
   // ── Step 2: Deterministic extraction ──
-  const parsed = parseNotificationText(input.rawNotification);
+  let parsed = parseNotificationText(input.rawNotification);
 
   if (!parsed.isOutgoing) {
     const reason = parsed.rejectionReason || 'Not an outgoing transaction notification';
@@ -720,6 +730,73 @@ export async function processNotificationWithAI(
       rejectionReason: reason,
       bankName: input.bankName,
     };
+  }
+
+  // ── Step 2b: AI fallback for low-confidence extractions ──
+  // The regex parser is fast but brittle. If it wasn't confident (e.g. no
+  // strong go-phrase, no clear preposition-based vendor, multiple amount
+  // candidates) we fall back to the on-device Flan-T5 model. The first
+  // call loads the model (slow, ~60MB), subsequent calls are fast.
+  // Results are cached in localStorage so we never re-infer the same text.
+  const parserConfidence = parsed.confidence ?? 0.5;
+  if (parserConfidence < AI_FALLBACK_CONFIDENCE_THRESHOLD) {
+    // Check the cache first — same notification text is never re-inferred
+    const cached = getCachedAIResult(input.rawNotification);
+    let aiResult;
+    if (cached) {
+      console.log(`[AI fallback] cache hit for "${input.rawNotification.slice(0, 40)}..."`);
+      aiResult = cached;
+    } else {
+      try {
+        aiResult = await extractWithAI(input.rawNotification, []); // [] = use default categories
+        // Persist for next time
+        setCachedAIResult(input.rawNotification, {
+          isTransaction: aiResult.isTransaction,
+          vendor: aiResult.vendor,
+          amount: aiResult.amount,
+          suggestedCategory: aiResult.suggestedCategory,
+          rejectionReason: aiResult.rejectionReason,
+        });
+      } catch (err) {
+        // AI failed to load (network, WASM not supported, etc.) — fall
+        // through and use the regex result anyway. Better a slightly-wrong
+        // extraction than no extraction at all.
+        console.warn('[AI fallback] failed, using regex result:', err);
+        aiResult = null;
+      }
+    }
+    if (aiResult) {
+      if (aiResult.isTransaction && aiResult.vendor && aiResult.amount) {
+        console.log(
+          `[AI fallback] parser=${parserConfidence.toFixed(2)} → using AI: ` +
+          `${aiResult.vendor} $${aiResult.amount}` +
+          (parsed.confidenceReasons ? ` (reasons: ${parsed.confidenceReasons.join(', ')})` : ''),
+        );
+        // Merge the AI result over the regex result. The AI's vendor
+        // wins if the regex didn't find one or if the AI's vendor is
+        // meaningfully different.
+        parsed = {
+          ...parsed,
+          vendorDisplay: aiResult.vendor,
+          vendorKey: aiResult.vendor.toLowerCase().replace(/[^a-z0-9]/g, ''),
+          amount: aiResult.amount,
+        };
+      } else if (aiResult.rejectionReason) {
+        // The AI thinks this isn't a transaction. Trust it over the regex.
+        console.log(`[AI fallback] parser=${parserConfidence.toFixed(2)} → AI rejected: ${aiResult.rejectionReason}`);
+        recentlyProcessedCache.set(inMemoryKey, Date.now());
+        markNotificationProcessed(inMemoryKey);
+        return {
+          processed: true,
+          isTransaction: false,
+          vendor: aiResult.vendor || undefined,
+          amount: aiResult.amount || undefined,
+          skipReason: 'not_transaction',
+          rejectionReason: `AI: ${aiResult.rejectionReason}`,
+          bankName: input.bankName,
+        };
+      }
+    }
   }
 
   // Use the deterministic extraction result unless it failed ('Unknown'), in which

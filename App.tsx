@@ -16,6 +16,7 @@ import { useAppTheme } from './lib/hooks/useAppTheme';
 import { useUserData } from './lib/hooks/useUserData';
 import { executeRecurringTransactions } from './lib/recurringExecutor';
 import { sendRecurringCatchUpNotification } from './lib/appNotifications';
+import { preloadAIModel } from './lib/aiExtractor';
 
 const SETTINGS_KEY = 'covault_settings';
 const SCAN_PROCESSING_DELAY_MS = 2000;
@@ -108,6 +109,16 @@ const App: React.FC = () => {
 
   useAuthState({ setAppState, setAuthState, loadUserData: loadUserDataWithState });
   useDeepLinks();
+
+  // Pre-load the on-device AI model in the background so the first
+  // notification doesn't pay the ~60MB download + WASM init cost. We
+  // fire-and-forget; if it fails the AI fallback just won't be available
+  // and the regex parser handles everything.
+  useEffect(() => {
+    preloadAIModel().catch(() => {
+      // Already logged inside preloadAIModel; no need to spam.
+    });
+  }, []);
 
   // Auto-execute recurring transactions. The executor itself is
   // idempotent and gated by a once-per-day localStorage flag, so it's

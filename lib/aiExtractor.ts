@@ -57,6 +57,23 @@ function getGenerator(): Promise<Text2TextGenerationPipeline> {
 }
 
 /**
+ * Pre-load the AI model in the background. Call this on app start so
+ * the first low-confidence notification doesn't pay the ~60MB download
+ * + WASM init cost. Safe to call multiple times — the underlying
+ * pipeline is a singleton.
+ */
+export function preloadAIModel(): Promise<void> {
+  return getGenerator()
+    .then(() => {
+      // Model loaded successfully. Nothing else to do.
+    })
+    .catch(() => {
+      // Already logged inside getGenerator. Swallow here so the
+      // caller's .catch() doesn't double-log.
+    });
+}
+
+/**
  * Run an AI prompt through the Flan-T5 model.
  * Returns the generated text string.
  */
