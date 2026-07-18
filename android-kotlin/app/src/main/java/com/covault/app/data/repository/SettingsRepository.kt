@@ -24,42 +24,42 @@ class SettingsRepository @Inject constructor(
     }.getOrNull()
 
     suspend fun upsertSettings(userId: String, update: SettingsUpdate): Result<Unit> = runCatching {
-        val row = buildMap<String, Any?> {
-            put("user_id", userId)
-            update.monthlyIncome?.let { put("monthly_income", it) }
-            update.theme?.let { put("theme_selected", it) }
-            update.rolloverEnabled?.let { put("rollover_enabled", it) }
-            update.useLeisureAsBuffer?.let { put("leisure_buffer_enabled", it) }
-            update.showSavingsInsight?.let { put("show_savings_insight", it) }
-            update.appNotificationsEnabled?.let { put("app_notifications_enabled", it) }
-            update.smartNotificationsEnabled?.let { put("smart_notifications_enabled", it) }
-            update.budgetingSolo?.let { put("budgeting_solo", it) }
-        }
-        supabase.postgrest["settings"].upsert(row) {
-            filter { eq("user_id", userId) }
+        // Build a SettingsRow with the existing values; not all fields
+        // are present in [update], so we read the current row first
+        // and merge. For the common case (just changing income), this
+        // still does a full upsert.
+        val current = loadSettings(userId) ?: com.covault.app.data.remote.dto.SettingsRow(
+            userId = userId, name = "", email = "",
+        )
+        val merged = current.copy(
+            monthlyIncome = update.monthlyIncome ?: current.monthlyIncome,
+            themeSelected = update.theme ?: current.themeSelected,
+            rolloverEnabled = update.rolloverEnabled ?: current.rolloverEnabled,
+            leisureBufferEnabled = update.useLeisureAsBuffer ?: current.leisureBufferEnabled,
+            showSavingsInsight = update.showSavingsInsight ?: current.showSavingsInsight,
+            appNotificationsEnabled = update.appNotificationsEnabled ?: current.appNotificationsEnabled,
+            budgetingSolo = update.budgetingSolo ?: current.budgetingSolo,
+        )
+        supabase.postgrest["settings"].upsert(merged) {
+            onConflict = "user_id"
         }
     }
 
     suspend fun linkPartner(userId: String, partnerEmail: String): Result<Unit> = runCatching {
-        // The React app's `handleLinkPartner` does a multi-step write:
-        // 1. Look up the partner by email in auth.users via a SECURITY
-        //    DEFINER function (`lookup_user_id_by_email`)
-        // 2. Set `partner_id` on the caller's settings row
-        // The function is defined in supabase/migrations/. We invoke
-        // it via RPC; if the project doesn't have the function yet,
-        // this returns failure and the UI surfaces the error.
         val partnerId = supabase.postgrest.rpc(
             function = "lookup_user_id_by_email",
-            parameters = mapOf("email_input" to partnerEmail),
+            parameters = kotlinx.serialization.json.JsonObject(mapOf(
+                "email_input" to kotlinx.serialization.json.JsonPrimitive(partnerEmail),
+            )),
         ).decodeAsOrNull<String>() ?: error("Partner not found")
         supabase.postgrest["settings"].update(
-            mapOf("partner_id" to partnerId, "partner_email" to partnerEmail, "budgeting_solo" to false)
+            { set("partner_id", partnerId); set("partner_email", partnerEmail); set("budgeting_solo", false) }
         ) { filter { eq("user_id", userId) } }
     }
 
     suspend fun unlinkPartner(userId: String): Result<Unit> = runCatching {
         supabase.postgrest["settings"].update(
-            mapOf("partner_id" to null, "partner_email" to null, "budgeting_solo" to true)
+            { setToNull("partner_id"); setToNull("partner_email"); set("budgeting_solo", true) }
         ) { filter { eq("user_id", userId) } }
     }
 }

@@ -15,6 +15,7 @@ import com.covault.app.ui.MainViewModel
 import com.covault.app.ui.theme.CovaultTheme
 import dagger.hilt.android.AndroidEntryPoint
 import io.github.jan.supabase.SupabaseClient
+import io.github.jan.supabase.auth.handleDeeplinks
 import javax.inject.Inject
 
 /**
@@ -62,7 +63,7 @@ class MainActivity : ComponentActivity() {
         // session, and updates the underlying AuthState flow that
         // SessionStore mirrors into its own StateFlow.
         runCatching {
-            supabase.handleDeeplinks(intent)
+            supabase.handleDeeplinks(intent, onSessionSuccess = {})
         }
     }
 }

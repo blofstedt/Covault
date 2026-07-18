@@ -40,7 +40,7 @@ class TransactionRepository @Inject constructor(
         if (tx.source == null) row["source"] = TransactionSource.MANUAL.name.lowercase()
 
         val inserted = supabase.postgrest["transactions"]
-            .insert(row) { preferReturn = true }
+            .insert(row)
             .decodeSingle<com.covault.app.data.remote.dto.TransactionRow>()
         TransactionMappers.fromSupabaseRow(inserted)
     }
@@ -53,7 +53,6 @@ class TransactionRepository @Inject constructor(
         val updated = supabase.postgrest["transactions"]
             .update(row) {
                 filter { eq("id", tx.id) }
-                preferReturn = true
             }
             .decodeSingle<com.covault.app.data.remote.dto.TransactionRow>()
         TransactionMappers.fromSupabaseRow(updated)

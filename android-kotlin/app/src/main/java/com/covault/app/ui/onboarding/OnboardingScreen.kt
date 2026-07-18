@@ -108,14 +108,14 @@ fun OnboardingScreen(
                 OnboardingViewModel.Step.INTRO_1 -> IntroStep(
                     title = "Spent vs. Projected",
                     body = "Solid bars show current spending. Dashed bars project your future based on recurring bills.",
-                    illustration = BarChartIllustration(),
-                    onNext = viewModel::nextFromIntro,
+                    illustration = { BarChartIllustration() },
+                    onNext = { viewModel.nextFromIntro() },
                 )
                 OnboardingViewModel.Step.INTRO_2 -> IntroStep(
                     title = "Sync & Forget",
                     body = "Covault listens for banking notifications to auto-file transactions. You just review and confirm.",
-                    illustration = BellIllustration(),
-                    onNext = viewModel::nextFromIntro,
+                    illustration = { BellIllustration() },
+                    onNext = { viewModel.nextFromIntro() },
                 )
                 OnboardingViewModel.Step.CHOOSE_MODE -> ChooseModeStep(
                     onSolo = viewModel::chooseSolo,
@@ -243,7 +243,7 @@ private fun ChooseModeStep(
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.height(8))
+        Spacer(Modifier.height(8.dp))
         Text(
             text = "Clarity for yourself or confidence together.",
             style = MaterialTheme.typography.bodySmall,
@@ -251,7 +251,7 @@ private fun ChooseModeStep(
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.height(48))
+        Spacer(Modifier.height(48.dp))
 
         ModeCard(
             title = "Just Me",
@@ -259,7 +259,7 @@ private fun ChooseModeStep(
             accent = false,
             onClick = onSolo,
         )
-        Spacer(Modifier.height(24))
+        Spacer(Modifier.height(24.dp))
         ModeCard(
             title = "Couples",
             subtitle = "Combined budgeting together.",
@@ -310,7 +310,7 @@ private fun ModeCard(
                     else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Spacer(Modifier.width(24))
+            Spacer(Modifier.width(24.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
@@ -318,7 +318,7 @@ private fun ModeCard(
                     color = MaterialTheme.colorScheme.onBackground,
                     fontWeight = FontWeight.Bold,
                 )
-                Spacer(Modifier.height(4))
+                Spacer(Modifier.height(4.dp))
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
@@ -350,7 +350,7 @@ private fun PartnerEmailStep(
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.height(8))
+        Spacer(Modifier.height(8.dp))
         Text(
             text = "Enter your partner's email to send an invite.",
             style = MaterialTheme.typography.bodySmall,
@@ -358,7 +358,7 @@ private fun PartnerEmailStep(
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.height(48))
+        Spacer(Modifier.height(48.dp))
 
         BasicTextField(
             value = email,
@@ -406,7 +406,7 @@ private fun PartnerEmailStep(
                 .background(MaterialTheme.colorScheme.outlineVariant),
         )
 
-        Spacer(Modifier.height(48))
+        Spacer(Modifier.height(48.dp))
 
         Button(
             onClick = onSend,
@@ -427,7 +427,7 @@ private fun PartnerEmailStep(
             )
         }
 
-        Spacer(Modifier.height(16))
+        Spacer(Modifier.height(16.dp))
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(

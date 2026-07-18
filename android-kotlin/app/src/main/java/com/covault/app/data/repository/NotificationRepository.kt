@@ -112,10 +112,6 @@ class NotificationRepository @Inject constructor(
     }
 
     suspend fun approvePending(transactionId: String, budgetId: String?): Result<Unit> = runCatching {
-        // Approve = move the pending row to the transactions table.
-        // The React app's approve flow is a multi-step write: read the
-        // pending row, build a Transaction, insert, then delete the
-        // pending row. We do the same.
         val pending = supabase.postgrest["pending_transactions"]
             .select { filter { eq("id", transactionId) }; limit(1) }
             .decodeSingle<PendingTransactionRow>()
@@ -123,17 +119,19 @@ class NotificationRepository @Inject constructor(
         val resolvedBudgetId = budgetId
             ?: SystemCategories.idForName("Other")
             ?: SystemCategories.OTHER.id
-        val tx = mapOf(
-            "user_id" to userId,
-            "vendor" to pending.extractedVendor,
-            "amount" to pending.extractedAmount,
-            "date" to DateUtils.toLocalIsoDay(java.time.LocalDate.now()),
-            "is_projected" to false,
-            "budget" to (SystemCategories.nameForId(resolvedBudgetId) ?: "Other"),
-            "type" to "Automatic",
-            "recur" to "One-time",
-            "source" to "notification",
-            "caught_cleared" to false,
+        val tx = com.covault.app.data.remote.dto.TransactionRow(
+            id = java.util.UUID.randomUUID().toString(),
+            userId = userId,
+            vendor = pending.extractedVendor,
+            amount = pending.extractedAmount,
+            date = DateUtils.toLocalIsoDay(java.time.LocalDate.now()),
+            isProjected = false,
+            budget = SystemCategories.nameForId(resolvedBudgetId) ?: "Other",
+            type = "Automatic",
+            recur = "One-time",
+            createdAt = java.time.Instant.now().toString(),
+            caughtCleared = false,
+            source = "notification",
         )
         supabase.postgrest["transactions"].insert(tx)
         supabase.postgrest["pending_transactions"].delete {
@@ -143,7 +141,7 @@ class NotificationRepository @Inject constructor(
 
     suspend fun rejectPending(transactionId: String, reason: String): Result<Unit> = runCatching {
         supabase.postgrest["pending_transactions"].update(
-            mapOf("status" to "rejected", "rejection_reason" to reason)
+            { set("status", "rejected"); set("rejection_reason", reason) }
         ) { filter { eq("id", transactionId) } }
     }
 }

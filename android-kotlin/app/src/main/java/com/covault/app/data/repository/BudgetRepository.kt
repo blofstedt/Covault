@@ -1,8 +1,8 @@
 package com.covault.app.data.repository
 
 import com.covault.app.data.model.BudgetCategory
+import com.covault.app.data.remote.TransactionMappers
 import com.covault.app.data.remote.dto.BudgetRow
-import com.covault.app.data.remote.dto.TransactionMappers
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.postgrest
 import javax.inject.Inject
@@ -34,11 +34,11 @@ class BudgetRepository @Inject constructor(
     suspend fun upsertLimit(userId: String, budgetName: String, amount: Double): Result<Unit> =
         runCatching {
             supabase.postgrest["budgets"].upsert(
-                mapOf(
-                    "user_uuid" to userId,
-                    "budget" to budgetName,
-                    "amount" to amount,
-                    "visible" to true,
+                BudgetRow(
+                    userUuid = userId,
+                    budget = budgetName,
+                    amount = amount,
+                    visible = true,
                 )
             ) {
                 onConflict = "user_uuid,budget"
@@ -51,11 +51,11 @@ class BudgetRepository @Inject constructor(
         visible: Boolean,
     ): Result<Unit> = runCatching {
         supabase.postgrest["budgets"].upsert(
-            mapOf(
-                "user_uuid" to userId,
-                "budget" to budgetName,
-                "amount" to 0.0,            // amount is required (NOT NULL); 0 is harmless
-                "visible" to visible,
+            BudgetRow(
+                userUuid = userId,
+                budget = budgetName,
+                amount = 0.0,            // amount is required (NOT NULL); 0 is harmless
+                visible = visible,
             )
         ) {
             onConflict = "user_uuid,budget"

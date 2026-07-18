@@ -125,15 +125,15 @@ private fun AuthContent(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                CovaultLogoMark(size = 120)
-                Spacer(Modifier.height(24))
+                CovaultLogoMark(size = 120.dp)
+                Spacer(Modifier.height(24.dp))
                 Text(
                     text = "Covault",
                     style = MaterialTheme.typography.displaySmall,
                     fontWeight = FontWeight.ExtraBold,
                     color = MaterialTheme.colorScheme.onBackground,
                 )
-                Spacer(Modifier.height(8))
+                Spacer(Modifier.height(8.dp))
                 Text(
                     text = "Budgeting for peace of mind.",
                     style = MaterialTheme.typography.bodyLarge,
@@ -151,7 +151,7 @@ private fun AuthContent(
             ) {
                 authError?.let { ErrorBanner(message = it, onDismiss = onDismissError) }
             }
-            if (authError != null) Spacer(Modifier.height(16))
+            if (authError != null) Spacer(Modifier.height(16.dp))
 
             // CTA: spinner when logging in, otherwise the Google button
             if (isLoggingIn) {
@@ -160,7 +160,7 @@ private fun AuthContent(
                 GoogleSignInButton(onClick = onGoogleLogin)
             }
 
-            Spacer(Modifier.height(16))
+            Spacer(Modifier.height(16.dp))
             Text(
                 text = "Secured by Supabase · AES-256",
                 style = MaterialTheme.typography.labelSmall,
@@ -168,7 +168,7 @@ private fun AuthContent(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
             )
-            Spacer(Modifier.height(8))
+            Spacer(Modifier.height(8.dp))
 
             // Legal links
             Row(
@@ -188,7 +188,7 @@ private fun AuthContent(
                     uriHandler.openUri("https://covaultbudgeting.vercel.app/terms")
                 }
             }
-            Spacer(Modifier.height(16))
+            Spacer(Modifier.height(16.dp))
         }
     }
 }
@@ -247,7 +247,7 @@ private fun ErrorBanner(message: String, onDismiss: () -> Unit) {
                 color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f),
                 fontWeight = FontWeight.SemiBold,
             )
-            Spacer(Modifier.height(4))
+            Spacer(Modifier.height(4.dp))
             Text(
                 text = message,
                 style = MaterialTheme.typography.bodySmall,
@@ -271,7 +271,7 @@ private fun LoggingInState() {
             strokeWidth = 3.dp,
             modifier = Modifier.size(24.dp),
         )
-        Spacer(Modifier.width(16))
+        Spacer(Modifier.width(16.dp))
         Text(
             text = "Opening Vault…",
             style = MaterialTheme.typography.titleLarge,
@@ -298,7 +298,7 @@ private fun GoogleSignInButton(onClick: () -> Unit) {
         ),
     ) {
         GoogleLogo()
-        Spacer(Modifier.width(16))
+        Spacer(Modifier.width(16.dp))
         Text(
             text = "Connect with Google",
             fontWeight = FontWeight.SemiBold,

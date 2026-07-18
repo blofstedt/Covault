@@ -163,7 +163,9 @@ class DashboardViewModel @Inject constructor(
                 userId,
                 SettingsUpdate(monthlyIncome = income),
             ).onSuccess {
-                _user.update { current -> current?.copy(monthlyIncome = income) }
+                // Re-load user data so the new income is reflected
+                // in the User + AppState + totals.
+                refresh(userId)
             }.onFailure { e ->
                 _errorMessage.value = e.message ?: "Failed to update income"
             }

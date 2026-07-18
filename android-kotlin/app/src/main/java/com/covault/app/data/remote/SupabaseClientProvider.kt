@@ -48,7 +48,7 @@ object SupabaseClientProvider {
                 // Custom Tabs gives a smoother UX than the default browser.
                 defaultExternalAuthAction = ExternalAuthAction.CustomTabs()
                 alwaysAutoRefresh = true
-                autoClearStorage = false
+                autoSaveToStorage = true
             }
             install(Postgrest)
             install(Realtime)

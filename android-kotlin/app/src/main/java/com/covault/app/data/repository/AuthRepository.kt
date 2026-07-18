@@ -2,8 +2,10 @@ package com.covault.app.data.repository
 
 import com.covault.app.data.model.User
 import io.github.jan.supabase.SupabaseClient
-import io.github.jan.supabase.auth.SessionStatus
+import io.github.jan.supabase.auth.SignOutScope
+import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.Google
+import io.github.jan.supabase.auth.status.SessionStatus
 import io.github.jan.supabase.auth.user.UserSession
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -55,7 +57,7 @@ class AuthRepository @Inject constructor(
     val authState: Flow<AuthState> = flow {
         sessionStore.sessionState.collect { status ->
             val next = when (status) {
-                is SessionStatus.LoadingFromStorage -> AuthState.Loading
+                is SessionStatus.Initializing -> AuthState.Loading
                 is SessionStatus.NotAuthenticated -> AuthState.Unauthenticated
                 is SessionStatus.Authenticated -> {
                     val session = status.session
@@ -66,11 +68,7 @@ class AuthRepository @Inject constructor(
                         AuthState.Authenticated(mapUser(session))
                     }
                 }
-                // Treat any transient/loading state as Loading from the
-                // app's perspective. NetworkError / RefreshFailure fall
-                // through to Unauthenticated; Stage 4 will surface them
-                // as a non-fatal banner.
-                else -> AuthState.Loading
+                is SessionStatus.RefreshFailure -> AuthState.Unauthenticated
             }
             emit(next)
         }
@@ -89,7 +87,7 @@ class AuthRepository @Inject constructor(
     }
 
     suspend fun signOut() {
-        runCatching { supabase.auth.signOut() }
+        runCatching { supabase.auth.signOut(SignOutScope.LOCAL) }
         sessionStore.clear()
     }
 
@@ -101,7 +99,7 @@ class AuthRepository @Inject constructor(
      * Stage 4's `UserRepository` overwrite them once the row loads.
      */
     private fun mapUser(session: UserSession): User {
-        val supabaseUser = session.user
+        val supabaseUser = session.user ?: return User(id = "anonymous", name = "User", email = "")
         val name = supabaseUser.userMetadata
             ?.get("full_name")
             ?.jsonPrimitive

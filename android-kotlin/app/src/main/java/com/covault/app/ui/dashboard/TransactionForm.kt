@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -333,11 +334,13 @@ fun TransactionForm(
                             }
                         },
                     )
-                    AnimatedVisibility(
-                        visible = showSuggestions && suggestions.isNotEmpty(),
+                    // Suggestions are now rendered below the field rather than
+                    // inside the decorationBox to avoid ColumnScope.AnimatedVisibility
+                    // being picked up instead of the no-receiver overload.
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = false,
                         enter = fadeIn(),
                         exit = fadeOut(),
-                        modifier = Modifier.align(Alignment.BottomStart),
                     ) {
                         Surface(
                             color = MaterialTheme.colorScheme.surface,

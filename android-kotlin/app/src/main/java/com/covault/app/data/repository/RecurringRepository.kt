@@ -46,7 +46,7 @@ class RecurringRepository @Inject constructor(
 
         val inserted = supabase.postgrest["transactions"].insert(
             newRows.map { TransactionMappers.toSupabaseRow(it, budgets) }
-        ) { preferReturn = true }.decodeList<com.covault.app.data.remote.dto.TransactionRow>()
+        ).decodeList<com.covault.app.data.remote.dto.TransactionRow>()
 
         inserted.map { TransactionMappers.fromSupabaseRow(it) }
     }

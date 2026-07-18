@@ -53,7 +53,7 @@ import com.covault.app.data.model.User
 // at the bottom of this file.
 // =============================================================================
 
-internal data class DashboardSettings(
+data class DashboardSettings(
     val theme: String = "light",
     val rolloverEnabled: Boolean = true,
     val useLeisureAsBuffer: Boolean = true,
@@ -63,7 +63,7 @@ internal data class DashboardSettings(
     val hiddenCategories: List<String> = emptyList(),
 )
 
-internal data class DashboardSettingsCallbacks(
+data class DashboardSettingsCallbacks(
     val onUpdateSettings: (key: String, value: Any) -> Unit,
     val onUpdateUserIncome: (Double) -> Unit,
     val onSaveBudgetLimit: (String, Double) -> Unit,

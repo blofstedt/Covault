@@ -6,8 +6,8 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.github.jan.supabase.SupabaseClient
-import io.github.jan.supabase.auth.SessionStatus
-import io.github.jan.supabase.auth.user.UserSession
+import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.auth.status.SessionStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,7 +40,7 @@ class SessionStore @Inject constructor(
 ) {
     private val scope = CoroutineScope(SupervisorJob())
 
-    private val _sessionState = MutableStateFlow<SessionStatus>(SessionStatus.LoadingFromStorage)
+    private val _sessionState = MutableStateFlow<SessionStatus>(SessionStatus.Initializing)
     val sessionState: StateFlow<SessionStatus> = _sessionState
 
     init {

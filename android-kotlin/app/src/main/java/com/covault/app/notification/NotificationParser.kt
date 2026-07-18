@@ -151,9 +151,9 @@ object NotificationParser {
         val groups = match.groupValues
         // group 1 = dollars, group 2 = cents (if $-prefixed)
         // group 3 = dollars, group 4 = cents (if no prefix)
-        val dollars = (groups.getOrNull(1).takeIf { it.isNotEmpty() }
+        val dollars = (groups.getOrNull(1)?.takeIf { it.isNotEmpty() }
             ?: groups.getOrNull(3)).orEmpty()
-        val cents = (groups.getOrNull(2).takeIf { it.isNotEmpty() }
+        val cents = (groups.getOrNull(2)?.takeIf { it.isNotEmpty() }
             ?: groups.getOrNull(4).orEmpty())
         if (dollars.isBlank()) return null
         val normalized = dollars.replace(",", "")

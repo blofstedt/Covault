@@ -5,7 +5,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -76,6 +78,11 @@ fun DashboardScreen(
         onAddTransaction = { viewModel.addTransaction(it) },
         onUpdateTransaction = { viewModel.updateTransaction(it) },
         onDeleteTransaction = { viewModel.deleteTransaction(it) },
+        onUpdateIncome = { viewModel.updateIncome(user?.id ?: "", it) },
+        onSaveBudgetLimit = { id, limit -> viewModel.updateBudgetLimit(id, limit) },
+        onLinkPartner = { email -> viewModel.linkPartner(user?.id ?: "", email) },
+        onUnlinkPartner = { viewModel.unlinkPartner(user?.id ?: "") },
+        onSignOut = { viewModel.signOut() },
     )
 }
 
@@ -91,6 +98,11 @@ private fun DashboardContent(
     onAddTransaction: (Transaction) -> Unit,
     onUpdateTransaction: (Transaction) -> Unit,
     onDeleteTransaction: (String) -> Unit,
+    onUpdateIncome: (Double) -> Unit,
+    onSaveBudgetLimit: (String, Double) -> Unit,
+    onLinkPartner: (String) -> Unit,
+    onUnlinkPartner: () -> Unit,
+    onSignOut: () -> Unit,
 ) {
     val isShared = user?.budgetingSolo == false
     val monthlyIncome = user?.monthlyIncome ?: 0.0
@@ -307,17 +319,17 @@ private fun DashboardContent(
         )
         val callbacks = DashboardSettingsCallbacks(
             onUpdateSettings = { _, _ -> /* TODO: persist via SettingsRepository */ },
-            onUpdateUserIncome = { viewModel.updateIncome(user.id, it) },
-            onSaveBudgetLimit = { id, limit -> viewModel.updateBudgetLimit(id, limit) },
+            onUpdateUserIncome = { onUpdateIncome(it) },
+            onSaveBudgetLimit = { id, limit -> onSaveBudgetLimit(id, limit) },
             onSaveBudgetVisibility = { _, _ -> /* TODO */ },
             onChangePartnerEmail = { partnerLinkEmail = it },
             onConnectPartner = {
                 isLinkingPartner = true
-                viewModel.linkPartner(user.id, partnerLinkEmail)
+                onLinkPartner(partnerLinkEmail)
             },
-            onDisconnectPartner = { viewModel.unlinkPartner(user.id) },
+            onDisconnectPartner = { onUnlinkPartner() },
             onSetLinking = { isLinkingPartner = it },
-            onSignOut = { viewModel.signOut() },
+            onSignOut = { onSignOut() },
         )
         DashboardSettingsModal(
             isSharedAccount = isShared,
@@ -369,6 +381,11 @@ private fun DashboardScreenPreview() {
             onAddTransaction = {},
             onUpdateTransaction = {},
             onDeleteTransaction = {},
+            onUpdateIncome = {},
+            onSaveBudgetLimit = { _, _ -> },
+            onLinkPartner = { _ -> },
+            onUnlinkPartner = {},
+            onSignOut = {},
         )
     }
 }
