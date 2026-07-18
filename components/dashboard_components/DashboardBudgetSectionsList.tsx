@@ -97,26 +97,24 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
                   budgetRefs?.current.delete(budget.id);
                 }
               }}
-              className="flex-1 flex flex-col min-h-0 lg:min-h-[80px]"
+              // Grid trick: outer grid is 1fr tall, inner row is 0fr → 1fr.
+              // Animating grid-template-rows between 0fr and 1fr gives a
+              // perfectly-smooth expand/collapse to natural content height
+              // (no max-height guesswork, no choppy flex interpolation).
+              // Slight overshoot via cubic-bezier gives an elastic ease-in-out.
+              className="min-h-0 lg:min-h-[80px] grid budget-row-anim"
               style={{
-                // Smooth expansion: use max-height (a directly-animatable property)
-                // rather than the `flex` shorthand. flex-grow/flex-shrink are integers
-                // and snap rather than interpolate, and `flex-basis: auto` is a
-                // computed value the browser can't always interpolate cleanly. The
-                // previous transition on `flex` therefore looked choppy on the
-                // expand → collapse boundary. flex-1 + max-height gives us a
-                // smoothly-animatable height while still letting the expanded card
-                // fill all available vertical space (max-height: 2000px is a
-                // generous ceiling; the wrapper's flex-1 makes it take whatever
-                // space remains after the collapsed cards collapse to 0).
-                maxHeight: expandedBudgetId && !isExpanded ? '0px' : '2000px',
+                gridTemplateRows:
+                  expandedBudgetId && !isExpanded ? '0fr' : '1fr',
                 opacity: expandedBudgetId && !isExpanded ? 0 : 1,
-                overflow: 'hidden',
-                pointerEvents: expandedBudgetId && !isExpanded ? 'none' : undefined,
-                transition: 'max-height 0.42s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.28s ease',
-                willChange: 'max-height, opacity',
+                pointerEvents:
+                  expandedBudgetId && !isExpanded ? 'none' : undefined,
+                transition:
+                  'grid-template-rows 0.55s cubic-bezier(0.34, 1.32, 0.64, 1), opacity 0.25s ease',
+                willChange: 'grid-template-rows, opacity',
               }}
             >
+              <div className="min-h-0 overflow-hidden flex-1 flex flex-col">
               <BudgetSection
                 budget={displayBudget}
                 transactions={budgetTxs}
@@ -129,6 +127,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
                 allBudgets={budgets}
                 useCompactCollapsedStyles={shouldAutoFitClosedCards}
               />
+              </div>
             </div>
           );
         })}

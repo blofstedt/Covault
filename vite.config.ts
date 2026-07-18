@@ -1,8 +1,6 @@
 import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
-import { viteStaticCopy } from 'vite-plugin-static-copy';
-import fs from 'fs';
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
@@ -37,38 +35,6 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       react(),
-      viteStaticCopy({
-        targets: [
-          {
-            src: 'manifest.json',
-            dest: '.'
-          },
-          {
-            src: 'sw.js',
-            dest: '.'
-          },
-          {
-            src: 'icons',
-            dest: '.'
-          }
-        ]
-      }),
-      // Fix manifest path after build
-      {
-        name: 'fix-manifest-path',
-        closeBundle() {
-          const htmlPath = path.resolve(__dirname, 'dist/index.html');
-          if (fs.existsSync(htmlPath)) {
-            let html = fs.readFileSync(htmlPath, 'utf-8');
-            html = html.replace(
-              /href="\/assets\/manifest-[^"]+\.json"/,
-              'href="/manifest.json"'
-            );
-            fs.writeFileSync(htmlPath, html);
-            console.log('✓ Fixed manifest path to /manifest.json');
-          }
-        }
-      }
     ],
 
     // 2. DEFINE ENV VARIABLES: This replaces process.env and import.meta.env references at build time.

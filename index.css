@@ -118,6 +118,36 @@ html.theme-transitioning * {
   animation: springPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
+/* Budget section expand/collapse
+   ---------------------------------------------------------
+   The outer wrapper uses the modern grid-template-rows:
+   0fr → 1fr trick for a perfectly smooth expand/collapse
+   to natural content height (no max-height guesswork, no
+   flex interpolation snap). The cubic-bezier with y > 1
+   gives a soft overshoot — the "almost elastic" feel —
+   while still settling cleanly.
+*/
+.budget-row-anim {
+  /* 0fr / 1fr values are animatable in modern browsers; the
+     duration + custom curve live inline on the element. */
+}
+@keyframes budgetContentBloom {
+  0%   { opacity: 0; transform: translateY(-6px) scale(0.985); }
+  60%  { opacity: 1; }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.budget-content-reveal {
+  /* Slight delay so the inner content blooms just after the
+     section has begun to grow — feels layered, not pop-in. */
+  animation: budgetContentBloom 0.45s cubic-bezier(0.34, 1.32, 0.64, 1) both;
+  animation-delay: 0.08s;
+  transform-origin: top center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .budget-content-reveal { animation: none; }
+  .budget-row-anim { transition: none !important; }
+}
+
 /* Custom scrollbar for desktop */
 @media (hover: hover) {
   .custom-scrollbar::-webkit-scrollbar {
