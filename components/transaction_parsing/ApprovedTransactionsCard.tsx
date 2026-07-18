@@ -1,6 +1,7 @@
 import React from 'react';
 import { Transaction } from '../../types';
 import { parseLocalDate } from '../../lib/dateUtils';
+import { isRefund } from '../../lib/refundMatching';
 import type { VendorOverride } from './useVendorOverrides';
 import { toVendorKey } from '../../lib/deviceTransactionParser';
 import ParsingCard from '../ui/ParsingCard';
@@ -39,7 +40,7 @@ const ApprovedTransactionsCard: React.FC<ApprovedTransactionsCardProps> = ({
   >
     {approvedTransactions.length > 0 ? (
       <div className="space-y-2">
-        {approvedTransactions.map((tx) => {
+        {approvedTransactions.filter((tx) => !isRefund(tx)).map((tx) => {
           const vo = vendorOverrideByName.get(toVendorKey(tx.vendor));
 
           return (

@@ -4,6 +4,7 @@ import type { Transaction, BudgetCategory } from '../../types';
 import TransactionItem from '../TransactionItem';
 import { generateProjectedTransactions } from '../../lib/projectedTransactions';
 import { EmptyState } from '../shared';
+import { isRefund, matchRefundsToExpenses } from '../../lib/refundMatching';
 
 interface CollapsibleSectionProps {
   title: string;
@@ -13,6 +14,7 @@ interface CollapsibleSectionProps {
   isSharedAccount: boolean;
   budgets: BudgetCategory[];
   onTransactionTap: (tx: Transaction) => void;
+  matchedExpenseIds: Set<string>;
 }
 
 /**
@@ -26,6 +28,7 @@ const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
   isSharedAccount,
   budgets,
   onTransactionTap,
+  matchedExpenseIds,
 }) => {
   const [open, setOpen] = useState(false);
 
@@ -55,7 +58,7 @@ const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
       {/* Section body */}
       {open && (
         <div className="mt-3 space-y-2">
-          {transactions.map((tx: any) => {
+          {transactions.filter((tx: Transaction) => !isRefund(tx)).map((tx: any) => {
             const budgetIdForTx = tx.budget_id ?? tx.category_id;
 
             return (
@@ -68,6 +71,7 @@ const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
                 currentBudgetId={budgetIdForTx}
                 budgets={budgets}
                 showBudgetIcon={true}
+                isRefunded={matchedExpenseIds.has(tx.id)}
               />
             );
           })}
@@ -109,7 +113,14 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 }) => {
   const q = searchQuery.toLowerCase().trim();
 
-  const filterFn = (tx: Transaction) => tx.vendor.toLowerCase().includes(q);
+  const filterFn = (tx: Transaction) => tx.vendor.toLowerCase().includes(q) && !isRefund(tx);
+
+  // Refund matching across the full transaction set so the search list
+  // can show refunded expenses with a strikethrough.
+  const { matchedExpenseIds } = useMemo(
+    () => matchRefundsToExpenses(allTransactions),
+    [allTransactions],
+  );
 
   const projectedTransactions = useMemo(
     () => generateProjectedTransactions(allTransactions),
@@ -193,6 +204,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
                     currentBudgetId={budgetIdForTx}
                     budgets={budgets}
                     showBudgetIcon={true}
+                    isRefunded={matchedExpenseIds.has(tx.id)}
                   />
                 );
               })}
@@ -208,6 +220,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           isSharedAccount={isSharedAccount}
           budgets={budgets}
           onTransactionTap={onTransactionTap}
+          matchedExpenseIds={matchedExpenseIds}
         />
 
         {filteredFuture.filter(tx => !tx.is_projected).length > 0 && (
@@ -219,6 +232,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
             isSharedAccount={isSharedAccount}
             budgets={budgets}
             onTransactionTap={onTransactionTap}
+            matchedExpenseIds={matchedExpenseIds}
           />
         )}
 
@@ -231,6 +245,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
             isSharedAccount={isSharedAccount}
             budgets={budgets}
             onTransactionTap={onTransactionTap}
+            matchedExpenseIds={matchedExpenseIds}
           />
         )}
 

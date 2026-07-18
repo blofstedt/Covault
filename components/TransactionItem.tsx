@@ -12,6 +12,11 @@ interface TransactionItemProps {
   currentBudgetId?: string;
   budgets?: BudgetCategory[];
   showBudgetIcon?: boolean;
+  /** When true, render this transaction as refunded — strikethrough the
+   *  amount and dim the row. The matched refund itself is hidden from
+   *  the list (see BudgetSection). The spend total is already reduced
+   *  via the negative-amount transaction in the budget's reduce(). */
+  isRefunded?: boolean;
 }
 
 const TransactionItem: React.FC<TransactionItemProps> = ({
@@ -22,6 +27,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
   currentBudgetId,
   budgets,
   showBudgetIcon = false,
+  isRefunded = false,
 }) => {
 
   const budget = useMemo(() => {
@@ -65,7 +71,13 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
           
           <div className="flex flex-col text-left flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-bold text-[14px] text-slate-600 dark:text-slate-100 tracking-tight leading-none">
+              <span
+                className={`font-bold text-[14px] tracking-tight leading-none ${
+                  isRefunded
+                    ? 'text-slate-300 dark:text-slate-600 line-through'
+                    : 'text-slate-600 dark:text-slate-100'
+                }`}
+              >
                 {transaction.vendor}
               </span>
               {isSharedView && (
@@ -122,15 +134,22 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
           <div className="text-right">
             <div
               className={`text-lg font-black tracking-tighter ${
-                isRefund
-                  ? 'text-emerald-500 dark:text-emerald-400'
-                  : transaction.is_projected
-                    ? 'text-slate-300 dark:text-slate-700'
-                    : 'text-slate-500 dark:text-slate-50'
+                isRefunded
+                  ? 'text-slate-300 dark:text-slate-600 line-through'
+                  : isRefund
+                    ? 'text-emerald-500 dark:text-emerald-400'
+                    : transaction.is_projected
+                      ? 'text-slate-300 dark:text-slate-700'
+                      : 'text-slate-500 dark:text-slate-50'
               }`}
             >
               {isRefund ? '+' : ''}${Math.abs(txAmount).toFixed(2)}
             </div>
+            {isRefunded && (
+              <div className="text-[9px] font-semibold tracking-wide text-emerald-500 dark:text-emerald-400 mt-0.5">
+                Refunded
+              </div>
+            )}
           </div>
         </div>
       </button>

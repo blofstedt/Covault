@@ -893,15 +893,36 @@ export async function processNotificationWithAI(
   let displayVendor: string = vendor;
 
   // 5a: Check server-side overrides table
-  // Schema: overrides(id, user_id, proper_name text, category_id text)
-  // proper_name is the canonical display vendor name; category_id is the budget category name
+  // Schema: overrides(id, user_id, proper_name text, match_key text, category_id text)
+  // Lookup priority:
+  //   1. match_key (normalized vendor slug) — survives display-name variants
+  //      and trailing prefixes like "KIA FINANCE CORP" vs "Kia".
+  //   2. proper_name ilike — fallback for legacy rows that pre-date match_key.
   if (vendor) {
-    const { data: overrideRows } = await supabase
-      .from('overrides')
-      .select('category_id, proper_name')
-      .eq('user_id', userId)
-      .ilike('proper_name', vendor)
-      .limit(1);
+    const vendorKey = vendor.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    // 1) match_key lookup
+    let overrideRows: any[] | null = null;
+    if (vendorKey) {
+      const { data } = await supabase
+        .from('overrides')
+        .select('category_id, proper_name, match_key')
+        .eq('user_id', userId)
+        .eq('match_key', vendorKey)
+        .limit(1);
+      overrideRows = data;
+    }
+
+    // 2) proper_name ilike fallback
+    if (!overrideRows || overrideRows.length === 0) {
+      const { data } = await supabase
+        .from('overrides')
+        .select('category_id, proper_name, match_key')
+        .eq('user_id', userId)
+        .ilike('proper_name', vendor)
+        .limit(1);
+      overrideRows = data;
+    }
 
     if (overrideRows && overrideRows.length > 0) {
       const overrideBudgetName = overrideRows[0].category_id as string; // e.g. 'Groceries'

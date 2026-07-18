@@ -236,7 +236,12 @@ export const useTransactionOps = ({
 
           // If AI transaction was re-categorized or vendor renamed, update the overrides table
           // and localStorage so future notifications from the same vendor auto-categorize.
-          // overrides schema: (id, user_id, proper_name text, category_id Budgets-enum)
+          // overrides schema: (id, user_id, proper_name text, match_key text, category_id Budgets-enum)
+          //
+          // The lookup key priority for future AI matches is:
+          //   1. match_key  (normalized slug — matches across vendor name variants)
+          //   2. proper_name (display name — only matches an exact-ish ilike)
+          // We always set BOTH on write so the AI pipeline can match either way.
           if ((isAIRecategorize || isAIVendorRename) && appState.user?.id && originalTx) {
             const originalVendorName = formatVendorName(originalTx.vendor);
             const newVendorName = formatVendorName(txToPersist.vendor);
@@ -248,32 +253,48 @@ export const useTransactionOps = ({
               upsertVendorMapEntry({ vendor_key: vendorKey, vendor_display: newVendorName, budget: budgetName, updated_at: new Date().toISOString() });
             }
 
-            // Persist to DB overrides table (upsert by proper_name)
+            // Persist to DB overrides table (upsert by match_key first, fall back to proper_name)
             try {
               const overrideHeaders = await getAuthHeaders();
               (overrideHeaders as any)['Prefer'] = 'return=representation';
-              const overridePayload: Record<string, string> = { category_id: budgetName };
+              const overridePayload: Record<string, string> = {
+                category_id: budgetName,
+                proper_name: newVendorName,
+                match_key: vendorKey,
+              };
               if (isAIVendorRename) overridePayload.proper_name = newVendorName;
 
-              const patchRes = await fetch(
-                `${REST_BASE}/overrides?user_id=eq.${appState.user.id}&proper_name=ilike.${encodeURIComponent(originalVendorName)}`,
-                { method: 'PATCH', headers: overrideHeaders, body: JSON.stringify(overridePayload) },
-              );
-              const patchBody = await patchRes.text();
+              // Try to update an existing override first — prefer match_key match
+              // (vendor slug survives name variations), then fall back to proper_name.
+              let patchRes: Response | null = null;
+              if (vendorKey) {
+                patchRes = await fetch(
+                  `${REST_BASE}/overrides?user_id=eq.${appState.user.id}&match_key=eq.${encodeURIComponent(vendorKey)}`,
+                  { method: 'PATCH', headers: overrideHeaders, body: JSON.stringify(overridePayload) },
+                );
+              }
+              if (!patchRes || !patchRes.ok) {
+                patchRes = await fetch(
+                  `${REST_BASE}/overrides?user_id=eq.${appState.user.id}&proper_name=ilike.${encodeURIComponent(originalVendorName)}`,
+                  { method: 'PATCH', headers: overrideHeaders, body: JSON.stringify(overridePayload) },
+                );
+              }
+
+              const patchBody = await (patchRes as Response).text();
               let patchedRows: any[] = [];
               try { patchedRows = patchBody ? JSON.parse(patchBody) : []; } catch { patchedRows = []; }
 
-              if (!patchRes.ok || !Array.isArray(patchedRows) || patchedRows.length === 0) {
+              if (!patchRes!.ok || !Array.isArray(patchedRows) || patchedRows.length === 0) {
                 // No existing override — insert, ignoring conflicts from concurrent writes
                 const insertHeaders = { ...overrideHeaders };
                 (insertHeaders as any)['Prefer'] = 'resolution=ignore-duplicates';
                 await fetch(`${REST_BASE}/overrides`, {
                   method: 'POST',
                   headers: insertHeaders,
-                  body: JSON.stringify({ user_id: appState.user.id, proper_name: newVendorName, category_id: budgetName }),
+                  body: JSON.stringify({ user_id: appState.user.id, proper_name: newVendorName, match_key: vendorKey, category_id: budgetName }),
                 });
               }
-              console.log('[update] override saved:', newVendorName, '→', budgetName);
+              console.log('[update] override saved:', newVendorName, '→', budgetName, '(match_key:', vendorKey, ')');
             } catch (overrideErr: any) {
               console.warn('[update] override save failed:', overrideErr?.message || overrideErr);
             }
@@ -470,29 +491,46 @@ export const useTransactionOps = ({
           upsertVendorMapEntry({ vendor_key: vendorKey, vendor_display: vendorDisplay, budget: approvedBudgetName, updated_at: new Date().toISOString() });
         }
 
-        // Save to DB overrides table (upsert by proper_name)
+        // Save to DB overrides table (upsert by match_key first, then proper_name)
         try {
           const overrideHeaders = await getAuthHeaders();
           (overrideHeaders as any)['Prefer'] = 'return=representation';
-          const patchRes = await fetch(
-            `${REST_BASE}/overrides?user_id=eq.${userId}&proper_name=ilike.${encodeURIComponent(formatVendorName(pending.extracted_vendor))}`,
-            { method: 'PATCH', headers: overrideHeaders, body: JSON.stringify({ category_id: approvedBudgetName, proper_name: vendorDisplay }) },
-          );
-          const patchBody = await patchRes.text();
+          const overridePayload: Record<string, string> = {
+            category_id: approvedBudgetName,
+            proper_name: vendorDisplay,
+            match_key: vendorKey,
+          };
+
+          // Try match_key first (survives name variants)
+          let patchRes: Response | null = null;
+          if (vendorKey) {
+            patchRes = await fetch(
+              `${REST_BASE}/overrides?user_id=eq.${userId}&match_key=eq.${encodeURIComponent(vendorKey)}`,
+              { method: 'PATCH', headers: overrideHeaders, body: JSON.stringify(overridePayload) },
+            );
+          }
+          if (!patchRes || !patchRes.ok) {
+            patchRes = await fetch(
+              `${REST_BASE}/overrides?user_id=eq.${userId}&proper_name=ilike.${encodeURIComponent(formatVendorName(pending.extracted_vendor))}`,
+              { method: 'PATCH', headers: overrideHeaders, body: JSON.stringify(overridePayload) },
+            );
+          }
+
+          const patchBody = await (patchRes as Response).text();
           let patchedRows: any[] = [];
           try { patchedRows = patchBody ? JSON.parse(patchBody) : []; } catch { patchedRows = []; }
 
-          if (!patchRes.ok || !Array.isArray(patchedRows) || patchedRows.length === 0) {
+          if (!patchRes!.ok || !Array.isArray(patchedRows) || patchedRows.length === 0) {
             // Insert, ignoring conflicts from concurrent writes
             const insertHeaders = { ...overrideHeaders };
             (insertHeaders as any)['Prefer'] = 'resolution=ignore-duplicates';
             await fetch(`${REST_BASE}/overrides`, {
               method: 'POST',
               headers: insertHeaders,
-              body: JSON.stringify({ user_id: userId, proper_name: vendorDisplay, category_id: approvedBudgetName }),
+              body: JSON.stringify({ user_id: userId, proper_name: vendorDisplay, match_key: vendorKey, category_id: approvedBudgetName }),
             });
           }
-          console.log('[approvePending] override saved for', vendorDisplay, '→', approvedBudgetName);
+          console.log('[approvePending] override saved for', vendorDisplay, '→', approvedBudgetName, '(match_key:', vendorKey, ')');
         } catch (overrideErr: any) {
           console.warn('[approvePending] override save failed:', overrideErr?.message || overrideErr);
         }

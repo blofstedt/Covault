@@ -4,6 +4,7 @@ import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { Transaction, BudgetCategory } from '../../../types';
 import { parseLocalDate, getLocalToday, toLocalIsoDay } from '../../../lib/dateUtils';
+import { isRefund } from '../../../lib/refundMatching';
 import CalendarPicker from '../../CalendarPicker';
 import SettingsCard from '../../ui/SettingsCard';
 import SectionHeader from '../../ui/SectionHeader';
@@ -39,7 +40,7 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
 
     const filtered = transactions.filter((tx) => {
       const txDate = parseLocalDate(tx.date);
-      return txDate >= start && txDate <= end && !tx.is_projected;
+      return txDate >= start && txDate <= end && !tx.is_projected && !isRefund(tx);
     });
 
     if (filtered.length === 0) {
@@ -146,7 +147,7 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
     const end = new Date(endDate + 'T23:59:59');
     return transactions.filter((tx) => {
       const txDate = parseLocalDate(tx.date);
-      return txDate >= start && txDate <= end && !tx.is_projected;
+      return txDate >= start && txDate <= end && !tx.is_projected && !isRefund(tx);
     }).length;
   }, [transactions, startDate, endDate]);
 

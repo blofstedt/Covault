@@ -1,10 +1,11 @@
 // components/BudgetSection.tsx
-import React from 'react';
+import React, { useMemo } from 'react';
 import { BudgetCategory, Transaction } from '../types';
 import TransactionItem from './TransactionItem';
 import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
 import { EmptyState } from './shared';
 import { getBudgetColor } from '../lib/budgetColors';
+import { isRefund, matchRefundsToExpenses } from '../lib/refundMatching';
 
 interface ExtendedBudgetCategory extends BudgetCategory {
   externalDeduction?: number;
@@ -40,6 +41,17 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
     return tx.budget_id === budget.id ? tx.amount : 0;
   };
 
+  // Refund matching: build the set of expenses that have a corresponding
+  // refund, and the list of refunds (filtered out of the rendered list).
+  // The spent/projected reduces below intentionally still iterate over
+  // ALL transactions (including refunds) so that the negative-amount
+  // refunds correctly subtract from the budget total. Hiding refunds
+  // from the list is purely a display decision.
+  const { matchedExpenseIds, unmatchedRefunds } = useMemo(
+    () => matchRefundsToExpenses(transactions),
+    [transactions],
+  );
+
   const spent = transactions.reduce(
     (acc, tx) => acc + (tx.is_projected ? 0 : getAmountForThisBudget(tx)),
     0,
@@ -49,6 +61,17 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
     (acc, tx) => acc + (tx.is_projected ? getAmountForThisBudget(tx) : 0),
     0,
   );
+
+  // Transactions actually rendered in the list: exclude refunds entirely.
+  const visibleTransactions = useMemo(
+    () => transactions.filter((tx) => !isRefund(tx)),
+    [transactions],
+  );
+
+  // Unmatched refunds contribute a small visual hint that money came back
+  // in but we don't have a matching expense to strike through.
+  const _hasUnmatchedRefunds = unmatchedRefunds.length > 0;
+  void _hasUnmatchedRefunds;
 
   const external = budget.externalDeduction || 0;
   // Include external (shield) deduction directly in the consumed total
@@ -245,8 +268,8 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
             </div>
 
             <div className="space-y-3">
-              {transactions.length > 0 ? (
-                transactions.map((tx) => (
+              {visibleTransactions.length > 0 ? (
+                visibleTransactions.map((tx) => (
                   <TransactionItem
                     key={tx.id}
                     transaction={tx}
@@ -255,6 +278,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                     isSharedView={isSharedView}
                     currentBudgetId={budget.id}
                     budgets={allBudgets}
+                    isRefunded={matchedExpenseIds.has(tx.id)}
                   />
                 ))
               ) : (

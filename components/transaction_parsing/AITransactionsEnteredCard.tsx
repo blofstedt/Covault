@@ -5,6 +5,7 @@ import { EmptyState } from '../shared';
 import { getBudgetIcon } from '../dashboard_components/getBudgetIcon';
 import { parseLocalDate } from '../../lib/dateUtils';
 import { isSoftDupDismissed, markSoftDupDismissed } from '../../lib/localNotificationMemory';
+import { isRefund } from '../../lib/refundMatching';
 import SoftDuplicateBadge from './SoftDuplicateBadge';
 
 interface AITransactionsEnteredCardProps {
@@ -84,7 +85,7 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
             touchAction: 'pan-y',
           }}
         >
-          {aiTransactions.map((tx) => {
+          {aiTransactions.filter((tx) => !isRefund(tx)).map((tx) => {
             const budgetName = tx.budget_id ? (budgetNameById.get(tx.budget_id) || null) : null;
             const isForReview = needsReviewIds.has(tx.id);
             // Show the badge only if the user hasn't previously dismissed
