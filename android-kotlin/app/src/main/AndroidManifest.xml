@@ -46,5 +46,18 @@
                     android:pathPrefix="/callback" />
             </intent-filter>
         </activity>
+
+        <!-- Notification listener service. The user must enable this
+             in Settings -> Apps -> Special access -> Notification access
+             for the parser pipeline to receive notifications. -->
+        <service
+            android:name=".notification.CovaultNotificationListener"
+            android:label="Covault transaction detection"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>
