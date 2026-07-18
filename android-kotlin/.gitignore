@@ -1,0 +1,24 @@
+# Android build artifacts
+*.iml
+.gradle/
+local.properties
+.idea/
+build/
+captures/
+.cxx/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+
+# Kotlin
+.kotlin/
+
+# Generated
+**/generated/
+
+# Secrets (never commit these)
+google-services.json
+*.keystore
+keystore.properties

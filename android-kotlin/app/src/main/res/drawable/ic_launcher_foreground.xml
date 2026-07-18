@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Placeholder vault glyph. Stage 4 replaces with the actual Covault
+         vault logo once the design assets from icons/ are imported. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,30 L74,40 V62 C74,72 65,80 54,84 C43,80 34,72 34,62 V40 Z" />
+    <path
+        android:fillColor="#6750A4"
+        android:pathData="M50,54 H58 V70 H50 Z" />
+</vector>
