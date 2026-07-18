@@ -29,7 +29,7 @@ object DashboardTotals {
         val current = transactions.filter {
             DateUtils.getLocalMonthKey(it.date) == monthKey
         }
-        val projected = emptyList<Transaction>()  // Stage 6 fills in
+        val projected = RecurringExecutor.computeFutureProjections(transactions, now)
         val projectedThisMonth = projected.filter {
             DateUtils.getLocalMonthKey(it.date) == monthKey
         }
