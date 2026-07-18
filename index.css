@@ -120,27 +120,45 @@ html.theme-transitioning * {
 
 /* Budget section expand/collapse
    ---------------------------------------------------------
-   The outer wrapper uses the modern grid-template-rows:
+   The outer row uses the modern grid-template-rows:
    0fr → 1fr trick for a perfectly smooth expand/collapse
    to natural content height (no max-height guesswork, no
-   flex interpolation snap). The cubic-bezier with y > 1
-   gives a soft overshoot — the "almost elastic" feel —
-   while still settling cleanly.
+   flex interpolation snap).
+
+   The cubic-bezier(0.32, 0.72, 0.24, 1) is a standard
+   ease-out shape with NO overshoot. We deliberately avoid
+   curves with a y value > 1 because the interpolated
+   property here is a discrete track size (`0fr` / `1fr`);
+   an overshoot curve produces visible "snapping" at the
+   end of the animation when the browser clamps to the
+   final value. The transition duration is set inline on
+   the element so the row's height and inner content's
+   `transform` / `opacity` stay perfectly in sync.
 */
 .budget-row-anim {
   /* 0fr / 1fr values are animatable in modern browsers; the
-     duration + custom curve live inline on the element. */
+     duration + custom curve live here so the row's
+     `flex-basis` (set inline as `flexGrow` / `flexShrink` /
+     `flexBasis` longhands), `grid-template-rows` and
+     `opacity` all run on the same 320ms clock. */
+  transition-timing-function: cubic-bezier(0.32, 0.72, 0.24, 1);
+  transition-duration: 320ms;
+  transition-property: flex-basis, grid-template-rows, opacity;
+  /* No `will-change` here: we want compositor promotion to
+     happen only while a transition is actually running, then
+     be released. Setting it permanently would keep a layer
+     alive for every budget row forever. */
 }
 @keyframes budgetContentBloom {
-  0%   { opacity: 0; transform: translateY(-6px) scale(0.985); }
-  60%  { opacity: 1; }
+  0%   { opacity: 0; transform: translateY(-4px) scale(0.99); }
   100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 .budget-content-reveal {
-  /* Slight delay so the inner content blooms just after the
-     section has begun to grow — feels layered, not pop-in. */
-  animation: budgetContentBloom 0.45s cubic-bezier(0.34, 1.32, 0.64, 1) both;
-  animation-delay: 0.08s;
+  /* Tiny delay so the inner content blooms just after the
+     section has begun to grow — feels layered, not pop-in.
+     Kept short (0.04s) to track the row's 0.32s curve. */
+  animation: budgetContentBloom 0.28s cubic-bezier(0.32, 0.72, 0.24, 1) both;
+  animation-delay: 0.04s;
   transform-origin: top center;
 }
 @media (prefers-reduced-motion: reduce) {
