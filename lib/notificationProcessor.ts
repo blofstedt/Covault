@@ -14,7 +14,7 @@
 import { supabase } from './supabase';
 import { formatVendorName, fuzzyVendorMatch, normalizeVendorForDedup } from './formatVendorName';
 import { parseNotificationText } from './deviceTransactionParser';
-import { addToReviewQueue, getVendorMapEntry, isNotificationProcessed, markNotificationProcessed, getCachedAIResult, setCachedAIResult } from './localNotificationMemory';
+import { addToReviewQueue, getVendorMapEntry, getVendorMap, isNotificationProcessed, markNotificationProcessed, getCachedAIResult, setCachedAIResult } from './localNotificationMemory';
 import { getLocalToday, parseLocalDate } from './dateUtils';
 import { extractWithAI } from './aiExtractor';
 import type { PendingTransaction } from '../types';
@@ -920,9 +920,42 @@ export async function processNotificationWithAI(
     }
   }
 
-  // 5b: Check localStorage vendor map
+  // 5b: Check localStorage vendor map (exact match first, then fuzzy)
+  // Exact match handles the common case (user corrected "AMZN MKTP" → "Amazon"
+  // and future "AMZN MKTP" notifications hit the exact key). The fuzzy pass
+  // handles the case where the same underlying merchant shows up under a
+  // slightly different surface form (e.g. "AMAZON.COM" vs "AMZN MKTP" vs
+  // "Amazon Prime" all map to "Amazon"). Without fuzzy matching, the user
+  // would have to correct each variant separately.
   if (!categoryId && parsed.vendorKey) {
-    const vendorMapEntry = getVendorMapEntry(parsed.vendorKey);
+    let vendorMapEntry = getVendorMapEntry(parsed.vendorKey);
+
+    if (!vendorMapEntry) {
+      // Fuzzy fallback: scan all stored entries and find the closest one
+      // by token-level Jaccard similarity. The user said they want the
+      // system to learn from their corrections — fuzzy matching is how
+      // we make one correction apply to many surface forms.
+      const allEntries = getVendorMap();
+      let bestKey: string | null = null;
+      let bestScore = 0;
+      for (const [key, entry] of Object.entries(allEntries)) {
+        if (!fuzzyVendorMatch(parsed.vendorDisplay || parsed.vendorKey, entry.vendor_display)) continue;
+        // Prefer matches with the same normalized prefix (e.g. "amazon"
+        // vs "amzn") to avoid accidentally mapping "Spotify" to "Amazon".
+        const normalizedStored = (entry.vendor_display || '').toLowerCase().split(/\s+/)[0];
+        const normalizedIncoming = (parsed.vendorDisplay || parsed.vendorKey).toLowerCase().split(/\s+/)[0];
+        const score = normalizedStored && normalizedIncoming && normalizedStored === normalizedIncoming ? 1.0 : 0.5;
+        if (score > bestScore) {
+          bestScore = score;
+          bestKey = key;
+        }
+      }
+      if (bestKey) {
+        vendorMapEntry = allEntries[bestKey];
+        console.log(`[AI pipeline] vendorMap fuzzy match: "${parsed.vendorDisplay}" → "${vendorMapEntry.vendor_display}" (key=${bestKey})`);
+      }
+    }
+
     if (vendorMapEntry) {
       displayVendor = vendorMapEntry.vendor_display || displayVendor;
       const matchedCategory = availableCategories.find(
@@ -1059,4 +1092,48 @@ export async function processNotificationWithAI(
     // user said they prefer seeing both rows over missing a charge.
     softDuplicateOf: softDupMatch || undefined,
   };
+}
+
+/**
+ * Process multiple notifications in parallel. The AI model is a singleton
+ * so concurrent calls share the loaded weights; the dedup cache is in-memory
+ * and shared too. Returns results in the same order as the inputs.
+ *
+ * Use this when the Android NotificationListener fires a scan that produces
+ * 5-20 notifications at once — the per-call overhead of await and DB round
+ * trips adds up when you do them sequentially.
+ */
+export async function processNotificationBatch(
+  userId: string,
+  inputs: NotificationInput[],
+  availableCategories: { id: string; name: string }[],
+  options: { concurrency?: number } = {},
+): Promise<AIProcessingResult[]> {
+  const concurrency = options.concurrency ?? 4;
+  const results: AIProcessingResult[] = new Array(inputs.length);
+
+  // Simple bounded-concurrency executor. For most batches the natural
+  // async overhead keeps us well under any rate limits; the cap is just
+  // a safety net against a 50-notification scan overwhelming the WASM
+  // model with simultaneous inferences.
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(concurrency, inputs.length) }, async () => {
+    while (true) {
+      const idx = nextIndex++;
+      if (idx >= inputs.length) return;
+      try {
+        results[idx] = await processNotificationWithAI(userId, inputs[idx], availableCategories);
+      } catch (err: any) {
+        console.error(`[batch] notification ${idx} failed:`, err?.message || err);
+        results[idx] = {
+          processed: false,
+          isTransaction: false,
+          rejectionReason: 'Batch processing error',
+          bankName: inputs[idx].bankName,
+        };
+      }
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
