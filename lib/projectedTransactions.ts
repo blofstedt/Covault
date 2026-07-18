@@ -42,6 +42,20 @@ function getTransactionBudgetId(tx: Transaction): string | undefined {
  * - Future occurrences stay projected until their date arrives.
  * - Project up to 3 months ahead as a rolling horizon.
  * - Display-only (never written to DB).
+ *
+ * IMPORTANT: Only the EARLIEST transaction per (vendor, amount) group is
+ * used as a projection source. The recurring executor spawns new real
+ * transactions from each template (e.g. a Jul 13 Fizz spawns Aug 13, Sep 13,
+ * ...). Without this filter, the projection function would generate
+ * duplicate Sep 13 / Oct 13 / ... entries from both the original Jul 13
+ * template AND the executor-spawned Aug 13 row, causing the dashboard
+ * "red block" (remainingMoney went hugely negative because projectedCurrentMonth
+ * was summed twice per template). See commit ed14cc3 for the bug history.
+ *
+ * Executor-spawned rows are also skipped explicitly as a belt-and-suspenders:
+ * if a future change ever stores the original template under source='executor',
+ * the projection would still be correctly attributed to the manual/notification
+ * source rather than chained.
  */
 export function generateProjectedTransactions(base: Transaction[]): Transaction[] {
   const today = new Date();
@@ -56,15 +70,48 @@ export function generateProjectedTransactions(base: Transaction[]): Transaction[
     }),
   );
 
-  const projected: Transaction[] = [];
-
+  // Find the earliest transaction per (vendor, amount, recurrence, day-of-month)
+  // group. Only these are used as projection sources.
+  //
+  // Why include day-of-month in the key:
+  //   The user has two Fizz charges per month ($26.20 on the 13th and the
+  //   16th) — these are LEGITIMATE separate charges, not a single template
+  //   that was duplicated. Grouping by day-of-month keeps them as separate
+  //   projection sources so both get their own future series.
+  //
+  // Why include recurrence in the key:
+  //   A Monthly $50 Netflix and a separate Biweekly $50 Netflix (e.g. monthly
+  //   subscription + biweekly purchases) must also stay separate.
+  //
+  // Executor-spawned rows share the same (vendor, amount, recurrence, day)
+  // as their template, so they're automatically collapsed into the same group.
+  const earliestByKey = new Map<string, Transaction>();
   for (const tx of base) {
+    if (tx.is_projected && String(tx.id || '').startsWith('projected-')) continue;
+    // Skip executor-spawned rows — they're already handled by the original
+    // template. Using them as a second source would double-project.
+    if ((tx as any).source === 'executor') continue;
     const recurrence = normalizeRecurrence(tx);
     if (recurrence === 'one-time') continue;
+    const dayOfMonth = String(toIsoDay(tx.date).slice(8, 10));
+    const key = `${tx.vendor.toLowerCase().trim()}|${Number(tx.amount).toFixed(2)}|${recurrence}|${dayOfMonth}`;
+    const existing = earliestByKey.get(key);
+    if (!existing) {
+      earliestByKey.set(key, tx);
+      continue;
+    }
+    const existingDate = parseLocalDate(toIsoDay(existing.date)).getTime();
+    const candidateDate = parseLocalDate(toIsoDay(tx.date)).getTime();
+    if (Number.isFinite(candidateDate) && candidateDate < existingDate) {
+      earliestByKey.set(key, tx);
+    }
+  }
 
-    // Don't chain off projected entries generated in-app.
-    // Keep DB rows eligible when they carry recurrence data.
-    if (tx.is_projected && String(tx.id || '').startsWith('projected-')) continue;
+  const projected: Transaction[] = [];
+
+  for (const tx of earliestByKey.values()) {
+    const recurrence = normalizeRecurrence(tx);
+    if (recurrence === 'one-time') continue;
 
     // Build the initial date in the user's local timezone. `new Date("YYYY-MM-DD")`
     // parses as UTC midnight, which lands on the previous local day for users
