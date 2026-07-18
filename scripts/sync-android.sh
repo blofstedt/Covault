@@ -54,15 +54,31 @@ mkdir -p "$RES_DIR/values"
 echo "Copying custom Covault icon resources..."
 cp -v "$CUSTOM_DIR/res/drawable/ic_covault_foreground.xml" "$RES_DIR/drawable/"
 cp -v "$CUSTOM_DIR/res/drawable/ic_launcher_legacy.xml" "$RES_DIR/drawable/" 2>/dev/null || true
+cp -v "$CUSTOM_DIR/res/drawable/ic_stat_covault.xml" "$RES_DIR/drawable/"
 cp -v "$CUSTOM_DIR/res/mipmap-anydpi-v26/ic_launcher.xml" "$RES_DIR/mipmap-anydpi-v26/"
 cp -v "$CUSTOM_DIR/res/mipmap-anydpi-v26/ic_launcher_round.xml" "$RES_DIR/mipmap-anydpi-v26/"
 cp -v "$CUSTOM_DIR/res/values/ic_launcher_background.xml" "$RES_DIR/values/"
+
+# Notification status bar icon (monochrome white). Raster fallbacks at
+# each density ensure older Android versions and the system status bar
+# pick up a reliable icon. The smallIcon name referenced from
+# lib/appNotifications.ts is `ic_stat_covault` (no extension).
+for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+  src_dir="$CUSTOM_DIR/res/mipmap-$density"
+  if [ -d "$src_dir" ]; then
+    mkdir -p "$RES_DIR/mipmap-$density"
+    for f in "$src_dir"/*.png; do
+      [ -f "$f" ] && cp -v "$f" "$RES_DIR/mipmap-$density/"
+    done
+  fi
+done
 
 # Verify the icon files are in place
 echo ""
 echo "Verifying icon setup..."
 for f in \
   "$RES_DIR/drawable/ic_covault_foreground.xml" \
+  "$RES_DIR/drawable/ic_stat_covault.xml" \
   "$RES_DIR/mipmap-anydpi-v26/ic_launcher.xml" \
   "$RES_DIR/mipmap-anydpi-v26/ic_launcher_round.xml" \
   "$RES_DIR/values/ic_launcher_background.xml"; do
@@ -84,6 +100,13 @@ for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
 done
 if [ $FOUND_DEFAULT -eq 0 ]; then
   echo "  OK: No default Capacitor icons remain"
+fi
+
+# Verify notification status bar icon is in place
+if [ -f "$RES_DIR/drawable/ic_stat_covault.xml" ] || [ -f "$RES_DIR/mipmap-xxxhdpi/ic_stat_covault.png" ]; then
+  echo "  OK: notification small icon (ic_stat_covault) present"
+else
+  echo "  WARNING: notification small icon (ic_stat_covault) missing"
 fi
 
 # --- JAVA FILES ---

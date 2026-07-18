@@ -34,6 +34,14 @@ async function ensurePermission() {
   }
 }
 
+// Android notification icon config.
+// `smallIcon` is a monochrome drawable (white on transparent) — the
+// system tints it with `iconColor` at render time. Without these, the
+// status bar shows a generic "(!)" placeholder and the notification
+// looks like it came from an unbranded system app.
+const NOTIF_SMALL_ICON = 'ic_stat_covault';
+const NOTIF_ICON_COLOR = '#10B981'; // Covault emerald
+
 async function sendNotification(title: string, body: string) {
   if (!Capacitor.isNativePlatform()) return;
 
@@ -47,6 +55,12 @@ async function sendNotification(title: string, body: string) {
           title,
           body,
           schedule: { at: new Date(Date.now() + 1000) },
+          // Android-only fields — ignored on iOS.
+          // See android-custom/res/drawable/ic_stat_covault.xml
+          // (vector) and android-custom/res/mipmap-*/ic_stat_covault.png
+          // (raster fallback synced by scripts/sync-android.sh).
+          smallIcon: NOTIF_SMALL_ICON,
+          iconColor: NOTIF_ICON_COLOR,
         },
       ],
     });
