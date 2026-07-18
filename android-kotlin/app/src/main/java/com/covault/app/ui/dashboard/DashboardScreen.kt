@@ -104,7 +104,11 @@ private fun DashboardContent(
     var isSearchOpen by remember { mutableStateOf(false) }
     var expandedBudgets by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showForm by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
     var editingTx by remember { mutableStateOf<Transaction?>(null) }
+    var partnerLinkEmail by remember { mutableStateOf("") }
+    var isLinkingPartner by remember { mutableStateOf(false) }
+    var themeOverride by remember { mutableStateOf<String?>(null) }
 
     val monthKey = DateUtils.getLocalMonthKey(LocalDate.now().toString())
     val currentMonthTransactions = remember(transactions, monthKey) {
@@ -123,6 +127,7 @@ private fun DashboardContent(
             .distinctBy { it.vendor.lowercase() }
             .map { VendorHistoryItem(it.vendor, it.budgetId!!) }
     }
+    val effectiveTheme = themeOverride ?: (if (isShared) "dark" else "light")
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(
@@ -142,7 +147,7 @@ private fun DashboardContent(
                     if (it.isNotBlank()) isSearchOpen = true
                 },
                 onSearchOpenChange = { isSearchOpen = it },
-                onOpenSettings = { /* Stage 4b-iii */ },
+                onOpenSettings = { showSettings = true },
             )
 
             Spacer(Modifier.height(4.dp))
@@ -278,6 +283,46 @@ private fun DashboardContent(
                 onDeleteTransaction(tx.id)
                 editingTx = null
             },
+        )
+    }
+
+    if (showSettings && user != null) {
+        val settingsObj = DashboardSettings(
+            theme = effectiveTheme,
+            rolloverEnabled = true,
+            useLeisureAsBuffer = true,
+            notificationsEnabled = false,
+            appNotificationsEnabled = false,
+            smartNotificationsEnabled = true,
+            hiddenCategories = emptyList(),
+        )
+        val callbacks = DashboardSettingsCallbacks(
+            onUpdateSettings = { _, _ -> /* TODO: persist via SettingsRepository */ },
+            onUpdateUserIncome = { viewModel.updateIncome(user.id, it) },
+            onSaveBudgetLimit = { id, limit -> viewModel.updateBudgetLimit(id, limit) },
+            onSaveBudgetVisibility = { _, _ -> /* TODO */ },
+            onChangePartnerEmail = { partnerLinkEmail = it },
+            onConnectPartner = {
+                isLinkingPartner = true
+                viewModel.linkPartner(user.id, partnerLinkEmail)
+            },
+            onDisconnectPartner = { viewModel.unlinkPartner(user.id) },
+            onSetLinking = { isLinkingPartner = it },
+            onSignOut = { viewModel.signOut() },
+        )
+        DashboardSettingsModal(
+            isSharedAccount = isShared,
+            settings = settingsObj,
+            user = user,
+            isLinkingPartner = isLinkingPartner,
+            partnerLinkEmail = partnerLinkEmail,
+            budgets = budgets,
+            transactions = transactions,
+            callbacks = callbacks,
+            hasPremium = true,
+            onSubscribe = {},
+            onImportComplete = { /* Stage 4b-iv: import pipeline */ },
+            onClose = { showSettings = false },
         )
     }
 }

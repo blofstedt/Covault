@@ -8,6 +8,9 @@ import com.covault.app.data.model.Transaction
 import com.covault.app.data.model.User
 import com.covault.app.data.repository.AuthRepository
 import com.covault.app.data.repository.AuthState
+import com.covault.app.data.repository.BudgetRepository
+import com.covault.app.data.repository.SettingsRepository
+import com.covault.app.data.repository.SettingsUpdate
 import com.covault.app.data.repository.TransactionRepository
 import com.covault.app.data.repository.UserDataRepository
 import com.covault.app.domain.DashboardTotals
@@ -34,6 +37,8 @@ class DashboardViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val userDataRepository: UserDataRepository,
     private val transactionRepository: TransactionRepository,
+    private val settingsRepository: SettingsRepository,
+    private val budgetRepository: BudgetRepository,
 ) : ViewModel() {
 
     val user: StateFlow<User?> = authRepository.authState
@@ -147,6 +152,64 @@ class DashboardViewModel @Inject constructor(
                     _errorMessage.value = e.message ?: "Failed to delete transaction"
                     refresh(userId)
                 }
+        }
+    }
+
+    // ---- Settings / household ----------------------------------------
+
+    fun updateIncome(userId: String, income: Double) {
+        viewModelScope.launch {
+            settingsRepository.upsertSettings(
+                userId,
+                SettingsUpdate(monthlyIncome = income),
+            ).onSuccess {
+                _user.update { current -> current?.copy(monthlyIncome = income) }
+            }.onFailure { e ->
+                _errorMessage.value = e.message ?: "Failed to update income"
+            }
+        }
+    }
+
+    fun updateBudgetLimit(budgetId: String, newLimit: Double) {
+        val userId = user.value?.id ?: return
+        val budgetName = _budgets.value.firstOrNull { it.id == budgetId }?.name ?: return
+        viewModelScope.launch {
+            budgetRepository.upsertLimit(userId, budgetName, newLimit)
+                .onSuccess {
+                    _budgets.update { list ->
+                        list.map { if (it.id == budgetId) it.copy(totalLimit = newLimit) else it }
+                    }
+                }
+                .onFailure { e ->
+                    _errorMessage.value = e.message ?: "Failed to save budget limit"
+                }
+        }
+    }
+
+    fun linkPartner(userId: String, partnerEmail: String) {
+        viewModelScope.launch {
+            settingsRepository.linkPartner(userId, partnerEmail)
+                .onSuccess { refresh(userId) }
+                .onFailure { e ->
+                    _errorMessage.value = e.message
+                        ?: "Couldn't link partner. Make sure they have a Covault account and try again."
+                }
+        }
+    }
+
+    fun unlinkPartner(userId: String) {
+        viewModelScope.launch {
+            settingsRepository.unlinkPartner(userId)
+                .onSuccess { refresh(userId) }
+                .onFailure { e ->
+                    _errorMessage.value = e.message ?: "Failed to unlink partner"
+                }
+        }
+    }
+
+    fun signOut() {
+        viewModelScope.launch {
+            authRepository.signOut()
         }
     }
 }

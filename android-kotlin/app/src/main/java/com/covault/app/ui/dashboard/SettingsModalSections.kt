@@ -1,0 +1,1002 @@
+package com.covault.app.ui.dashboard
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.covault.app.data.model.BudgetCategory
+import com.covault.app.data.model.Transaction
+import com.covault.app.data.model.User
+
+// =============================================================================
+// Settings modal sections. Direct port of `DashboardSettingsModal.tsx` and
+// its 14 sub-components in `settings_modal_components/`.
+//
+// In the React app, each section is its own file. In Kotlin we keep them
+// as private composables in this single file because they're tiny (most
+// are 20-40 lines) and the settings modal is the only place that uses
+// them. The public surface is the `DashboardSettingsModal` composable
+// at the bottom of this file.
+// =============================================================================
+
+internal data class DashboardSettings(
+    val theme: String = "light",
+    val rolloverEnabled: Boolean = true,
+    val useLeisureAsBuffer: Boolean = true,
+    val notificationsEnabled: Boolean = false,
+    val appNotificationsEnabled: Boolean = false,
+    val smartNotificationsEnabled: Boolean = true,
+    val hiddenCategories: List<String> = emptyList(),
+)
+
+internal data class DashboardSettingsCallbacks(
+    val onUpdateSettings: (key: String, value: Any) -> Unit,
+    val onUpdateUserIncome: (Double) -> Unit,
+    val onSaveBudgetLimit: (String, Double) -> Unit,
+    val onSaveBudgetVisibility: (String, Boolean) -> Unit,
+    val onChangePartnerEmail: (String) -> Unit,
+    val onConnectPartner: () -> Unit,
+    val onDisconnectPartner: () -> Unit,
+    val onSetLinking: (Boolean) -> Unit,
+    val onSignOut: () -> Unit,
+)
+
+// ---- Shared building blocks ----------------------------------------------
+
+@Composable
+internal fun SettingsCard(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(24.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant,
+                shape = RoundedCornerShape(24.dp),
+            ),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            content()
+        }
+    }
+}
+
+@Composable
+internal fun SectionHeader(title: String, subtitle: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier) {
+        Text(
+            text = title,
+            style = TextStyle(
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            ),
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = subtitle,
+            style = TextStyle(
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
+        )
+    }
+}
+
+@Composable
+internal fun ToggleSwitch(enabled: Boolean, onToggle: () -> Unit) {
+    val trackColor = if (enabled) MaterialTheme.colorScheme.primary
+                     else MaterialTheme.colorScheme.surfaceVariant
+    val thumbOffset = if (enabled) 22f else 2f
+    Box(
+        modifier = Modifier
+            .size(width = 44.dp, height = 24.dp)
+            .background(color = trackColor, shape = RoundedCornerShape(50))
+            .clickable(onClick = onToggle),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(start = (thumbOffset / 2).dp)
+                .size(20.dp)
+                .background(color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(50)),
+        )
+    }
+}
+
+// ---- 1. Frequently Asked ------------------------------------------------
+
+@Composable
+private fun FAQButton(onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(
+            text = "Frequently Asked",
+            style = TextStyle(
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp),
+        )
+    }
+}
+
+// ---- 2. Income -----------------------------------------------------------
+
+@Composable
+private fun IncomeSection(
+    isSharedAccount: Boolean,
+    user: User?,
+    onUpdate: (Double) -> Unit,
+) {
+    var inputValue by remember { mutableStateOf(user?.monthlyIncome?.toString().orEmpty()) }
+    LaunchedEffect(user?.monthlyIncome) {
+        inputValue = (user?.monthlyIncome ?: 0.0).toString()
+    }
+    SettingsCard {
+        SectionHeader(
+            title = if (isSharedAccount) "My Monthly Income" else "Monthly Income",
+            subtitle = if (isSharedAccount)
+                "Your income contribution. Your partner's income will be added automatically."
+            else "This defines your total cash flow for the month.",
+            modifier = Modifier.padding(bottom = 12.dp),
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    color = MaterialTheme.colorScheme.background,
+                    shape = RoundedCornerShape(20.dp),
+                )
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                    shape = RoundedCornerShape(20.dp),
+                )
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "$",
+                style = TextStyle(
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.outline,
+                ),
+            )
+            Spacer(Modifier.width(8.dp))
+            BasicTextField(
+                value = inputValue,
+                onValueChange = { inputValue = it.filter { ch -> ch.isDigit() || ch == '.' } },
+                textStyle = TextStyle(
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.onSurface,
+                ),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+                decorationBox = { inner ->
+                    Box {
+                        if (inputValue.isEmpty()) {
+                            Text(
+                                text = "0",
+                                style = TextStyle(
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = MaterialTheme.colorScheme.outline,
+                                ),
+                            )
+                        }
+                        inner()
+                    }
+                },
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Surface(
+            onClick = {
+                val v = inputValue.toDoubleOrNull()
+                if (v != null && v >= 0) onUpdate(v)
+            },
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                text = "Save income",
+                style = TextStyle(
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+            )
+        }
+    }
+}
+
+// ---- 3. Budget Limits ----------------------------------------------------
+
+@Composable
+private fun BudgetLimitsSection(
+    budgets: List<BudgetCategory>,
+    onSaveLimit: (String, Double) -> Unit,
+    onToggleVisibility: (String, Boolean) -> Unit,
+) {
+    SettingsCard {
+        SectionHeader(
+            title = "Budget Limits",
+            subtitle = "Adjust how much you allocate to each category.",
+            modifier = Modifier.padding(bottom = 12.dp),
+        )
+        budgets.forEach { b ->
+            var editing by remember { mutableStateOf(false) }
+            var text by remember(b.totalLimit) { mutableStateOf(b.totalLimit.toInt().toString()) }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                BudgetIcon(
+                    name = b.name,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    size = 20.dp,
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = b.name,
+                    style = TextStyle(
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    ),
+                    modifier = Modifier.weight(1f),
+                )
+                if (editing) {
+                    BasicTextField(
+                        value = text,
+                        onValueChange = { text = it.filter { ch -> ch.isDigit() } },
+                        textStyle = TextStyle(
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Black,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        ),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        singleLine = true,
+                        modifier = Modifier
+                            .width(80.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                shape = RoundedCornerShape(8.dp),
+                            )
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Save",
+                        style = TextStyle(
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
+                        ),
+                        modifier = Modifier.clickable {
+                            val v = text.toDoubleOrNull()
+                            if (v != null) {
+                                onSaveLimit(b.id, v)
+                                editing = false
+                            }
+                        },
+                    )
+                } else {
+                    Text(
+                        text = "$${b.totalLimit.toInt()}",
+                        style = TextStyle(
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Black,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        ),
+                        modifier = Modifier.clickable { editing = true },
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ---- 4. Theme ------------------------------------------------------------
+
+@Composable
+private fun ThemeToggleSection(
+    theme: String,
+    onUpdate: (String, Any) -> Unit,
+) {
+    SettingsCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Dark Interface",
+                    style = TextStyle(
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    ),
+                )
+                Text(
+                    text = "Calm appearance for low light.",
+                    style = TextStyle(
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ),
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            ToggleSwitch(enabled = theme == "dark") {
+                onUpdate("theme", if (theme == "light") "dark" else "light")
+            }
+        }
+    }
+}
+
+// ---- 5. Notification listener (premium-gated stub) -----------------------
+
+@Composable
+private fun NotificationSettingsSection(enabled: Boolean, onToggle: (Boolean) -> Unit) {
+    SettingsCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Bank Notification Listener",
+                    style = TextStyle(
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    ),
+                )
+                Text(
+                    text = "Read bank app notifications to auto-fill transactions.",
+                    style = TextStyle(
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ),
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            ToggleSwitch(enabled = enabled) { onToggle(!enabled) }
+        }
+    }
+}
+
+@Composable
+private fun PremiumBadge() {
+    Box(
+        modifier = Modifier
+            .background(
+                color = MaterialTheme.colorScheme.tertiaryContainer,
+                shape = RoundedCornerShape(8.dp),
+            )
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    ) {
+        Text(
+            text = "Premium",
+            style = TextStyle(
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Black,
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
+            ),
+        )
+    }
+}
+
+// ---- 6. Rollover ---------------------------------------------------------
+
+@Composable
+private fun RolloverSection(rolloverEnabled: Boolean, onUpdate: (String, Any) -> Unit) {
+    SettingsCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Budget Rollover",
+                    style = TextStyle(
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    ),
+                )
+                Text(
+                    text = "Move unspent budget to the next month.",
+                    style = TextStyle(
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ),
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            ToggleSwitch(enabled = rolloverEnabled) {
+                onUpdate("rolloverEnabled", !rolloverEnabled)
+            }
+        }
+    }
+}
+
+// ---- 7. Smart Notifications ---------------------------------------------
+
+@Composable
+private fun SmartNotificationsSection(enabled: Boolean, onToggle: () -> Unit) {
+    SettingsCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Smart Notifications",
+                    style = TextStyle(
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    ),
+                )
+                Text(
+                    text = "Get pinged when a budget is close to its limit.",
+                    style = TextStyle(
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ),
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            ToggleSwitch(enabled = enabled) { onToggle() }
+        }
+    }
+}
+
+// ---- 8. Discretionary Shield (premium) ----------------------------------
+
+@Composable
+private fun DiscretionaryShieldSection(enabled: Boolean, onUpdate: (String, Any) -> Unit) {
+    SettingsCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Discretionary Shield",
+                        style = TextStyle(
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        ),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    PremiumBadge()
+                }
+                Text(
+                    text = "Use leisure as a buffer when other categories overspend.",
+                    style = TextStyle(
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ),
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            ToggleSwitch(enabled = enabled) {
+                onUpdate("useLeisureAsBuffer", !enabled)
+            }
+        }
+    }
+}
+
+// ---- 9. Vault sharing (partner linking) ---------------------------------
+
+@Composable
+private fun VaultSharingSection(
+    user: User?,
+    isLinkingPartner: Boolean,
+    partnerLinkEmail: String,
+    onChangeEmail: (String) -> Unit,
+    onConnect: () -> Unit,
+    onDisconnect: () -> Unit,
+) {
+    SettingsCard {
+        SectionHeader(
+            title = "Vault Sharing",
+            subtitle = if (user?.hasJointAccounts == true)
+                "Linked with ${user.partnerEmail ?: user.partnerName ?: "partner"}."
+            else "Invite your partner to share this vault.",
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+        if (user?.hasJointAccounts == true) {
+            Surface(
+                onClick = onDisconnect,
+                color = MaterialTheme.colorScheme.errorContainer,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    text = "Disconnect",
+                    style = TextStyle(
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 10.dp),
+                )
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                BasicTextField(
+                    value = partnerLinkEmail,
+                    onValueChange = onChangeEmail,
+                    textStyle = TextStyle(
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    ),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    singleLine = true,
+                    modifier = Modifier
+                        .weight(1f)
+                        .background(
+                            color = MaterialTheme.colorScheme.background,
+                            shape = RoundedCornerShape(12.dp),
+                        )
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            shape = RoundedCornerShape(12.dp),
+                        )
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    decorationBox = { inner ->
+                        Box {
+                            if (partnerLinkEmail.isEmpty()) {
+                                Text(
+                                    text = "partner@example.com",
+                                    style = TextStyle(
+                                        fontSize = 13.sp,
+                                        color = MaterialTheme.colorScheme.outline,
+                                    ),
+                                )
+                            }
+                            inner()
+                        }
+                    },
+                )
+                Spacer(Modifier.width(8.dp))
+                Surface(
+                    onClick = onConnect,
+                    color = MaterialTheme.colorScheme.primary,
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Text(
+                        text = if (isLinkingPartner) "Linking…" else "Connect",
+                        style = TextStyle(
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                        ),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ---- 10. Export ---------------------------------------------------------
+
+@Composable
+private fun ExportTransactionsSection(transactions: List<Transaction>, budgets: List<BudgetCategory>) {
+    SettingsCard {
+        SectionHeader(
+            title = "Export",
+            subtitle = "Download a CSV of your transactions.",
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+        Surface(
+            onClick = {
+                // Real export is a Stage 4b-iv follow-up; for now this just
+                // shows the button. The Compose file-saver API lives in
+                // androidx.activity:activity-compose and we'll wire it when
+                // the user requests a real download.
+            },
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                text = "Download CSV (${transactions.size} entries)",
+                style = TextStyle(
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 10.dp),
+            )
+        }
+    }
+}
+
+// ---- 11. Import ---------------------------------------------------------
+
+@Composable
+private fun ImportTransactionsSection(
+    budgets: List<BudgetCategory>,
+    userId: String?,
+    onImportComplete: () -> Unit,
+) {
+    SettingsCard {
+        SectionHeader(
+            title = "Import",
+            subtitle = "Bring in transactions from a CSV file.",
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+        Surface(
+            onClick = onImportComplete,  // placeholder
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                text = "Import from CSV",
+                style = TextStyle(
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 10.dp),
+            )
+        }
+    }
+}
+
+// ---- 12. Budget Report --------------------------------------------------
+
+@Composable
+private fun ReportSection(
+    budgets: List<BudgetCategory>,
+    transactions: List<Transaction>,
+    monthlyIncome: Double,
+    isSharedAccount: Boolean,
+) {
+    val totalSpent = transactions.filter { it.amount < 0 }.sumOf { kotlin.math.abs(it.amount) }
+    SettingsCard {
+        SectionHeader(
+            title = "Budget Report",
+            subtitle = "Snapshot of where you stand this month.",
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            StatBlock(label = "Income", value = "$${monthlyIncome.toInt()}")
+            StatBlock(label = "Spent", value = "$${totalSpent.toInt()}")
+            StatBlock(label = "Remaining", value = "$${(monthlyIncome - totalSpent).toInt()}")
+        }
+    }
+}
+
+@Composable
+private fun StatBlock(label: String, value: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = value,
+            style = TextStyle(
+                fontSize = 16.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            ),
+        )
+        Text(
+            text = label,
+            style = TextStyle(
+                fontSize = 10.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
+        )
+    }
+}
+
+// ---- 13. Support & Feedback ---------------------------------------------
+
+@Composable
+private fun SupportFeedbackSection(hasPremium: Boolean, onSubscribe: () -> Unit) {
+    SettingsCard {
+        SectionHeader(
+            title = "Support & Feedback",
+            subtitle = "Reach out for help or share an idea.",
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Surface(
+                onClick = { /* open mailto in a later stage */ },
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(
+                    text = "Email",
+                    style = TextStyle(
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 10.dp),
+                )
+            }
+            Surface(
+                onClick = { if (!hasPremium) onSubscribe() },
+                color = MaterialTheme.colorScheme.tertiaryContainer,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.weight(1f),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 10.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Request a feature",
+                        style = TextStyle(
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        ),
+                    )
+                    if (!hasPremium) {
+                        Spacer(Modifier.width(6.dp))
+                        PremiumBadge()
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ---- 14. Sign Out -------------------------------------------------------
+
+@Composable
+private fun SignOutSection(onSignOut: () -> Unit) {
+    Surface(
+        onClick = onSignOut,
+        color = MaterialTheme.colorScheme.errorContainer,
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(
+            text = "Sign out",
+            style = TextStyle(
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp),
+        )
+    }
+}
+
+// =============================================================================
+// Public composable: the full settings modal.
+// =============================================================================
+
+@Composable
+fun DashboardSettingsModal(
+    isSharedAccount: Boolean,
+    settings: DashboardSettings,
+    user: User?,
+    isLinkingPartner: Boolean,
+    partnerLinkEmail: String,
+    budgets: List<BudgetCategory>,
+    transactions: List<Transaction>,
+    callbacks: DashboardSettingsCallbacks,
+    hasPremium: Boolean = true,
+    onSubscribe: () -> Unit = {},
+    onImportComplete: () -> Unit = {},
+    onClose: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.5f)),
+    ) {
+        Surface(
+            color = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(40.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Vault Settings",
+                        style = TextStyle(
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        ),
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(
+                        onClick = onClose,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                shape = RoundedCornerShape(50),
+                            ),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Close,
+                            contentDescription = "Close",
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+
+                FAQButton(onClick = { /* opens FAQ modal in a later stage */ })
+                Spacer(Modifier.height(12.dp))
+
+                IncomeSection(
+                    isSharedAccount = isSharedAccount,
+                    user = user,
+                    onUpdate = callbacks.onUpdateUserIncome,
+                )
+                Spacer(Modifier.height(12.dp))
+
+                BudgetLimitsSection(
+                    budgets = budgets,
+                    onSaveLimit = callbacks.onSaveBudgetLimit,
+                    onToggleVisibility = { id, hidden ->
+                        callbacks.onSaveBudgetVisibility(id, !hidden)
+                    },
+                )
+                Spacer(Modifier.height(12.dp))
+
+                ThemeToggleSection(
+                    theme = settings.theme,
+                    onUpdate = callbacks.onUpdateSettings,
+                )
+                Spacer(Modifier.height(12.dp))
+
+                // Premium-gated: notification listener
+                if (hasPremium) {
+                    NotificationSettingsSection(
+                        enabled = settings.notificationsEnabled,
+                        onToggle = { v -> callbacks.onUpdateSettings("notificationsEnabled", v) },
+                    )
+                    Spacer(Modifier.height(12.dp))
+                }
+                RolloverSection(
+                    rolloverEnabled = settings.rolloverEnabled,
+                    onUpdate = callbacks.onUpdateSettings,
+                )
+                Spacer(Modifier.height(12.dp))
+                SmartNotificationsSection(
+                    enabled = settings.smartNotificationsEnabled,
+                    onToggle = {
+                        callbacks.onUpdateSettings(
+                            "smartNotificationsEnabled",
+                            !settings.smartNotificationsEnabled,
+                        )
+                    },
+                )
+                Spacer(Modifier.height(12.dp))
+                if (hasPremium) {
+                    DiscretionaryShieldSection(
+                        enabled = settings.useLeisureAsBuffer,
+                        onUpdate = callbacks.onUpdateSettings,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                }
+                VaultSharingSection(
+                    user = user,
+                    isLinkingPartner = isLinkingPartner,
+                    partnerLinkEmail = partnerLinkEmail,
+                    onChangeEmail = callbacks.onChangePartnerEmail,
+                    onConnect = callbacks.onConnectPartner,
+                    onDisconnect = callbacks.onDisconnectPartner,
+                )
+                Spacer(Modifier.height(12.dp))
+                ExportTransactionsSection(transactions = transactions, budgets = budgets)
+                Spacer(Modifier.height(12.dp))
+                ImportTransactionsSection(
+                    budgets = budgets,
+                    userId = user?.id,
+                    onImportComplete = onImportComplete,
+                )
+                Spacer(Modifier.height(12.dp))
+                ReportSection(
+                    budgets = budgets,
+                    transactions = transactions,
+                    monthlyIncome = user?.monthlyIncome ?: 0.0,
+                    isSharedAccount = isSharedAccount,
+                )
+                Spacer(Modifier.height(12.dp))
+                SupportFeedbackSection(
+                    hasPremium = hasPremium,
+                    onSubscribe = onSubscribe,
+                )
+                Spacer(Modifier.height(12.dp))
+                SignOutSection(onSignOut = callbacks.onSignOut)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "Version 3.0 · Covault",
+                    style = TextStyle(
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.outline,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+    }
+}
