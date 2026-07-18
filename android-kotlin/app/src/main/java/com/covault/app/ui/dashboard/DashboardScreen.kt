@@ -196,6 +196,13 @@ private fun DashboardContent(
                     onTransactionTap = { tx -> editingTx = tx },
                 )
             } else {
+                Column(modifier = Modifier.weight(1f)) {
+                    BudgetFlowChart(
+                        budgets = sortedBudgets,
+                        transactions = currentMonthTransactions,
+                        monthlyIncome = monthlyIncome,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
@@ -220,6 +227,7 @@ private fun DashboardContent(
                             useCompactCollapsedStyles = expandedBudgets.isEmpty(),
                         )
                     }
+                }
                 }
             }
 
