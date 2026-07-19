@@ -75,6 +75,14 @@ export interface Transaction {
    * amount from the spent total. No separate refund row is inserted.
    */
   refunded?: boolean;
+  /**
+   * The original raw notification text that produced this transaction.
+   * Populated by the notification pipeline at insert time. Powers the
+   * "<>" page reviewer's "View original notification" expander, which
+   * is the source of truth for the parser's vendor correction flow.
+   * Legacy rows (pre-migration) and rows created manually may be null.
+   */
+  raw_notification?: string | null;
   userName?: string;
   created_at: string;
   /** Origin of this row. Populated by the writer (executor/AI/manual/import).

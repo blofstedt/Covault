@@ -16,6 +16,7 @@ import { formatVendorName, fuzzyVendorMatch, normalizeVendorForDedup } from './f
 import { parseNotificationText } from './deviceTransactionParser';
 import { addToReviewQueue, getVendorMapEntry, getVendorMap, isNotificationProcessed, markNotificationProcessed, getCachedAIResult, setCachedAIResult } from './localNotificationMemory';
 import { findMatchingExpense, REFUND_MATCH_WINDOW_DAYS } from './refundMatching';
+import { checkNotificationRules, bumpRuleUseCount, type NotificationRule } from './notificationRules';
 import { getLocalToday, parseLocalDate } from './dateUtils';
 import { extractWithAI } from './aiExtractor';
 import type { PendingTransaction } from '../types';
@@ -804,6 +805,29 @@ async function processNotificationWithAIImpl(
     };
   }
 
+  // ── Step 0c: User-learned skip rules ──
+  // The user can mark a captured item as "not a transaction" from the
+  // <> page. That creates a rule in `notification_rules` and every
+  // future notification matching the rule is dropped here, before any
+  // parsing. We bump the rule's use_count best-effort (fire-and-forget).
+  if (!input.forceReprocess) {
+    const matchedRule = await checkNotificationRules(userId, input.rawNotification);
+    if (matchedRule) {
+      console.log(`[AI pipeline] Skipped by user rule #${matchedRule.id} (${matchedRule.pattern_type}: "${matchedRule.pattern.slice(0, 50)}...")`);
+      // Best-effort: bump the count without blocking the result
+      void bumpRuleUseCount(matchedRule.id);
+      recentlyProcessedCache.set(inMemoryKey, Date.now());
+      markNotificationProcessed(inMemoryKey);
+      return {
+        processed: true,
+        isTransaction: false,
+        skipReason: 'not_transaction',
+        rejectionReason: `Skipped by user rule (${matchedRule.pattern_type} match)`,
+        bankName: input.bankName,
+      };
+    }
+  }
+
   // ── Step 0b: Persistent dedup (survives app restarts) ──
   // The in-memory cache above is cleared every time the JS module re-loads
   // (app restart, hot reload). This localStorage-backed check ensures a
@@ -1134,25 +1158,40 @@ async function processNotificationWithAIImpl(
   let categoryName: string | null = null;
   let displayVendor: string = vendor;
 
-  // 5a: Check server-side overrides table
-  // Schema: overrides(id, user_id, proper_name text, match_key text, category_id text)
+  // 5a: Check server-side overrides table.
+  // Schema: overrides(id, user_id, proper_name, match_key, match_type, category_id, updated_at).
   // Lookup priority:
-  //   1. match_key (normalized vendor slug) — survives display-name variants
-  //      and trailing prefixes like "KIA FINANCE CORP" vs "Kia".
+  //   1. match_key (normalized vendor slug) with respect to match_type:
+  //        - 'exact'    : incoming vendorKey === override.match_key
+  //        - 'prefix'   : incoming vendorKey starts with override.match_key
+  //        - 'contains' : incoming vendorKey contains override.match_key
+  //      The most recently updated row wins (ORDER BY updated_at DESC).
   //   2. proper_name ilike — fallback for legacy rows that pre-date match_key.
   if (vendor) {
     const vendorKey = vendor.toLowerCase().replace(/[^a-z0-9]/g, '');
 
-    // 1) match_key lookup
+    // 1) match_key lookup (match_type aware)
     let overrideRows: any[] | null = null;
     if (vendorKey) {
       const { data } = await supabase
         .from('overrides')
-        .select('category_id, proper_name, match_key')
+        .select('category_id, proper_name, match_key, match_type, updated_at')
         .eq('user_id', userId)
-        .eq('match_key', vendorKey)
-        .limit(1);
-      overrideRows = data;
+        .not('match_key', 'is', null)
+        .order('updated_at', { ascending: false })
+        .limit(20);
+      const allRows = data || [];
+      // Filter in-memory by match_type semantics. Most-recent-wins is
+      // already guaranteed by the ORDER BY + LIMIT 20 + first-match in loop.
+      overrideRows = allRows.filter((row: any) => {
+        const mk = (row.match_key || '').toLowerCase();
+        if (!mk) return false;
+        const mt = row.match_type || 'exact';
+        if (mt === 'exact') return vendorKey === mk;
+        if (mt === 'prefix') return vendorKey.startsWith(mk);
+        if (mt === 'contains') return vendorKey.includes(mk);
+        return false;
+      }).slice(0, 1);
     }
 
     // 2) proper_name ilike fallback
@@ -1162,12 +1201,14 @@ async function processNotificationWithAIImpl(
         .select('category_id, proper_name, match_key')
         .eq('user_id', userId)
         .ilike('proper_name', vendor)
+        .order('updated_at', { ascending: false })
         .limit(1);
       overrideRows = data;
     }
 
     if (overrideRows && overrideRows.length > 0) {
-      const overrideBudgetName = overrideRows[0].category_id as string; // e.g. 'Groceries'
+      const row = overrideRows[0];
+      const overrideBudgetName = row.category_id as string; // e.g. 'Groceries'
       const overrideCat = availableCategories.find(
         (c) => c.name.toLowerCase() === (overrideBudgetName || '').toLowerCase(),
       );
@@ -1175,10 +1216,10 @@ async function processNotificationWithAIImpl(
         categoryId = overrideCat.id;
         categoryName = overrideCat.name;
         // Use the stored proper_name as the display vendor if available
-        if (overrideRows[0].proper_name) {
-          displayVendor = overrideRows[0].proper_name;
+        if (row.proper_name) {
+          displayVendor = row.proper_name;
         }
-        console.log(`[AI pipeline] overrides match: ${vendor} → ${categoryName}`);
+        console.log(`[AI pipeline] overrides match: ${vendor} → ${categoryName} (match_type=${row.match_type || 'exact'})`);
       }
     }
   }
@@ -1319,6 +1360,11 @@ async function processNotificationWithAIImpl(
       source: 'notification',
       recur: parsed.recurrence,
       is_projected: false,
+      // Store the original raw notification text so the <> page reviewer
+      // can show "what did the parser see?" — and the user can correct
+      // the vendor from the source. Truncate to 4KB to avoid hitting
+      // any text column limits.
+      raw_notification: (input.rawNotification || '').slice(0, 4000),
     });
 
   if (txError) {

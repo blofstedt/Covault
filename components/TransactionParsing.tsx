@@ -7,6 +7,9 @@ import AITransactionsEnteredCard from './transaction_parsing/AITransactionsEnter
 import SetupInfoCard from './transaction_parsing/SetupInfoCard';
 import ClearConfirmModal from './transaction_parsing/ClearConfirmModal';
 import PageShell from './ui/PageShell';
+import LearnedRulesCard from './transaction_parsing/LearnedRulesCard';
+import { useNotificationRules } from './transaction_parsing/useNotificationRules';
+import type { NotATxRuleType } from './transaction_parsing/NotATransactionModal';
 
 import { covaultNotification } from '../lib/covaultNotification';
 import { REST_BASE, getAuthHeaders } from '../lib/apiHelpers';
@@ -34,6 +37,14 @@ interface TransactionParsingProps {
   onDeleteTransaction?: (id: string) => void;
   /** Called when a transaction is mutated locally (e.g. soft-dup dismissed). */
   onTransactionUpdated?: (tx: Transaction) => void;
+  /** Update a transaction (full record, persisted). Used by the inline
+   *  vendor rename in the Caught Transactions list. The handler also
+   *  writes the vendor correction to the overrides table. */
+  onUpdateTransaction?: (tx: Transaction) => void;
+  /** Currently-loaded vendor overrides, used by the Learned Rules card. */
+  vendorOverrides?: import('./transaction_parsing/useVendorOverrides').VendorOverride[];
+  /** Delete a vendor override. */
+  onDeleteVendorOverride?: (overrideId: string) => void;
 }
 
 const TransactionParsing: React.FC<TransactionParsingProps> = ({
@@ -50,6 +61,9 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   onReloadTransactions,
   onClearEntered,
   onDeleteTransaction,
+  onUpdateTransaction,
+  vendorOverrides = [],
+  onDeleteVendorOverride,
 }) => {
   // ── Clear modal state ──
   const [clearTarget, setClearTarget] = useState<'entered' | null>(null);
@@ -103,6 +117,59 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   const aiTransactions = useMemo(
     () => allTransactions.filter((tx) => tx.label === 'Automatic' && !tx.caught_cleared),
     [allTransactions],
+  );
+
+  // ── Notification rules hook (skip patterns the user has trained) ──
+  const { create: createNotificationRule } = useNotificationRules({ userId });
+
+  // ── Inline vendor rename ──
+  // Persists via the existing onUpdateTransaction path. The handler in
+  // useTransactionOps already writes the vendor correction to the
+  // overrides table (with match_type='exact' for inline renames; the
+  // user can later change match_type via the VendorCategoryRulesCard).
+  const handleVendorRenamed = useCallback(
+    async (tx: Transaction, newVendor: string) => {
+      if (!onUpdateTransaction) return;
+      const updated: Transaction = { ...tx, vendor: newVendor };
+      onUpdateTransaction(updated);
+    },
+    [onUpdateTransaction],
+  );
+
+  // ── "Not a transaction" flow ──
+  // Creates a notification_rule (so future matches are skipped) and
+  // deletes the row. Both ops are independent; if one fails the other
+  // still runs and we log a warning.
+  const handleMarkNotTransaction = useCallback(
+    async (tx: Transaction, ruleType: NotATxRuleType) => {
+      if (!userId) return;
+      if (tx.raw_notification && tx.raw_notification.trim()) {
+        try {
+          await createNotificationRule({
+            pattern: tx.raw_notification.trim(),
+            pattern_type: ruleType,
+          });
+        } catch (err) {
+          console.warn('[TransactionParsing] failed to create skip rule:', err);
+        }
+      }
+      if (onDeleteTransaction) {
+        await onDeleteTransaction(tx.id);
+      }
+    },
+    [userId, createNotificationRule, onDeleteTransaction],
+  );
+
+  // Default no-op for vendor override deletion when not provided
+  const handleDeleteVendorOverride = useCallback(
+    (overrideId: string) => {
+      if (onDeleteVendorOverride) {
+        onDeleteVendorOverride(overrideId);
+      } else {
+        console.warn('[TransactionParsing] onDeleteVendorOverride not provided; cannot delete', overrideId);
+      }
+    },
+    [onDeleteVendorOverride],
   );
 
   // When notifications are enabled, trigger a scan and reload data
@@ -240,7 +307,17 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               isRefreshing={isRefreshing}
               needsReviewIds={needsReviewIds}
               onDeleteTransaction={onDeleteTransaction}
+              onVendorRenamed={handleVendorRenamed}
+              onMarkNotTransaction={handleMarkNotTransaction}
             />
+
+            <div className="shrink-0 mt-4">
+              <LearnedRulesCard
+                userId={userId}
+                vendorOverrides={vendorOverrides}
+                onDeleteVendorOverride={handleDeleteVendorOverride}
+              />
+            </div>
           </>
         ) : (
           <SetupInfoCard enabled={enabled} onToggle={onToggle} />

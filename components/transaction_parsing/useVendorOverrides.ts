@@ -3,12 +3,24 @@ import { REST_BASE, getAuthHeaders } from '../../lib/apiHelpers';
 import { BudgetCategory } from '../../types';
 import { toVendorKey } from '../../lib/deviceTransactionParser';
 
+export type MatchType = 'exact' | 'prefix' | 'contains';
+
 export interface VendorOverride {
   id: string;
   /** Display name for the vendor (user-editable, e.g. 'Amazon') */
   proper_name: string;
   /** Normalized raw vendor key for matching incoming transactions (e.g. 'amznmktpca') */
   match_key?: string;
+  /**
+   * How the parser matches future notifications to this override:
+   *   - exact    : match_key equals the normalized incoming vendor
+   *   - prefix   : incoming normalized vendor starts with match_key
+   *   - contains : incoming normalized vendor contains match_key
+   * Default 'exact'. Legacy rows (pre-migration) are backfilled to 'exact'.
+   */
+  match_type?: MatchType;
+  /** Most recent update time (ISO). Used for "most recent wins" sorting. */
+  updated_at?: string | null;
   /** Budget in app format: 'budget:groceries' (converted from DB's Budgets enum) */
   category_id: string;
   /** Human-readable category name resolved from category_id (not in DB) */
@@ -47,6 +59,10 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
         id: row.id,
         proper_name: row.proper_name,
         match_key: row.match_key || undefined,
+        match_type: (row.match_type === 'prefix' || row.match_type === 'contains')
+          ? row.match_type
+          : 'exact',
+        updated_at: row.updated_at || undefined,
         category_id: row.category_id ? `budget:${(row.category_id as string).toLowerCase()}` : '',
         category_name: row.category_id || undefined,
       }));

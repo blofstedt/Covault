@@ -6,6 +6,7 @@ import TransactionParsing from './TransactionParsing';
 import TransactionActionModal from './TransactionActionModal';
 import TransactionForm from './TransactionForm';
 import PremiumGate from './PremiumGate';
+import { useVendorOverrides } from './transaction_parsing/useVendorOverrides';
 
 import DashboardBalanceSection from './dashboard_components/DashboardBalanceSection';
 import DashboardBudgetSectionsList from './dashboard_components/DashboardBudgetSectionsList';
@@ -78,6 +79,12 @@ const Dashboard: React.FC<Props> = ({
   const budgetRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const normalizedTransactions = useNormalizedTransactions(state.transactions, state.budgets);
+
+  // ── Vendor overrides (for the <VendorCategoryRulesCard> + <LearnedRulesCard>) ──
+  const {
+    vendorOverrides,
+    handleDeleteVendorOverride,
+  } = useVendorOverrides({ userId: state.user?.id, budgets: state.budgets });
 
   const { currentMonthTransactions, projectedTransactions, remainingMoney } = useDashboardTotals(
     normalizedTransactions,
@@ -338,9 +345,12 @@ const Dashboard: React.FC<Props> = ({
           onTransactionTap={setSelectedTx}
           budgets={state.budgets}
           onDeleteTransaction={onDeleteTransaction}
+          onUpdateTransaction={onUpdateTransaction}
           userId={state.user?.id}
           onRefreshNotifications={onRefreshNotifications}
           onReloadTransactions={onReloadTransactions}
+          vendorOverrides={vendorOverrides}
+          onDeleteVendorOverride={handleDeleteVendorOverride}
         />
 
         {selectedTx && (

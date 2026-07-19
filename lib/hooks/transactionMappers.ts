@@ -176,6 +176,10 @@ export const useFromSupabaseTransaction = () =>
       // matchRefundsToExpenses legacy fallback in BudgetSection still
       // handles those via the old negative-amount pattern.
       refunded: row.refunded === true,
+      // Raw notification text (set by the notification pipeline at insert
+      // time). Powers the "<>" page reviewer's "View original" expander.
+      // Null for legacy rows and rows created manually via the form.
+      raw_notification: row.raw_notification ?? null,
       userName: row.user_name || '',
       created_at: row.created_at,
       // Read the source column if the migration has been applied. Falls

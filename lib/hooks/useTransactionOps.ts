@@ -261,6 +261,8 @@ export const useTransactionOps = ({
                 category_id: budgetName,
                 proper_name: newVendorName,
                 match_key: vendorKey,
+                match_type: 'exact',
+                updated_at: new Date().toISOString(),
               };
               if (isAIVendorRename) overridePayload.proper_name = newVendorName;
 
@@ -291,7 +293,7 @@ export const useTransactionOps = ({
                 await fetch(`${REST_BASE}/overrides`, {
                   method: 'POST',
                   headers: insertHeaders,
-                  body: JSON.stringify({ user_id: appState.user.id, proper_name: newVendorName, match_key: vendorKey, category_id: budgetName }),
+                  body: JSON.stringify({ user_id: appState.user.id, proper_name: newVendorName, match_key: vendorKey, match_type: 'exact', category_id: budgetName, updated_at: new Date().toISOString() }),
                 });
               }
               console.log('[update] override saved:', newVendorName, '→', budgetName, '(match_key:', vendorKey, ')');
@@ -499,6 +501,8 @@ export const useTransactionOps = ({
             category_id: approvedBudgetName,
             proper_name: vendorDisplay,
             match_key: vendorKey,
+            match_type: 'exact',
+            updated_at: new Date().toISOString(),
           };
 
           // Try match_key first (survives name variants)
@@ -527,7 +531,7 @@ export const useTransactionOps = ({
             await fetch(`${REST_BASE}/overrides`, {
               method: 'POST',
               headers: insertHeaders,
-              body: JSON.stringify({ user_id: userId, proper_name: vendorDisplay, match_key: vendorKey, category_id: approvedBudgetName }),
+              body: JSON.stringify({ user_id: userId, proper_name: vendorDisplay, match_key: vendorKey, match_type: 'exact', category_id: approvedBudgetName, updated_at: new Date().toISOString() }),
             });
           }
           console.log('[approvePending] override saved for', vendorDisplay, '→', approvedBudgetName, '(match_key:', vendorKey, ')');
