@@ -10,6 +10,8 @@ interface LearnedRulesCardProps {
   vendorOverrides: VendorOverride[];
   /** Delete a vendor override. */
   onDeleteVendorOverride: (overrideId: string) => void;
+  isExpanded?: boolean;
+  onToggleExpanded?: () => void;
 }
 
 /**
@@ -30,9 +32,10 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
   userId,
   vendorOverrides,
   onDeleteVendorOverride,
+  isExpanded = true,
+  onToggleExpanded,
 }) => {
   const { rules, loading, remove } = useNotificationRules({ userId });
-  const [expanded, setExpanded] = useState(true);
   const [removingId, setRemovingId] = useState<string | null>(null);
 
   const totalRules = vendorOverrides.length + rules.length;
@@ -77,27 +80,11 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
       title="Learned Rules"
       subtitle="What Covault has learned from your corrections"
       count={totalRules}
-      headerAction={
-        <button
-          onClick={() => setExpanded((v) => !v)}
-          className="p-1.5 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-colors"
-          aria-label={expanded ? 'Collapse' : 'Expand'}
-        >
-          <svg
-            className={`w-4 h-4 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <polyline points="18 15 12 9 6 15" />
-          </svg>
-        </button>
-      }
+      collapsible
+      isExpanded={isExpanded}
+      onToggleExpanded={onToggleExpanded}
     >
-      {expanded && (
+      {isExpanded && (
         <div className="space-y-3">
           {/* ── Vendor corrections ── */}
           {vendorOverrides.length > 0 && (

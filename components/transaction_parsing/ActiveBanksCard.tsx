@@ -5,6 +5,8 @@ import { EmptyState } from '../shared';
 interface ActiveBanksCardProps {
   /** Map of bank app ID → bank display name */
   activeBanks: Map<string, string>;
+  isExpanded?: boolean;
+  onToggleExpanded?: () => void;
 }
 
 /**
@@ -13,6 +15,8 @@ interface ActiveBanksCardProps {
  */
 const ActiveBanksCard: React.FC<ActiveBanksCardProps> = ({
   activeBanks,
+  isExpanded = true,
+  onToggleExpanded,
 }) => {
   const banks = Array.from(activeBanks.entries());
 
@@ -29,6 +33,9 @@ const ActiveBanksCard: React.FC<ActiveBanksCardProps> = ({
       title="Banking Apps"
       subtitle="Covault AI is monitoring these apps for transactions"
       count={banks.length}
+      collapsible
+      isExpanded={isExpanded}
+      onToggleExpanded={onToggleExpanded}
     >
       {banks.length > 0 ? (
         <div className="flex flex-wrap gap-2">

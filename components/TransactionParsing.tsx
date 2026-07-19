@@ -69,6 +69,20 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
 }) => {
   // ── Clear modal state ──
   const [clearTarget, setClearTarget] = useState<'entered' | null>(null);
+  const [expandedSections, setExpandedSections] = useState({
+    activeBanks: false,
+    caughtTransactions: true,
+    learnedRules: false,
+    vendorRules: false,
+  });
+
+  const toggleSection = useCallback((section: keyof typeof expandedSections) => {
+    setExpandedSections((current) => ({
+      ...current,
+      [section]: !current[section],
+    }));
+  }, []);
+
 
   // ── Refresh spinner state ──
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -431,12 +445,17 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       </header>
 
       {/* Main content — single flex container (no extra wrapper) */}
-      <main className="flex-1 min-h-0 flex flex-col p-4 pb-0 max-w-2xl mx-auto w-full relative z-10">
+      <main
+        className="flex-1 min-h-0 overflow-y-auto no-scrollbar p-4 pb-0 max-w-2xl mx-auto w-full relative z-10"
+        style={{ WebkitOverflowScrolling: 'touch' }}
+      >
         {enabled ? (
           <>
             <div className="shrink-0 mb-4">
               <ActiveBanksCard
                 activeBanks={monitoredBanks}
+                isExpanded={expandedSections.activeBanks}
+                onToggleExpanded={() => toggleSection('activeBanks')}
               />
             </div>
 
@@ -452,6 +471,8 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               onVendorRenamed={handleVendorRenamed}
               onMarkNotTransaction={handleMarkNotTransaction}
               userId={userId}
+              isExpanded={expandedSections.caughtTransactions}
+              onToggleExpanded={() => toggleSection('caughtTransactions')}
             />
 
             <div className="shrink-0 mt-4">
@@ -459,6 +480,8 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                 userId={userId}
                 vendorOverrides={vendorOverrides}
                 onDeleteVendorOverride={handleDeleteVendorOverride}
+                isExpanded={expandedSections.learnedRules}
+                onToggleExpanded={() => toggleSection('learnedRules')}
               />
             </div>
 
@@ -475,6 +498,8 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                   onDeleteVendorOverride={handleDeleteVendorOverride}
                   onSetProperName={handleSetProperName}
                   onSetMatchType={handleSetMatchType}
+                  isExpanded={expandedSections.vendorRules}
+                  onToggleExpanded={() => toggleSection('vendorRules')}
                 />
               </div>
             )}
