@@ -9,7 +9,7 @@
 --   1. Add the column with default false.
 --   2. Backfill: any expense that already has a matching
 --      negative-amount refund (same user, same vendor, same
---      |amount|, same budget, within 30 days) is marked
+--      |amount|, same budget, within 60 days) is marked
 --      refunded=true. The original negative-amount row is
 --      left in place for now (it's still hidden from the UI
 --      by BudgetSection and contributes correctly to totals
@@ -21,10 +21,15 @@ ALTER TABLE public.transactions
   ADD COLUMN IF NOT EXISTS refunded boolean NOT NULL DEFAULT false;
 
 -- 2. Backfill: existing matched pairs
--- For each negative-amount, non-income, non-projected transaction R,
--- find the closest positive-amount expense E (same user, same vendor,
--- same |amount|, same budget, within 30 days) and mark E refunded=true.
--- We only mark ONE expense per refund (closest by date).
+-- For each negative-amount, non-projected transaction R (legacy refunds
+-- that the old pipeline stored as separate negative rows), find the
+-- closest positive-amount expense E (same user, same vendor, same
+-- |amount|, same budget, within 60 days) and mark E refunded=true.
+-- We only mark ONE expense per refund (closest by date). The negative
+-- refund row itself is left in place for now — the BudgetSection
+-- already hides it from the list, and the new logic in step 2b (in
+-- notificationProcessor.ts) prevents new ones from being inserted.
+-- 60 days matches the REFUND_MATCH_WINDOW_DAYS in lib/refundMatching.ts.
 WITH refund_candidates AS (
   SELECT
     r.id AS refund_id,
@@ -35,7 +40,6 @@ WITH refund_candidates AS (
     r.date AS refund_date
   FROM public.transactions r
   WHERE r.amount < 0
-    AND COALESCE(r.is_income, false) = false
     AND r.is_projected = false
 ),
 best_match AS (
@@ -53,7 +57,7 @@ best_match AS (
     AND COALESCE(e.refunded, false) = false
     AND ABS(
       (EXTRACT(EPOCH FROM (e.date::timestamp - rc.refund_date::timestamp)) / 86400)
-    ) <= 30
+    ) <= 60
   ORDER BY rc.refund_id, ABS(
     (EXTRACT(EPOCH FROM (e.date::timestamp - rc.refund_date::timestamp)) / 86400)
   ) ASC
