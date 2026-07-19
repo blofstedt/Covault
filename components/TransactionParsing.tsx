@@ -47,6 +47,12 @@ interface TransactionParsingProps {
   vendorOverrides?: import('./transaction_parsing/useVendorOverrides').VendorOverride[];
   /** Delete a vendor override. */
   onDeleteVendorOverride?: (overrideId: string) => void;
+  /** Persist and update local state for a vendor category rule. */
+  onSetVendorCategory?: (vendorName: string, categoryId: string) => void | Promise<void>;
+  /** Persist and update local state for a vendor display name. */
+  onSetProperName?: (vendorName: string, properName: string) => void | Promise<void>;
+  /** Persist and update local state for a vendor match type. */
+  onSetMatchType?: (vendorName: string, matchType: 'exact' | 'prefix' | 'contains') => void | Promise<void>;
 }
 
 const TransactionParsing: React.FC<TransactionParsingProps> = ({
@@ -66,6 +72,9 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   onUpdateTransaction,
   vendorOverrides = [],
   onDeleteVendorOverride,
+  onSetVendorCategory,
+  onSetProperName,
+  onSetMatchType,
 }) => {
   // ── Clear modal state ──
   const [clearTarget, setClearTarget] = useState<'entered' | null>(null);
@@ -220,12 +229,14 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   // Local state for the expanded vendor (managed here so the card stays presentational)
   const [expandedVendorCategory, setExpandedVendorCategory] = useState<string | null>(null);
 
-  // ── Set or update a vendor's category (in addition to the existing write path) ──
-  // The Dashboard's `useVendorOverrides.handleSetVendorCategory` is the
-  // canonical writer — but TransactionParsing doesn't currently get a
-  // handle to it. For now we write directly to the overrides table here.
+  // ── Fallback direct write path for hosts that have not wired the canonical hook. ──
   const handleSetVendorCategory = useCallback(
     async (vendorName: string, categoryId: string) => {
+      if (onSetVendorCategory) {
+        await onSetVendorCategory(vendorName, categoryId);
+        setExpandedVendorCategory(null);
+        return;
+      }
       if (!userId) return;
       const category = budgets.find((b) => b.id === categoryId);
       if (!category) return;
@@ -277,11 +288,15 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       }
       setExpandedVendorCategory(null);
     },
-    [userId, budgets],
+    [userId, budgets, onSetVendorCategory],
   );
 
   const handleSetProperName = useCallback(
     async (vendorName: string, properName: string) => {
+      if (onSetProperName) {
+        await onSetProperName(vendorName, properName);
+        return;
+      }
       if (!userId) return;
       try {
         const headers = await getAuthHeaders();
@@ -301,11 +316,15 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         console.warn('[TransactionParsing] handleSetProperName failed:', err);
       }
     },
-    [userId],
+    [userId, onSetProperName],
   );
 
   const handleSetMatchType = useCallback(
     async (vendorName: string, matchType: 'exact' | 'prefix' | 'contains') => {
+      if (onSetMatchType) {
+        await onSetMatchType(vendorName, matchType);
+        return;
+      }
       if (!userId) return;
       try {
         const headers = await getAuthHeaders();
@@ -325,7 +344,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         console.warn('[TransactionParsing] handleSetMatchType failed:', err);
       }
     },
-    [userId],
+    [userId, onSetMatchType],
   );
 
   // When notifications are enabled, trigger a scan and reload data
