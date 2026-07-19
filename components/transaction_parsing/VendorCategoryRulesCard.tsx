@@ -16,6 +16,8 @@ interface VendorCategoryRulesCardProps {
   onSetProperName: (vendorName: string, properName: string) => void;
   /** Optional: change the match_type (exact/prefix/contains) of an existing rule. */
   onSetMatchType?: (vendorName: string, matchType: MatchType) => void;
+  isExpanded?: boolean;
+  onToggleExpanded?: () => void;
 }
 
 const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
@@ -29,6 +31,8 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
   onDeleteVendorOverride,
   onSetProperName,
   onSetMatchType,
+  isExpanded = true,
+  onToggleExpanded,
 }) => {
   const [editingProperName, setEditingProperName] = useState<string | null>(null);
   const [properNameDraft, setProperNameDraft] = useState('');
@@ -43,6 +47,9 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
       title="Vendor Category Rules"
       subtitle="Toggle each vendor on to auto-approve transactions from that vendor"
       count={allVendors.length}
+      collapsible
+      isExpanded={isExpanded}
+      onToggleExpanded={onToggleExpanded}
     >
       <div className="space-y-2">
         {allVendors.map((vendorName) => {

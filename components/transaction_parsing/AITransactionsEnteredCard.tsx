@@ -26,6 +26,8 @@ interface AITransactionsEnteredCardProps {
   onMarkNotTransaction?: (tx: Transaction, ruleType: NotATxRuleType) => Promise<void> | void;
   /** User id, used for the backfill count/apply. */
   userId?: string;
+  isExpanded?: boolean;
+  onToggleExpanded?: () => void;
 }
 
 const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
@@ -40,12 +42,17 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
   onVendorRenamed,
   onMarkNotTransaction,
   userId,
+  isExpanded = true,
+  onToggleExpanded,
 }) => {
   return (
     <ParsingCard
       id="parsing-ai-entered"
       colorScheme="emerald"
-      className="flex-1 min-h-0 flex flex-col overflow-hidden"
+      className="shrink-0"
+      collapsible
+      isExpanded={isExpanded}
+      onToggleExpanded={onToggleExpanded}
       icon={<><path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></>}
       title="Caught Transactions"
       subtitle="AI-processed transactions added to your budgets"
@@ -97,7 +104,7 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
     >
       {aiTransactions.length > 0 ? (
         <div
-          className="flex-1 min-h-0 overflow-y-auto no-scrollbar space-y-2 pr-1 pb-2"
+          className="space-y-2 pr-1 pb-2"
           style={{
             WebkitOverflowScrolling: 'touch',
             overscrollBehavior: 'contain',
@@ -123,7 +130,7 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
             ))}
         </div>
       ) : (
-        <div className="flex-1 min-h-0 flex items-center justify-center">
+        <div className="flex items-center justify-center">
           <EmptyState
             icon={
               <svg className="w-6 h-6 text-slate-300 dark:text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
