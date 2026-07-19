@@ -54,10 +54,6 @@ function stepForward(d: Date, recurrence: string): Date {
  */
 const MAX_BACKFILL_MONTHS = 2;
 
-function monthsBetween(a: Date, b: Date): number {
-  return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
-}
-
 /**
  * Build the full list of due dates for a recurring transaction from its
  * base date up to (and including) `today`. Returns an empty array if

@@ -55,10 +55,15 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [hoveredMonthIdx, setHoveredMonthIdx] = useState<number | null>(null);
-  const [mouseCoords, setMouseCoords] = useState<{ x: number; y: number } | null>(null);
+  // mouseCoords / chartWidth / chartHeight: setters are called from
+  // resize and pointer handlers but the values are never read. The
+  // setters are kept (so the handler code stays as-is) but the
+  // state slots are intentionally discarded to mark them as
+  // planned-but-unused. Safe to fully remove if confirmed dead.
+  const [, setMouseCoords] = useState<{ x: number; y: number } | null>(null);
   const [screenCoords, setScreenCoords] = useState<{ x: number; y: number } | null>(null);
-  const [chartWidth, setChartWidth] = useState(0);
-  const [chartHeight, setChartHeight] = useState(0);
+  const [, setChartWidth] = useState(0);
+  const [, setChartHeight] = useState(0);
   // Refs to store chart internals for morph animation
   const chartInternalsRef = useRef<{
     stackedData: d3.Series<MonthlyBudgetData, string>[];
@@ -277,12 +282,9 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         .attr('stroke-width', 1);
     });
 
-    const area = d3
-      .area<d3.SeriesPoint<MonthlyBudgetData>>()
-      .x((d) => x(d.data.month) || 0)
-      .y0((d) => y(d[0]))
-      .y1((d) => y(d[1]))
-      .curve(d3.curveCatmullRom.alpha(0.5));
+    // area (d3.area<...>()) was a stacked-area generator built here
+    // but never invoked — the actual drawing uses makeExtendedArea
+    // defined above. Removed; restore if a future render path needs it.
 
     // Draw stacked area bands with highlight strokes
     const layerGroup = svg.selectAll('.bfc-layer').data(stackedData).enter().append('g').attr('class', 'bfc-layer');

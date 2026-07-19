@@ -1,9 +1,8 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Transaction, BudgetCategory } from '../../types';
 import { getBudgetIcon } from '../dashboard_components/getBudgetIcon';
 import { parseLocalDate } from '../../lib/dateUtils';
 import { isSoftDupDismissed, markSoftDupDismissed } from '../../lib/localNotificationMemory';
-import { isRefund } from '../../lib/refundMatching';
 import SoftDuplicateBadge from './SoftDuplicateBadge';
 import RawNotificationExpander from './RawNotificationExpander';
 import InlineVendorEdit from './InlineVendorEdit';

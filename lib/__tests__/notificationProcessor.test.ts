@@ -91,7 +91,6 @@ const mockSupabaseChain = () => {
   return chain;
 };
 
-let currentTable = '';
 const tableChains: Record<string, ReturnType<typeof mockSupabaseChain>> = {};
 
 function getChain(table: string) {
@@ -102,7 +101,6 @@ function getChain(table: string) {
 vi.mock('../supabase', () => ({
   supabase: {
     from: vi.fn((table: string) => {
-      currentTable = table;
       return getChain(table);
     }),
     auth: { getSession: vi.fn().mockResolvedValue({ data: { session: { access_token: 'test-token' } } }) },
@@ -120,7 +118,7 @@ vi.mock('../apiHelpers', () => ({
   }),
 }));
 
-import { processNotificationWithAI, checkDuplicateTransaction, vendorMatches, _clearDedupCacheForTesting } from '../notificationProcessor';
+import { processNotificationWithAI, vendorMatches, _clearDedupCacheForTesting } from '../notificationProcessor';
 import { extractWithAI } from '../aiExtractor';
 import type { NotificationInput } from '../notificationProcessor';
 

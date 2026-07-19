@@ -21,8 +21,6 @@ import { preloadAIModel } from './lib/aiExtractor';
 const SETTINGS_KEY = 'covault_settings';
 const SCAN_PROCESSING_DELAY_MS = 2000;
 const SCAN_INTERVAL_MS = 5 * 60 * 1000;
-const SCAN_INTERVAL_S = SCAN_INTERVAL_MS / 1000;
-
 const DEFAULT_SETTINGS = {
   rolloverEnabled: true,
   rolloverOverspend: false,
@@ -58,8 +56,12 @@ const saveSettingsToStorage = (settings: AppState['settings']) => {
 
 const App: React.FC = () => {
   const [authState, setAuthState] = useState<AuthStatus>('loading');
-  const [dbError, setDbError] = useState<string | null>(null);
-  const [isLoadingData, setIsLoadingData] = useState(false);
+  // dbError + isLoadingData: only the setters are consumed (useUserData
+  // and the loadUserDataWithState wrapper need them). The values
+  // themselves are never read in this file, so we discard via the
+  // empty-pattern destructure to make the intent explicit.
+  const [, setDbError] = useState<string | null>(null);
+  const [, setIsLoadingData] = useState(false);
 
   const [appState, setAppState] = useState<AppState>(() => {
     const savedSettings = loadSettingsFromStorage();
@@ -73,19 +75,12 @@ const App: React.FC = () => {
 
   const {
     loadUserData,
-    loadPendingTransactions,
     loadTransactions,
     handleAddTransaction,
     handleUpdateTransaction,
     handleDeleteTransaction,
     handleLinkPartner,
     handleUnlinkPartner,
-    handleGenerateLinkCode,
-    handleJoinWithCode,
-    handleApprovePendingTransaction,
-    handleRejectPendingTransaction,
-    handleClearFilteredNotifications,
-    handleClearApprovedTransactions,
     saveBudgetLimit,
     saveUserIncome,
     saveTheme,
@@ -179,8 +174,6 @@ const App: React.FC = () => {
     onAIProcessingResult: handleAIProcessingResult,
   });
 
-  const [secondsUntilNextScan, setSecondsUntilNextScan] = useState<number | null>(null);
-
   const refreshMonitoredAppsAndScan = useCallback(async () => {
     const bankingApps = await loadBankingAppsFromDB();
     await autoDetectAndSaveMonitoredApps(bankingApps);
@@ -192,7 +185,6 @@ const App: React.FC = () => {
   const refreshNotifications = useCallback(async () => {
     if (!Capacitor.isNativePlatform()) return; // Safety check
     await refreshMonitoredAppsAndScan();
-    setSecondsUntilNextScan(SCAN_INTERVAL_S);
   }, [refreshMonitoredAppsAndScan]);
 
   // Run a detection + scan pass on app start so pre-existing notifications
@@ -227,11 +219,8 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!appState.settings.notificationsEnabled || !covaultNotification || !Capacitor.isNativePlatform()) {
-      setSecondsUntilNextScan(null);
       return;
     }
-
-    setSecondsUntilNextScan(SCAN_INTERVAL_S);
 
     // Immediately process existing notifications when parsing is already enabled.
     refreshMonitoredAppsAndScan().catch(e => {
@@ -244,16 +233,10 @@ const App: React.FC = () => {
       } catch (e) {
         console.warn('[periodic scan] Error:', e);
       }
-      setSecondsUntilNextScan(SCAN_INTERVAL_S);
     }, SCAN_INTERVAL_MS);
-
-    const tickId = setInterval(() => {
-      setSecondsUntilNextScan(prev => (prev !== null && prev > 0 ? prev - 1 : prev));
-    }, 1000);
 
     return () => {
       clearInterval(intervalId);
-      clearInterval(tickId);
     };
   }, [appState.settings.notificationsEnabled, refreshMonitoredAppsAndScan]);
 

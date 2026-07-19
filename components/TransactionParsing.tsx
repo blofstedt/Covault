@@ -101,7 +101,10 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   }, [enabled, loadMonitoredBanks]);
 
 
-  const [needsReviewCount, setNeedsReviewCount] = useState(0);
+  // needsReviewCount: legacy state value used to be displayed in the
+  // DashboardBottomBar badge. The list of IDs (needsReviewIds) is the
+  // live source of truth; the count is computed lazily when needed.
+  const [, setNeedsReviewCount] = useState(0);
   const [needsReviewIds, setNeedsReviewIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {

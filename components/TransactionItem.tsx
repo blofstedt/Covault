@@ -24,7 +24,6 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
   onTap,
   currentUserName,
   isSharedView,
-  currentBudgetId,
   budgets,
   showBudgetIcon = false,
   isRefunded = false,

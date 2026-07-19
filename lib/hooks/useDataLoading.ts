@@ -2,7 +2,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { SYSTEM_CATEGORIES } from '../../constants';
 import type { BudgetCategory, Transaction, PendingTransaction } from '../../types';
-import { REST_BASE, getAuthHeaders, DEFAULT_BUDGET_LIMIT, DEFAULT_MONTHLY_INCOME } from '../apiHelpers';
+import { REST_BASE, getAuthHeaders, DEFAULT_MONTHLY_INCOME } from '../apiHelpers';
 import { useFromSupabaseTransaction } from './transactionMappers';
 import { deduplicatePendingTransactions } from '../notificationProcessor';
 import type { UseUserDataParams } from './types';
@@ -369,7 +369,7 @@ export const useDataLoading = ({
         const data: PendingTransaction[] = JSON.parse(await res.text());
         if (data && data.length > 0) {
           // Second-phase dedup: remove any duplicates that slipped through
-          const deduped = await deduplicatePendingTransactions(userId, data);
+          const deduped = await deduplicatePendingTransactions(data);
           console.log('[loadPendingTransactions] OK, count:', deduped.length);
           setAppState(prev => ({ ...prev, pendingTransactions: deduped }));
         } else {

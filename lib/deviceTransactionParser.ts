@@ -405,37 +405,6 @@ function titleCaseVendor(vendor: string): string {
     .join(' ');
 }
 
-/**
- * Extract the sender name from an income / e-Transfer notification.
- * Handles patterns like:
- *   "NEISHA WILLIAMS sent you $160.00"
- *   "You received $50 from JOHN SMITH"
- *   "e-Transfer from JANE DOE"
- */
-function extractIncomeSender(text: string): string | null {
-  const t = stripEmoji(text);
-
-  // Pattern I1: "SENDER sent you $X" / "SENDER has sent you"
-  const sentYouMatch = t.match(
-    /([A-Z][A-Za-z\u00C0-\u00FF]+(?: [A-Z][A-Za-z\u00C0-\u00FF]+){0,3})\s+(?:has\s+)?sent\s+you\b/i,
-  );
-  if (sentYouMatch) return sentYouMatch[1].trim();
-
-  // Pattern I2: "from SENDER" at end or before period/comma
-  const fromMatch = t.match(
-    /\bfrom\s+([A-Z][A-Za-z\u00C0-\u00FF]+(?: [A-Z][A-Za-z\u00C0-\u00FF]+){0,3})(?:\s*[.,]|\s*$)/i,
-  );
-  if (fromMatch) return fromMatch[1].trim();
-
-  // Pattern I3: "received from SENDER"
-  const receivedFromMatch = t.match(
-    /\breceived\s+from\s+([A-Z][A-Za-z\u00C0-\u00FF]+(?: [A-Z][A-Za-z\u00C0-\u00FF]+){0,3})/i,
-  );
-  if (receivedFromMatch) return receivedFromMatch[1].trim();
-
-  return null;
-}
-
 export function parseNotificationText(text: string): ParsedNotification {
   const t = text.trim();
   const tLower = collapseWhitespace(t.toLowerCase());

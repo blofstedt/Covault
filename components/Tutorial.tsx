@@ -27,7 +27,6 @@ const Tutorial: React.FC<TutorialProps> = ({
   onShowPlaceholderTransaction,
   onShowTransactionModal,
   onOpenTransactionForm,
-  firstBudgetId,
 }) => {
   const [step, setStep] = useState(0);
   const [showSkipConfirm, setShowSkipConfirm] = useState(false);
@@ -35,7 +34,6 @@ const Tutorial: React.FC<TutorialProps> = ({
   const requestRef = useRef<number | null>(null);
   const isActiveRef = useRef(true);
   const tooltipRef = useRef<HTMLDivElement>(null);
-  const [tooltipHeight, setTooltipHeight] = useState(0);
   const lastScrolledStep = useRef<number | null>(null);
   const [isAnimating, setIsAnimating] = useState(false);
   const animationCleanupRef = useRef<(() => void) | null>(null);
@@ -280,9 +278,11 @@ const Tutorial: React.FC<TutorialProps> = ({
 
 
   useEffect(() => {
-    if (tooltipRef.current) {
-      setTooltipHeight(tooltipRef.current.offsetHeight);
-    }
+    // Placeholder: was previously measuring the tooltip's height
+    // (`setTooltipHeight(tooltipRef.current.offsetHeight)`) for layout
+    // decisions. The measurement is no longer consumed; the effect
+    // is kept as a step-transition hook for any future per-step
+    // layout work. Safe to remove if no further wiring is planned.
   }, [step]);
 
   const updateTargetRect = () => {
@@ -403,7 +403,6 @@ const Tutorial: React.FC<TutorialProps> = ({
     transition: 'all 0.5s cubic-bezier(0.23, 1, 0.32, 1)',
   };
 
-  let tooltipOnBottom = false;
   if (targetRect) {
     const viewportHeight = window.innerHeight;
     const spaceAbove = targetRect.top;
@@ -411,10 +410,8 @@ const Tutorial: React.FC<TutorialProps> = ({
 
     if (spaceAbove > spaceBelow && spaceAbove > 320) {
       tooltipStyle.bottom = (viewportHeight - targetRect.top) + 40;
-      tooltipOnBottom = false;
     } else {
       tooltipStyle.top = targetRect.bottom + 40;
-      tooltipOnBottom = true;
     }
   } else {
     tooltipStyle.top = '50%';

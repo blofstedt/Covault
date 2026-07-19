@@ -16,7 +16,7 @@ import { formatVendorName, fuzzyVendorMatch, normalizeVendorForDedup } from './f
 import { parseNotificationText } from './deviceTransactionParser';
 import { addToReviewQueue, getVendorMapEntry, getVendorMap, isNotificationProcessed, markNotificationProcessed, getCachedAIResult, setCachedAIResult } from './localNotificationMemory';
 import { findMatchingExpense, REFUND_MATCH_WINDOW_DAYS } from './refundMatching';
-import { checkNotificationRules, bumpRuleUseCount, type NotificationRule } from './notificationRules';
+import { checkNotificationRules, bumpRuleUseCount } from './notificationRules';
 import { getLocalToday, parseLocalDate } from './dateUtils';
 import { extractWithAI } from './aiExtractor';
 import type { PendingTransaction } from '../types';
@@ -121,32 +121,6 @@ function buildInMemoryDedupKey(
     hash = ((hash << 5) + hash + rawNotification.charCodeAt(i)) >>> 0;
   }
   return `${bankAppId || '?'}|h${hash.toString(36)}`;
-}
-
-/**
- * Pull a short, stable identifier from the notification text for use in the
- * dedup key. Doesn't need to be a perfect vendor name — it just needs to be
- * stable across re-broadcasts of the SAME notification and distinct across
- * different notifications.
- */
-function extractVendorSlug(rawNotification: string): string {
-  // Try the common "VENDOR - You spent $X" pattern first (Wealthsimple etc.)
-  const dashVendor = rawNotification.match(/^([A-Za-z0-9&'./# -]{2,60}?)\s*[-\u2013\u2014]\s*(?:[Yy]ou\s+)?(?:spent|charged|paid|purchased)/);
-  if (dashVendor) {
-    return dashVendor[1].toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40);
-  }
-  // Try "VENDOR at/from/to $X" patterns
-  const prepositionVendor = rawNotification.match(/(?:at|from|to|@)\s+([A-Za-z0-9&'.-]{2,40}?)\s+(?:for|on|\$|USD|CAD|charged)/i);
-  if (prepositionVendor) {
-    return prepositionVendor[1].toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40);
-  }
-  // Fall back to a stable djb2 hash of the full text. Same notification text
-  // always hashes the same, so this still catches re-broadcasts.
-  let hash = 5381;
-  for (let i = 0; i < rawNotification.length; i++) {
-    hash = ((hash << 5) + hash + rawNotification.charCodeAt(i)) >>> 0;
-  }
-  return `h${hash.toString(36)}`;
 }
 
 /**
@@ -380,7 +354,6 @@ function amountTimestampDedupKey(pt: PendingTransaction): string {
  * Returns the deduplicated list of pending transactions.
  */
 export async function deduplicatePendingTransactions(
-  userId: string,
   pendingTransactions: PendingTransaction[],
 ): Promise<PendingTransaction[]> {
   if (pendingTransactions.length <= 1) return pendingTransactions;

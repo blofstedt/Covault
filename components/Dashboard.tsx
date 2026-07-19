@@ -94,19 +94,6 @@ const Dashboard: React.FC<Props> = ({
   const now = new Date();
   const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-  // Totals for savings goal bar
-  const totalSpent = useMemo(
-    () => currentMonthTransactions.reduce((s, t) => s + Math.abs(t.amount), 0),
-    [currentMonthTransactions],
-  );
-  const totalProjected = useMemo(
-    () =>
-      projectedTransactions
-        .filter((t) => typeof t.date === 'string' && t.date.slice(0, 7) === monthKey)
-        .reduce((s, t) => s + Math.abs(t.amount), 0),
-    [projectedTransactions, monthKey],
-  );
-
   const currentMonthBudgetTransactions = useMemo(() => {
     const currentMonthProjected = projectedTransactions.filter(
       (t) => typeof t.date === 'string' && getLocalMonthKey(t.date) === monthKey,
@@ -163,13 +150,6 @@ const Dashboard: React.FC<Props> = ({
     () => state.transactions.filter(tx => tx.label === 'Automatic' && !tx.caught_cleared).length,
     [state.transactions],
   );
-
-  const filteredTransactions = useMemo(() => {
-    if (!searchQuery) return normalizedTransactions;
-    const q = searchQuery.toLowerCase();
-    return normalizedTransactions.filter(t => t.vendor?.toLowerCase().includes(q));
-  }, [normalizedTransactions, searchQuery]);
-
 
   const pastTransactions = useMemo(
     () => normalizedTransactions.filter((t) => typeof t.date === 'string' && getLocalMonthKey(t.date) < monthKey),

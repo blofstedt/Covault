@@ -102,7 +102,6 @@ export async function checkAndTriggerAppNotifications({
   userId,
   budgets,
   transactions,
-  totalIncome,
   remainingMoney,
   settings,
 }: CheckArgs) {

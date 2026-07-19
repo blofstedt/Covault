@@ -9,7 +9,7 @@ interface MonthlyPulseCardProps {
 }
 
 const MonthlyPulseCard: React.FC<MonthlyPulseCardProps> = ({ budgets, transactions, theme = 'light' }) => {
-  const { totalSpent, totalLimit, remaining, topCategory, topCategorySpent, topColor } = useMemo(() => {
+  const { totalLimit, remaining, topCategory, topCategorySpent, topColor } = useMemo(() => {
     const spendByBudget = new Map<string, number>();
 
     for (const tx of transactions) {

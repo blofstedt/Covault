@@ -8,7 +8,12 @@ interface AuthProps {
   onSignIn: () => void;
 }
 
-const Auth: React.FC<AuthProps> = ({ onSignIn }) => {
+// onSignIn is part of the Auth component's public prop surface and is
+// passed by App.tsx. The component manages auth state internally
+// (Capacitor Browser flow) and signals the parent via onAuthStateChange
+// rather than calling onSignIn directly, so the prop is currently
+// unused inside the body but kept for API stability.
+const Auth: React.FC<AuthProps> = () => {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 

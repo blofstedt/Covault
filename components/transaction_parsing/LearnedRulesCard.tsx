@@ -1,6 +1,5 @@
 import React, { useState, useCallback } from 'react';
 import ParsingCard from '../ui/ParsingCard';
-import { EmptyState } from '../shared';
 import { useNotificationRules } from './useNotificationRules';
 import type { VendorOverride } from './useVendorOverrides';
 import type { MatchType } from './useVendorOverrides';

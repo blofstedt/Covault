@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 
 interface BackfillPreviewModalProps {
   /** The OLD vendor name (what we're replacing). */
