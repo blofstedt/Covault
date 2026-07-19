@@ -85,6 +85,7 @@ const mockSupabaseChain = () => {
   chain.neq = vi.fn().mockReturnValue(chain);
   chain.gt = vi.fn().mockReturnValue(chain);
   chain.lt = vi.fn().mockReturnValue(chain);
+  chain.not = vi.fn().mockReturnValue(chain);
   // Default: resolve with empty data
   chain.then = undefined; // prevent accidental thenification
   return chain;
@@ -180,9 +181,22 @@ describe('Net new notifications from bank apps', () => {
     // Make select resolve to empty data
     const mockSelectChain = {
       eq: vi.fn().mockReturnThis(),
+      neq: vi.fn().mockReturnThis(),
+      gt: vi.fn().mockReturnThis(),
       gte: vi.fn().mockReturnThis(),
+      lt: vi.fn().mockReturnThis(),
       lte: vi.fn().mockReturnThis(),
       ilike: vi.fn().mockReturnThis(),
+      is: vi.fn().mockReturnThis(),
+      in: vi.fn().mockReturnThis(),
+      not: vi.fn().mockReturnThis(),
+      or: vi.fn().mockReturnThis(),
+      match: vi.fn().mockReturnThis(),
+      filter: vi.fn().mockReturnThis(),
+      order: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      single: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockReturnThis(),
       then: (resolve: any) => resolve({ data: [], error: null }),
     };
     txChain.select = vi.fn().mockReturnValue(mockSelectChain);
@@ -195,8 +209,22 @@ describe('Net new notifications from bank apps', () => {
     const ptChain = getChain('pending_transactions');
     const mockPtSelectChain = {
       eq: vi.fn().mockReturnThis(),
+      neq: vi.fn().mockReturnThis(),
+      gt: vi.fn().mockReturnThis(),
       gte: vi.fn().mockReturnThis(),
+      lt: vi.fn().mockReturnThis(),
       lte: vi.fn().mockReturnThis(),
+      ilike: vi.fn().mockReturnThis(),
+      is: vi.fn().mockReturnThis(),
+      in: vi.fn().mockReturnThis(),
+      not: vi.fn().mockReturnThis(),
+      or: vi.fn().mockReturnThis(),
+      match: vi.fn().mockReturnThis(),
+      filter: vi.fn().mockReturnThis(),
+      order: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      single: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockReturnThis(),
       then: (resolve: any) => resolve({ data: [], error: null }),
     };
     ptChain.select = vi.fn().mockReturnValue(mockPtSelectChain);
@@ -605,9 +633,22 @@ describe('In-memory dedup cache prevents duplicate processing', () => {
     const txChain = getChain('transactions');
     const mockSelectChain = {
       eq: vi.fn().mockReturnThis(),
+      neq: vi.fn().mockReturnThis(),
+      gt: vi.fn().mockReturnThis(),
       gte: vi.fn().mockReturnThis(),
+      lt: vi.fn().mockReturnThis(),
       lte: vi.fn().mockReturnThis(),
       ilike: vi.fn().mockReturnThis(),
+      is: vi.fn().mockReturnThis(),
+      in: vi.fn().mockReturnThis(),
+      not: vi.fn().mockReturnThis(),
+      or: vi.fn().mockReturnThis(),
+      match: vi.fn().mockReturnThis(),
+      filter: vi.fn().mockReturnThis(),
+      order: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      single: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockReturnThis(),
       then: (resolve: any) => resolve({ data: [], error: null }),
     };
     txChain.select = vi.fn().mockReturnValue(mockSelectChain);
@@ -616,8 +657,22 @@ describe('In-memory dedup cache prevents duplicate processing', () => {
     const ptChain = getChain('pending_transactions');
     const mockPtSelectChain = {
       eq: vi.fn().mockReturnThis(),
+      neq: vi.fn().mockReturnThis(),
+      gt: vi.fn().mockReturnThis(),
       gte: vi.fn().mockReturnThis(),
+      lt: vi.fn().mockReturnThis(),
       lte: vi.fn().mockReturnThis(),
+      ilike: vi.fn().mockReturnThis(),
+      is: vi.fn().mockReturnThis(),
+      in: vi.fn().mockReturnThis(),
+      not: vi.fn().mockReturnThis(),
+      or: vi.fn().mockReturnThis(),
+      match: vi.fn().mockReturnThis(),
+      filter: vi.fn().mockReturnThis(),
+      order: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      single: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockReturnThis(),
       then: (resolve: any) => resolve({ data: [], error: null }),
     };
     ptChain.select = vi.fn().mockReturnValue(mockPtSelectChain);
@@ -640,9 +695,22 @@ describe('In-memory dedup cache prevents duplicate processing', () => {
     const txChain = getChain('transactions');
     const mockSelectChain = {
       eq: vi.fn().mockReturnThis(),
+      neq: vi.fn().mockReturnThis(),
+      gt: vi.fn().mockReturnThis(),
       gte: vi.fn().mockReturnThis(),
+      lt: vi.fn().mockReturnThis(),
       lte: vi.fn().mockReturnThis(),
       ilike: vi.fn().mockReturnThis(),
+      is: vi.fn().mockReturnThis(),
+      in: vi.fn().mockReturnThis(),
+      not: vi.fn().mockReturnThis(),
+      or: vi.fn().mockReturnThis(),
+      match: vi.fn().mockReturnThis(),
+      filter: vi.fn().mockReturnThis(),
+      order: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      single: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockReturnThis(),
       then: (resolve: any) => resolve({ data: [], error: null }),
     };
     txChain.select = vi.fn().mockReturnValue(mockSelectChain);
@@ -651,8 +719,22 @@ describe('In-memory dedup cache prevents duplicate processing', () => {
     const ptChain = getChain('pending_transactions');
     const mockPtSelectChain = {
       eq: vi.fn().mockReturnThis(),
+      neq: vi.fn().mockReturnThis(),
+      gt: vi.fn().mockReturnThis(),
       gte: vi.fn().mockReturnThis(),
+      lt: vi.fn().mockReturnThis(),
       lte: vi.fn().mockReturnThis(),
+      ilike: vi.fn().mockReturnThis(),
+      is: vi.fn().mockReturnThis(),
+      in: vi.fn().mockReturnThis(),
+      not: vi.fn().mockReturnThis(),
+      or: vi.fn().mockReturnThis(),
+      match: vi.fn().mockReturnThis(),
+      filter: vi.fn().mockReturnThis(),
+      order: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      single: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockReturnThis(),
       then: (resolve: any) => resolve({ data: [], error: null }),
     };
     ptChain.select = vi.fn().mockReturnValue(mockPtSelectChain);
@@ -697,9 +779,22 @@ describe('In-flight dedup prevents double-insert from concurrent scans', () => {
     const txChain = getChain('transactions');
     const mockSelectChain = {
       eq: vi.fn().mockReturnThis(),
+      neq: vi.fn().mockReturnThis(),
+      gt: vi.fn().mockReturnThis(),
       gte: vi.fn().mockReturnThis(),
+      lt: vi.fn().mockReturnThis(),
       lte: vi.fn().mockReturnThis(),
       ilike: vi.fn().mockReturnThis(),
+      is: vi.fn().mockReturnThis(),
+      in: vi.fn().mockReturnThis(),
+      not: vi.fn().mockReturnThis(),
+      or: vi.fn().mockReturnThis(),
+      match: vi.fn().mockReturnThis(),
+      filter: vi.fn().mockReturnThis(),
+      order: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      single: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockReturnThis(),
       then: (resolve: any) => resolve({ data: [], error: null }),
     };
     txChain.select = vi.fn().mockReturnValue(mockSelectChain);
@@ -714,8 +809,22 @@ describe('In-flight dedup prevents double-insert from concurrent scans', () => {
     const ptChain = getChain('pending_transactions');
     const mockPtSelectChain = {
       eq: vi.fn().mockReturnThis(),
+      neq: vi.fn().mockReturnThis(),
+      gt: vi.fn().mockReturnThis(),
       gte: vi.fn().mockReturnThis(),
+      lt: vi.fn().mockReturnThis(),
       lte: vi.fn().mockReturnThis(),
+      ilike: vi.fn().mockReturnThis(),
+      is: vi.fn().mockReturnThis(),
+      in: vi.fn().mockReturnThis(),
+      not: vi.fn().mockReturnThis(),
+      or: vi.fn().mockReturnThis(),
+      match: vi.fn().mockReturnThis(),
+      filter: vi.fn().mockReturnThis(),
+      order: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      single: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockReturnThis(),
       then: (resolve: any) => resolve({ data: [], error: null }),
     };
     ptChain.select = vi.fn().mockReturnValue(mockPtSelectChain);
@@ -752,9 +861,22 @@ describe('In-flight dedup prevents double-insert from concurrent scans', () => {
     const txChain = getChain('transactions');
     const mockSelectChain = {
       eq: vi.fn().mockReturnThis(),
+      neq: vi.fn().mockReturnThis(),
+      gt: vi.fn().mockReturnThis(),
       gte: vi.fn().mockReturnThis(),
+      lt: vi.fn().mockReturnThis(),
       lte: vi.fn().mockReturnThis(),
       ilike: vi.fn().mockReturnThis(),
+      is: vi.fn().mockReturnThis(),
+      in: vi.fn().mockReturnThis(),
+      not: vi.fn().mockReturnThis(),
+      or: vi.fn().mockReturnThis(),
+      match: vi.fn().mockReturnThis(),
+      filter: vi.fn().mockReturnThis(),
+      order: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      single: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockReturnThis(),
       then: (resolve: any) => resolve({ data: [], error: null }),
     };
     txChain.select = vi.fn().mockReturnValue(mockSelectChain);
@@ -763,8 +885,22 @@ describe('In-flight dedup prevents double-insert from concurrent scans', () => {
     const ptChain = getChain('pending_transactions');
     const mockPtSelectChain = {
       eq: vi.fn().mockReturnThis(),
+      neq: vi.fn().mockReturnThis(),
+      gt: vi.fn().mockReturnThis(),
       gte: vi.fn().mockReturnThis(),
+      lt: vi.fn().mockReturnThis(),
       lte: vi.fn().mockReturnThis(),
+      ilike: vi.fn().mockReturnThis(),
+      is: vi.fn().mockReturnThis(),
+      in: vi.fn().mockReturnThis(),
+      not: vi.fn().mockReturnThis(),
+      or: vi.fn().mockReturnThis(),
+      match: vi.fn().mockReturnThis(),
+      filter: vi.fn().mockReturnThis(),
+      order: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      single: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockReturnThis(),
       then: (resolve: any) => resolve({ data: [], error: null }),
     };
     ptChain.select = vi.fn().mockReturnValue(mockPtSelectChain);
