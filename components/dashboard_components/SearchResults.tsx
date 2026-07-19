@@ -6,10 +6,46 @@ import { generateProjectedTransactions } from '../../lib/projectedTransactions';
 import { EmptyState } from '../shared';
 import { isRefund, matchRefundsToExpenses } from '../../lib/refundMatching';
 
+type SearchResultTransaction = Transaction & { category_id?: string };
+
+interface SearchResultTransactionItemProps {
+  transaction: SearchResultTransaction;
+  currentUserName: string;
+  isSharedAccount: boolean;
+  budgets: BudgetCategory[];
+  onTransactionTap: (tx: Transaction) => void;
+  matchedExpenseIds: Set<string>;
+}
+
+const SearchResultTransactionItem: React.FC<SearchResultTransactionItemProps> = ({
+  transaction,
+  currentUserName,
+  isSharedAccount,
+  budgets,
+  onTransactionTap,
+  matchedExpenseIds,
+}) => {
+  const budgetIdForTx = transaction.budget_id ?? transaction.category_id;
+
+  return (
+    <TransactionItem
+      key={transaction.id}
+      transaction={transaction}
+      onTap={onTransactionTap}
+      currentUserName={currentUserName}
+      isSharedView={isSharedAccount}
+      currentBudgetId={budgetIdForTx}
+      budgets={budgets}
+      showBudgetIcon={true}
+      isRefunded={matchedExpenseIds.has(transaction.id)}
+    />
+  );
+};
+
 interface CollapsibleSectionProps {
   title: string;
   subtitle: string;
-  transactions: Transaction[];
+  transactions: SearchResultTransaction[];
   currentUserName: string;
   isSharedAccount: boolean;
   budgets: BudgetCategory[];
@@ -58,23 +94,17 @@ const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
       {/* Section body */}
       {open && (
         <div className="mt-3 space-y-2">
-          {transactions.filter((tx: Transaction) => !isRefund(tx)).map((tx: any) => {
-            const budgetIdForTx = tx.budget_id ?? tx.category_id;
-
-            return (
-              <TransactionItem
-                key={tx.id}
-                transaction={tx}
-                onTap={onTransactionTap}
-                currentUserName={currentUserName}
-                isSharedView={isSharedAccount}
-                currentBudgetId={budgetIdForTx}
-                budgets={budgets}
-                showBudgetIcon={true}
-                isRefunded={matchedExpenseIds.has(tx.id)}
-              />
-            );
-          })}
+          {transactions.filter((tx) => !isRefund(tx)).map((tx) => (
+            <SearchResultTransactionItem
+              key={tx.id}
+              transaction={tx}
+              currentUserName={currentUserName}
+              isSharedAccount={isSharedAccount}
+              budgets={budgets}
+              onTransactionTap={onTransactionTap}
+              matchedExpenseIds={matchedExpenseIds}
+            />
+          ))}
         </div>
       )}
     </div>
@@ -167,6 +197,22 @@ const SearchResults: React.FC<SearchResultsProps> = ({
   const filteredCurrent = useMemo(() => augmentedCurrent.filter(filterFn), [augmentedCurrent, q]);
   const filteredPast = useMemo(() => pastTransactions.filter(filterFn), [pastTransactions, q]);
   const filteredFuture = useMemo(() => augmentedFuture.filter(filterFn), [augmentedFuture, q]);
+  const { futureActualTransactions, futureProjectedTransactions } = useMemo(() => {
+    return filteredFuture.reduce(
+      (groups, tx) => {
+        if (tx.is_projected) {
+          groups.futureProjectedTransactions.push(tx);
+        } else {
+          groups.futureActualTransactions.push(tx);
+        }
+        return groups;
+      },
+      {
+        futureActualTransactions: [] as SearchResultTransaction[],
+        futureProjectedTransactions: [] as SearchResultTransaction[],
+      },
+    );
+  }, [filteredFuture]);
 
   const hasAnyResults = filteredCurrent.length > 0 || filteredPast.length > 0 || filteredFuture.length > 0;
 
@@ -191,23 +237,17 @@ const SearchResults: React.FC<SearchResultsProps> = ({
             </div>
 
             <div className="space-y-2">
-              {filteredCurrent.map((tx: any) => {
-                const budgetIdForTx = tx.budget_id ?? tx.category_id;
-
-                return (
-                  <TransactionItem
-                    key={tx.id}
-                    transaction={tx}
-                    onTap={onTransactionTap}
-                    currentUserName={currentUserName}
-                    isSharedView={isSharedAccount}
-                    currentBudgetId={budgetIdForTx}
-                    budgets={budgets}
-                    showBudgetIcon={true}
-                    isRefunded={matchedExpenseIds.has(tx.id)}
-                  />
-                );
-              })}
+              {filteredCurrent.map((tx) => (
+                <SearchResultTransactionItem
+                  key={tx.id}
+                  transaction={tx}
+                  currentUserName={currentUserName}
+                  isSharedAccount={isSharedAccount}
+                  budgets={budgets}
+                  onTransactionTap={onTransactionTap}
+                  matchedExpenseIds={matchedExpenseIds}
+                />
+              ))}
             </div>
           </div>
         )}
@@ -223,11 +263,11 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           matchedExpenseIds={matchedExpenseIds}
         />
 
-        {filteredFuture.filter(tx => !tx.is_projected).length > 0 && (
+        {futureActualTransactions.length > 0 && (
           <CollapsibleSection
             title="Future Transactions"
             subtitle="Scheduled future entries"
-            transactions={filteredFuture.filter(tx => !tx.is_projected)}
+            transactions={futureActualTransactions}
             currentUserName={currentUserName}
             isSharedAccount={isSharedAccount}
             budgets={budgets}
@@ -236,11 +276,11 @@ const SearchResults: React.FC<SearchResultsProps> = ({
           />
         )}
 
-        {filteredFuture.filter(tx => tx.is_projected).length > 0 && (
+        {futureProjectedTransactions.length > 0 && (
           <CollapsibleSection
             title="Projected Transactions"
             subtitle="Based on recurring entries"
-            transactions={filteredFuture.filter(tx => tx.is_projected)}
+            transactions={futureProjectedTransactions}
             currentUserName={currentUserName}
             isSharedAccount={isSharedAccount}
             budgets={budgets}

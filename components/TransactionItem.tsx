@@ -29,16 +29,17 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
   isRefunded = false,
 }) => {
 
+  const transactionDate = useMemo(() => parseLocalDate(transaction.date), [transaction.date]);
+
   const budget = useMemo(() => {
     if (!budgets || !showBudgetIcon) return null;
-    const budgetId = transaction.budget_id;
-    return budgets.find(b => b.id === budgetId);
-  }, [budgets, transaction, showBudgetIcon]);
+    return budgets.find(b => b.id === transaction.budget_id);
+  }, [budgets, transaction.budget_id, showBudgetIcon]);
 
   const isFutureTransaction = useMemo(() => {
     if (transaction.is_projected) return false;
-    return parseLocalDate(transaction.date) > new Date();
-  }, [transaction.date, transaction.is_projected]);
+    return transactionDate > new Date();
+  }, [transactionDate, transaction.is_projected]);
 
   const isOtherUser = isSharedView && transaction.userName !== currentUserName;
   const txAmount = typeof transaction.amount === 'number' ? transaction.amount : Number(transaction.amount) || 0;
@@ -58,7 +59,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
         onClick={() => onTap(transaction)}
         onKeyDown={handleKeyDown}
         className="relative z-10 p-4 rounded-[2rem] backdrop-blur-xl border shadow-sm ring-1 ring-inset ring-white/10 dark:ring-white/[0.03] bg-white/80 dark:bg-slate-900/80 border-slate-200/40 dark:border-slate-700/40 cursor-pointer hover:bg-white/90 dark:hover:bg-slate-900/90 active:scale-[0.98] transition-all duration-200 w-full text-left"
-        aria-label={`Transaction: ${transaction.vendor}, ${Math.abs(txAmount).toFixed(2)} dollars on ${parseLocalDate(transaction.date).toLocaleDateString()}`}
+        aria-label={`Transaction: ${transaction.vendor}, ${Math.abs(txAmount).toFixed(2)} dollars on ${transactionDate.toLocaleDateString()}`}
       >
         <div className="flex items-center justify-between">
           {/* Budget icon on the left for search results */}
@@ -92,7 +93,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
               )}
 
               <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 tracking-tight">
-                {parseLocalDate(transaction.date).toLocaleDateString(undefined, {
+                {transactionDate.toLocaleDateString(undefined, {
                   month: 'short',
                   day: 'numeric',
                 })}

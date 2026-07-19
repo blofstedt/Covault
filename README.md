@@ -106,6 +106,11 @@ Build for production:
 npm run build
 ```
 
+Run the recommended pre-commit verification suite:
+```bash
+npm run verify
+```
+
 Preview the production build:
 ```bash
 npm run preview
@@ -234,7 +239,7 @@ This has been fixed! The app now uses Tailwind CSS as a proper PostCSS plugin, n
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Run `npm run build` to ensure it builds successfully
+4. Run `npm run verify` to ensure type checks, tests, and production build pass
 5. Submit a pull request
 
 ## License

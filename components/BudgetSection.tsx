@@ -37,10 +37,6 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
   useCompactCollapsedStyles = false,
 }) => {
 
-  const getAmountForThisBudget = (tx: Transaction) => {
-    return tx.budget_id === budget.id ? tx.amount : 0;
-  };
-
   // Refund matching: build the set of expenses that have a corresponding
   // refund, and the list of refunds (filtered out of the rendered list).
   // Primary source: the `refunded` flag on the expense itself (set by the
@@ -69,23 +65,27 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
   // came back, so it should not count against the budget). Unmatched
   // refunds (legacy negative-amount rows) still subtract from the total
   // since the user expected to see that money come back somewhere.
-  const spent = transactions.reduce(
-    (acc, tx) => {
-      if (tx.is_projected) return acc;
-      if (tx.budget_id !== budget.id) return acc;
-      // Skip refunded expenses (new pipeline sets this flag on the original)
-      if (tx.refunded) return acc;
-      // Skip legacy matched-refund expenses (matched by matchRefundsToExpenses)
-      if (refundedExpenseIds.has(tx.id) && Number(tx.amount) > 0) return acc;
-      return acc + tx.amount;
-    },
-    0,
-  );
+  const { spent, projected } = useMemo(() => {
+    return transactions.reduce(
+      (totals, tx) => {
+        if (tx.budget_id !== budget.id) return totals;
 
-  const projected = transactions.reduce(
-    (acc, tx) => acc + (tx.is_projected ? getAmountForThisBudget(tx) : 0),
-    0,
-  );
+        if (tx.is_projected) {
+          totals.projected += tx.amount;
+          return totals;
+        }
+
+        // Skip refunded expenses (new pipeline sets this flag on the original)
+        if (tx.refunded) return totals;
+        // Skip legacy matched-refund expenses (matched by matchRefundsToExpenses)
+        if (refundedExpenseIds.has(tx.id) && Number(tx.amount) > 0) return totals;
+
+        totals.spent += tx.amount;
+        return totals;
+      },
+      { spent: 0, projected: 0 },
+    );
+  }, [budget.id, refundedExpenseIds, transactions]);
 
   // Transactions actually rendered in the list: exclude refunds entirely.
   // Refunds are bookkeeping; the matched expense (with refunded=true) is
