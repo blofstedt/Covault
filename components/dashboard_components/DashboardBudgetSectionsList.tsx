@@ -32,7 +32,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
   isFocusMode = false,
   focusedBudgetId = null,
   leisureAdjustments = 0,
-  settings = { useLeisureAsBuffer: true },
+  settings,
   currentUserName = '',
   isSharedAccount = false,
   scrollContainerRef,
@@ -41,11 +41,17 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
   onTransactionTap,
   onUpdateBudget,
 }) => {
+  // The settings prop is optional, so we fall back to an empty shape.
+  // (Default values on destructured params cause TS to infer the param
+  // type as the default's type, ignoring the declared prop type — so
+  // we handle the fallback in the body instead.)
+  const safeSettings: DashboardSettingsShape = settings || { useLeisureAsBuffer: true };
+
   const visibleBudgets = useMemo(() =>
     budgets
       .filter((budget) => !isFocusMode || budget.id === focusedBudgetId)
       .filter((budget) => {
-        const hiddenCategories: string[] = settings.hiddenCategories || [];
+        const hiddenCategories: string[] = safeSettings.hiddenCategories || [];
         return !hiddenCategories.includes(budget.id);
       })
       .sort((a, b) => {
@@ -55,7 +61,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
         if (!aIsOther && bIsOther) return -1;
         return 0;
       }),
-    [budgets, isFocusMode, focusedBudgetId, settings.hiddenCategories],
+    [budgets, isFocusMode, focusedBudgetId, safeSettings.hiddenCategories],
   );
 
   const expandedBudgetId = expandedBudgets.size > 0 ? Array.from(expandedBudgets)[0] : null;
