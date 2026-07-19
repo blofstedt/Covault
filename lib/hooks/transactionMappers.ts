@@ -170,6 +170,12 @@ export const useFromSupabaseTransaction = () =>
       is_projected: shouldSolidify ? false : row.is_projected,
       is_income: row.is_income === true,
       caught_cleared: row.caught_cleared === true,
+      // Refunded flag: set by the notification pipeline when a refund
+      // notification matches an existing expense. Legacy rows (from
+      // before the migration) will be undefined here; the
+      // matchRefundsToExpenses legacy fallback in BudgetSection still
+      // handles those via the old negative-amount pattern.
+      refunded: row.refunded === true,
       userName: row.user_name || '',
       created_at: row.created_at,
       // Read the source column if the migration has been applied. Falls

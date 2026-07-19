@@ -69,6 +69,12 @@ export interface Transaction {
   is_projected: boolean;
   is_income?: boolean;
   caught_cleared?: boolean;
+  /**
+   * True when this expense was refunded by a matched refund notification.
+   * The renderer applies strikethrough; the budget reduce excludes the
+   * amount from the spent total. No separate refund row is inserted.
+   */
+  refunded?: boolean;
   userName?: string;
   created_at: string;
   /** Origin of this row. Populated by the writer (executor/AI/manual/import).

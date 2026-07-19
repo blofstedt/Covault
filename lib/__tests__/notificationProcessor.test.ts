@@ -82,6 +82,9 @@ const mockSupabaseChain = () => {
   chain.update = vi.fn().mockReturnValue(chain);
   chain.delete = vi.fn().mockReturnValue(chain);
   chain.upsert = vi.fn().mockReturnValue(chain);
+  chain.neq = vi.fn().mockReturnValue(chain);
+  chain.gt = vi.fn().mockReturnValue(chain);
+  chain.lt = vi.fn().mockReturnValue(chain);
   // Default: resolve with empty data
   chain.then = undefined; // prevent accidental thenification
   return chain;

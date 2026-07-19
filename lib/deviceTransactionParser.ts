@@ -286,11 +286,6 @@ function extractVendorRaw(text: string, isRefund?: boolean): string {
   // ── Heuristic fallback: longest uppercase word sequence ───────────────────
   // Many bank notifications put merchant names in ALL CAPS. Extract the longest
   // run of uppercase words (excluding known non-vendor words).
-  const NON_VENDOR_WORDS = new Set([
-    'YOUR', 'CARD', 'ACCOUNT', 'BANK', 'CREDIT', 'DEBIT', 'THE', 'FOR',
-    'WITH', 'FROM', 'VISA', 'MASTERCARD', 'INTERAC', 'AND', 'WAS', 'HAS',
-    'BEEN', 'WILL', 'MAY', 'TAKE', 'DAYS', 'BALANCE', 'TRANSACTION',
-  ]);
   const capsRuns: string[] = [];
   const capsRegex = /\b([A-Z][A-Z0-9&'.# -]{1,59})\b/g;
   let capsMatch;
@@ -303,7 +298,12 @@ function extractVendorRaw(text: string, isRefund?: boolean): string {
   if (capsRuns.length > 0) {
     // Pick the longest run
     capsRuns.sort((a, b) => b.length - a.length);
-    return capsRuns[0];
+    const candidate = capsRuns[0];
+    if (!isCommonNounOnly(candidate)) return candidate;
+    // All-caps run was all common nouns — try shorter runs in case one is real
+    for (let i = 1; i < capsRuns.length; i++) {
+      if (!isCommonNounOnly(capsRuns[i])) return capsRuns[i];
+    }
   }
 
   return 'Unknown';
@@ -323,6 +323,67 @@ function cleanVendor(raw: string): string {
 
 export function toVendorKey(vendor: string): string {
   return vendor.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Common-noun stopword set used by the vendor-extraction fallbacks. If
+ * EVERY word in an extracted candidate is in this set, the candidate
+ * is almost certainly boilerplate from the notification text rather
+ * than a real merchant name. Examples caught by this in production:
+ *   "SUBSCRIPTION PANIC" → "Subscription Panic"  (news headline)
+ *   "YOU GOT"           → "You Got"            (e-Transfer phrase)
+ *   "TRANSACTION ALERT" → "Transaction Alert"  (notification kind)
+ *   "MONTHLY PAYMENT"   → "Monthly Payment"    (cadence text)
+ *   "YOUR BALANCE"      → "Your Balance"       (account summary)
+ *
+ * Words are lowercased and stripped of non-alphanumerics before lookup,
+ * so the set is case-insensitive.
+ */
+const NON_VENDOR_WORDS = new Set([
+  // pronouns / possessives
+  'you', 'your', 'yours', 'my', 'our', 'i', 'me', 'we', 'us', 'they', 'them', 'their',
+  // verbs that often appear in transaction descriptions, not vendor names
+  'got', 'sent', 'received', 'spent', 'paid', 'charged', 'purchased', 'purchases',
+  'transferred', 'withdrew', 'deposited', 'moved',
+  'subscribe', 'subscribed', 'unsubscribed',
+  // cadence / billing words
+  'subscription', 'monthly', 'weekly', 'daily', 'annual', 'yearly', 'biweekly',
+  'bi-weekly', 'fortnight', 'recurring', 'recurrence', 'autopay', 'auto-pay',
+  // notification boilerplate
+  'alert', 'alerts', 'notification', 'notifications', 'message', 'messages',
+  'reminder', 'reminders', 'update', 'updates', 'confirmation', 'confirmations',
+  'fyi', 'psa', 'heads', 'up',
+  // financial / banking boilerplate
+  'card', 'account', 'bank', 'credit', 'debit', 'transaction', 'transactions',
+  'payment', 'payments', 'transfer', 'transfers', 'deposit', 'deposits',
+  'withdrawal', 'withdrawals', 'fee', 'fees', 'charge', 'charges',
+  'available', 'balance', 'limit', 'remaining', 'total', 'amount', 'sum', 'cost', 'price',
+  'preauthorized', 'pre-authorized', 'authorized', 'approved', 'declined',
+  // urgency / promo words (false-positive headlines)
+  'panic', 'urgent', 'important', 'attention', 'warning', 'help', 'breaking', 'news',
+  // generic adjectives / state words
+  'new', 'old', 'first', 'last', 'next', 'previous', 'today', 'yesterday', 'tomorrow',
+  'now', 'just', 'success', 'successfully', 'completed', 'failed', 'pending', 'processing',
+  'verified', 'test', 'demo', 'sample', 'example',
+  // prepositions / articles / conjunctions
+  'the', 'a', 'an', 'and', 'or', 'but', 'for', 'to', 'from', 'with', 'at', 'on',
+  'in', 'of', 'by', 'as', 'is', 'was', 'has', 'been', 'will', 'may', 'take', 'days',
+  // brand/card-network boilerplate (uppercase forms historically matched here)
+  'visa', 'mastercard', 'interac',
+]);
+
+/**
+ * Returns true if the candidate vendor string is composed entirely of
+ * common-noun stopwords. Used to reject fallback extractions that
+ * picked up boilerplate instead of a real merchant name.
+ *
+ * A vendor with 0 words (empty / whitespace) is also treated as
+ * "common-noun-only" since it cannot be a real merchant.
+ */
+function isCommonNounOnly(vendor: string): boolean {
+  const words = vendor.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return true;
+  return words.every(w => NON_VENDOR_WORDS.has(w.replace(/[^a-z0-9]/g, '')));
 }
 
 /**
@@ -402,26 +463,18 @@ export function parseNotificationText(text: string): ParsedNotification {
   const hasDollarSign = /\$\d/.test(t);
 
   // ── Income detection (Interac e-Transfers, deposits, payroll) ──
-  // Income notifications contain STOP phrases but should NOT be rejected.
-  // Instead, parse them as incoming money with the sender as the "vendor".
-  if (hasIncome && amountCandidates.length > 0) {
-    const pickedAmount = pickAmount(amountCandidates, tLower);
-    if (pickedAmount) {
-      const sender = extractIncomeSender(t);
-      const vendorDisplay = sender
-        ? formatVendorName(titleCaseVendor(sender))
-        : 'Income';
-      const vendorKey = toVendorKey(sender || 'income');
-
-      return {
-        isOutgoing: true, // treated as "valid transaction" for pipeline
-        amount: pickedAmount,
-        vendorDisplay,
-        vendorKey,
-        recurrence: 'One-time',
-        isIncome: true,
-      };
-    }
+  // Per product spec: only EXPENSE transactions are captured. Income,
+  // deposits, e-Transfers received, payroll credits, etc. are explicitly
+  // rejected so the user's expense tracking isn't polluted with money
+  // flowing in. The notification pipeline logs the rejection so the user
+  // can debug if needed, but no row is inserted.
+  if (hasIncome) {
+    return {
+      isOutgoing: false,
+      recurrence: 'One-time',
+      isIncome: true,
+      rejectionReason: 'Income notification \u2014 only expenses are captured',
+    };
   }
 
   // Pre-authorization filtering:
@@ -462,8 +515,27 @@ export function parseNotificationText(text: string): ParsedNotification {
 
   const vendorRaw = extractVendorRaw(t, hasRefund);
   const cleanedVendor = cleanVendor(vendorRaw);
-  const vendorDisplay = formatVendorName(titleCaseVendor(cleanedVendor));
-  const vendorKey = toVendorKey(cleanedVendor || 'unknown');
+  let vendorDisplay = formatVendorName(titleCaseVendor(cleanedVendor));
+  let vendorKey = toVendorKey(cleanedVendor || 'unknown');
+
+  // ── Final vendor sanity check ──
+  // If every word in the extracted vendor is a common noun ("You Got",
+  // "Subscription Panic", "Transaction Alert", "Monthly Payment"), the
+  // parser has picked up boilerplate instead of a real merchant name.
+  // The pipeline will fall back to the on-device AI to re-extract; if the
+  // AI also fails, this is rejected below with a clear reason.
+  if (isCommonNounOnly(vendorDisplay) || vendorDisplay === 'Unknown') {
+    console.warn(
+      `[parser] Common-noun vendor rejected: "${vendorDisplay}" from text "${t.slice(0, 80)}..."`,
+    );
+    return {
+      isOutgoing: false,
+      recurrence: 'One-time',
+      rejectionReason: vendorDisplay === 'Unknown'
+        ? 'No vendor name found in notification'
+        : `Vendor extraction looks like boilerplate ("${vendorDisplay}")`,
+    };
+  }
 
   let recurrence: ParsedNotification['recurrence'] = 'One-time';
   if (/biweekly|bi-weekly|every two weeks|every 2 weeks|fortnight/.test(tLower)) {

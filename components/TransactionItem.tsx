@@ -13,9 +13,9 @@ interface TransactionItemProps {
   budgets?: BudgetCategory[];
   showBudgetIcon?: boolean;
   /** When true, render this transaction as refunded — strikethrough the
-   *  amount and dim the row. The matched refund itself is hidden from
-   *  the list (see BudgetSection). The spend total is already reduced
-   *  via the negative-amount transaction in the budget's reduce(). */
+   *  amount and dim the row. The matched refund itself is NOT inserted as
+   *  a separate row; instead the original expense gets refunded=true and
+   *  the budget reduce() excludes the row from the spent total. */
   isRefunded?: boolean;
 }
 

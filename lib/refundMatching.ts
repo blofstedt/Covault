@@ -25,8 +25,12 @@
 import type { Transaction } from '../types';
 
 /** How far apart (in days) a refund and its expense can be and still
- *  be considered a match. 30 days covers most card refund windows. */
-export const REFUND_MATCH_WINDOW_DAYS = 30;
+ *  be considered a match. 60 days covers longer card refund windows
+ *  (e.g. items bought on a credit card statement that close at the
+ *  end of the month, disputed charges, post-purchase price adjustments).
+ *  Tuned from 30 to 60 after user feedback that some legitimate refunds
+ *  were falling outside the window. */
+export const REFUND_MATCH_WINDOW_DAYS = 60;
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -38,6 +42,74 @@ export function isRefund(tx: Pick<Transaction, 'amount' | 'is_income'>): boolean
 /** True if the transaction is income (positive flow into the account). */
 export function isIncome(tx: Pick<Transaction, 'amount' | 'is_income'>): boolean {
   return tx.is_income === true;
+}
+
+/**
+ * Normalize a vendor string for the strict equality used by refund matching.
+ * Refunds are bookkeeping — we want zero false positives, so we use a
+ * case-insensitive trim + collapse rather than fuzzy matching. If a
+ * merchant rebrands or uses a slightly different surface form for the
+ * refund than the original expense, the user can manually reconcile the
+ * row in the app.
+ */
+function normalizeVendorForRefund(vendor: string): string {
+  return vendor.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Find the closest matching expense for a refund notification.
+ *
+ * Matching rules (all must hold):
+ *  - exact vendor (case-insensitive, whitespace-normalized)
+ *  - exact |amount| (within $0.01 tolerance)
+ *  - same budget (if both have a budget_id; if either is missing, we
+ *    don't gate on budget)
+ *  - |date difference| <= REFUND_MATCH_WINDOW_DAYS
+ *  - expense is not already refunded
+ *  - expense is not projected
+ *
+ * Returns the closest expense by date, or null if none match.
+ */
+export function findMatchingExpense(
+  refund: Pick<Transaction, 'vendor' | 'amount' | 'date' | 'budget_id'>,
+  candidates: Transaction[],
+): Transaction | null {
+  const refundAmount = Math.abs(Number(refund.amount));
+  const refundDateStr = String(refund.date).slice(0, 10);
+  const refundDate = new Date(refundDateStr + 'T12:00:00.000Z').getTime();
+  if (!Number.isFinite(refundDate)) return null;
+  const refundVendor = normalizeVendorForRefund(refund.vendor || '');
+  if (!refundVendor) return null;
+  const refundBudgetId = refund.budget_id || '';
+
+  let best: Transaction | null = null;
+  let bestDistance = Infinity;
+
+  for (const expense of candidates) {
+    if (Number(expense.amount) <= 0) continue;
+    if (expense.is_projected) continue;
+    if (expense.refunded) continue;
+
+    const expenseVendor = normalizeVendorForRefund(expense.vendor || '');
+    if (expenseVendor !== refundVendor) continue;
+
+    if (Math.abs(Number(expense.amount) - refundAmount) > 0.01) continue;
+
+    const expenseBudgetId = expense.budget_id || '';
+    if (refundBudgetId && expenseBudgetId && refundBudgetId !== expenseBudgetId) continue;
+
+    const expenseDateStr = String(expense.date).slice(0, 10);
+    const expenseDate = new Date(expenseDateStr + 'T12:00:00.000Z').getTime();
+    if (!Number.isFinite(expenseDate)) continue;
+    const distance = Math.abs(expenseDate - refundDate) / MS_PER_DAY;
+    if (distance > REFUND_MATCH_WINDOW_DAYS) continue;
+
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = expense;
+    }
+  }
+  return best;
 }
 
 /** Get the date string (YYYY-MM-DD) for a transaction, regardless of

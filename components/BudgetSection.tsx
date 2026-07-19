@@ -43,17 +43,42 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
   // Refund matching: build the set of expenses that have a corresponding
   // refund, and the list of refunds (filtered out of the rendered list).
-  // The spent/projected reduces below intentionally still iterate over
-  // ALL transactions (including refunds) so that the negative-amount
-  // refunds correctly subtract from the budget total. Hiding refunds
-  // from the list is purely a display decision.
-  const { matchedExpenseIds, unmatchedRefunds } = useMemo(
+  // Primary source: the `refunded` flag on the expense itself (set by the
+  // notification pipeline when a refund notification matches). Fallback:
+  // `matchRefundsToExpenses` for legacy data (rows from before the
+  // migration, or manually-entered refund transactions) that still uses
+  // the old negative-amount-refund pattern.
+  const { matchedExpenseIds: legacyMatchedIds, unmatchedRefunds } = useMemo(
     () => matchRefundsToExpenses(transactions),
     [transactions],
   );
 
+  // Combined set: a row is refunded if EITHER the new flag is set OR
+  // the legacy matcher found a paired refund. The renderer uses this
+  // for the strikethrough style.
+  const refundedExpenseIds = useMemo(() => {
+    const ids = new Set<string>(legacyMatchedIds);
+    for (const tx of transactions) {
+      if (tx.refunded) ids.add(tx.id);
+    }
+    return ids;
+  }, [legacyMatchedIds, transactions]);
+
+  // Spent total: exclude refunded expenses entirely. A refunded row
+  // contributes 0 to the spent total (it was a charge, but the money
+  // came back, so it should not count against the budget). Unmatched
+  // refunds (legacy negative-amount rows) still subtract from the total
+  // since the user expected to see that money come back somewhere.
   const spent = transactions.reduce(
-    (acc, tx) => acc + (tx.is_projected ? 0 : getAmountForThisBudget(tx)),
+    (acc, tx) => {
+      if (tx.is_projected) return acc;
+      if (tx.budget_id !== budget.id) return acc;
+      // Skip refunded expenses (new pipeline sets this flag on the original)
+      if (tx.refunded) return acc;
+      // Skip legacy matched-refund expenses (matched by matchRefundsToExpenses)
+      if (refundedExpenseIds.has(tx.id) && Number(tx.amount) > 0) return acc;
+      return acc + tx.amount;
+    },
     0,
   );
 
@@ -63,6 +88,8 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
   );
 
   // Transactions actually rendered in the list: exclude refunds entirely.
+  // Refunds are bookkeeping; the matched expense (with refunded=true) is
+  // shown in the list with strikethrough.
   const visibleTransactions = useMemo(
     () => transactions.filter((tx) => !isRefund(tx)),
     [transactions],
@@ -278,7 +305,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                     isSharedView={isSharedView}
                     currentBudgetId={budget.id}
                     budgets={allBudgets}
-                    isRefunded={matchedExpenseIds.has(tx.id)}
+                    isRefunded={refundedExpenseIds.has(tx.id)}
                   />
                 ))
               ) : (

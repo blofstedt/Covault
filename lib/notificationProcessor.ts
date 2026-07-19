@@ -15,6 +15,7 @@ import { supabase } from './supabase';
 import { formatVendorName, fuzzyVendorMatch, normalizeVendorForDedup } from './formatVendorName';
 import { parseNotificationText } from './deviceTransactionParser';
 import { addToReviewQueue, getVendorMapEntry, getVendorMap, isNotificationProcessed, markNotificationProcessed, getCachedAIResult, setCachedAIResult } from './localNotificationMemory';
+import { findMatchingExpense, REFUND_MATCH_WINDOW_DAYS } from './refundMatching';
 import { getLocalToday, parseLocalDate } from './dateUtils';
 import { extractWithAI } from './aiExtractor';
 import type { PendingTransaction } from '../types';
@@ -687,6 +688,18 @@ export interface AIProcessingResult {
     amount: number;
     date: string;
   };
+  /**
+   * If the notification was a refund and matched an existing expense, this
+   * is the matched expense. The original row is marked refunded=true and
+   * NO new transaction is inserted. The UI can show a success toast
+   * "refund matched: <vendor> $<amount>".
+   */
+  refundMatched?: {
+    id: string;
+    vendor: string;
+    amount: number;
+    date: string;
+  };
 }
 
 /**
@@ -930,8 +943,113 @@ async function processNotificationWithAIImpl(
     : null;
   const vendor = extractedVendor || input.fallbackVendor || null;
   const rawAmount = parsed.amount ?? input.fallbackAmount ?? 0;
-  // Refunds and income are stored as negative amounts so they naturally reduce budget totals
-  const amount = (parsed.isRefund || parsed.isIncome) ? -Math.abs(rawAmount) : rawAmount;
+  // Refunds are NOT stored as separate negative-amount rows. They are
+  // applied to the original expense via the refunded=true flag (see
+  // Step 3a below). Income notifications are rejected entirely (no row).
+  const amount = rawAmount;
+
+  // ── Step 3a: Refund handling — strike through the original expense ──
+  // If the parser detected a refund phrase and we have a vendor + amount,
+  // we look for a matching expense in the same user's transaction history
+  // (exact vendor + exact amount, same budget, within
+  // REFUND_MATCH_WINDOW_DAYS). If a match is found we set refunded=true
+  // on the original row and return without inserting a new transaction.
+  // The original row's amount is unchanged; the UI applies strikethrough
+  // and the budget reduce excludes the refunded row from the spent total.
+  if (parsed.isRefund && vendor && rawAmount > 0) {
+    const refundWindowStart = new Date(
+      notifTimestamp - REFUND_MATCH_WINDOW_DAYS * MS_PER_DAY
+    ).toISOString().slice(0, 10);
+    const refundWindowEnd = new Date(
+      notifTimestamp + REFUND_MATCH_WINDOW_DAYS * MS_PER_DAY
+    ).toISOString().slice(0, 10);
+    const { data: refundCandidates } = await supabase
+      .from('transactions')
+      .select('id, vendor, amount, date, budget, refunded')
+      .eq('user_id', userId)
+      .gte('date', refundWindowStart)
+      .lte('date', refundWindowEnd)
+      .eq('refunded', false)
+      .gt('amount', 0)
+      .eq('is_projected', false);
+
+    if (refundCandidates && refundCandidates.length > 0) {
+      const mapped: any[] = refundCandidates.map((row: any) => ({
+        id: row.id,
+        vendor: row.vendor,
+        amount: Number(row.amount),
+        date: row.date,
+        budget_id: row.budget || '',
+        is_projected: false,
+        refunded: row.refunded === true,
+      }));
+      const match = findMatchingExpense(
+        { vendor, amount: rawAmount, date: new Date(notifTimestamp).toISOString().slice(0, 10), budget_id: '' },
+        mapped,
+      );
+      if (match) {
+        const { error: refundUpdateError } = await supabase
+          .from('transactions')
+          .update({ refunded: true })
+          .eq('id', match.id);
+        if (refundUpdateError) {
+          console.error('[AI pipeline] Failed to mark expense refunded:', refundUpdateError);
+        } else {
+          console.log(
+            `[AI pipeline] Refund matched: struck through ${match.vendor} $${match.amount} (${match.date})`,
+          );
+          recentlyProcessedCache.set(inMemoryKey, Date.now());
+          markNotificationProcessed(inMemoryKey);
+          return {
+            processed: true,
+            isTransaction: true,
+            vendor,
+            amount: rawAmount,
+            bankName: input.bankName,
+            // Surfaced to the parsing UI as a successful refund match.
+            refundMatched: {
+              id: match.id,
+              vendor: match.vendor,
+              amount: Number(match.amount),
+              date: String(match.date).slice(0, 10),
+            },
+          };
+        }
+        // Fall through to the regular insert path if the update failed
+        // (rare; the user will see the refund twice but it won't block).
+      } else {
+        console.log(
+          `[AI pipeline] Refund ${vendor} $${rawAmount} has no matching expense in ${REFUND_MATCH_WINDOW_DAYS}-day window; skipping`,
+        );
+        recentlyProcessedCache.set(inMemoryKey, Date.now());
+        markNotificationProcessed(inMemoryKey);
+        return {
+          processed: true,
+          isTransaction: false,
+          vendor,
+          amount: rawAmount,
+          bankName: input.bankName,
+          skipReason: 'not_transaction',
+          rejectionReason: `Refund has no matching expense within ${REFUND_MATCH_WINDOW_DAYS} days`,
+        };
+      }
+    } else {
+      console.log(
+        `[AI pipeline] Refund ${vendor} $${rawAmount} has no candidate expenses; skipping`,
+      );
+      recentlyProcessedCache.set(inMemoryKey, Date.now());
+      markNotificationProcessed(inMemoryKey);
+      return {
+        processed: true,
+        isTransaction: false,
+        vendor,
+        amount: rawAmount,
+        bankName: input.bankName,
+        skipReason: 'not_transaction',
+        rejectionReason: `Refund has no matching expense within ${REFUND_MATCH_WINDOW_DAYS} days`,
+      };
+    }
+  }
 
   // ── Step 3b: Reject if no vendor could be identified ──
   if (!vendor) {
