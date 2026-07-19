@@ -24,6 +24,8 @@ interface AITransactionsEnteredCardProps {
   onVendorRenamed?: (tx: Transaction, newVendor: string) => Promise<void> | void;
   /** Create a "not a transaction" skip rule and delete the row. */
   onMarkNotTransaction?: (tx: Transaction, ruleType: NotATxRuleType) => Promise<void> | void;
+  /** User id, used for the backfill count/apply. */
+  userId?: string;
 }
 
 const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
@@ -37,6 +39,7 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
   onDeleteTransaction,
   onVendorRenamed,
   onMarkNotTransaction,
+  userId,
 }) => {
   return (
     <ParsingCard
@@ -115,6 +118,7 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
                 onDeleteTransaction={onDeleteTransaction}
                 onVendorRenamed={onVendorRenamed}
                 onMarkNotTransaction={onMarkNotTransaction}
+                userId={userId}
               />
             ))}
         </div>

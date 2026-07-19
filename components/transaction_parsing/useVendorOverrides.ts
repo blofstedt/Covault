@@ -325,6 +325,61 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
     [userId, vendorOverrides],
   );
 
+  // ── Set or update a vendor override's match_type ──
+  // Changes how future notifications are matched: 'exact' (default),
+  // 'prefix' (incoming vendorKey starts with match_key), or 'contains'.
+  // Per spec, the user can switch any of these from the UI.
+  const handleSetMatchType = useCallback(
+    async (vendorName: string, matchType: MatchType) => {
+      if (!userId) return;
+      const existing = vendorOverrides.find(
+        (vo) => vo.proper_name.toLowerCase() === vendorName.toLowerCase(),
+      );
+      if (!existing) return;
+      if ((existing.match_type || 'exact') === matchType) return; // no-op
+
+      // Optimistic update
+      setVendorOverrides((prev) =>
+        prev.map((vo) =>
+          vo.id === existing.id ? { ...vo, match_type: matchType } : vo
+        )
+      );
+
+      try {
+        const headers = await getAuthHeaders();
+        (headers as any)['Prefer'] = 'return=representation';
+        const url = existing.id.startsWith('temp-')
+          ? `${REST_BASE}/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(existing.proper_name)}`
+          : `${REST_BASE}/overrides?id=eq.${existing.id}&user_id=eq.${userId}`;
+        const res = await fetch(
+          url,
+          {
+            method: 'PATCH',
+            headers,
+            body: JSON.stringify({ match_type: matchType, updated_at: new Date().toISOString() }),
+          },
+        );
+        if (!res.ok) {
+          console.error('[TransactionParsing] Error setting match_type:', res.status, await res.text());
+          // Roll back
+          setVendorOverrides((prev) =>
+            prev.map((vo) =>
+              vo.id === existing.id ? { ...vo, match_type: existing.match_type || 'exact' } : vo
+            )
+          );
+        }
+      } catch (err: any) {
+        console.error('[TransactionParsing] Exception setting match_type:', err?.message || err);
+        setVendorOverrides((prev) =>
+          prev.map((vo) =>
+            vo.id === existing.id ? { ...vo, match_type: existing.match_type || 'exact' } : vo
+          )
+        );
+      }
+    },
+    [userId, vendorOverrides],
+  );
+
   // ── Optimistically upsert a vendor override in local state (no DB call) ──
   const upsertLocalVendorOverride = useCallback(
     (vendorName: string, categoryId: string, categoryNameOverride?: string) => {
@@ -370,6 +425,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
     handleDeleteVendorOverride,
     handleSetVendorCategory,
     handleSetProperName,
+    handleSetMatchType,
     upsertLocalVendorOverride,
   };
 }

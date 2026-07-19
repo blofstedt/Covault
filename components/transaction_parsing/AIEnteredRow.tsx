@@ -8,6 +8,9 @@ import SoftDuplicateBadge from './SoftDuplicateBadge';
 import RawNotificationExpander from './RawNotificationExpander';
 import InlineVendorEdit from './InlineVendorEdit';
 import NotATransactionModal, { type NotATxRuleType } from './NotATransactionModal';
+import BackfillPreviewModal from './BackfillPreviewModal';
+import { toVendorKey } from '../../lib/deviceTransactionParser';
+import { countBackfillMatches, applyVendorBackfill } from '../../lib/vendorBackfill';
 
 interface AIEnteredRowProps {
   /** The auto-entered transaction row. */
@@ -25,6 +28,8 @@ interface AIEnteredRowProps {
   onVendorRenamed?: (tx: Transaction, newVendor: string) => Promise<void> | void;
   /** Persist a "not a transaction" rule + delete the row. */
   onMarkNotTransaction?: (tx: Transaction, ruleType: NotATxRuleType) => Promise<void> | void;
+  /** User id, needed for the backfill count/apply. */
+  userId?: string;
 }
 
 const fmt = (n: number) => `${n < 0 ? '-' : ''}$${Math.abs(n).toFixed(2)}`;
@@ -51,6 +56,7 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
   onDeleteTransaction,
   onVendorRenamed,
   onMarkNotTransaction,
+  userId,
 }) => {
   const budgetName = tx.budget_id ? budgets.find((b) => b.id === tx.budget_id)?.name || null : null;
 
@@ -66,6 +72,18 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
   // Inline vendor edit state
   const [isEditingVendor, setIsEditingVendor] = useState(false);
   const [isSavingVendor, setIsSavingVendor] = useState(false);
+
+  // Backfill preview state. After a successful rename, we count how
+  // many historical transactions share the old vendor's normalized
+  // form and ask the user if they want to rename them too.
+  const [backfillPrompt, setBackfillPrompt] = useState<{
+    oldVendor: string;
+    newVendor: string;
+    matchKey: string;
+    count: number;
+  } | null>(null);
+  const [isApplyingBackfill, setIsApplyingBackfill] = useState(false);
+  const [backfillToast, setBackfillToast] = useState<string | null>(null);
 
   // Not-a-transaction modal state
   const [notAModalOpen, setNotAModalOpen] = useState(false);
@@ -101,16 +119,58 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
         setIsEditingVendor(false);
         return;
       }
+      const oldVendor = tx.vendor;
       setIsSavingVendor(true);
       try {
         await onVendorRenamed(tx, newName);
         setIsEditingVendor(false);
+        // After the rename succeeds, ask the user if they want to
+        // backfill historical transactions. Count first; if there
+        // are 0 matches, skip the prompt entirely.
+        if (userId) {
+          const matchKey = toVendorKey(oldVendor);
+          if (matchKey) {
+            const count = await countBackfillMatches(userId, matchKey, 'exact');
+            if (count > 0) {
+              setBackfillPrompt({ oldVendor, newVendor: newName, matchKey, count });
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[AIEnteredRow] vendor rename failed:', err);
       } finally {
         setIsSavingVendor(false);
       }
     },
-    [onVendorRenamed, tx],
+    [onVendorRenamed, tx, userId],
   );
+
+  const handleConfirmBackfill = useCallback(async () => {
+    if (!backfillPrompt || !userId) return;
+    setIsApplyingBackfill(true);
+    try {
+      const result = await applyVendorBackfill(
+        userId,
+        backfillPrompt.matchKey,
+        backfillPrompt.newVendor,
+        'exact',
+      );
+      setBackfillToast(
+        result.updated > 0
+          ? `Renamed ${result.updated} historical ${result.updated === 1 ? 'transaction' : 'transactions'}`
+          : null,
+      );
+      // Auto-dismiss the toast after 3.5s
+      if (result.updated > 0) {
+        setTimeout(() => setBackfillToast(null), 3500);
+      }
+      setBackfillPrompt(null);
+    } catch (err) {
+      console.warn('[AIEnteredRow] backfill failed:', err);
+    } finally {
+      setIsApplyingBackfill(false);
+    }
+  }, [backfillPrompt, userId]);
 
   const handleConfirmNotATx = useCallback(
     async (ruleType: NotATxRuleType) => {
@@ -237,6 +297,23 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
           onConfirm={handleConfirmNotATx}
           onCancel={() => setNotAModalOpen(false)}
         />
+      )}
+
+      {backfillPrompt && (
+        <BackfillPreviewModal
+          oldVendor={backfillPrompt.oldVendor}
+          newVendor={backfillPrompt.newVendor}
+          matchCount={backfillPrompt.count}
+          isApplying={isApplyingBackfill}
+          onConfirm={handleConfirmBackfill}
+          onCancel={() => setBackfillPrompt(null)}
+        />
+      )}
+
+      {backfillToast && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full bg-emerald-500 text-white text-[11px] font-bold shadow-lg animate-in fade-in slide-in-from-bottom-2">
+          {backfillToast}
+        </div>
       )}
     </>
   );

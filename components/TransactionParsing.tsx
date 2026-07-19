@@ -8,8 +8,10 @@ import SetupInfoCard from './transaction_parsing/SetupInfoCard';
 import ClearConfirmModal from './transaction_parsing/ClearConfirmModal';
 import PageShell from './ui/PageShell';
 import LearnedRulesCard from './transaction_parsing/LearnedRulesCard';
+import VendorCategoryRulesCard from './transaction_parsing/VendorCategoryRulesCard';
 import { useNotificationRules } from './transaction_parsing/useNotificationRules';
 import type { NotATxRuleType } from './transaction_parsing/NotATransactionModal';
+import { toVendorKey } from '../lib/deviceTransactionParser';
 
 import { covaultNotification } from '../lib/covaultNotification';
 import { REST_BASE, getAuthHeaders } from '../lib/apiHelpers';
@@ -172,6 +174,143 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     [onDeleteVendorOverride],
   );
 
+  // ── Derive data the VendorCategoryRulesCard needs from what we already have ──
+  const allVendors = useMemo(() => {
+    const set = new Set<string>();
+    for (const tx of allTransactions) {
+      const v = (tx.vendor || '').trim();
+      if (v) set.add(v);
+    }
+    for (const vo of vendorOverrides) {
+      if (vo.proper_name) set.add(vo.proper_name);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [allTransactions, vendorOverrides]);
+
+  const vendorOverrideByName = useMemo(() => {
+    const m = new Map<string, typeof vendorOverrides[number]>();
+    for (const vo of vendorOverrides) {
+      m.set(toVendorKey(vo.proper_name), vo);
+    }
+    return m;
+  }, [vendorOverrides]);
+
+  const categoryNameById = useMemo(
+    () => new Map<string, string>(budgets.map((b) => [b.id, b.name])),
+    [budgets],
+  );
+
+  // Local state for the expanded vendor (managed here so the card stays presentational)
+  const [expandedVendorCategory, setExpandedVendorCategory] = useState<string | null>(null);
+
+  // ── Set or update a vendor's category (in addition to the existing write path) ──
+  // The Dashboard's `useVendorOverrides.handleSetVendorCategory` is the
+  // canonical writer — but TransactionParsing doesn't currently get a
+  // handle to it. For now we write directly to the overrides table here.
+  const handleSetVendorCategory = useCallback(
+    async (vendorName: string, categoryId: string) => {
+      if (!userId) return;
+      const category = budgets.find((b) => b.id === categoryId);
+      if (!category) return;
+      try {
+        const headers = await getAuthHeaders();
+        (headers as any)['Prefer'] = 'return=representation';
+        const vendorKey = toVendorKey(vendorName);
+        // Try match_key first, then proper_name
+        let res = await fetch(
+          `${REST_BASE}/overrides?user_id=eq.${userId}&match_key=eq.${encodeURIComponent(vendorKey)}`,
+          {
+            method: 'PATCH',
+            headers,
+            body: JSON.stringify({
+              category_id: category.name,
+              proper_name: vendorName,
+              match_type: 'exact',
+              updated_at: new Date().toISOString(),
+            }),
+          },
+        );
+        if (!res.ok) {
+          res = await fetch(
+            `${REST_BASE}/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(vendorName)}`,
+            {
+              method: 'PATCH',
+              headers,
+              body: JSON.stringify({ category_id: category.name, updated_at: new Date().toISOString() }),
+            },
+          );
+        }
+        if (!res.ok) {
+          // Insert as a new row
+          await fetch(`${REST_BASE}/overrides`, {
+            method: 'POST',
+            headers: { ...headers, 'Prefer': 'resolution=ignore-duplicates' },
+            body: JSON.stringify({
+              user_id: userId,
+              proper_name: vendorName,
+              match_key: vendorKey,
+              match_type: 'exact',
+              category_id: category.name,
+              updated_at: new Date().toISOString(),
+            }),
+          });
+        }
+      } catch (err) {
+        console.warn('[TransactionParsing] handleSetVendorCategory failed:', err);
+      }
+      setExpandedVendorCategory(null);
+    },
+    [userId, budgets],
+  );
+
+  const handleSetProperName = useCallback(
+    async (vendorName: string, properName: string) => {
+      if (!userId) return;
+      try {
+        const headers = await getAuthHeaders();
+        (headers as any)['Prefer'] = 'return=representation';
+        const res = await fetch(
+          `${REST_BASE}/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(vendorName)}`,
+          {
+            method: 'PATCH',
+            headers,
+            body: JSON.stringify({ proper_name: properName, updated_at: new Date().toISOString() }),
+          },
+        );
+        if (!res.ok) {
+          console.warn('[TransactionParsing] handleSetProperName failed:', res.status);
+        }
+      } catch (err) {
+        console.warn('[TransactionParsing] handleSetProperName failed:', err);
+      }
+    },
+    [userId],
+  );
+
+  const handleSetMatchType = useCallback(
+    async (vendorName: string, matchType: 'exact' | 'prefix' | 'contains') => {
+      if (!userId) return;
+      try {
+        const headers = await getAuthHeaders();
+        (headers as any)['Prefer'] = 'return=representation';
+        const res = await fetch(
+          `${REST_BASE}/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(vendorName)}`,
+          {
+            method: 'PATCH',
+            headers,
+            body: JSON.stringify({ match_type: matchType, updated_at: new Date().toISOString() }),
+          },
+        );
+        if (!res.ok) {
+          console.warn('[TransactionParsing] handleSetMatchType failed:', res.status);
+        }
+      } catch (err) {
+        console.warn('[TransactionParsing] handleSetMatchType failed:', err);
+      }
+    },
+    [userId],
+  );
+
   // When notifications are enabled, trigger a scan and reload data
   // after a short delay so newly processed notifications appear.
   const prevEnabled = React.useRef(enabled);
@@ -309,6 +448,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               onDeleteTransaction={onDeleteTransaction}
               onVendorRenamed={handleVendorRenamed}
               onMarkNotTransaction={handleMarkNotTransaction}
+              userId={userId}
             />
 
             <div className="shrink-0 mt-4">
@@ -318,6 +458,23 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                 onDeleteVendorOverride={handleDeleteVendorOverride}
               />
             </div>
+
+            {allVendors.length > 0 && (
+              <div className="shrink-0 mt-4">
+                <VendorCategoryRulesCard
+                  allVendors={allVendors}
+                  vendorOverrideByName={vendorOverrideByName}
+                  categoryNameById={categoryNameById}
+                  expandedVendorCategory={expandedVendorCategory}
+                  budgets={budgets}
+                  onSetExpandedVendorCategory={setExpandedVendorCategory}
+                  onSetVendorCategory={handleSetVendorCategory}
+                  onDeleteVendorOverride={handleDeleteVendorOverride}
+                  onSetProperName={handleSetProperName}
+                  onSetMatchType={handleSetMatchType}
+                />
+              </div>
+            )}
           </>
         ) : (
           <SetupInfoCard enabled={enabled} onToggle={onToggle} />

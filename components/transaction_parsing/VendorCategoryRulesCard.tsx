@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { BudgetCategory } from '../../types';
-import type { VendorOverride } from './useVendorOverrides';
+import type { VendorOverride, MatchType } from './useVendorOverrides';
 import { toVendorKey } from '../../lib/deviceTransactionParser';
 import ParsingCard from '../ui/ParsingCard';
 
@@ -14,6 +14,8 @@ interface VendorCategoryRulesCardProps {
   onSetVendorCategory: (vendorName: string, categoryId: string) => void;
   onDeleteVendorOverride: (overrideId: string) => void;
   onSetProperName: (vendorName: string, properName: string) => void;
+  /** Optional: change the match_type (exact/prefix/contains) of an existing rule. */
+  onSetMatchType?: (vendorName: string, matchType: MatchType) => void;
 }
 
 const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
@@ -26,6 +28,7 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
   onSetVendorCategory,
   onDeleteVendorOverride,
   onSetProperName,
+  onSetMatchType,
 }) => {
   const [editingProperName, setEditingProperName] = useState<string | null>(null);
   const [properNameDraft, setProperNameDraft] = useState('');
@@ -139,6 +142,38 @@ const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
                           </span>
                         </button>
                       )}
+                    </div>
+                  )}
+
+                  {/* Match type picker (only meaningful when an override exists) */}
+                  {vo && onSetMatchType && (
+                    <div>
+                      <p className="text-[11px] font-semibold tracking-wide text-slate-500 dark:text-slate-400 mb-1">
+                        Match incoming notifications
+                      </p>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {(['exact', 'prefix', 'contains'] as const).map((mt) => (
+                          <button
+                            key={mt}
+                            type="button"
+                            onClick={() => onSetMatchType(vendorName, mt)}
+                            title={
+                              mt === 'exact'
+                                ? 'Only this exact vendor name'
+                                : mt === 'prefix'
+                                ? 'Vendor names starting with this'
+                                : 'Vendor names containing this'
+                            }
+                            className={`px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide rounded-lg border transition-all duration-200 active:scale-[0.97] ${
+                              (vo.match_type || 'exact') === mt
+                                ? 'bg-violet-500 text-white border-violet-600'
+                                : 'bg-violet-50 dark:bg-violet-900/20 border-violet-200 dark:border-violet-800/40 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40'
+                            }`}
+                          >
+                            {mt}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
 
