@@ -143,8 +143,10 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
       // DB expects the Budgets enum value (e.g. 'Groceries'), not the app-format id
       const dbCategoryId = categoryName;
 
-      const existing = vendorOverrides.find(
-        (vo) => vo.proper_name.toLowerCase() === vendorName.toLowerCase(),
+      const vendorKey = toVendorKey(vendorName);
+      const existing = vendorOverrides.find((vo) =>
+        vo.proper_name.toLowerCase() === vendorName.toLowerCase() ||
+        (vo.match_key ? vo.match_key === vendorKey : toVendorKey(vo.proper_name) === vendorKey)
       );
 
       try {
@@ -205,7 +207,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
           const insertRes = await fetch(`${REST_BASE}/overrides`, {
             method: 'POST',
             headers,
-            body: JSON.stringify({ user_id: userId, proper_name: vendorName, match_key: toVendorKey(vendorName), category_id: dbCategoryId }),
+            body: JSON.stringify({ user_id: userId, proper_name: vendorName, match_key: vendorKey, category_id: dbCategoryId }),
           });
 
           if (insertRes.ok) {
@@ -259,8 +261,10 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
     async (vendorName: string, properName: string) => {
       if (!userId) return;
 
-      const existing = vendorOverrides.find(
-        (vo) => vo.proper_name.toLowerCase() === vendorName.toLowerCase(),
+      const vendorKey = toVendorKey(vendorName);
+      const existing = vendorOverrides.find((vo) =>
+        vo.proper_name.toLowerCase() === vendorName.toLowerCase() ||
+        (vo.match_key ? vo.match_key === vendorKey : toVendorKey(vo.proper_name) === vendorKey)
       );
       if (!existing) return;
 
@@ -332,8 +336,10 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
   const handleSetMatchType = useCallback(
     async (vendorName: string, matchType: MatchType) => {
       if (!userId) return;
-      const existing = vendorOverrides.find(
-        (vo) => vo.proper_name.toLowerCase() === vendorName.toLowerCase(),
+      const vendorKey = toVendorKey(vendorName);
+      const existing = vendorOverrides.find((vo) =>
+        vo.proper_name.toLowerCase() === vendorName.toLowerCase() ||
+        (vo.match_key ? vo.match_key === vendorKey : toVendorKey(vo.proper_name) === vendorKey)
       );
       if (!existing) return;
       if ((existing.match_type || 'exact') === matchType) return; // no-op

@@ -84,6 +84,9 @@ const Dashboard: React.FC<Props> = ({
   const {
     vendorOverrides,
     handleDeleteVendorOverride,
+    handleSetVendorCategory,
+    handleSetProperName,
+    handleSetMatchType,
   } = useVendorOverrides({ userId: state.user?.id, budgets: state.budgets });
 
   const { currentMonthTransactions, projectedTransactions, remainingMoney } = useDashboardTotals(
@@ -331,6 +334,9 @@ const Dashboard: React.FC<Props> = ({
           onReloadTransactions={onReloadTransactions}
           vendorOverrides={vendorOverrides}
           onDeleteVendorOverride={handleDeleteVendorOverride}
+          onSetVendorCategory={handleSetVendorCategory}
+          onSetProperName={handleSetProperName}
+          onSetMatchType={handleSetMatchType}
         />
 
         {selectedTx && (
