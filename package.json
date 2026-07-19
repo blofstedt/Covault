@@ -8,8 +8,11 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "cap:sync": "npx cap sync android && bash scripts/sync-android.sh",
-    "cap:build": "vite build && npx cap sync android && bash scripts/sync-android.sh"
+    "typecheck": "tsc --noEmit",
+    "typecheck:unused": "tsc --noEmit --noUnusedLocals --noUnusedParameters",
+    "verify": "npm run typecheck && npm run typecheck:unused && npm test && npm run build",
+    "cap:sync": "cap sync android && bash scripts/sync-android.sh",
+    "cap:build": "npm run build && cap sync android && bash scripts/sync-android.sh"
   },
   "dependencies": {
     "@aparajita/capacitor-biometric-auth": "^9.1.2",

@@ -47,22 +47,35 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
   // we handle the fallback in the body instead.)
   const safeSettings: DashboardSettingsShape = settings || { useLeisureAsBuffer: true };
 
-  const visibleBudgets = useMemo(() =>
-    budgets
+  const visibleBudgets = useMemo(() => {
+    const hiddenCategories: string[] = safeSettings.hiddenCategories || [];
+
+    return budgets
       .filter((budget) => !isFocusMode || budget.id === focusedBudgetId)
-      .filter((budget) => {
-        const hiddenCategories: string[] = safeSettings.hiddenCategories || [];
-        return !hiddenCategories.includes(budget.id);
-      })
+      .filter((budget) => !hiddenCategories.includes(budget.id))
       .sort((a, b) => {
         const aIsOther = a.name.toLowerCase() === 'other';
         const bIsOther = b.name.toLowerCase() === 'other';
         if (aIsOther && !bIsOther) return 1;
         if (!aIsOther && bIsOther) return -1;
         return 0;
-      }),
-    [budgets, isFocusMode, focusedBudgetId, safeSettings.hiddenCategories],
-  );
+      });
+  }, [budgets, isFocusMode, focusedBudgetId, safeSettings.hiddenCategories]);
+
+  const transactionsByBudgetId = useMemo(() => {
+    const grouped = new Map<string, Transaction[]>();
+
+    for (const transaction of transactions) {
+      const bucket = grouped.get(transaction.budget_id);
+      if (bucket) {
+        bucket.push(transaction);
+      } else {
+        grouped.set(transaction.budget_id, [transaction]);
+      }
+    }
+
+    return grouped;
+  }, [transactions]);
 
   const expandedBudgetId = expandedBudgets.size > 0 ? Array.from(expandedBudgets)[0] : null;
   const allCollapsed = expandedBudgets.size === 0;
@@ -77,10 +90,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
       }`}
     >
       {visibleBudgets.map((budget, index) => {
-          const budgetTxs = transactions.filter(
-            (t) =>
-              t.budget_id === budget.id
-          );
+          const budgetTxs = transactionsByBudgetId.get(budget.id) || [];
 
           const isExpanded = expandedBudgets.has(budget.id);
           const isLeisure = budget.name.toLowerCase().includes('leisure');

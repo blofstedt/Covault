@@ -15,7 +15,7 @@ Personal budget tracking PWA + Android app. Users track spending across budget c
 - **AI:** `@huggingface/transformers` — Xenova/flan-T5-small, ONNX/WASM, runs client-side
 - **Viz:** D3 7, Lucide React icons
 - **Testing:** Vitest 4, Playwright 1.59
-- **No linter/formatter configured**
+- **No linter/formatter configured**; use `npm run verify` before commits
 
 ## Commands
 
@@ -24,6 +24,9 @@ npm run dev          # Vite dev server on localhost:3000
 npm run build        # Production build → dist/
 npm run preview      # Preview production build
 npm test             # vitest run
+npm run typecheck    # TypeScript check
+npm run typecheck:unused # TypeScript check + unused locals/params
+npm run verify       # typecheck + unused check + tests + build
 npm run cap:build    # Build + sync to Android (vite build → cap sync → sync-android.sh)
 npm run cap:sync     # Just sync assets to Android
 npx cap open android # Open in Android Studio
