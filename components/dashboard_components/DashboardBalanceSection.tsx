@@ -100,7 +100,7 @@ const DashboardBalanceSection: React.FC<DashboardBalanceSectionProps> = ({
             strokeLinecap="round"
             strokeLinejoin="round"
           >
-            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l-.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
             <circle cx="12" cy="12" r="3" />
           </svg>
         </button>
@@ -116,30 +116,22 @@ const DashboardBalanceSection: React.FC<DashboardBalanceSectionProps> = ({
       )}
 
       <div className="text-center z-10 animate-nest">
-        <div className="flex items-baseline justify-center space-x-1 transition-colors duration-700">
+        <div className="flex items-baseline justify-center space-x-1">
           <span
-            className="text-xl font-bold leading-none"
-            style={{
-              background: isNegative
-                ? 'linear-gradient(135deg, #f43f5e, #e11d48)'
-                : 'linear-gradient(135deg, #34d399, #14b8a6)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
-            }}
+            className={`text-xl font-bold leading-none ${
+              isNegative
+                ? 'text-rose-500 dark:text-rose-400'
+                : 'text-emerald-500 dark:text-emerald-400'
+            }`}
           >
             $
           </span>
           <span
-            className="text-3xl font-extrabold font-mono tracking-tighter leading-none transition-all duration-700"
-            style={{
-              background: isNegative
-                ? 'linear-gradient(135deg, #f43f5e, #e11d48)'
-                : 'linear-gradient(135deg, #34d399, #14b8a6)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
-            }}
+            className={`text-3xl font-extrabold font-mono tracking-tighter leading-none ${
+              isNegative
+                ? 'text-rose-500 dark:text-rose-400'
+                : 'text-emerald-500 dark:text-emerald-400'
+            }`}
           >
             {remainingMoney.toLocaleString()}
           </span>
