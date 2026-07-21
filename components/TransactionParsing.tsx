@@ -8,7 +8,6 @@ import SetupInfoCard from './transaction_parsing/SetupInfoCard';
 import ClearConfirmModal from './transaction_parsing/ClearConfirmModal';
 import PageShell from './ui/PageShell';
 import LearnedRulesCard from './transaction_parsing/LearnedRulesCard';
-import VendorCategoryRulesCard from './transaction_parsing/VendorCategoryRulesCard';
 import { useNotificationRules } from './transaction_parsing/useNotificationRules';
 import type { NotATxRuleType } from './transaction_parsing/NotATransactionModal';
 import { toVendorKey } from '../lib/deviceTransactionParser';
@@ -82,7 +81,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     activeBanks: false,
     caughtTransactions: true,
     learnedRules: false,
-    vendorRules: false,
   });
 
   const toggleSection = useCallback((section: keyof typeof expandedSections) => {
@@ -498,30 +496,22 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               <LearnedRulesCard
                 userId={userId}
                 vendorOverrides={vendorOverrides}
+                allVendors={allVendors}
+                vendorOverrideByName={vendorOverrideByName}
+                categoryNameById={categoryNameById}
+                budgets={budgets}
                 onDeleteVendorOverride={handleDeleteVendorOverride}
+                onSetVendorCategory={handleSetVendorCategory}
+                onSetProperName={handleSetProperName}
+                onSetMatchType={handleSetMatchType}
+                onSetExpandedVendorCategory={setExpandedVendorCategory}
+                expandedVendorCategory={expandedVendorCategory}
                 isExpanded={expandedSections.learnedRules}
                 onToggleExpanded={() => toggleSection('learnedRules')}
               />
             </div>
 
-            {allVendors.length > 0 && (
-              <div className="shrink-0 mt-4">
-                <VendorCategoryRulesCard
-                  allVendors={allVendors}
-                  vendorOverrideByName={vendorOverrideByName}
-                  categoryNameById={categoryNameById}
-                  expandedVendorCategory={expandedVendorCategory}
-                  budgets={budgets}
-                  onSetExpandedVendorCategory={setExpandedVendorCategory}
-                  onSetVendorCategory={handleSetVendorCategory}
-                  onDeleteVendorOverride={handleDeleteVendorOverride}
-                  onSetProperName={handleSetProperName}
-                  onSetMatchType={handleSetMatchType}
-                  isExpanded={expandedSections.vendorRules}
-                  onToggleExpanded={() => toggleSection('vendorRules')}
-                />
-              </div>
-            )}
+            
           </>
         ) : (
           <SetupInfoCard enabled={enabled} onToggle={onToggle} />

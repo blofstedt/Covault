@@ -89,7 +89,7 @@ const Dashboard: React.FC<Props> = ({
     handleSetMatchType,
   } = useVendorOverrides({ userId: state.user?.id, budgets: state.budgets });
 
-  const { currentMonthTransactions, projectedTransactions, remainingMoney } = useDashboardTotals(
+  const { currentMonthTransactions, projectedTransactions, remainingMoney, isIncomeLoaded } = useDashboardTotals(
     normalizedTransactions,
     state.user?.monthlyIncome || 0,
   );
@@ -378,6 +378,7 @@ const Dashboard: React.FC<Props> = ({
           isSharedAccount={!state.user?.budgetingSolo}
           remainingMoney={remainingMoney}
           monthlyIncome={state.user?.monthlyIncome || 0}
+          isIncomeLoaded={isIncomeLoaded}
           searchQuery={searchQuery}
           isSearchOpen={isSearchOpen}
           onSearchQueryChange={(value) => {

@@ -1,45 +1,52 @@
 import React, { useState, useCallback } from 'react';
 import ParsingCard from '../ui/ParsingCard';
 import { useNotificationRules } from './useNotificationRules';
-import type { VendorOverride } from './useVendorOverrides';
-import type { MatchType } from './useVendorOverrides';
+import type { VendorOverride, MatchType } from './useVendorOverrides';
+import { toVendorKey } from '../../lib/deviceTransactionParser';
+import { BudgetCategory } from '../../types';
 
 interface LearnedRulesCardProps {
   userId?: string;
-  /** Vendor overrides currently loaded (Vendor Category Rules card passes these). */
   vendorOverrides: VendorOverride[];
-  /** Delete a vendor override. */
+  allVendors?: string[];
+  vendorOverrideByName?: Map<string, VendorOverride>;
+  categoryNameById?: Map<string, string>;
+  budgets?: BudgetCategory[];
   onDeleteVendorOverride: (overrideId: string) => void;
+  onSetVendorCategory?: (vendorName: string, categoryId: string) => void;
+  onSetProperName?: (vendorName: string, properName: string) => void;
+  onSetMatchType?: (vendorName: string, matchType: MatchType) => void;
+  onSetExpandedVendorCategory?: (vendorName: string | null) => void;
+  expandedVendorCategory?: string | null;
   isExpanded?: boolean;
   onToggleExpanded?: () => void;
 }
 
-/**
- * "Learned Rules" card on the <> page. Surfaces two types of
- * user-trained rules:
- *   1. Vendor corrections (the existing `overrides` table) with their
- *      match_type (exact/prefix/contains), use count (we approximate
- *      from `updated_at` recency since the overrides table doesn't
- *      track use_count), and quick-delete affordance.
- *   2. Skip patterns (the new `notification_rules` table) with their
- *      pattern_type (exact/contains), use count from the DB, and
- *      quick-delete.
- *
- * This is the user's window into "what has Covault learned from me?"
- * — they can audit, prune, or disable rules here.
- */
 const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
   userId,
   vendorOverrides,
+  allVendors = [],
+  vendorOverrideByName = new Map(),
+  categoryNameById = new Map(),
+  budgets = [],
   onDeleteVendorOverride,
+  onSetVendorCategory,
+  onSetProperName,
+  onSetMatchType,
+  onSetExpandedVendorCategory,
+  expandedVendorCategory,
   isExpanded = true,
   onToggleExpanded,
 }) => {
   const { rules, loading, remove } = useNotificationRules({ userId });
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [editingProperName, setEditingProperName] = useState<string | null>(null);
+  const [properNameDraft, setProperNameDraft] = useState('');
 
   const totalRules = vendorOverrides.length + rules.length;
-  if (totalRules === 0) return null;
+
+  // Combine vendor overrides with all vendors for the management UI
+  const displayVendors = allVendors.length > 0 ? allVendors : vendorOverrides.map(vo => vo.proper_name);
 
   const fmtUpdated = (iso?: string | null): string => {
     if (!iso) return '';
@@ -78,7 +85,7 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
       colorScheme="violet"
       icon={<path d="M12 2a3 3 0 00-3 3v1H7a3 3 0 00-3 3v3a3 3 0 003 3h10a3 3 0 003-3V9a3 3 0 00-3-3h-2V5a3 3 0 00-3-3zm0 2a1 1 0 011 1v1h-2V5a1 1 0 011-1z" />}
       title="Learned Rules"
-      subtitle="What Covault has learned from your corrections"
+      subtitle="Manage vendor mappings and auto-categorization"
       count={totalRules}
       collapsible
       isExpanded={isExpanded}
@@ -86,65 +93,195 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
     >
       {isExpanded && (
         <div className="space-y-3">
-          {/* ── Vendor corrections ── */}
-          {vendorOverrides.length > 0 && (
-            <div>
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <p className="text-[10px] font-bold tracking-wide text-slate-400 dark:text-slate-500 uppercase">
-                  Vendor corrections
-                </p>
-                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800/60 px-1.5 py-0.5 rounded-full">
-                  {vendorOverrides.length}
-                </span>
-              </div>
-              <div className="space-y-1.5">
-                {vendorOverrides.map((vo) => (
-                  <div
-                    key={vo.id}
-                    className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-white/60 dark:bg-violet-900/10 backdrop-blur-sm border border-violet-100 dark:border-violet-800/30"
-                  >
-                    <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                      <p className="text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate">
-                        {vo.proper_name}
-                      </p>
-                      {vo.match_type && (
-                        <span className={`text-[8px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border shrink-0 ${matchTypeStyles[vo.match_type]}`}>
-                          {vo.match_type}
-                        </span>
-                      )}
-                      {vo.category_name && (
-                        <span className="text-[9px] font-semibold text-violet-600 dark:text-violet-400 shrink-0">
-                          → {vo.category_name}
-                        </span>
-                      )}
-                      {vo.updated_at && (
-                        <span className="text-[9px] text-slate-400 dark:text-slate-500 shrink-0 ml-auto">
-                          {fmtUpdated(vo.updated_at)}
-                        </span>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => onDeleteVendorOverride(vo.id)}
-                      className="shrink-0 p-1 rounded-md text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all"
-                      title="Delete this rule"
-                      aria-label={`Delete rule for ${vo.proper_name}`}
-                    >
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-                      </svg>
-                    </button>
-                  </div>
-                ))}
-              </div>
+          {/* Vendor Mapping Section */}
+          <div>
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <p className="text-[10px] font-bold tracking-wide text-slate-400 dark:text-slate-500 uppercase">
+                Vendor Mappings
+              </p>
+              <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800/60 px-1.5 py-0.5 rounded-full">
+                {vendorOverrides.length}
+              </span>
             </div>
-          )}
 
-          {/* ── Skip patterns ── */}
+            <div className="space-y-1.5 mb-3">
+              {displayVendors.map((vendorName) => {
+                const vo = vendorOverrideByName.get(toVendorKey(vendorName));
+                const hasCategory = vo && vo.category_id;
+                const isVendorExpanded = expandedVendorCategory === vendorName;
+                const displayName = vo?.proper_name || vendorName;
+
+                return (
+                  <div key={vendorName} className="bg-white/60 dark:bg-violet-900/10 backdrop-blur-sm rounded-2xl border border-violet-100 dark:border-violet-800/30 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] overflow-hidden">
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => onSetExpandedVendorCategory?.(isVendorExpanded ? null : vendorName)}
+                      className="w-full flex items-center justify-between p-3 transition-all duration-200 active:scale-[0.99] cursor-pointer"
+                    >
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">
+                          {displayName}
+                          {vo?.proper_name && vo.proper_name !== vendorName && (
+                            <span className="text-slate-400 dark:text-slate-500 font-normal ml-1">({vendorName})</span>
+                          )}
+                        </span>
+                        <span className={`text-xs font-bold truncate ${
+                          hasCategory
+                            ? 'text-violet-600 dark:text-violet-400'
+                            : 'text-slate-400 dark:text-slate-500 italic'
+                        }`}>
+                          {hasCategory ? (vo?.category_name || categoryNameById.get(vo?.category_id ?? '') || 'Unknown') : 'None Selected'}
+                        </span>
+                      </div>
+                      <svg className={`w-3 h-3 text-slate-300 dark:text-slate-600 shrink-0 transition-transform ${isVendorExpanded ? 'rotate-90' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <polyline points="9 18 15 12 9 6" />
+                      </svg>
+                    </div>
+
+                    {isVendorExpanded && (
+                      <div className="px-3 pb-3 space-y-2 border-t border-violet-100 dark:border-violet-800/30 pt-2">
+                        {/* Category picker */}
+                        <div>
+                          <p className="text-[11px] font-semibold tracking-wide text-slate-500 dark:text-slate-400 mb-1">
+                            Category
+                          </p>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {budgets.map((b) => (
+                              <button
+                                key={b.id}
+                                type="button"
+                                onClick={() => onSetVendorCategory?.(vendorName, b.id)}
+                                className={`px-2 py-1.5 text-[10px] font-bold rounded-lg border transition-all duration-200 active:scale-[0.97] ${
+                                  vo?.category_id === b.id
+                                    ? 'bg-violet-500 text-white border-violet-600'
+                                    : 'bg-violet-50 dark:bg-violet-900/20 border-violet-200 dark:border-violet-800/40 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40'
+                                }`}
+                              >
+                                {b.name}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Proper name editor */}
+                        {vo && (
+                          <div>
+                            <p className="text-[11px] font-semibold tracking-wide text-slate-500 dark:text-slate-400 mb-1">
+                              Display Name
+                            </p>
+                            {editingProperName === vendorName ? (
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="text"
+                                  value={properNameDraft}
+                                  onChange={(e) => setProperNameDraft(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      onSetProperName?.(vendorName, properNameDraft);
+                                      setEditingProperName(null);
+                                    } else if (e.key === 'Escape') {
+                                      setEditingProperName(null);
+                                    }
+                                  }}
+                                  placeholder={vendorName}
+                                  className="flex-1 px-2 py-1 text-[10px] rounded-lg border border-violet-200 dark:border-violet-800/40 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                                  autoFocus
+                                />
+                                <button
+                                  onClick={() => {
+                                    onSetProperName?.(vendorName, properNameDraft);
+                                    setEditingProperName(null);
+                                  }}
+                                  className="px-2 py-1 text-[11px] font-bold rounded-lg bg-violet-500 text-white hover:bg-violet-600 transition-all duration-200 active:scale-[0.97]"
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  onClick={() => setEditingProperName(null)}
+                                  className="px-2 py-1 text-[11px] font-bold rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 transition-all duration-200 active:scale-[0.97]"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  setProperNameDraft(vo.proper_name ?? '');
+                                  setEditingProperName(vendorName);
+                                }}
+                                className="w-full flex items-center gap-1.5 px-2 py-1.5 text-xs rounded-lg border border-dashed border-violet-200 dark:border-violet-800/40 text-slate-600 dark:text-slate-300 hover:bg-violet-100 dark:hover:bg-violet-900/30 transition-all duration-200 active:scale-[0.97]"
+                              >
+                                <svg className="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                                  <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                </svg>
+                                <span className="truncate">
+                                  {vo.proper_name ? vo.proper_name : `Set preferred name for "${vendorName}"`}
+                                </span>
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Match type picker */}
+                        {vo && onSetMatchType && (
+                          <div>
+                            <p className="text-[11px] font-semibold tracking-wide text-slate-500 dark:text-slate-400 mb-1">
+                              Match incoming notifications
+                            </p>
+                            <div className="grid grid-cols-3 gap-1.5">
+                              {(['exact', 'prefix', 'contains'] as const).map((mt) => (
+                                <button
+                                  key={mt}
+                                  type="button"
+                                  onClick={() => onSetMatchType(vendorName, mt)}
+                                  title={
+                                    mt === 'exact'
+                                      ? 'Only this exact vendor name'
+                                      : mt === 'prefix'
+                                      ? 'Vendor names starting with this'
+                                      : 'Vendor names containing this'
+                                  }
+                                  className={`px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide rounded-lg border transition-all duration-200 active:scale-[0.97] ${
+                                    (vo.match_type || 'exact') === mt
+                                      ? 'bg-violet-500 text-white border-violet-600'
+                                      : 'bg-violet-50 dark:bg-violet-900/20 border-violet-200 dark:border-violet-800/40 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40'
+                                  }`}
+                                >
+                                  {mt}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Delete button */}
+                        {vo && (
+                          <button
+                            onClick={() => onDeleteVendorOverride(vo.id)}
+                            className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] font-bold rounded-lg border border-rose-200 dark:border-rose-800/40 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/30 transition-all duration-200 active:scale-[0.97]"
+                          >
+                            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                              <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            Remove Rule
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Skip Patterns (Notification Rules) */}
           {rules.length > 0 && (
             <div>
               <div className="flex items-center gap-1.5 mb-1.5">
                 <p className="text-[10px] font-bold tracking-wide text-slate-400 dark:text-slate-500 uppercase">
-                  Skip patterns
+                  Skip Patterns
                 </p>
                 <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800/60 px-1.5 py-0.5 rounded-full">
                   {rules.length}
@@ -154,44 +291,40 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                 {rules.map((rule) => (
                   <div
                     key={rule.id}
-                    className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-white/60 dark:bg-amber-900/10 backdrop-blur-sm border border-amber-100 dark:border-amber-800/30"
+                    className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-white/60 dark:bg-violet-900/10 backdrop-blur-sm border border-violet-100 dark:border-violet-800/30"
                   >
                     <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                      <span className={`shrink-0 text-[8px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border ${
-                        rule.pattern_type === 'exact'
-                          ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-700/50'
-                          : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-700/50'
-                      }`}>
-                        {rule.pattern_type}
-                      </span>
-                      <p className="text-[10px] font-mono text-slate-700 dark:text-slate-200 truncate" title={rule.pattern}>
+                      <p className="text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate">
                         {rule.pattern}
                       </p>
-                      {rule.use_count > 0 && (
-                        <span className="text-[9px] text-slate-400 dark:text-slate-500 shrink-0 ml-auto">
-                          used {rule.use_count}×{rule.last_used_at ? ` · ${fmtUpdated(rule.last_used_at)}` : ''}
+                      <span className={`text-[8px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border shrink-0 ${matchTypeStyles[rule.pattern_type as MatchType] || matchTypeStyles.exact}`}>
+                        {rule.pattern_type}
+                      </span>
+                      {rule.use_count !== undefined && (
+                        <span className="text-[9px] font-semibold text-violet-500 dark:text-violet-400">
+                          {rule.use_count} uses
+                        </span>
+                      )}
+                      {rule.updated_at && (
+                        <span className="text-[9px] text-slate-400 dark:text-slate-500">
+                          {fmtUpdated(rule.updated_at)}
                         </span>
                       )}
                     </div>
                     <button
                       onClick={() => handleRemoveRule(rule.id)}
                       disabled={removingId === rule.id}
-                      className="shrink-0 p-1 rounded-md text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all disabled:opacity-50"
-                      title="Delete this rule"
-                      aria-label={`Delete skip pattern ${rule.pattern.slice(0, 30)}`}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 transition-all duration-200 active:scale-[0.97] disabled:opacity-50"
+                      aria-label="Remove rule"
                     >
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                        <path d="M6 18L18 6M6 6l12 12" />
                       </svg>
                     </button>
                   </div>
                 ))}
               </div>
             </div>
-          )}
-
-          {loading && (
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center py-2">Loading…</p>
           )}
         </div>
       )}

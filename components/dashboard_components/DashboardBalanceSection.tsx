@@ -4,6 +4,7 @@ interface DashboardBalanceSectionProps {
   isSharedAccount: boolean;
   remainingMoney: number;
   monthlyIncome: number;
+  isIncomeLoaded?: boolean;
   searchQuery: string;
   isSearchOpen: boolean;
   onSearchQueryChange: (value: string) => void;
@@ -15,6 +16,7 @@ const DashboardBalanceSection: React.FC<DashboardBalanceSectionProps> = ({
   isSharedAccount,
   remainingMoney,
   monthlyIncome,
+  isIncomeLoaded = true,
   searchQuery,
   isSearchOpen,
   onSearchQueryChange,
@@ -23,6 +25,47 @@ const DashboardBalanceSection: React.FC<DashboardBalanceSectionProps> = ({
 }) => {
   const isNegative = remainingMoney < 0;
   const hasNoIncome = monthlyIncome === 0;
+
+  if (!isIncomeLoaded) {
+    return (
+      <div
+        id="balance-header"
+        className="flex flex-col items-center justify-center pb-1 shrink-0 relative"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.75rem)' }}
+      >
+        <div className="w-full flex items-center justify-between px-4 z-10 animate-nest mb-0.5 relative">
+          <span className="absolute left-0 right-0 text-center text-[10px] font-semibold tracking-widest uppercase transition-colors duration-700 text-slate-400 dark:text-slate-500 pointer-events-none">
+            {isSharedAccount ? 'Our Remaining Balance' : 'Remaining Balance'}
+          </span>
+          <span></span>
+          <button
+            id="settings-button"
+            onClick={onOpenSettings}
+            className="p-2 transition-all duration-200 active:scale-[0.97] bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-xl text-slate-400 hover:text-emerald-600 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] shadow-sm"
+          >
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              strokeWidth={2.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l-.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          </button>
+        </div>
+        <div className="text-center z-10 animate-nest">
+          <div className="flex items-baseline justify-center space-x-1 transition-colors duration-700">
+            <span className="text-xl font-bold leading-none text-slate-300 dark:text-slate-600">$</span>
+            <span className="text-3xl font-extrabold font-mono tracking-tighter leading-none text-slate-300 dark:text-slate-600">---</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
