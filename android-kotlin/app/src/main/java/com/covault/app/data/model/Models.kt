@@ -122,8 +122,6 @@ data class Settings(
     val hasJointAccounts: Boolean? = null,
     val budgetingSolo: Boolean? = null,
     val monthlyIncome: Double? = null,
-    val rolloverEnabled: Boolean = true,
-    val rolloverOverspend: Boolean = false,
     val useLeisureAsBuffer: Boolean = true,
     val showSavingsInsight: Boolean = true,
     val theme: String = "light",
@@ -131,8 +129,6 @@ data class Settings(
 
 @Serializable
 data class AppStateSettings(
-    val rolloverEnabled: Boolean = true,
-    val rolloverOverspend: Boolean = false,
     val useLeisureAsBuffer: Boolean = true,
     val showSavingsInsight: Boolean = true,
     val theme: String = "light",

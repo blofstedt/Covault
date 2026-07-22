@@ -205,8 +205,6 @@ object TransactionMappers {
         hasJointAccounts = (row.partnerId != null),
         budgetingSolo = row.budgetingSolo,
         monthlyIncome = row.monthlyIncome,
-        rolloverEnabled = row.rolloverEnabled ?: true,
-        rolloverOverspend = false, // not in DB row — pulled from app settings
         useLeisureAsBuffer = row.leisureBufferEnabled ?: true,
         showSavingsInsight = row.showSavingsInsight ?: true,
         theme = row.themeSelected ?: "dark",

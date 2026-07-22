@@ -39,6 +39,7 @@ import com.covault.app.data.model.TransactionLabel
 import com.covault.app.data.model.User
 import com.covault.app.domain.DateUtils
 import com.covault.app.domain.DashboardTotals
+import com.covault.app.domain.DiscretionaryShield
 import com.covault.app.ui.theme.CovaultTheme
 import java.time.LocalDate
 
@@ -66,6 +67,7 @@ fun DashboardScreen(
     val budgets by viewModel.budgets.collectAsStateWithLifecycle()
     val transactions by viewModel.transactions.collectAsStateWithLifecycle()
     val pending by viewModel.pendingTransactions.collectAsStateWithLifecycle()
+    val shieldEnabled by viewModel.discretionaryShieldEnabled.collectAsStateWithLifecycle()
 
     DashboardContent(
         user = user,
@@ -86,6 +88,8 @@ fun DashboardScreen(
         onApproveCapture = { id, budgetId -> viewModel.approveCapture(id, budgetId) },
         onRejectCapture = { id -> viewModel.rejectCapture(id) },
         onImportTransactions = { txs -> viewModel.importTransactions(txs) },
+        discretionaryShieldEnabled = shieldEnabled,
+        onSetDiscretionaryShield = { viewModel.setDiscretionaryShield(it) },
     )
 }
 
@@ -109,6 +113,8 @@ private fun DashboardContent(
     onApproveCapture: (String, String?) -> Unit,
     onRejectCapture: (String) -> Unit,
     onImportTransactions: (List<Transaction>) -> Unit,
+    discretionaryShieldEnabled: Boolean,
+    onSetDiscretionaryShield: (Boolean) -> Unit,
 ) {
     val isShared = user?.budgetingSolo == false
     val monthlyIncome = user?.monthlyIncome ?: 0.0
@@ -205,6 +211,10 @@ private fun DashboardContent(
             val sortedBudgets = remember(budgets) {
                 budgets.sortedBy { it.name.equals("Other", ignoreCase = true) }
             }
+            // Discretionary Shield: Leisure absorbs overspend from other categories.
+            val displayBudgets = remember(sortedBudgets, currentMonthTransactions, discretionaryShieldEnabled) {
+                DiscretionaryShield.apply(sortedBudgets, currentMonthTransactions, discretionaryShieldEnabled)
+            }
             if (isSearching) {
                 SearchResults(
                     searchQuery = searchQuery,
@@ -219,7 +229,7 @@ private fun DashboardContent(
             } else {
                 Column(modifier = Modifier.weight(1f)) {
                     BudgetFlowChart(
-                        budgets = sortedBudgets,
+                        budgets = displayBudgets,
                         transactions = currentMonthTransactions,
                         monthlyIncome = monthlyIncome,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -231,7 +241,7 @@ private fun DashboardContent(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(sortedBudgets, key = { it.id }) { budget ->
+                    items(displayBudgets, key = { it.id }) { budget ->
                         val isExpanded = budget.id in expandedBudgets
                         val budgetTxs = currentMonthTransactions.filter { it.budgetId == budget.id }
                         BudgetSection(
@@ -343,6 +353,8 @@ private fun DashboardContent(
             onShowPrivacy = { showPrivacy = true },
             onShowTerms = { showTerms = true },
             onImport = onImportTransactions,
+            discretionaryShieldEnabled = discretionaryShieldEnabled,
+            onSetDiscretionaryShield = onSetDiscretionaryShield,
             onClose = { showSettings = false },
         )
     }
@@ -414,6 +426,8 @@ private fun DashboardScreenPreview() {
             onApproveCapture = { _, _ -> },
             onRejectCapture = {},
             onImportTransactions = {},
+            discretionaryShieldEnabled = false,
+            onSetDiscretionaryShield = {},
         )
     }
 }

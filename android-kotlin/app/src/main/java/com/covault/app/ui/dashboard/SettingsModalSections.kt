@@ -541,6 +541,35 @@ private fun ThemeToggleSection(themeViewModel: ThemeViewModel = hiltViewModel())
     }
 }
 
+// ---- 5. Discretionary Shield --------------------------------------------
+
+@Composable
+private fun DiscretionaryShieldSection(enabled: Boolean, onToggle: (Boolean) -> Unit) {
+    SettingsCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Discretionary Shield",
+                    style = TextStyle(
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    ),
+                )
+                Text(
+                    text = "Let Leisure absorb overspending from your other categories.",
+                    style = TextStyle(
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ),
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            Switch(checked = enabled, onCheckedChange = onToggle)
+        }
+    }
+}
+
 // ---- 11. Export ---------------------------------------------------------
 
 @Composable
@@ -792,6 +821,8 @@ fun DashboardSettingsModal(
     onShowPrivacy: () -> Unit = {},
     onShowTerms: () -> Unit = {},
     onImport: (List<Transaction>) -> Unit = {},
+    discretionaryShieldEnabled: Boolean = false,
+    onSetDiscretionaryShield: (Boolean) -> Unit = {},
     onClose: () -> Unit,
 ) {
     Box(
@@ -860,6 +891,12 @@ fun DashboardSettingsModal(
                 Spacer(Modifier.height(12.dp))
 
                 ThemeToggleSection()
+                Spacer(Modifier.height(12.dp))
+
+                DiscretionaryShieldSection(
+                    enabled = discretionaryShieldEnabled,
+                    onToggle = onSetDiscretionaryShield,
+                )
                 Spacer(Modifier.height(12.dp))
 
                 VaultSharingSection(
