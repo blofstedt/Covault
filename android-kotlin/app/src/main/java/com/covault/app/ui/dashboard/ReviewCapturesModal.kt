@@ -41,8 +41,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.covault.app.data.model.BudgetCategory
+import com.covault.app.data.model.MatchType
 import com.covault.app.data.model.PendingTransaction
+import com.covault.app.data.model.VendorOverride
 
 /**
  * Review queue for notification-captured transactions. Lists rows the
@@ -57,7 +61,10 @@ fun ReviewCapturesModal(
     onApprove: (pendingId: String, budgetId: String?) -> Unit,
     onReject: (pendingId: String) -> Unit,
     onClose: () -> Unit,
+    learnedRulesViewModel: LearnedRulesViewModel = hiltViewModel(),
 ) {
+    // Reuse the learned-rule set to pre-suggest a category per capture.
+    val overrides by learnedRulesViewModel.overrides.collectAsStateWithLifecycle()
     val defaultBudget = remember(budgets) {
         budgets.firstOrNull { it.name.equals("Other", ignoreCase = true) } ?: budgets.firstOrNull()
     }
@@ -132,6 +139,7 @@ fun ReviewCapturesModal(
                             CaptureCard(
                                 row = row,
                                 budgets = budgets,
+                                overrides = overrides,
                                 defaultBudget = defaultBudget,
                                 onApprove = onApprove,
                                 onReject = onReject,
@@ -144,15 +152,41 @@ fun ReviewCapturesModal(
     }
 }
 
+/** Normalized vendor key. Matches `toVendorKey` in deviceTransactionParser.ts. */
+private fun vKey(s: String): String = s.lowercase().filter { it.isLetterOrDigit() }
+
+/** Suggest a budget for a captured vendor by matching it against learned rules. */
+private fun suggestBudget(
+    vendor: String,
+    overrides: List<VendorOverride>,
+    budgets: List<BudgetCategory>,
+): BudgetCategory? {
+    val key = vKey(vendor)
+    if (key.isEmpty()) return null
+    val match = overrides.firstOrNull { o ->
+        val pk = vKey(o.matchKey?.ifBlank { o.properName } ?: o.properName)
+        if (pk.isEmpty()) false else when (o.matchType) {
+            MatchType.EXACT -> key == pk
+            MatchType.PREFIX -> key.startsWith(pk)
+            MatchType.CONTAINS -> key.contains(pk)
+        }
+    } ?: return null
+    return budgets.firstOrNull { it.name.equals(match.categoryName, ignoreCase = true) }
+}
+
 @Composable
 private fun CaptureCard(
     row: PendingTransaction,
     budgets: List<BudgetCategory>,
+    overrides: List<VendorOverride>,
     defaultBudget: BudgetCategory?,
     onApprove: (pendingId: String, budgetId: String?) -> Unit,
     onReject: (pendingId: String) -> Unit,
 ) {
-    var selected by remember(row.id) { mutableStateOf(defaultBudget) }
+    val suggested = remember(row.id, overrides, budgets) {
+        suggestBudget(row.extractedVendor, overrides, budgets) ?: defaultBudget
+    }
+    var selected by remember(row.id) { mutableStateOf(suggested) }
     var menuOpen by remember { mutableStateOf(false) }
 
     Surface(
