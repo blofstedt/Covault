@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -48,6 +49,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -59,6 +61,8 @@ import com.covault.app.data.model.Transaction
 import com.covault.app.data.model.User
 import com.covault.app.domain.CsvExport
 import com.covault.app.domain.CsvImport
+import com.covault.app.ui.theme.CardAccent
+import com.covault.app.ui.theme.CovaultCard
 
 // =============================================================================
 // Settings modal sections. Direct port of `DashboardSettingsModal.tsx` and
@@ -88,20 +92,20 @@ internal fun SettingsCard(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    Surface(
-        color = MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(24.dp),
-        modifier = modifier
-            .fillMaxWidth()
-            .border(
-                width = 1.dp,
-                color = MaterialTheme.colorScheme.outlineVariant,
-                shape = RoundedCornerShape(24.dp),
-            ),
+    // React settings cards: `p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl
+    // border ring-inset ring-white/…`. Slate-toned fill (distinct from the
+    // white/slate-900 modal surface) with the shared inset-ring card look.
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val fill = if (isDark) Color(0xFF1E293B).copy(alpha = 0.5f) else Color(0xFFF8FAFC)
+    CovaultCard(
+        modifier = modifier.fillMaxWidth(),
+        accent = CardAccent.Slate,
+        cornerRadius = 24.dp,
+        fill = fill,
+        elevation = 0.dp,
+        contentPadding = PaddingValues(20.dp),
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            content()
-        }
+        content()
     }
 }
 

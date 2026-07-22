@@ -49,7 +49,7 @@ import java.util.Locale
  * `components/dashboard_components/DashboardBalanceSection.tsx`.
  *
  *  - "Remaining Balance" / "Our Remaining Balance" label
- *  - Big gradient number (green if positive, rose if negative)
+ *  - Big monospace number (emerald if positive, rose if negative)
  *  - Search button (toggles into a search field)
  *  - Settings cog on the right
  *  - "Set monthly income" hint when income is 0
