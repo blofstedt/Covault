@@ -1,6 +1,5 @@
 package com.covault.app.data.repository
 
-import com.covault.app.data.model.Settings
 import com.covault.app.data.remote.dto.SettingsRow
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.postgrest
@@ -70,6 +69,5 @@ data class SettingsUpdate(
     val useLeisureAsBuffer: Boolean? = null,
     val showSavingsInsight: Boolean? = null,
     val appNotificationsEnabled: Boolean? = null,
-    val smartNotificationsEnabled: Boolean? = null,
     val budgetingSolo: Boolean? = null,
 )

@@ -22,15 +22,11 @@ object SystemCategories {
         HOUSING, GROCERIES, TRANSPORT, UTILITIES, LEISURE, SERVICES, OTHER,
     )
 
-    /** Lookup table from the `Budgets` enum string to the system UUID. */
-    private val idByName: Map<String, String> = ALL.associate { it.name to it.id }
+    /** Lookup table from the `Budgets` enum string to the system UUID.
+     *  Keyed lowercase because [idForName] lowercases its argument. */
+    private val idByName: Map<String, String> = ALL.associate { it.name.lowercase() to it.id }
 
     fun idForName(name: String): String? = idByName[name.trim().lowercase()]
 
     fun nameForId(id: String): String? = ALL.firstOrNull { it.id == id }?.name
-
-    fun isValidEnumValue(name: String): Boolean = name in setOf(
-        "Housing", "Groceries", "Leisure", "Utilities",
-        "Transport", "Services", "Other",
-    )
 }

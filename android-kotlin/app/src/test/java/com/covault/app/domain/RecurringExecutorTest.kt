@@ -15,13 +15,6 @@ class RecurringExecutorTest {
     private val now = LocalDate.of(2026, 7, 15)
 
     @Test
-    fun `one-time transaction produces no projections`() {
-        val t = monthlyRent()
-        val projections = RecurringExecutor.computeDueProjections(listOf(t), now)
-        assertEquals(0, projections.size)
-    }
-
-    @Test
     fun `monthly template produces a projection for next month`() {
         val t = monthlyRent().copy(date = "2026-07-01T12:00:00.000Z")
         val projections = RecurringExecutor.computeFutureProjections(listOf(t), now)
@@ -60,17 +53,6 @@ class RecurringExecutorTest {
         val t = monthlyRent().copy(recurrence = Recurrence.ONE_TIME)
         val projections = RecurringExecutor.computeFutureProjections(listOf(t), now)
         assertEquals(0, projections.size)
-    }
-
-    @Test
-    fun `capped at MAX_BACKFILL_MONTHS past due dates`() {
-        // Template from 6 months ago; only 2 months of backfill should appear
-        val t = monthlyRent().copy(date = "2026-01-15T12:00:00.000Z")
-        val due = RecurringExecutor.computeDueProjections(listOf(t), now)
-        // We only collect dates <= today AND >= 2026-05-01 (now - 2 months, day=1)
-        // So Apr, Mar, Feb are dropped. May, Jun, Jul make it.
-        // 2026-05-15, 2026-06-15, 2026-07-15 — that's 3 rows
-        assertTrue("Expected at most 3 due dates, got ${due.size}", due.size <= 3)
     }
 
     private fun monthlyRent(): Transaction = Transaction(

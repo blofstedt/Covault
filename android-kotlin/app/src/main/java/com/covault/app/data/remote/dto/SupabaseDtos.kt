@@ -20,7 +20,6 @@ data class SettingsRow(
     @SerialName("partner_name") val partnerName: String? = null,
     @SerialName("budgeting_solo") val budgetingSolo: Boolean? = null,
     @SerialName("monthly_income") val monthlyIncome: Double? = null,
-    @SerialName("rollover_enabled") val rolloverEnabled: Boolean? = null,
     @SerialName("leisure_buffer_enabled") val leisureBufferEnabled: Boolean? = null,
     @SerialName("show_savings_insight") val showSavingsInsight: Boolean? = null,
     @SerialName("app_notifications_enabled") val appNotificationsEnabled: Boolean? = null,

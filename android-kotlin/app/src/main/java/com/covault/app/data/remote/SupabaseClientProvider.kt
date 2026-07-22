@@ -6,8 +6,6 @@ import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.auth.ExternalAuthAction
 import io.github.jan.supabase.postgrest.Postgrest
-import io.github.jan.supabase.realtime.Realtime
-import io.github.jan.supabase.storage.Storage
 
 /**
  * Single source of truth for the Supabase client. All repositories and
@@ -51,8 +49,6 @@ object SupabaseClientProvider {
                 autoSaveToStorage = true
             }
             install(Postgrest)
-            install(Realtime)
-            install(Storage)
         }
     }
 }
