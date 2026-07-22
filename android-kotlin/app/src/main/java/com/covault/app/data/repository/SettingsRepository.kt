@@ -34,7 +34,6 @@ class SettingsRepository @Inject constructor(
         val merged = current.copy(
             monthlyIncome = update.monthlyIncome ?: current.monthlyIncome,
             themeSelected = update.theme ?: current.themeSelected,
-            rolloverEnabled = update.rolloverEnabled ?: current.rolloverEnabled,
             leisureBufferEnabled = update.useLeisureAsBuffer ?: current.leisureBufferEnabled,
             showSavingsInsight = update.showSavingsInsight ?: current.showSavingsInsight,
             appNotificationsEnabled = update.appNotificationsEnabled ?: current.appNotificationsEnabled,
@@ -68,7 +67,6 @@ class SettingsRepository @Inject constructor(
 data class SettingsUpdate(
     val monthlyIncome: Double? = null,
     val theme: String? = null,
-    val rolloverEnabled: Boolean? = null,
     val useLeisureAsBuffer: Boolean? = null,
     val showSavingsInsight: Boolean? = null,
     val appNotificationsEnabled: Boolean? = null,

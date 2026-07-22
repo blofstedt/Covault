@@ -92,6 +92,13 @@ class AuthRepository @Inject constructor(
     }
 
     /**
+     * The current session's user, if any — available even before the settings
+     * row loads (e.g. during onboarding). Used to persist onboarding choices.
+     */
+    fun currentUser(): User? =
+        supabase.auth.currentSessionOrNull()?.let { mapUser(it) }
+
+    /**
      * Map a supabase-kt session into our domain [User]. Mirrors the
      * `mapUser` helper in `lib/hooks/useAuthState.ts`. Fields like
      * `hasJointAccounts`, `budgetingSolo`, `monthlyIncome` come from the

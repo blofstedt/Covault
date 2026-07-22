@@ -39,6 +39,7 @@ import com.covault.app.data.model.TransactionLabel
 import com.covault.app.data.model.User
 import com.covault.app.domain.DateUtils
 import com.covault.app.domain.DashboardTotals
+import com.covault.app.domain.DiscretionaryShield
 import com.covault.app.ui.theme.CovaultTheme
 import java.time.LocalDate
 
@@ -66,6 +67,7 @@ fun DashboardScreen(
     val budgets by viewModel.budgets.collectAsStateWithLifecycle()
     val transactions by viewModel.transactions.collectAsStateWithLifecycle()
     val pending by viewModel.pendingTransactions.collectAsStateWithLifecycle()
+    val shieldEnabled by viewModel.discretionaryShieldEnabled.collectAsStateWithLifecycle()
 
     DashboardContent(
         user = user,
@@ -83,6 +85,11 @@ fun DashboardScreen(
         onLinkPartner = { email -> viewModel.linkPartner(user?.id ?: "", email) },
         onUnlinkPartner = { viewModel.unlinkPartner(user?.id ?: "") },
         onSignOut = { viewModel.signOut() },
+        onApproveCapture = { id, budgetId -> viewModel.approveCapture(id, budgetId) },
+        onRejectCapture = { id -> viewModel.rejectCapture(id) },
+        onImportTransactions = { txs -> viewModel.importTransactions(txs) },
+        discretionaryShieldEnabled = shieldEnabled,
+        onSetDiscretionaryShield = { viewModel.setDiscretionaryShield(it) },
     )
 }
 
@@ -103,6 +110,11 @@ private fun DashboardContent(
     onLinkPartner: (String) -> Unit,
     onUnlinkPartner: () -> Unit,
     onSignOut: () -> Unit,
+    onApproveCapture: (String, String?) -> Unit,
+    onRejectCapture: (String) -> Unit,
+    onImportTransactions: (List<Transaction>) -> Unit,
+    discretionaryShieldEnabled: Boolean,
+    onSetDiscretionaryShield: (Boolean) -> Unit,
 ) {
     val isShared = user?.budgetingSolo == false
     val monthlyIncome = user?.monthlyIncome ?: 0.0
@@ -118,10 +130,13 @@ private fun DashboardContent(
     var showForm by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showFAQ by remember { mutableStateOf(false) }
+    var showLearnedRules by remember { mutableStateOf(false) }
+    var showReview by remember { mutableStateOf(false) }
+    var showPrivacy by remember { mutableStateOf(false) }
+    var showTerms by remember { mutableStateOf(false) }
     var editingTx by remember { mutableStateOf<Transaction?>(null) }
     var partnerLinkEmail by remember { mutableStateOf("") }
     var isLinkingPartner by remember { mutableStateOf(false) }
-    var themeOverride by remember { mutableStateOf<String?>(null) }
 
     val monthKey = DateUtils.getLocalMonthKey(LocalDate.now().toString())
     val currentMonthTransactions = remember(transactions, monthKey) {
@@ -140,7 +155,6 @@ private fun DashboardContent(
             .distinctBy { it.vendor.lowercase() }
             .map { VendorHistoryItem(it.vendor, it.budgetId!!) }
     }
-    val effectiveTheme = themeOverride ?: (if (isShared) "dark" else "light")
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(
@@ -197,6 +211,10 @@ private fun DashboardContent(
             val sortedBudgets = remember(budgets) {
                 budgets.sortedBy { it.name.equals("Other", ignoreCase = true) }
             }
+            // Discretionary Shield: Leisure absorbs overspend from other categories.
+            val displayBudgets = remember(sortedBudgets, currentMonthTransactions, discretionaryShieldEnabled) {
+                DiscretionaryShield.apply(sortedBudgets, currentMonthTransactions, discretionaryShieldEnabled)
+            }
             if (isSearching) {
                 SearchResults(
                     searchQuery = searchQuery,
@@ -211,7 +229,7 @@ private fun DashboardContent(
             } else {
                 Column(modifier = Modifier.weight(1f)) {
                     BudgetFlowChart(
-                        budgets = sortedBudgets,
+                        budgets = displayBudgets,
                         transactions = currentMonthTransactions,
                         monthlyIncome = monthlyIncome,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -223,7 +241,7 @@ private fun DashboardContent(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(sortedBudgets, key = { it.id }) { budget ->
+                    items(displayBudgets, key = { it.id }) { budget ->
                         val isExpanded = budget.id in expandedBudgets
                         val budgetTxs = currentMonthTransactions.filter { it.budgetId == budget.id }
                         BudgetSection(
@@ -264,9 +282,9 @@ private fun DashboardContent(
                     editingTx = null
                     showForm = true
                 },
-                onOpenParsing = { /* Stage 6 */ },
+                onOpenReview = { showReview = true },
+                pendingCount = pending.size,
                 activeView = "home",
-                pendingCount = pendingTotal,
             )
         }
     }
@@ -308,20 +326,9 @@ private fun DashboardContent(
     }
 
     if (showSettings && user != null) {
-        val settingsObj = DashboardSettings(
-            theme = effectiveTheme,
-            rolloverEnabled = true,
-            useLeisureAsBuffer = true,
-            notificationsEnabled = false,
-            appNotificationsEnabled = false,
-            smartNotificationsEnabled = true,
-            hiddenCategories = emptyList(),
-        )
         val callbacks = DashboardSettingsCallbacks(
-            onUpdateSettings = { _, _ -> /* TODO: persist via SettingsRepository */ },
             onUpdateUserIncome = { onUpdateIncome(it) },
             onSaveBudgetLimit = { id, limit -> onSaveBudgetLimit(id, limit) },
-            onSaveBudgetVisibility = { _, _ -> /* TODO */ },
             onChangePartnerEmail = { partnerLinkEmail = it },
             onConnectPartner = {
                 isLinkingPartner = true
@@ -333,7 +340,6 @@ private fun DashboardContent(
         )
         DashboardSettingsModal(
             isSharedAccount = isShared,
-            settings = settingsObj,
             user = user,
             isLinkingPartner = isLinkingPartner,
             partnerLinkEmail = partnerLinkEmail,
@@ -342,14 +348,45 @@ private fun DashboardContent(
             callbacks = callbacks,
             hasPremium = true,
             onSubscribe = {},
-            onImportComplete = { /* Stage 4b-iv: import pipeline */ },
             onShowFAQ = { showFAQ = true },
+            onShowLearnedRules = { showLearnedRules = true },
+            onShowPrivacy = { showPrivacy = true },
+            onShowTerms = { showTerms = true },
+            onImport = onImportTransactions,
+            discretionaryShieldEnabled = discretionaryShieldEnabled,
+            onSetDiscretionaryShield = onSetDiscretionaryShield,
             onClose = { showSettings = false },
         )
     }
 
     if (showFAQ) {
         FAQModal(onClose = { showFAQ = false })
+    }
+
+    if (showLearnedRules) {
+        LearnedRulesModal(
+            budgets = budgets,
+            transactions = transactions,
+            onClose = { showLearnedRules = false },
+        )
+    }
+
+    if (showReview) {
+        ReviewCapturesModal(
+            pending = pending,
+            budgets = budgets,
+            onApprove = { id, budgetId -> onApproveCapture(id, budgetId) },
+            onReject = { id -> onRejectCapture(id) },
+            onClose = { showReview = false },
+        )
+    }
+
+    if (showPrivacy) {
+        PrivacyPolicyModal(onClose = { showPrivacy = false })
+    }
+
+    if (showTerms) {
+        TermsModal(onClose = { showTerms = false })
     }
 }
 
@@ -386,6 +423,11 @@ private fun DashboardScreenPreview() {
             onLinkPartner = { _ -> },
             onUnlinkPartner = {},
             onSignOut = {},
+            onApproveCapture = { _, _ -> },
+            onRejectCapture = {},
+            onImportTransactions = {},
+            discretionaryShieldEnabled = false,
+            onSetDiscretionaryShield = {},
         )
     }
 }

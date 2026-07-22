@@ -1,5 +1,10 @@
 package com.covault.app.ui.dashboard
 
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,7 +27,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.covault.app.data.repository.ThemePreference
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,6 +50,8 @@ import androidx.compose.ui.unit.sp
 import com.covault.app.data.model.BudgetCategory
 import com.covault.app.data.model.Transaction
 import com.covault.app.data.model.User
+import com.covault.app.domain.CsvExport
+import com.covault.app.domain.CsvImport
 
 // =============================================================================
 // Settings modal sections. Direct port of `DashboardSettingsModal.tsx` and
@@ -53,21 +64,9 @@ import com.covault.app.data.model.User
 // at the bottom of this file.
 // =============================================================================
 
-data class DashboardSettings(
-    val theme: String = "light",
-    val rolloverEnabled: Boolean = true,
-    val useLeisureAsBuffer: Boolean = true,
-    val notificationsEnabled: Boolean = false,
-    val appNotificationsEnabled: Boolean = false,
-    val smartNotificationsEnabled: Boolean = true,
-    val hiddenCategories: List<String> = emptyList(),
-)
-
 data class DashboardSettingsCallbacks(
-    val onUpdateSettings: (key: String, value: Any) -> Unit,
     val onUpdateUserIncome: (Double) -> Unit,
     val onSaveBudgetLimit: (String, Double) -> Unit,
-    val onSaveBudgetVisibility: (String, Boolean) -> Unit,
     val onChangePartnerEmail: (String) -> Unit,
     val onConnectPartner: () -> Unit,
     val onDisconnectPartner: () -> Unit,
@@ -120,28 +119,6 @@ internal fun SectionHeader(title: String, subtitle: String, modifier: Modifier =
         )
     }
 }
-
-@Composable
-internal fun ToggleSwitch(enabled: Boolean, onToggle: () -> Unit) {
-    val trackColor = if (enabled) MaterialTheme.colorScheme.primary
-                     else MaterialTheme.colorScheme.surfaceVariant
-    val thumbOffset = if (enabled) 22f else 2f
-    Box(
-        modifier = Modifier
-            .size(width = 44.dp, height = 24.dp)
-            .background(color = trackColor, shape = RoundedCornerShape(50))
-            .clickable(onClick = onToggle),
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        Box(
-            modifier = Modifier
-                .padding(start = (thumbOffset / 2).dp)
-                .size(20.dp)
-                .background(color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(50)),
-        )
-    }
-}
-
 // ---- 1. Frequently Asked ------------------------------------------------
 
 @Composable
@@ -162,6 +139,60 @@ private fun FAQButton(onClick: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 16.dp),
+        )
+    }
+}
+
+@Composable
+private fun LearnedRulesButton(onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(
+            text = "Learned Rules",
+            style = TextStyle(
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp),
+        )
+    }
+}
+
+@Composable
+private fun LegalLinks(onShowPrivacy: () -> Unit, onShowTerms: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "Privacy Policy",
+            style = TextStyle(
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+            ),
+            modifier = Modifier.clickable(onClick = onShowPrivacy).padding(8.dp),
+        )
+        Text(
+            text = "·",
+            style = TextStyle(fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant),
+        )
+        Text(
+            text = "Terms of Service",
+            style = TextStyle(
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+            ),
+            modifier = Modifier.clickable(onClick = onShowTerms).padding(8.dp),
         )
     }
 }
@@ -270,7 +301,6 @@ private fun IncomeSection(
 private fun BudgetLimitsSection(
     budgets: List<BudgetCategory>,
     onSaveLimit: (String, Double) -> Unit,
-    onToggleVisibility: (String, Boolean) -> Unit,
 ) {
     SettingsCard {
         SectionHeader(
@@ -353,70 +383,6 @@ private fun BudgetLimitsSection(
         }
     }
 }
-
-// ---- 4. Theme ------------------------------------------------------------
-
-@Composable
-private fun ThemeToggleSection(
-    theme: String,
-    onUpdate: (String, Any) -> Unit,
-) {
-    SettingsCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Dark Interface",
-                    style = TextStyle(
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    ),
-                )
-                Text(
-                    text = "Calm appearance for low light.",
-                    style = TextStyle(
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    ),
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-            }
-            ToggleSwitch(enabled = theme == "dark") {
-                onUpdate("theme", if (theme == "light") "dark" else "light")
-            }
-        }
-    }
-}
-
-// ---- 5. Notification listener (premium-gated stub) -----------------------
-
-@Composable
-private fun NotificationSettingsSection(enabled: Boolean, onToggle: (Boolean) -> Unit) {
-    SettingsCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Bank Notification Listener",
-                    style = TextStyle(
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    ),
-                )
-                Text(
-                    text = "Read bank app notifications to auto-fill transactions.",
-                    style = TextStyle(
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    ),
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-            }
-            ToggleSwitch(enabled = enabled) { onToggle(!enabled) }
-        }
-    }
-}
-
 @Composable
 private fun PremiumBadge() {
     Box(
@@ -437,102 +403,6 @@ private fun PremiumBadge() {
         )
     }
 }
-
-// ---- 6. Rollover ---------------------------------------------------------
-
-@Composable
-private fun RolloverSection(rolloverEnabled: Boolean, onUpdate: (String, Any) -> Unit) {
-    SettingsCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Budget Rollover",
-                    style = TextStyle(
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    ),
-                )
-                Text(
-                    text = "Move unspent budget to the next month.",
-                    style = TextStyle(
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    ),
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-            }
-            ToggleSwitch(enabled = rolloverEnabled) {
-                onUpdate("rolloverEnabled", !rolloverEnabled)
-            }
-        }
-    }
-}
-
-// ---- 7. Smart Notifications ---------------------------------------------
-
-@Composable
-private fun SmartNotificationsSection(enabled: Boolean, onToggle: () -> Unit) {
-    SettingsCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Smart Notifications",
-                    style = TextStyle(
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    ),
-                )
-                Text(
-                    text = "Get pinged when a budget is close to its limit.",
-                    style = TextStyle(
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    ),
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-            }
-            ToggleSwitch(enabled = enabled) { onToggle() }
-        }
-    }
-}
-
-// ---- 8. Discretionary Shield (premium) ----------------------------------
-
-@Composable
-private fun DiscretionaryShieldSection(enabled: Boolean, onUpdate: (String, Any) -> Unit) {
-    SettingsCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "Discretionary Shield",
-                        style = TextStyle(
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        ),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    PremiumBadge()
-                }
-                Text(
-                    text = "Use leisure as a buffer when other categories overspend.",
-                    style = TextStyle(
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    ),
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-            }
-            ToggleSwitch(enabled = enabled) {
-                onUpdate("useLeisureAsBuffer", !enabled)
-            }
-        }
-    }
-}
-
 // ---- 9. Vault sharing (partner linking) ---------------------------------
 
 @Composable
@@ -633,30 +503,102 @@ private fun VaultSharingSection(
         }
     }
 }
-
-// ---- 10. Export ---------------------------------------------------------
+// ---- 4. Theme -----------------------------------------------------------
 
 @Composable
-private fun ExportTransactionsSection(transactions: List<Transaction>, budgets: List<BudgetCategory>) {
+private fun ThemeToggleSection(themeViewModel: ThemeViewModel = hiltViewModel()) {
+    val mode by themeViewModel.themeMode.collectAsStateWithLifecycle()
+    val isDark = mode == ThemePreference.MODE_DARK
+    SettingsCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Dark Interface",
+                    style = TextStyle(
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    ),
+                )
+                Text(
+                    text = "Override your device's light/dark setting.",
+                    style = TextStyle(
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ),
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            Switch(
+                checked = isDark,
+                onCheckedChange = { checked ->
+                    themeViewModel.set(
+                        if (checked) ThemePreference.MODE_DARK else ThemePreference.MODE_LIGHT,
+                    )
+                },
+            )
+        }
+    }
+}
+
+// ---- 5. Discretionary Shield --------------------------------------------
+
+@Composable
+private fun DiscretionaryShieldSection(enabled: Boolean, onToggle: (Boolean) -> Unit) {
+    SettingsCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Discretionary Shield",
+                    style = TextStyle(
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    ),
+                )
+                Text(
+                    text = "Let Leisure absorb overspending from your other categories.",
+                    style = TextStyle(
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ),
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            Switch(checked = enabled, onCheckedChange = onToggle)
+        }
+    }
+}
+
+// ---- 11. Export ---------------------------------------------------------
+
+@Composable
+private fun ExportSection(transactions: List<Transaction>, budgets: List<BudgetCategory>) {
+    val context = LocalContext.current
     SettingsCard {
         SectionHeader(
             title = "Export",
-            subtitle = "Download a CSV of your transactions.",
+            subtitle = "Share a CSV of your transactions.",
             modifier = Modifier.padding(bottom = 8.dp),
         )
         Surface(
             onClick = {
-                // Real export is a Stage 4b-iv follow-up; for now this just
-                // shows the button. The Compose file-saver API lives in
-                // androidx.activity:activity-compose and we'll wire it when
-                // the user requests a real download.
+                val csv = CsvExport.toCsv(transactions, budgets)
+                val share = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/csv"
+                    putExtra(Intent.EXTRA_SUBJECT, "Covault transactions")
+                    putExtra(Intent.EXTRA_TEXT, csv)
+                }
+                runCatching {
+                    context.startActivity(Intent.createChooser(share, "Export CSV"))
+                }
             },
             color = MaterialTheme.colorScheme.surfaceVariant,
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(
-                text = "Download CSV (${transactions.size} entries)",
+                text = "Export CSV (${transactions.size} entries)",
                 style = TextStyle(
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -670,22 +612,32 @@ private fun ExportTransactionsSection(transactions: List<Transaction>, budgets: 
     }
 }
 
-// ---- 11. Import ---------------------------------------------------------
-
 @Composable
-private fun ImportTransactionsSection(
+private fun ImportSection(
     budgets: List<BudgetCategory>,
     userId: String?,
-    onImportComplete: () -> Unit,
+    userName: String,
+    onImport: (List<Transaction>) -> Unit,
 ) {
+    val context = LocalContext.current
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null && userId != null) {
+            runCatching {
+                val text = context.contentResolver.openInputStream(uri)
+                    ?.bufferedReader()?.use { it.readText() }.orEmpty()
+                val result = CsvImport.parse(text, budgets, userId, userName)
+                if (result.transactions.isNotEmpty()) onImport(result.transactions)
+            }
+        }
+    }
     SettingsCard {
         SectionHeader(
             title = "Import",
-            subtitle = "Bring in transactions from a CSV file.",
+            subtitle = "Load transactions from a CSV file.",
             modifier = Modifier.padding(bottom = 8.dp),
         )
         Surface(
-            onClick = onImportComplete,  // placeholder
+            onClick = { launcher.launch("*/*") },
             color = MaterialTheme.colorScheme.surfaceVariant,
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier.fillMaxWidth(),
@@ -757,6 +709,7 @@ private fun StatBlock(label: String, value: String) {
 
 @Composable
 private fun SupportFeedbackSection(hasPremium: Boolean, onSubscribe: () -> Unit) {
+    val context = LocalContext.current
     SettingsCard {
         SectionHeader(
             title = "Support & Feedback",
@@ -765,7 +718,18 @@ private fun SupportFeedbackSection(hasPremium: Boolean, onSubscribe: () -> Unit)
         )
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Surface(
-                onClick = { /* open mailto in a later stage */ },
+                onClick = {
+                    runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_SENDTO).apply {
+                                data = Uri.parse(
+                                    "mailto:itsjustmyemail@gmail.com" +
+                                        "?subject=" + Uri.encode("Covault: Problem Report"),
+                                )
+                            },
+                        )
+                    }
+                },
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.weight(1f),
@@ -844,7 +808,6 @@ private fun SignOutSection(onSignOut: () -> Unit) {
 @Composable
 fun DashboardSettingsModal(
     isSharedAccount: Boolean,
-    settings: DashboardSettings,
     user: User?,
     isLinkingPartner: Boolean,
     partnerLinkEmail: String,
@@ -853,8 +816,13 @@ fun DashboardSettingsModal(
     callbacks: DashboardSettingsCallbacks,
     hasPremium: Boolean = true,
     onSubscribe: () -> Unit = {},
-    onImportComplete: () -> Unit = {},
     onShowFAQ: () -> Unit = {},
+    onShowLearnedRules: () -> Unit = {},
+    onShowPrivacy: () -> Unit = {},
+    onShowTerms: () -> Unit = {},
+    onImport: (List<Transaction>) -> Unit = {},
+    discretionaryShieldEnabled: Boolean = false,
+    onSetDiscretionaryShield: (Boolean) -> Unit = {},
     onClose: () -> Unit,
 ) {
     Box(
@@ -906,6 +874,9 @@ fun DashboardSettingsModal(
                 FAQButton(onClick = onShowFAQ)
                 Spacer(Modifier.height(12.dp))
 
+                LearnedRulesButton(onClick = onShowLearnedRules)
+                Spacer(Modifier.height(12.dp))
+
                 IncomeSection(
                     isSharedAccount = isSharedAccount,
                     user = user,
@@ -916,52 +887,18 @@ fun DashboardSettingsModal(
                 BudgetLimitsSection(
                     budgets = budgets,
                     onSaveLimit = callbacks.onSaveBudgetLimit,
-                    onToggleVisibility = { id, hidden ->
-                        callbacks.onSaveBudgetVisibility(id, !hidden)
-                    },
                 )
                 Spacer(Modifier.height(12.dp))
 
-                ThemeToggleSection(
-                    theme = settings.theme,
-                    onUpdate = callbacks.onUpdateSettings,
+                ThemeToggleSection()
+                Spacer(Modifier.height(12.dp))
+
+                DiscretionaryShieldSection(
+                    enabled = discretionaryShieldEnabled,
+                    onToggle = onSetDiscretionaryShield,
                 )
                 Spacer(Modifier.height(12.dp))
 
-                // Premium-gated: notification listener
-                if (hasPremium) {
-                    PremiumGate(hasPremium = true) {
-                        NotificationSettingsSection(
-                            enabled = settings.notificationsEnabled,
-                            onToggle = { v -> callbacks.onUpdateSettings("notificationsEnabled", v) },
-                        )
-                    }
-                    Spacer(Modifier.height(12.dp))
-                }
-                RolloverSection(
-                    rolloverEnabled = settings.rolloverEnabled,
-                    onUpdate = callbacks.onUpdateSettings,
-                )
-                Spacer(Modifier.height(12.dp))
-                SmartNotificationsSection(
-                    enabled = settings.smartNotificationsEnabled,
-                    onToggle = {
-                        callbacks.onUpdateSettings(
-                            "smartNotificationsEnabled",
-                            !settings.smartNotificationsEnabled,
-                        )
-                    },
-                )
-                Spacer(Modifier.height(12.dp))
-                if (hasPremium) {
-                    PremiumGate(hasPremium = true) {
-                        DiscretionaryShieldSection(
-                            enabled = settings.useLeisureAsBuffer,
-                            onUpdate = callbacks.onUpdateSettings,
-                        )
-                    }
-                    Spacer(Modifier.height(12.dp))
-                }
                 VaultSharingSection(
                     user = user,
                     isLinkingPartner = isLinkingPartner,
@@ -971,12 +908,13 @@ fun DashboardSettingsModal(
                     onDisconnect = callbacks.onDisconnectPartner,
                 )
                 Spacer(Modifier.height(12.dp))
-                ExportTransactionsSection(transactions = transactions, budgets = budgets)
+                ExportSection(transactions = transactions, budgets = budgets)
                 Spacer(Modifier.height(12.dp))
-                ImportTransactionsSection(
+                ImportSection(
                     budgets = budgets,
                     userId = user?.id,
-                    onImportComplete = onImportComplete,
+                    userName = user?.name.orEmpty(),
+                    onImport = onImport,
                 )
                 Spacer(Modifier.height(12.dp))
                 ReportSection(
@@ -990,6 +928,8 @@ fun DashboardSettingsModal(
                     hasPremium = hasPremium,
                     onSubscribe = onSubscribe,
                 )
+                Spacer(Modifier.height(12.dp))
+                LegalLinks(onShowPrivacy = onShowPrivacy, onShowTerms = onShowTerms)
                 Spacer(Modifier.height(12.dp))
                 SignOutSection(onSignOut = callbacks.onSignOut)
                 Spacer(Modifier.height(8.dp))

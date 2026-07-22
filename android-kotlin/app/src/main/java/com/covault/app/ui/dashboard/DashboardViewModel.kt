@@ -9,10 +9,13 @@ import com.covault.app.data.model.User
 import com.covault.app.data.repository.AuthRepository
 import com.covault.app.data.repository.AuthState
 import com.covault.app.data.repository.BudgetRepository
+import com.covault.app.data.repository.NotificationRepository
 import com.covault.app.data.repository.SettingsRepository
 import com.covault.app.data.repository.SettingsUpdate
 import com.covault.app.data.repository.TransactionRepository
 import com.covault.app.data.repository.UserDataRepository
+import com.covault.app.data.repository.VendorOverrideRepository
+import com.covault.app.domain.CategoryResolver
 import com.covault.app.domain.DashboardTotals
 import com.covault.app.domain.TransactionNormalizer
 import com.covault.app.widget.WidgetUpdater
@@ -40,6 +43,8 @@ class DashboardViewModel @Inject constructor(
     private val transactionRepository: TransactionRepository,
     private val settingsRepository: SettingsRepository,
     private val budgetRepository: BudgetRepository,
+    private val notificationRepository: NotificationRepository,
+    private val vendorOverrideRepository: VendorOverrideRepository,
     private val widgetUpdater: WidgetUpdater,
 ) : ViewModel() {
 
@@ -61,6 +66,10 @@ class DashboardViewModel @Inject constructor(
 
     private val _pendingTransactions = MutableStateFlow<List<PendingTransaction>>(emptyList())
     val pendingTransactions: StateFlow<List<PendingTransaction>> = _pendingTransactions.asStateFlow()
+
+    /** "Discretionary Shield" setting (leisure_buffer_enabled). */
+    private val _discretionaryShield = MutableStateFlow(false)
+    val discretionaryShieldEnabled: StateFlow<Boolean> = _discretionaryShield.asStateFlow()
 
     init {
         // Auto-load whenever the user changes (login, restore, etc.)
@@ -90,6 +99,8 @@ class DashboardViewModel @Inject constructor(
                     _budgets.value = data.budgets
                     _transactions.value = normalized
                     _pendingTransactions.value = data.pendingTransactions
+                    _discretionaryShield.value =
+                        settingsRepository.loadSettings(userId)?.leisureBufferEnabled ?: false
                     // Update home-screen widget with latest data
                     widgetUpdater.update(
                         transactions = normalized,
@@ -159,6 +170,81 @@ class DashboardViewModel @Inject constructor(
                 .onFailure { e ->
                     _errorMessage.value = e.message ?: "Failed to delete transaction"
                     refresh(userId)
+                }
+        }
+    }
+
+    // ---- Captured (pending) transactions ------------------------------
+    //
+    // The notification listener writes captures to `pending_transactions`.
+    // These let the review UI approve one (moves it into `transactions`
+    // under the chosen budget) or reject it.
+
+    fun approveCapture(pendingId: String, budgetId: String?) {
+        val userId = user.value?.id ?: return
+        // Capture vendor + category before the optimistic removal so we can
+        // learn the rule after a successful approve.
+        val vendor = _pendingTransactions.value.firstOrNull { it.id == pendingId }?.extractedVendor
+        val budgetName = budgetId?.let { id -> _budgets.value.firstOrNull { it.id == id }?.name }
+        _pendingTransactions.update { list -> list.filter { it.id != pendingId } }
+        viewModelScope.launch {
+            notificationRepository.approvePending(pendingId, budgetId)
+                .onSuccess {
+                    // Learn vendor→category so future captures auto-categorize.
+                    if (vendor != null && budgetName != null) {
+                        vendorOverrideRepository.learn(
+                            userId, vendor, CategoryResolver.vendorKey(vendor), budgetName,
+                        )
+                    }
+                    refresh(userId)
+                }
+                .onFailure { e ->
+                    _errorMessage.value = e.message ?: "Failed to approve capture"
+                    refresh(userId)
+                }
+        }
+    }
+
+    fun rejectCapture(pendingId: String) {
+        _pendingTransactions.update { list -> list.filter { it.id != pendingId } }
+        viewModelScope.launch {
+            notificationRepository.rejectPending(pendingId, "user_rejected")
+                .onFailure { e ->
+                    _errorMessage.value = e.message ?: "Failed to reject capture"
+                    user.value?.id?.let { refresh(it) }
+                }
+        }
+    }
+
+    /** Bulk-insert transactions parsed from a CSV import. */
+    fun importTransactions(txs: List<Transaction>) {
+        val userId = user.value?.id ?: return
+        if (txs.isEmpty()) return
+        viewModelScope.launch {
+            val budgets = _budgets.value
+            var anyFailure = false
+            txs.forEach { tx ->
+                transactionRepository.add(tx, budgets)
+                    .onSuccess { saved ->
+                        _transactions.update { (listOf(saved) + it).distinctBy { t -> t.id } }
+                    }
+                    .onFailure { anyFailure = true }
+            }
+            if (anyFailure) {
+                _errorMessage.value = "Some rows couldn't be imported"
+                refresh(userId)
+            }
+        }
+    }
+
+    fun setDiscretionaryShield(enabled: Boolean) {
+        val userId = user.value?.id ?: return
+        _discretionaryShield.value = enabled
+        viewModelScope.launch {
+            settingsRepository.upsertSettings(userId, SettingsUpdate(useLeisureAsBuffer = enabled))
+                .onFailure {
+                    _discretionaryShield.value = !enabled
+                    _errorMessage.value = "Couldn't save that setting"
                 }
         }
     }
