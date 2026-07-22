@@ -74,6 +74,48 @@ class VendorOverrideRepository @Inject constructor(
         }
         Unit
     }
+
+    /**
+     * Learn a vendor→category rule from a user action (e.g. approving a
+     * captured transaction). Upserts by `match_key`: updates the category if
+     * a rule already exists, otherwise inserts a new exact-match rule. This is
+     * the feedback loop that makes future captures auto-categorize.
+     */
+    suspend fun learn(
+        userId: String,
+        vendor: String,
+        matchKey: String,
+        categoryName: String,
+    ): Result<Unit> = runCatching {
+        if (matchKey.isBlank() || categoryName.isBlank()) return@runCatching
+        val existing = supabase.postgrest["overrides"]
+            .select {
+                filter {
+                    eq("user_id", userId)
+                    eq("match_key", matchKey)
+                }
+            }
+            .decodeList<VendorOverrideRow>()
+        if (existing.isNotEmpty()) {
+            supabase.postgrest["overrides"].update(mapOf("category_id" to categoryName)) {
+                filter {
+                    eq("user_id", userId)
+                    eq("match_key", matchKey)
+                }
+            }
+        } else {
+            supabase.postgrest["overrides"].insert(
+                mapOf(
+                    "user_id" to userId,
+                    "proper_name" to vendor,
+                    "match_key" to matchKey,
+                    "match_type" to "exact",
+                    "category_id" to categoryName,
+                ),
+            )
+        }
+        Unit
+    }
 }
 
 private fun VendorOverrideRow.toDomain(): VendorOverride = VendorOverride(

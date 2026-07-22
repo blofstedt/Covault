@@ -14,6 +14,8 @@ import com.covault.app.data.repository.SettingsRepository
 import com.covault.app.data.repository.SettingsUpdate
 import com.covault.app.data.repository.TransactionRepository
 import com.covault.app.data.repository.UserDataRepository
+import com.covault.app.data.repository.VendorOverrideRepository
+import com.covault.app.domain.CategoryResolver
 import com.covault.app.domain.DashboardTotals
 import com.covault.app.domain.TransactionNormalizer
 import com.covault.app.widget.WidgetUpdater
@@ -42,6 +44,7 @@ class DashboardViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val budgetRepository: BudgetRepository,
     private val notificationRepository: NotificationRepository,
+    private val vendorOverrideRepository: VendorOverrideRepository,
     private val widgetUpdater: WidgetUpdater,
 ) : ViewModel() {
 
@@ -173,11 +176,22 @@ class DashboardViewModel @Inject constructor(
 
     fun approveCapture(pendingId: String, budgetId: String?) {
         val userId = user.value?.id ?: return
-        // Optimistic: drop it from the pending list immediately.
+        // Capture vendor + category before the optimistic removal so we can
+        // learn the rule after a successful approve.
+        val vendor = _pendingTransactions.value.firstOrNull { it.id == pendingId }?.extractedVendor
+        val budgetName = budgetId?.let { id -> _budgets.value.firstOrNull { it.id == id }?.name }
         _pendingTransactions.update { list -> list.filter { it.id != pendingId } }
         viewModelScope.launch {
             notificationRepository.approvePending(pendingId, budgetId)
-                .onSuccess { refresh(userId) }
+                .onSuccess {
+                    // Learn vendor→category so future captures auto-categorize.
+                    if (vendor != null && budgetName != null) {
+                        vendorOverrideRepository.learn(
+                            userId, vendor, CategoryResolver.vendorKey(vendor), budgetName,
+                        )
+                    }
+                    refresh(userId)
+                }
                 .onFailure { e ->
                     _errorMessage.value = e.message ?: "Failed to approve capture"
                     refresh(userId)

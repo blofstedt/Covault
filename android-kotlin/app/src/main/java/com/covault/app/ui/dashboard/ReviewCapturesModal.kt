@@ -44,9 +44,9 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.covault.app.data.model.BudgetCategory
-import com.covault.app.data.model.MatchType
 import com.covault.app.data.model.PendingTransaction
 import com.covault.app.data.model.VendorOverride
+import com.covault.app.domain.CategoryResolver
 
 /**
  * Review queue for notification-captured transactions. Lists rows the
@@ -152,28 +152,6 @@ fun ReviewCapturesModal(
     }
 }
 
-/** Normalized vendor key. Matches `toVendorKey` in deviceTransactionParser.ts. */
-private fun vKey(s: String): String = s.lowercase().filter { it.isLetterOrDigit() }
-
-/** Suggest a budget for a captured vendor by matching it against learned rules. */
-private fun suggestBudget(
-    vendor: String,
-    overrides: List<VendorOverride>,
-    budgets: List<BudgetCategory>,
-): BudgetCategory? {
-    val key = vKey(vendor)
-    if (key.isEmpty()) return null
-    val match = overrides.firstOrNull { o ->
-        val pk = vKey(o.matchKey?.ifBlank { o.properName } ?: o.properName)
-        if (pk.isEmpty()) false else when (o.matchType) {
-            MatchType.EXACT -> key == pk
-            MatchType.PREFIX -> key.startsWith(pk)
-            MatchType.CONTAINS -> key.contains(pk)
-        }
-    } ?: return null
-    return budgets.firstOrNull { it.name.equals(match.categoryName, ignoreCase = true) }
-}
-
 @Composable
 private fun CaptureCard(
     row: PendingTransaction,
@@ -184,7 +162,7 @@ private fun CaptureCard(
     onReject: (pendingId: String) -> Unit,
 ) {
     val suggested = remember(row.id, overrides, budgets) {
-        suggestBudget(row.extractedVendor, overrides, budgets) ?: defaultBudget
+        CategoryResolver.resolve(row.extractedVendor, overrides, budgets).budget ?: defaultBudget
     }
     var selected by remember(row.id) { mutableStateOf(suggested) }
     var menuOpen by remember { mutableStateOf(false) }
