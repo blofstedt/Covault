@@ -32,14 +32,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.covault.app.ui.theme.MonoFontFamily
+import java.text.NumberFormat
+import java.util.Locale
 
 /**
  * Top-of-dashboard balance block. Direct port of
@@ -64,9 +67,20 @@ fun DashboardBalanceSection(
 ) {
     val isNegative = remainingMoney < 0
     val hasNoIncome = monthlyIncome == 0.0
-    val gradient = remember(isNegative) {
-        if (isNegative) listOf(Color(0xFFf43f5e), Color(0xFFe11d48))
-        else listOf(Color(0xFF34d399), Color(0xFF14b8a6))
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    // Solid emerald / rose, matching React's `text-emerald-500 dark:text-emerald-400`
+    // (and the rose equivalents) — not a gradient.
+    val figureColor = when {
+        isNegative && isDark -> Color(0xFFFB7185) // rose-400
+        isNegative -> Color(0xFFF43F5E)           // rose-500
+        isDark -> Color(0xFF34D399)               // emerald-400
+        else -> Color(0xFF10B981)                 // emerald-500
+    }
+    // Mirror JS `Number.toLocaleString()` (en-US): thousands grouping, sign kept,
+    // up to 3 fraction digits — e.g. -5591.4 -> "-5,591.4".
+    val formatted = remember(remainingMoney) {
+        NumberFormat.getNumberInstance(Locale.US).apply { maximumFractionDigits = 3 }
+            .format(remainingMoney)
     }
 
     Box(
@@ -159,16 +173,18 @@ fun DashboardBalanceSection(
                     style = TextStyle(
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
-                        brush = Brush.linearGradient(colors = gradient),
+                        color = figureColor,
                     ),
                 )
-                Spacer(Modifier.size(2.dp))
+                Spacer(Modifier.size(4.dp))
                 Text(
-                    text = kotlin.math.abs(remainingMoney).toLong().toString(),
+                    text = formatted,
                     style = TextStyle(
                         fontSize = 36.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        brush = Brush.linearGradient(colors = gradient),
+                        fontFamily = MonoFontFamily,
+                        color = figureColor,
+                        letterSpacing = (-1.5).sp, // tracking-tighter
                     ),
                 )
             }
