@@ -24,12 +24,14 @@ android {
         // Read Supabase config from local.properties (gitignored) so secrets
         // never live in the repo. Falls back to placeholder so debug builds
         // still compile.
-        val supabaseUrl: String = providers.gradleProperty("SUPABASE_URL")
-            .orElse("https://xqleyxrftyehodksashu.supabase.co")
-            .get()
-        val supabaseAnonKey: String = providers.gradleProperty("SUPABASE_ANON_KEY")
-            .orElse("")
-            .get()
+        val localProps = java.util.Properties()
+        val localPropsFile = rootProject.file("local.properties")
+        if (localPropsFile.exists()) {
+            localPropsFile.inputStream().use { localProps.load(it) }
+        }
+        val supabaseUrl: String = localProps.getProperty("SUPABASE_URL")
+            ?: "https://xqleyxrftyehodksashu.supabase.co"
+        val supabaseAnonKey: String = localProps.getProperty("SUPABASE_ANON_KEY") ?: ""
         buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnonKey\"")
     }
