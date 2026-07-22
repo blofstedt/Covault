@@ -165,6 +165,38 @@ private fun LearnedRulesButton(onClick: () -> Unit) {
     }
 }
 
+@Composable
+private fun LegalLinks(onShowPrivacy: () -> Unit, onShowTerms: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "Privacy Policy",
+            style = TextStyle(
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+            ),
+            modifier = Modifier.clickable(onClick = onShowPrivacy).padding(8.dp),
+        )
+        Text(
+            text = "·",
+            style = TextStyle(fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant),
+        )
+        Text(
+            text = "Terms of Service",
+            style = TextStyle(
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+            ),
+            modifier = Modifier.clickable(onClick = onShowTerms).padding(8.dp),
+        )
+    }
+}
+
 // ---- 2. Income -----------------------------------------------------------
 
 @Composable
@@ -757,6 +789,8 @@ fun DashboardSettingsModal(
     onSubscribe: () -> Unit = {},
     onShowFAQ: () -> Unit = {},
     onShowLearnedRules: () -> Unit = {},
+    onShowPrivacy: () -> Unit = {},
+    onShowTerms: () -> Unit = {},
     onImport: (List<Transaction>) -> Unit = {},
     onClose: () -> Unit,
 ) {
@@ -857,6 +891,8 @@ fun DashboardSettingsModal(
                     hasPremium = hasPremium,
                     onSubscribe = onSubscribe,
                 )
+                Spacer(Modifier.height(12.dp))
+                LegalLinks(onShowPrivacy = onShowPrivacy, onShowTerms = onShowTerms)
                 Spacer(Modifier.height(12.dp))
                 SignOutSection(onSignOut = callbacks.onSignOut)
                 Spacer(Modifier.height(8.dp))

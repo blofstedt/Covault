@@ -6,7 +6,8 @@ import com.covault.app.data.model.BudgetCategory
 import com.covault.app.data.model.SystemCategories
 import com.covault.app.data.model.User
 import com.covault.app.data.repository.AuthRepository
-import com.covault.app.data.repository.AuthState
+import com.covault.app.data.repository.SettingsRepository
+import com.covault.app.data.repository.SettingsUpdate
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +31,7 @@ import javax.inject.Inject
 @HiltViewModel
 class OnboardingViewModel @Inject constructor(
     private val authRepository: AuthRepository,
+    private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
     enum class Step { INTRO_1, INTRO_2, CHOOSE_MODE, PARTNER_EMAIL }
@@ -87,16 +89,30 @@ class OnboardingViewModel @Inject constructor(
     }
 
     /**
-     * Persist the user's onboarding choice. Real Supabase write happens
-     * in Stage 4 when SettingsRepository is added. For now we navigate
-     * forward by flipping a flag the host screen reads.
+     * Persist the user's onboarding choice: create/update the `settings` row
+     * marking solo vs shared, and best-effort link a partner. The completion
+     * flag flips regardless so a transient write failure never traps the user
+     * on the onboarding screen.
+     *
+     * Note: routing a brand-new user INTO this screen (settings-row detection
+     * in [AuthRepository.authState]) is still pending and needs on-device
+     * verification, since it touches the login path.
      */
     private fun complete() {
         if (_isCompleting.value || _hasCompleted.value) return
         _isCompleting.value = true
         viewModelScope.launch {
-            // TODO Stage 4: write to settings table with isSolo + partnerEmail.
-            // Until then, the dashboard skeleton renders with default budgets.
+            val user = authRepository.currentUser()
+            val current = _state.value
+            if (user != null) {
+                settingsRepository.upsertSettings(
+                    user.id,
+                    SettingsUpdate(budgetingSolo = current.isSolo),
+                )
+                if (!current.isSolo && current.partnerEmail.isNotBlank()) {
+                    settingsRepository.linkPartner(user.id, current.partnerEmail.trim())
+                }
+            }
             _isCompleting.value = false
             _hasCompleted.value = true
         }

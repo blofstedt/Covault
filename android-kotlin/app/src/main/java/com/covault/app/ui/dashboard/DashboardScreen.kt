@@ -126,6 +126,8 @@ private fun DashboardContent(
     var showFAQ by remember { mutableStateOf(false) }
     var showLearnedRules by remember { mutableStateOf(false) }
     var showReview by remember { mutableStateOf(false) }
+    var showPrivacy by remember { mutableStateOf(false) }
+    var showTerms by remember { mutableStateOf(false) }
     var editingTx by remember { mutableStateOf<Transaction?>(null) }
     var partnerLinkEmail by remember { mutableStateOf("") }
     var isLinkingPartner by remember { mutableStateOf(false) }
@@ -338,6 +340,8 @@ private fun DashboardContent(
             onSubscribe = {},
             onShowFAQ = { showFAQ = true },
             onShowLearnedRules = { showLearnedRules = true },
+            onShowPrivacy = { showPrivacy = true },
+            onShowTerms = { showTerms = true },
             onImport = onImportTransactions,
             onClose = { showSettings = false },
         )
@@ -363,6 +367,14 @@ private fun DashboardContent(
             onReject = { id -> onRejectCapture(id) },
             onClose = { showReview = false },
         )
+    }
+
+    if (showPrivacy) {
+        PrivacyPolicyModal(onClose = { showPrivacy = false })
+    }
+
+    if (showTerms) {
+        TermsModal(onClose = { showTerms = false })
     }
 }
 
