@@ -56,21 +56,9 @@ import com.covault.app.data.model.User
 // at the bottom of this file.
 // =============================================================================
 
-data class DashboardSettings(
-    val theme: String = "light",
-    val rolloverEnabled: Boolean = true,
-    val useLeisureAsBuffer: Boolean = true,
-    val notificationsEnabled: Boolean = false,
-    val appNotificationsEnabled: Boolean = false,
-    val smartNotificationsEnabled: Boolean = true,
-    val hiddenCategories: List<String> = emptyList(),
-)
-
 data class DashboardSettingsCallbacks(
-    val onUpdateSettings: (key: String, value: Any) -> Unit,
     val onUpdateUserIncome: (Double) -> Unit,
     val onSaveBudgetLimit: (String, Double) -> Unit,
-    val onSaveBudgetVisibility: (String, Boolean) -> Unit,
     val onChangePartnerEmail: (String) -> Unit,
     val onConnectPartner: () -> Unit,
     val onDisconnectPartner: () -> Unit,
@@ -273,7 +261,6 @@ private fun IncomeSection(
 private fun BudgetLimitsSection(
     budgets: List<BudgetCategory>,
     onSaveLimit: (String, Double) -> Unit,
-    onToggleVisibility: (String, Boolean) -> Unit,
 ) {
     SettingsCard {
         SectionHeader(
@@ -627,7 +614,6 @@ private fun SignOutSection(onSignOut: () -> Unit) {
 @Composable
 fun DashboardSettingsModal(
     isSharedAccount: Boolean,
-    settings: DashboardSettings,
     user: User?,
     isLinkingPartner: Boolean,
     partnerLinkEmail: String,
@@ -636,7 +622,6 @@ fun DashboardSettingsModal(
     callbacks: DashboardSettingsCallbacks,
     hasPremium: Boolean = true,
     onSubscribe: () -> Unit = {},
-    onImportComplete: () -> Unit = {},
     onShowFAQ: () -> Unit = {},
     onShowLearnedRules: () -> Unit = {},
     onClose: () -> Unit,
@@ -703,9 +688,6 @@ fun DashboardSettingsModal(
                 BudgetLimitsSection(
                     budgets = budgets,
                     onSaveLimit = callbacks.onSaveBudgetLimit,
-                    onToggleVisibility = { id, hidden ->
-                        callbacks.onSaveBudgetVisibility(id, !hidden)
-                    },
                 )
                 Spacer(Modifier.height(12.dp))
 

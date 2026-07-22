@@ -127,7 +127,6 @@ private fun DashboardContent(
     var editingTx by remember { mutableStateOf<Transaction?>(null) }
     var partnerLinkEmail by remember { mutableStateOf("") }
     var isLinkingPartner by remember { mutableStateOf(false) }
-    var themeOverride by remember { mutableStateOf<String?>(null) }
 
     val monthKey = DateUtils.getLocalMonthKey(LocalDate.now().toString())
     val currentMonthTransactions = remember(transactions, monthKey) {
@@ -146,7 +145,6 @@ private fun DashboardContent(
             .distinctBy { it.vendor.lowercase() }
             .map { VendorHistoryItem(it.vendor, it.budgetId!!) }
     }
-    val effectiveTheme = themeOverride ?: (if (isShared) "dark" else "light")
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(
@@ -314,20 +312,9 @@ private fun DashboardContent(
     }
 
     if (showSettings && user != null) {
-        val settingsObj = DashboardSettings(
-            theme = effectiveTheme,
-            rolloverEnabled = true,
-            useLeisureAsBuffer = true,
-            notificationsEnabled = false,
-            appNotificationsEnabled = false,
-            smartNotificationsEnabled = true,
-            hiddenCategories = emptyList(),
-        )
         val callbacks = DashboardSettingsCallbacks(
-            onUpdateSettings = { _, _ -> /* TODO: persist via SettingsRepository */ },
             onUpdateUserIncome = { onUpdateIncome(it) },
             onSaveBudgetLimit = { id, limit -> onSaveBudgetLimit(id, limit) },
-            onSaveBudgetVisibility = { _, _ -> /* TODO */ },
             onChangePartnerEmail = { partnerLinkEmail = it },
             onConnectPartner = {
                 isLinkingPartner = true
@@ -339,7 +326,6 @@ private fun DashboardContent(
         )
         DashboardSettingsModal(
             isSharedAccount = isShared,
-            settings = settingsObj,
             user = user,
             isLinkingPartner = isLinkingPartner,
             partnerLinkEmail = partnerLinkEmail,
@@ -348,7 +334,6 @@ private fun DashboardContent(
             callbacks = callbacks,
             hasPremium = true,
             onSubscribe = {},
-            onImportComplete = { /* Stage 4b-iv: import pipeline */ },
             onShowFAQ = { showFAQ = true },
             onShowLearnedRules = { showLearnedRules = true },
             onClose = { showSettings = false },
