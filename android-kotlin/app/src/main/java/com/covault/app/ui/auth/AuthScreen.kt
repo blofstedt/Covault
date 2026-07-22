@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -45,6 +46,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -56,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.covault.app.R
 import com.covault.app.ui.components.CovaultLogoMark
 import com.covault.app.ui.theme.CovaultTheme
 
@@ -309,25 +312,12 @@ private fun GoogleSignInButton(onClick: () -> Unit) {
 
 @Composable
 private fun GoogleLogo() {
-    // Inline 24x24 Google "G" mark using the React app's four brand colors.
-    Row {
-        listOf(
-            Color(0xFF4285F4),  // blue
-            Color(0xFF34A853),  // green
-            Color(0xFFFBBC05),  // yellow
-            Color(0xFFEA4335),  // red
-        ).forEach { color ->
-            Box(
-                modifier = Modifier
-                    .size(6.dp)
-                    .padding(end = 2.dp)
-                    .background(color = color, shape = CircleShape),
-            )
-        }
-    }
-    // The actual Google logo is raster and trademarked — fall back to a
-    // 4-dot color hint that signals "Google" without embedding the
-    // proprietary mark. The text label is what users actually click on.
+    // The real four-color Google "G" (vector asset), matching the React button.
+    Image(
+        painter = painterResource(id = R.drawable.ic_google_g),
+        contentDescription = null,
+        modifier = Modifier.size(22.dp),
+    )
 }
 
 @Composable
