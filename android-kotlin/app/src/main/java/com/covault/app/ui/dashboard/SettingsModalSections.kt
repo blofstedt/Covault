@@ -1,5 +1,8 @@
 package com.covault.app.ui.dashboard
 
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -779,6 +782,7 @@ private fun StatBlock(label: String, value: String) {
 
 @Composable
 private fun SupportFeedbackSection(hasPremium: Boolean, onSubscribe: () -> Unit) {
+    val context = LocalContext.current
     SettingsCard {
         SectionHeader(
             title = "Support & Feedback",
@@ -787,7 +791,18 @@ private fun SupportFeedbackSection(hasPremium: Boolean, onSubscribe: () -> Unit)
         )
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Surface(
-                onClick = { /* open mailto in a later stage */ },
+                onClick = {
+                    runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_SENDTO).apply {
+                                data = Uri.parse(
+                                    "mailto:itsjustmyemail@gmail.com" +
+                                        "?subject=" + Uri.encode("Covault: Problem Report"),
+                                )
+                            },
+                        )
+                    }
+                },
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.weight(1f),
@@ -948,46 +963,6 @@ fun DashboardSettingsModal(
                 )
                 Spacer(Modifier.height(12.dp))
 
-                ThemeToggleSection(
-                    theme = settings.theme,
-                    onUpdate = callbacks.onUpdateSettings,
-                )
-                Spacer(Modifier.height(12.dp))
-
-                // Premium-gated: notification listener
-                if (hasPremium) {
-                    PremiumGate(hasPremium = true) {
-                        NotificationSettingsSection(
-                            enabled = settings.notificationsEnabled,
-                            onToggle = { v -> callbacks.onUpdateSettings("notificationsEnabled", v) },
-                        )
-                    }
-                    Spacer(Modifier.height(12.dp))
-                }
-                RolloverSection(
-                    rolloverEnabled = settings.rolloverEnabled,
-                    onUpdate = callbacks.onUpdateSettings,
-                )
-                Spacer(Modifier.height(12.dp))
-                SmartNotificationsSection(
-                    enabled = settings.smartNotificationsEnabled,
-                    onToggle = {
-                        callbacks.onUpdateSettings(
-                            "smartNotificationsEnabled",
-                            !settings.smartNotificationsEnabled,
-                        )
-                    },
-                )
-                Spacer(Modifier.height(12.dp))
-                if (hasPremium) {
-                    PremiumGate(hasPremium = true) {
-                        DiscretionaryShieldSection(
-                            enabled = settings.useLeisureAsBuffer,
-                            onUpdate = callbacks.onUpdateSettings,
-                        )
-                    }
-                    Spacer(Modifier.height(12.dp))
-                }
                 VaultSharingSection(
                     user = user,
                     isLinkingPartner = isLinkingPartner,
@@ -995,14 +970,6 @@ fun DashboardSettingsModal(
                     onChangeEmail = callbacks.onChangePartnerEmail,
                     onConnect = callbacks.onConnectPartner,
                     onDisconnect = callbacks.onDisconnectPartner,
-                )
-                Spacer(Modifier.height(12.dp))
-                ExportTransactionsSection(transactions = transactions, budgets = budgets)
-                Spacer(Modifier.height(12.dp))
-                ImportTransactionsSection(
-                    budgets = budgets,
-                    userId = user?.id,
-                    onImportComplete = onImportComplete,
                 )
                 Spacer(Modifier.height(12.dp))
                 ReportSection(

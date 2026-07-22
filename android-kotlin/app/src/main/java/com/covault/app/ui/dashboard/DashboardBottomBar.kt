@@ -45,9 +45,7 @@ import androidx.compose.ui.unit.sp
 fun DashboardBottomBar(
     onGoHome: () -> Unit,
     onAddTransaction: () -> Unit,
-    onOpenParsing: () -> Unit,
     activeView: String = "home",
-    pendingCount: Int = 0,
 ) {
     Box(
         modifier = Modifier
@@ -81,12 +79,6 @@ fun DashboardBottomBar(
             )
             Divider()
             AddButton(onClick = onAddTransaction)
-            Divider()
-            ParsingButton(
-                pendingCount = pendingCount,
-                active = activeView == "parsing",
-                onClick = onOpenParsing,
-            )
         }
     }
 }
@@ -139,40 +131,3 @@ private fun AddButton(onClick: () -> Unit) {
     }
 }
 
-@Composable
-private fun ParsingButton(
-    pendingCount: Int,
-    active: Boolean,
-    onClick: () -> Unit,
-) {
-    Box {
-        IconButton(onClick = onClick) {
-            Icon(
-                imageVector = Icons.Outlined.Code,
-                contentDescription = "Transaction parsing",
-                tint = if (active) MaterialTheme.colorScheme.primary
-                       else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(24.dp),
-            )
-        }
-        if (pendingCount > 0) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .size(20.dp)
-                    .background(color = Color(0xFFF59E0B), shape = CircleShape)
-                    .padding(2.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = if (pendingCount > 99) "99+" else pendingCount.toString(),
-                    style = TextStyle(
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color.White,
-                    ),
-                )
-            }
-        }
-    }
-}

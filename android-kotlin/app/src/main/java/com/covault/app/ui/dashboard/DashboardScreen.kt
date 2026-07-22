@@ -265,9 +265,7 @@ private fun DashboardContent(
                     editingTx = null
                     showForm = true
                 },
-                onOpenParsing = { /* Stage 6 */ },
                 activeView = "home",
-                pendingCount = pendingTotal,
             )
         }
     }
