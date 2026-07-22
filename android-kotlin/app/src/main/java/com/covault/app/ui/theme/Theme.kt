@@ -81,7 +81,7 @@ fun CovaultTheme(
     }
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = MaterialTheme.typography,
+        typography = CovaultTypography,
         content = content
     )
 }

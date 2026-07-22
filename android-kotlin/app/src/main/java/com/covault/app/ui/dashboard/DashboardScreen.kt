@@ -40,6 +40,7 @@ import com.covault.app.data.model.User
 import com.covault.app.domain.DateUtils
 import com.covault.app.domain.DashboardTotals
 import com.covault.app.domain.DiscretionaryShield
+import com.covault.app.ui.theme.CovaultBackground
 import com.covault.app.ui.theme.CovaultTheme
 import java.time.LocalDate
 
@@ -156,11 +157,10 @@ private fun DashboardContent(
             .map { VendorHistoryItem(it.vendor, it.budgetId!!) }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    CovaultBackground(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
                 .windowInsetsPadding(WindowInsets.systemBars),
         ) {
             DashboardBalanceSection(
