@@ -210,6 +210,27 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
+    /** Bulk-insert transactions parsed from a CSV import. */
+    fun importTransactions(txs: List<Transaction>) {
+        val userId = user.value?.id ?: return
+        if (txs.isEmpty()) return
+        viewModelScope.launch {
+            val budgets = _budgets.value
+            var anyFailure = false
+            txs.forEach { tx ->
+                transactionRepository.add(tx, budgets)
+                    .onSuccess { saved ->
+                        _transactions.update { (listOf(saved) + it).distinctBy { t -> t.id } }
+                    }
+                    .onFailure { anyFailure = true }
+            }
+            if (anyFailure) {
+                _errorMessage.value = "Some rows couldn't be imported"
+                refresh(userId)
+            }
+        }
+    }
+
     // ---- Settings / household ----------------------------------------
 
     fun updateIncome(userId: String, income: Double) {

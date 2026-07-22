@@ -2,6 +2,8 @@ package com.covault.app.ui.dashboard
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -49,6 +51,7 @@ import com.covault.app.data.model.BudgetCategory
 import com.covault.app.data.model.Transaction
 import com.covault.app.data.model.User
 import com.covault.app.domain.CsvExport
+import com.covault.app.domain.CsvImport
 
 // =============================================================================
 // Settings modal sections. Direct port of `DashboardSettingsModal.tsx` and
@@ -548,6 +551,51 @@ private fun ExportSection(transactions: List<Transaction>, budgets: List<BudgetC
     }
 }
 
+@Composable
+private fun ImportSection(
+    budgets: List<BudgetCategory>,
+    userId: String?,
+    userName: String,
+    onImport: (List<Transaction>) -> Unit,
+) {
+    val context = LocalContext.current
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null && userId != null) {
+            runCatching {
+                val text = context.contentResolver.openInputStream(uri)
+                    ?.bufferedReader()?.use { it.readText() }.orEmpty()
+                val result = CsvImport.parse(text, budgets, userId, userName)
+                if (result.transactions.isNotEmpty()) onImport(result.transactions)
+            }
+        }
+    }
+    SettingsCard {
+        SectionHeader(
+            title = "Import",
+            subtitle = "Load transactions from a CSV file.",
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+        Surface(
+            onClick = { launcher.launch("*/*") },
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                text = "Import from CSV",
+                style = TextStyle(
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 10.dp),
+            )
+        }
+    }
+}
+
 // ---- 12. Budget Report --------------------------------------------------
 
 @Composable
@@ -709,6 +757,7 @@ fun DashboardSettingsModal(
     onSubscribe: () -> Unit = {},
     onShowFAQ: () -> Unit = {},
     onShowLearnedRules: () -> Unit = {},
+    onImport: (List<Transaction>) -> Unit = {},
     onClose: () -> Unit,
 ) {
     Box(
@@ -789,6 +838,13 @@ fun DashboardSettingsModal(
                 )
                 Spacer(Modifier.height(12.dp))
                 ExportSection(transactions = transactions, budgets = budgets)
+                Spacer(Modifier.height(12.dp))
+                ImportSection(
+                    budgets = budgets,
+                    userId = user?.id,
+                    userName = user?.name.orEmpty(),
+                    onImport = onImport,
+                )
                 Spacer(Modifier.height(12.dp))
                 ReportSection(
                     budgets = budgets,

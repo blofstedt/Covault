@@ -85,6 +85,7 @@ fun DashboardScreen(
         onSignOut = { viewModel.signOut() },
         onApproveCapture = { id, budgetId -> viewModel.approveCapture(id, budgetId) },
         onRejectCapture = { id -> viewModel.rejectCapture(id) },
+        onImportTransactions = { txs -> viewModel.importTransactions(txs) },
     )
 }
 
@@ -107,6 +108,7 @@ private fun DashboardContent(
     onSignOut: () -> Unit,
     onApproveCapture: (String, String?) -> Unit,
     onRejectCapture: (String) -> Unit,
+    onImportTransactions: (List<Transaction>) -> Unit,
 ) {
     val isShared = user?.budgetingSolo == false
     val monthlyIncome = user?.monthlyIncome ?: 0.0
@@ -336,6 +338,7 @@ private fun DashboardContent(
             onSubscribe = {},
             onShowFAQ = { showFAQ = true },
             onShowLearnedRules = { showLearnedRules = true },
+            onImport = onImportTransactions,
             onClose = { showSettings = false },
         )
     }
@@ -398,6 +401,7 @@ private fun DashboardScreenPreview() {
             onSignOut = {},
             onApproveCapture = { _, _ -> },
             onRejectCapture = {},
+            onImportTransactions = {},
         )
     }
 }
