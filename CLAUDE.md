@@ -6,19 +6,13 @@ Personal budget-tracking app for a household. Users track spending across budget
 categories, with automatic transaction capture from Android banking notifications.
 Supports sharing a vault with a partner.
 
-## ⚠️ Repo is migrating to native Kotlin — read this first
+## This is a native Kotlin / Jetpack Compose Android app
 
-This repo contains **two** apps. Know which one you're working in:
-
-| App | Location | Status | Built by |
-|-----|----------|--------|----------|
-| **Native Android (Kotlin/Compose)** | `android-kotlin/` | **ACTIVE — this is the focus** | `.github/workflows/build-kotlin.yml` |
-| Legacy web (React/TypeScript + Capacitor) | repo root (`App.tsx`, `components/`, `lib/`, `android/`, `android-custom/`) | **LEGACY — pending removal once Kotlin reaches parity** | `.github/workflows/build-android.yml` |
-
-**Default to the Kotlin app (`android-kotlin/`).** The React app is kept only as
-a reference implementation for features not yet ported; it will be deleted once
-parity is reached. Do not add features to the React app. The two apps share one
-Supabase backend, so data captured by either shows up in both.
+The whole app lives in **`android-kotlin/`** (a self-contained Gradle project) —
+there is no other app. A legacy React/TypeScript + Capacitor web app used to sit
+at the repo root; it was removed once the Kotlin app took over. If you ever need
+it as a reference, it's in git history (before the "Remove React" commit). Build
++ CI: `.github/workflows/build-kotlin.yml`. Backend is Supabase (see Database).
 
 ## Kotlin app (`android-kotlin/`)
 
@@ -59,6 +53,8 @@ ui/
     SettingsModalSections.kt #   the settings modal + its sub-sections
     LearnedRulesModal.kt     #   vendor→category rules + merge (native Compose)
     LearnedRulesViewModel.kt
+    ReviewCapturesModal.kt   #   review/approve captured (pending) transactions
+    ThemeViewModel.kt        #   backs the dark-mode toggle
     FAQModal, PremiumGate, ConfirmDeleteModal
   components/                # Shared (CovaultLogoMark, ...)
 data/
@@ -70,9 +66,11 @@ data/
   repository/                # One per concern, all inject SupabaseClient:
     AuthRepository, UserDataRepository, TransactionRepository, BudgetRepository,
     SettingsRepository, RecurringRepository, NotificationRepository,
-    VendorOverrideRepository, SessionStore
+    VendorOverrideRepository, ThemePreference (DataStore), SessionStore
 domain/                      # Pure logic (unit-tested): DashboardTotals, DateUtils,
-                             # FormatVendorName, TransactionNormalizer, RecurringExecutor, BudgetColors
+                             # FormatVendorName, TransactionNormalizer, RecurringExecutor,
+                             # BudgetColors, CategoryResolver (exact→fuzzy→learn),
+                             # CsvExport, CsvImport
 notification/
   CovaultNotificationListener.kt # NotificationListenerService (declared in manifest)
   NotificationParser.kt      # Regex parse of bank notification text → amount/vendor/confidence
@@ -94,7 +92,7 @@ widget/                      # Home-screen widget (CovaultWidgetProvider, Widget
   - RPC params are a `JsonObject`, not a `Map`.
 - **Nav:** state-driven (no routes for modals — modals are boolean state in DashboardScreen).
 
-## Database (Supabase / PostgreSQL) — shared by both apps
+## Database (Supabase / PostgreSQL)
 
 All tables use RLS (`auth.uid() = user_id` + partner-access policies).
 
@@ -118,18 +116,23 @@ CovaultNotificationListener (system service, user must grant permission)
       insert into pending_transactions (status="pending")
   → NotificationRepository.approvePending() moves a row → transactions and deletes the pending row
 ```
-Capture works and is wired. **Not yet ported from React:** on-device AI extraction
-(React uses flan-T5; Kotlin is regex-only) and the **review/approve UI** (the
-repository methods exist, but there's no screen to call them yet).
+Capture works and is wired. Captured rows are reviewed/approved in
+`ReviewCapturesModal` (opened from the bottom-bar Inbox button); approving moves
+a row into `transactions` and, via `CategoryResolver` + `VendorOverrideRepository.learn`,
+teaches a vendor→category rule so the next capture auto-categorizes.
+Category precedence: deterministic learned rule → fuzzy match
+(`FormatVendorName.fuzzyVendorMatch`) → user picks. No on-device ML model.
 
-## Parity status (Kotlin vs React) — keep this current
+## Feature status — keep this current
 
 - ✅ Done: auth, dashboard, budgets/limits, transaction CRUD, search, recurring,
   partner sharing, home-screen widget, Learned Rules (view + merge), notification
-  capture → `pending_transactions`.
-- ❌ / partial: review-and-approve UI for captures, AI vendor/category extraction,
-  CSV import/export, in-app dark-mode toggle + rollover/leisure-buffer budget logic,
-  onboarding polish, Privacy/Terms/Tutorial pages.
+  capture → `pending_transactions`, capture review/approve UI, category resolution
+  (exact → fuzzy → learn), CSV import/export, dark-mode toggle.
+- ❌ / partial: rollover / leisure-buffer budget math, onboarding polish,
+  Privacy/Terms/Tutorial pages, on-device AI extraction (capture is regex + fuzzy
+  learned-rule matching, not an ML model).
+- ⚠️ Much of the above is compile/unit-verified only — **not yet run on a device.**
 
 ## Known issues
 - `SystemCategories.idForName()` lowercases the lookup key but `idByName` is keyed by
@@ -148,13 +151,3 @@ CI (`build-kotlin.yml`) compiles, runs unit tests, and builds the debug APK — 
 **nothing runs the app**. Compile-green ≠ works. Runtime-heavy features (capture,
 AI, review flow) must be tested on a device/emulator; don't claim a feature works
 from a green build alone.
-
----
-
-## Legacy React/Capacitor app (root) — reference only, do not extend
-
-React 19 + TS + Vite, Tailwind, Capacitor 8, `@huggingface/transformers` (flan-T5
-client-side). Entry `App.tsx` / `index.tsx`; feature code in `components/` and
-`lib/`. Built by `build-android.yml`. Kept solely as the porting reference until
-the Kotlin app reaches parity, then this and its tooling (`android/`,
-`android-custom/`, vite/tailwind/capacitor configs, `package.json`) will be removed.
