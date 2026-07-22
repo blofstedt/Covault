@@ -77,10 +77,11 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
 }) => {
   // ── Clear modal state ──
   const [clearTarget, setClearTarget] = useState<'entered' | null>(null);
+  // All sections always expanded per user request
   const [expandedSections, setExpandedSections] = useState({
-    activeBanks: false,
+    activeBanks: true,
     caughtTransactions: true,
-    learnedRules: false,
+    learnedRules: true,
   });
 
   const toggleSection = useCallback((section: keyof typeof expandedSections) => {
@@ -500,6 +501,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                 vendorOverrideByName={vendorOverrideByName}
                 categoryNameById={categoryNameById}
                 budgets={budgets}
+                allTransactions={allTransactions}
                 onDeleteVendorOverride={handleDeleteVendorOverride}
                 onSetVendorCategory={handleSetVendorCategory}
                 onSetProperName={handleSetProperName}
@@ -510,8 +512,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                 onToggleExpanded={() => toggleSection('learnedRules')}
               />
             </div>
-
-            
           </>
         ) : (
           <SetupInfoCard enabled={enabled} onToggle={onToggle} />
