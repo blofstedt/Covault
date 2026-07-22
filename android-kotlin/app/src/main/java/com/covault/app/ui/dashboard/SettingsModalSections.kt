@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.sp
 import com.covault.app.data.model.BudgetCategory
 import com.covault.app.data.model.Transaction
 import com.covault.app.data.model.User
+import com.covault.app.domain.CsvExport
 
 // =============================================================================
 // Settings modal sections. Direct port of `DashboardSettingsModal.tsx` and
@@ -463,6 +464,48 @@ private fun VaultSharingSection(
         }
     }
 }
+// ---- 11. Export ---------------------------------------------------------
+
+@Composable
+private fun ExportSection(transactions: List<Transaction>, budgets: List<BudgetCategory>) {
+    val context = LocalContext.current
+    SettingsCard {
+        SectionHeader(
+            title = "Export",
+            subtitle = "Share a CSV of your transactions.",
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+        Surface(
+            onClick = {
+                val csv = CsvExport.toCsv(transactions, budgets)
+                val share = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/csv"
+                    putExtra(Intent.EXTRA_SUBJECT, "Covault transactions")
+                    putExtra(Intent.EXTRA_TEXT, csv)
+                }
+                runCatching {
+                    context.startActivity(Intent.createChooser(share, "Export CSV"))
+                }
+            },
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                text = "Export CSV (${transactions.size} entries)",
+                style = TextStyle(
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 10.dp),
+            )
+        }
+    }
+}
+
 // ---- 12. Budget Report --------------------------------------------------
 
 @Composable
@@ -699,6 +742,8 @@ fun DashboardSettingsModal(
                     onConnect = callbacks.onConnectPartner,
                     onDisconnect = callbacks.onDisconnectPartner,
                 )
+                Spacer(Modifier.height(12.dp))
+                ExportSection(transactions = transactions, budgets = budgets)
                 Spacer(Modifier.height(12.dp))
                 ReportSection(
                     budgets = budgets,
