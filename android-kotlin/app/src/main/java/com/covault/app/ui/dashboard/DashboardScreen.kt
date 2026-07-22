@@ -230,7 +230,8 @@ private fun DashboardContent(
                 Column(modifier = Modifier.weight(1f)) {
                     BudgetFlowChart(
                         budgets = displayBudgets,
-                        transactions = currentMonthTransactions,
+                        // Full history so the chart can plot multiple months.
+                        transactions = transactions,
                         monthlyIncome = monthlyIncome,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     )

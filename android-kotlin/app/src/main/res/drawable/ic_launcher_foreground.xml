@@ -3,12 +3,33 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Placeholder vault glyph. Stage 4 replaces with the actual Covault
-         vault logo once the design assets from icons/ are imported. -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M54,30 L74,40 V62 C74,72 65,80 54,84 C43,80 34,72 34,62 V40 Z" />
-    <path
-        android:fillColor="#6750A4"
-        android:pathData="M50,54 H58 V70 H50 Z" />
+    <!-- White "vault dial" glyph, matching components/CovaultIcon.tsx.
+         Drawn centred in the adaptive-icon safe zone on the emerald
+         (@color/ic_launcher_background) background. -->
+    <group>
+        <!-- Rounded frame -->
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:fillColor="#00000000"
+            android:pathData="M38.83,34.5 H69.17 A4.33,4.33 0 0 1 73.5,38.83 V69.17 A4.33,4.33 0 0 1 69.17,73.5 H38.83 A4.33,4.33 0 0 1 34.5,69.17 V38.83 A4.33,4.33 0 0 1 38.83,34.5 Z" />
+        <!-- Centre dial -->
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:fillColor="#00000000"
+            android:pathData="M45.33,54 A8.67,8.67 0 1 0 62.67,54 A8.67,8.67 0 1 0 45.33,54 Z" />
+        <!-- Ticks + handle -->
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:fillColor="#00000000"
+            android:pathData="M54,45.33 V47.5 M54,60.5 V62.67 M45.33,54 H47.5 M60.5,54 H62.67 M54,54 L58.33,58.33" />
+    </group>
 </vector>

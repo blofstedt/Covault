@@ -80,7 +80,12 @@ class AuthRepository @Inject constructor(
      * `supabase.handleDeeplinks(intent)`.
      */
     suspend fun signInWithGoogle(): Result<Unit> = runCatching {
-        supabase.auth.signInWith(Google)
+        // Redirect MUST include the /callback path: it has to match both the
+        // manifest intent-filter (scheme=com.covault.app host=auth path=/callback)
+        // AND the redirect URL whitelisted in the Supabase dashboard. The React
+        // app used this exact URL; leaving it off (the supabase-kt default of
+        // scheme://host) lands on an unhandled page → the "404 on sign in".
+        supabase.auth.signInWith(Google, redirectUrl = "com.covault.app://auth/callback")
         // Note: signInWith throws if it can't open the browser. The actual
         // sign-in completes async via the deep link; the session flow we
         // observe via [authState] is what the UI listens to.

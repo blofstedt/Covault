@@ -1,7 +1,9 @@
 package com.covault.app.ui.dashboard
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
@@ -30,9 +32,13 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.covault.app.data.repository.ThemePreference
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +46,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -194,6 +201,104 @@ private fun LegalLinks(onShowPrivacy: () -> Unit, onShowTerms: () -> Unit) {
             ),
             modifier = Modifier.clickable(onClick = onShowTerms).padding(8.dp),
         )
+    }
+}
+
+// ---- Bank Notification Listener ------------------------------------------
+
+/** Whether Covault currently holds Android's "Notification access" permission. */
+private fun isNotificationAccessGranted(context: Context): Boolean {
+    val flat = Settings.Secure.getString(
+        context.contentResolver, "enabled_notification_listeners",
+    )
+    return !flat.isNullOrEmpty() &&
+        flat.split(":").any { it.startsWith(context.packageName + "/") }
+}
+
+/**
+ * Port of the React `NotificationSettingsSection`: shows whether notification
+ * access is granted and links out to the system settings page to grant/manage
+ * it. Auto-refreshes on resume so the pill flips to green when the user comes
+ * back from Settings. (The banking-app picker in the React version needs a
+ * native package query and is not ported here.)
+ */
+@Composable
+private fun NotificationListenerSection() {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var granted by remember { mutableStateOf(isNotificationAccessGranted(context)) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                granted = isNotificationAccessGranted(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    SettingsCard {
+        SectionHeader(
+            title = "Bank Notification Listener",
+            subtitle = "Auto-log transactions from supported banking apps.",
+            modifier = Modifier.padding(bottom = 12.dp),
+        )
+        // Status pill
+        val pillColor = if (granted) MaterialTheme.colorScheme.primary else Color(0xFFF59E0B)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .background(color = pillColor, shape = RoundedCornerShape(50)),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = if (granted) "Active — auto-logging transactions"
+                else "Permission not granted in system settings",
+                style = TextStyle(
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = pillColor,
+                ),
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+        Surface(
+            onClick = {
+                runCatching {
+                    context.startActivity(
+                        Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }
+            },
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                text = if (granted) "Manage notification access" else "Grant notification access →",
+                style = TextStyle(
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+            )
+        }
+        if (!granted) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = "One-time setup: tap above, find Covault under " +
+                    "Settings › Apps › Special app access › Notification access, " +
+                    "and toggle it on. Return here — the status turns green automatically.",
+                style = TextStyle(
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                ),
+            )
+        }
     }
 }
 
@@ -891,6 +996,9 @@ fun DashboardSettingsModal(
                 Spacer(Modifier.height(12.dp))
 
                 ThemeToggleSection()
+                Spacer(Modifier.height(12.dp))
+
+                NotificationListenerSection()
                 Spacer(Modifier.height(12.dp))
 
                 DiscretionaryShieldSection(
