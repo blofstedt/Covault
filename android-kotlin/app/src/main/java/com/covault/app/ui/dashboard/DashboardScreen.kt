@@ -118,6 +118,7 @@ private fun DashboardContent(
     var showForm by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showFAQ by remember { mutableStateOf(false) }
+    var showLearnedRules by remember { mutableStateOf(false) }
     var editingTx by remember { mutableStateOf<Transaction?>(null) }
     var partnerLinkEmail by remember { mutableStateOf("") }
     var isLinkingPartner by remember { mutableStateOf(false) }
@@ -344,12 +345,21 @@ private fun DashboardContent(
             onSubscribe = {},
             onImportComplete = { /* Stage 4b-iv: import pipeline */ },
             onShowFAQ = { showFAQ = true },
+            onShowLearnedRules = { showLearnedRules = true },
             onClose = { showSettings = false },
         )
     }
 
     if (showFAQ) {
         FAQModal(onClose = { showFAQ = false })
+    }
+
+    if (showLearnedRules) {
+        LearnedRulesModal(
+            budgets = budgets,
+            transactions = transactions,
+            onClose = { showLearnedRules = false },
+        )
     }
 }
 

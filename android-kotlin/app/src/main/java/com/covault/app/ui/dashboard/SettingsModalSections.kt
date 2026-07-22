@@ -166,6 +166,28 @@ private fun FAQButton(onClick: () -> Unit) {
     }
 }
 
+@Composable
+private fun LearnedRulesButton(onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(
+            text = "Learned Rules",
+            style = TextStyle(
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp),
+        )
+    }
+}
+
 // ---- 2. Income -----------------------------------------------------------
 
 @Composable
@@ -855,6 +877,7 @@ fun DashboardSettingsModal(
     onSubscribe: () -> Unit = {},
     onImportComplete: () -> Unit = {},
     onShowFAQ: () -> Unit = {},
+    onShowLearnedRules: () -> Unit = {},
     onClose: () -> Unit,
 ) {
     Box(
@@ -904,6 +927,9 @@ fun DashboardSettingsModal(
                 Spacer(Modifier.height(16.dp))
 
                 FAQButton(onClick = onShowFAQ)
+                Spacer(Modifier.height(12.dp))
+
+                LearnedRulesButton(onClick = onShowLearnedRules)
                 Spacer(Modifier.height(12.dp))
 
                 IncomeSection(

@@ -59,6 +59,18 @@ data class BudgetRow(
 )
 
 @Serializable
+data class VendorOverrideRow(
+    val id: String,
+    @SerialName("user_id") val userId: String,
+    @SerialName("proper_name") val properName: String,
+    @SerialName("match_key") val matchKey: String? = null,
+    @SerialName("match_type") val matchType: String? = null,
+    // Stores the "Budgets" enum name (e.g. "Groceries"), not a UUID.
+    @SerialName("category_id") val categoryId: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null,
+)
+
+@Serializable
 data class PendingTransactionRow(
     val id: String,
     @SerialName("user_id") val userId: String,
