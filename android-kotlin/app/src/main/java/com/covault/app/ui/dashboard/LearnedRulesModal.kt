@@ -56,6 +56,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.covault.app.data.model.BudgetCategory
 import com.covault.app.data.model.Transaction
 import com.covault.app.data.model.VendorOverride
+import com.covault.app.ui.theme.CovaultBackground
 
 /**
  * A learned rule: all vendor overrides that share the same display name and
@@ -151,13 +152,12 @@ fun LearnedRulesModal(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.5f)),
     ) {
-        Surface(
-            color = MaterialTheme.colorScheme.surface,
-            modifier = Modifier
-                .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.systemBars),
-        ) {
-            Column(modifier = Modifier.fillMaxSize()) {
+        CovaultBackground(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.systemBars),
+            ) {
                 // ── Top bar ──
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
