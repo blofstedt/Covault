@@ -15,6 +15,7 @@ import com.covault.app.data.repository.TransactionRepository
 import com.covault.app.data.repository.UserDataRepository
 import com.covault.app.domain.DashboardTotals
 import com.covault.app.domain.TransactionNormalizer
+import com.covault.app.widget.WidgetUpdater
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -39,6 +40,7 @@ class DashboardViewModel @Inject constructor(
     private val transactionRepository: TransactionRepository,
     private val settingsRepository: SettingsRepository,
     private val budgetRepository: BudgetRepository,
+    private val widgetUpdater: WidgetUpdater,
 ) : ViewModel() {
 
     val user: StateFlow<User?> = authRepository.authState
@@ -88,6 +90,12 @@ class DashboardViewModel @Inject constructor(
                     _budgets.value = data.budgets
                     _transactions.value = normalized
                     _pendingTransactions.value = data.pendingTransactions
+                    // Update home-screen widget with latest data
+                    widgetUpdater.update(
+                        transactions = normalized,
+                        budgets = data.budgets,
+                        monthlyIncome = data.user.monthlyIncome,
+                    )
                 }
                 .onFailure { e ->
                     _errorMessage.value = e.message ?: "Failed to load user data"
@@ -211,6 +219,7 @@ class DashboardViewModel @Inject constructor(
 
     fun signOut() {
         viewModelScope.launch {
+            widgetUpdater.clear()
             authRepository.signOut()
         }
     }
