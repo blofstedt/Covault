@@ -1245,19 +1245,33 @@ async function processNotificationWithAIImpl(
     }
   }
 
-  // 5c: Fallback to "Other" or first available category
+  // 5c: Fallback category — try AI suggestion first, then "Other"
   if (!categoryId && availableCategories.length > 0) {
-    const otherCat = availableCategories.find(
-      c => c.name.toLowerCase() === 'other',
-    );
-    if (otherCat) {
-      categoryId = otherCat.id;
-      categoryName = otherCat.name;
-    } else {
-      categoryId = availableCategories[0].id;
-      categoryName = availableCategories[0].name;
+    const aiSuggested = (aiResult as any)?.suggestedCategory || (parsed as any).suggestedCategory;
+    if (aiSuggested) {
+      const matched = availableCategories.find(
+        c => c.name.toLowerCase() === aiSuggested.toLowerCase(),
+      );
+      if (matched) {
+        categoryId = matched.id;
+        categoryName = matched.name;
+        console.log(`[AI pipeline] AI suggested category: ${categoryName}`);
+      }
     }
-    console.log(`[AI pipeline] Fallback category: ${categoryName}`);
+
+    if (!categoryId) {
+      const otherCat = availableCategories.find(
+        c => c.name.toLowerCase() === 'other',
+      );
+      if (otherCat) {
+        categoryId = otherCat.id;
+        categoryName = otherCat.name;
+      } else {
+        categoryId = availableCategories[0].id;
+        categoryName = availableCategories[0].name;
+      }
+      console.log(`[AI pipeline] Fallback category: ${categoryName}`);
+    }
   }
 
   if (!categoryId) {

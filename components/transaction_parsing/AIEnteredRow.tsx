@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Transaction, BudgetCategory } from '../../types';
 import { getBudgetIcon } from '../dashboard_components/getBudgetIcon';
 import { parseLocalDate } from '../../lib/dateUtils';
@@ -10,43 +10,25 @@ import NotATransactionModal, { type NotATxRuleType } from './NotATransactionModa
 import BackfillPreviewModal from './BackfillPreviewModal';
 import { toVendorKey } from '../../lib/deviceTransactionParser';
 import { countBackfillMatches, applyVendorBackfill } from '../../lib/vendorBackfill';
+import type { VendorMatchResult, AICategorizationState } from '../../lib/vendorMatcher';
 
 interface AIEnteredRowProps {
-  /** The auto-entered transaction row. */
   tx: Transaction;
-  /** Available budgets, for resolving budget_id → budget name. */
   budgets: BudgetCategory[];
-  /** True when the row is in the "needs review" set. */
   isForReview: boolean;
-  /** Called when the row is tapped (opens the full edit modal). */
   onTransactionTap?: (tx: Transaction) => void;
-  /** Called to delete the transaction (used by soft-dup popover + not-a-tx flow). */
   onDeleteTransaction?: (id: string) => Promise<void> | void;
-  /** Persist a vendor rename. Should write to the overrides table so the
-   *  AI pipeline picks it up for future notifications from the same vendor. */
   onVendorRenamed?: (tx: Transaction, newVendor: string) => Promise<void> | void;
-  /** Persist a "not a transaction" rule + delete the row. */
   onMarkNotTransaction?: (tx: Transaction, ruleType: NotATxRuleType) => Promise<void> | void;
-  /** User id, needed for the backfill count/apply. */
   userId?: string;
+  matchResult?: VendorMatchResult;
+  matchState?: AICategorizationState;
+  onConfirmMatch?: (tx: Transaction, match: VendorMatchResult) => void;
+  onChangeCategory?: (tx: Transaction, targetBudgetId?: string) => void;
 }
 
 const fmt = (n: number) => `${n < 0 ? '-' : ''}$${Math.abs(n).toFixed(2)}`;
 
-/**
- * One row in the "Caught Transactions" list on the <> page. Wraps the
- * previous row design with three new affordances:
- *
- * 1. A "View original notification" expander (hidden by default per spec)
- *    that reveals the raw notification text the parser saw. Lets the user
- *    audit why a row was created.
- * 2. An inline vendor rename input (triggered by a small "rename" affordance
- *    that appears on hover/focus). Persists to the overrides table so the
- *    AI pipeline uses the new name for future notifications.
- * 3. A "Not a transaction" button (chevron only, on the right) that opens
- *    a confirmation modal where the user picks the rule type (exact or
- *    contains) before a skip rule is created and the row is deleted.
- */
 const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
   tx,
   budgets,
@@ -56,10 +38,13 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
   onVendorRenamed,
   onMarkNotTransaction,
   userId,
+  matchResult,
+  matchState = 'other',
+  onConfirmMatch,
+  onChangeCategory,
 }) => {
   const budgetName = tx.budget_id ? budgets.find((b) => b.id === tx.budget_id)?.name || null : null;
 
-  // Soft-dup popover state
   const [deletingSimilar, setDeletingSimilar] = useState(false);
   const [localDismissed, setLocalDismissed] = useState<Set<string>>(() => new Set());
   const softDup = tx.softDuplicateOf
@@ -68,13 +53,9 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
     ? tx.softDuplicateOf
     : null;
 
-  // Inline vendor edit state
   const [isEditingVendor, setIsEditingVendor] = useState(false);
   const [isSavingVendor, setIsSavingVendor] = useState(false);
 
-  // Backfill preview state. After a successful rename, we count how
-  // many historical transactions share the old vendor's normalized
-  // form and ask the user if they want to rename them too.
   const [backfillPrompt, setBackfillPrompt] = useState<{
     oldVendor: string;
     newVendor: string;
@@ -84,14 +65,10 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
   const [isApplyingBackfill, setIsApplyingBackfill] = useState(false);
   const [backfillToast, setBackfillToast] = useState<string | null>(null);
 
-  // Not-a-transaction modal state
   const [notAModalOpen, setNotAModalOpen] = useState(false);
   const [isMarkingNotTx, setIsMarkingNotTx] = useState(false);
 
-  // Reset edit mode if the row updates (e.g. after save)
-  useEffect(() => {
-    if (!isEditingVendor) setIsSavingVendor(false);
-  }, [tx.vendor, isEditingVendor]);
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
 
   const handleDismissSoftDup = useCallback((currentTxId: string, similarTxId: string) => {
     markSoftDupDismissed(currentTxId, similarTxId);
@@ -123,9 +100,6 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
       try {
         await onVendorRenamed(tx, newName);
         setIsEditingVendor(false);
-        // After the rename succeeds, ask the user if they want to
-        // backfill historical transactions. Count first; if there
-        // are 0 matches, skip the prompt entirely.
         if (userId) {
           const matchKey = toVendorKey(oldVendor);
           if (matchKey) {
@@ -148,21 +122,9 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
     if (!backfillPrompt || !userId) return;
     setIsApplyingBackfill(true);
     try {
-      const result = await applyVendorBackfill(
-        userId,
-        backfillPrompt.matchKey,
-        backfillPrompt.newVendor,
-        'exact',
-      );
-      setBackfillToast(
-        result.updated > 0
-          ? `Renamed ${result.updated} historical ${result.updated === 1 ? 'transaction' : 'transactions'}`
-          : null,
-      );
-      // Auto-dismiss the toast after 3.5s
-      if (result.updated > 0) {
-        setTimeout(() => setBackfillToast(null), 3500);
-      }
+      const result = await applyVendorBackfill(userId, backfillPrompt.matchKey, backfillPrompt.newVendor, 'exact');
+      setBackfillToast(result.updated > 0 ? `Renamed ${result.updated} historical ${result.updated === 1 ? 'transaction' : 'transactions'}` : null);
+      if (result.updated > 0) setTimeout(() => setBackfillToast(null), 3500);
       setBackfillPrompt(null);
     } catch (err) {
       console.warn('[AIEnteredRow] backfill failed:', err);
@@ -185,6 +147,84 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
     [onMarkNotTransaction, tx],
   );
 
+  const renderMatchBadge = () => {
+    if (matchState === 'auto') {
+      return (
+        <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 rounded-full">
+          Auto: {matchResult?.properName} → {matchResult?.categoryName}
+        </span>
+      );
+    }
+    if (matchState === 'suggested') {
+      return (
+        <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 rounded-full">
+          Suggested: {matchResult?.properName || 'New category'} → {matchResult?.categoryName || budgetName}
+        </span>
+      );
+    }
+    return (
+      <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/60 px-2 py-0.5 rounded-full">
+        Other — tap to categorize
+      </span>
+    );
+  };
+
+  const renderMatchActions = () => {
+    if (matchState === 'auto') {
+      return (
+        <div className="flex items-center gap-1 mt-1.5">
+          <button
+            onClick={(e) => { e.stopPropagation(); onConfirmMatch?.(tx, matchResult!); }}
+            className="text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 transition-all"
+          >
+            Confirm
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onChangeCategory?.(tx); }}
+            className="text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 transition-all"
+          >
+            Change
+          </button>
+        </div>
+      );
+    }
+    if (matchState === 'suggested') {
+      return (
+        <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+          <span className="text-[10px] text-slate-500 dark:text-slate-400">Did you mean?</span>
+          <button
+            onClick={(e) => { e.stopPropagation(); onConfirmMatch?.(tx, matchResult!); }}
+            className="text-[10px] font-bold px-2 py-1 rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition-all"
+          >
+            Confirm
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onChangeCategory?.(tx); }}
+            className="text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 transition-all"
+          >
+            Use Different
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowCategoryPicker(true); }}
+            className="text-[10px] font-bold px-2 py-1 rounded-lg bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/40 text-violet-700 dark:text-violet-300 hover:bg-violet-100 transition-all"
+          >
+            New Rule
+          </button>
+        </div>
+      );
+    }
+    return (
+      <div className="flex items-center gap-1 mt-1.5">
+        <button
+          onClick={(e) => { e.stopPropagation(); setShowCategoryPicker(true); }}
+          className="text-[10px] font-bold px-2 py-1 rounded-lg bg-violet-500 text-white hover:bg-violet-600 transition-all"
+        >
+          Categorize
+        </button>
+      </div>
+    );
+  };
+
   return (
     <>
       <div
@@ -202,14 +242,24 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
             ? 'bg-amber-50/70 dark:bg-amber-900/15 border-amber-200 dark:border-amber-700/40'
             : isForReview
             ? 'bg-amber-50/70 dark:bg-amber-900/15 border-amber-200 dark:border-amber-700/40'
+            : matchState === 'other'
+            ? 'bg-slate-50/70 dark:bg-slate-900/15 border-slate-200 dark:border-slate-700/40'
             : 'bg-white/60 dark:bg-emerald-900/10 backdrop-blur-sm border-emerald-100 dark:border-emerald-800/30'
         }`}
-        aria-label={`Transaction: ${tx.vendor}, ${fmt(tx.amount)} on ${parseLocalDate(tx.date).toLocaleDateString()}`}
+        aria-label={`Transaction: ${tx.vendor}, ${fmt(tx.amount)}`}
       >
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center space-x-3 min-w-0 flex-1">
-            <div className="w-9 h-9 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center shrink-0">
-              {budgetName ? <span className="text-emerald-600 dark:text-emerald-400 w-4 h-4">{getBudgetIcon(budgetName)}</span> : <svg className="w-4 h-4 text-emerald-600 dark:text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="20 6 9 17 4 12" /></svg>}
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+              matchState === 'other' ? 'bg-slate-100 dark:bg-slate-800/60' : 'bg-emerald-100 dark:bg-emerald-900/30'
+            }`}>
+              {budgetName ? (
+                <span className="text-emerald-600 dark:text-emerald-400 w-4 h-4">{getBudgetIcon(budgetName)}</span>
+              ) : (
+                <svg className={`w-4 h-4 ${matchState === 'other' ? 'text-slate-400' : 'text-emerald-600 dark:text-emerald-400'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              )}
             </div>
             <div className="text-left min-w-0 flex-1">
               {isEditingVendor ? (
@@ -249,13 +299,12 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
                 {isForReview && (
                   <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 tracking-wide">For Review</span>
                 )}
-                {budgetName && (
-                  <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 tracking-wide">{budgetName}</span>
-                )}
+                {renderMatchBadge()}
                 <span className="text-[10px] text-slate-400 dark:text-slate-500">
                   {parseLocalDate(tx.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                 </span>
               </div>
+              {renderMatchActions()}
               <RawNotificationExpander rawNotification={tx.raw_notification} />
             </div>
           </div>
@@ -274,9 +323,8 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
                 onClick={(e) => { e.stopPropagation(); setNotAModalOpen(true); }}
                 className="opacity-0 group-hover:opacity-100 focus:opacity-100 mt-0.5 p-1 rounded-md text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all duration-150"
                 title="Mark as not a transaction"
-                aria-label="Mark as not a transaction"
               >
-                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                   <circle cx="12" cy="12" r="10" />
                   <line x1="15" y1="9" x2="9" y2="15" />
                   <line x1="9" y1="9" x2="15" y2="15" />
@@ -286,6 +334,34 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
           </div>
         </div>
       </div>
+
+      {showCategoryPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowCategoryPicker(false)}>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 max-w-sm w-full mx-4 shadow-2xl border border-slate-200 dark:border-slate-700" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-3">Choose Category</h3>
+            <div className="grid grid-cols-2 gap-2">
+              {budgets.map((b) => (
+                <button
+                  key={b.id}
+                  onClick={() => {
+                    onChangeCategory?.(tx, b.id);
+                    setShowCategoryPicker(false);
+                  }}
+                  className="px-3 py-2 text-xs font-bold rounded-xl bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/40 text-violet-700 dark:text-violet-300 hover:bg-violet-100 transition-all text-left"
+                >
+                  {b.name}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setShowCategoryPicker(false)}
+              className="mt-3 w-full py-2 text-xs font-bold rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 transition-all"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {notAModalOpen && (
         <NotATransactionModal
