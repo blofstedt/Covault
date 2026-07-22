@@ -6,10 +6,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.covault.app.data.repository.ThemePreference
 import com.covault.app.ui.CovaultNavHost
 import com.covault.app.ui.MainViewModel
 import com.covault.app.ui.theme.CovaultTheme
@@ -36,7 +40,15 @@ class MainActivity : ComponentActivity() {
         handleAuthDeepLink(intent)
         handleWidgetSync(intent)
         setContent {
-            CovaultTheme {
+            val themeMode by mainViewModel.themeMode.collectAsStateWithLifecycle()
+            val darkTheme = when (themeMode) {
+                ThemePreference.MODE_DARK -> true
+                ThemePreference.MODE_LIGHT -> false
+                else -> isSystemInDarkTheme()
+            }
+            // dynamicColor off so the toggle deterministically controls the
+            // brand light/dark scheme (matches the React app's fixed theme).
+            CovaultTheme(darkTheme = darkTheme, dynamicColor = false) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,

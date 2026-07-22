@@ -25,7 +25,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.covault.app.data.repository.ThemePreference
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -464,6 +468,44 @@ private fun VaultSharingSection(
         }
     }
 }
+// ---- 4. Theme -----------------------------------------------------------
+
+@Composable
+private fun ThemeToggleSection(themeViewModel: ThemeViewModel = hiltViewModel()) {
+    val mode by themeViewModel.themeMode.collectAsStateWithLifecycle()
+    val isDark = mode == ThemePreference.MODE_DARK
+    SettingsCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Dark Interface",
+                    style = TextStyle(
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    ),
+                )
+                Text(
+                    text = "Override your device's light/dark setting.",
+                    style = TextStyle(
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ),
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            Switch(
+                checked = isDark,
+                onCheckedChange = { checked ->
+                    themeViewModel.set(
+                        if (checked) ThemePreference.MODE_DARK else ThemePreference.MODE_LIGHT,
+                    )
+                },
+            )
+        }
+    }
+}
+
 // ---- 11. Export ---------------------------------------------------------
 
 @Composable
@@ -732,6 +774,9 @@ fun DashboardSettingsModal(
                     budgets = budgets,
                     onSaveLimit = callbacks.onSaveBudgetLimit,
                 )
+                Spacer(Modifier.height(12.dp))
+
+                ThemeToggleSection()
                 Spacer(Modifier.height(12.dp))
 
                 VaultSharingSection(
