@@ -1,0 +1,34 @@
+# Keep AI context focused: hide build outputs, caches, and generated/binary
+# assets. These are never the right thing for an agent to read.
+
+# Gradle / build outputs
+android-kotlin/**/build/
+android-kotlin/.gradle/
+android-kotlin/local.properties
+**/*.apk
+**/*.aab
+**/*.class
+**/*.jar
+**/*.keystore
+**/*.jks
+
+# IDE / tooling
+.idea/
+*.iml
+.DS_Store
+
+# Generated Kotlin/Compose/Hilt sources
+**/generated/
+**/kspCaches/
+
+# Binary assets (agents can't usefully read these)
+**/*.png
+**/*.jpg
+**/*.jpeg
+**/*.webp
+**/*.ttf
+**/*.otf
+
+# Scratch / temp
+scratchpad/
+*.log

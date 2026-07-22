@@ -488,26 +488,6 @@ private fun BudgetLimitsSection(
         }
     }
 }
-@Composable
-private fun PremiumBadge() {
-    Box(
-        modifier = Modifier
-            .background(
-                color = MaterialTheme.colorScheme.tertiaryContainer,
-                shape = RoundedCornerShape(8.dp),
-            )
-            .padding(horizontal = 6.dp, vertical = 2.dp),
-    ) {
-        Text(
-            text = "Premium",
-            style = TextStyle(
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Black,
-                color = MaterialTheme.colorScheme.onTertiaryContainer,
-            ),
-        )
-    }
-}
 // ---- 9. Vault sharing (partner linking) ---------------------------------
 
 @Composable
@@ -813,7 +793,7 @@ private fun StatBlock(label: String, value: String) {
 // ---- 13. Support & Feedback ---------------------------------------------
 
 @Composable
-private fun SupportFeedbackSection(hasPremium: Boolean, onSubscribe: () -> Unit) {
+private fun SupportFeedbackSection() {
     val context = LocalContext.current
     SettingsCard {
         SectionHeader(
@@ -852,31 +832,33 @@ private fun SupportFeedbackSection(hasPremium: Boolean, onSubscribe: () -> Unit)
                 )
             }
             Surface(
-                onClick = { if (!hasPremium) onSubscribe() },
+                onClick = {
+                    runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_SENDTO).apply {
+                                data = Uri.parse(
+                                    "mailto:itsjustmyemail@gmail.com" +
+                                        "?subject=" + Uri.encode("Covault: Feature Request"),
+                                )
+                            },
+                        )
+                    }
+                },
                 color = MaterialTheme.colorScheme.tertiaryContainer,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.weight(1f),
             ) {
-                Row(
+                Text(
+                    text = "Request a feature",
+                    style = TextStyle(
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    ),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 10.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "Request a feature",
-                        style = TextStyle(
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer,
-                        ),
-                    )
-                    if (!hasPremium) {
-                        Spacer(Modifier.width(6.dp))
-                        PremiumBadge()
-                    }
-                }
+                )
             }
         }
     }
@@ -919,8 +901,6 @@ fun DashboardSettingsModal(
     budgets: List<BudgetCategory>,
     transactions: List<Transaction>,
     callbacks: DashboardSettingsCallbacks,
-    hasPremium: Boolean = true,
-    onSubscribe: () -> Unit = {},
     onShowFAQ: () -> Unit = {},
     onShowLearnedRules: () -> Unit = {},
     onShowPrivacy: () -> Unit = {},
@@ -1032,10 +1012,7 @@ fun DashboardSettingsModal(
                     isSharedAccount = isSharedAccount,
                 )
                 Spacer(Modifier.height(12.dp))
-                SupportFeedbackSection(
-                    hasPremium = hasPremium,
-                    onSubscribe = onSubscribe,
-                )
+                SupportFeedbackSection()
                 Spacer(Modifier.height(12.dp))
                 LegalLinks(onShowPrivacy = onShowPrivacy, onShowTerms = onShowTerms)
                 Spacer(Modifier.height(12.dp))

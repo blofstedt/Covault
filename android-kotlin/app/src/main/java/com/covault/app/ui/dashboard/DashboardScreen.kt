@@ -347,8 +347,6 @@ private fun DashboardContent(
             budgets = budgets,
             transactions = transactions,
             callbacks = callbacks,
-            hasPremium = true,
-            onSubscribe = {},
             onShowFAQ = { showFAQ = true },
             onShowLearnedRules = { showLearnedRules = true },
             onShowPrivacy = { showPrivacy = true },

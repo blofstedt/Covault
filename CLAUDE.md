@@ -1,4 +1,4 @@
-# Covault — AI Codebase Reference
+# Covault — AI Codebase Reference (THE MAP)
 
 Personal budget-tracking Android app for a household. Users track spending across
 7 fixed budget categories, with automatic transaction capture from Android banking
@@ -8,6 +8,13 @@ was removed — it's in git history before the "Remove React" commit if ever nee
 
 **This repo is maintained by AI.** Keep this file current, keep code lean, and
 prefer surgical edits over rewrites.
+
+> **This file is the repository map.** To make a change, find it in the
+> **Change-routing map** below and open **only** the file(s) it names — do not
+> scan the repo. Companion docs: [`AGENTS.md`](./AGENTS.md) (front door +
+> working protocol), [`.notes/gotchas.md`](./.notes/gotchas.md) (traps — read
+> before editing), [`.notes/project_overview.md`](./.notes/project_overview.md),
+> [`.notes/task_list.md`](./.notes/task_list.md).
 
 ## How to work in this repo (read first)
 
