@@ -4,7 +4,7 @@
     android:minWidth="250dp"
     android:minHeight="180dp"
     android:updatePeriodMillis="1800000"
-    android:previewImage="@mipmap/ic_launcher_foreground"
+    android:previewImage="@drawable/ic_launcher_foreground"
     android:initialLayout="@layout/widget_covault"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
