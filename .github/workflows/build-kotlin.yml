@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - Kotlin
+      - claude/branch-visibility-420gtr
   pull_request:
     branches:
       - main
