@@ -20,7 +20,6 @@ android {
         versionCode = 1
         versionName = "0.1.0"
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
 
         // Read Supabase config from local.properties (gitignored) so secrets
@@ -94,28 +93,17 @@ dependencies {
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
 
-    implementation(libs.androidx.biometric)
     implementation(libs.play.services.auth)
 
     implementation(platform(libs.supabase.bom))
     implementation(libs.supabase.auth)
     implementation(libs.supabase.postgrest)
-    implementation(libs.supabase.realtime)
-    implementation(libs.supabase.storage)
 
     // Ktor client engine + serialization - required by supabase-kt
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.serialization.kotlinx.json)
-    implementation(libs.kotlinx.datetime)
-
-    implementation(libs.coil.compose)
 
     testImplementation(libs.junit)
-    testImplementation(libs.turbine)
-    testImplementation(libs.mockk)
-    androidTestImplementation(libs.androidx.junit)
-    androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation(platform(libs.androidx.compose.bom))
 }
