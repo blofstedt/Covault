@@ -17,8 +17,8 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -45,6 +45,8 @@ import androidx.compose.ui.unit.sp
 fun DashboardBottomBar(
     onGoHome: () -> Unit,
     onAddTransaction: () -> Unit,
+    onOpenReview: () -> Unit = {},
+    pendingCount: Int = 0,
     activeView: String = "home",
 ) {
     Box(
@@ -79,6 +81,12 @@ fun DashboardBottomBar(
             )
             Divider()
             AddButton(onClick = onAddTransaction)
+            Divider()
+            ReviewButton(
+                pendingCount = pendingCount,
+                active = activeView == "review",
+                onClick = onOpenReview,
+            )
         }
     }
 }
@@ -127,6 +135,43 @@ private fun AddButton(onClick: () -> Unit) {
                 tint = MaterialTheme.colorScheme.onPrimary,
                 modifier = Modifier.size(20.dp),
             )
+        }
+    }
+}
+
+@Composable
+private fun ReviewButton(
+    pendingCount: Int,
+    active: Boolean,
+    onClick: () -> Unit,
+) {
+    Box {
+        IconButton(onClick = onClick) {
+            Icon(
+                imageVector = Icons.Outlined.Inbox,
+                contentDescription = "Review captured transactions",
+                tint = if (active) MaterialTheme.colorScheme.primary
+                       else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(24.dp),
+            )
+        }
+        if (pendingCount > 0) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(18.dp)
+                    .background(color = Color(0xFFF59E0B), shape = CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = if (pendingCount > 99) "99+" else pendingCount.toString(),
+                    style = TextStyle(
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color.White,
+                    ),
+                )
+            }
         }
     }
 }

@@ -83,6 +83,8 @@ fun DashboardScreen(
         onLinkPartner = { email -> viewModel.linkPartner(user?.id ?: "", email) },
         onUnlinkPartner = { viewModel.unlinkPartner(user?.id ?: "") },
         onSignOut = { viewModel.signOut() },
+        onApproveCapture = { id, budgetId -> viewModel.approveCapture(id, budgetId) },
+        onRejectCapture = { id -> viewModel.rejectCapture(id) },
     )
 }
 
@@ -103,6 +105,8 @@ private fun DashboardContent(
     onLinkPartner: (String) -> Unit,
     onUnlinkPartner: () -> Unit,
     onSignOut: () -> Unit,
+    onApproveCapture: (String, String?) -> Unit,
+    onRejectCapture: (String) -> Unit,
 ) {
     val isShared = user?.budgetingSolo == false
     val monthlyIncome = user?.monthlyIncome ?: 0.0
@@ -119,6 +123,7 @@ private fun DashboardContent(
     var showSettings by remember { mutableStateOf(false) }
     var showFAQ by remember { mutableStateOf(false) }
     var showLearnedRules by remember { mutableStateOf(false) }
+    var showReview by remember { mutableStateOf(false) }
     var editingTx by remember { mutableStateOf<Transaction?>(null) }
     var partnerLinkEmail by remember { mutableStateOf("") }
     var isLinkingPartner by remember { mutableStateOf(false) }
@@ -265,6 +270,8 @@ private fun DashboardContent(
                     editingTx = null
                     showForm = true
                 },
+                onOpenReview = { showReview = true },
+                pendingCount = pending.size,
                 activeView = "home",
             )
         }
@@ -359,6 +366,16 @@ private fun DashboardContent(
             onClose = { showLearnedRules = false },
         )
     }
+
+    if (showReview) {
+        ReviewCapturesModal(
+            pending = pending,
+            budgets = budgets,
+            onApprove = { id, budgetId -> onApproveCapture(id, budgetId) },
+            onReject = { id -> onRejectCapture(id) },
+            onClose = { showReview = false },
+        )
+    }
 }
 
 @Preview(showBackground = true)
@@ -394,6 +411,8 @@ private fun DashboardScreenPreview() {
             onLinkPartner = { _ -> },
             onUnlinkPartner = {},
             onSignOut = {},
+            onApproveCapture = { _, _ -> },
+            onRejectCapture = {},
         )
     }
 }

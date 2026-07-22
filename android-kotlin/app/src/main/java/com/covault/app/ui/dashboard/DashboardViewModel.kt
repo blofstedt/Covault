@@ -9,6 +9,7 @@ import com.covault.app.data.model.User
 import com.covault.app.data.repository.AuthRepository
 import com.covault.app.data.repository.AuthState
 import com.covault.app.data.repository.BudgetRepository
+import com.covault.app.data.repository.NotificationRepository
 import com.covault.app.data.repository.SettingsRepository
 import com.covault.app.data.repository.SettingsUpdate
 import com.covault.app.data.repository.TransactionRepository
@@ -40,6 +41,7 @@ class DashboardViewModel @Inject constructor(
     private val transactionRepository: TransactionRepository,
     private val settingsRepository: SettingsRepository,
     private val budgetRepository: BudgetRepository,
+    private val notificationRepository: NotificationRepository,
     private val widgetUpdater: WidgetUpdater,
 ) : ViewModel() {
 
@@ -159,6 +161,37 @@ class DashboardViewModel @Inject constructor(
                 .onFailure { e ->
                     _errorMessage.value = e.message ?: "Failed to delete transaction"
                     refresh(userId)
+                }
+        }
+    }
+
+    // ---- Captured (pending) transactions ------------------------------
+    //
+    // The notification listener writes captures to `pending_transactions`.
+    // These let the review UI approve one (moves it into `transactions`
+    // under the chosen budget) or reject it.
+
+    fun approveCapture(pendingId: String, budgetId: String?) {
+        val userId = user.value?.id ?: return
+        // Optimistic: drop it from the pending list immediately.
+        _pendingTransactions.update { list -> list.filter { it.id != pendingId } }
+        viewModelScope.launch {
+            notificationRepository.approvePending(pendingId, budgetId)
+                .onSuccess { refresh(userId) }
+                .onFailure { e ->
+                    _errorMessage.value = e.message ?: "Failed to approve capture"
+                    refresh(userId)
+                }
+        }
+    }
+
+    fun rejectCapture(pendingId: String) {
+        _pendingTransactions.update { list -> list.filter { it.id != pendingId } }
+        viewModelScope.launch {
+            notificationRepository.rejectPending(pendingId, "user_rejected")
+                .onFailure { e ->
+                    _errorMessage.value = e.message ?: "Failed to reject capture"
+                    user.value?.id?.let { refresh(it) }
                 }
         }
     }
