@@ -18,7 +18,7 @@ import { addToReviewQueue, getVendorMapEntry, getVendorMap, isNotificationProces
 import { findMatchingExpense, REFUND_MATCH_WINDOW_DAYS } from './refundMatching';
 import { checkNotificationRules, bumpRuleUseCount } from './notificationRules';
 import { getLocalToday, parseLocalDate } from './dateUtils';
-import { extractWithAI } from './aiExtractor';
+import { extractWithAI, aiDetectRecurring, aiExplainRejection } from './aiExtractor';
 import type { PendingTransaction } from '../types';
 
 // ─── Constants ───────────────────────────────────────────────────
@@ -882,7 +882,7 @@ async function processNotificationWithAIImpl(
       aiResult = cached;
     } else {
       try {
-        aiResult = await extractWithAI(input.rawNotification, []); // [] = use default categories
+        aiResult = await extractWithAI(input.rawNotification, availableCategories.map(c => c.name));
         // Persist for next time
         setCachedAIResult(input.rawNotification, {
           isTransaction: aiResult.isTransaction,
@@ -890,6 +890,8 @@ async function processNotificationWithAIImpl(
           amount: aiResult.amount,
           suggestedCategory: aiResult.suggestedCategory,
           rejectionReason: aiResult.rejectionReason,
+          confidence: aiResult.confidence,
+          confidenceLabel: aiResult.confidenceLabel,
         });
       } catch (err) {
         // AI failed to load (network, WASM not supported, etc.) — fall
@@ -931,6 +933,35 @@ async function processNotificationWithAIImpl(
         };
       }
     }
+  }
+
+  // ── Step 2c: Confidence gating ──
+  // If AI is uncertain, route to pending review instead of auto-inserting
+  if (aiResult && aiResult.isTransaction && aiResult.confidence < 0.75) {
+    console.log(`[AI pipeline] Low confidence (${aiResult.confidenceLabel}, ${aiResult.confidence.toFixed(2)}) — routing to review queue`);
+    const pendingId = crypto.randomUUID();
+    await supabase.from('pending_transactions').insert({
+      id: pendingId,
+      user_id: userId,
+      extracted_vendor: aiResult.vendor,
+      extracted_amount: aiResult.amount,
+      suggested_category: aiResult.suggestedCategory,
+      confidence: aiResult.confidence,
+      raw_notification: (input.rawNotification || '').slice(0, 4000),
+      status: 'pending',
+      created_at: new Date().toISOString(),
+    });
+    markNotificationProcessed(inMemoryKey);
+    recentlyProcessedCache.set(inMemoryKey, Date.now());
+    return {
+      processed: true,
+      isTransaction: true,
+      vendor: aiResult.vendor,
+      amount: aiResult.amount,
+      skipReason: 'needs_review',
+      rejectionReason: `AI confidence too low (${aiResult.confidenceLabel})`,
+      bankName: input.bankName,
+    };
   }
 
   // Use the deterministic extraction result unless it failed ('Unknown'), in which
@@ -1289,7 +1320,22 @@ async function processNotificationWithAIImpl(
   // ── Step 5b: Recurring dedup (same vendor + amount within ±3 days) ──
   // If a recurring transaction already exists nearby, update its date
   // instead of inserting a duplicate.
-  const recurrence = (parsed.recurrence || '').toLowerCase();
+  let recurrence = (parsed.recurrence || '').toLowerCase();
+  if (!recurrence && vendor && amount) {
+    // AI-powered recurring detection
+    const { data: history } = await supabase
+      .from('transactions')
+      .select('date, amount')
+      .eq('user_id', userId)
+      .ilike('vendor', `%${vendor.split(' ')[0]}%`)
+      .order('date', { ascending: false })
+      .limit(6);
+    if (history && history.length >= 2) {
+      const detected = await aiDetectRecurring(vendor, history, amount);
+      recurrence = detected.toLowerCase();
+      console.log(`[AI pipeline] Recurring detection: ${detected}`);
+    }
+  }
   if (recurrence === 'monthly' || recurrence === 'biweekly') {
     // Query recent transactions broadly, then filter with fuzzy matching
     const recurWindowStart = new Date(todayMs - RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY).toISOString().slice(0, 10);
