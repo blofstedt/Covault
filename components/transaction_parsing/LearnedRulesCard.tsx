@@ -257,6 +257,7 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
   }, [mergingRule, mergeTarget, learnedRules, onSetProperName, onSetVendorCategory]);
 
   return (
+    <ParsingCard
       id="parsing-learned-rules"
       colorScheme="violet"
       icon={<path d="M12 2a3 3 0 00-3 3v1H7a3 3 0 00-3 3v3a3 3 0 003 3h10a3 3 0 003-3V9a3 3 0 00-3-3h-2V5a3 3 0 00-3-3zm0 2a1 1 0 011 1v1h-2V5a1 1 0 011-1z" />}
