@@ -648,7 +648,11 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     if (!svgRef.current) return;
     const svgElement = d3.select(svgRef.current);
     const internals = chartInternalsRef.current;
-    const snapMs = 500;
+    // Match the budget card's expand/collapse animation (320ms, ease-out in
+    // index.css `.budget-row-anim`) so the chart solos in lockstep with the
+    // card instead of trailing it — the two were on different clocks (500 vs
+    // 320ms), which read as "not smooth".
+    const snapMs = 320;
     const easing = d3.easeCubicOut;
 
     // Remove any previous solo month labels

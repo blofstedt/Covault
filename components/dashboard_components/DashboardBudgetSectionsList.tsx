@@ -85,7 +85,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
       ref={scrollContainerRef}
       className={`relative flex-1 min-h-0 px-4 no-scrollbar flex flex-col ${
         expandedBudgetId
-          ? 'overflow-hidden pt-3 pb-3 gap-3'
+          ? 'overflow-hidden pt-3 pb-3 gap-0'
           : 'overflow-y-auto scroll-smooth pt-3 pb-3 gap-3 lg:grid lg:grid-cols-2 lg:auto-rows-fr lg:pt-3 lg:pb-3'
       }`}
     >
