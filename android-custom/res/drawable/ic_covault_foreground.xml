@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Covault vault door icon — matches CovaultIcon.tsx login screen exactly.
+         Converted from SVG viewBox 0 0 24 24, scaled 2.25x, centered at (27,27).
+         Design: rounded rectangle vault door, centered circular dial,
+         four compass-point spokes, and diagonal handle.
+         White strokes on emerald background (set by adaptive icon bg layer). -->
+
+    <!-- Vault door: rounded rectangle outline -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5.625"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M38.25,33.75 L69.75,33.75 A4.5,4.5 0,0 1,74.25 38.25 L74.25,69.75 A4.5,4.5 0,0 1,69.75 74.25 L38.25,74.25 A4.5,4.5 0,0 1,33.75 69.75 L33.75,38.25 A4.5,4.5 0,0 1,38.25 33.75 Z" />
+
+    <!-- Dial circle (centered) -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5.625"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M45,54 a9,9 0 1,1 18,0 a9,9 0 1,1 -18,0" />
+
+    <!-- Spoke: top -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5.625"
+        android:strokeLineCap="round"
+        android:pathData="M54,45 L54,47.25" />
+
+    <!-- Spoke: bottom -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5.625"
+        android:strokeLineCap="round"
+        android:pathData="M54,60.75 L54,63" />
+
+    <!-- Spoke: left -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5.625"
+        android:strokeLineCap="round"
+        android:pathData="M45,54 L47.25,54" />
+
+    <!-- Spoke: right -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5.625"
+        android:strokeLineCap="round"
+        android:pathData="M60.75,54 L63,54" />
+
+    <!-- Diagonal handle -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5.625"
+        android:strokeLineCap="round"
+        android:pathData="M54,54 L58.5,58.5" />
+</vector>
