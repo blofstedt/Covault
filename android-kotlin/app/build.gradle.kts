@@ -37,6 +37,21 @@ android {
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnonKey\"")
     }
 
+    signingConfigs {
+        // Shared debug keystore committed to the repo so every build (local or
+        // CI) is signed with the SAME key. Without this, each CI run generates a
+        // throwaway debug key and Android refuses to install the new APK over the
+        // old one ("App not installed") — forcing an uninstall/reinstall every
+        // time. Debug keystores are not secret; the standard debug password is
+        // "android". This does NOT affect release signing.
+        getByName("debug") {
+            storeFile = file("covault-debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -48,6 +63,7 @@ android {
             isMinifyEnabled = false
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {
