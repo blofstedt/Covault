@@ -1,5 +1,5 @@
 // components/BudgetSection.tsx
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback, memo } from 'react';
 import { BudgetCategory, Transaction } from '../types';
 import TransactionItem from './TransactionItem';
 import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
@@ -36,72 +36,44 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
   allBudgets,
   useCompactCollapsedStyles = false,
 }) => {
-
-  // Refund matching: build the set of expenses that have a corresponding
-  // refund, and the list of refunds (filtered out of the rendered list).
-  // Primary source: the `refunded` flag on the expense itself (set by the
-  // notification pipeline when a refund notification matches). Fallback:
-  // `matchRefundsToExpenses` for legacy data (rows from before the
-  // migration, or manually-entered refund transactions) that still uses
-  // the old negative-amount-refund pattern.
   const { matchedExpenseIds: legacyMatchedIds, unmatchedRefunds } = useMemo(
     () => matchRefundsToExpenses(transactions),
     [transactions],
   );
 
-  // Combined set: a row is refunded if EITHER the new flag is set OR
-  // the legacy matcher found a paired refund. The renderer uses this
-  // for the strikethrough style.
-  const refundedExpenseIds = useMemo(() => {
+  const { refundedExpenseIds, spent, projected, visibleTransactions } = useMemo(() => {
     const ids = new Set<string>(legacyMatchedIds);
-    for (const tx of transactions) {
+    let calcSpent = 0;
+    let calcProjected = 0;
+    const visibleTx: Transaction[] = [];
+
+    for (let i = 0; i < transactions.length; i++) {
+      const tx = transactions[i];
+
       if (tx.refunded) ids.add(tx.id);
-    }
-    return ids;
-  }, [legacyMatchedIds, transactions]);
+      if (!isRefund(tx)) visibleTx.push(tx);
 
-  // Spent total: exclude refunded expenses entirely. A refunded row
-  // contributes 0 to the spent total (it was a charge, but the money
-  // came back, so it should not count against the budget). Unmatched
-  // refunds (legacy negative-amount rows) still subtract from the total
-  // since the user expected to see that money come back somewhere.
-  const { spent, projected } = useMemo(() => {
-    return transactions.reduce(
-      (totals, tx) => {
-        if (tx.budget_id !== budget.id) return totals;
-
+      if (tx.budget_id === budget.id) {
         if (tx.is_projected) {
-          totals.projected += tx.amount;
-          return totals;
+          calcProjected += tx.amount;
+        } else if (!tx.refunded && !(ids.has(tx.id) && Number(tx.amount) > 0)) {
+          calcSpent += tx.amount;
         }
+      }
+    }
 
-        // Skip refunded expenses (new pipeline sets this flag on the original)
-        if (tx.refunded) return totals;
-        // Skip legacy matched-refund expenses (matched by matchRefundsToExpenses)
-        if (refundedExpenseIds.has(tx.id) && Number(tx.amount) > 0) return totals;
+    return {
+      refundedExpenseIds: ids,
+      spent: calcSpent,
+      projected: calcProjected,
+      visibleTransactions: visibleTx,
+    };
+  }, [legacyMatchedIds, transactions, budget.id]);
 
-        totals.spent += tx.amount;
-        return totals;
-      },
-      { spent: 0, projected: 0 },
-    );
-  }, [budget.id, refundedExpenseIds, transactions]);
-
-  // Transactions actually rendered in the list: exclude refunds entirely.
-  // Refunds are bookkeeping; the matched expense (with refunded=true) is
-  // shown in the list with strikethrough.
-  const visibleTransactions = useMemo(
-    () => transactions.filter((tx) => !isRefund(tx)),
-    [transactions],
-  );
-
-  // Unmatched refunds contribute a small visual hint that money came back
-  // in but we don't have a matching expense to strike through.
   const _hasUnmatchedRefunds = unmatchedRefunds.length > 0;
   void _hasUnmatchedRefunds;
 
   const external = budget.externalDeduction || 0;
-  // Include external (shield) deduction directly in the consumed total
   const spentWithExternal = spent + external;
   const total = spentWithExternal + projected;
   const isDanger = total > budget.totalLimit;
@@ -117,28 +89,32 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
   const budgetColor = getBudgetColor(budget.name);
 
-  // Danger escalation: color shifts as spending approaches/exceeds limit
   const spentPercent = budget.totalLimit > 0 ? (total / budget.totalLimit) * 100 : 0;
   const isWarning = spentPercent > 80 && spentPercent <= 100;
   const isOver = spentPercent > 100;
 
+  const handleBackgroundClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (e.target === e.currentTarget) {
+        onToggle();
+      }
+    },
+    [onToggle]
+  );
+
   return (
     <div
-      className={`flex-1 min-h-0 overflow-hidden rounded-[2rem] relative flex flex-col ${
+      className={`flex-1 min-h-0 overflow-hidden rounded-[2rem] relative flex flex-col transition-all duration-300 ease-in-out ${
         isExpanded
           ? 'bg-white dark:bg-slate-900 shadow-2xl border'
           : 'bg-white/70 dark:bg-slate-900/70 shadow-sm border border-slate-200/40 dark:border-slate-700/30'
       }`}
       style={{
-        borderColor: isExpanded
-          ? budgetColor
-          : undefined,
-        transition: 'border-color 0.3s ease, box-shadow 0.3s ease',
+        borderColor: isExpanded ? budgetColor : undefined,
       }}
     >
       {/* GRADIENT BACKGROUND BARS WITH GLOW EDGE */}
       <div className="absolute inset-0 z-0 pointer-events-none flex">
-        {/* Spent bar — gradient fill with glow edge at boundary */}
         <div
           style={{
             width: `${spentWidth}%`,
@@ -146,7 +122,6 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           }}
           className="h-full transition-all duration-500 ease-out relative"
         >
-          {/* Glow edge at spending boundary */}
           {spentWidth > 0 && spentWidth < 100 && (
             <div
               className="absolute right-0 top-0 h-full w-[3px] transition-all duration-500"
@@ -158,7 +133,6 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           )}
         </div>
 
-        {/* Projected — dot-grid pattern */}
         <div
           style={{ width: `${projectedWidth}%` }}
           className="h-full transition-all duration-500 ease-out relative"
@@ -174,12 +148,10 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
         </div>
       </div>
 
-      {/* Thin accent progress bar removed — the gradient fill IS the bar */}
-
       {/* HEADER / SUMMARY */}
       <div
         onClick={onToggle}
-        className={`relative z-10 flex items-center justify-between cursor-pointer active:scale-[0.99] ${
+        className={`relative z-10 flex items-center justify-between cursor-pointer active:scale-[0.99] transition-all duration-300 ease-in-out ${
           isExpanded
             ? 'flex-none py-6 px-8'
             : useCompactCollapsedStyles
@@ -187,13 +159,12 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
               : 'flex-1 py-2 px-4'
         }`}
         style={{
-          willChange: isExpanded ? 'auto' : 'transform, opacity',
+          willChange: isExpanded ? 'auto' : 'transform, opacity, padding',
         }}
       >
-        {/* LEFT SIDE: ICON + NAME */}
         <div className={`flex items-center ${useCompactCollapsedStyles && !isExpanded ? 'space-x-2' : 'space-x-3'}`}>
           <div
-            className={`rounded-2xl flex items-center justify-center shrink-0 ${
+            className={`rounded-2xl flex items-center justify-center shrink-0 transition-all duration-300 ease-in-out ${
               isExpanded
                 ? 'text-white shadow-lg p-3.5'
                 : useCompactCollapsedStyles
@@ -201,10 +172,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                   : 'p-1.5'
             }`}
             style={{
-              ...(isExpanded
-                ? { backgroundColor: budgetColor }
-                : { color: budgetColor }),
-              transition: 'background-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease',
+              ...(isExpanded ? { backgroundColor: budgetColor } : { color: budgetColor }),
             }}
           >
             {getBudgetIcon(budget.name)}
@@ -233,18 +201,13 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           </div>
         </div>
 
-        {/* RIGHT SIDE: SPENT / LIMIT */}
         <div className="text-right flex flex-col items-end justify-center">
           {isExpanded ? (
             <>
               <div className="flex items-baseline space-x-1">
-                <span
-                  className="text-sm font-bold font-mono mr-2 tracking-tight transition-colors duration-300 text-slate-500"
-                >
+                <span className="text-sm font-bold font-mono mr-2 tracking-tight transition-colors duration-300 text-slate-500">
                   ${total.toFixed(0)}
-                  <span className="mx-1.5 opacity-30 font-medium text-slate-400">
-                    /
-                  </span>
+                  <span className="mx-1.5 opacity-30 font-medium text-slate-400">/</span>
                 </span>
 
                 <span className="text-xl font-extrabold font-mono tracking-tighter leading-none transition-colors duration-300 text-slate-600 dark:text-slate-100">
@@ -252,9 +215,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                 </span>
               </div>
 
-              <span
-                className="text-[11px] font-medium tracking-wide mt-0.5 transition-colors duration-300 text-slate-400 dark:text-slate-500"
-              >
+              <span className="text-[11px] font-medium tracking-wide mt-0.5 transition-colors duration-300 text-slate-400 dark:text-slate-500">
                 Vault Capacity
               </span>
             </>
@@ -269,54 +230,51 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
         </div>
       </div>
 
-      {/* EXPANDED TRANSACTIONS LIST */}
-      {isExpanded && (
-        <div
-          className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-6 pb-2 relative z-10 budget-content-reveal"
-          style={{
-            WebkitOverflowScrolling: 'touch',
-            overscrollBehavior: 'contain',
-            overscrollBehaviorY: 'contain',
-            overflowAnchor: 'none',
-            touchAction: 'pan-y',
-          }}
-          onClick={(e) => {
-            // If clicking on the blank space (the div itself), collapse the budget
-            if (e.target === e.currentTarget) {
-              onToggle();
-            }
-          }}
-        >
-          <div className="pt-1 pb-6 space-y-4">
-            <div className="flex items-center justify-between px-2">
-              <span className="text-[11px] font-semibold tracking-wide transition-colors duration-300 text-slate-400 dark:text-slate-500">
-                {isSharedView ? 'Our Activity' : 'Activity'}
-              </span>
-            </div>
+      {/* TRANSACTIONS LIST (Now stays mounted, styled to smoothly collapse) */}
+      <div
+        className={`min-h-0 overflow-y-auto no-scrollbar relative z-10 budget-content-reveal transition-all duration-300 ease-in-out transform origin-top ${
+          isExpanded
+            ? 'flex-1 opacity-100 translate-y-0 px-6 pb-2'
+            : 'flex-none h-0 opacity-0 -translate-y-4 px-6 pb-0 overflow-hidden pointer-events-none'
+        }`}
+        style={{
+          WebkitOverflowScrolling: 'touch',
+          overscrollBehavior: 'contain',
+          overscrollBehaviorY: 'contain',
+          overflowAnchor: 'none',
+          touchAction: 'pan-y',
+        }}
+        onClick={handleBackgroundClick}
+      >
+        <div className="pt-1 pb-6 space-y-4">
+          <div className="flex items-center justify-between px-2">
+            <span className="text-[11px] font-semibold tracking-wide transition-colors duration-300 text-slate-400 dark:text-slate-500">
+              {isSharedView ? 'Our Activity' : 'Activity'}
+            </span>
+          </div>
 
-            <div className="space-y-3">
-              {visibleTransactions.length > 0 ? (
-                visibleTransactions.map((tx) => (
-                  <TransactionItem
-                    key={tx.id}
-                    transaction={tx}
-                    onTap={onTransactionTap}
-                    currentUserName={currentUserName}
-                    isSharedView={isSharedView}
-                    currentBudgetId={budget.id}
-                    budgets={allBudgets}
-                    isRefunded={refundedExpenseIds.has(tx.id)}
-                  />
-                ))
-              ) : (
-                <EmptyState message="No entries found" size="md" />
-              )}
-            </div>
+          <div className="space-y-3">
+            {visibleTransactions.length > 0 ? (
+              visibleTransactions.map((tx) => (
+                <TransactionItem
+                  key={tx.id}
+                  transaction={tx}
+                  onTap={onTransactionTap}
+                  currentUserName={currentUserName}
+                  isSharedView={isSharedView}
+                  currentBudgetId={budget.id}
+                  budgets={allBudgets}
+                  isRefunded={refundedExpenseIds.has(tx.id)}
+                />
+              ))
+            ) : (
+              <EmptyState message="No entries found" size="md" />
+            )}
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };
 
-export default BudgetSection;
+export default memo(BudgetSection);
