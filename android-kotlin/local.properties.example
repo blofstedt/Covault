@@ -1,4 +1,0 @@
-# Supabase configuration — add your real values here.
-# This file is gitignored; CI injects secrets via environment variables.
-SUPABASE_URL=https://xqleyxrftyehodksashu.supabase.co
-SUPABASE_ANON_KEY=your-anon-key-here
