@@ -60,6 +60,17 @@ export function useVendorMatcher(vendorOverrides: VendorOverride[] | undefined) 
           }
         }
 
+        // Extra fallback: if the transaction vendor contains the proper_name as a substring
+        if (best.state === 'none') {
+          for (const vo of overrides) {
+            const properNorm = vo.proper_name.toLowerCase().replace(/\s+/g, '');
+            if (properNorm.length >= 4 && vendorKey.includes(properNorm)) {
+              best = { match: vo, state: 'contains' };
+              break;
+            }
+          }
+        }
+
         map.set(tx.id, best);
       }
       return map;
