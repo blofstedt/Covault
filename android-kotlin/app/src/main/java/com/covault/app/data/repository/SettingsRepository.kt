@@ -1,5 +1,6 @@
 package com.covault.app.data.repository
 
+import com.covault.app.data.model.Settings
 import com.covault.app.data.remote.dto.SettingsRow
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.postgrest
@@ -23,20 +24,25 @@ class SettingsRepository @Inject constructor(
     }.getOrNull()
 
     suspend fun upsertSettings(userId: String, update: SettingsUpdate): Result<Unit> = runCatching {
-        // Targeted UPDATE of only the changed columns. A full-row upsert
-        // fails here: it re-serializes read-only/managed columns (link_code,
-        // trial_*, subscription_status) and can violate constraints — which
-        // is why "Save income" silently did nothing. The settings row always
-        // exists (created at signup), so UPDATE is correct — same pattern as
-        // [linkPartner].
-        supabase.postgrest["settings"].update({
-            update.monthlyIncome?.let { set("monthly_income", it) }
-            update.theme?.let { set("theme_selected", it) }
-            update.useLeisureAsBuffer?.let { set("leisure_buffer_enabled", it) }
-            update.showSavingsInsight?.let { set("show_savings_insight", it) }
-            update.appNotificationsEnabled?.let { set("app_notifications_enabled", it) }
-            update.budgetingSolo?.let { set("budgeting_solo", it) }
-        }) { filter { eq("user_id", userId) } }
+        // Build a SettingsRow with the existing values; not all fields
+        // are present in [update], so we read the current row first
+        // and merge. For the common case (just changing income), this
+        // still does a full upsert.
+        val current = loadSettings(userId) ?: com.covault.app.data.remote.dto.SettingsRow(
+            userId = userId, name = "", email = "",
+        )
+        val merged = current.copy(
+            monthlyIncome = update.monthlyIncome ?: current.monthlyIncome,
+            themeSelected = update.theme ?: current.themeSelected,
+            rolloverEnabled = update.rolloverEnabled ?: current.rolloverEnabled,
+            leisureBufferEnabled = update.useLeisureAsBuffer ?: current.leisureBufferEnabled,
+            showSavingsInsight = update.showSavingsInsight ?: current.showSavingsInsight,
+            appNotificationsEnabled = update.appNotificationsEnabled ?: current.appNotificationsEnabled,
+            budgetingSolo = update.budgetingSolo ?: current.budgetingSolo,
+        )
+        supabase.postgrest["settings"].upsert(merged) {
+            onConflict = "user_id"
+        }
     }
 
     suspend fun linkPartner(userId: String, partnerEmail: String): Result<Unit> = runCatching {
@@ -62,8 +68,10 @@ class SettingsRepository @Inject constructor(
 data class SettingsUpdate(
     val monthlyIncome: Double? = null,
     val theme: String? = null,
+    val rolloverEnabled: Boolean? = null,
     val useLeisureAsBuffer: Boolean? = null,
     val showSavingsInsight: Boolean? = null,
     val appNotificationsEnabled: Boolean? = null,
+    val smartNotificationsEnabled: Boolean? = null,
     val budgetingSolo: Boolean? = null,
 )

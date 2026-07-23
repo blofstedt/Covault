@@ -46,7 +46,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.covault.app.data.model.BudgetCategory
 import com.covault.app.data.model.PendingTransaction
 import com.covault.app.data.model.VendorOverride
-import com.covault.app.ui.theme.CovaultBackground
 import com.covault.app.domain.CategoryResolver
 
 /**
@@ -75,12 +74,13 @@ fun ReviewCapturesModal(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.5f)),
     ) {
-        CovaultBackground(modifier = Modifier.fillMaxSize()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.systemBars),
-            ) {
+        Surface(
+            color = MaterialTheme.colorScheme.surface,
+            modifier = Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.systemBars),
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier

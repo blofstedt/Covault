@@ -89,11 +89,12 @@ class UserDataRepository @Inject constructor(
             TransactionMappers.budgetCategoryFromRow(row)
         }.also { loadedNames.addAll(it.map { b -> b.name }) }
 
-        // Seed any system categories the user doesn't have yet.
-        // ensureDefaultBudgets expects the set of names that already EXIST.
-        if (loadedNames.size < SystemCategories.ALL.size) {
-            ensureDefaultBudgets(userId, loadedNames)
-        }
+        // Seed any system categories the user doesn't have yet
+        val missing = SystemCategories.ALL
+            .filter { it.name !in loadedNames }
+            .map { it.name }
+            .toSet()
+        if (missing.isNotEmpty()) ensureDefaultBudgets(userId, missing)
 
         return (result + SystemCategories.ALL.filter { it.name !in loadedNames })
             .distinctBy { it.id }

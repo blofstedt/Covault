@@ -20,6 +20,7 @@ android {
         versionCode = 1
         versionName = "0.1.0"
 
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
 
         // Read Supabase config from local.properties (gitignored) so secrets
@@ -37,21 +38,6 @@ android {
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnonKey\"")
     }
 
-    signingConfigs {
-        // Shared debug keystore committed to the repo so every build (local or
-        // CI) is signed with the SAME key. Without this, each CI run generates a
-        // throwaway debug key and Android refuses to install the new APK over the
-        // old one ("App not installed") — forcing an uninstall/reinstall every
-        // time. Debug keystores are not secret; the standard debug password is
-        // "android". This does NOT affect release signing.
-        getByName("debug") {
-            storeFile = file("covault-debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
-        }
-    }
-
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -63,7 +49,6 @@ android {
             isMinifyEnabled = false
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
-            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {
@@ -109,15 +94,28 @@ dependencies {
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
 
+    implementation(libs.androidx.biometric)
+    implementation(libs.play.services.auth)
+
     implementation(platform(libs.supabase.bom))
     implementation(libs.supabase.auth)
     implementation(libs.supabase.postgrest)
+    implementation(libs.supabase.realtime)
+    implementation(libs.supabase.storage)
 
     // Ktor client engine + serialization - required by supabase-kt
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.serialization.kotlinx.json)
+    implementation(libs.kotlinx.datetime)
+
+    implementation(libs.coil.compose)
 
     testImplementation(libs.junit)
+    testImplementation(libs.turbine)
+    testImplementation(libs.mockk)
+    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
 }

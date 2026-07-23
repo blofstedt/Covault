@@ -1,0 +1,227 @@
+import React, { useState } from 'react';
+import { BudgetCategory } from '../../types';
+import type { VendorOverride, MatchType } from './useVendorOverrides';
+import { toVendorKey } from '../../lib/deviceTransactionParser';
+import ParsingCard from '../ui/ParsingCard';
+
+interface VendorCategoryRulesCardProps {
+  allVendors: string[];
+  vendorOverrideByName: Map<string, VendorOverride>;
+  categoryNameById: Map<string, string>;
+  expandedVendorCategory: string | null;
+  budgets: BudgetCategory[];
+  onSetExpandedVendorCategory: (vendorName: string | null) => void;
+  onSetVendorCategory: (vendorName: string, categoryId: string) => void;
+  onDeleteVendorOverride: (overrideId: string) => void;
+  onSetProperName: (vendorName: string, properName: string) => void;
+  /** Optional: change the match_type (exact/prefix/contains) of an existing rule. */
+  onSetMatchType?: (vendorName: string, matchType: MatchType) => void;
+  isExpanded?: boolean;
+  onToggleExpanded?: () => void;
+}
+
+const VendorCategoryRulesCard: React.FC<VendorCategoryRulesCardProps> = ({
+  allVendors,
+  vendorOverrideByName,
+  categoryNameById,
+  expandedVendorCategory,
+  budgets,
+  onSetExpandedVendorCategory,
+  onSetVendorCategory,
+  onDeleteVendorOverride,
+  onSetProperName,
+  onSetMatchType,
+  isExpanded = true,
+  onToggleExpanded,
+}) => {
+  const [editingProperName, setEditingProperName] = useState<string | null>(null);
+  const [properNameDraft, setProperNameDraft] = useState('');
+
+  if (allVendors.length === 0) return null;
+
+  return (
+    <ParsingCard
+      id="parsing-vendor-rules-section"
+      colorScheme="violet"
+      icon={<path d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />}
+      title="Vendor Category Rules"
+      subtitle="Toggle each vendor on to auto-approve transactions from that vendor"
+      count={allVendors.length}
+      collapsible
+      isExpanded={isExpanded}
+      onToggleExpanded={onToggleExpanded}
+    >
+      <div className="space-y-2">
+        {allVendors.map((vendorName) => {
+          const vo = vendorOverrideByName.get(toVendorKey(vendorName));
+          const hasCategory = vo && vo.category_id;
+          const isExpanded = expandedVendorCategory === vendorName;
+          const displayName = vo?.proper_name || vendorName;
+
+          return (
+            <div key={vendorName} className="bg-white/60 dark:bg-violet-900/10 backdrop-blur-sm rounded-2xl border border-violet-100 dark:border-violet-800/30 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] overflow-hidden">
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => onSetExpandedVendorCategory(isExpanded ? null : vendorName)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSetExpandedVendorCategory(isExpanded ? null : vendorName); } }}
+                className="w-full flex items-center justify-between p-3 transition-all duration-200 active:scale-[0.99] cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">
+                    {displayName}
+                    {vo?.proper_name && vo.proper_name !== vendorName && (
+                      <span className="text-slate-400 dark:text-slate-500 font-normal ml-1">({vendorName})</span>
+                    )}
+                  </span>
+                  <svg className="w-3 h-3 text-slate-300 dark:text-slate-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                  <span className={`text-xs font-bold truncate ${
+                    hasCategory
+                      ? 'text-violet-600 dark:text-violet-400'
+                      : 'text-slate-400 dark:text-slate-500 italic'
+                  }`}>
+                    {hasCategory ? (vo?.category_name || categoryNameById.get(vo?.category_id ?? '') || 'Unknown') : 'None Selected'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0 ml-2">
+                </div>
+              </div>
+
+              {/* Expanded: category picker + proper name */}
+              {isExpanded && (
+                <div className="px-3 pb-3 space-y-2 border-t border-violet-100 dark:border-violet-800/30 pt-2">
+                  {/* Proper name editor */}
+                  {vo && (
+                    <div>
+                      <p className="text-[11px] font-semibold tracking-wide text-slate-500 dark:text-slate-400 mb-1">
+                        Display Name
+                      </p>
+                      {editingProperName === vendorName ? (
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={properNameDraft}
+                            onChange={(e) => setProperNameDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                onSetProperName(vendorName, properNameDraft);
+                                setEditingProperName(null);
+                              } else if (e.key === 'Escape') {
+                                setEditingProperName(null);
+                              }
+                            }}
+                            placeholder={vendorName}
+                            className="flex-1 px-2 py-1 text-[10px] rounded-lg border border-violet-200 dark:border-violet-800/40 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => {
+                              onSetProperName(vendorName, properNameDraft);
+                              setEditingProperName(null);
+                            }}
+                            className="px-2 py-1 text-[11px] font-bold rounded-lg bg-violet-500 text-white hover:bg-violet-600 transition-all duration-200 active:scale-[0.97]"
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={() => setEditingProperName(null)}
+                            className="px-2 py-1 text-[11px] font-bold rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 transition-all duration-200 active:scale-[0.97]"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setProperNameDraft(vo.proper_name ?? '');
+                            setEditingProperName(vendorName);
+                          }}
+                          className="w-full flex items-center gap-1.5 px-2 py-1.5 text-xs rounded-lg border border-dashed border-violet-200 dark:border-violet-800/40 text-slate-600 dark:text-slate-300 hover:bg-violet-100 dark:hover:bg-violet-900/30 transition-all duration-200 active:scale-[0.97]"
+                        >
+                          <svg className="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                          </svg>
+                          <span className="truncate">
+                            {vo.proper_name ? vo.proper_name : `Set preferred name for "${vendorName}"`}
+                          </span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Match type picker (only meaningful when an override exists) */}
+                  {vo && onSetMatchType && (
+                    <div>
+                      <p className="text-[11px] font-semibold tracking-wide text-slate-500 dark:text-slate-400 mb-1">
+                        Match incoming notifications
+                      </p>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {(['exact', 'prefix', 'contains'] as const).map((mt) => (
+                          <button
+                            key={mt}
+                            type="button"
+                            onClick={() => onSetMatchType(vendorName, mt)}
+                            title={
+                              mt === 'exact'
+                                ? 'Only this exact vendor name'
+                                : mt === 'prefix'
+                                ? 'Vendor names starting with this'
+                                : 'Vendor names containing this'
+                            }
+                            className={`px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide rounded-lg border transition-all duration-200 active:scale-[0.97] ${
+                              (vo.match_type || 'exact') === mt
+                                ? 'bg-violet-500 text-white border-violet-600'
+                                : 'bg-violet-50 dark:bg-violet-900/20 border-violet-200 dark:border-violet-800/40 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40'
+                            }`}
+                          >
+                            {mt}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <p className="text-[11px] font-semibold tracking-wide text-slate-500 dark:text-slate-400">
+                    Select Default Category
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {budgets.map((b) => (
+                      <button
+                        key={b.id}
+                        onClick={() => onSetVendorCategory(vendorName, b.id)}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-full border transition-all duration-200 active:scale-[0.97] ${
+                          vo?.category_id === b.id
+                            ? 'bg-violet-500 text-white border-violet-600'
+                            : 'bg-violet-50 dark:bg-violet-900/20 border-violet-200 dark:border-violet-800/40 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40'
+                        }`}
+                      >
+                        {b.name}
+                      </button>
+                    ))}
+                  </div>
+                  {vo && (
+                    <button
+                      onClick={() => onDeleteVendorOverride(vo.id)}
+                      className="w-full flex items-center justify-center gap-1.5 px-3 py-2 mt-2 text-xs font-bold rounded-xl border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40 transition-all duration-200 active:scale-[0.97]"
+                      title="Delete this vendor category rule"
+                    >
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2M10 11v6M14 11v6" />
+                      </svg>
+                      Delete Rule
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </ParsingCard>
+  );
+};
+
+export default VendorCategoryRulesCard;

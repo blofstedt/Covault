@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Covault status bar / notification small icon.
+
+  Android status bar icons MUST be:
+    - 24x24dp viewport
+    - Monochrome (single color: #FFFFFF) — the system tints them
+      with the notification's iconColor at runtime
+    - All non-transparent pixels use #FFFFFF
+    - Key strokes kept within the inner 18dp safe zone so the
+      status-bar mask doesn't clip them
+    - Drawn as filled shapes / strokes; do not rely on color to
+      convey meaning
+
+  This icon is a faithful port of components/CovaultIcon.tsx (the
+  in-app React component that renders the actual Covault brand
+  mark on the login screen). The four compass-point ticks from
+  the source SVG are intentionally omitted at this scale because
+  they collapse to sub-pixel artefacts.
+
+  iOS is unaffected — smallIcon is an Android-only field.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Rounded square outline (matches CovaultIcon.tsx rect x=3 y=3
+         w=18 h=18 rx=2 strokeWidth=2.5).  Outer rect with transparent
+         inner rect = the white stroke. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M5,5 L19,5 A2,2 0 0 1 21,7 L21,17 A2,2 0 0 1 19,19 L5,19 A2,2 0 0 1 3,17 L3,7 A2,2 0 0 1 5,5 Z M5,6.5 L5,17.5 L19,17.5 L19,6.5 Z" />
+
+    <!-- Centered circle ring (matches CovaultIcon.tsx circle cx=12
+         cy=12 r=4 strokeWidth=2.5). -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M12,8 A4,4 0 1 1 12,16 A4,4 0 1 1 12,8 Z M12,9.5 A2.5,2.5 0 1 0 12,14.5 A2.5,2.5 0 1 0 12,9.5 Z" />
+
+    <!-- Diagonal handle (matches CovaultIcon.tsx path d="M12 12l2 2").
+         Rendered as a thin filled rectangle rotated 45° from (12,12)
+         to (14,14) with strokeWidth=2.5. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M11,12 L12,11 L15,14 L14,15 Z" />
+</vector>

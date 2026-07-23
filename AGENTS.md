@@ -1,62 +1,54 @@
-# AGENTS.md — Start Here (read before doing anything)
+# Covault Agent Runbook
 
-**Covault** is an AI-maintained, native-Android (Kotlin/Compose) budgeting app.
-The entire app is the self-contained Gradle project in **`android-kotlin/`**.
-Backend is Supabase. There is no other app.
+Scope: the whole repository.
 
-## The one rule: route, don't scan
+## Mission
 
-**Do NOT read the whole repo.** It wastes tokens and context. Instead:
+Covault is fully AI-managed, so prefer surgical, low-risk changes that keep the app working and make future agent runs easier to verify.
 
-1. **Read [`CLAUDE.md`](./CLAUDE.md) first.** It is the map. Its
-   **"Change-routing map"** table says, for a given change, the exact file(s)
-   to edit.
-2. **Open only the files the table names** for your task (plus their direct
-   collaborators if the edit truly needs them). Grep for a symbol only when the
-   table doesn't cover your task.
-3. **Check [`.notes/gotchas.md`](./.notes/gotchas.md)** before editing — it lists
-   recurring traps that have bitten agents here (don't repeat them).
-4. Files are small and single-purpose by design. Reading one file should be
-   enough for most edits.
+## Safety rules
 
-## Working protocol (all agents)
+- Never commit secrets. `.env`, `CONTEXT.md`, `CONTEXT.local.md`, `*credentials*`, and `*secrets*` are intentionally ignored.
+- Do not paste real GitHub, Supabase, Vercel, Google, or Android signing tokens into tracked files, logs, PR bodies, or screenshots.
+- Do not wrap imports in `try/catch` blocks.
+- Avoid broad rewrites unless a user explicitly asks for them. Keep refactors small and behavior-preserving.
+- If changing Android runtime behavior, remember `android-custom/` is the source for custom Capacitor Java files and `scripts/sync-android.sh` copies them into `android/`.
 
-- **Plan before editing.** For anything non-trivial, state which files you'll
-  touch and why, then edit. Prefer surgical edits (one method) over rewriting a
-  class/file.
-- **You cannot run the app here.** CI (`.github/workflows/build-kotlin.yml`)
-  only compiles, unit-tests, and builds the APK. **Compile-green ≠ works.**
-  Runtime flows (auth, capture, chart, income save) need the owner to device-test.
-  Say so; never claim a runtime feature works from a green build.
-- **Pure logic lives in `domain/` and is unit-tested.** If you change money math,
-  parsing, category resolution, or the chart data, update the matching test in
-  `android-kotlin/app/src/test/java/com/covault/app/`.
-- **Root-cause fixes only.** If a test fails, diagnose the real behavior; don't
-  suppress the symptom.
-- **Keep the map current.** If you add/remove a feature or move a file, update
-  `CLAUDE.md`'s routing table and Feature status, and `.notes/` if relevant.
+## Preferred verification ladder
 
-## Build / test (from `android-kotlin/`)
+Run the smallest useful check while iterating, then run the full suite before committing when code changes are made:
 
 ```bash
-./gradlew :app:compileDebugKotlin     # fast compile check
-./gradlew :app:testDebugUnitTest      # unit tests
-./gradlew :app:assembleDebug          # debug APK
+npm run typecheck
+npm run typecheck:unused
+npm test
+npm run build
 ```
 
-## Git etiquette
+Or run everything with:
 
-- Branch naming: feature branches like `claude/<short-topic>`; never commit
-  straight to `main`.
-- Open a PR to `main`; merge only after CI is green and (for runtime changes)
-  the owner has device-tested.
-- Commit messages: imperative subject + a short body explaining *why*.
+```bash
+npm run verify
+```
 
-## Where things live
+For schema-only edits, also consider:
 
-- `CLAUDE.md` — the map (routing table, stack, DB, architecture, gotchas summary).
-- `.notes/project_overview.md` — high-level architecture in one page.
-- `.notes/task_list.md` — current priorities and known follow-ups.
-- `.notes/gotchas.md` — traps and project-specific quirks. Read before editing.
-- `android-kotlin/` — the app.
-- `supabase/` — DB schema + migrations (reference only).
+```bash
+python3 scripts/check_schema_drift.py --full
+```
+
+## Codebase map for future agents
+
+- `App.tsx`: root app state, auth/data orchestration, top-level routing between onboarding/dashboard/parsing/settings.
+- `components/`: React UI. Dashboard-specific pieces live in `components/dashboard_components/`; AI parsing UI lives in `components/transaction_parsing/`.
+- `lib/hooks/useUserData.ts`: facade that composes data-loading, transaction ops, household linking, settings, and theme hooks.
+- `lib/notificationProcessor.ts`: notification dedup/parsing/AI/category/insert pipeline. Treat this as high-risk; make tiny changes with tests.
+- `lib/deviceTransactionParser.ts` and `lib/aiExtractor.ts`: transaction extraction logic. Add parser tests for new bank/vendor patterns.
+- `lib/hooks/transactionMappers.ts`: database row ↔ app model conversion. Keep enum/label mapping centralized here.
+- `supabase/schema.sql`: canonical fresh schema. `supabase/migrations/` contains incremental production changes.
+
+## PR/commit guidance
+
+- Summarize behavior impact explicitly: "behavior-preserving" if applicable.
+- Include the exact verification commands run.
+- Prefer one coherent commit per task.

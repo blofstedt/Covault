@@ -1,9 +1,7 @@
 package com.covault.app.ui.dashboard
 
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
@@ -15,7 +13,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -33,13 +30,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.covault.app.data.repository.ThemePreference
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,9 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -61,8 +52,6 @@ import com.covault.app.data.model.Transaction
 import com.covault.app.data.model.User
 import com.covault.app.domain.CsvExport
 import com.covault.app.domain.CsvImport
-import com.covault.app.ui.theme.CardAccent
-import com.covault.app.ui.theme.CovaultCard
 
 // =============================================================================
 // Settings modal sections. Direct port of `DashboardSettingsModal.tsx` and
@@ -92,20 +81,20 @@ internal fun SettingsCard(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    // React settings cards: `p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl
-    // border ring-inset ring-white/…`. Slate-toned fill (distinct from the
-    // white/slate-900 modal surface) with the shared inset-ring card look.
-    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val fill = if (isDark) Color(0xFF1E293B).copy(alpha = 0.5f) else Color(0xFFF8FAFC)
-    CovaultCard(
-        modifier = modifier.fillMaxWidth(),
-        accent = CardAccent.Slate,
-        cornerRadius = 24.dp,
-        fill = fill,
-        elevation = 0.dp,
-        contentPadding = PaddingValues(20.dp),
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(24.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant,
+                shape = RoundedCornerShape(24.dp),
+            ),
     ) {
-        content()
+        Column(modifier = Modifier.padding(16.dp)) {
+            content()
+        }
     }
 }
 
@@ -173,136 +162,6 @@ private fun LearnedRulesButton(onClick: () -> Unit) {
                 .fillMaxWidth()
                 .padding(vertical = 16.dp),
         )
-    }
-}
-
-@Composable
-private fun LegalLinks(onShowPrivacy: () -> Unit, onShowTerms: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = "Privacy Policy",
-            style = TextStyle(
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.primary,
-            ),
-            modifier = Modifier.clickable(onClick = onShowPrivacy).padding(8.dp),
-        )
-        Text(
-            text = "·",
-            style = TextStyle(fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant),
-        )
-        Text(
-            text = "Terms of Service",
-            style = TextStyle(
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.primary,
-            ),
-            modifier = Modifier.clickable(onClick = onShowTerms).padding(8.dp),
-        )
-    }
-}
-
-// ---- Bank Notification Listener ------------------------------------------
-
-/** Whether Covault currently holds Android's "Notification access" permission. */
-private fun isNotificationAccessGranted(context: Context): Boolean {
-    val flat = Settings.Secure.getString(
-        context.contentResolver, "enabled_notification_listeners",
-    )
-    return !flat.isNullOrEmpty() &&
-        flat.split(":").any { it.startsWith(context.packageName + "/") }
-}
-
-/**
- * Port of the React `NotificationSettingsSection`: shows whether notification
- * access is granted and links out to the system settings page to grant/manage
- * it. Auto-refreshes on resume so the pill flips to green when the user comes
- * back from Settings. (The banking-app picker in the React version needs a
- * native package query and is not ported here.)
- */
-@Composable
-private fun NotificationListenerSection() {
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    var granted by remember { mutableStateOf(isNotificationAccessGranted(context)) }
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                granted = isNotificationAccessGranted(context)
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-    SettingsCard {
-        SectionHeader(
-            title = "Bank Notification Listener",
-            subtitle = "Auto-log transactions from supported banking apps.",
-            modifier = Modifier.padding(bottom = 12.dp),
-        )
-        // Status pill
-        val pillColor = if (granted) MaterialTheme.colorScheme.primary else Color(0xFFF59E0B)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .background(color = pillColor, shape = RoundedCornerShape(50)),
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = if (granted) "Active — auto-logging transactions"
-                else "Permission not granted in system settings",
-                style = TextStyle(
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = pillColor,
-                ),
-            )
-        }
-        Spacer(Modifier.height(12.dp))
-        Surface(
-            onClick = {
-                runCatching {
-                    context.startActivity(
-                        Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                    )
-                }
-            },
-            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(
-                text = if (granted) "Manage notification access" else "Grant notification access →",
-                style = TextStyle(
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary,
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-            )
-        }
-        if (!granted) {
-            Spacer(Modifier.height(10.dp))
-            Text(
-                text = "One-time setup: tap above, find Covault under " +
-                    "Settings › Apps › Special app access › Notification access, " +
-                    "and toggle it on. Return here — the status turns green automatically.",
-                style = TextStyle(
-                    fontSize = 10.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                ),
-            )
-        }
     }
 }
 
@@ -492,6 +351,26 @@ private fun BudgetLimitsSection(
         }
     }
 }
+@Composable
+private fun PremiumBadge() {
+    Box(
+        modifier = Modifier
+            .background(
+                color = MaterialTheme.colorScheme.tertiaryContainer,
+                shape = RoundedCornerShape(8.dp),
+            )
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    ) {
+        Text(
+            text = "Premium",
+            style = TextStyle(
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Black,
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
+            ),
+        )
+    }
+}
 // ---- 9. Vault sharing (partner linking) ---------------------------------
 
 @Composable
@@ -626,35 +505,6 @@ private fun ThemeToggleSection(themeViewModel: ThemeViewModel = hiltViewModel())
                     )
                 },
             )
-        }
-    }
-}
-
-// ---- 5. Discretionary Shield --------------------------------------------
-
-@Composable
-private fun DiscretionaryShieldSection(enabled: Boolean, onToggle: (Boolean) -> Unit) {
-    SettingsCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Discretionary Shield",
-                    style = TextStyle(
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    ),
-                )
-                Text(
-                    text = "Let Leisure absorb overspending from your other categories.",
-                    style = TextStyle(
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    ),
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-            }
-            Switch(checked = enabled, onCheckedChange = onToggle)
         }
     }
 }
@@ -797,7 +647,7 @@ private fun StatBlock(label: String, value: String) {
 // ---- 13. Support & Feedback ---------------------------------------------
 
 @Composable
-private fun SupportFeedbackSection() {
+private fun SupportFeedbackSection(hasPremium: Boolean, onSubscribe: () -> Unit) {
     val context = LocalContext.current
     SettingsCard {
         SectionHeader(
@@ -836,33 +686,31 @@ private fun SupportFeedbackSection() {
                 )
             }
             Surface(
-                onClick = {
-                    runCatching {
-                        context.startActivity(
-                            Intent(Intent.ACTION_SENDTO).apply {
-                                data = Uri.parse(
-                                    "mailto:itsjustmyemail@gmail.com" +
-                                        "?subject=" + Uri.encode("Covault: Feature Request"),
-                                )
-                            },
-                        )
-                    }
-                },
+                onClick = { if (!hasPremium) onSubscribe() },
                 color = MaterialTheme.colorScheme.tertiaryContainer,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.weight(1f),
             ) {
-                Text(
-                    text = "Request a feature",
-                    style = TextStyle(
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onTertiaryContainer,
-                    ),
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 10.dp),
-                )
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Request a feature",
+                        style = TextStyle(
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        ),
+                    )
+                    if (!hasPremium) {
+                        Spacer(Modifier.width(6.dp))
+                        PremiumBadge()
+                    }
+                }
             }
         }
     }
@@ -905,13 +753,11 @@ fun DashboardSettingsModal(
     budgets: List<BudgetCategory>,
     transactions: List<Transaction>,
     callbacks: DashboardSettingsCallbacks,
+    hasPremium: Boolean = true,
+    onSubscribe: () -> Unit = {},
     onShowFAQ: () -> Unit = {},
     onShowLearnedRules: () -> Unit = {},
-    onShowPrivacy: () -> Unit = {},
-    onShowTerms: () -> Unit = {},
     onImport: (List<Transaction>) -> Unit = {},
-    discretionaryShieldEnabled: Boolean = false,
-    onSetDiscretionaryShield: (Boolean) -> Unit = {},
     onClose: () -> Unit,
 ) {
     Box(
@@ -982,15 +828,6 @@ fun DashboardSettingsModal(
                 ThemeToggleSection()
                 Spacer(Modifier.height(12.dp))
 
-                NotificationListenerSection()
-                Spacer(Modifier.height(12.dp))
-
-                DiscretionaryShieldSection(
-                    enabled = discretionaryShieldEnabled,
-                    onToggle = onSetDiscretionaryShield,
-                )
-                Spacer(Modifier.height(12.dp))
-
                 VaultSharingSection(
                     user = user,
                     isLinkingPartner = isLinkingPartner,
@@ -1016,9 +853,10 @@ fun DashboardSettingsModal(
                     isSharedAccount = isSharedAccount,
                 )
                 Spacer(Modifier.height(12.dp))
-                SupportFeedbackSection()
-                Spacer(Modifier.height(12.dp))
-                LegalLinks(onShowPrivacy = onShowPrivacy, onShowTerms = onShowTerms)
+                SupportFeedbackSection(
+                    hasPremium = hasPremium,
+                    onSubscribe = onSubscribe,
+                )
                 Spacer(Modifier.height(12.dp))
                 SignOutSection(onSignOut = callbacks.onSignOut)
                 Spacer(Modifier.height(8.dp))

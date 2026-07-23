@@ -1,21 +1,14 @@
 package com.covault.app.ui.components
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
@@ -23,59 +16,96 @@ import androidx.compose.ui.unit.dp
 import com.covault.app.ui.theme.CovaultTheme
 
 /**
- * The Covault brand mark — a 1:1 Compose port of the React
- * `components/CovaultIcon.tsx`: an emerald rounded square, tilted 12°,
- * with a white "vault dial" glyph (rounded frame + centre circle + four
- * ticks + a handle line) drawn upright inside it.
+ * The Covault brand mark — a vault door with a center slot. Procedurally
+ * drawn so we don't need to ship a raster icon. Stage 4 will tune the
+ * proportions to match the React `components/CovaultIcon.tsx` glyph
+ * exactly; for Stage 3 this is a faithful placeholder.
  *
- * Reusable at any [size]; the auth screen shows it large, headers small.
+ * Reusable: passed a `size` so the auth screen can show it large and
+ * the dashboard can use a smaller version in headers.
  */
 @Composable
 fun CovaultLogoMark(
     size: Dp = 96.dp,
+    primary: Color = Color(0xFF5b9e97),   // matches the muted teal of the
+    secondary: Color = Color(0xFF9a7bbf), // budget palette
     modifier: Modifier = Modifier,
-    rotate: Boolean = true,
 ) {
-    val emerald = Color(0xFF059669)          // emerald-600
-    val corner = RoundedCornerShape(size * 0.34f)
-    Box(
-        modifier = modifier
-            .size(size)
-            .then(if (rotate) Modifier.rotate(12f) else Modifier)
-            .shadow(elevation = size * 0.10f, shape = corner, spotColor = emerald, ambientColor = emerald)
-            .clip(corner)
-            .background(emerald),
-        contentAlignment = Alignment.Center,
-    ) {
-        Canvas(
-            modifier = Modifier
-                .size(size * 0.52f)
-                .then(if (rotate) Modifier.rotate(-12f) else Modifier),
-        ) {
-            val u = this.size.width / 24f     // viewBox is 24 units, like the SVG
-            val stroke = Stroke(width = 2.3f * u, cap = StrokeCap.Round)
-            val white = Color.White
-            // Rounded frame: rect x3 y3 w18 h18 rx2
-            drawRoundRect(
-                color = white,
-                topLeft = Offset(3f * u, 3f * u),
-                size = Size(18f * u, 18f * u),
-                cornerRadius = CornerRadius(2f * u, 2f * u),
-                style = stroke,
-            )
-            // Centre dial: circle r4
-            drawCircle(color = white, radius = 4f * u, center = Offset(12f * u, 12f * u), style = stroke)
-            // Four ticks + handle line
-            fun seg(x1: Float, y1: Float, x2: Float, y2: Float) = drawLine(
-                white, Offset(x1 * u, y1 * u), Offset(x2 * u, y2 * u),
-                strokeWidth = 2.3f * u, cap = StrokeCap.Round,
-            )
-            seg(12f, 8f, 12f, 9f)    // top
-            seg(12f, 15f, 12f, 16f)  // bottom
-            seg(8f, 12f, 9f, 12f)    // left
-            seg(15f, 12f, 16f, 12f)  // right
-            seg(12f, 12f, 14f, 14f)  // handle
-        }
+    Canvas(modifier = modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        val doorRadius = w * 0.42f
+
+        // Outer ring (the vault wheel)
+        drawCircle(
+            color = primary.copy(alpha = 0.25f),
+            radius = w * 0.45f,
+            center = Offset(w / 2, h / 2),
+        )
+        drawCircle(
+            color = primary,
+            radius = w * 0.40f,
+            center = Offset(w / 2, h / 2),
+            style = Stroke(width = w * 0.025f),
+        )
+
+        // Vault door body
+        val doorSize = Size(doorRadius * 2, doorRadius * 2)
+        val doorTopLeft = Offset(w / 2 - doorRadius, h / 2 - doorRadius)
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(primary.copy(alpha = 0.3f), primary.copy(alpha = 0.1f)),
+                center = Offset(w / 2, h / 2),
+                radius = doorRadius,
+            ),
+            radius = doorRadius,
+            center = Offset(w / 2, h / 2),
+        )
+
+        // Center slot
+        val slotWidth = w * 0.10f
+        val slotHeight = h * 0.40f
+        drawRoundRect(
+            color = secondary,
+            topLeft = Offset(w / 2 - slotWidth / 2, h / 2 - slotHeight / 2),
+            size = Size(slotWidth, slotHeight),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(slotWidth / 2, slotWidth / 2),
+        )
+
+        // Spokes (4 crosshair lines on the wheel)
+        val spokeInset = w * 0.08f
+        val spokeStroke = w * 0.020f
+        val cx = w / 2
+        val cy = h / 2
+        val r = w * 0.40f
+        // top
+        drawLine(
+            color = primary,
+            start = Offset(cx, cy - r + spokeInset),
+            end = Offset(cx, cy - r / 2),
+            strokeWidth = spokeStroke,
+        )
+        // bottom
+        drawLine(
+            color = primary,
+            start = Offset(cx, cy + r / 2),
+            end = Offset(cx, cy + r - spokeInset),
+            strokeWidth = spokeStroke,
+        )
+        // left
+        drawLine(
+            color = primary,
+            start = Offset(cx - r + spokeInset, cy),
+            end = Offset(cx - r / 2, cy),
+            strokeWidth = spokeStroke,
+        )
+        // right
+        drawLine(
+            color = primary,
+            start = Offset(cx + r / 2, cy),
+            end = Offset(cx + r - spokeInset, cy),
+            strokeWidth = spokeStroke,
+        )
     }
 }
 

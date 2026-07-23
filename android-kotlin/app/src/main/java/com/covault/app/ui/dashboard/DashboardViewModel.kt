@@ -67,10 +67,6 @@ class DashboardViewModel @Inject constructor(
     private val _pendingTransactions = MutableStateFlow<List<PendingTransaction>>(emptyList())
     val pendingTransactions: StateFlow<List<PendingTransaction>> = _pendingTransactions.asStateFlow()
 
-    /** "Discretionary Shield" setting (leisure_buffer_enabled). */
-    private val _discretionaryShield = MutableStateFlow(false)
-    val discretionaryShieldEnabled: StateFlow<Boolean> = _discretionaryShield.asStateFlow()
-
     init {
         // Auto-load whenever the user changes (login, restore, etc.)
         viewModelScope.launch {
@@ -99,8 +95,6 @@ class DashboardViewModel @Inject constructor(
                     _budgets.value = data.budgets
                     _transactions.value = normalized
                     _pendingTransactions.value = data.pendingTransactions
-                    _discretionaryShield.value =
-                        settingsRepository.loadSettings(userId)?.leisureBufferEnabled ?: false
                     // Update home-screen widget with latest data
                     widgetUpdater.update(
                         transactions = normalized,
@@ -234,18 +228,6 @@ class DashboardViewModel @Inject constructor(
                 _errorMessage.value = "Some rows couldn't be imported"
                 refresh(userId)
             }
-        }
-    }
-
-    fun setDiscretionaryShield(enabled: Boolean) {
-        val userId = user.value?.id ?: return
-        _discretionaryShield.value = enabled
-        viewModelScope.launch {
-            settingsRepository.upsertSettings(userId, SettingsUpdate(useLeisureAsBuffer = enabled))
-                .onFailure {
-                    _discretionaryShield.value = !enabled
-                    _errorMessage.value = "Couldn't save that setting"
-                }
         }
     }
 

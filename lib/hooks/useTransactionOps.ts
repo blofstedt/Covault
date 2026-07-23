@@ -1,0 +1,701 @@
+// lib/hooks/useTransactionOps.ts
+import { useCallback } from 'react';
+import type { Transaction } from '../../types';
+import { REST_BASE, getAuthHeaders } from '../apiHelpers';
+import { formatVendorName } from '../formatVendorName';
+import { checkDuplicateTransaction } from '../notificationProcessor';
+import { markReviewQueueStatus, upsertVendorMapEntry } from '../localNotificationMemory';
+import { useToSupabaseTransaction, useFromSupabaseTransaction } from './transactionMappers';
+import { toLocalIsoDay } from '../dateUtils';
+import type { UseUserDataParams } from './types';
+
+
+const PROJECTED_TRANSACTION_ID_REGEX = /^projected-(.+)-(\d{4}-\d{2}-\d{2})$/;
+
+export const getSourceTransactionIdFromProjectedId = (transactionId: string): string | null => {
+  const match = PROJECTED_TRANSACTION_ID_REGEX.exec(String(transactionId || ''));
+  return match ? match[1] : null;
+};
+
+export const buildPersistedUpdateTransaction = (
+  updatedTx: Transaction,
+  sourceTx?: Transaction,
+): Transaction => {
+  if (!sourceTx) return updatedTx;
+  return {
+    ...sourceTx,
+    vendor: updatedTx.vendor,
+    amount: updatedTx.amount,
+    budget_id: updatedTx.budget_id,
+    recurrence: updatedTx.recurrence,
+    label: updatedTx.label || sourceTx.label,
+    userName: updatedTx.userName || sourceTx.userName,
+    is_projected: false,
+  };
+};
+
+export const useTransactionOps = ({
+  appState,
+  setAppState,
+  setDbError,
+  categoriesLoaded,
+}: UseUserDataParams & { categoriesLoaded: boolean }) => {
+  const toSupabaseTransaction = useToSupabaseTransaction(appState.budgets);
+  const fromSupabaseTransaction = useFromSupabaseTransaction();
+
+  // Add transaction
+  const handleAddTransaction = useCallback(
+    async (tx: Transaction) => {
+      if (!categoriesLoaded) {
+        setDbError('Cannot add transaction: categories not yet loaded');
+        return;
+      }
+
+      // Log transaction details for debugging
+      console.log('[insert] Creating transaction:', {
+        vendor: tx.vendor,
+        amount: tx.amount,
+        budget_id: tx.budget_id,
+        recurrence: tx.recurrence,
+        date: tx.date
+      });
+
+      // Optimistic update. The tx is already passed with the right label by
+      // TransactionForm, so we just make sure source is set to 'manual' for
+      // user-typed entries. The dedup logic uses this to distinguish manual
+      // entries from executor-spawned and notification-inserted rows.
+      setAppState(prev => ({
+        ...prev,
+        transactions: [{ ...tx, source: tx.source ?? 'manual' }, ...prev.transactions],
+      }));
+
+      try {
+        const row = toSupabaseTransaction(tx);
+        // Ensure auto-added transactions appear in the badge until cleared
+        if (tx.label === 'Automatic') (row as any).caught_cleared = false;
+        console.log('[insert] payload:', JSON.stringify(row));
+
+        const headers = await getAuthHeaders();
+        (headers as any)['Prefer'] = 'return=representation';
+
+        const res = await fetch(`${REST_BASE}/transactions`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(row),
+        });
+        const body = await res.text();
+        console.log(
+          '[insert] status:',
+          res.status,
+          'body:',
+          body.slice(0, 300),
+        );
+
+        if (!res.ok) {
+          const msg = `Insert failed (${res.status}): ${body.slice(0, 200)}`;
+          console.error(msg);
+          console.error('[insert] Failed transaction details:', {
+            vendor: tx.vendor,
+            recurrence: tx.recurrence,
+            budget_id: tx.budget_id
+          });
+          setDbError(msg);
+          setAppState(prev => ({
+            ...prev,
+            transactions: prev.transactions.filter(t => t.id !== tx.id),
+          }));
+          return;
+        }
+
+        const data = JSON.parse(body);
+        const saved = fromSupabaseTransaction(
+          Array.isArray(data) ? data[0] : data,
+        );
+
+        console.log('[insert] OK, id:', saved.id);
+        setAppState(prev => {
+          const hasOptimistic = prev.transactions.some(t => t.id === tx.id);
+          if (hasOptimistic) {
+            return {
+              ...prev,
+              transactions: prev.transactions.map(t =>
+                t.id === tx.id ? saved : t,
+              ),
+            };
+          }
+          // Optimistic entry was removed (e.g., by a concurrent data reload).
+          // Add the saved transaction if it isn't already present.
+          if (prev.transactions.some(t => t.id === saved.id)) return prev;
+          return { ...prev, transactions: [saved, ...prev.transactions] };
+        });
+      } catch (err: any) {
+        const msg = `Insert exception: ${err?.message || err}`;
+        console.error(msg);
+        setDbError(msg);
+        setAppState(prev => ({
+          ...prev,
+          transactions: prev.transactions.filter(t => t.id !== tx.id),
+        }));
+      }
+    },
+    [
+      categoriesLoaded,
+      fromSupabaseTransaction,
+      setAppState,
+      setDbError,
+      toSupabaseTransaction,
+    ],
+  );
+
+  // Update transaction
+  const handleUpdateTransaction = useCallback(
+    async (updatedTx: Transaction) => {
+      const sourceTransactionId = getSourceTransactionIdFromProjectedId(updatedTx.id);
+      const isProjectedEdit = Boolean(sourceTransactionId);
+      const originalTx = appState.transactions.find(t => t.id === (sourceTransactionId || updatedTx.id));
+
+      if (isProjectedEdit && !originalTx) {
+        const msg = `[updateTransaction] Could not find source transaction for projected id ${updatedTx.id}`;
+        console.error(msg);
+        setDbError(msg);
+        return;
+      }
+
+      const txToPersist = buildPersistedUpdateTransaction(updatedTx, originalTx);
+
+      // Check if this was an AI transaction being re-categorized or renamed
+      const isAI = originalTx?.label === 'Automatic';
+      const isAIRecategorize = isAI && txToPersist.budget_id !== originalTx?.budget_id;
+      const isAIVendorRename = isAI && originalTx && formatVendorName(txToPersist.vendor) !== formatVendorName(originalTx.vendor);
+
+      setAppState(prev => ({
+        ...prev,
+        transactions: prev.transactions.map(t =>
+          t.id === txToPersist.id ? txToPersist : t,
+        ),
+      }));
+
+      try {
+        const row = toSupabaseTransaction(txToPersist);
+        console.log(
+          '[update] id:',
+          txToPersist.id,
+          'payload:',
+          JSON.stringify(row),
+          isProjectedEdit ? `(from projected ${updatedTx.id})` : '',
+        );
+
+        const headers = await getAuthHeaders();
+        (headers as any)['Prefer'] = 'return=representation';
+        const res = await fetch(
+          `${REST_BASE}/transactions?id=eq.${txToPersist.id}`,
+          { method: 'PATCH', headers, body: JSON.stringify(row) },
+        );
+        const body = await res.text();
+        console.log(
+          '[update] status:',
+          res.status,
+          'body:',
+          body.slice(0, 300),
+        );
+
+        if (!res.ok) {
+          const msg = `Update failed (${res.status}): ${body.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+        } else {
+          markReviewQueueStatus(txToPersist.id, 'reviewed');
+          const mappedBudget = appState.budgets.find(b => b.id === txToPersist.budget_id)?.name || 'Other';
+          const vendorDisplay = formatVendorName(txToPersist.vendor || 'Unknown');
+          const vendorKey = vendorDisplay.toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (vendorKey) {
+            upsertVendorMapEntry({
+              vendor_key: vendorKey,
+              vendor_display: vendorDisplay,
+              budget: mappedBudget,
+              updated_at: new Date().toISOString(),
+            });
+          }
+
+          // Verify that rows were actually updated
+          let updatedRows: any[] = [];
+          try {
+            updatedRows = body ? JSON.parse(body) : [];
+          } catch (parseErr) {
+            const msg = `[updateTransaction] failed to parse response: ${body.slice(0, 200)}`;
+            console.error(msg);
+            setDbError(msg);
+            return;
+          }
+
+          if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
+            const msg = `[updateTransaction] no rows updated for transaction ${txToPersist.id}`;
+            console.error(msg);
+            setDbError(msg);
+          }
+
+          // If AI transaction was re-categorized or vendor renamed, update the overrides table
+          // and localStorage so future notifications from the same vendor auto-categorize.
+          // overrides schema: (id, user_id, proper_name text, match_key text, category_id Budgets-enum)
+          //
+          // The lookup key priority for future AI matches is:
+          //   1. match_key  (normalized slug — matches across vendor name variants)
+          //   2. proper_name (display name — only matches an exact-ish ilike)
+          // We always set BOTH on write so the AI pipeline can match either way.
+          if ((isAIRecategorize || isAIVendorRename) && appState.user?.id && originalTx) {
+            const originalVendorName = formatVendorName(originalTx.vendor);
+            const newVendorName = formatVendorName(txToPersist.vendor);
+            const budgetName = appState.budgets.find(b => b.id === txToPersist.budget_id)?.name || mappedBudget;
+
+            // Persist to localStorage vendor map
+            const vendorKey = newVendorName.toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (vendorKey) {
+              upsertVendorMapEntry({ vendor_key: vendorKey, vendor_display: newVendorName, budget: budgetName, updated_at: new Date().toISOString() });
+            }
+
+            // Persist to DB overrides table (upsert by match_key first, fall back to proper_name)
+            try {
+              const overrideHeaders = await getAuthHeaders();
+              (overrideHeaders as any)['Prefer'] = 'return=representation';
+              const overridePayload: Record<string, string> = {
+                category_id: budgetName,
+                proper_name: newVendorName,
+                match_key: vendorKey,
+                match_type: 'exact',
+                updated_at: new Date().toISOString(),
+              };
+              if (isAIVendorRename) overridePayload.proper_name = newVendorName;
+
+              // Try to update an existing override first — prefer match_key match
+              // (vendor slug survives name variations), then fall back to proper_name.
+              let patchRes: Response | null = null;
+              if (vendorKey) {
+                patchRes = await fetch(
+                  `${REST_BASE}/overrides?user_id=eq.${appState.user.id}&match_key=eq.${encodeURIComponent(vendorKey)}`,
+                  { method: 'PATCH', headers: overrideHeaders, body: JSON.stringify(overridePayload) },
+                );
+              }
+              if (!patchRes || !patchRes.ok) {
+                patchRes = await fetch(
+                  `${REST_BASE}/overrides?user_id=eq.${appState.user.id}&proper_name=ilike.${encodeURIComponent(originalVendorName)}`,
+                  { method: 'PATCH', headers: overrideHeaders, body: JSON.stringify(overridePayload) },
+                );
+              }
+
+              const patchBody = await (patchRes as Response).text();
+              let patchedRows: any[] = [];
+              try { patchedRows = patchBody ? JSON.parse(patchBody) : []; } catch { patchedRows = []; }
+
+              if (!patchRes!.ok || !Array.isArray(patchedRows) || patchedRows.length === 0) {
+                // No existing override — insert, ignoring conflicts from concurrent writes
+                const insertHeaders = { ...overrideHeaders };
+                (insertHeaders as any)['Prefer'] = 'resolution=ignore-duplicates';
+                await fetch(`${REST_BASE}/overrides`, {
+                  method: 'POST',
+                  headers: insertHeaders,
+                  body: JSON.stringify({ user_id: appState.user.id, proper_name: newVendorName, match_key: vendorKey, match_type: 'exact', category_id: budgetName, updated_at: new Date().toISOString() }),
+                });
+              }
+              console.log('[update] override saved:', newVendorName, '→', budgetName, '(match_key:', vendorKey, ')');
+            } catch (overrideErr: any) {
+              console.warn('[update] override save failed:', overrideErr?.message || overrideErr);
+            }
+          }
+        }
+      } catch (err: any) {
+        const msg = `Update exception: ${err?.message || err}`;
+        console.error(msg);
+        setDbError(msg);
+      }
+    },
+    [appState.transactions, appState.user, appState.budgets, setAppState, setDbError, toSupabaseTransaction],
+  );
+
+  // Delete transaction
+  const handleDeleteTransaction = useCallback(
+    async (id: string) => {
+      const deletedTx = appState.transactions.find(t => t.id === id);
+
+      setAppState(prev => ({
+        ...prev,
+        transactions: prev.transactions.filter(t => t.id !== id),
+      }));
+
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(
+          `${REST_BASE}/transactions?id=eq.${id}`,
+          { method: 'DELETE', headers },
+        );
+
+        if (!res.ok) {
+          const body = await res.text();
+          const msg = `Delete failed (${res.status}): ${body.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+          if (deletedTx) {
+            setAppState(prev => ({
+              ...prev,
+              transactions: [deletedTx, ...prev.transactions],
+            }));
+          }
+        } else {
+          console.log('[delete] OK:', id);
+        }
+      } catch (err: any) {
+        const msg = `Delete exception: ${err?.message || err}`;
+        console.error(msg);
+        setDbError(msg);
+        if (deletedTx) {
+          setAppState(prev => ({
+            ...prev,
+            transactions: [deletedTx, ...prev.transactions],
+          }));
+        }
+      }
+    },
+    [appState.transactions, setAppState, setDbError],
+  );
+
+  // Approve a pending transaction (convert to actual transaction)
+  const handleApprovePendingTransaction = useCallback(
+    async (pendingId: string, categoryId: string, preferredName?: string) => {
+      try {
+        const userId = appState.user?.id;
+        if (!userId) return;
+
+        const pending = appState.pendingTransactions?.find(p => p.id === pendingId);
+        if (!pending) {
+          setDbError('Pending transaction not found');
+          return;
+        }
+
+        // 0) Check for duplicate against existing transactions
+        const dupResult = await checkDuplicateTransaction(userId, pending);
+
+        if (dupResult.isDuplicate) {
+          // Mark as rejected with reason. This path covers both:
+          //   1. One-time same-day exact match (vendor + amount + date)
+          //   2. Recurring match (Monthly/Biweekly) within the ±3 day window
+          // The system no longer auto-updates the existing row's date —
+          // the user moves it manually if they want, per their "don't move
+          // my data silently" preference.
+          const rejectHeaders = await getAuthHeaders();
+          (rejectHeaders as any)['Prefer'] = 'return=representation';
+          await fetch(`${REST_BASE}/pending_transactions?id=eq.${pendingId}`, {
+            method: 'PATCH',
+            headers: rejectHeaders,
+            body: JSON.stringify({
+              status: 'rejected',
+              reviewed_at: new Date().toISOString(),
+              rejection_reason: dupResult.reason,
+            }),
+          });
+
+          // Remove rejected transaction from UI state
+          setAppState(prev => ({
+            ...prev,
+            pendingTransactions: (prev.pendingTransactions || []).filter(p => p.id !== pendingId),
+          }));
+
+          console.log(`[approvePending] Duplicate skipped: ${dupResult.reason}`);
+          return;
+        }
+
+        // 1) Insert the actual transaction directly into Supabase
+        // Use local date to avoid UTC conversion shifting the date forward by a day
+        const txDate = new Date(pending.extracted_timestamp || pending.posted_at || new Date());
+        const dateStr = toLocalIsoDay(txDate);
+        // Resolve budget name from the budget id in app state (DB stores name, not id)
+        const approvedBudgetName = appState.budgets.find(b => b.id === categoryId)?.name || 'Other';
+        const transactionRow = {
+          user_id: userId,
+          vendor: formatVendorName(pending.extracted_vendor),
+          amount: Number(pending.extracted_amount),
+          date: dateStr,
+          budget: approvedBudgetName,
+          type: 'Automatic',
+          recur: 'One-time',
+          is_projected: false,
+          caught_cleared: false,
+        };
+
+        const insertHeaders = await getAuthHeaders();
+        (insertHeaders as any)['Prefer'] = 'return=representation';
+        const insertRes = await fetch(`${REST_BASE}/transactions`, {
+          method: 'POST',
+          headers: insertHeaders,
+          body: JSON.stringify(transactionRow),
+        });
+        const insertBody = await insertRes.text();
+
+        if (!insertRes.ok) {
+          const msg = `[approvePending] INSERT transaction failed (${insertRes.status}): ${insertBody.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
+
+        let savedRow: any;
+        try {
+          const parsed = JSON.parse(insertBody);
+          savedRow = Array.isArray(parsed) ? parsed[0] : parsed;
+        } catch {
+          const msg = `[approvePending] failed to parse INSERT response: ${insertBody.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
+
+        const savedTransaction = { ...fromSupabaseTransaction(savedRow), label: 'Automatic' as const };
+        console.log('[approvePending] transaction inserted, id:', savedTransaction.id);
+
+        // Soft-dup warning: same vendor (after normalization) already
+        // exists nearby but with a different amount. We let the new
+        // transaction through — the user said they'd rather see both rows
+        // than miss a charge — but log it loudly so it's easy to spot
+        // during review. A future UI pass can surface this as a badge on
+        // the auto-entered card.
+        if (dupResult.softDuplicateOfId) {
+          console.warn(
+            `[approvePending] ⚠️ Soft-dup: new ${savedTransaction.vendor} $${savedTransaction.amount} ` +
+            `looks similar to existing ${dupResult.softDuplicateVendor} $${dupResult.softDuplicateAmount} ` +
+            `(${dupResult.softDuplicateOfId})`,
+          );
+        }
+
+        // 2) Mark pending transaction as reviewed and approved
+        const patchHeaders = await getAuthHeaders();
+        (patchHeaders as any)['Prefer'] = 'return=representation';
+        const patchRes = await fetch(`${REST_BASE}/pending_transactions?id=eq.${pendingId}`, {
+          method: 'PATCH',
+          headers: patchHeaders,
+          body: JSON.stringify({
+            status: 'approved',
+            reviewed_at: new Date().toISOString(),
+          }),
+        });
+
+        if (!patchRes.ok) {
+          const body = await patchRes.text();
+          console.error(`[approvePending] PATCH pending failed (${patchRes.status}): ${body.slice(0, 200)}`);
+          // Transaction was created, so continue even if PATCH fails
+        }
+
+        // 3) Save vendor override so future notifications auto-categorize
+        // overrides schema: (id, user_id, proper_name text, category_id Budgets-enum)
+        const trimmedPreferredName = preferredName?.trim() || null;
+        const vendorDisplay = trimmedPreferredName || formatVendorName(pending.extracted_vendor);
+        const vendorKey = vendorDisplay.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+        // Save to localStorage
+        if (vendorKey) {
+          upsertVendorMapEntry({ vendor_key: vendorKey, vendor_display: vendorDisplay, budget: approvedBudgetName, updated_at: new Date().toISOString() });
+        }
+
+        // Save to DB overrides table (upsert by match_key first, then proper_name)
+        try {
+          const overrideHeaders = await getAuthHeaders();
+          (overrideHeaders as any)['Prefer'] = 'return=representation';
+          const overridePayload: Record<string, string> = {
+            category_id: approvedBudgetName,
+            proper_name: vendorDisplay,
+            match_key: vendorKey,
+            match_type: 'exact',
+            updated_at: new Date().toISOString(),
+          };
+
+          // Try match_key first (survives name variants)
+          let patchRes: Response | null = null;
+          if (vendorKey) {
+            patchRes = await fetch(
+              `${REST_BASE}/overrides?user_id=eq.${userId}&match_key=eq.${encodeURIComponent(vendorKey)}`,
+              { method: 'PATCH', headers: overrideHeaders, body: JSON.stringify(overridePayload) },
+            );
+          }
+          if (!patchRes || !patchRes.ok) {
+            patchRes = await fetch(
+              `${REST_BASE}/overrides?user_id=eq.${userId}&proper_name=ilike.${encodeURIComponent(formatVendorName(pending.extracted_vendor))}`,
+              { method: 'PATCH', headers: overrideHeaders, body: JSON.stringify(overridePayload) },
+            );
+          }
+
+          const patchBody = await (patchRes as Response).text();
+          let patchedRows: any[] = [];
+          try { patchedRows = patchBody ? JSON.parse(patchBody) : []; } catch { patchedRows = []; }
+
+          if (!patchRes!.ok || !Array.isArray(patchedRows) || patchedRows.length === 0) {
+            // Insert, ignoring conflicts from concurrent writes
+            const insertHeaders = { ...overrideHeaders };
+            (insertHeaders as any)['Prefer'] = 'resolution=ignore-duplicates';
+            await fetch(`${REST_BASE}/overrides`, {
+              method: 'POST',
+              headers: insertHeaders,
+              body: JSON.stringify({ user_id: userId, proper_name: vendorDisplay, match_key: vendorKey, match_type: 'exact', category_id: approvedBudgetName, updated_at: new Date().toISOString() }),
+            });
+          }
+          console.log('[approvePending] override saved for', vendorDisplay, '→', approvedBudgetName, '(match_key:', vendorKey, ')');
+        } catch (overrideErr: any) {
+          console.warn('[approvePending] override save failed:', overrideErr?.message || overrideErr);
+        }
+
+        // 4) Update UI state: add transaction + remove from pending list
+        setAppState(prev => ({
+          ...prev,
+          transactions: [savedTransaction, ...prev.transactions],
+          pendingTransactions: prev.pendingTransactions?.filter(p => p.id !== pendingId) || [],
+        }));
+
+        console.log('[approvePending] OK, approved pending transaction', pendingId);
+      } catch (err: any) {
+        const msg = `Approve pending exception: ${err?.message || err}`;
+        console.error(msg);
+        setDbError(msg);
+      }
+    },
+    [appState.user, appState.budgets, appState.pendingTransactions, fromSupabaseTransaction, setAppState, setDbError],
+  );
+
+  // Reject a pending transaction
+  const handleRejectPendingTransaction = useCallback(
+    async (pendingId: string) => {
+      try {
+        const headers = await getAuthHeaders();
+        (headers as any)['Prefer'] = 'return=representation';
+
+        // Mark as reviewed and not approved
+        const res = await fetch(`${REST_BASE}/pending_transactions?id=eq.${pendingId}`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({
+            status: 'rejected',
+            reviewed_at: new Date().toISOString(),
+            rejection_reason: 'Manually rejected',
+          }),
+        });
+
+        if (!res.ok) {
+          const body = await res.text();
+          const msg = `[rejectPending] PATCH failed (${res.status}): ${body.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
+
+        const body = await res.text();
+        let updatedRows: any[] = [];
+        try {
+          updatedRows = body ? JSON.parse(body) : [];
+        } catch (parseErr) {
+          const msg = `[rejectPending] failed to parse response: ${body.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
+        
+        if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
+          const msg = `[rejectPending] no rows updated for pending transaction ${pendingId}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
+
+        // Remove rejected transaction from UI state immediately
+        setAppState(prev => ({
+          ...prev,
+          pendingTransactions: (prev.pendingTransactions || []).filter(p => p.id !== pendingId),
+        }));
+
+        console.log('[rejectPending] OK, rejected pending transaction', pendingId);
+      } catch (err: any) {
+        const msg = `Reject pending exception: ${err?.message || err}`;
+        console.error(msg);
+        setDbError(msg);
+      }
+    },
+    [setAppState, setDbError],
+  );
+
+  // Clear filtered (keyword-ignored) pending transactions by deleting from DB
+  const handleClearFilteredNotifications = useCallback(
+    async (ids: string[]) => {
+      if (ids.length === 0) return;
+      try {
+        const headers = await getAuthHeaders();
+        const idList = ids.map(id => `"${id.replace(/"/g, '')}"`).join(',');
+        const res = await fetch(`${REST_BASE}/pending_transactions?id=in.(${idList})`, {
+          method: 'DELETE',
+          headers,
+        });
+        if (!res.ok) {
+          const body = await res.text();
+          const msg = `[clearFiltered] DELETE failed (${res.status}): ${body.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
+        // Remove from UI state
+        const idSet = new Set(ids);
+        setAppState(prev => ({
+          ...prev,
+          pendingTransactions: (prev.pendingTransactions || []).filter(p => !idSet.has(p.id)),
+        }));
+        console.log('[clearFiltered] OK, cleared', ids.length, 'filtered notifications');
+      } catch (err: any) {
+        const msg = `Clear filtered exception: ${err?.message || err}`;
+        console.error(msg);
+        setDbError(msg);
+      }
+    },
+    [setAppState, setDbError],
+  );
+
+  // Clear approved transactions by removing the Auto-Added label
+  const handleClearApprovedTransactions = useCallback(
+    async (ids: string[]) => {
+      if (ids.length === 0) return;
+      try {
+        const headers = await getAuthHeaders();
+        (headers as any)['Prefer'] = 'return=representation';
+        const idList = ids.map(id => `"${id.replace(/"/g, '')}"`).join(',');
+        const res = await fetch(`${REST_BASE}/transactions?id=in.(${idList})`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({ type: 'Manual' }),
+        });
+        if (!res.ok) {
+          const body = await res.text();
+          const msg = `[clearApproved] PATCH failed (${res.status}): ${body.slice(0, 200)}`;
+          console.error(msg);
+          setDbError(msg);
+          return;
+        }
+        // Update UI state: set label to 'Manual' so they no longer appear in "Approved Transactions"
+        // but remain visible on the main transactions page
+        const idSet = new Set(ids);
+        setAppState(prev => ({
+          ...prev,
+          transactions: prev.transactions.map(t =>
+            idSet.has(t.id) ? { ...t, label: 'Manual' as const } : t,
+          ),
+        }));
+        console.log('[clearApproved] OK, cleared labels for', ids.length, 'approved transactions');
+      } catch (err: any) {
+        const msg = `Clear approved exception: ${err?.message || err}`;
+        console.error(msg);
+        setDbError(msg);
+      }
+    },
+    [setAppState, setDbError],
+  );
+
+  return {
+    handleAddTransaction,
+    handleUpdateTransaction,
+    handleDeleteTransaction,
+    handleApprovePendingTransaction,
+    handleRejectPendingTransaction,
+    handleClearFilteredNotifications,
+    handleClearApprovedTransactions,
+  };
+};

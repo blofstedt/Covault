@@ -39,8 +39,6 @@ import com.covault.app.data.model.TransactionLabel
 import com.covault.app.data.model.User
 import com.covault.app.domain.DateUtils
 import com.covault.app.domain.DashboardTotals
-import com.covault.app.domain.DiscretionaryShield
-import com.covault.app.ui.theme.CovaultBackground
 import com.covault.app.ui.theme.CovaultTheme
 import java.time.LocalDate
 
@@ -68,7 +66,6 @@ fun DashboardScreen(
     val budgets by viewModel.budgets.collectAsStateWithLifecycle()
     val transactions by viewModel.transactions.collectAsStateWithLifecycle()
     val pending by viewModel.pendingTransactions.collectAsStateWithLifecycle()
-    val shieldEnabled by viewModel.discretionaryShieldEnabled.collectAsStateWithLifecycle()
 
     DashboardContent(
         user = user,
@@ -89,8 +86,6 @@ fun DashboardScreen(
         onApproveCapture = { id, budgetId -> viewModel.approveCapture(id, budgetId) },
         onRejectCapture = { id -> viewModel.rejectCapture(id) },
         onImportTransactions = { txs -> viewModel.importTransactions(txs) },
-        discretionaryShieldEnabled = shieldEnabled,
-        onSetDiscretionaryShield = { viewModel.setDiscretionaryShield(it) },
     )
 }
 
@@ -114,8 +109,6 @@ private fun DashboardContent(
     onApproveCapture: (String, String?) -> Unit,
     onRejectCapture: (String) -> Unit,
     onImportTransactions: (List<Transaction>) -> Unit,
-    discretionaryShieldEnabled: Boolean,
-    onSetDiscretionaryShield: (Boolean) -> Unit,
 ) {
     val isShared = user?.budgetingSolo == false
     val monthlyIncome = user?.monthlyIncome ?: 0.0
@@ -133,8 +126,6 @@ private fun DashboardContent(
     var showFAQ by remember { mutableStateOf(false) }
     var showLearnedRules by remember { mutableStateOf(false) }
     var showReview by remember { mutableStateOf(false) }
-    var showPrivacy by remember { mutableStateOf(false) }
-    var showTerms by remember { mutableStateOf(false) }
     var editingTx by remember { mutableStateOf<Transaction?>(null) }
     var partnerLinkEmail by remember { mutableStateOf("") }
     var isLinkingPartner by remember { mutableStateOf(false) }
@@ -157,10 +148,11 @@ private fun DashboardContent(
             .map { VendorHistoryItem(it.vendor, it.budgetId!!) }
     }
 
-    CovaultBackground(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
                 .windowInsetsPadding(WindowInsets.systemBars),
         ) {
             DashboardBalanceSection(
@@ -211,10 +203,6 @@ private fun DashboardContent(
             val sortedBudgets = remember(budgets) {
                 budgets.sortedBy { it.name.equals("Other", ignoreCase = true) }
             }
-            // Discretionary Shield: Leisure absorbs overspend from other categories.
-            val displayBudgets = remember(sortedBudgets, currentMonthTransactions, discretionaryShieldEnabled) {
-                DiscretionaryShield.apply(sortedBudgets, currentMonthTransactions, discretionaryShieldEnabled)
-            }
             if (isSearching) {
                 SearchResults(
                     searchQuery = searchQuery,
@@ -229,17 +217,10 @@ private fun DashboardContent(
             } else {
                 Column(modifier = Modifier.weight(1f)) {
                     BudgetFlowChart(
-                        budgets = displayBudgets,
-                        // Full history so the chart can plot multiple months.
-                        transactions = transactions,
+                        budgets = sortedBudgets,
+                        transactions = currentMonthTransactions,
                         monthlyIncome = monthlyIncome,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        // Expanding a budget solos it in the chart; tapping a
-                        // chart band expands (and solos) that budget.
-                        highlightedBudgetId = expandedBudgets.firstOrNull(),
-                        onSelectBudget = { id ->
-                            expandedBudgets = if (id in expandedBudgets) emptySet() else setOf(id)
-                        },
                     )
                 LazyColumn(
                     modifier = Modifier
@@ -248,7 +229,7 @@ private fun DashboardContent(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(displayBudgets, key = { it.id }) { budget ->
+                    items(sortedBudgets, key = { it.id }) { budget ->
                         val isExpanded = budget.id in expandedBudgets
                         val budgetTxs = currentMonthTransactions.filter { it.budgetId == budget.id }
                         BudgetSection(
@@ -353,13 +334,11 @@ private fun DashboardContent(
             budgets = budgets,
             transactions = transactions,
             callbacks = callbacks,
+            hasPremium = true,
+            onSubscribe = {},
             onShowFAQ = { showFAQ = true },
             onShowLearnedRules = { showLearnedRules = true },
-            onShowPrivacy = { showPrivacy = true },
-            onShowTerms = { showTerms = true },
             onImport = onImportTransactions,
-            discretionaryShieldEnabled = discretionaryShieldEnabled,
-            onSetDiscretionaryShield = onSetDiscretionaryShield,
             onClose = { showSettings = false },
         )
     }
@@ -384,14 +363,6 @@ private fun DashboardContent(
             onReject = { id -> onRejectCapture(id) },
             onClose = { showReview = false },
         )
-    }
-
-    if (showPrivacy) {
-        PrivacyPolicyModal(onClose = { showPrivacy = false })
-    }
-
-    if (showTerms) {
-        TermsModal(onClose = { showTerms = false })
     }
 }
 
@@ -431,8 +402,6 @@ private fun DashboardScreenPreview() {
             onApproveCapture = { _, _ -> },
             onRejectCapture = {},
             onImportTransactions = {},
-            discretionaryShieldEnabled = false,
-            onSetDiscretionaryShield = {},
         )
     }
 }

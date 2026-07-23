@@ -82,6 +82,14 @@ enum class TransactionLabel { AUTOMATIC, MANUAL }
 enum class TransactionSource { EXECUTOR, NOTIFICATION, MANUAL, IMPORT }
 
 @Serializable
+data class SoftDuplicateHint(
+    val id: String,
+    val vendor: String,
+    val amount: Double,
+    val date: String,
+)
+
+@Serializable
 data class Transaction(
     val id: String,
     val userId: String,
@@ -99,4 +107,46 @@ data class Transaction(
     val userName: String? = null,
     val createdAt: String,
     val source: TransactionSource? = null,
+    /** In-memory only, never persisted. */
+    val softDuplicateOf: SoftDuplicateHint? = null,
+)
+
+@Serializable
+data class Settings(
+    val userId: String,
+    val name: String,
+    val email: String,
+    val partnerId: String? = null,
+    val partnerEmail: String? = null,
+    val partnerName: String? = null,
+    val hasJointAccounts: Boolean? = null,
+    val budgetingSolo: Boolean? = null,
+    val monthlyIncome: Double? = null,
+    val rolloverEnabled: Boolean = true,
+    val rolloverOverspend: Boolean = false,
+    val useLeisureAsBuffer: Boolean = true,
+    val showSavingsInsight: Boolean = true,
+    val theme: String = "light",
+)
+
+@Serializable
+data class AppStateSettings(
+    val rolloverEnabled: Boolean = true,
+    val rolloverOverspend: Boolean = false,
+    val useLeisureAsBuffer: Boolean = true,
+    val showSavingsInsight: Boolean = true,
+    val theme: String = "light",
+    val notificationsEnabled: Boolean = false,
+    val hiddenCategories: List<String> = emptyList(),
+    val appNotificationsEnabled: Boolean = false,
+    val smartNotificationsEnabled: Boolean = true,
+)
+
+@Serializable
+data class AppState(
+    val user: User? = null,
+    val budgets: List<BudgetCategory> = emptyList(),
+    val transactions: List<Transaction> = emptyList(),
+    val pendingTransactions: List<PendingTransaction> = emptyList(),
+    val settings: AppStateSettings = AppStateSettings(),
 )

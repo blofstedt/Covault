@@ -22,7 +22,3 @@ captures/
 google-services.json
 *.keystore
 keystore.properties
-# Exception: the shared DEBUG keystore is intentionally committed so every
-# build is signed identically (install-over without uninstall). Debug
-# keystores are not secret. Release keystores must still never be committed.
-!app/covault-debug.keystore

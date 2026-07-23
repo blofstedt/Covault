@@ -1,0 +1,111 @@
+import React from 'react';
+import type { DashboardUser } from '../DashboardSettingsModal';
+import SettingsCard from '../../ui/SettingsCard';
+import SectionHeader from '../../ui/SectionHeader';
+
+interface VaultSharingSectionProps {
+  user: DashboardUser | null | undefined;
+  isLinkingPartner: boolean;
+  partnerLinkEmail: string;
+  onChangePartnerLinkEmail: (value: string) => void;
+  onConnectPartner: () => void;
+  onDisconnectPartner: () => void;
+  onToggleLinkingPartner: (value: boolean) => void;
+}
+
+const VaultSharingSection: React.FC<VaultSharingSectionProps> = ({
+  user,
+  isLinkingPartner,
+  partnerLinkEmail,
+  onChangePartnerLinkEmail,
+  onConnectPartner,
+  onDisconnectPartner,
+  onToggleLinkingPartner,
+}) => {
+  return (
+    <SettingsCard id="settings-sharing-container" className="space-y-4">
+      <SectionHeader
+        title="Vault Sharing"
+        subtitle="Connect with a partner to view and manage your combined budget."
+      />
+
+      {user?.partnerEmail ? (
+        <div className="space-y-4 animate-in fade-in duration-300">
+          <div className="flex items-center p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800">
+            <div className="w-10 h-10 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl flex items-center justify-center mr-4">
+              <svg
+                className="w-5 h-5 text-emerald-600 dark:text-emerald-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2.5}
+                  d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"
+                />
+              </svg>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[11px] font-semibold text-slate-400 tracking-wide">
+                Linked With
+              </span>
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-200 truncate max-w-[160px]">
+                {user.partnerEmail}
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={onDisconnectPartner}
+            className="w-full py-4 bg-rose-50 dark:bg-rose-900/20 text-rose-500 text-xs font-semibold rounded-2xl hover:bg-rose-100 transition-all duration-200 tracking-wide"
+          >
+            Disconnect Partner
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {isLinkingPartner ? (
+            <div className="space-y-3 animate-in slide-in-from-top-2 duration-300">
+              <input
+                autoFocus
+                type="email"
+                placeholder="Partner's email..."
+                value={partnerLinkEmail}
+                onChange={(e) => onChangePartnerLinkEmail(e.target.value)}
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl py-4 px-5 text-sm font-bold text-slate-600 dark:text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+              />
+              <div className="flex space-x-2">
+                <button
+                  disabled={!partnerLinkEmail.includes('@')}
+                  onClick={onConnectPartner}
+                  className="flex-1 py-4 bg-emerald-600 text-white text-xs font-semibold rounded-2xl shadow-lg shadow-emerald-500/10 active:scale-[0.97] transition-all duration-200 tracking-wide disabled:opacity-30"
+                >
+                  Send Request
+                </button>
+                <button
+                  onClick={() => {
+                    onToggleLinkingPartner(false);
+                    onChangePartnerLinkEmail('');
+                  }}
+                  className="px-6 py-4 bg-slate-100 dark:bg-slate-700 text-slate-400 text-xs font-semibold rounded-2xl active:scale-[0.97] transition-all duration-200 tracking-wide"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => onToggleLinkingPartner(true)}
+              className="w-full py-5 bg-white dark:bg-slate-900 border-2 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-semibold rounded-2xl hover:bg-emerald-50 transition-all duration-200 tracking-wide shadow-sm active:scale-[0.97]"
+            >
+              + Link a Partner
+            </button>
+          )}
+        </div>
+      )}
+    </SettingsCard>
+  );
+};
+
+export default VaultSharingSection;

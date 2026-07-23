@@ -97,7 +97,7 @@ fun BudgetSection(
     Surface(
         color = if (isExpanded) MaterialTheme.colorScheme.surface
                 else MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-        shape = RoundedCornerShape(32.dp),
+        shape = RoundedCornerShape(28.dp),
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 64.dp)
@@ -105,7 +105,7 @@ fun BudgetSection(
                 width = if (isExpanded) 1.dp else 1.dp,
                 color = if (isExpanded) color.copy(alpha = 0.6f)
                         else MaterialTheme.colorScheme.outlineVariant,
-                shape = RoundedCornerShape(32.dp),
+                shape = RoundedCornerShape(28.dp),
             )
             .clickable(onClick = onToggle),
     ) {

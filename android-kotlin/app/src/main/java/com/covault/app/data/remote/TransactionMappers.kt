@@ -2,6 +2,7 @@ package com.covault.app.data.remote
 
 import com.covault.app.data.model.BudgetCategory
 import com.covault.app.data.model.Recurrence
+import com.covault.app.data.model.Settings
 import com.covault.app.data.model.SubscriptionStatus
 import com.covault.app.data.model.SystemCategories
 import com.covault.app.data.model.Transaction
@@ -192,6 +193,23 @@ object TransactionMappers {
             "expired" -> SubscriptionStatus.EXPIRED
             else -> SubscriptionStatus.NONE
         },
+    )
+
+    fun settingsFromRow(row: SettingsRow): Settings = Settings(
+        userId = row.userId,
+        name = row.name,
+        email = row.email,
+        partnerId = row.partnerId,
+        partnerEmail = row.partnerEmail,
+        partnerName = row.partnerName,
+        hasJointAccounts = (row.partnerId != null),
+        budgetingSolo = row.budgetingSolo,
+        monthlyIncome = row.monthlyIncome,
+        rolloverEnabled = row.rolloverEnabled ?: true,
+        rolloverOverspend = false, // not in DB row — pulled from app settings
+        useLeisureAsBuffer = row.leisureBufferEnabled ?: true,
+        showSavingsInsight = row.showSavingsInsight ?: true,
+        theme = row.themeSelected ?: "dark",
     )
 
     fun budgetCategoryFromRow(row: BudgetRow): BudgetCategory? {
