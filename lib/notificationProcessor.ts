@@ -16,6 +16,7 @@ import { formatVendorName, fuzzyVendorMatch, normalizeVendorForDedup } from './f
 import { parseNotificationText } from './deviceTransactionParser';
 import { addToReviewQueue, getVendorMapEntry, getVendorMap, isNotificationProcessed, markNotificationProcessed, getCachedAIResult, setCachedAIResult } from './localNotificationMemory';
 import { findMatchingExpense, REFUND_MATCH_WINDOW_DAYS } from './refundMatching';
+import { aiFindRefundMatch } from './aiExtractor';
 import { checkNotificationRules, bumpRuleUseCount } from './notificationRules';
 import { getLocalToday, parseLocalDate } from './dateUtils';
 import { extractWithAI, aiDetectRecurring, aiExplainRejection } from './aiExtractor';
@@ -1011,10 +1012,25 @@ async function processNotificationWithAIImpl(
         is_projected: false,
         refunded: row.refunded === true,
       }));
-      const match = findMatchingExpense(
+      let match = findMatchingExpense(
         { vendor, amount: rawAmount, date: new Date(notifTimestamp).toISOString().slice(0, 10), budget_id: '' },
         mapped,
       );
+      // AI fallback: try semantic vendor matching for refunds with different names
+      if (!match && mapped.length > 0) {
+        const aiMatchId = await aiFindRefundMatch(vendor, Math.abs(rawAmount), mapped.map(c => ({
+          id: c.id,
+          vendor: c.vendor,
+          amount: Number(c.amount),
+          date: String(c.date).slice(0, 10),
+        })));
+        if (aiMatchId) {
+          match = mapped.find((c: any) => c.id === aiMatchId) || null;
+          if (match) {
+            console.log(`[AI pipeline] Refund matched via AI: ${match.vendor} $${match.amount}`);
+          }
+        }
+      }
       if (match) {
         const { error: refundUpdateError } = await supabase
           .from('transactions')
