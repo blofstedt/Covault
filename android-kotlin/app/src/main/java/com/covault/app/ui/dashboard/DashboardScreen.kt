@@ -234,6 +234,12 @@ private fun DashboardContent(
                         transactions = transactions,
                         monthlyIncome = monthlyIncome,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        // Expanding a budget solos it in the chart; tapping a
+                        // chart band expands (and solos) that budget.
+                        highlightedBudgetId = expandedBudgets.firstOrNull(),
+                        onSelectBudget = { id ->
+                            expandedBudgets = if (id in expandedBudgets) emptySet() else setOf(id)
+                        },
                     )
                 LazyColumn(
                     modifier = Modifier

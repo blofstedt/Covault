@@ -3,6 +3,7 @@ package com.covault.app.ui.dashboard
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +28,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -118,15 +120,30 @@ fun BudgetFlowChart(
     transactions: List<Transaction>,
     monthlyIncome: Double = 0.0,
     modifier: Modifier = Modifier,
+    highlightedBudgetId: String? = null,
+    onSelectBudget: (String) -> Unit = {},
 ) {
     val categoryNames = remember(budgets) { budgets.map { it.name } }
     val months = remember(transactions, budgets) { buildMonthly(transactions, budgets) }
     val totalLimit = remember(budgets) { budgets.sumOf { it.totalLimit } }
     val threshold = if (monthlyIncome > 0) monthlyIncome else totalLimit
 
+    // When a budget is expanded below, the chart "solos" that one series.
+    val soloBudget = highlightedBudgetId?.let { id -> budgets.firstOrNull { it.id == id } }
+    val soloName = soloBudget?.name
+
     // Header summary uses the most recent month in the window.
     val latest = months.lastOrNull()
     val latestSpent = latest?.total ?: 0.0
+
+    // Y scale (and hence hit-testing) differs in solo vs. stacked mode.
+    val maxTotal = remember(months) { months.maxOfOrNull { it.total } ?: 0.0 }
+    val soloMax = if (soloBudget != null) {
+        maxOf(months.maxOfOrNull { it.byName[soloBudget.name] ?: 0.0 } ?: 0.0, soloBudget.totalLimit)
+    } else 0.0
+    val chartYMax = if (soloBudget != null) (soloMax * 1.15).coerceAtLeast(1.0)
+    else (maxOf(maxTotal, threshold) * 1.15).coerceAtLeast(1.0)
+    val lineThreshold = if (soloBudget != null) soloBudget.totalLimit else threshold
 
     val gridColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
     val thresholdColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
@@ -151,16 +168,19 @@ fun BudgetFlowChart(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "Budget Flow",
+                    text = soloName ?: "Budget Flow",
                     style = TextStyle(
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = if (soloName != null) BudgetColors.getColor(soloName)
+                        else MaterialTheme.colorScheme.onSurface,
                     ),
                     modifier = Modifier.weight(1f),
                 )
+                val headSpent = if (soloName != null) (latest?.byName?.get(soloName) ?: 0.0) else latestSpent
+                val headLimit = if (soloBudget != null) soloBudget.totalLimit else totalLimit
                 Text(
-                    text = "$${latestSpent.toInt()} / $${totalLimit.toInt()}",
+                    text = "$${headSpent.toInt()} / $${headLimit.toInt()}",
                     style = TextStyle(
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -174,14 +194,27 @@ fun BudgetFlowChart(
             Canvas(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(170.dp),
+                    .height(170.dp)
+                    .pointerInput(months, categoryNames, highlightedBudgetId) {
+                        detectTapGestures { offset ->
+                            // Solo mode: any tap collapses back to the full chart.
+                            if (soloBudget != null) {
+                                onSelectBudget(soloBudget.id)
+                                return@detectTapGestures
+                            }
+                            val id = budgetAtTap(
+                                offset, size.width.toFloat(), size.height.toFloat(),
+                                months, categoryNames, budgets, chartYMax,
+                            )
+                            if (id != null) onSelectBudget(id)
+                        }
+                    },
             ) {
                 val w = size.width
                 val h = size.height
                 val n = months.size
 
-                val maxTotal = months.maxOfOrNull { it.total } ?: 0.0
-                val yMax = (maxOf(maxTotal, threshold) * 1.15).coerceAtLeast(1.0)
+                val yMax = chartYMax
                 fun sy(v: Double): Float = (h * (1.0 - v / yMax)).toFloat()
 
                 // X positions: d3 scalePoint with 0.25 padding.
@@ -200,27 +233,18 @@ fun BudgetFlowChart(
                     drawLine(gridColor, Offset(0f, gy), Offset(w, gy), strokeWidth = 1f)
                 }
 
-                // Stack categories bottom→up; draw a smooth gradient band each.
-                val baseline = DoubleArray(n)   // running cumulative per month
-                categoryNames.forEachIndexed { ci, name ->
+                if (soloName != null) {
+                    // ── Solo band: only the highlighted budget, baseline 0. ──
                     val y0 = ArrayList<Offset>(n + 2)
                     val y1 = ArrayList<Offset>(n + 2)
-                    var anyValue = false
                     for (i in 0 until n) {
-                        val v = months[i].byName[name] ?: 0.0
-                        if (v > 0.0) anyValue = true
-                        val bottom = baseline[i]
-                        val top = bottom + v
-                        y0.add(Offset(xs[i], sy(bottom)))
-                        y1.add(Offset(xs[i], sy(top)))
-                        baseline[i] = top
+                        y0.add(Offset(xs[i], sy(0.0)))
+                        y1.add(Offset(xs[i], sy(months[i].byName[soloName] ?: 0.0)))
                     }
-                    if (!anyValue) return@forEachIndexed
-                    // Extend to both edges so the curve fills the full width.
                     y0.add(0, Offset(0f, y0.first().y)); y0.add(Offset(w, y0.last().y))
                     y1.add(0, Offset(0f, y1.first().y)); y1.add(Offset(w, y1.last().y))
-
-                    val (c0, c1) = gradients[ci]
+                    val ci = categoryNames.indexOf(soloName).coerceAtLeast(0)
+                    val (c0, c1) = gradients.getOrElse(ci) { gradients.first() }
                     val bandTop = y1.minOf { it.y }
                     drawSmoothArea(
                         top = y1,
@@ -231,11 +255,44 @@ fun BudgetFlowChart(
                             endY = h,
                         ),
                     )
+                } else {
+                    // Stack categories bottom→up; draw a smooth gradient band each.
+                    val baseline = DoubleArray(n)   // running cumulative per month
+                    categoryNames.forEachIndexed { ci, name ->
+                        val y0 = ArrayList<Offset>(n + 2)
+                        val y1 = ArrayList<Offset>(n + 2)
+                        var anyValue = false
+                        for (i in 0 until n) {
+                            val v = months[i].byName[name] ?: 0.0
+                            if (v > 0.0) anyValue = true
+                            val bottom = baseline[i]
+                            val top = bottom + v
+                            y0.add(Offset(xs[i], sy(bottom)))
+                            y1.add(Offset(xs[i], sy(top)))
+                            baseline[i] = top
+                        }
+                        if (!anyValue) return@forEachIndexed
+                        // Extend to both edges so the curve fills the full width.
+                        y0.add(0, Offset(0f, y0.first().y)); y0.add(Offset(w, y0.last().y))
+                        y1.add(0, Offset(0f, y1.first().y)); y1.add(Offset(w, y1.last().y))
+
+                        val (c0, c1) = gradients[ci]
+                        val bandTop = y1.minOf { it.y }
+                        drawSmoothArea(
+                            top = y1,
+                            bottom = y0,
+                            brush = Brush.verticalGradient(
+                                colors = listOf(c0.copy(alpha = 0.95f), c1.copy(alpha = 0.75f)),
+                                startY = bandTop,
+                                endY = h,
+                            ),
+                        )
+                    }
                 }
 
-                // Threshold (income or total budget) line.
-                if (threshold > 0 && threshold < yMax) {
-                    val ty = sy(threshold)
+                // Threshold (income or per-budget limit) line.
+                if (lineThreshold > 0 && lineThreshold < yMax) {
+                    val ty = sy(lineThreshold)
                     drawLine(
                         color = thresholdColor,
                         start = Offset(0f, ty),
@@ -306,6 +363,44 @@ private fun DrawScope.drawSmoothArea(top: List<Offset>, bottom: List<Offset>, br
     catmullRom(path, bottom.asReversed(), moveToStart = false)
     path.close()
     drawPath(path = path, brush = brush)
+}
+
+/**
+ * Which budget's stacked band sits under [offset]? Recomputes the same X
+ * positions and Y scale the draw pass uses, finds the nearest month, then
+ * walks the categories bottom→up to find the band containing the tapped
+ * value. Returns the budget id, or null if the tap is above all bands.
+ */
+private fun budgetAtTap(
+    offset: Offset,
+    w: Float,
+    h: Float,
+    months: List<MonthPoint>,
+    categoryNames: List<String>,
+    budgets: List<BudgetCategory>,
+    yMax: Double,
+): String? {
+    val n = months.size
+    if (n == 0 || w <= 0f || h <= 0f) return null
+    val xs = FloatArray(n)
+    if (n == 1) {
+        xs[0] = w / 2f
+    } else {
+        val step = w / (n - 1 + 0.5f)
+        val start = step * 0.25f
+        for (i in 0 until n) xs[i] = start + step * i
+    }
+    val mi = (0 until n).minByOrNull { abs(xs[it] - offset.x) } ?: return null
+    val frac = (offset.y / h).toDouble().coerceIn(0.0, 1.0)
+    val yValue = yMax * (1.0 - frac)   // value at the tapped height, from baseline
+    var cum = 0.0
+    for (name in categoryNames) {
+        val v = months[mi].byName[name] ?: 0.0
+        if (v <= 0.0) continue
+        if (yValue in cum..(cum + v)) return budgets.firstOrNull { it.name == name }?.id
+        cum += v
+    }
+    return null
 }
 
 private fun catmullRom(path: Path, pts: List<Offset>, moveToStart: Boolean) {
