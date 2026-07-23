@@ -23,7 +23,6 @@
 // and striking through matched expenses.
 
 import type { Transaction } from '../types';
-import { aiFindRefundMatch } from './aiExtractor';
 
 /** How far apart (in days) a refund and its expense can be and still
  *  be considered a match. 60 days covers longer card refund windows
@@ -110,19 +109,6 @@ export function findMatchingExpense(
       best = expense;
     }
   }
-  // AI fallback for vendor-name mismatches (e.g. 'AMZN MKTP' vs 'Amazon')
-  if (!best && candidates.length > 0) {
-    const aiMatch = await aiFindRefundMatch(refund.vendor || '', Math.abs(Number(refund.amount)), candidates.map(c => ({
-      id: c.id,
-      vendor: c.vendor,
-      amount: Number(c.amount),
-      date: String(c.date).slice(0, 10),
-    })));
-    if (aiMatch) {
-      best = candidates.find(c => c.id === aiMatch) || null;
-    }
-  }
-
   return best;
 }
 
