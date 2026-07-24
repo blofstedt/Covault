@@ -13,7 +13,7 @@
 // same match_type (exact/prefix/contains). The match_type on the
 // override determines which historical rows are eligible for backfill.
 
-import { REST_BASE, getAuthHeaders } from './apiHelpers';
+import { restFetch } from './apiHelpers';
 
 const escapePostgrestString = (s: string): string => s.replace(/'/g, "''");
 
@@ -30,15 +30,13 @@ export async function countBackfillMatches(
 ): Promise<number> {
   if (!userId || !matchKey) return 0;
   try {
-    const headers = await getAuthHeaders();
-    (headers as any)['Prefer'] = 'count=exact';
     // Fetch all user transactions' vendors. Filter in-memory for
     // match_type semantics. (Cheaper than 3 separate count queries,
     // and the user's transactions table is small — hundreds of rows
     // even for power users.)
-    const res = await fetch(
-      `${REST_BASE}/transactions?select=vendor&user_id=eq.${userId}`,
-      { headers, cache: 'no-store' },
+    const res = await restFetch(
+      `/transactions?select=vendor&user_id=eq.${userId}`,
+      { headers: { Prefer: 'count=exact' }, cache: 'no-store' },
     );
     if (!res.ok) return 0;
     // The count=exact header is honored on simple GETs; we also fall
@@ -103,10 +101,6 @@ export async function applyVendorBackfill(
   matchType: 'exact' | 'prefix' | 'contains',
 ): Promise<BackfillResult> {
   if (!userId || !oldMatchKey || !newVendor) return { updated: 0, sample: [] };
-  const headers = await getAuthHeaders();
-  (headers as any)['Prefer'] = 'return=representation';
-  (headers as any)['Content-Type'] = 'application/json';
-
   const trimmed = newVendor.trim();
   if (!trimmed) return { updated: 0, sample: [] };
 
@@ -114,26 +108,25 @@ export async function applyVendorBackfill(
     // Find the user_id rows where vendor normalizes to matchKey exactly.
     // PostgREST doesn't have a normalize operator, so we fetch all and
     // filter in memory. Same as the count path.
-    return patchByIds(userId, headers, oldMatchKey, 'exact', trimmed);
+    return patchByIds(userId, oldMatchKey, 'exact', trimmed);
   }
   if (matchType === 'prefix') {
-    return patchByIds(userId, headers, oldMatchKey, 'prefix', trimmed);
+    return patchByIds(userId, oldMatchKey, 'prefix', trimmed);
   }
   // contains
-  return patchByIds(userId, headers, oldMatchKey, 'contains', trimmed);
+  return patchByIds(userId, oldMatchKey, 'contains', trimmed);
 }
 
 async function patchByIds(
   userId: string,
-  headers: Record<string, string>,
   oldMatchKey: string,
   matchType: 'exact' | 'prefix' | 'contains',
   newVendor: string,
 ): Promise<BackfillResult> {
   // Fetch all user transactions and filter in-memory.
-  const res = await fetch(
-    `${REST_BASE}/transactions?select=id,vendor&user_id=eq.${userId}`,
-    { headers, cache: 'no-store' },
+  const res = await restFetch(
+    `/transactions?select=id,vendor&user_id=eq.${userId}`,
+    { cache: 'no-store' },
   );
   if (!res.ok) return { updated: 0, sample: [] };
   const rows: Array<{ id: string; vendor: string }> = await res.json();
@@ -161,11 +154,11 @@ async function patchByIds(
   for (let i = 0; i < idsToUpdate.length; i += CHUNK) {
     const chunk = idsToUpdate.slice(i, i + CHUNK);
     const idList = chunk.map((id) => `"${id.replace(/"/g, '')}"`).join(',');
-    const patchRes = await fetch(
-      `${REST_BASE}/transactions?user_id=eq.${userId}&id=in.(${idList})`,
+    const patchRes = await restFetch(
+      `/transactions?user_id=eq.${userId}&id=in.(${idList})`,
       {
         method: 'PATCH',
-        headers,
+        headers: { Prefer: 'return=representation' },
         body: JSON.stringify({ vendor: newVendor }),
       },
     );

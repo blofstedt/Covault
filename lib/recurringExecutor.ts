@@ -4,7 +4,7 @@
 // Uses localStorage to avoid re-processing the same day.
 
 import { getLocalToday, toLocalIsoDay } from './dateUtils';
-import { REST_BASE, getAuthHeaders } from './apiHelpers';
+import { restFetch } from './apiHelpers';
 import type { Transaction } from '../types';
 
 /**
@@ -195,10 +195,8 @@ export async function executeRecurringTransactions(
   const dbExistingKeys = new Set<string>();
   for (const monthKey of monthKeys) {
     try {
-      const headers = await getAuthHeaders();
-      const res = await fetch(
-        `${REST_BASE}/transactions?select=vendor,amount,date&user_id=eq.${userId}&date=like.${monthKey}-*`,
-        { headers },
+      const res = await restFetch(
+        `/transactions?select=vendor,amount,date&user_id=eq.${userId}&date=like.${monthKey}-*`,
       );
       if (!res.ok) continue;
       const rows: Array<{ vendor?: string; amount?: number; date?: string }> = await res.json();
@@ -240,11 +238,9 @@ export async function executeRecurringTransactions(
 
   let data: any[] | null = null;
   try {
-    const headers = await getAuthHeaders();
-    (headers as any)['Prefer'] = 'return=representation';
-    const res = await fetch(`${REST_BASE}/transactions`, {
+    const res = await restFetch(`/transactions`, {
       method: 'POST',
-      headers,
+      headers: { Prefer: 'return=representation' },
       body: JSON.stringify(toInsert),
     });
     const body = await res.text();
