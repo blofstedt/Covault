@@ -19,7 +19,7 @@ import { findMatchingExpense, REFUND_MATCH_WINDOW_DAYS } from './refundMatching'
 import { aiFindRefundMatch } from './aiExtractor';
 import { checkNotificationRules, bumpRuleUseCount } from './notificationRules';
 import { getLocalToday, parseLocalDate } from './dateUtils';
-import { extractWithAI, aiDetectRecurring, aiExplainRejection, type AIExtractionResult } from './aiExtractor';
+import { extractWithAI, aiDetectRecurring, type AIExtractionResult } from './aiExtractor';
 import type { PendingTransaction } from '../types';
 
 // ─── Constants ───────────────────────────────────────────────────

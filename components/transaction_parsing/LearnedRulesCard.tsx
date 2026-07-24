@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import ParsingCard from '../ui/ParsingCard';
 import { useNotificationRules } from './useNotificationRules';
 import type { VendorOverride, MatchType } from './useVendorOverrides';
@@ -63,100 +63,21 @@ interface LearnedRulesCardProps {
   onToggleExpanded?: () => void;
 }
 
-interface SelectOption {
-  value: string;
-  label: string;
-}
-
-interface SearchableSelectProps {
-  options: SelectOption[];
-  value: string | null;
-  onChange: (val: string | null) => void;
-  placeholder?: string;
-}
-
-const SearchableSelect: React.FC<SearchableSelectProps> = ({ options, value, onChange, placeholder = "Select target..." }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [search, setSearch] = useState('');
-  const wrapperRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const selectedOption = options.find(o => o.value === value);
-  const displayValue = isOpen ? search : (selectedOption ? selectedOption.label : '');
-
-  const filteredOptions = options.filter(o =>
-    o.label.toLowerCase().includes(search.toLowerCase())
-  );
-
-  return (
-    <div ref={wrapperRef} className="relative flex-1 min-w-[140px]">
-      <input
-        type="text"
-        className="w-full text-[10px] rounded-lg border border-violet-200 dark:border-violet-800/40 bg-white dark:bg-slate-800 px-2 py-1 text-slate-700 dark:text-white focus:outline-none focus:ring-1 focus:ring-amber-400 placeholder-slate-400"
-        placeholder={placeholder}
-        value={displayValue}
-        onChange={(e) => {
-          setSearch(e.target.value);
-          if (!isOpen) setIsOpen(true);
-          if (value) onChange(null);
-        }}
-        onFocus={() => {
-          setIsOpen(true);
-          setSearch('');
-        }}
-      />
-      {isOpen && (
-        <div className="absolute z-50 w-full mt-1 max-h-40 overflow-y-auto bg-white dark:bg-slate-800 border border-violet-200 dark:border-violet-800/40 rounded-lg shadow-lg no-scrollbar">
-          {filteredOptions.length > 0 ? (
-            filteredOptions.map(o => (
-              <div
-                key={o.value}
-                className="px-2 py-1.5 text-[10px] text-slate-700 dark:text-slate-200 hover:bg-violet-50 dark:hover:bg-violet-900/30 cursor-pointer truncate"
-                onClick={() => {
-                  onChange(o.value);
-                  setIsOpen(false);
-                  setSearch('');
-                }}
-              >
-                {o.label}
-              </div>
-            ))
-          ) : (
-            <div className="px-2 py-1.5 text-[10px] text-slate-400">No matches</div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
-
 const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
   userId,
   vendorOverrides,
-  allVendors = [],
-  vendorOverrideByName = new Map(),
   categoryNameById = new Map(),
   budgets = [],
   allTransactions = [],
   onDeleteVendorOverride,
   onSetVendorCategory,
   onSetProperName,
-  onSetMatchType,
   onSetExpandedVendorCategory,
   expandedVendorCategory,
   isExpanded = true,
   onToggleExpanded,
 }) => {
-  const { rules, loading, remove } = useNotificationRules({ userId });
+  const { rules, remove } = useNotificationRules({ userId });
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [editingProperName, setEditingProperName] = useState<string | null>(null);
   const [properNameDraft, setProperNameDraft] = useState('');
