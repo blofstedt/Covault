@@ -1383,28 +1383,38 @@ async function processNotificationWithAIImpl(
   // ── Step 6: Insert transaction with 'AI' label ──
   const transactionId = crypto.randomUUID();
   const finalVendorName = formatVendorName(displayVendor);
-  const { error: txError } = await supabase
-    .from('transactions')
-    .insert({
-      id: transactionId,
-      user_id: userId,
-      vendor: finalVendorName,
-      amount,
-      date: today,
-      // Use the same column names as toSupabaseTransaction (the known-working manual insert path)
-      budget: categoryName || 'Other',
-      type: 'Automatic',
-      // Mark notification-inserted rows so the dedup logic can distinguish
-      // them from executor-spawned rows of the same vendor+amount.
-      source: 'notification',
-      recur: parsed.recurrence,
-      is_projected: false,
-      // Store the original raw notification text so the <> page reviewer
-      // can show "what did the parser see?" — and the user can correct
-      // the vendor from the source. Truncate to 4KB to avoid hitting
-      // any text column limits.
-      raw_notification: (input.rawNotification || '').slice(0, 4000),
-    });
+  // AI/parser confidence for this capture. Rows reach Step 6 only after the
+  // Step 2c gate, so this is the model's (or regex's) confidence in the
+  // extraction; the capture-review UI shows it as a meter.
+  const captureConfidence = aiResult?.confidence ?? parsed.confidence ?? null;
+  const insertRow: Record<string, unknown> = {
+    id: transactionId,
+    user_id: userId,
+    vendor: finalVendorName,
+    amount,
+    date: today,
+    // Use the same column names as toSupabaseTransaction (the known-working manual insert path)
+    budget: categoryName || 'Other',
+    type: 'Automatic',
+    // Mark notification-inserted rows so the dedup logic can distinguish
+    // them from executor-spawned rows of the same vendor+amount.
+    source: 'notification',
+    recur: parsed.recurrence,
+    is_projected: false,
+    // Store the original raw notification text so the <> page reviewer
+    // can show "what did the parser see?" — and the user can correct
+    // the vendor from the source. Truncate to 4KB to avoid hitting
+    // any text column limits.
+    raw_notification: (input.rawNotification || '').slice(0, 4000),
+    confidence: captureConfidence,
+  };
+  let { error: txError } = await supabase.from('transactions').insert(insertRow);
+  // Tolerate DBs where the confidence column hasn't been migrated yet: retry
+  // once without it rather than dropping the whole capture.
+  if (txError && /confidence/i.test(txError.message || '')) {
+    const { confidence: _omit, ...withoutConfidence } = insertRow;
+    ({ error: txError } = await supabase.from('transactions').insert(withoutConfidence));
+  }
 
   if (txError) {
     log.error('[AI pipeline] Error inserting transaction:', txError);

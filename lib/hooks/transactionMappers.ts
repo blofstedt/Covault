@@ -131,6 +131,12 @@ export const toSupabaseTransaction = (
     row.source = tx.source;
   }
 
+  // Persist AI confidence when present. Included conditionally so callers
+  // (and the DB) that predate the `confidence` column are unaffected.
+  if (tx.confidence != null) {
+    row.confidence = tx.confidence;
+  }
+
   return row;
 };
 
@@ -189,5 +195,10 @@ export const useFromSupabaseTransaction = () =>
                 || row.source === 'manual' || row.source === 'import')
                 ? row.source
                 : undefined,
+      // AI confidence (0..1). Absent for legacy rows / pre-migration DBs
+      // (the column may not exist) and for manual entries → null.
+      confidence: row.confidence == null || row.confidence === ''
+                ? null
+                : Number(row.confidence),
     };
   }, []);

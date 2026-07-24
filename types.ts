@@ -70,6 +70,13 @@ export interface Transaction {
   is_income?: boolean;
   caught_cleared?: boolean;
   /**
+   * AI extraction confidence (0..1) captured by the notification pipeline.
+   * Null for manually-entered rows and legacy rows from before the
+   * `transactions.confidence` column existed. Surfaced in the capture-review
+   * UI as the AI-match confidence meter.
+   */
+  confidence?: number | null;
+  /**
    * True when this expense was refunded by a matched refund notification.
    * The renderer applies strikethrough; the budget reduce excludes the
    * amount from the spent total. No separate refund row is inserted.

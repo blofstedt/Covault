@@ -368,7 +368,7 @@ export const useTransactionOps = ({
         const dateStr = toLocalIsoDay(txDate);
         // Resolve budget name from the budget id in app state (DB stores name, not id)
         const approvedBudgetName = appState.budgets.find(b => b.id === categoryId)?.name || 'Other';
-        const transactionRow = {
+        const transactionRow: Record<string, unknown> = {
           user_id: userId,
           vendor: formatVendorName(pending.extracted_vendor),
           amount: Number(pending.extracted_amount),
@@ -378,14 +378,25 @@ export const useTransactionOps = ({
           recur: 'One-time',
           is_projected: false,
           caught_cleared: false,
+          // Carry the AI confidence recorded when this pending row was captured.
+          confidence: pending.confidence ?? null,
         };
 
-        const insertRes = await restFetch(`/transactions`, {
-          method: 'POST',
-          headers: { Prefer: 'return=representation' },
-          body: JSON.stringify(transactionRow),
-        });
-        const insertBody = await insertRes.text();
+        const postTransaction = (row: Record<string, unknown>) =>
+          restFetch(`/transactions`, {
+            method: 'POST',
+            headers: { Prefer: 'return=representation' },
+            body: JSON.stringify(row),
+          });
+
+        let insertRes = await postTransaction(transactionRow);
+        let insertBody = await insertRes.text();
+        // Tolerate DBs without the confidence column: retry once without it.
+        if (!insertRes.ok && /confidence/i.test(insertBody)) {
+          const { confidence: _omit, ...withoutConfidence } = transactionRow;
+          insertRes = await postTransaction(withoutConfidence);
+          insertBody = await insertRes.text();
+        }
 
         if (!insertRes.ok) {
           const msg = `[approvePending] INSERT transaction failed (${insertRes.status}): ${insertBody.slice(0, 200)}`;
