@@ -1,14 +1,6 @@
 import type { Transaction } from '../types';
 import { parseLocalDate } from './dateUtils';
-
-/**
- * Add months to a Date
- */
-function addMonths(date: Date, months: number): Date {
-  const d = new Date(date);
-  d.setMonth(d.getMonth() + months);
-  return d;
-}
+import { addMonths, normalizeRecurrence, stepForward } from './recurrence';
 
 function toIsoDay(value: string | Date): string {
   if (typeof value === 'string') return value.slice(0, 10);
@@ -20,13 +12,6 @@ function toIsoDay(value: string | Date): string {
   const m = String(value.getMonth() + 1).padStart(2, '0');
   const d = String(value.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
-}
-
-function normalizeRecurrence(tx: Transaction): string {
-  const raw = ((tx as any).recur ?? tx.recurrence ?? '').toString().trim().toLowerCase();
-  if (raw === 'monthly') return 'monthly';
-  if (raw === 'biweekly') return 'biweekly';
-  return 'one-time';
 }
 
 function getTransactionBudgetId(tx: Transaction): string | undefined {
@@ -121,12 +106,7 @@ export function generateProjectedTransactions(base: Transaction[]): Transaction[
     if (Number.isNaN(current.getTime())) continue;
 
     while (true) {
-      if (recurrence === 'biweekly') {
-        current = new Date(current);
-        current.setDate(current.getDate() + 14);
-      } else {
-        current = addMonths(current, 1);
-      }
+      current = stepForward(current, recurrence);
 
       if (current > horizon) break;
 
