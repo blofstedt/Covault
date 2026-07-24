@@ -50,8 +50,6 @@ interface TransactionParsingProps {
   onSetVendorCategory?: (vendorName: string, categoryId: string) => void | Promise<void>;
   /** Persist and update local state for a vendor display name. */
   onSetProperName?: (vendorName: string, properName: string) => void | Promise<void>;
-  /** Persist and update local state for a vendor match type. */
-  onSetMatchType?: (vendorName: string, matchType: 'exact' | 'prefix' | 'contains') => void | Promise<void>;
 }
 
 const TransactionParsing: React.FC<TransactionParsingProps> = ({
@@ -73,7 +71,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   onDeleteVendorOverride,
   onSetVendorCategory,
   onSetProperName,
-  onSetMatchType,
 }) => {
   // ── Clear modal state ──
   const [clearTarget, setClearTarget] = useState<'entered' | null>(null);
@@ -199,27 +196,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     [onDeleteVendorOverride],
   );
 
-  // ── Derive data the VendorCategoryRulesCard needs from what we already have ──
-  const allVendors = useMemo(() => {
-    const set = new Set<string>();
-    for (const tx of allTransactions) {
-      const v = (tx.vendor || '').trim();
-      if (v) set.add(v);
-    }
-    for (const vo of vendorOverrides) {
-      if (vo.proper_name) set.add(vo.proper_name);
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [allTransactions, vendorOverrides]);
-
-  const vendorOverrideByName = useMemo(() => {
-    const m = new Map<string, typeof vendorOverrides[number]>();
-    for (const vo of vendorOverrides) {
-      m.set(toVendorKey(vo.proper_name), vo);
-    }
-    return m;
-  }, [vendorOverrides]);
-
   const categoryNameById = useMemo(
     () => new Map<string, string>(budgets.map((b) => [b.id, b.name])),
     [budgets],
@@ -314,32 +290,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       }
     },
     [userId, onSetProperName],
-  );
-
-  const handleSetMatchType = useCallback(
-    async (vendorName: string, matchType: 'exact' | 'prefix' | 'contains') => {
-      if (onSetMatchType) {
-        await onSetMatchType(vendorName, matchType);
-        return;
-      }
-      if (!userId) return;
-      try {
-        const res = await restFetch(
-          `/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(vendorName)}`,
-          {
-            method: 'PATCH',
-            headers: { Prefer: 'return=representation' },
-            body: JSON.stringify({ match_type: matchType, updated_at: new Date().toISOString() }),
-          },
-        );
-        if (!res.ok) {
-          console.warn('[TransactionParsing] handleSetMatchType failed:', res.status);
-        }
-      } catch (err) {
-        console.warn('[TransactionParsing] handleSetMatchType failed:', err);
-      }
-    },
-    [userId, onSetMatchType],
   );
 
   // When notifications are enabled, trigger a scan and reload data
@@ -491,15 +441,12 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               <LearnedRulesCard
                 userId={userId}
                 vendorOverrides={vendorOverrides}
-                allVendors={allVendors}
-                vendorOverrideByName={vendorOverrideByName}
                 categoryNameById={categoryNameById}
                 budgets={budgets}
                 allTransactions={allTransactions}
                 onDeleteVendorOverride={handleDeleteVendorOverride}
                 onSetVendorCategory={handleSetVendorCategory}
                 onSetProperName={handleSetProperName}
-                onSetMatchType={handleSetMatchType}
                 onSetExpandedVendorCategory={setExpandedVendorCategory}
                 expandedVendorCategory={expandedVendorCategory}
                 isExpanded={expandedSections.learnedRules}
