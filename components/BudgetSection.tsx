@@ -262,7 +262,6 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                   onTap={onTransactionTap}
                   currentUserName={currentUserName}
                   isSharedView={isSharedView}
-                  currentBudgetId={budget.id}
                   budgets={allBudgets}
                   isRefunded={refundedExpenseIds.has(tx.id)}
                 />

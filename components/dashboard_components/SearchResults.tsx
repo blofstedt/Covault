@@ -25,8 +25,6 @@ const SearchResultTransactionItem: React.FC<SearchResultTransactionItemProps> = 
   onTransactionTap,
   matchedExpenseIds,
 }) => {
-  const budgetIdForTx = transaction.budget_id ?? transaction.category_id;
-
   return (
     <TransactionItem
       key={transaction.id}
@@ -34,7 +32,6 @@ const SearchResultTransactionItem: React.FC<SearchResultTransactionItemProps> = 
       onTap={onTransactionTap}
       currentUserName={currentUserName}
       isSharedView={isSharedAccount}
-      currentBudgetId={budgetIdForTx}
       budgets={budgets}
       showBudgetIcon={true}
       isRefunded={matchedExpenseIds.has(transaction.id)}

@@ -371,7 +371,7 @@ const Dashboard: React.FC<Props> = ({
 
   return (
     <>
-      <PageShell showGlow>
+      <PageShell>
         {/* Balance + settings cog + search: combined in one section */}
         <DashboardBalanceSection
           isSharedAccount={!state.user?.budgetingSolo}

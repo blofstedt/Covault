@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Transaction } from '../../types';
+import { formatCurrency } from '../../lib/formatCurrency';
 
 interface SoftDuplicateBadgeProps {
   /** The auto-entered transaction that has the soft-dup flag */
@@ -85,7 +86,6 @@ const SoftDuplicateBadge: React.FC<SoftDuplicateBadgeProps> = ({
     setOpen(false);
   };
 
-  const fmt = (n: number) => `${n < 0 ? '-' : ''}$${Math.abs(n).toFixed(2)}`;
 
   return (
     <div className="relative inline-flex">
@@ -100,7 +100,7 @@ const SoftDuplicateBadge: React.FC<SoftDuplicateBadgeProps> = ({
           active:scale-95
           transition-all duration-150
           ${pulseActive ? 'animate-softdup-pulse' : ''}`}
-        title={`Possible duplicate of ${similar.vendor} ${fmt(similar.amount)} on ${similar.date}`}
+        title={`Possible duplicate of ${similar.vendor} ${formatCurrency(similar.amount)} on ${similar.date}`}
         aria-label="Possible duplicate — tap to review"
         aria-expanded={open}
       >
@@ -130,7 +130,7 @@ const SoftDuplicateBadge: React.FC<SoftDuplicateBadgeProps> = ({
             <div className="min-w-0 flex-1">
               <p className="text-[11px] font-bold text-slate-800 dark:text-slate-100">Looks like a duplicate</p>
               <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug mt-0.5">
-                You already have <span className="font-semibold text-slate-700 dark:text-slate-200">{similar.vendor}</span> {fmt(similar.amount)} on {similar.date}.
+                You already have <span className="font-semibold text-slate-700 dark:text-slate-200">{similar.vendor}</span> {formatCurrency(similar.amount)} on {similar.date}.
               </p>
             </div>
           </div>

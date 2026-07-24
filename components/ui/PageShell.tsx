@@ -2,7 +2,6 @@ import React from 'react';
 
 interface PageShellProps {
   children: React.ReactNode;
-  showGlow?: boolean;
 }
 
 const PageShell: React.FC<PageShellProps> = ({ children }) => (

@@ -9,7 +9,6 @@ interface TransactionItemProps {
   onTap: (tx: Transaction) => void;
   currentUserName: string;
   isSharedView: boolean;
-  currentBudgetId?: string;
   budgets?: BudgetCategory[];
   showBudgetIcon?: boolean;
   /** When true, render this transaction as refunded — strikethrough the
