@@ -9,14 +9,20 @@ vi.mock('@huggingface/transformers', () => ({
     return async (prompt: string) => {
       const p = prompt.toLowerCase();
 
-      // ── Vendor extraction prompt ──
-      if (p.includes('extract the vendor')) {
-        const original = prompt;
-
-        // Extract the notification text from the prompt
-        const notifMatch = original.match(/Notification:\s*"([^"]+)"/);
+      // The production extractWithAI sends ONE structured prompt and parses a
+      // 5-line reply (Vendor / Category / IsTransaction / Confidence / Reason).
+      // Simulate a Flan-T5 response in that exact format. Vendor cleaning
+      // (SQ*, store numbers, AMZN→Amazon, etc.) and rule-based rejections
+      // (transfers, direct deposits) are handled by the real code under test,
+      // not here — this mock only stands in for the model's raw guess.
+      if (p.includes('istransaction:') || p.includes('reply in this exact format')) {
+        const notifMatch = prompt.match(/Notification:\s*"([^"]+)"/);
         const notif = notifMatch ? notifMatch[1] : '';
         const nl = notif.toLowerCase();
+
+        const structured = (vendor: string, category: string, isTx: 'yes' | 'no', reason: string) => [
+          { generated_text: `Vendor: ${vendor}\nCategory: ${category}\nIsTransaction: ${isTx}\nConfidence: high\nReason: ${reason}` },
+        ];
 
         // Rejection: non-transaction notifications
         if (
@@ -26,43 +32,27 @@ vi.mock('@huggingface/transformers', () => ({
           nl.includes('has been delivered') ||
           nl.includes('reward points')
         ) {
-          return [{ generated_text: 'NONE' }];
+          return structured('NONE', 'Other', 'no', 'Not a purchase or payment');
         }
 
         // Preposition-based vendor extraction: "at VENDOR", "from VENDOR", "paid to VENDOR", "with VENDOR"
+        let vendor = '';
         const atMatch = notif.match(/\bat\s+(.+?)(?:\s+on\s+your|\s+for\s+|\s+was\s+|\s*[.]?\s*$)/i);
-        if (atMatch) return [{ generated_text: atMatch[1].trim() }];
-
         const fromMatch = notif.match(/\bfrom\s+(.+?)(?:\s+was\s+|\s+for\s+|\s*[.]?\s*$)/i);
-        if (fromMatch) return [{ generated_text: fromMatch[1].trim() }];
-
         const paidToMatch = notif.match(/\bpaid\s+to\s+(.+?)(?:\s+was\s+|\s*[.]?\s*$)/i);
-        if (paidToMatch) return [{ generated_text: paidToMatch[1].trim() }];
-
         const withMatch = notif.match(/\bwith\s+(.+?)(?:\s+was\s+|\s+on\s+|\s*[.]?\s*$)/i);
-        if (withMatch) {
-          const w = withMatch[1].trim();
-          // "with your credit card" is not a vendor
-          if (!/^your\s/i.test(w)) return [{ generated_text: w }];
+        if (atMatch) vendor = atMatch[1].trim();
+        else if (fromMatch) vendor = fromMatch[1].trim();
+        else if (paidToMatch) vendor = paidToMatch[1].trim();
+        else if (withMatch && !/^your\s/i.test(withMatch[1].trim())) vendor = withMatch[1].trim();
+        else {
+          // Title-based: vendor name appears before the first sentence verb/phrase
+          // e.g., "FIZZ (TX. INCL.) You made...", "DISNEY PLUS You made...", "Spotify Your..."
+          const titleMatch = notif.match(/^([A-Z][A-Za-z0-9 .&'+*()-]*?)(?:\s+(?:\(.*?\)\s+)?(?:You|Your|A |An |The |We |This |Payment|Charged))/);
+          if (titleMatch) vendor = titleMatch[1].replace(/\s*\(.*?\)\s*/g, '').trim();
         }
 
-        // Title-based: vendor name appears before the first sentence verb/phrase
-        // e.g., "FIZZ (TX. INCL.) You made...", "DISNEY PLUS You made...", "Spotify Your..."
-        const titleMatch = notif.match(/^([A-Z][A-Za-z0-9 .&'+*()-]*?)(?:\s+(?:\(.*?\)\s+)?(?:You|Your|A |An |The |We |This |Payment|Charged))/);
-        if (titleMatch) {
-          let title = titleMatch[1].replace(/\s*\(.*?\)\s*/g, '').trim();
-          return [{ generated_text: title }];
-        }
-
-        // Fallback: return NONE
-        return [{ generated_text: 'NONE' }];
-      }
-
-      // ── Category classification prompt ──
-      if (p.includes('classify this transaction')) {
-        // Extract vendor from prompt
-        const vendorLineMatch = prompt.match(/Vendor:\s*(.+)/);
-        const vendor = vendorLineMatch ? vendorLineMatch[1].trim().toLowerCase() : '';
+        if (!vendor) return structured('NONE', 'Other', 'no', 'No vendor found');
 
         // Category rules based on vendor keywords
         const categoryMap: Array<[RegExp, string]> = [
@@ -75,12 +65,12 @@ vi.mock('@huggingface/transformers', () => ({
           [/shoppers|drug mart|pharmacy|clinic|doctor|dental|medical/i, 'Services'],
           [/home depot|best buy|ikea|canadian tire|dollarama|sport chek/i, 'Leisure'],
         ];
-
-        for (const [pattern, category] of categoryMap) {
-          if (pattern.test(vendor)) return [{ generated_text: category }];
+        let category = 'Other';
+        for (const [pattern, cat] of categoryMap) {
+          if (pattern.test(vendor)) { category = cat; break; }
         }
 
-        return [{ generated_text: 'Other' }];
+        return structured(vendor, category, 'yes', `Purchase at ${vendor}`);
       }
 
       return [{ generated_text: '' }];

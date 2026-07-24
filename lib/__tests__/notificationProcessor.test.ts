@@ -23,35 +23,51 @@ vi.mock('@huggingface/transformers', () => {
     pipeline: async () => {
       return async (prompt: string) => {
         const lower = prompt.toLowerCase();
-        // Category classification
-        if (lower.includes('classify this transaction')) {
-          const vl = (prompt.match(/Vendor:\s*(.+)/i)?.[1] || '').toLowerCase();
-          if (/\b(loblaws?|walmart|costco|whole\s*foods|safeway|metro|sobeys?)\b/.test(vl)) return [{ generated_text: 'Groceries' }];
-          if (/\b(shell|esso|petro|uber(?!\s*eats)|gas)\b/.test(vl)) return [{ generated_text: 'Transport' }];
-          if (/\b(bell|rogers|telus|fido|fizz)\b/.test(vl)) return [{ generated_text: 'Utilities' }];
-          if (/\b(netflix|spotify|disney|amazon|starbucks?|mcdonald|subway|the\s*keg|wendy|boston\s*pizza|uber\s*eats)\b/.test(vl)) return [{ generated_text: 'Leisure' }];
-          if (/\b(shoppers|pharmacy)\b/.test(vl)) return [{ generated_text: 'Services' }];
-          return [{ generated_text: 'Other' }];
-        }
-        // Vendor extraction
-        if (lower.includes('extract the vendor')) {
-          const text = prompt.split('Notification:')[1]?.split('\n')[0]?.replace(/"/g, '').trim() || '';
+        // aiExtractor now sends ONE structured prompt and parses a 5-line reply
+        // (Vendor / Category / IsTransaction / Confidence / Reason). Simulate a
+        // Flan-T5 response in that format.
+        if (lower.includes('istransaction:') || lower.includes('reply in this exact format')) {
+          const text = prompt.match(/Notification:\s*"([^"]+)"/)?.[1]
+            || prompt.split('Notification:')[1]?.split('\n')[0]?.replace(/"/g, '').trim()
+            || '';
           const tl = text.toLowerCase();
-          if (tl.includes('verification code') || tl.includes('otp')) return [{ generated_text: 'NONE' }];
-          if (tl.includes('account balance')) return [{ generated_text: 'NONE' }];
-          if (tl.includes('sign in') || tl.includes('logged in')) return [{ generated_text: 'NONE' }];
-          if (tl.includes('reward points') || tl.includes('cashback')) return [{ generated_text: 'NONE' }];
-          if (tl.includes('payment is due') || tl.includes('is due') || tl.includes('direct deposit') || tl.includes('payroll')) return [{ generated_text: 'NONE' }];
-          if (tl.includes('transfer') && (tl.includes('between') || tl.includes('from your'))) return [{ generated_text: 'NONE' }];
+          const structured = (vendor: string, category: string, isTx: 'yes' | 'no', reason: string) => [
+            { generated_text: `Vendor: ${vendor}\nCategory: ${category}\nIsTransaction: ${isTx}\nConfidence: high\nReason: ${reason}` },
+          ];
+
+          if (
+            tl.includes('verification code') || tl.includes('otp') ||
+            tl.includes('account balance') ||
+            tl.includes('sign in') || tl.includes('logged in') ||
+            tl.includes('reward points') || tl.includes('cashback') ||
+            tl.includes('payment is due') || tl.includes('is due') ||
+            tl.includes('direct deposit') || tl.includes('payroll') ||
+            (tl.includes('transfer') && (tl.includes('between') || tl.includes('from your')))
+          ) {
+            return structured('NONE', 'Other', 'no', 'Not a purchase or payment');
+          }
+
+          let vendor = '';
           const atM = text.match(/\bat\s+(.+?)(?:\s+(?:for|on|using|via|ending)\b|\s*\.\s*$|$)/i);
-          if (atM) return [{ generated_text: atM[1].trim() }];
           const fromM = text.match(/\bfrom\s+(.+?)(?:\s+(?:was|for|on|using|via|ending)\b|\s*\.\s*$|$)/i);
-          if (fromM) return [{ generated_text: fromM[1].trim() }];
           const titleM = text.match(/^([A-Z][A-Za-z0-9\s&'.()!-]+?)(?:\s+(?:You|Your|A\s|charged|spent|payment))/i);
-          if (titleM) return [{ generated_text: titleM[1].replace(/\s*\([^)]*\)\s*$/, '').trim() }];
           const dollarM = text.match(/\$[\d,]+\.?\d*\s+(?:from|at|to)\s+(.+?)(?:\s+(?:for|on|was)\b|\s*\.\s*$|$)/i);
-          if (dollarM) return [{ generated_text: dollarM[1].trim() }];
-          return [{ generated_text: 'NONE' }];
+          if (atM) vendor = atM[1].trim();
+          else if (fromM) vendor = fromM[1].trim();
+          else if (titleM) vendor = titleM[1].replace(/\s*\([^)]*\)\s*$/, '').trim();
+          else if (dollarM) vendor = dollarM[1].trim();
+
+          if (!vendor) return structured('NONE', 'Other', 'no', 'No vendor found');
+
+          const vl = vendor.toLowerCase();
+          let category = 'Other';
+          if (/\b(loblaws?|walmart|costco|whole\s*foods|safeway|metro|sobeys?)\b/.test(vl)) category = 'Groceries';
+          else if (/\b(shell|esso|petro|uber(?!\s*eats)|gas)\b/.test(vl)) category = 'Transport';
+          else if (/\b(bell|rogers|telus|fido|fizz)\b/.test(vl)) category = 'Utilities';
+          else if (/\b(netflix|spotify|disney|amazon|starbucks?|mcdonald|subway|the\s*keg|wendy|boston\s*pizza|uber\s*eats)\b/.test(vl)) category = 'Leisure';
+          else if (/\b(shoppers|pharmacy)\b/.test(vl)) category = 'Services';
+
+          return structured(vendor, category, 'yes', `Purchase at ${vendor}`);
         }
         return [{ generated_text: '' }];
       };
