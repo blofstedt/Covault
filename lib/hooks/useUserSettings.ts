@@ -1,4 +1,5 @@
 // lib/hooks/useUserSettings.ts
+import { log } from '../log';
 import { useCallback, useRef } from 'react';
 import { REST_BASE, getAuthHeaders, restFetch, DEFAULT_MONTHLY_INCOME } from '../apiHelpers';
 import type { UseUserDataParams } from './types';
@@ -23,7 +24,7 @@ export const useUserSettings = ({
       // Find the category name from the categoryId
       const category = appState.budgets.find(b => b.id === categoryId);
       if (!category) {
-        console.error('[saveBudgetLimit] Category not found:', categoryId);
+        log.error('[saveBudgetLimit] Category not found:', categoryId);
         return;
       }
       const categoryName = category.name;
@@ -104,7 +105,7 @@ export const useUserSettings = ({
         if (!patchRes || !patchRes.ok) {
           const status = patchRes?.status ?? 'unknown';
           const msg = `[saveBudgetLimit] PATCH failed (${status}): ${patchBody.slice(0, 200)}`;
-          console.error(msg);
+          log.error(msg);
           setDbError(msg);
           rollback();
           return;
@@ -119,7 +120,7 @@ export const useUserSettings = ({
         }
 
         if (Array.isArray(updatedRows) && updatedRows.length > 0) {
-          console.log(`[saveBudgetLimit] PATCH OK for ${categoryName}`);
+          log.debug(`[saveBudgetLimit] PATCH OK for ${categoryName}`);
           return;
         }
 
@@ -164,15 +165,15 @@ export const useUserSettings = ({
 
         if (!postRes.ok) {
           const msg = `[saveBudgetLimit] INSERT failed (${postRes.status}): ${postBody.slice(0, 200)}`;
-          console.error(msg);
+          log.error(msg);
           setDbError(msg);
           rollback();
         } else {
-          console.log(`[saveBudgetLimit] INSERT OK for ${categoryName}`);
+          log.debug(`[saveBudgetLimit] INSERT OK for ${categoryName}`);
         }
       } catch (err: any) {
         const msg = `[saveBudgetLimit] exception: ${err?.message || err}`;
-        console.error(msg);
+        log.error(msg);
         setDbError(msg);
         rollback();
       }
@@ -192,7 +193,7 @@ export const useUserSettings = ({
         if (!userId) missing.push('userId');
         if (!userName) missing.push('userName');
         if (!userEmail) missing.push('userEmail');
-        console.warn(`[saveUserIncome] missing user data: ${missing.join(', ')}, skipping save`);
+        log.warn(`[saveUserIncome] missing user data: ${missing.join(', ')}, skipping save`);
         return;
       }
 
@@ -232,7 +233,7 @@ export const useUserSettings = ({
         }
 
         if (res.ok && Array.isArray(updatedRows) && updatedRows.length > 0) {
-          console.log(`[saveUserIncome] PATCH OK: ${income}`);
+          log.debug(`[saveUserIncome] PATCH OK: ${income}`);
           return;
         }
 
@@ -241,9 +242,9 @@ export const useUserSettings = ({
         // constraint is satisfied.
         if (!res.ok) {
           const body = await res.text();
-          console.warn(`[saveUserIncome] PATCH failed (${res.status}): ${body.slice(0, 200)} \u2014 trying POST`);
+          log.warn(`[saveUserIncome] PATCH failed (${res.status}): ${body.slice(0, 200)} \u2014 trying POST`);
         } else {
-          console.warn(`[saveUserIncome] PATCH matched 0 rows \u2014 trying POST`);
+          log.warn(`[saveUserIncome] PATCH matched 0 rows \u2014 trying POST`);
         }
 
         const postRes = await restFetch(
@@ -264,7 +265,7 @@ export const useUserSettings = ({
         if (!postRes.ok) {
           const body = await postRes.text();
           const msg = `[saveUserIncome] POST failed (${postRes.status}): ${body.slice(0, 200)}`;
-          console.error(msg);
+          log.error(msg);
           setDbError(msg);
           setAppState(prev => ({
             ...prev,
@@ -283,18 +284,18 @@ export const useUserSettings = ({
 
         if (!Array.isArray(postRows) || postRows.length === 0) {
           const msg = '[saveUserIncome] POST returned no rows';
-          console.error(msg);
+          log.error(msg);
           setDbError(msg);
           setAppState(prev => ({
             ...prev,
             user: prev.user ? { ...prev.user, monthlyIncome: previousIncome } : null,
           }));
         } else {
-          console.log(`[saveUserIncome] POST OK: ${income}`);
+          log.debug(`[saveUserIncome] POST OK: ${income}`);
         }
       } catch (err: any) {
         const msg = `[saveUserIncome] exception: ${err?.message || err}`;
-        console.error(msg);
+        log.error(msg);
         setDbError(msg);
 
         // Rollback optimistic update on error
@@ -312,7 +313,7 @@ export const useUserSettings = ({
     async (theme: 'light' | 'dark') => {
       const userId = appState.user?.id;
       if (!userId) {
-        console.warn('[saveTheme] no userId, skipping save');
+        log.warn('[saveTheme] no userId, skipping save');
         return;
       }
 
@@ -339,7 +340,7 @@ export const useUserSettings = ({
         if (!res.ok) {
           const body = await res.text();
           const msg = `[saveTheme] update failed (${res.status}): ${body.slice(0, 200)}`;
-          console.error(msg);
+          log.error(msg);
           setDbError(msg);
           
           // Rollback optimistic update on failure
@@ -348,11 +349,11 @@ export const useUserSettings = ({
             settings: { ...prev.settings, theme: previousTheme },
           }));
         } else {
-          console.log(`[saveTheme] successfully updated to ${theme}`);
+          log.debug(`[saveTheme] successfully updated to ${theme}`);
         }
       } catch (err: any) {
         const msg = `[saveTheme] exception: ${err?.message || err}`;
-        console.error(msg);
+        log.error(msg);
         setDbError(msg);
         
         // Rollback optimistic update on error
@@ -374,7 +375,7 @@ export const useUserSettings = ({
       // Find the category name from the categoryId
       const category = appState.budgets.find(b => b.id === categoryId);
       if (!category) {
-        console.error('[saveBudgetVisibility] Category not found:', categoryId);
+        log.error('[saveBudgetVisibility] Category not found:', categoryId);
         return;
       }
       const categoryName = category.name;
@@ -449,7 +450,7 @@ export const useUserSettings = ({
         }
 
         if (!patchRes || !patchRes.ok) {
-          console.error('[saveBudgetVisibility] PATCH failed:', patchBody.slice(0, 200));
+          log.error('[saveBudgetVisibility] PATCH failed:', patchBody.slice(0, 200));
           setDbError(`[saveBudgetVisibility] PATCH failed (${patchRes?.status ?? 'unknown'})`);
           rollback();
           return;
@@ -464,7 +465,7 @@ export const useUserSettings = ({
         }
 
         if (Array.isArray(updatedRows) && updatedRows.length > 0) {
-          console.log(`[saveBudgetVisibility] PATCH OK ${categoryName} visible=${visible}`);
+          log.debug(`[saveBudgetVisibility] PATCH OK ${categoryName} visible=${visible}`);
           return;
         }
 
@@ -489,15 +490,15 @@ export const useUserSettings = ({
 
         if (!postRes.ok) {
           const postBody = await postRes.text();
-          console.error('[saveBudgetVisibility] INSERT failed:', postBody.slice(0, 200));
+          log.error('[saveBudgetVisibility] INSERT failed:', postBody.slice(0, 200));
           setDbError(`[saveBudgetVisibility] INSERT failed (${postRes.status})`);
           rollback();
         } else {
-          console.log(`[saveBudgetVisibility] INSERT OK ${categoryName} visible=${visible}`);
+          log.debug(`[saveBudgetVisibility] INSERT OK ${categoryName} visible=${visible}`);
         }
       } catch (err: any) {
         const msg = `[saveBudgetVisibility] exception: ${err?.message || err}`;
-        console.error(msg);
+        log.error(msg);
         setDbError(msg);
         rollback();
       }
@@ -518,12 +519,12 @@ export const useUserSettings = ({
         });
         if (!res.ok) {
           const body = await res.text();
-          console.error(`[saveSettingToDb] ${dbKey} failed (${res.status}): ${body.slice(0, 200)}`);
+          log.error(`[saveSettingToDb] ${dbKey} failed (${res.status}): ${body.slice(0, 200)}`);
         } else {
-          console.log(`[saveSettingToDb] ${dbKey} = ${value}`);
+          log.debug(`[saveSettingToDb] ${dbKey} = ${value}`);
         }
       } catch (err: any) {
-        console.error(`[saveSettingToDb] exception: ${err?.message || err}`);
+        log.error(`[saveSettingToDb] exception: ${err?.message || err}`);
       }
     },
     [appState.user],

@@ -1,3 +1,4 @@
+import { log } from '../../lib/log';
 import { useState, useCallback, useEffect } from 'react';
 import { restFetch } from '../../lib/apiHelpers';
 import { BudgetCategory } from '../../types';
@@ -46,7 +47,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
         { cache: 'no-store' },
       );
       if (!overridesRes.ok) {
-        console.error('[TransactionParsing] Error loading vendor overrides:', overridesRes.status, await overridesRes.text());
+        log.error('[TransactionParsing] Error loading vendor overrides:', overridesRes.status, await overridesRes.text());
         return;
       }
       const data = await overridesRes.json();
@@ -66,7 +67,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
       }));
       setVendorOverrides(overrides);
     } catch (err: any) {
-      console.error('[TransactionParsing] Exception loading vendor overrides:', err?.message || err);
+      log.error('[TransactionParsing] Exception loading vendor overrides:', err?.message || err);
     }
   }, [userId]);
 
@@ -98,10 +99,10 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
         const res = await restFetch(url, { method: 'DELETE', headers: { Prefer: 'return=representation' } });
         const body = await res.text();
         let deletedRows: any[] = [];
-        try { deletedRows = body ? JSON.parse(body) : []; } catch (e) { console.warn('[TransactionParsing] Failed to parse delete response:', e); deletedRows = []; }
+        try { deletedRows = body ? JSON.parse(body) : []; } catch (e) { log.warn('[TransactionParsing] Failed to parse delete response:', e); deletedRows = []; }
 
         if (!res.ok) {
-          console.error('[TransactionParsing] Error deleting vendor override:', res.status, body.slice(0, 200));
+          log.error('[TransactionParsing] Error deleting vendor override:', res.status, body.slice(0, 200));
           if (deletedOverride) {
             setVendorOverrides((prev) => [...prev, deletedOverride]);
           }
@@ -109,13 +110,13 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
         }
 
         if (!Array.isArray(deletedRows) || deletedRows.length === 0) {
-          console.warn('[TransactionParsing] Delete matched 0 rows for override:', overrideId);
+          log.warn('[TransactionParsing] Delete matched 0 rows for override:', overrideId);
           // Still keep the optimistic removal — the row may not exist in DB (temp/stale id)
         }
 
-        console.log('[TransactionParsing] Vendor override deleted:', overrideId);
+        log.debug('[TransactionParsing] Vendor override deleted:', overrideId);
       } catch (err: any) {
-        console.error('[TransactionParsing] Exception deleting vendor override:', err?.message || err);
+        log.error('[TransactionParsing] Exception deleting vendor override:', err?.message || err);
         if (deletedOverride) {
           setVendorOverrides((prev) => [...prev, deletedOverride]);
         }
@@ -132,7 +133,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
       // categoryId is in app format 'budget:groceries'; find the budget to get DB name 'Groceries'
       const category = budgets.find((b) => b.id === categoryId);
       if (!category) {
-        console.error('[TransactionParsing] Invalid category ID:', categoryId);
+        log.error('[TransactionParsing] Invalid category ID:', categoryId);
         return;
       }
       const categoryName = category.name;
@@ -169,7 +170,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
           try { data = body ? JSON.parse(body) : []; } catch { data = []; }
 
           if (!res.ok || !Array.isArray(data) || data.length === 0) {
-            console.error('[TransactionParsing] Error updating vendor category:', res.status, (body || '').slice(0, 200));
+            log.error('[TransactionParsing] Error updating vendor category:', res.status, (body || '').slice(0, 200));
             setVendorOverrides((prev) =>
               prev.map((vo) =>
                 vo.id === existing.id
@@ -207,7 +208,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
             // Replace temp ID with real ID from server response
             const insertBody = await insertRes.text();
             let insertedRows: any[] = [];
-            try { insertedRows = insertBody ? JSON.parse(insertBody) : []; } catch (e) { console.warn('[TransactionParsing] Failed to parse insert response:', e); insertedRows = []; }
+            try { insertedRows = insertBody ? JSON.parse(insertBody) : []; } catch (e) { log.warn('[TransactionParsing] Failed to parse insert response:', e); insertedRows = []; }
             if (Array.isArray(insertedRows) && insertedRows.length > 0) {
               const realId = insertedRows[0].id;
               setVendorOverrides((prev) =>
@@ -224,7 +225,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
               // Replace temp override with the real data from the update response
               const updateBody = await updateRes.text();
               let updatedRows: any[] = [];
-              try { updatedRows = updateBody ? JSON.parse(updateBody) : []; } catch (e) { console.warn('[TransactionParsing] Failed to parse update response:', e); updatedRows = []; }
+              try { updatedRows = updateBody ? JSON.parse(updateBody) : []; } catch (e) { log.warn('[TransactionParsing] Failed to parse update response:', e); updatedRows = []; }
               if (Array.isArray(updatedRows) && updatedRows.length > 0) {
                 const realId = updatedRows[0].id;
                 setVendorOverrides((prev) =>
@@ -234,14 +235,14 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
             } else {
               const insertBody = await insertRes.text();
               const updateBody = await updateRes.text();
-              console.error('[TransactionParsing] Error setting vendor override (insert failed:', insertBody.slice(0, 200), ', update failed:', updateBody.slice(0, 200), ')');
+              log.error('[TransactionParsing] Error setting vendor override (insert failed:', insertBody.slice(0, 200), ', update failed:', updateBody.slice(0, 200), ')');
               setVendorOverrides((prev) => prev.filter((vo) => vo.id !== tempId));
               return;
             }
           }
         }
       } catch (err: any) {
-        console.error('[TransactionParsing] Exception setting vendor category:', err?.message || err);
+        log.error('[TransactionParsing] Exception setting vendor category:', err?.message || err);
       }
 
       setExpandedVendorCategory(null);
@@ -286,7 +287,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
         try { data = body ? JSON.parse(body) : []; } catch { data = []; }
 
         if (!res.ok || !Array.isArray(data) || data.length === 0) {
-          console.error('[TransactionParsing] Error setting proper name:', res.status, body.slice(0, 200));
+          log.error('[TransactionParsing] Error setting proper name:', res.status, body.slice(0, 200));
           setVendorOverrides((prev) =>
             prev.map((vo) =>
               vo.id === existing.id
@@ -307,7 +308,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
           )
         );
       } catch (err: any) {
-        console.error('[TransactionParsing] Exception setting proper name:', err?.message || err);
+        log.error('[TransactionParsing] Exception setting proper name:', err?.message || err);
         setVendorOverrides((prev) =>
           prev.map((vo) =>
             vo.id === existing.id

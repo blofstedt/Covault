@@ -1,3 +1,4 @@
+import { log } from '../lib/log';
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import { Transaction, BudgetCategory } from '../types';
@@ -108,7 +109,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       }
       setMonitoredBanks(bankMap);
     } catch (e) {
-      console.warn('[TransactionParsing] Error loading monitored banks:', e);
+      log.warn('[TransactionParsing] Error loading monitored banks:', e);
     }
   }, []);
 
@@ -174,7 +175,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
             pattern_type: ruleType,
           });
         } catch (err) {
-          console.warn('[TransactionParsing] failed to create skip rule:', err);
+          log.warn('[TransactionParsing] failed to create skip rule:', err);
         }
       }
       if (onDeleteTransaction) {
@@ -190,7 +191,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       if (onDeleteVendorOverride) {
         onDeleteVendorOverride(overrideId);
       } else {
-        console.warn('[TransactionParsing] onDeleteVendorOverride not provided; cannot delete', overrideId);
+        log.warn('[TransactionParsing] onDeleteVendorOverride not provided; cannot delete', overrideId);
       }
     },
     [onDeleteVendorOverride],
@@ -259,7 +260,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
           });
         }
       } catch (err) {
-        console.warn('[TransactionParsing] handleSetVendorCategory failed:', err);
+        log.warn('[TransactionParsing] handleSetVendorCategory failed:', err);
       }
       setExpandedVendorCategory(null);
     },
@@ -283,10 +284,10 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
           },
         );
         if (!res.ok) {
-          console.warn('[TransactionParsing] handleSetProperName failed:', res.status);
+          log.warn('[TransactionParsing] handleSetProperName failed:', res.status);
         }
       } catch (err) {
-        console.warn('[TransactionParsing] handleSetProperName failed:', err);
+        log.warn('[TransactionParsing] handleSetProperName failed:', err);
       }
     },
     [userId, onSetProperName],
@@ -317,7 +318,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
             }
           }, SCAN_PROCESSING_DELAY_MS);
         } catch (e) {
-          console.error('[TransactionParsing] refresh after enable failed:', e);
+          log.error('[TransactionParsing] refresh after enable failed:', e);
         }
       })();
     }
@@ -355,11 +356,11 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         body: JSON.stringify({ caught_cleared: true }),
       });
       if (!res.ok) {
-        console.error('[TransactionParsing] Error clearing entered:', res.status);
+        log.error('[TransactionParsing] Error clearing entered:', res.status);
         return;
       }
     } catch (err) {
-      console.error('[TransactionParsing] Error clearing entered:', err);
+      log.error('[TransactionParsing] Error clearing entered:', err);
       return;
     }
     onClearEntered?.();

@@ -1,4 +1,5 @@
 // lib/appNotifications.ts
+import { log } from './log';
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import type { BudgetCategory, Transaction } from '../types';
@@ -30,7 +31,7 @@ async function ensurePermission() {
       await LocalNotifications.requestPermissions();
     }
   } catch (e) {
-    console.error('[appNotifications] permission error', e);
+    log.error('[appNotifications] permission error', e);
   }
 }
 
@@ -66,7 +67,7 @@ async function sendNotification(title: string, body: string) {
       ],
     });
   } catch (e) {
-    console.error('[appNotifications] schedule error', e);
+    log.error('[appNotifications] schedule error', e);
   }
 }
 
@@ -151,7 +152,7 @@ export async function checkAndTriggerAppNotifications({
       }
     }
   } catch (e) {
-    console.error('[appNotifications] check error', e);
+    log.error('[appNotifications] check error', e);
   }
 }
 
@@ -257,6 +258,6 @@ export async function sendExpenseCapturedNotification(
       ],
     });
   } catch (e) {
-    console.error('[appNotifications] expense-captured schedule error', e);
+    log.error('[appNotifications] expense-captured schedule error', e);
   }
 }

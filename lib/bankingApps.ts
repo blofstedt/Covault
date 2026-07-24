@@ -1,3 +1,4 @@
+import { log } from './log';
 // Known banking app package names (must match NotificationListener.java)
 export const KNOWN_BANKING_APPS: Record<string, string> = {
   // ── Canadian Banks ──────────────────────────────────────────────────
@@ -355,7 +356,7 @@ export async function loadBankingAppsFromDB(): Promise<Record<string, string>> {
     const res = await restFetch(`/banks?select=package_name,display_name`);
 
     if (!res.ok) {
-      console.warn('[loadBankingApps] DB unavailable, using hardcoded fallback');
+      log.warn('[loadBankingApps] DB unavailable, using hardcoded fallback');
       return cachedBankingApps;
     }
     const rows: Array<{ package_name: string; display_name: string }> = await res.json();
@@ -369,7 +370,7 @@ export async function loadBankingAppsFromDB(): Promise<Record<string, string>> {
     cachedBankingApps = apps;
     return apps;
   } catch {
-    console.warn('[loadBankingApps] Error loading from DB, using hardcoded fallback');
+    log.warn('[loadBankingApps] Error loading from DB, using hardcoded fallback');
     return cachedBankingApps;
   }
 }
