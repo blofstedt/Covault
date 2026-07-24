@@ -2,7 +2,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { SYSTEM_CATEGORIES } from '../../constants';
 import type { BudgetCategory, Transaction, PendingTransaction } from '../../types';
-import { REST_BASE, getAuthHeaders, DEFAULT_MONTHLY_INCOME } from '../apiHelpers';
+import { REST_BASE, getAuthHeaders, restFetch, DEFAULT_MONTHLY_INCOME } from '../apiHelpers';
 import { useFromSupabaseTransaction } from './transactionMappers';
 import { deduplicatePendingTransactions } from '../notificationProcessor';
 import type { UseUserDataParams } from './types';
@@ -193,13 +193,9 @@ export const useDataLoading = ({
   const loadUserSettings = useCallback(
     async (userId: string) => {
       try {
-        const headers = await getAuthHeaders();
-        const res = await fetch(
-          `${REST_BASE}/settings?select=monthly_income,theme_selected,trial_started_at,trial_ends_at,trial_consumed,subscription_status,rollover_enabled,leisure_buffer_enabled,show_savings_insight,app_notifications_enabled,budgeting_solo&user_id=eq.${userId}`,
-          { 
-            headers,
-            cache: 'no-store' // Prevent caching to always get fresh data
-          },
+        const res = await restFetch(
+          `/settings?select=monthly_income,theme_selected,trial_started_at,trial_ends_at,trial_consumed,subscription_status,rollover_enabled,leisure_buffer_enabled,show_savings_insight,app_notifications_enabled,budgeting_solo&user_id=eq.${userId}`,
+          { cache: 'no-store' }, // Prevent caching to always get fresh data
         );
         
         if (!res.ok) {
@@ -286,10 +282,8 @@ export const useDataLoading = ({
   const loadTransactions = useCallback(
     async (userId: string, { merge = false }: { merge?: boolean } = {}) => {
       try {
-        const headers = await getAuthHeaders();
-        const res = await fetch(
-          `${REST_BASE}/transactions?select=*&user_id=eq.${userId}&order=date.desc`,
-          { headers },
+        const res = await restFetch(
+          `/transactions?select=*&user_id=eq.${userId}&order=date.desc`,
         );
         const body = await res.text();
         console.log(
@@ -348,10 +342,8 @@ export const useDataLoading = ({
   const loadPendingTransactions = useCallback(
     async (userId: string) => {
       try {
-        const headers = await getAuthHeaders();
-        const res = await fetch(
-          `${REST_BASE}/pending_transactions?select=*&user_id=eq.${userId}&status=eq.pending&order=created_at.desc`,
-          { headers },
+        const res = await restFetch(
+          `/pending_transactions?select=*&user_id=eq.${userId}&status=eq.pending&order=created_at.desc`,
         );
 
         if (!res.ok) {
@@ -387,12 +379,9 @@ export const useDataLoading = ({
   const loadHouseholdLink = useCallback(
     async (userId: string) => {
       try {
-        const headers = await getAuthHeaders();
-
         // Check if the user has a partner_id set in their settings
-        const res = await fetch(
-          `${REST_BASE}/settings?select=partner_id,partner_name,partner_email&user_id=eq.${userId}&limit=1`,
-          { headers },
+        const res = await restFetch(
+          `/settings?select=partner_id,partner_name,partner_email&user_id=eq.${userId}&limit=1`,
         );
 
         if (!res.ok) {
