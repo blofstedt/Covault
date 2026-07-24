@@ -10,7 +10,7 @@
 --   - generate_transaction_hash — unused by app and tests
 --
 -- Run this in the Supabase SQL editor
--- (https://app.supabase.com/project/xqleyxrftyehodksashu/sql)
+-- (https://app.supabase.com/project/<your-project-ref>/sql)
 -- or via `supabase db execute --file ...` from the CLI.
 --
 -- Safe to re-run: uses IF EXISTS guards.

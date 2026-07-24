@@ -3,7 +3,7 @@
 -- ============================================================
 -- This file is the canonical schema for the Covault project as it
 -- actually exists in production. It was regenerated from PostgREST
--- introspection of https://xqleyxrftyehodksashu.supabase.co and
+-- introspection of the live https://<your-project-ref>.supabase.co project and
 -- supplemented with the RLS policy intent from the original repo
 -- files.
 --

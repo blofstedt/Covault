@@ -4,7 +4,7 @@ import { Capacitor } from '@capacitor/core';
 
 // ✅ These MUST match what you have in Vercel / .env / GitHub
 // Supports both naming conventions for compatibility:
-//   VITE_SUPABASE_URL or VITE_PUBLIC_SUPABASE_URL = https://xqleyxrftyehodksashu.supabase.co
+//   VITE_SUPABASE_URL or VITE_PUBLIC_SUPABASE_URL = https://<your-project-ref>.supabase.co
 //   VITE_SUPABASE_ANON_KEY = your anon key
 export const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || import.meta.env.VITE_PUBLIC_SUPABASE_URL) as string | undefined;
 export const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
