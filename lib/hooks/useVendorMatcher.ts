@@ -28,18 +28,6 @@ export function classifyMatch(opts: {
 }
 
 /**
- * UI categorization state for an AI-entered row. Superset of the values
- * currently produced by the matcher (`VendorMatchResult['state']`) and the
- * legacy labels still referenced by `AIEnteredRow` — typed as a union so the
- * component compiles without changing its runtime branching.
- */
-export type AICategorizationState =
-  | VendorMatchResult['state']
-  | 'auto'
-  | 'suggested'
-  | 'other';
-
-/**
  * Matches AI-extracted transactions against user-defined vendor overrides.
  * Returns a classifyAll function that produces a Map<tx.id, matchResult>
  * for efficient lookup when rendering the transaction list.
