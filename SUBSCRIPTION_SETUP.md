@@ -14,7 +14,7 @@ Run `supabase/schema.sql` in the **Supabase SQL Editor**. It is fully idempotent
 - RLS policies are wrapped in existence checks
 - Existing users are backfilled with trial data via `COALESCE` (won't overwrite)
 
-> **For brand-new databases** with no data, you can alternatively use `supabase/schema_fresh_install.sql`, which drops and recreates everything cleanly.
+> **For brand-new databases**, run `supabase/schema.sql` as-is — it is the canonical from-zero schema (its `IF NOT EXISTS` guards make it a no-op on tables that already exist).
 
 ---
 
