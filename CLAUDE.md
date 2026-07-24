@@ -12,8 +12,9 @@ This repo is a **single React/TypeScript/Vite app** at the repository root, pack
 for Android with Capacitor. (An earlier native-Kotlin rewrite was attempted and
 abandoned; there is no Kotlin app in this repo.) All work happens in the root app.
 
-See also: `AGENTS.md` (agent runbook), `README.md` / `SETUP.md` / `ANDROID_SETUP.md`
-(setup + deploy), and `supabase/schema.sql` (canonical DB schema).
+See also: `AGENTS.md` (agent runbook), `README.md` (setup + Android build),
+`SETUP.md` (domain model + conventions), `SUPABASE_AUDIT.md` (schema-drift notes),
+and `supabase/schema.sql` (canonical DB schema).
 
 ## Stack
 
@@ -103,20 +104,25 @@ Android banking notification
 
 ## Database (Supabase / PostgreSQL)
 
-All tables use RLS (`auth.uid() = user_id`, plus partner/household-access policies).
+`supabase/schema.sql` defines **5 tables**. All use RLS (`auth.uid()`-based; a user's
+partner sees their rows via `settings.partner_id`).
 
 | Table | Purpose |
 |-------|---------|
-| `settings` | 1 row per user: `partner_id`, `monthly_income`, theme, trial/subscription |
-| `budgets` | Per-user budget categories: budget name, amount, visibility |
-| `transactions` | Confirmed transactions; `budget` stores the category name; `type` = Manual/Automatic |
-| `pending_transactions` | AI/regex-captured, awaiting review: `status` pending/approved/rejected, `confidence` |
-| `overrides` (vendor overrides) | Learned vendor→category rules: `proper_name`, `match_key`, `match_type`, category name |
-| `banks` | Known banking apps used for capture |
-| `household_links`, `link_codes` | Partner/household linking + temporary join codes |
+| `settings` | 1 row per user: `partner_id` / `partner_name` / `partner_email` + `link_code` (partner linking lives here — there is **no** separate household table), `monthly_income`, theme, trial/subscription flags |
+| `budgets` | Per-user budget limits: `user_uuid`, `budget` (category name), `amount`, `Visible` |
+| `transactions` | Confirmed transactions: `vendor`, `amount`, `date`, `budget` (category name), `type` (Manual/Automatic), `recur`, `source` |
+| `overrides` | Learned vendor→category rules: `proper_name`, `match_key`, `match_type` (exact/prefix/contains), `category_id` (stores the category **name**) |
+| `banks` | Known banking apps (`package_name` → `display_name`) used for capture |
 
 **7 system categories** (fixed UUIDs in `constants.ts`): Housing, Groceries, Transport,
 Utilities, Leisure, Services, Other.
+
+**Schema drift — read before touching data access.** The capture pipeline reads/writes
+`pending_transactions`, but that table is **not** in `supabase/schema.sql`; the code
+tolerates its absence (a 404 is treated as an empty queue). Data-loading uses defensive
+column-name fallbacks (`user_uuid`/`user_id`, `Visible`/`visible`) that are load-bearing
+during the drift period — don't "clean them up." Full details in `SUPABASE_AUDIT.md`.
 
 ## Coding conventions
 

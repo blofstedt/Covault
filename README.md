@@ -234,6 +234,14 @@ This is normal in development. The service worker only works properly in product
 
 This has been fixed! The app now uses Tailwind CSS as a proper PostCSS plugin, not the CDN version.
 
+### Debugging the Android build
+
+- Watch the device logs for Supabase/auth issues: `adb logcat | grep -i supabase`
+- `vite: not found` during build usually means a broken install — reset it:
+  ```bash
+  rm -rf node_modules package-lock.json && npm install
+  ```
+
 ## Contributing
 
 1. Fork the repository
