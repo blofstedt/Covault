@@ -1,5 +1,6 @@
 import { log } from '../../lib/log';
 import React, { useState, useCallback } from 'react';
+import { formatCurrency } from '../../lib/formatCurrency';
 import { Transaction, BudgetCategory } from '../../types';
 import { getBudgetIcon } from '../dashboard_components/getBudgetIcon';
 import { parseLocalDate } from '../../lib/dateUtils';
@@ -28,7 +29,6 @@ interface AIEnteredRowProps {
   onChangeCategory?: (tx: Transaction, targetBudgetId?: string) => void;
 }
 
-const fmt = (n: number) => `${n < 0 ? '-' : ''}$${Math.abs(n).toFixed(2)}`;
 
 const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
   tx,
@@ -247,7 +247,7 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
             ? 'bg-slate-50/70 dark:bg-slate-900/15 border-slate-200 dark:border-slate-700/40'
             : 'bg-white/60 dark:bg-emerald-900/10 backdrop-blur-sm border-emerald-100 dark:border-emerald-800/30'
         }`}
-        aria-label={`Transaction: ${tx.vendor}, ${fmt(tx.amount)}`}
+        aria-label={`Transaction: ${tx.vendor}, ${formatCurrency(tx.amount)}`}
       >
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center space-x-3 min-w-0 flex-1">
@@ -312,7 +312,7 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
           <div className="text-right shrink-0 flex items-start gap-2">
             <div>
               <span className={`text-sm font-extrabold font-mono ${tx.amount < 0 ? 'text-emerald-500 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-200'}`}>
-                {tx.amount < 0 ? '+' : ''}{fmt(tx.amount)}
+                {tx.amount < 0 ? '+' : ''}{formatCurrency(tx.amount)}
               </span>
               <p className="text-[10px] font-semibold tracking-wide text-emerald-600 dark:text-emerald-400 mt-0.5">
                 {tx.amount < 0 ? (tx.is_income ? 'Income' : 'Refund') : 'AI'}

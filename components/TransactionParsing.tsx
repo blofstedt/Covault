@@ -37,8 +37,6 @@ interface TransactionParsingProps {
   /** Delete a transaction by ID. Used by the soft-dup badge to remove the
    *  similar older transaction when the user confirms a duplicate. */
   onDeleteTransaction?: (id: string) => void;
-  /** Called when a transaction is mutated locally (e.g. soft-dup dismissed). */
-  onTransactionUpdated?: (tx: Transaction) => void;
   /** Update a transaction (full record, persisted). Used by the inline
    *  vendor rename in the Caught Transactions list. The handler also
    *  writes the vendor correction to the overrides table. */

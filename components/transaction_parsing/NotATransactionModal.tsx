@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { formatCurrency } from '../../lib/formatCurrency';
 
 export type NotATxRuleType = 'exact' | 'contains';
 
@@ -50,7 +51,6 @@ const NotATransactionModal: React.FC<NotATransactionModalProps> = ({
 
   const pattern = rawNotification.trim();
   const absAmount = Math.abs(amount);
-  const fmt = (n: number) => `${n < 0 ? '-' : ''}$${Math.abs(n).toFixed(2)}`;
 
   return (
     <div
@@ -73,7 +73,7 @@ const NotATransactionModal: React.FC<NotATransactionModalProps> = ({
                 Mark as not a transaction?
               </h2>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
-                <span className="font-semibold text-slate-700 dark:text-slate-200">{vendor}</span> {fmt(amount)} will be removed and a skip rule will be created so future notifications matching it are ignored.
+                <span className="font-semibold text-slate-700 dark:text-slate-200">{vendor}</span> {formatCurrency(amount)} will be removed and a skip rule will be created so future notifications matching it are ignored.
               </p>
             </div>
           </div>
@@ -88,7 +88,7 @@ const NotATransactionModal: React.FC<NotATransactionModalProps> = ({
             {pattern || <span className="italic text-slate-400">no notification text available</span>}
           </div>
           <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1.5">
-            Source: {vendor} {fmt(amount)} · ${absAmount.toFixed(2)} charge
+            Source: {vendor} {formatCurrency(amount)} · ${absAmount.toFixed(2)} charge
           </p>
         </div>
 
