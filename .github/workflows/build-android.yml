@@ -38,6 +38,12 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
+      - name: Type-check and run unit tests
+        run: |
+          npm run typecheck
+          npm run typecheck:unused
+          npm test
+
       - name: Build web app
         run: npm run build
         env:
