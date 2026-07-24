@@ -351,12 +351,8 @@ export function getBankingApps(): Record<string, string> {
  */
 export async function loadBankingAppsFromDB(): Promise<Record<string, string>> {
   try {
-    const { REST_BASE, getAuthHeaders } = await import('./apiHelpers');
-    const headers = await getAuthHeaders();
-    const res = await fetch(
-      `${REST_BASE}/banks?select=package_name,display_name`,
-      { headers },
-    );
+    const { restFetch } = await import('./apiHelpers');
+    const res = await restFetch(`/banks?select=package_name,display_name`);
 
     if (!res.ok) {
       console.warn('[loadBankingApps] DB unavailable, using hardcoded fallback');

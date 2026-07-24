@@ -14,7 +14,7 @@
 //   - exact   : the raw notification text must equal the pattern.
 //   - contains: the raw notification text must contain the pattern as a substring.
 
-import { REST_BASE, getAuthHeaders } from './apiHelpers';
+import { restFetch } from './apiHelpers';
 
 export type PatternType = 'exact' | 'contains';
 
@@ -51,10 +51,9 @@ export async function checkNotificationRules(
 ): Promise<NotificationRule | null> {
   if (!userId || !rawNotification) return null;
   try {
-    const headers = await getAuthHeaders();
-    const res = await fetch(
-      `${REST_BASE}/notification_rules?select=*&user_id=eq.${userId}`,
-      { headers, cache: 'no-store' },
+    const res = await restFetch(
+      `/notification_rules?select=*&user_id=eq.${userId}`,
+      { cache: 'no-store' },
     );
     if (!res.ok) return null;
     const rows: NotificationRule[] = await res.json();
@@ -87,25 +86,23 @@ export function matchesRule(rawNotification: string, rule: NotificationRule): bo
  */
 export async function bumpRuleUseCount(ruleId: string): Promise<void> {
   try {
-    const headers = await getAuthHeaders();
-    (headers as any)['Prefer'] = 'return=minimal';
     // We use a Postgres expression via the RPC-shaped header if the
     // project has it; otherwise we read-modify-write. To keep this
     // dependency-free we do read-modify-write with optimistic
     // concurrency: if the count moves under us, we just skip the bump.
-    const readRes = await fetch(
-      `${REST_BASE}/notification_rules?id=eq.${ruleId}&select=use_count`,
-      { headers, cache: 'no-store' },
+    const readRes = await restFetch(
+      `/notification_rules?id=eq.${ruleId}&select=use_count`,
+      { cache: 'no-store' },
     );
     if (!readRes.ok) return;
     const rows: Array<{ use_count: number }> = await readRes.json();
     if (!rows || rows.length === 0) return;
     const current = rows[0].use_count ?? 0;
-    await fetch(
-      `${REST_BASE}/notification_rules?id=eq.${ruleId}&use_count=eq.${current}`,
+    await restFetch(
+      `/notification_rules?id=eq.${ruleId}&use_count=eq.${current}`,
       {
         method: 'PATCH',
-        headers,
+        headers: { Prefer: 'return=minimal' },
         body: JSON.stringify({
           use_count: current + 1,
           last_used_at: new Date().toISOString(),
@@ -121,10 +118,9 @@ export async function bumpRuleUseCount(ruleId: string): Promise<void> {
 export async function listNotificationRules(userId: string): Promise<NotificationRule[]> {
   if (!userId) return [];
   try {
-    const headers = await getAuthHeaders();
-    const res = await fetch(
-      `${REST_BASE}/notification_rules?select=*&user_id=eq.${userId}&order=created_at.desc`,
-      { headers, cache: 'no-store' },
+    const res = await restFetch(
+      `/notification_rules?select=*&user_id=eq.${userId}&order=created_at.desc`,
+      { cache: 'no-store' },
     );
     if (!res.ok) return [];
     return (await res.json()) || [];
@@ -139,16 +135,14 @@ export async function createNotificationRule(
 ): Promise<NotificationRule | null> {
   if (!userId || !input.pattern) return null;
   try {
-    const headers = await getAuthHeaders();
-    (headers as any)['Prefer'] = 'return=representation';
     const body = {
       user_id: userId,
       pattern: input.pattern,
       pattern_type: input.pattern_type || 'exact',
     };
-    const res = await fetch(`${REST_BASE}/notification_rules`, {
+    const res = await restFetch(`/notification_rules`, {
       method: 'POST',
-      headers,
+      headers: { Prefer: 'return=representation' },
       body: JSON.stringify(body),
     });
     if (!res.ok) {
@@ -166,10 +160,9 @@ export async function createNotificationRule(
 export async function deleteNotificationRule(userId: string, ruleId: string): Promise<boolean> {
   if (!userId || !ruleId) return false;
   try {
-    const headers = await getAuthHeaders();
-    const res = await fetch(
-      `${REST_BASE}/notification_rules?id=eq.${ruleId}&user_id=eq.${userId}`,
-      { method: 'DELETE', headers },
+    const res = await restFetch(
+      `/notification_rules?id=eq.${ruleId}&user_id=eq.${userId}`,
+      { method: 'DELETE' },
     );
     return res.ok;
   } catch {
@@ -184,13 +177,11 @@ export async function updateNotificationRule(
 ): Promise<boolean> {
   if (!userId || !ruleId) return false;
   try {
-    const headers = await getAuthHeaders();
-    (headers as any)['Prefer'] = 'return=representation';
-    const res = await fetch(
-      `${REST_BASE}/notification_rules?id=eq.${ruleId}&user_id=eq.${userId}`,
+    const res = await restFetch(
+      `/notification_rules?id=eq.${ruleId}&user_id=eq.${userId}`,
       {
         method: 'PATCH',
-        headers,
+        headers: { Prefer: 'return=representation' },
         body: JSON.stringify(patch),
       },
     );
