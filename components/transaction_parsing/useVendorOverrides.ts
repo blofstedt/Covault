@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { REST_BASE, getAuthHeaders } from '../../lib/apiHelpers';
+import { restFetch } from '../../lib/apiHelpers';
 import { BudgetCategory } from '../../types';
 import { toVendorKey } from '../../lib/deviceTransactionParser';
 
@@ -41,11 +41,9 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
     if (!userId) return;
 
     try {
-      const headers = await getAuthHeaders();
-
-      const overridesRes = await fetch(
-        `${REST_BASE}/overrides?select=*&user_id=eq.${userId}&order=proper_name`,
-        { headers, cache: 'no-store' },
+      const overridesRes = await restFetch(
+        `/overrides?select=*&user_id=eq.${userId}&order=proper_name`,
+        { cache: 'no-store' },
       );
       if (!overridesRes.ok) {
         console.error('[TransactionParsing] Error loading vendor overrides:', overridesRes.status, await overridesRes.text());
@@ -89,17 +87,15 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
       setExpandedVendorCategory(null);
 
       try {
-        const headers = await getAuthHeaders();
-        (headers as any)['Prefer'] = 'return=representation';
         let url: string;
 
         if (overrideId.startsWith('temp-') && properName) {
-          url = `${REST_BASE}/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(properName)}`;
+          url = `/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(properName)}`;
         } else {
-          url = `${REST_BASE}/overrides?id=eq.${overrideId}&user_id=eq.${userId}`;
+          url = `/overrides?id=eq.${overrideId}&user_id=eq.${userId}`;
         }
 
-        const res = await fetch(url, { method: 'DELETE', headers });
+        const res = await restFetch(url, { method: 'DELETE', headers: { Prefer: 'return=representation' } });
         const body = await res.text();
         let deletedRows: any[] = [];
         try { deletedRows = body ? JSON.parse(body) : []; } catch (e) { console.warn('[TransactionParsing] Failed to parse delete response:', e); deletedRows = []; }
@@ -150,9 +146,6 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
       );
 
       try {
-        const headers = await getAuthHeaders();
-        (headers as any)['Prefer'] = 'return=representation';
-
         if (existing) {
           setVendorOverrides((prev) =>
             prev.map((vo) =>
@@ -164,11 +157,11 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
 
           // Use proper_name-based URL when override has a temp ID (not yet synced with DB)
           const url = existing.id.startsWith('temp-')
-            ? `${REST_BASE}/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(existing.proper_name)}`
-            : `${REST_BASE}/overrides?id=eq.${existing.id}&user_id=eq.${userId}`;
-          const res = await fetch(
+            ? `/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(existing.proper_name)}`
+            : `/overrides?id=eq.${existing.id}&user_id=eq.${userId}`;
+          const res = await restFetch(
             url,
-            { method: 'PATCH', headers, body: JSON.stringify({ category_id: dbCategoryId }) },
+            { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ category_id: dbCategoryId }) },
           );
 
           const body = await res.text();
@@ -204,9 +197,9 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
           };
           setVendorOverrides((prev) => [...prev, newOverride]);
 
-          const insertRes = await fetch(`${REST_BASE}/overrides`, {
+          const insertRes = await restFetch(`/overrides`, {
             method: 'POST',
-            headers,
+            headers: { Prefer: 'return=representation' },
             body: JSON.stringify({ user_id: userId, proper_name: vendorName, match_key: vendorKey, category_id: dbCategoryId }),
           });
 
@@ -222,9 +215,9 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
               );
             }
           } else {
-            const updateRes = await fetch(
-              `${REST_BASE}/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(vendorName)}`,
-              { method: 'PATCH', headers, body: JSON.stringify({ category_id: dbCategoryId }) },
+            const updateRes = await restFetch(
+              `/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(vendorName)}`,
+              { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ category_id: dbCategoryId }) },
             );
 
             if (updateRes.ok) {
@@ -280,15 +273,13 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
       );
 
       try {
-        const headers = await getAuthHeaders();
-        (headers as any)['Prefer'] = 'return=representation';
         // Use proper_name-based URL when override has a temp ID (not yet synced with DB)
         const url = existing.id.startsWith('temp-')
-          ? `${REST_BASE}/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(existing.proper_name)}`
-          : `${REST_BASE}/overrides?id=eq.${existing.id}&user_id=eq.${userId}`;
-        const res = await fetch(
+          ? `/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(existing.proper_name)}`
+          : `/overrides?id=eq.${existing.id}&user_id=eq.${userId}`;
+        const res = await restFetch(
           url,
-          { method: 'PATCH', headers, body: JSON.stringify({ proper_name: newProperName }) },
+          { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ proper_name: newProperName }) },
         );
         const body = await res.text();
         let data: any[] = [];
@@ -352,16 +343,14 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
       );
 
       try {
-        const headers = await getAuthHeaders();
-        (headers as any)['Prefer'] = 'return=representation';
         const url = existing.id.startsWith('temp-')
-          ? `${REST_BASE}/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(existing.proper_name)}`
-          : `${REST_BASE}/overrides?id=eq.${existing.id}&user_id=eq.${userId}`;
-        const res = await fetch(
+          ? `/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(existing.proper_name)}`
+          : `/overrides?id=eq.${existing.id}&user_id=eq.${userId}`;
+        const res = await restFetch(
           url,
           {
             method: 'PATCH',
-            headers,
+            headers: { Prefer: 'return=representation' },
             body: JSON.stringify({ match_type: matchType, updated_at: new Date().toISOString() }),
           },
         );

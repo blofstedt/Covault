@@ -1,6 +1,6 @@
 // lib/hooks/useHouseholdLinking.ts
 import { useCallback } from 'react';
-import { REST_BASE, getAuthHeaders } from '../apiHelpers';
+import { restFetch } from '../apiHelpers';
 import type { UseUserDataParams } from './types';
 
 export const useHouseholdLinking = ({
@@ -18,14 +18,11 @@ export const useHouseholdLinking = ({
         return null;
       }
 
-      const headers = await getAuthHeaders();
-      
       // Generate a 6-character code
       const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-      
-      const res = await fetch(`${REST_BASE}/settings?user_id=eq.${userId}`, {
+
+      const res = await restFetch(`/settings?user_id=eq.${userId}`, {
         method: 'PATCH',
-        headers,
         body: JSON.stringify({
           link_code: code,
         }),
@@ -56,12 +53,9 @@ export const useHouseholdLinking = ({
           return;
         }
 
-        const headers = await getAuthHeaders();
-        
         // Look up the settings row with this link code
-        const codeRes = await fetch(
-          `${REST_BASE}/settings?select=user_id,name,email&link_code=eq.${encodeURIComponent(code.toUpperCase())}&limit=1`,
-          { headers },
+        const codeRes = await restFetch(
+          `/settings?select=user_id,name,email&link_code=eq.${encodeURIComponent(code.toUpperCase())}&limit=1`,
         );
 
         if (!codeRes.ok) {
@@ -84,13 +78,12 @@ export const useHouseholdLinking = ({
           return;
         }
 
-        // Atomically consume the link code (only succeeds if code still matches)
-        (headers as any)['Prefer'] = 'return=representation';
-
+        // Atomically consume the link code (only succeeds if code still matches).
+        // Prefer: return=representation so we can tell whether a row was updated.
         // Update other user's settings — include link_code filter to prevent race conditions
-        const otherRes = await fetch(`${REST_BASE}/settings?user_id=eq.${otherUserId}&link_code=eq.${encodeURIComponent(code.toUpperCase())}`, {
+        const otherRes = await restFetch(`/settings?user_id=eq.${otherUserId}&link_code=eq.${encodeURIComponent(code.toUpperCase())}`, {
           method: 'PATCH',
-          headers,
+          headers: { Prefer: 'return=representation' },
           body: JSON.stringify({
             partner_id: userId,
             partner_name: userName,
@@ -110,9 +103,9 @@ export const useHouseholdLinking = ({
         }
 
         // Update current user's settings
-        await fetch(`${REST_BASE}/settings?user_id=eq.${userId}`, {
+        await restFetch(`/settings?user_id=eq.${userId}`, {
           method: 'PATCH',
-          headers,
+          headers: { Prefer: 'return=representation' },
           body: JSON.stringify({
             partner_id: otherUserId,
             partner_name: otherUserName,
@@ -146,12 +139,10 @@ export const useHouseholdLinking = ({
   const handleLinkPartner = useCallback(
     async (partnerEmail: string) => {
       try {
-        const headers = await getAuthHeaders();
-        const lookupRes = await fetch(
-          `${REST_BASE}/settings?select=user_id,name,email&email=eq.${encodeURIComponent(
+        const lookupRes = await restFetch(
+          `/settings?select=user_id,name,email&email=eq.${encodeURIComponent(
             partnerEmail,
           )}&limit=1`,
-          { headers },
         );
 
         if (!lookupRes.ok) {
@@ -176,12 +167,10 @@ export const useHouseholdLinking = ({
           return;
         }
 
-        (headers as any)['Prefer'] = 'return=representation';
-
         // Update other user's settings
-        await fetch(`${REST_BASE}/settings?user_id=eq.${partnerId}`, {
+        await restFetch(`/settings?user_id=eq.${partnerId}`, {
           method: 'PATCH',
-          headers,
+          headers: { Prefer: 'return=representation' },
           body: JSON.stringify({
             partner_id: userId,
             partner_name: userName,
@@ -191,9 +180,9 @@ export const useHouseholdLinking = ({
         });
 
         // Update current user's settings
-        const updateRes = await fetch(`${REST_BASE}/settings?user_id=eq.${userId}`, {
+        const updateRes = await restFetch(`/settings?user_id=eq.${userId}`, {
           method: 'PATCH',
-          headers,
+          headers: { Prefer: 'return=representation' },
           body: JSON.stringify({
             partner_id: partnerId,
             partner_name: partnerName,
@@ -236,12 +225,9 @@ export const useHouseholdLinking = ({
       const partnerId = appState.user?.partnerId;
       if (!userId) return;
 
-      const headers = await getAuthHeaders();
-
       // Clear current user's partner fields
-      await fetch(`${REST_BASE}/settings?user_id=eq.${userId}`, {
+      await restFetch(`/settings?user_id=eq.${userId}`, {
         method: 'PATCH',
-        headers,
         body: JSON.stringify({
           partner_id: null,
           partner_name: null,
@@ -252,9 +238,8 @@ export const useHouseholdLinking = ({
 
       // Clear partner's fields too
       if (partnerId) {
-        await fetch(`${REST_BASE}/settings?user_id=eq.${partnerId}`, {
+        await restFetch(`/settings?user_id=eq.${partnerId}`, {
           method: 'PATCH',
-          headers,
           body: JSON.stringify({
             partner_id: null,
             partner_name: null,
