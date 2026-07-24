@@ -6,9 +6,9 @@ Everything a fresh session needs to know to be productive on this repo.
 ## Project
 
 - **Repo:** `https://github.com/blofstedt/Covault.git` (owner: `blofstedt`)
-- **Supabase project ref:** `xqleyxrftyehodksashu`
-- **Supabase URL:** `https://xqleyxrftyehodksashu.supabase.co`
-- **Region:** `us-east-1` (inferred from Supabase pooler DNS)
+- **Supabase project ref:** `<your-project-ref>` (from your Supabase dashboard URL)
+- **Supabase URL:** `https://<your-project-ref>.supabase.co` (also in `.env` as `VITE_SUPABASE_URL`)
+- **Region:** whatever region the Supabase project was created in
 - **App name:** Covault (personal finance tracker; React + Vite + Capacitor)
 
 ## Live database (as of 2026-07-17)
@@ -25,8 +25,9 @@ schema drift"). The drift check script
 `scripts/check_schema_drift.sh` will tell you if the live DB ever
 diverges from `supabase/schema.sql`.
 
-There is **one** user in the DB right now: `de1ba59d-6f77-40f7-b622-da579e4c6b9e`
-(Brian / itsjustmyemail@gmail.com). All test data references this user.
+The production database is single-household: test/live data belongs to the
+account owner's user id. Look it up at runtime (e.g. `supabase.auth.getUser()`)
+rather than hardcoding it — do not commit real user ids or emails to this file.
 
 ## Required secrets (NOT in this file)
 

@@ -1,6 +1,6 @@
 # Supabase vs Repo Audit
 
-Generated against the live project at `xqleyxrftyehodksashu.supabase.co`.
+Generated against the live project at `<your-project-ref>.supabase.co`.
 
 ## TL;DR
 
