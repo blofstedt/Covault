@@ -183,6 +183,55 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     [userId, createNotificationRule, onDeleteTransaction],
   );
 
+  // ── Caught-transaction triage (Accept / Change / Create rule) ──
+  // Files a caught transaction: sets caught_cleared (so it leaves the "Caught
+  // Transactions" queue) plus any budget change, then reloads from the DB.
+  const fileCaughtTransaction = useCallback(
+    async (txId: string, extra: Record<string, unknown> = {}) => {
+      try {
+        await restFetch(`/transactions?id=eq.${txId}`, {
+          method: 'PATCH',
+          headers: { Prefer: 'return=minimal' },
+          body: JSON.stringify({ caught_cleared: true, ...extra }),
+        });
+      } catch (err) {
+        log.warn('[TransactionParsing] file caught transaction failed:', err);
+      }
+      if (userId) await onReloadTransactions?.(userId);
+    },
+    [userId, onReloadTransactions],
+  );
+
+  // Accept: keep the current mapping, just file the row.
+  const handleAcceptCaught = useCallback(
+    (tx: Transaction) => fileCaughtTransaction(tx.id),
+    [fileCaughtTransaction],
+  );
+
+  // Change: move the row to a different budget, then file.
+  const handleChangeCaughtCategory = useCallback(
+    (tx: Transaction, budgetId: string) => {
+      const name = budgets.find((b) => b.id === budgetId)?.name;
+      return fileCaughtTransaction(tx.id, name ? { budget: name } : {});
+    },
+    [fileCaughtTransaction, budgets],
+  );
+
+  // Create rule: persist a vendor→budget override (future captures auto-match),
+  // set this row's budget to match, then file.
+  const handleCreateRuleForCaught = useCallback(
+    async (tx: Transaction, budgetId: string) => {
+      const name = budgets.find((b) => b.id === budgetId)?.name;
+      try {
+        await onSetVendorCategory?.(tx.vendor, budgetId);
+      } catch (err) {
+        log.warn('[TransactionParsing] create rule failed:', err);
+      }
+      await fileCaughtTransaction(tx.id, name ? { budget: name } : {});
+    },
+    [fileCaughtTransaction, budgets, onSetVendorCategory],
+  );
+
   // Default no-op for vendor override deletion when not provided
   const handleDeleteVendorOverride = useCallback(
     (overrideId: string) => {
@@ -434,6 +483,10 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               userId={userId}
               isExpanded={expandedSections.caughtTransactions}
               onToggleExpanded={() => toggleSection('caughtTransactions')}
+              vendorOverrides={vendorOverrides}
+              onAccept={handleAcceptCaught}
+              onChangeCategory={handleChangeCaughtCategory}
+              onCreateRule={handleCreateRuleForCaught}
             />
 
             <div className="shrink-0 mt-4">
