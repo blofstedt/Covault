@@ -48,15 +48,12 @@ interface LearnedRule {
 interface LearnedRulesCardProps {
   userId?: string;
   vendorOverrides: VendorOverride[];
-  allVendors?: string[];
-  vendorOverrideByName?: Map<string, VendorOverride>;
   categoryNameById?: Map<string, string>;
   budgets?: BudgetCategory[];
   allTransactions?: Transaction[];
   onDeleteVendorOverride: (overrideId: string) => void;
   onSetVendorCategory?: (vendorName: string, categoryId: string) => void;
   onSetProperName?: (vendorName: string, properName: string) => void;
-  onSetMatchType?: (vendorName: string, matchType: MatchType) => void;
   onSetExpandedVendorCategory?: (vendorName: string | null) => void;
   expandedVendorCategory?: string | null;
   isExpanded?: boolean;
