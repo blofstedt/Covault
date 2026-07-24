@@ -33,11 +33,6 @@ export interface CreateNotificationRuleInput {
   pattern_type?: PatternType;
 }
 
-export interface UpdateNotificationRuleInput {
-  pattern?: string;
-  pattern_type?: PatternType;
-}
-
 /**
  * Check whether a raw notification text matches any active rule for the
  * given user. Returns the matched rule or null. The lookup uses a single
@@ -163,27 +158,6 @@ export async function deleteNotificationRule(userId: string, ruleId: string): Pr
     const res = await restFetch(
       `/notification_rules?id=eq.${ruleId}&user_id=eq.${userId}`,
       { method: 'DELETE' },
-    );
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-export async function updateNotificationRule(
-  userId: string,
-  ruleId: string,
-  patch: UpdateNotificationRuleInput,
-): Promise<boolean> {
-  if (!userId || !ruleId) return false;
-  try {
-    const res = await restFetch(
-      `/notification_rules?id=eq.${ruleId}&user_id=eq.${userId}`,
-      {
-        method: 'PATCH',
-        headers: { Prefer: 'return=representation' },
-        body: JSON.stringify(patch),
-      },
     );
     return res.ok;
   } catch {
