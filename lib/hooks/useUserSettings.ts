@@ -1,6 +1,6 @@
 // lib/hooks/useUserSettings.ts
 import { useCallback, useRef } from 'react';
-import { REST_BASE, getAuthHeaders, DEFAULT_MONTHLY_INCOME } from '../apiHelpers';
+import { REST_BASE, getAuthHeaders, restFetch, DEFAULT_MONTHLY_INCOME } from '../apiHelpers';
 import type { UseUserDataParams } from './types';
 
 export const useUserSettings = ({
@@ -206,8 +206,6 @@ export const useUserSettings = ({
       }));
 
       try {
-        const headers = await getAuthHeaders();
-        const patchHeaders = { ...headers, 'Prefer': 'return=representation' };
 
         // PATCH first \u2014 this only updates the columns we specify, so the
         // existing `subscription_status` row value is preserved and the
@@ -216,11 +214,11 @@ export const useUserSettings = ({
         // with the schema default `\"false\"` for subscription_status, which
         // violates the check constraint that only allows values like
         // \"active\".)
-        let res = await fetch(
-          `${REST_BASE}/settings?user_id=eq.${userId}`,
+        let res = await restFetch(
+          `/settings?user_id=eq.${userId}`,
           {
             method: 'PATCH',
-            headers: patchHeaders,
+            headers: { Prefer: 'return=representation' },
             body: JSON.stringify({ monthly_income: income }),
           },
         );
@@ -248,12 +246,11 @@ export const useUserSettings = ({
           console.warn(`[saveUserIncome] PATCH matched 0 rows \u2014 trying POST`);
         }
 
-        const postHeaders = { ...headers, 'Prefer': 'return=representation' };
-        const postRes = await fetch(
-          `${REST_BASE}/settings`,
+        const postRes = await restFetch(
+          `/settings`,
           {
             method: 'POST',
-            headers: postHeaders,
+            headers: { Prefer: 'return=representation' },
             body: JSON.stringify({
               user_id: userId,
               name: userName,
@@ -329,18 +326,12 @@ export const useUserSettings = ({
       }));
 
       try {
-        const headers = await getAuthHeaders();
-        const headersWithPrefer: Record<string, string> = {
-          ...headers,
-          'Prefer': 'return=representation',
-        };
-        
         // Update the settings table for this user
-        const res = await fetch(
-          `${REST_BASE}/settings?user_id=eq.${userId}`,
+        const res = await restFetch(
+          `/settings?user_id=eq.${userId}`,
           {
             method: 'PATCH',
-            headers: headersWithPrefer,
+            headers: { Prefer: 'return=representation' },
             body: JSON.stringify({ theme_selected: theme }),
           },
         );
@@ -520,11 +511,9 @@ export const useUserSettings = ({
       const userId = appState.user?.id;
       if (!userId) return;
       try {
-        const headers = await getAuthHeaders();
-        (headers as any)['Prefer'] = 'return=representation';
-        const res = await fetch(`${REST_BASE}/settings?user_id=eq.${userId}`, {
+        const res = await restFetch(`/settings?user_id=eq.${userId}`, {
           method: 'PATCH',
-          headers,
+          headers: { Prefer: 'return=representation' },
           body: JSON.stringify({ [dbKey]: value }),
         });
         if (!res.ok) {
