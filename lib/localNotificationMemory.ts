@@ -176,6 +176,10 @@ export interface CachedAIResult {
   amount: number | null;
   suggestedCategory: string | null;
   rejectionReason: string | null;
+  /** AI confidence (0.0–1.0), cached alongside the extraction. */
+  confidence?: number;
+  /** Human-readable confidence label. */
+  confidenceLabel?: 'high' | 'medium' | 'low';
   cachedAt: number;
 }
 

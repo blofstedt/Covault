@@ -10,7 +10,7 @@ import NotATransactionModal, { type NotATxRuleType } from './NotATransactionModa
 import BackfillPreviewModal from './BackfillPreviewModal';
 import { toVendorKey } from '../../lib/deviceTransactionParser';
 import { countBackfillMatches, applyVendorBackfill } from '../../lib/vendorBackfill';
-import type { VendorMatchResult, AICategorizationState } from '../../lib/vendorMatcher';
+import type { VendorMatchResult, AICategorizationState } from '../../lib/hooks/useVendorMatcher';
 
 interface AIEnteredRowProps {
   tx: Transaction;

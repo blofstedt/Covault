@@ -14,12 +14,12 @@
 import { supabase } from './supabase';
 import { formatVendorName, fuzzyVendorMatch, normalizeVendorForDedup } from './formatVendorName';
 import { parseNotificationText } from './deviceTransactionParser';
-import { addToReviewQueue, getVendorMapEntry, getVendorMap, isNotificationProcessed, markNotificationProcessed, getCachedAIResult, setCachedAIResult } from './localNotificationMemory';
+import { addToReviewQueue, getVendorMapEntry, getVendorMap, isNotificationProcessed, markNotificationProcessed, getCachedAIResult, setCachedAIResult, type CachedAIResult } from './localNotificationMemory';
 import { findMatchingExpense, REFUND_MATCH_WINDOW_DAYS } from './refundMatching';
 import { aiFindRefundMatch } from './aiExtractor';
 import { checkNotificationRules, bumpRuleUseCount } from './notificationRules';
 import { getLocalToday, parseLocalDate } from './dateUtils';
-import { extractWithAI, aiDetectRecurring, aiExplainRejection } from './aiExtractor';
+import { extractWithAI, aiDetectRecurring, aiExplainRejection, type AIExtractionResult } from './aiExtractor';
 import type { PendingTransaction } from '../types';
 
 // ─── Constants ───────────────────────────────────────────────────
@@ -648,7 +648,7 @@ export interface AIProcessingResult {
   /** Reason for rejection if not a transaction or duplicate */
   rejectionReason?: string;
   /** Skip reason */
-  skipReason?: 'duplicate_fingerprint' | 'duplicate_vendor_amount' | 'duplicate_manual' | 'duplicate_ai' | 'not_transaction' | 'extraction_failed';
+  skipReason?: 'duplicate_fingerprint' | 'duplicate_vendor_amount' | 'duplicate_manual' | 'duplicate_ai' | 'not_transaction' | 'extraction_failed' | 'needs_review';
   /** The bank name */
   bankName?: string;
   /**
@@ -873,11 +873,13 @@ async function processNotificationWithAIImpl(
   // candidates) we fall back to the on-device Flan-T5 model. The first
   // call loads the model (slow, ~60MB), subsequent calls are fast.
   // Results are cached in localStorage so we never re-infer the same text.
+  // Declared at function scope so Step 2c (confidence gating) and Step 5c
+  // (AI category fallback) below can read the AI result produced here.
+  let aiResult: AIExtractionResult | CachedAIResult | null = null;
   const parserConfidence = parsed.confidence ?? 0.5;
   if (parserConfidence < AI_FALLBACK_CONFIDENCE_THRESHOLD) {
     // Check the cache first — same notification text is never re-inferred
     const cached = getCachedAIResult(input.rawNotification);
-    let aiResult;
     if (cached) {
       console.log(`[AI fallback] cache hit for "${input.rawNotification.slice(0, 40)}..."`);
       aiResult = cached;
@@ -938,8 +940,8 @@ async function processNotificationWithAIImpl(
 
   // ── Step 2c: Confidence gating ──
   // If AI is uncertain, route to pending review instead of auto-inserting
-  if (aiResult && aiResult.isTransaction && aiResult.confidence < 0.75) {
-    console.log(`[AI pipeline] Low confidence (${aiResult.confidenceLabel}, ${aiResult.confidence.toFixed(2)}) — routing to review queue`);
+  if (aiResult && aiResult.isTransaction && (aiResult.confidence ?? 1) < 0.75) {
+    console.log(`[AI pipeline] Low confidence (${aiResult.confidenceLabel}, ${(aiResult.confidence ?? 0).toFixed(2)}) — routing to review queue`);
     const pendingId = crypto.randomUUID();
     await supabase.from('pending_transactions').insert({
       id: pendingId,
