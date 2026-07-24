@@ -1,4 +1,5 @@
 // lib/useNotificationListener.ts
+import { log } from '../log';
 import { useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import type { Transaction, User, PendingTransaction, BudgetCategory } from '../../types';
@@ -78,9 +79,9 @@ export const useNotificationListener = ({
         const handle = await covaultNotification.addListener(
           'transactionDetected',
           async (event) => {
-            console.log('[notification] Transaction detected:', event);
+            log.debug('[notification] Transaction detected:', event);
             if (!user?.id) {
-              console.warn(
+              log.warn(
                 '[notification] No user logged in, ignoring transaction',
               );
               return;
@@ -118,7 +119,7 @@ export const useNotificationListener = ({
               recentListenerEvents.shift();
             }
             if (recentListenerEvents.some((e) => e.key === dedupKey)) {
-              console.log(
+              log.debug(
                 '[notification] Listener-level dedup hit, ignoring re-broadcast within',
                 LISTENER_DEDUP_WINDOW_MS,
                 'ms',
@@ -156,7 +157,7 @@ export const useNotificationListener = ({
                 onAIProcessingResult?.(result);
 
                 if (!result.processed || !result.isTransaction) {
-                  console.log(
+                  log.debug(
                     `[notification] Skipped: ${result.skipReason || result.rejectionReason}`,
                   );
                   return;
@@ -182,7 +183,7 @@ export const useNotificationListener = ({
                   // charges), but the parsing UI should know to surface a
                   // "possible duplicate" badge so the user can review.
                   if (result.softDuplicateOf) {
-                    console.warn(
+                    log.warn(
                       `[notification] ⚠️ Soft-dup: new ${tx.vendor} $${tx.amount} ` +
                       `looks similar to existing ${result.softDuplicateOf.vendor} $${result.softDuplicateOf.amount} ` +
                       `on ${result.softDuplicateOf.date}`,
@@ -222,7 +223,7 @@ export const useNotificationListener = ({
 
                 return;
               } catch (err) {
-                console.error(
+                log.error(
                   '[notification] AI pipeline error, falling back to legacy:',
                   err,
                 );
@@ -258,7 +259,7 @@ export const useNotificationListener = ({
         }
         cleanup = () => handle.remove();
       } catch (e) {
-        console.warn(
+        log.warn(
           '[notification] Could not set up transaction listener:',
           e,
         );

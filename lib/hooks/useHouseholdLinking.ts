@@ -1,4 +1,5 @@
 // lib/hooks/useHouseholdLinking.ts
+import { log } from '../log';
 import { useCallback } from 'react';
 import { restFetch } from '../apiHelpers';
 import type { UseUserDataParams } from './types';
@@ -34,7 +35,7 @@ export const useHouseholdLinking = ({
         return null;
       }
 
-      console.log('[generateLinkCode] Generated code:', code);
+      log.debug('[generateLinkCode] Generated code:', code);
       return code;
     } catch (err: any) {
       setDbError(`Generate link code exception: ${err?.message || err}`);
@@ -127,7 +128,7 @@ export const useHouseholdLinking = ({
             : null,
         }));
 
-        console.log('[joinWithCode] Successfully linked household');
+        log.debug('[joinWithCode] Successfully linked household');
       } catch (err: any) {
         setDbError(`Join with code exception: ${err?.message || err}`);
       }
@@ -210,7 +211,7 @@ export const useHouseholdLinking = ({
               }
             : null,
         }));
-        console.log('[linkPartner] OK, linked with', partnerEmail);
+        log.debug('[linkPartner] OK, linked with', partnerEmail);
       } catch (err: any) {
         setDbError(`Link exception: ${err?.message || err}`);
       }
@@ -262,7 +263,7 @@ export const useHouseholdLinking = ({
             }
           : null,
       }));
-      console.log('[unlinkPartner] OK');
+      log.debug('[unlinkPartner] OK');
     } catch (err: any) {
       setDbError(`Unlink exception: ${err?.message || err}`);
     }

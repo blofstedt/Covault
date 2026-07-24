@@ -1,3 +1,4 @@
+import { log } from '../../lib/log';
 import React, { useState, useCallback } from 'react';
 import { Transaction, BudgetCategory } from '../../types';
 import { getBudgetIcon } from '../dashboard_components/getBudgetIcon';
@@ -110,7 +111,7 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
           }
         }
       } catch (err) {
-        console.warn('[AIEnteredRow] vendor rename failed:', err);
+        log.warn('[AIEnteredRow] vendor rename failed:', err);
       } finally {
         setIsSavingVendor(false);
       }
@@ -127,7 +128,7 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
       if (result.updated > 0) setTimeout(() => setBackfillToast(null), 3500);
       setBackfillPrompt(null);
     } catch (err) {
-      console.warn('[AIEnteredRow] backfill failed:', err);
+      log.warn('[AIEnteredRow] backfill failed:', err);
     } finally {
       setIsApplyingBackfill(false);
     }

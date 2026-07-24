@@ -13,6 +13,7 @@
 // same match_type (exact/prefix/contains). The match_type on the
 // override determines which historical rows are eligible for backfill.
 
+import { log } from './log';
 import { restFetch } from './apiHelpers';
 
 const escapePostgrestString = (s: string): string => s.replace(/'/g, "''");
@@ -163,7 +164,7 @@ async function patchByIds(
       },
     );
     if (!patchRes.ok) {
-      console.warn('[vendorBackfill] chunk patch failed:', patchRes.status, await patchRes.text());
+      log.warn('[vendorBackfill] chunk patch failed:', patchRes.status, await patchRes.text());
       continue;
     }
     // The PATCH doesn't return the rows by default. Use a separate

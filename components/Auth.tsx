@@ -1,3 +1,4 @@
+import { log } from '../lib/log';
 import React, { useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
@@ -31,7 +32,7 @@ const Auth: React.FC<AuthProps> = () => {
         ? 'com.covault.app://auth/callback'
         : window.location.origin;
 
-      console.log(`[Auth] Starting OAuth flow (${isNative ? 'Android' : 'Web'}) with redirect:`, redirectUrl);
+      log.debug(`[Auth] Starting OAuth flow (${isNative ? 'Android' : 'Web'}) with redirect:`, redirectUrl);
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -47,13 +48,13 @@ const Auth: React.FC<AuthProps> = () => {
       });
 
       if (error) {
-        console.error('[Auth] OAuth error:', error);
+        log.error('[Auth] OAuth error:', error);
         throw error;
       }
 
       // On Android with skipBrowserRedirect, we get a URL to open in the system browser
       if (isNative && data?.url) {
-        console.log('[Auth] Opening OAuth URL in browser:', data.url);
+        log.debug('[Auth] Opening OAuth URL in browser:', data.url);
         await Browser.open({ url: data.url });
       }
 
@@ -61,7 +62,7 @@ const Auth: React.FC<AuthProps> = () => {
       // For Android, the browser opens and then deep links back
       // In both cases, App.tsx listens for auth changes via useAuthState
     } catch (err: any) {
-      console.error('[Auth] Supabase Auth Error Detail:', err);
+      log.error('[Auth] Supabase Auth Error Detail:', err);
       setAuthError(
         err.message || 'An unexpected error occurred during sign in.',
       );

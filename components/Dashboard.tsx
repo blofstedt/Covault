@@ -1,3 +1,4 @@
+import { log } from '../lib/log';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { AppState, Transaction, BudgetCategory } from '../types';
 
@@ -191,10 +192,10 @@ const Dashboard: React.FC<Props> = ({
     }));
 
     if (key === 'theme' && (value === 'light' || value === 'dark')) {
-      saveTheme(value).catch((e) => console.error('[Dashboard] saveTheme failed:', e));
+      saveTheme(value).catch((e) => log.error('[Dashboard] saveTheme failed:', e));
     } else if (SETTING_DB_KEYS[key] !== undefined) {
       saveSettingToDb(SETTING_DB_KEYS[key], value).catch(
-        (e) => console.error(`[Dashboard] saveSettingToDb(${key}) failed:`, e),
+        (e) => log.error(`[Dashboard] saveSettingToDb(${key}) failed:`, e),
       );
     }
   };

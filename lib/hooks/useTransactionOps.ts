@@ -1,4 +1,5 @@
 // lib/hooks/useTransactionOps.ts
+import { log } from '../log';
 import { useCallback } from 'react';
 import type { Transaction } from '../../types';
 import { restFetch } from '../apiHelpers';
@@ -53,7 +54,7 @@ export const useTransactionOps = ({
       }
 
       // Log transaction details for debugging
-      console.log('[insert] Creating transaction:', {
+      log.debug('[insert] Creating transaction:', {
         vendor: tx.vendor,
         amount: tx.amount,
         budget_id: tx.budget_id,
@@ -74,7 +75,7 @@ export const useTransactionOps = ({
         const row = toSupabaseTransaction(tx);
         // Ensure auto-added transactions appear in the badge until cleared
         if (tx.label === 'Automatic') (row as any).caught_cleared = false;
-        console.log('[insert] payload:', JSON.stringify(row));
+        log.debug('[insert] payload:', JSON.stringify(row));
 
         const res = await restFetch(`/transactions`, {
           method: 'POST',
@@ -82,7 +83,7 @@ export const useTransactionOps = ({
           body: JSON.stringify(row),
         });
         const body = await res.text();
-        console.log(
+        log.debug(
           '[insert] status:',
           res.status,
           'body:',
@@ -91,8 +92,8 @@ export const useTransactionOps = ({
 
         if (!res.ok) {
           const msg = `Insert failed (${res.status}): ${body.slice(0, 200)}`;
-          console.error(msg);
-          console.error('[insert] Failed transaction details:', {
+          log.error(msg);
+          log.error('[insert] Failed transaction details:', {
             vendor: tx.vendor,
             recurrence: tx.recurrence,
             budget_id: tx.budget_id
@@ -110,7 +111,7 @@ export const useTransactionOps = ({
           Array.isArray(data) ? data[0] : data,
         );
 
-        console.log('[insert] OK, id:', saved.id);
+        log.debug('[insert] OK, id:', saved.id);
         setAppState(prev => {
           const hasOptimistic = prev.transactions.some(t => t.id === tx.id);
           if (hasOptimistic) {
@@ -128,7 +129,7 @@ export const useTransactionOps = ({
         });
       } catch (err: any) {
         const msg = `Insert exception: ${err?.message || err}`;
-        console.error(msg);
+        log.error(msg);
         setDbError(msg);
         setAppState(prev => ({
           ...prev,
@@ -154,7 +155,7 @@ export const useTransactionOps = ({
 
       if (isProjectedEdit && !originalTx) {
         const msg = `[updateTransaction] Could not find source transaction for projected id ${updatedTx.id}`;
-        console.error(msg);
+        log.error(msg);
         setDbError(msg);
         return;
       }
@@ -175,7 +176,7 @@ export const useTransactionOps = ({
 
       try {
         const row = toSupabaseTransaction(txToPersist);
-        console.log(
+        log.debug(
           '[update] id:',
           txToPersist.id,
           'payload:',
@@ -188,7 +189,7 @@ export const useTransactionOps = ({
           { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify(row) },
         );
         const body = await res.text();
-        console.log(
+        log.debug(
           '[update] status:',
           res.status,
           'body:',
@@ -197,7 +198,7 @@ export const useTransactionOps = ({
 
         if (!res.ok) {
           const msg = `Update failed (${res.status}): ${body.slice(0, 200)}`;
-          console.error(msg);
+          log.error(msg);
           setDbError(msg);
           // Revert optimistic update
           if (originalTx) {
@@ -229,14 +230,14 @@ export const useTransactionOps = ({
             updatedRows = body ? JSON.parse(body) : [];
           } catch (parseErr) {
             const msg = `[updateTransaction] failed to parse response: ${body.slice(0, 200)}`;
-            console.error(msg);
+            log.error(msg);
             setDbError(msg);
             return;
           }
 
           if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
             const msg = `[updateTransaction] no rows updated for transaction ${txToPersist.id}`;
-            console.error(msg);
+            log.error(msg);
             setDbError(msg);
           }
 
@@ -268,15 +269,15 @@ export const useTransactionOps = ({
                 categoryName: budgetName,
                 ilikeFallbackName: originalVendorName,
               });
-              console.log('[update] override saved:', newVendorName, '→', budgetName, '(match_key:', vendorKey, ')');
+              log.debug('[update] override saved:', newVendorName, '→', budgetName, '(match_key:', vendorKey, ')');
             } catch (overrideErr: any) {
-              console.warn('[update] override save failed:', overrideErr?.message || overrideErr);
+              log.warn('[update] override save failed:', overrideErr?.message || overrideErr);
             }
           }
         }
       } catch (err: any) {
         const msg = `Update exception: ${err?.message || err}`;
-        console.error(msg);
+        log.error(msg);
         setDbError(msg);
       }
     },
@@ -302,7 +303,7 @@ export const useTransactionOps = ({
         if (!res.ok) {
           const body = await res.text();
           const msg = `Delete failed (${res.status}): ${body.slice(0, 200)}`;
-          console.error(msg);
+          log.error(msg);
           setDbError(msg);
           if (deletedTx) {
             setAppState(prev => ({
@@ -311,11 +312,11 @@ export const useTransactionOps = ({
             }));
           }
         } else {
-          console.log('[delete] OK:', id);
+          log.debug('[delete] OK:', id);
         }
       } catch (err: any) {
         const msg = `Delete exception: ${err?.message || err}`;
-        console.error(msg);
+        log.error(msg);
         setDbError(msg);
         if (deletedTx) {
           setAppState(prev => ({
@@ -367,7 +368,7 @@ export const useTransactionOps = ({
             pendingTransactions: (prev.pendingTransactions || []).filter(p => p.id !== pendingId),
           }));
 
-          console.log(`[approvePending] Duplicate skipped: ${dupResult.reason}`);
+          log.debug(`[approvePending] Duplicate skipped: ${dupResult.reason}`);
           return;
         }
 
@@ -398,7 +399,7 @@ export const useTransactionOps = ({
 
         if (!insertRes.ok) {
           const msg = `[approvePending] INSERT transaction failed (${insertRes.status}): ${insertBody.slice(0, 200)}`;
-          console.error(msg);
+          log.error(msg);
           setDbError(msg);
           return;
         }
@@ -409,13 +410,13 @@ export const useTransactionOps = ({
           savedRow = Array.isArray(parsed) ? parsed[0] : parsed;
         } catch {
           const msg = `[approvePending] failed to parse INSERT response: ${insertBody.slice(0, 200)}`;
-          console.error(msg);
+          log.error(msg);
           setDbError(msg);
           return;
         }
 
         const savedTransaction = { ...fromSupabaseTransaction(savedRow), label: 'Automatic' as const };
-        console.log('[approvePending] transaction inserted, id:', savedTransaction.id);
+        log.debug('[approvePending] transaction inserted, id:', savedTransaction.id);
 
         // Soft-dup warning: same vendor (after normalization) already
         // exists nearby but with a different amount. We let the new
@@ -424,7 +425,7 @@ export const useTransactionOps = ({
         // during review. A future UI pass can surface this as a badge on
         // the auto-entered card.
         if (dupResult.softDuplicateOfId) {
-          console.warn(
+          log.warn(
             `[approvePending] ⚠️ Soft-dup: new ${savedTransaction.vendor} $${savedTransaction.amount} ` +
             `looks similar to existing ${dupResult.softDuplicateVendor} $${dupResult.softDuplicateAmount} ` +
             `(${dupResult.softDuplicateOfId})`,
@@ -443,7 +444,7 @@ export const useTransactionOps = ({
 
         if (!patchRes.ok) {
           const body = await patchRes.text();
-          console.error(`[approvePending] PATCH pending failed (${patchRes.status}): ${body.slice(0, 200)}`);
+          log.error(`[approvePending] PATCH pending failed (${patchRes.status}): ${body.slice(0, 200)}`);
           // Transaction was created, so continue even if PATCH fails
         }
 
@@ -467,9 +468,9 @@ export const useTransactionOps = ({
             categoryName: approvedBudgetName,
             ilikeFallbackName: formatVendorName(pending.extracted_vendor),
           });
-          console.log('[approvePending] override saved for', vendorDisplay, '→', approvedBudgetName, '(match_key:', vendorKey, ')');
+          log.debug('[approvePending] override saved for', vendorDisplay, '→', approvedBudgetName, '(match_key:', vendorKey, ')');
         } catch (overrideErr: any) {
-          console.warn('[approvePending] override save failed:', overrideErr?.message || overrideErr);
+          log.warn('[approvePending] override save failed:', overrideErr?.message || overrideErr);
         }
 
         // 4) Update UI state: add transaction + remove from pending list
@@ -479,10 +480,10 @@ export const useTransactionOps = ({
           pendingTransactions: prev.pendingTransactions?.filter(p => p.id !== pendingId) || [],
         }));
 
-        console.log('[approvePending] OK, approved pending transaction', pendingId);
+        log.debug('[approvePending] OK, approved pending transaction', pendingId);
       } catch (err: any) {
         const msg = `Approve pending exception: ${err?.message || err}`;
-        console.error(msg);
+        log.error(msg);
         setDbError(msg);
       }
     },
@@ -507,7 +508,7 @@ export const useTransactionOps = ({
         if (!res.ok) {
           const body = await res.text();
           const msg = `[rejectPending] PATCH failed (${res.status}): ${body.slice(0, 200)}`;
-          console.error(msg);
+          log.error(msg);
           setDbError(msg);
           return;
         }
@@ -518,14 +519,14 @@ export const useTransactionOps = ({
           updatedRows = body ? JSON.parse(body) : [];
         } catch (parseErr) {
           const msg = `[rejectPending] failed to parse response: ${body.slice(0, 200)}`;
-          console.error(msg);
+          log.error(msg);
           setDbError(msg);
           return;
         }
         
         if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
           const msg = `[rejectPending] no rows updated for pending transaction ${pendingId}`;
-          console.error(msg);
+          log.error(msg);
           setDbError(msg);
           return;
         }
@@ -536,10 +537,10 @@ export const useTransactionOps = ({
           pendingTransactions: (prev.pendingTransactions || []).filter(p => p.id !== pendingId),
         }));
 
-        console.log('[rejectPending] OK, rejected pending transaction', pendingId);
+        log.debug('[rejectPending] OK, rejected pending transaction', pendingId);
       } catch (err: any) {
         const msg = `Reject pending exception: ${err?.message || err}`;
-        console.error(msg);
+        log.error(msg);
         setDbError(msg);
       }
     },
@@ -558,7 +559,7 @@ export const useTransactionOps = ({
         if (!res.ok) {
           const body = await res.text();
           const msg = `[clearFiltered] DELETE failed (${res.status}): ${body.slice(0, 200)}`;
-          console.error(msg);
+          log.error(msg);
           setDbError(msg);
           return;
         }
@@ -568,10 +569,10 @@ export const useTransactionOps = ({
           ...prev,
           pendingTransactions: (prev.pendingTransactions || []).filter(p => !idSet.has(p.id)),
         }));
-        console.log('[clearFiltered] OK, cleared', ids.length, 'filtered notifications');
+        log.debug('[clearFiltered] OK, cleared', ids.length, 'filtered notifications');
       } catch (err: any) {
         const msg = `Clear filtered exception: ${err?.message || err}`;
-        console.error(msg);
+        log.error(msg);
         setDbError(msg);
       }
     },
@@ -592,7 +593,7 @@ export const useTransactionOps = ({
         if (!res.ok) {
           const body = await res.text();
           const msg = `[clearApproved] PATCH failed (${res.status}): ${body.slice(0, 200)}`;
-          console.error(msg);
+          log.error(msg);
           setDbError(msg);
           return;
         }
@@ -605,10 +606,10 @@ export const useTransactionOps = ({
             idSet.has(t.id) ? { ...t, label: 'Manual' as const } : t,
           ),
         }));
-        console.log('[clearApproved] OK, cleared labels for', ids.length, 'approved transactions');
+        log.debug('[clearApproved] OK, cleared labels for', ids.length, 'approved transactions');
       } catch (err: any) {
         const msg = `Clear approved exception: ${err?.message || err}`;
-        console.error(msg);
+        log.error(msg);
         setDbError(msg);
       }
     },

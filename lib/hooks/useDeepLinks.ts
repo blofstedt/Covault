@@ -1,4 +1,5 @@
 // lib/useDeepLinks.ts
+import { log } from '../log';
 import { useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
@@ -12,7 +13,7 @@ import { supabase } from '../supabase';
  */
 const parseOAuthUrl = (url: string): { accessToken?: string; refreshToken?: string; code?: string } | null => {
   try {
-    console.log('[useDeepLinks] Parsing URL:', url);
+    log.debug('[useDeepLinks] Parsing URL:', url);
 
     // Check query parameters first for PKCE authorization code
     const hashIndex = url.indexOf('#');
@@ -25,7 +26,7 @@ const parseOAuthUrl = (url: string): { accessToken?: string; refreshToken?: stri
       // PKCE flow: look for authorization code
       const code = params.get('code');
       if (code) {
-        console.log('[useDeepLinks] Found PKCE authorization code in query params');
+        log.debug('[useDeepLinks] Found PKCE authorization code in query params');
         return { code };
       }
 
@@ -33,7 +34,7 @@ const parseOAuthUrl = (url: string): { accessToken?: string; refreshToken?: stri
       const accessToken = params.get('access_token');
       const refreshToken = params.get('refresh_token');
       if (accessToken && refreshToken) {
-        console.log('[useDeepLinks] Found tokens in query parameters');
+        log.debug('[useDeepLinks] Found tokens in query parameters');
         return { accessToken, refreshToken };
       }
     }
@@ -46,15 +47,15 @@ const parseOAuthUrl = (url: string): { accessToken?: string; refreshToken?: stri
       const refreshToken = params.get('refresh_token');
 
       if (accessToken && refreshToken) {
-        console.log('[useDeepLinks] Found tokens in hash fragment');
+        log.debug('[useDeepLinks] Found tokens in hash fragment');
         return { accessToken, refreshToken };
       }
     }
 
-    console.log('[useDeepLinks] No OAuth code or tokens found in URL');
+    log.debug('[useDeepLinks] No OAuth code or tokens found in URL');
     return null;
   } catch (error) {
-    console.error('[useDeepLinks] Error parsing OAuth URL:', error);
+    log.error('[useDeepLinks] Error parsing OAuth URL:', error);
     return null;
   }
 };
@@ -62,16 +63,16 @@ const parseOAuthUrl = (url: string): { accessToken?: string; refreshToken?: stri
 export const useDeepLinks = () => {
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) {
-      console.log('[useDeepLinks] Not on native platform, skipping deep link setup');
+      log.debug('[useDeepLinks] Not on native platform, skipping deep link setup');
       return;
     }
 
-    console.log('[useDeepLinks] Setting up deep link listener for Android OAuth');
+    log.debug('[useDeepLinks] Setting up deep link listener for Android OAuth');
 
     const handleAppUrlOpen = CapApp.addListener(
       'appUrlOpen',
       async ({ url }) => {
-        console.log('[useDeepLinks] Deep link received:', url);
+        log.debug('[useDeepLinks] Deep link received:', url);
 
         // Check if this is an OAuth callback
         if (
@@ -84,37 +85,37 @@ export const useDeepLinks = () => {
 
           if (parsed?.code) {
             // PKCE flow: exchange authorization code for session
-            console.log('[useDeepLinks] Exchanging PKCE code for session...');
+            log.debug('[useDeepLinks] Exchanging PKCE code for session...');
             try {
               const { data, error } = await supabase.auth.exchangeCodeForSession(parsed.code);
               if (error) {
-                console.error('[useDeepLinks] Error exchanging PKCE code:', error);
+                log.error('[useDeepLinks] Error exchanging PKCE code:', error);
               } else {
-                console.log('[useDeepLinks] ✅ Session set from PKCE code exchange');
-                console.log('[useDeepLinks] User:', data?.session?.user?.email);
+                log.debug('[useDeepLinks] ✅ Session set from PKCE code exchange');
+                log.debug('[useDeepLinks] User:', data?.session?.user?.email);
               }
             } catch (error) {
-              console.error('[useDeepLinks] Exception exchanging PKCE code:', error);
+              log.error('[useDeepLinks] Exception exchanging PKCE code:', error);
             }
           } else if (parsed?.accessToken && parsed?.refreshToken) {
             // Implicit flow: set session directly from tokens
-            console.log('[useDeepLinks] Setting session from tokens...');
+            log.debug('[useDeepLinks] Setting session from tokens...');
             try {
               const { data, error } = await supabase.auth.setSession({
                 access_token: parsed.accessToken,
                 refresh_token: parsed.refreshToken,
               });
               if (error) {
-                console.error('[useDeepLinks] Error setting session from tokens:', error);
+                log.error('[useDeepLinks] Error setting session from tokens:', error);
               } else {
-                console.log('[useDeepLinks] ✅ Session set from tokens');
-                console.log('[useDeepLinks] User:', data?.session?.user?.email);
+                log.debug('[useDeepLinks] ✅ Session set from tokens');
+                log.debug('[useDeepLinks] User:', data?.session?.user?.email);
               }
             } catch (error) {
-              console.error('[useDeepLinks] Exception setting session:', error);
+              log.error('[useDeepLinks] Exception setting session:', error);
             }
           } else {
-            console.warn('[useDeepLinks] OAuth callback received but no code or tokens found');
+            log.warn('[useDeepLinks] OAuth callback received but no code or tokens found');
           }
 
           // Close the in-app browser that was opened for OAuth
@@ -124,13 +125,13 @@ export const useDeepLinks = () => {
             // Browser may already be closed
           }
         } else {
-          console.log('[useDeepLinks] Deep link is not an OAuth callback, ignoring');
+          log.debug('[useDeepLinks] Deep link is not an OAuth callback, ignoring');
         }
       },
     );
 
     return () => {
-      console.log('[useDeepLinks] Cleaning up deep link listener');
+      log.debug('[useDeepLinks] Cleaning up deep link listener');
       handleAppUrlOpen.then(h => h.remove()).catch(() => {});
     };
   }, []);

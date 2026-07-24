@@ -11,6 +11,7 @@
 //   6. Category assignment: vendor_overrides first, then AI guess
 //   7. Insert into transactions table with 'AI' label
 
+import { log } from './log';
 import { supabase } from './supabase';
 import { formatVendorName, fuzzyVendorMatch, normalizeVendorForDedup } from './formatVendorName';
 import { parseNotificationText } from './deviceTransactionParser';
@@ -228,7 +229,7 @@ async function checkAlreadyProcessed(
         const exactMatch = normalizeVendorForDedup(tx.vendor) === normalizedVendor;
         const fuzzyMatch = fuzzyVendorMatch(tx.vendor, vendor);
         if (exactMatch || fuzzyMatch) {
-          console.log(`[dedup] Duplicate found in transactions: ${tx.vendor} $${tx.amount} (fuzzy=${fuzzyMatch})`);
+          log.debug(`[dedup] Duplicate found in transactions: ${tx.vendor} $${tx.amount} (fuzzy=${fuzzyMatch})`);
           return true;
         }
       }
@@ -250,7 +251,7 @@ async function checkAlreadyProcessed(
     for (const pt of ptRows) {
       if (Math.abs(Number(pt.extracted_amount) - amount) < AMOUNT_TOLERANCE) {
         if (normalizeVendorForDedup(pt.extracted_vendor) === normalizedVendor) {
-          console.log(`[dedup] Duplicate found in pending_transactions: ${pt.extracted_vendor} $${pt.extracted_amount}`);
+          log.debug(`[dedup] Duplicate found in pending_transactions: ${pt.extracted_vendor} $${pt.extracted_amount}`);
           return true;
         }
       }
@@ -457,14 +458,14 @@ export async function deduplicatePendingTransactions(
 
   // Delete duplicates from the database
   if (idsToDelete.length > 0) {
-    console.log(`[dedup] Removing ${idsToDelete.length} duplicate pending transaction(s)`);
+    log.debug(`[dedup] Removing ${idsToDelete.length} duplicate pending transaction(s)`);
     const { error } = await supabase
       .from('pending_transactions')
       .delete()
       .in('id', idsToDelete);
 
     if (error) {
-      console.error('[dedup] Error deleting duplicates:', error);
+      log.error('[dedup] Error deleting duplicates:', error);
       // Even on error, still return the deduplicated list for the UI
     }
   }
@@ -554,7 +555,7 @@ export async function checkDuplicateTransaction(
     .lte('date', windowEnd);
 
   if (error) {
-    console.error('[checkDuplicate] Error fetching transactions:', error);
+    log.error('[checkDuplicate] Error fetching transactions:', error);
     return { isDuplicate: false };
   }
 
@@ -588,7 +589,7 @@ export async function checkDuplicateTransaction(
   });
 
   if (exactSameDay) {
-    console.log(`[checkDuplicate] Hard skip: same-day same-amount match ${exactSameDay.vendor} $${exactSameDay.amount} (${exactSameDay.date})`);
+    log.debug(`[checkDuplicate] Hard skip: same-day same-amount match ${exactSameDay.vendor} $${exactSameDay.amount} (${exactSameDay.date})`);
     return {
       isDuplicate: true,
       reason: 'Same notification reprocessed on the same day',
@@ -604,7 +605,7 @@ export async function checkDuplicateTransaction(
     return Math.abs(Number(a.amount) - amount) - Math.abs(Number(b.amount) - amount);
   })[0];
 
-  console.log(`[checkDuplicate] Soft-dup: similar ${closest.vendor} $${closest.amount} (${closest.date}, source=${closest.source || 'unknown'}) but new charge is $${amount}`);
+  log.debug(`[checkDuplicate] Soft-dup: similar ${closest.vendor} $${closest.amount} (${closest.date}, source=${closest.source || 'unknown'}) but new charge is $${amount}`);
   return {
     isDuplicate: false,
     softDuplicateOfId: closest.id,
@@ -706,7 +707,7 @@ export async function processNotificationWithAI(
   // the TTL cache check below, otherwise the second caller still
   // participates in the work and we double-insert.
   if (!input.forceReprocess && inFlightProcessingKeys.has(inMemoryKey)) {
-    console.log('[AI pipeline] In-flight dedup hit, skipping duplicate invocation');
+    log.debug('[AI pipeline] In-flight dedup hit, skipping duplicate invocation');
     return {
       processed: false,
       isTransaction: false,
@@ -757,7 +758,7 @@ async function processNotificationWithAIImpl(
   // multiple times during a scan or rapid re-broadcast.
   evictExpiredCacheEntries();
   if (!input.forceReprocess && recentlyProcessedCache.has(inMemoryKey)) {
-    console.log('[AI pipeline] In-memory dedup hit, skipping');
+    log.debug('[AI pipeline] In-memory dedup hit, skipping');
     return {
       processed: false,
       isTransaction: false,
@@ -774,7 +775,7 @@ async function processNotificationWithAIImpl(
   if (!input.forceReprocess) {
     const matchedRule = await checkNotificationRules(userId, input.rawNotification);
     if (matchedRule) {
-      console.log(`[AI pipeline] Skipped by user rule #${matchedRule.id} (${matchedRule.pattern_type}: "${matchedRule.pattern.slice(0, 50)}...")`);
+      log.debug(`[AI pipeline] Skipped by user rule #${matchedRule.id} (${matchedRule.pattern_type}: "${matchedRule.pattern.slice(0, 50)}...")`);
       // Best-effort: bump the count without blocking the result
       void bumpRuleUseCount(matchedRule.id);
       recentlyProcessedCache.set(inMemoryKey, Date.now());
@@ -798,7 +799,7 @@ async function processNotificationWithAIImpl(
   // in-memory TTL cache so rescans can retry recently-rejected notifications,
   // but a notification that was successfully inserted must never be re-inserted.
   if (isNotificationProcessed(inMemoryKey)) {
-    console.log('[AI pipeline] Persistent dedup hit, skipping');
+    log.debug('[AI pipeline] Persistent dedup hit, skipping');
     // Warm the in-memory cache so subsequent checks in this session are fast
     recentlyProcessedCache.set(inMemoryKey, Date.now());
     return {
@@ -825,7 +826,7 @@ async function processNotificationWithAIImpl(
   );
 
   if (isDuplicate) {
-    console.log('[AI pipeline] Duplicate detected, skipping');
+    log.debug('[AI pipeline] Duplicate detected, skipping');
     // Also add to in-memory cache to prevent re-processing
     recentlyProcessedCache.set(inMemoryKey, Date.now());
     return {
@@ -868,7 +869,7 @@ async function processNotificationWithAIImpl(
     // Check the cache first — same notification text is never re-inferred
     const cached = getCachedAIResult(input.rawNotification);
     if (cached) {
-      console.log(`[AI fallback] cache hit for "${input.rawNotification.slice(0, 40)}..."`);
+      log.debug(`[AI fallback] cache hit for "${input.rawNotification.slice(0, 40)}..."`);
       aiResult = cached;
     } else {
       try {
@@ -887,13 +888,13 @@ async function processNotificationWithAIImpl(
         // AI failed to load (network, WASM not supported, etc.) — fall
         // through and use the regex result anyway. Better a slightly-wrong
         // extraction than no extraction at all.
-        console.warn('[AI fallback] failed, using regex result:', err);
+        log.warn('[AI fallback] failed, using regex result:', err);
         aiResult = null;
       }
     }
     if (aiResult) {
       if (aiResult.isTransaction && aiResult.vendor && aiResult.amount) {
-        console.log(
+        log.debug(
           `[AI fallback] parser=${parserConfidence.toFixed(2)} → using AI: ` +
           `${aiResult.vendor} $${aiResult.amount}` +
           (parsed.confidenceReasons ? ` (reasons: ${parsed.confidenceReasons.join(', ')})` : ''),
@@ -909,7 +910,7 @@ async function processNotificationWithAIImpl(
         };
       } else if (aiResult.rejectionReason) {
         // The AI thinks this isn't a transaction. Trust it over the regex.
-        console.log(`[AI fallback] parser=${parserConfidence.toFixed(2)} → AI rejected: ${aiResult.rejectionReason}`);
+        log.debug(`[AI fallback] parser=${parserConfidence.toFixed(2)} → AI rejected: ${aiResult.rejectionReason}`);
         recentlyProcessedCache.set(inMemoryKey, Date.now());
         markNotificationProcessed(inMemoryKey);
         return {
@@ -928,7 +929,7 @@ async function processNotificationWithAIImpl(
   // ── Step 2c: Confidence gating ──
   // If AI is uncertain, route to pending review instead of auto-inserting
   if (aiResult && aiResult.isTransaction && (aiResult.confidence ?? 1) < 0.75) {
-    console.log(`[AI pipeline] Low confidence (${aiResult.confidenceLabel}, ${(aiResult.confidence ?? 0).toFixed(2)}) — routing to review queue`);
+    log.debug(`[AI pipeline] Low confidence (${aiResult.confidenceLabel}, ${(aiResult.confidence ?? 0).toFixed(2)}) — routing to review queue`);
     const pendingId = crypto.randomUUID();
     await supabase.from('pending_transactions').insert({
       id: pendingId,
@@ -1016,7 +1017,7 @@ async function processNotificationWithAIImpl(
         if (aiMatchId) {
           match = mapped.find((c: any) => c.id === aiMatchId) || null;
           if (match) {
-            console.log(`[AI pipeline] Refund matched via AI: ${match.vendor} $${match.amount}`);
+            log.debug(`[AI pipeline] Refund matched via AI: ${match.vendor} $${match.amount}`);
           }
         }
       }
@@ -1026,9 +1027,9 @@ async function processNotificationWithAIImpl(
           .update({ refunded: true })
           .eq('id', match.id);
         if (refundUpdateError) {
-          console.error('[AI pipeline] Failed to mark expense refunded:', refundUpdateError);
+          log.error('[AI pipeline] Failed to mark expense refunded:', refundUpdateError);
         } else {
-          console.log(
+          log.debug(
             `[AI pipeline] Refund matched: struck through ${match.vendor} $${match.amount} (${match.date})`,
           );
           recentlyProcessedCache.set(inMemoryKey, Date.now());
@@ -1051,7 +1052,7 @@ async function processNotificationWithAIImpl(
         // Fall through to the regular insert path if the update failed
         // (rare; the user will see the refund twice but it won't block).
       } else {
-        console.log(
+        log.debug(
           `[AI pipeline] Refund ${vendor} $${rawAmount} has no matching expense in ${REFUND_MATCH_WINDOW_DAYS}-day window; skipping`,
         );
         recentlyProcessedCache.set(inMemoryKey, Date.now());
@@ -1067,7 +1068,7 @@ async function processNotificationWithAIImpl(
         };
       }
     } else {
-      console.log(
+      log.debug(
         `[AI pipeline] Refund ${vendor} $${rawAmount} has no candidate expenses; skipping`,
       );
       recentlyProcessedCache.set(inMemoryKey, Date.now());
@@ -1087,7 +1088,7 @@ async function processNotificationWithAIImpl(
   // ── Step 3b: Reject if no vendor could be identified ──
   if (!vendor) {
     const reason = 'No vendor name found in notification';
-    console.log('[AI pipeline] Skipped: no vendor identified');
+    log.debug('[AI pipeline] Skipped: no vendor identified');
     recentlyProcessedCache.set(inMemoryKey, Date.now());
     markNotificationProcessed(inMemoryKey);
     return {
@@ -1128,7 +1129,7 @@ async function processNotificationWithAIImpl(
       // True re-broadcast of the same notification — hard skip. The
       // in-memory cache above should catch this first, but we keep this
       // as a belt-and-suspenders.
-      console.log(`[AI pipeline] Hard skip: same-day same-amount match ${sameDaySameAmount.vendor} $${sameDaySameAmount.amount} (${sameDaySameAmount.date})`);
+      log.debug(`[AI pipeline] Hard skip: same-day same-amount match ${sameDaySameAmount.vendor} $${sameDaySameAmount.amount} (${sameDaySameAmount.date})`);
       recentlyProcessedCache.set(inMemoryKey, Date.now());
       markNotificationProcessed(inMemoryKey);
       return {
@@ -1151,7 +1152,7 @@ async function processNotificationWithAIImpl(
       const closest = sameAmount || allMatches.sort((a, b) =>
         Math.abs(Number(a.amount) - amount) - Math.abs(Number(b.amount) - amount)
       )[0];
-      console.log(`[AI pipeline] Soft-dup: similar ${closest.vendor} $${closest.amount} on ${closest.date} (source=${closest.source || 'unknown'}), but new charge is $${amount.toFixed(2)}`);
+      log.debug(`[AI pipeline] Soft-dup: similar ${closest.vendor} $${closest.amount} on ${closest.date} (source=${closest.source || 'unknown'}), but new charge is $${amount.toFixed(2)}`);
       softDupMatch = {
         id: closest.id,
         vendor: closest.vendor,
@@ -1228,7 +1229,7 @@ async function processNotificationWithAIImpl(
         if (row.proper_name) {
           displayVendor = row.proper_name;
         }
-        console.log(`[AI pipeline] overrides match: ${vendor} → ${categoryName} (match_type=${row.match_type || 'exact'})`);
+        log.debug(`[AI pipeline] overrides match: ${vendor} → ${categoryName} (match_type=${row.match_type || 'exact'})`);
       }
     }
   }
@@ -1265,7 +1266,7 @@ async function processNotificationWithAIImpl(
       }
       if (bestKey) {
         vendorMapEntry = allEntries[bestKey];
-        console.log(`[AI pipeline] vendorMap fuzzy match: "${parsed.vendorDisplay}" → "${vendorMapEntry.vendor_display}" (key=${bestKey})`);
+        log.debug(`[AI pipeline] vendorMap fuzzy match: "${parsed.vendorDisplay}" → "${vendorMapEntry.vendor_display}" (key=${bestKey})`);
       }
     }
 
@@ -1291,7 +1292,7 @@ async function processNotificationWithAIImpl(
       if (matched) {
         categoryId = matched.id;
         categoryName = matched.name;
-        console.log(`[AI pipeline] AI suggested category: ${categoryName}`);
+        log.debug(`[AI pipeline] AI suggested category: ${categoryName}`);
       }
     }
 
@@ -1306,12 +1307,12 @@ async function processNotificationWithAIImpl(
         categoryId = availableCategories[0].id;
         categoryName = availableCategories[0].name;
       }
-      console.log(`[AI pipeline] Fallback category: ${categoryName}`);
+      log.debug(`[AI pipeline] Fallback category: ${categoryName}`);
     }
   }
 
   if (!categoryId) {
-    console.error('[AI pipeline] No category available for transaction');
+    log.error('[AI pipeline] No category available for transaction');
     return {
       processed: true,
       isTransaction: true,
@@ -1338,7 +1339,7 @@ async function processNotificationWithAIImpl(
     if (history && history.length >= 2) {
       const detected = await aiDetectRecurring(vendor, history, amount);
       recurrence = detected.toLowerCase();
-      console.log(`[AI pipeline] Recurring detection: ${detected}`);
+      log.debug(`[AI pipeline] Recurring detection: ${detected}`);
     }
   }
   if (recurrence === 'monthly' || recurrence === 'biweekly') {
@@ -1365,7 +1366,7 @@ async function processNotificationWithAIImpl(
         // through — the user said they'd rather see both rows. The UI
         // gets the soft-dup info via the `softDuplicateOf` field on the
         // returned result.
-        console.log(`[AI pipeline] Recurring soft-dup: existing tx ${tx.id} (${tx.vendor} $${tx.amount} on ${tx.date}, source=${tx.source || 'unknown'}) matches the new charge`);
+        log.debug(`[AI pipeline] Recurring soft-dup: existing tx ${tx.id} (${tx.vendor} $${tx.amount} on ${tx.date}, source=${tx.source || 'unknown'}) matches the new charge`);
         if (!softDupMatch) {
           softDupMatch = {
             id: tx.id,
@@ -1406,7 +1407,7 @@ async function processNotificationWithAIImpl(
     });
 
   if (txError) {
-    console.error('[AI pipeline] Error inserting transaction:', txError);
+    log.error('[AI pipeline] Error inserting transaction:', txError);
     return {
       processed: true,
       isTransaction: true,
@@ -1454,7 +1455,7 @@ async function processNotificationWithAIImpl(
       (row) => normalizeVendorForDedup(row.vendor) === normalizedOur,
     );
     if (race) {
-      console.warn(
+      log.warn(
         `[AI pipeline] ⚠️ Race-recovery: rolling back our insert of ${finalVendorName} $${amount} ` +
         `(${transactionId}) — duplicate of ${race.id} (${race.vendor} $${race.amount}, created ${race.created_at})`,
       );
@@ -1463,7 +1464,7 @@ async function processNotificationWithAIImpl(
         .delete()
         .eq('id', transactionId);
       if (rollbackError) {
-        console.error('[AI pipeline] Race-recovery rollback failed:', rollbackError);
+        log.error('[AI pipeline] Race-recovery rollback failed:', rollbackError);
         // We couldn't roll back, so the user will see both rows. Log
         // loudly so we know to investigate.
       }
@@ -1490,7 +1491,7 @@ async function processNotificationWithAIImpl(
     }
   }
 
-  console.log(`[AI pipeline] Transaction saved: ${finalVendorName} $${amount} → ${categoryName}`);
+  log.debug(`[AI pipeline] Transaction saved: ${finalVendorName} $${amount} → ${categoryName}`);
   addToReviewQueue(transactionId);
 
   // Persist to localStorage so this notification is never re-processed

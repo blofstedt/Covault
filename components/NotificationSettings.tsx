@@ -1,3 +1,4 @@
+import { log } from '../lib/log';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import SettingsCard from './ui/SettingsCard';
@@ -68,7 +69,7 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
         }
       }
     } catch (e) {
-      console.warn('[NotificationSettings] checkStatus error:', e);
+      log.warn('[NotificationSettings] checkStatus error:', e);
     } finally {
       setLoading(false);
     }
@@ -126,7 +127,7 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
       // Poll for permission after user returns from settings
       pollForPermission();
     } catch (e) {
-      console.error('[NotificationSettings] handleToggle error:', e);
+      log.error('[NotificationSettings] handleToggle error:', e);
     }
   };
 
@@ -144,7 +145,7 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
       try {
         await plugin.saveMonitoredApps({ apps: Array.from(next) });
       } catch (e) {
-        console.warn('[NotificationSettings] save error:', e);
+        log.warn('[NotificationSettings] save error:', e);
       }
     }
   };
@@ -153,14 +154,14 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
     const all = new Set(installedBankApps.map(a => a.packageName));
     setSelectedApps(all);
     if (plugin) {
-      try { await plugin.saveMonitoredApps({ apps: Array.from(all) }); } catch (e) { console.warn('[NotificationSettings] save error:', e); }
+      try { await plugin.saveMonitoredApps({ apps: Array.from(all) }); } catch (e) { log.warn('[NotificationSettings] save error:', e); }
     }
   };
 
   const selectNone = async () => {
     setSelectedApps(new Set());
     if (plugin) {
-      try { await plugin.saveMonitoredApps({ apps: [] }); } catch (e) { console.warn('[NotificationSettings] save error:', e); }
+      try { await plugin.saveMonitoredApps({ apps: [] }); } catch (e) { log.warn('[NotificationSettings] save error:', e); }
     }
   };
 

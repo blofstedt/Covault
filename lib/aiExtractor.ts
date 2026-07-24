@@ -12,6 +12,7 @@
 // semantic vendor matching, recurring detection, refund pairing,
 // rejection explanations, and smart match-pattern suggestions.
 
+import { log } from './log';
 import { pipeline, type Text2TextGenerationPipeline } from '@huggingface/transformers';
 import { formatVendorName } from './formatVendorName';
 
@@ -46,14 +47,14 @@ let generatorPromise: Promise<Text2TextGenerationPipeline> | null = null;
 
 function getGenerator(): Promise<Text2TextGenerationPipeline> {
   if (!generatorPromise) {
-    console.log('[aiExtractor] Loading AI model:', MODEL_ID);
+    log.debug('[aiExtractor] Loading AI model:', MODEL_ID);
     generatorPromise = pipeline('text2text-generation', MODEL_ID, {
       device: 'wasm',
     }).then(gen => {
-      console.log('[aiExtractor] AI model loaded successfully');
+      log.debug('[aiExtractor] AI model loaded successfully');
       return gen;
     }).catch(err => {
-      console.error('[aiExtractor] Failed to load AI model:', err);
+      log.error('[aiExtractor] Failed to load AI model:', err);
       generatorPromise = null;
       throw err;
     });

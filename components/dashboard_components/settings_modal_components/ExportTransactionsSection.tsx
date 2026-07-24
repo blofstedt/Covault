@@ -1,3 +1,4 @@
+import { log } from '../../../lib/log';
 import React, { useState, useMemo } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
@@ -98,7 +99,7 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
       } catch (docErr) {
         // Directory.Documents may not be available on all devices – fall
         // back to writing to Cache and opening the system share sheet.
-        console.warn('[ExportCSV] Documents write failed, falling back to share:', docErr);
+        log.warn('[ExportCSV] Documents write failed, falling back to share:', docErr);
         try {
           await Filesystem.writeFile({
             path: fileName,
@@ -119,7 +120,7 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
           });
         } catch (shareErr) {
           // User cancelled share or an unexpected error
-          console.warn('[ExportCSV] Share fallback failed:', shareErr);
+          log.warn('[ExportCSV] Share fallback failed:', shareErr);
         }
       }
       setExported(true);

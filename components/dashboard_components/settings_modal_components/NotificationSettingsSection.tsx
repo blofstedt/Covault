@@ -1,4 +1,5 @@
 // components/dashboard_components/settings_modal_components/NotificationSettingsSection.tsx
+import { log } from '../../../lib/log';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import SettingsCard from '../../ui/SettingsCard';
@@ -76,7 +77,7 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
         setSelectedApps(new Set());
       }
     } catch (e) {
-      console.warn('[NotificationSettingsSection] checkStatus error:', e);
+      log.warn('[NotificationSettingsSection] checkStatus error:', e);
     } finally {
       setLoading(false);
     }
@@ -139,7 +140,7 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
       await plugin.requestAccess();
       pollForPermission();
     } catch (e) {
-      console.error('[NotificationSettingsSection] handleToggle error:', e);
+      log.error('[NotificationSettingsSection] handleToggle error:', e);
     }
   };
 
@@ -156,7 +157,7 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
       try {
         await plugin.saveMonitoredApps({ apps: Array.from(next) });
       } catch (e) {
-        console.warn('[NotificationSettingsSection] save error:', e);
+        log.warn('[NotificationSettingsSection] save error:', e);
       }
     }
   };

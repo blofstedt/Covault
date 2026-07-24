@@ -1,4 +1,5 @@
 // lib/covaultNotification.ts
+import { log } from './log';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 
 export interface TransactionDetectedEvent {
@@ -107,7 +108,7 @@ export async function autoDetectAndSaveMonitoredApps(
       .map(app => app.packageName);
 
     if (bankingPackages.length === 0) {
-      console.log('[autoDetect] No known banking apps found installed');
+      log.debug('[autoDetect] No known banking apps found installed');
       return;
     }
 
@@ -124,11 +125,11 @@ export async function autoDetectAndSaveMonitoredApps(
 
     if (changed) {
       await covaultNotification.saveMonitoredApps({ apps: Array.from(savedSet) });
-      console.log(
+      log.debug(
         `[autoDetect] Saved ${savedSet.size} monitored banking apps (${bankingPackages.length} installed)`,
       );
     }
   } catch (e) {
-    console.warn('[autoDetect] Error during banking app auto-detection:', e);
+    log.warn('[autoDetect] Error during banking app auto-detection:', e);
   }
 }

@@ -1,3 +1,4 @@
+import { log } from '../../../lib/log';
 import React, { useState, useMemo } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
@@ -189,7 +190,7 @@ const ReportSection: React.FC<ReportSectionProps> = ({
           dialogTitle: 'Share your budget report',
         });
       } catch (err) {
-        console.warn('[ReportSection] Share failed:', err);
+        log.warn('[ReportSection] Share failed:', err);
         return;
       }
 

@@ -3,6 +3,7 @@
 // Piggybacks on app open / notification listener events.
 // Uses localStorage to avoid re-processing the same day.
 
+import { log } from './log';
 import { getLocalToday, toLocalIsoDay } from './dateUtils';
 import { restFetch } from './apiHelpers';
 import { stepForward } from './recurrence';
@@ -197,7 +198,7 @@ export async function executeRecurringTransactions(
         );
       }
     } catch (err: any) {
-      console.warn('[recurringExecutor] DB dedup check failed:', err?.message || err);
+      log.warn('[recurringExecutor] DB dedup check failed:', err?.message || err);
       // If the check fails, fall through and insert anyway — a duplicate
       // is better than missing a charge. The user can clean up manually.
     }
@@ -207,14 +208,14 @@ export async function executeRecurringTransactions(
     const day = row.date.slice(8, 10);
     const key = `${row.vendor.toLowerCase().trim()}|${Number(row.amount).toFixed(2)}|${day}`;
     if (dbExistingKeys.has(key)) {
-      console.log(`[recurringExecutor] Skipping ${row.vendor} $${row.amount} on ${row.date} — already in DB`);
+      log.debug(`[recurringExecutor] Skipping ${row.vendor} $${row.amount} on ${row.date} — already in DB`);
       return false;
     }
     return true;
   });
 
   if (filtered.length === 0) {
-    console.log('[recurringExecutor] All candidates were DB duplicates; nothing to insert');
+    log.debug('[recurringExecutor] All candidates were DB duplicates; nothing to insert');
     localStorage.setItem(LAST_RUN_KEY, today);
     return [];
   }
@@ -231,12 +232,12 @@ export async function executeRecurringTransactions(
     });
     const body = await res.text();
     if (!res.ok) {
-      console.error('[recurringExecutor] insert failed:', res.status, body.slice(0, 200));
+      log.error('[recurringExecutor] insert failed:', res.status, body.slice(0, 200));
       return [];
     }
     data = JSON.parse(body);
   } catch (err: any) {
-    console.error('[recurringExecutor] insert error:', err?.message || err);
+    log.error('[recurringExecutor] insert error:', err?.message || err);
     return [];
   }
 

@@ -14,6 +14,7 @@
 //   - exact   : the raw notification text must equal the pattern.
 //   - contains: the raw notification text must contain the pattern as a substring.
 
+import { log } from './log';
 import { restFetch } from './apiHelpers';
 
 export type PatternType = 'exact' | 'contains';
@@ -58,7 +59,7 @@ export async function checkNotificationRules(
     }
     return null;
   } catch (err) {
-    console.warn('[notificationRules] check failed:', err);
+    log.warn('[notificationRules] check failed:', err);
     return null;
   }
 }
@@ -106,7 +107,7 @@ export async function bumpRuleUseCount(ruleId: string): Promise<void> {
     );
   } catch (err) {
     // Non-fatal: the rule still works, we just lose the count update.
-    console.warn('[notificationRules] bumpUseCount failed:', err);
+    log.warn('[notificationRules] bumpUseCount failed:', err);
   }
 }
 
@@ -141,13 +142,13 @@ export async function createNotificationRule(
       body: JSON.stringify(body),
     });
     if (!res.ok) {
-      console.error('[notificationRules] create failed:', res.status, await res.text());
+      log.error('[notificationRules] create failed:', res.status, await res.text());
       return null;
     }
     const rows: NotificationRule[] = await res.json();
     return rows[0] || null;
   } catch (err) {
-    console.error('[notificationRules] create exception:', err);
+    log.error('[notificationRules] create exception:', err);
     return null;
   }
 }

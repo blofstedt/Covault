@@ -1,3 +1,4 @@
+import { log } from './log';
 import { formatVendorName } from './formatVendorName';
 
 const STOP_PHRASES = [
@@ -494,7 +495,7 @@ export function parseNotificationText(text: string): ParsedNotification {
   // The pipeline will fall back to the on-device AI to re-extract; if the
   // AI also fails, this is rejected below with a clear reason.
   if (isCommonNounOnly(vendorDisplay) || vendorDisplay === 'Unknown') {
-    console.warn(
+    log.warn(
       `[parser] Common-noun vendor rejected: "${vendorDisplay}" from text "${t.slice(0, 80)}..."`,
     );
     return {

@@ -1,4 +1,5 @@
 // lib/hooks/useDataLoading.ts
+import { log } from '../log';
 import { useCallback, useRef, useState } from 'react';
 import { SYSTEM_CATEGORIES } from '../../constants';
 import type { BudgetCategory, Transaction, PendingTransaction } from '../../types';
@@ -80,12 +81,12 @@ export const useDataLoading = ({
 
         if (!res.ok) {
           const body = await res.text();
-          console.error('[ensureDefaultBudgets] insert failed:', body.slice(0, 200));
+          log.error('[ensureDefaultBudgets] insert failed:', body.slice(0, 200));
         } else {
-          console.log('[ensureDefaultBudgets] inserted', missing.length, 'default budgets');
+          log.debug('[ensureDefaultBudgets] inserted', missing.length, 'default budgets');
         }
       } catch (err: any) {
-        console.error('[ensureDefaultBudgets] exception:', err?.message || err);
+        log.error('[ensureDefaultBudgets] exception:', err?.message || err);
       }
     },
     [],
@@ -111,12 +112,12 @@ export const useDataLoading = ({
 
         if (!res.ok) {
           if (res.status === 404 && body.includes('Could not find the table')) {
-            console.log('[loadUserBudgets] budgets table not found - using defaults');
+            log.debug('[loadUserBudgets] budgets table not found - using defaults');
             setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
             setCategoriesLoaded(true);
             return;
           }
-          console.error('[loadUserBudgets] failed:', body.slice(0, 200));
+          log.error('[loadUserBudgets] failed:', body.slice(0, 200));
           setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
           setCategoriesLoaded(true);
           return;
@@ -178,10 +179,10 @@ export const useDataLoading = ({
           },
         }));
 
-        console.log('[loadUserBudgets] loaded:', budgets.map(b => ({ id: b.id, name: b.name, limit: b.totalLimit })));
+        log.debug('[loadUserBudgets] loaded:', budgets.map(b => ({ id: b.id, name: b.name, limit: b.totalLimit })));
         setCategoriesLoaded(true);
       } catch (err: any) {
-        console.error('[loadUserBudgets] exception:', err?.message || err);
+        log.error('[loadUserBudgets] exception:', err?.message || err);
         setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
         setCategoriesLoaded(true);
       }
@@ -199,7 +200,7 @@ export const useDataLoading = ({
         );
         
         if (!res.ok) {
-          console.error('[loadUserSettings] failed:', res.status);
+          log.error('[loadUserSettings] failed:', res.status);
           return;
         }
         
@@ -252,17 +253,17 @@ export const useDataLoading = ({
             },
           }));
 
-          console.log(
+          log.debug(
             shouldUseDefault
               ? '[loadUserSettings] monthly_income missing, using default:'
               : '[loadUserSettings] loaded monthly_income:',
             monthlyIncome,
           );
-          console.log('[loadUserSettings] loaded theme:', theme);
+          log.debug('[loadUserSettings] loaded theme:', theme);
         } else {
           // No settings row exists (shouldn't happen with trigger, but handle it)
           // Use default value only in this case
-          console.log('[loadUserSettings] no settings row found, using default:', DEFAULT_MONTHLY_INCOME);
+          log.debug('[loadUserSettings] no settings row found, using default:', DEFAULT_MONTHLY_INCOME);
           setAppState(prev => ({
             ...prev,
             user: prev.user
@@ -271,7 +272,7 @@ export const useDataLoading = ({
           }));
         }
       } catch (err: any) {
-        console.error('[loadUserSettings] exception:', err?.message || err);
+        log.error('[loadUserSettings] exception:', err?.message || err);
       }
     },
     [setAppState],
@@ -286,7 +287,7 @@ export const useDataLoading = ({
           `/transactions?select=*&user_id=eq.${userId}&order=date.desc`,
         );
         const body = await res.text();
-        console.log(
+        log.debug(
           '[loadTransactions] status:',
           res.status,
           'body:',
@@ -298,7 +299,7 @@ export const useDataLoading = ({
             0,
             200,
           )}`;
-          console.error(msg);
+          log.error(msg);
           setDbError(msg);
           return;
         }
@@ -310,11 +311,11 @@ export const useDataLoading = ({
             try {
               transactions.push(fromSupabaseTransaction(row));
             } catch (mapErr: any) {
-              console.warn('[loadTransactions] Skipping invalid row:', row?.id, mapErr?.message);
+              log.warn('[loadTransactions] Skipping invalid row:', row?.id, mapErr?.message);
             }
           }
 
-          console.log('[loadTransactions] OK, count:', transactions.length);
+          log.debug('[loadTransactions] OK, count:', transactions.length);
           setAppState(prev => {
             const mergedTransactions = merge
               ? mergeTransactions(prev.transactions, transactions)
@@ -323,7 +324,7 @@ export const useDataLoading = ({
             return { ...prev, transactions: mergedTransactions };
           });
         } else {
-          console.log('[loadTransactions] no transactions found');
+          log.debug('[loadTransactions] no transactions found');
           if (!merge) {
             transactionsRef.current = [];
             setAppState(prev => ({ ...prev, transactions: [] }));
@@ -331,7 +332,7 @@ export const useDataLoading = ({
         }
       } catch (err: any) {
         const msg = `Load transactions exception: ${err?.message || err}`;
-        console.error(msg);
+        log.error(msg);
         setDbError(msg);
       }
     },
@@ -350,11 +351,11 @@ export const useDataLoading = ({
           // Check if table doesn't exist (expected during initial setup)
           const body = await res.text();
           if (res.status === 404 && body.includes('Could not find the table')) {
-            console.log('[loadPendingTransactions] table not found - using defaults (run schema.sql to create tables)');
+            log.debug('[loadPendingTransactions] table not found - using defaults (run schema.sql to create tables)');
             setAppState(prev => ({ ...prev, pendingTransactions: [] }));
             return;
           }
-          console.log('[loadPendingTransactions] failed or no pending transactions');
+          log.debug('[loadPendingTransactions] failed or no pending transactions');
           return;
         }
 
@@ -362,14 +363,14 @@ export const useDataLoading = ({
         if (data && data.length > 0) {
           // Second-phase dedup: remove any duplicates that slipped through
           const deduped = await deduplicatePendingTransactions(data);
-          console.log('[loadPendingTransactions] OK, count:', deduped.length);
+          log.debug('[loadPendingTransactions] OK, count:', deduped.length);
           setAppState(prev => ({ ...prev, pendingTransactions: deduped }));
         } else {
-          console.log('[loadPendingTransactions] no pending transactions');
+          log.debug('[loadPendingTransactions] no pending transactions');
           setAppState(prev => ({ ...prev, pendingTransactions: [] }));
         }
       } catch (err: any) {
-        console.error('[loadPendingTransactions]', err?.message || err);
+        log.error('[loadPendingTransactions]', err?.message || err);
       }
     },
     [setAppState],
@@ -385,7 +386,7 @@ export const useDataLoading = ({
         );
 
         if (!res.ok) {
-          console.log('[loadHouseholdLink] Could not load settings');
+          log.debug('[loadHouseholdLink] Could not load settings');
           return;
         }
 
@@ -414,7 +415,7 @@ export const useDataLoading = ({
           // which runs after all data is loaded.
         }
       } catch (err: any) {
-        console.error('[loadHouseholdLink]', err?.message || err);
+        log.error('[loadHouseholdLink]', err?.message || err);
       }
     },
     [loadTransactions, setAppState],
@@ -498,12 +499,12 @@ export const useDataLoading = ({
           }
         }
         if (remappedCount > 0) {
-          console.log('[remapOrphanedTransactions] remapped', remappedCount, 'transactions');
+          log.debug('[remapOrphanedTransactions] remapped', remappedCount, 'transactions');
           transactionsRef.current = remapped;
           setAppState(prev => ({ ...prev, transactions: remapped }));
         }
       } catch (err: any) {
-        console.warn('[remapOrphanedTransactions] failed:', err?.message || err);
+        log.warn('[remapOrphanedTransactions] failed:', err?.message || err);
       }
     },
     [setAppState],
@@ -512,7 +513,7 @@ export const useDataLoading = ({
   // Load all data from Supabase
   const loadUserData = useCallback(
     async (userId: string) => {
-      console.log('loadUserData called for user:', userId);
+      log.debug('loadUserData called for user:', userId);
       await loadCategories();
       await loadUserBudgets(userId); // load user-specific budget limits
       await loadUserSettings(userId); // load user-specific settings (monthly_income, etc.)
@@ -520,7 +521,7 @@ export const useDataLoading = ({
       await loadPendingTransactions(userId); // load pending transactions awaiting approval
       await loadHouseholdLink(userId); // load partner transactions (merged into state)
       await remapOrphanedTransactions(userId); // fix stale/partner budget IDs → user's budget IDs
-      console.log('loadUserData completed');
+      log.debug('loadUserData completed');
     },
     [loadCategories, loadHouseholdLink, loadPendingTransactions, loadTransactions, loadUserBudgets, loadUserSettings, remapOrphanedTransactions],
   );

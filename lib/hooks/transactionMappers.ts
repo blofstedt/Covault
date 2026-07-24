@@ -1,4 +1,5 @@
 // lib/hooks/transactionMappers.ts
+import { log } from '../log';
 import { useCallback } from 'react';
 import type { Transaction } from '../../types';
 import { Recurrence } from '../../types';
@@ -103,7 +104,7 @@ export const toSupabaseTransaction = (
     if (VALID_RECURRENCES.includes(tx.recurrence as Recurrence)) {
       recurrence = tx.recurrence;
     } else {
-      console.warn(`Invalid recurrence value "${tx.recurrence}", defaulting to "${Recurrence.ONE_TIME}"`);
+      log.warn(`Invalid recurrence value "${tx.recurrence}", defaulting to "${Recurrence.ONE_TIME}"`);
     }
   }
 
@@ -146,7 +147,7 @@ export const useFromSupabaseTransaction = () =>
       if (VALID_RECURRENCES.includes(recurrenceRaw as Recurrence)) {
         recurrence = recurrenceRaw as Recurrence;
       } else {
-        console.warn(`Invalid recurrence value "${recurrenceRaw}" from database, using "${Recurrence.ONE_TIME}"`);
+        log.warn(`Invalid recurrence value "${recurrenceRaw}" from database, using "${Recurrence.ONE_TIME}"`);
       }
     }
 

@@ -1,4 +1,5 @@
 // lib/supabase.ts
+import { log } from './log';
 import { createClient } from '@supabase/supabase-js';
 import { Capacitor } from '@capacitor/core';
 
@@ -12,7 +13,7 @@ export const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string 
 const isSupabaseConfigured = !!supabaseUrl && !!supabaseAnonKey;
 
 if (!isSupabaseConfigured) {
-  console.error(
+  log.error(
     '❌ Supabase URL or Anon Key is missing. ' +
       'Check your environment variables for VITE_SUPABASE_URL (or VITE_PUBLIC_SUPABASE_URL) and VITE_SUPABASE_ANON_KEY.'
   );
@@ -68,32 +69,32 @@ const createStubClient = () => {
   return {
     auth: {
       async getSession() {
-        console.warn('[supabase] Stub client in use: getSession');
+        log.warn('[supabase] Stub client in use: getSession');
         return { data: { session: null }, error: null };
       },
       onAuthStateChange(callback?: (event: string, session: unknown | null) => void) {
-        console.warn('[supabase] Stub client in use: onAuthStateChange');
+        log.warn('[supabase] Stub client in use: onAuthStateChange');
         if (callback) {
           setTimeout(() => callback('SIGNED_OUT', null), 0);
         }
         return { data: { subscription: { unsubscribe: () => {} } } };
       },
       async signOut() {
-        console.warn('[supabase] Stub client in use: signOut');
+        log.warn('[supabase] Stub client in use: signOut');
         return { error: { message: 'Supabase is not configured.' } };
       },
       async signInWithOAuth() {
-        console.warn('[supabase] Stub client in use: signInWithOAuth');
+        log.warn('[supabase] Stub client in use: signInWithOAuth');
         return { error: { message: 'Supabase is not configured.' } };
       },
     },
     from() {
-      console.warn('[supabase] Stub client in use: from');
+      log.warn('[supabase] Stub client in use: from');
       return queryBuilder;
     },
     functions: {
       async invoke() {
-        console.warn('[supabase] Stub client in use: functions.invoke');
+        log.warn('[supabase] Stub client in use: functions.invoke');
         return { data: null, error: { message: 'Supabase is not configured.' } };
       },
     },

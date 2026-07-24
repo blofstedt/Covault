@@ -1,4 +1,5 @@
 // lib/useAuthState.ts
+import { log } from '../log';
 import React, { useCallback, useEffect, useRef } from 'react';
 import { supabase } from '../supabase';
 import { clearCachedAccessToken, setCachedAccessToken } from '../apiHelpers';
@@ -78,7 +79,7 @@ export const useAuthState = ({
               // sign the user out — the Supabase session is still valid. Just log
               // and leave the existing app state intact; the next loadUserData
               // triggered by a SIGNED_IN / token refresh will retry.
-              console.error(
+              log.error(
                 `[useAuthState] Error loading pending user data for user ${pendingUserId}. This may indicate a network issue or invalid user ID:`,
                 error,
               );
