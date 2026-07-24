@@ -12,7 +12,7 @@ import NotATransactionModal, { type NotATxRuleType } from './NotATransactionModa
 import BackfillPreviewModal from './BackfillPreviewModal';
 import { toVendorKey } from '../../lib/deviceTransactionParser';
 import { countBackfillMatches, applyVendorBackfill } from '../../lib/vendorBackfill';
-import type { VendorMatchResult, AICategorizationState } from '../../lib/hooks/useVendorMatcher';
+import { classifyMatch, type VendorMatchResult } from '../../lib/hooks/useVendorMatcher';
 
 interface AIEnteredRowProps {
   tx: Transaction;
@@ -23,12 +23,17 @@ interface AIEnteredRowProps {
   onVendorRenamed?: (tx: Transaction, newVendor: string) => Promise<void> | void;
   onMarkNotTransaction?: (tx: Transaction, ruleType: NotATxRuleType) => Promise<void> | void;
   userId?: string;
+  /** Deterministic vendor-override match for this row (from useVendorMatcher). */
   matchResult?: VendorMatchResult;
-  matchState?: AICategorizationState;
-  onConfirmMatch?: (tx: Transaction, match: VendorMatchResult) => void;
-  onChangeCategory?: (tx: Transaction, targetBudgetId?: string) => void;
+  /** Accept the current mapping and file the row. */
+  onAccept?: (tx: Transaction) => Promise<void> | void;
+  /** Change the mapping to a different budget, then file. */
+  onChangeCategory?: (tx: Transaction, targetBudgetId: string) => Promise<void> | void;
+  /** Create a permanent vendor→budget rule (so future captures auto-match), then file. */
+  onCreateRule?: (tx: Transaction, targetBudgetId: string) => Promise<void> | void;
+  /** Called after the file animation so the parent can drop the row from the list. */
+  onFiled?: (txId: string) => void;
 }
-
 
 const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
   tx,
@@ -40,11 +45,45 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
   onMarkNotTransaction,
   userId,
   matchResult,
-  matchState = 'other',
-  onConfirmMatch,
+  onAccept,
   onChangeCategory,
+  onCreateRule,
+  onFiled,
 }) => {
   const budgetName = tx.budget_id ? budgets.find((b) => b.id === tx.budget_id)?.name || null : null;
+
+  // ── Triage classification (how this row was categorized) ──
+  // Exact: a deterministic vendor-override rule matches the vendor now.
+  // AI: no rule, but the pipeline assigned a category with a confidence score.
+  // Unmatched: no rule, no confidence → needs a manual category.
+  const overrideMatch = matchResult?.match && matchResult.state !== 'none' ? matchResult.match : null;
+  const confidencePct = tx.confidence != null ? Math.round(Math.max(0, Math.min(1, tx.confidence)) * 100) : null;
+  const matchKind = classifyMatch({
+    hasOverrideMatch: !!overrideMatch,
+    confidence: tx.confidence,
+    hasBudget: !!budgetName,
+  });
+  const confTier: 'high' | 'medium' | 'low' =
+    confidencePct == null ? 'low' : confidencePct >= 75 ? 'high' : confidencePct >= 50 ? 'medium' : 'low';
+
+  // ── Completion animation + file state ──
+  const [filing, setFiling] = useState<string | null>(null);
+  const fileWith = useCallback(
+    (label: string, run: () => Promise<void> | void) => {
+      if (filing) return;
+      setFiling(label);
+      // Let the check/slide animation play, then persist and drop the row.
+      window.setTimeout(async () => {
+        try {
+          await run();
+        } catch (err) {
+          log.warn('[AIEnteredRow] file action failed:', err);
+        }
+        onFiled?.(tx.id);
+      }, 620);
+    },
+    [filing, onFiled, tx.id],
+  );
 
   const [deletingSimilar, setDeletingSimilar] = useState(false);
   const [localDismissed, setLocalDismissed] = useState<Set<string>>(() => new Set());
@@ -70,6 +109,7 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
   const [isMarkingNotTx, setIsMarkingNotTx] = useState(false);
 
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [pickerMode, setPickerMode] = useState<'change' | 'create'>('change');
 
   const handleDismissSoftDup = useCallback((currentTxId: string, similarTxId: string) => {
     markSoftDupDismissed(currentTxId, similarTxId);
@@ -149,82 +189,92 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
   );
 
   const renderMatchBadge = () => {
-    if (matchState === 'auto') {
+    if (matchKind === 'exact') {
       return (
-        <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 rounded-full">
-          Auto: {matchResult?.properName} → {matchResult?.categoryName}
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 rounded-full">
+          <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}><polyline points="20 6 9 17 4 12" /></svg>
+          Exact match{budgetName ? ` · ${budgetName}` : ''}
         </span>
       );
     }
-    if (matchState === 'suggested') {
+    if (matchKind === 'ai') {
+      const tierChip =
+        confTier === 'high'
+          ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/30'
+          : confTier === 'medium'
+          ? 'text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/30'
+          : 'text-rose-700 dark:text-rose-300 bg-rose-100 dark:bg-rose-900/30';
+      const tierBar =
+        confTier === 'high' ? 'bg-emerald-500' : confTier === 'medium' ? 'bg-amber-500' : 'bg-rose-500';
       return (
-        <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 rounded-full">
-          Suggested: {matchResult?.properName || 'New category'} → {matchResult?.categoryName || budgetName}
+        <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full ${tierChip}`}>
+          <span>AI</span>
+          {budgetName && <span className="opacity-70">· {budgetName}</span>}
+          {confidencePct != null && (
+            <span className="inline-flex items-center gap-1">
+              <span className="w-7 h-1 rounded-full bg-black/10 dark:bg-white/15 overflow-hidden">
+                <span className={`block h-full rounded-full ${tierBar}`} style={{ width: `${confidencePct}%` }} />
+              </span>
+              {confidencePct}%
+            </span>
+          )}
         </span>
       );
     }
     return (
       <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/60 px-2 py-0.5 rounded-full">
-        Other — tap to categorize
+        Needs category
       </span>
     );
   };
 
   const renderMatchActions = () => {
-    if (matchState === 'auto') {
-      return (
-        <div className="flex items-center gap-1 mt-1.5">
-          <button
-            onClick={(e) => { e.stopPropagation(); onConfirmMatch?.(tx, matchResult!); }}
-            className="text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 transition-all"
-          >
-            Confirm
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); onChangeCategory?.(tx); }}
-            className="text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 transition-all"
-          >
-            Change
-          </button>
-        </div>
-      );
-    }
-    if (matchState === 'suggested') {
-      return (
-        <div className="flex items-center gap-1 mt-1.5 flex-wrap">
-          <span className="text-[10px] text-slate-500 dark:text-slate-400">Did you mean?</span>
-          <button
-            onClick={(e) => { e.stopPropagation(); onConfirmMatch?.(tx, matchResult!); }}
-            className="text-[10px] font-bold px-2 py-1 rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition-all"
-          >
-            Confirm
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); onChangeCategory?.(tx); }}
-            className="text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 transition-all"
-          >
-            Use Different
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); setShowCategoryPicker(true); }}
-            className="text-[10px] font-bold px-2 py-1 rounded-lg bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/40 text-violet-700 dark:text-violet-300 hover:bg-violet-100 transition-all"
-          >
-            New Rule
-          </button>
-        </div>
-      );
-    }
+    const canAccept = matchKind !== 'unmatched' && !!budgetName;
     return (
-      <div className="flex items-center gap-1 mt-1.5">
+      <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+        {canAccept && (
+          <button
+            onClick={(e) => { e.stopPropagation(); fileWith(`Filed to ${budgetName}`, () => onAccept?.(tx)); }}
+            className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95 transition-all"
+          >
+            <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}><polyline points="20 6 9 17 4 12" /></svg>
+            Accept
+          </button>
+        )}
         <button
-          onClick={(e) => { e.stopPropagation(); setShowCategoryPicker(true); }}
-          className="text-[10px] font-bold px-2 py-1 rounded-lg bg-violet-500 text-white hover:bg-violet-600 transition-all"
+          onClick={(e) => { e.stopPropagation(); setPickerMode('change'); setShowCategoryPicker(true); }}
+          className="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600 active:scale-95 transition-all"
         >
-          Categorize
+          {canAccept ? 'Change' : 'Categorize'}
         </button>
+        {matchKind !== 'exact' && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setPickerMode('create'); setShowCategoryPicker(true); }}
+            className="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/40 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40 active:scale-95 transition-all"
+          >
+            Create rule
+          </button>
+        )}
       </div>
     );
   };
+
+  // Completion state: brief success card shown while the parent removes the row.
+  if (filing) {
+    return (
+      <div className="w-full p-4 rounded-2xl border border-emerald-200 dark:border-emerald-800/40 bg-emerald-50 dark:bg-emerald-900/20 flex items-center gap-3 animate-in fade-in slide-in-from-right-2 duration-300">
+        <span className="w-9 h-9 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0 animate-in zoom-in-50 duration-300">
+          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        </span>
+        <div className="min-w-0">
+          <p className="text-xs font-bold text-emerald-700 dark:text-emerald-300 truncate">{tx.vendor}</p>
+          <p className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">{filing}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -243,7 +293,7 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
             ? 'bg-amber-50/70 dark:bg-amber-900/15 border-amber-200 dark:border-amber-700/40'
             : isForReview
             ? 'bg-amber-50/70 dark:bg-amber-900/15 border-amber-200 dark:border-amber-700/40'
-            : matchState === 'other'
+            : matchKind === 'unmatched'
             ? 'bg-slate-50/70 dark:bg-slate-900/15 border-slate-200 dark:border-slate-700/40'
             : 'bg-white/60 dark:bg-emerald-900/10 backdrop-blur-sm border-emerald-100 dark:border-emerald-800/30'
         }`}
@@ -252,12 +302,12 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center space-x-3 min-w-0 flex-1">
             <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-              matchState === 'other' ? 'bg-slate-100 dark:bg-slate-800/60' : 'bg-emerald-100 dark:bg-emerald-900/30'
+              matchKind === 'unmatched' ? 'bg-slate-100 dark:bg-slate-800/60' : 'bg-emerald-100 dark:bg-emerald-900/30'
             }`}>
               {budgetName ? (
                 <span className="text-emerald-600 dark:text-emerald-400 w-4 h-4">{getBudgetIcon(budgetName)}</span>
               ) : (
-                <svg className={`w-4 h-4 ${matchState === 'other' ? 'text-slate-400' : 'text-emerald-600 dark:text-emerald-400'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <svg className={`w-4 h-4 ${matchKind === 'unmatched' ? 'text-slate-400' : 'text-emerald-600 dark:text-emerald-400'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
               )}
@@ -339,14 +389,25 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
       {showCategoryPicker && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowCategoryPicker(false)}>
           <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 max-w-sm w-full mx-4 shadow-2xl border border-slate-200 dark:border-slate-700" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-3">Choose Category</h3>
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-1">
+              {pickerMode === 'create' ? 'Create a rule' : 'Choose category'}
+            </h3>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-3">
+              {pickerMode === 'create'
+                ? `Always file "${tx.vendor}" under…`
+                : `File "${tx.vendor}" under…`}
+            </p>
             <div className="grid grid-cols-2 gap-2">
               {budgets.map((b) => (
                 <button
                   key={b.id}
                   onClick={() => {
-                    onChangeCategory?.(tx, b.id);
                     setShowCategoryPicker(false);
+                    if (pickerMode === 'create') {
+                      fileWith(`Rule created · ${b.name}`, () => onCreateRule?.(tx, b.id));
+                    } else {
+                      fileWith(`Moved to ${b.name}`, () => onChangeCategory?.(tx, b.id));
+                    }
                   }}
                   className="px-3 py-2 text-xs font-bold rounded-xl bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/40 text-violet-700 dark:text-violet-300 hover:bg-violet-100 transition-all text-left"
                 >

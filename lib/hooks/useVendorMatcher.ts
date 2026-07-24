@@ -7,6 +7,26 @@ export interface VendorMatchResult {
   state: 'exact' | 'prefix' | 'contains' | 'none';
 }
 
+/** How a caught transaction was categorized, for the triage UI. */
+export type MatchKind = 'exact' | 'ai' | 'unmatched';
+
+/**
+ * Classify a caught transaction:
+ *   - `exact`  — a deterministic vendor-override rule matches now.
+ *   - `ai`     — no rule, but the pipeline assigned a category (with or
+ *                without a confidence score, i.e. it has a budget).
+ *   - `unmatched` — no rule, no confidence, and no budget → needs a category.
+ */
+export function classifyMatch(opts: {
+  hasOverrideMatch: boolean;
+  confidence: number | null | undefined;
+  hasBudget: boolean;
+}): MatchKind {
+  if (opts.hasOverrideMatch) return 'exact';
+  if (opts.confidence != null) return 'ai';
+  return opts.hasBudget ? 'ai' : 'unmatched';
+}
+
 /**
  * UI categorization state for an AI-entered row. Superset of the values
  * currently produced by the matcher (`VendorMatchResult['state']`) and the

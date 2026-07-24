@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { Transaction, BudgetCategory } from '../../types';
 import ParsingCard from '../ui/ParsingCard';
 import { EmptyState } from '../shared';
@@ -23,8 +23,12 @@ interface AITransactionsEnteredCardProps {
   isExpanded?: boolean;
   onToggleExpanded?: () => void;
   vendorOverrides?: VendorOverride[];
-  onConfirmMatch?: (tx: Transaction, match: any) => void;
-  onChangeCategory?: (tx: Transaction, targetBudgetId?: string) => void;
+  /** Accept the current mapping and file the row. */
+  onAccept?: (tx: Transaction) => Promise<void> | void;
+  /** Change the row's budget, then file. */
+  onChangeCategory?: (tx: Transaction, targetBudgetId: string) => Promise<void> | void;
+  /** Create a vendor→budget rule for future captures, then file. */
+  onCreateRule?: (tx: Transaction, targetBudgetId: string) => Promise<void> | void;
 }
 
 const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
@@ -42,14 +46,26 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
   isExpanded = true,
   onToggleExpanded,
   vendorOverrides = [],
-  onConfirmMatch,
+  onAccept,
   onChangeCategory,
+  onCreateRule,
 }) => {
   const { classifyAll } = useVendorMatcher(vendorOverrides);
   const matchMap = useMemo(() => classifyAll(aiTransactions), [classifyAll, aiTransactions]);
 
-  const nonRefunds = aiTransactions.filter((tx) => !isRefund(tx));
-  const refundCount = aiTransactions.length - nonRefunds.length;
+  // Rows the user just filed — hidden immediately (after their completion
+  // animation) so they vanish smoothly without waiting for the DB reload.
+  const [filedIds, setFiledIds] = useState<Set<string>>(new Set());
+  const handleFiled = useCallback((txId: string) => {
+    setFiledIds((prev) => {
+      const next = new Set(prev);
+      next.add(txId);
+      return next;
+    });
+  }, []);
+
+  const nonRefunds = aiTransactions.filter((tx) => !isRefund(tx) && !filedIds.has(tx.id));
+  const refundCount = aiTransactions.filter((tx) => isRefund(tx)).length;
 
   return (
     <ParsingCard
@@ -89,10 +105,11 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
                   onVendorRenamed={onVendorRenamed}
                   onMarkNotTransaction={onMarkNotTransaction}
                   userId={userId}
-                  matchResult={matched?.match}
-                  matchState={matched?.state}
-                  onConfirmMatch={onConfirmMatch}
+                  matchResult={matched}
+                  onAccept={onAccept}
                   onChangeCategory={onChangeCategory}
+                  onCreateRule={onCreateRule}
+                  onFiled={handleFiled}
                 />
               );
             })
