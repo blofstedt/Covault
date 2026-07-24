@@ -144,6 +144,7 @@ CREATE TABLE IF NOT EXISTS public.transactions (
   created_at timestamp with time zone DEFAULT now(),
   caught_cleared boolean NOT NULL DEFAULT false,
   source text NOT NULL DEFAULT 'manual',
+  confidence numeric,
   CONSTRAINT transactions_pkey PRIMARY KEY (id),
   CONSTRAINT transactions_user_id_fkey FOREIGN KEY (user_id)
     REFERENCES auth.users(id)

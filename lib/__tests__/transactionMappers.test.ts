@@ -104,4 +104,26 @@ describe('transactionMappers budget resolution', () => {
     expect(row.recur).toBe('Monthly');
     expect(row.type).toBe('Manual');
   });
+
+  const baseTx = {
+    id: 'tx-1',
+    user_id: 'user-1',
+    vendor: 'Costco',
+    amount: 12.34,
+    date: '2026-03-09T12:00:00.000Z',
+    budget_id: 'custom-id',
+    label: 'Manual' as const,
+    is_projected: false,
+    created_at: '2026-03-09T12:00:00.000Z',
+  };
+
+  it('includes confidence in the insert payload when present', () => {
+    const row = toSupabaseTransaction({ ...baseTx, confidence: 0.82 }, budgets);
+    expect(row.confidence).toBe(0.82);
+  });
+
+  it('omits confidence when null/absent (pre-migration / manual rows)', () => {
+    expect('confidence' in toSupabaseTransaction({ ...baseTx, confidence: null }, budgets)).toBe(false);
+    expect('confidence' in toSupabaseTransaction(baseTx, budgets)).toBe(false);
+  });
 });
