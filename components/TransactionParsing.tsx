@@ -13,7 +13,7 @@ import type { NotATxRuleType } from './transaction_parsing/NotATransactionModal'
 import { toVendorKey } from '../lib/deviceTransactionParser';
 
 import { covaultNotification } from '../lib/covaultNotification';
-import { REST_BASE, getAuthHeaders } from '../lib/apiHelpers';
+import { REST_BASE, getAuthHeaders, restFetch } from '../lib/apiHelpers';
 import { loadBankingAppsFromDB } from '../lib/bankingApps';
 import { getNeedsReviewCount, getNeedsReviewIdSet, getReviewQueueChangedEventName } from '../lib/localNotificationMemory';
 
@@ -298,13 +298,11 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       }
       if (!userId) return;
       try {
-        const headers = await getAuthHeaders();
-        (headers as any)['Prefer'] = 'return=representation';
-        const res = await fetch(
-          `${REST_BASE}/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(vendorName)}`,
+        const res = await restFetch(
+          `/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(vendorName)}`,
           {
             method: 'PATCH',
-            headers,
+            headers: { Prefer: 'return=representation' },
             body: JSON.stringify({ proper_name: properName, updated_at: new Date().toISOString() }),
           },
         );
@@ -326,13 +324,11 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       }
       if (!userId) return;
       try {
-        const headers = await getAuthHeaders();
-        (headers as any)['Prefer'] = 'return=representation';
-        const res = await fetch(
-          `${REST_BASE}/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(vendorName)}`,
+        const res = await restFetch(
+          `/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(vendorName)}`,
           {
             method: 'PATCH',
-            headers,
+            headers: { Prefer: 'return=representation' },
             body: JSON.stringify({ match_type: matchType, updated_at: new Date().toISOString() }),
           },
         );
@@ -402,12 +398,10 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     const aiIds = aiTransactions.map((tx) => tx.id);
     if (aiIds.length === 0) return;
     try {
-      const headers = await getAuthHeaders();
-      (headers as any)['Prefer'] = 'return=representation';
       const idList = aiIds.map(id => `"${id.replace(/"/g, '')}"`).join(',');
-      const res = await fetch(`${REST_BASE}/transactions?id=in.(${idList})`, {
+      const res = await restFetch(`/transactions?id=in.(${idList})`, {
         method: 'PATCH',
-        headers,
+        headers: { Prefer: 'return=representation' },
         body: JSON.stringify({ caught_cleared: true }),
       });
       if (!res.ok) {
