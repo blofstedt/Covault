@@ -127,9 +127,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
   const amount = parseFloat(amountStr) || 0;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!amount || amount <= 0 || !selectedId) return;
+    if (!amount || amount <= 0 || !selectedId || !vendor.trim()) return;
 
     const tx: Transaction = {
       id: initialTransaction?.id || generateUUID(),
@@ -160,8 +160,13 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       }
     }
 
-    onSave(tx);
-    onClose();
+    try {
+      await onSave(tx);
+      onClose();
+    } catch (err: any) {
+      console.error('Save failed:', err);
+      alert('Failed to save. Please check your connection and try again.');
+    }
   };
 
   const isFormValid = amount > 0 && selectedId !== null && vendor.trim() !== '';

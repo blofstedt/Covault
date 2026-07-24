@@ -203,6 +203,16 @@ export const useTransactionOps = ({
           const msg = `Update failed (${res.status}): ${body.slice(0, 200)}`;
           console.error(msg);
           setDbError(msg);
+          // Revert optimistic update
+          if (originalTx) {
+            setAppState(prev => ({
+              ...prev,
+              transactions: prev.transactions.map(t =>
+                t.id === txToPersist.id ? originalTx : t
+              ),
+            }));
+          }
+          return;
         } else {
           markReviewQueueStatus(txToPersist.id, 'reviewed');
           const mappedBudget = appState.budgets.find(b => b.id === txToPersist.budget_id)?.name || 'Other';
