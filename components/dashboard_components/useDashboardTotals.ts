@@ -1,21 +1,14 @@
 import { useMemo } from 'react';
 import { Transaction } from '../../types';
 import { generateProjectedTransactions } from '../../lib/projectedTransactions';
-import { getLocalMonthKey } from '../../lib/dateUtils';
+import { getLocalMonthKey, getLocalToday } from '../../lib/dateUtils';
 import { DEFAULT_MONTHLY_INCOME } from '../../lib/apiHelpers';
-
-function getCurrentMonth() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(
-    d.getMonth() + 1
-  ).padStart(2, '0')}`;
-}
 
 export default function useDashboardTotals(
   transactions: Transaction[],
   monthlyIncome: number
 ) {
-  const currentMonth = getCurrentMonth();
+  const currentMonth = getLocalMonthKey(getLocalToday());
 
   const currentMonthTransactions = useMemo(() => {
     return transactions.filter(
