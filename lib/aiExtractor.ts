@@ -36,12 +36,6 @@ export interface AIExtractionResult {
   confidenceReasons: string[];
 }
 
-export interface SemanticMatchResult {
-  matched: boolean;
-  properName: string | null;
-  reason: string;
-}
-
 // ═════════════════════════════════════════════════════════════════
 // 1. AI MODEL — singleton lazy-loaded Flan-T5 pipeline
 // ═════════════════════════════════════════════════════════════════
@@ -270,56 +264,6 @@ function parseStructuredResponse(
 }
 
 // ═════════════════════════════════════════════════════════════════
-// 3. SEMANTIC VENDOR MATCHING
-// ═════════════════════════════════════════════════════════════════
-
-/**
- * Ask the AI whether a raw vendor name refers to an existing merchant.
- * Returns the matched proper_name or null.
- */
-export async function aiSemanticVendorMatch(
-  rawVendor: string,
-  existingRules: { proper_name: string; match_key?: string }[],
-): Promise<SemanticMatchResult> {
-  if (!rawVendor || existingRules.length === 0) {
-    return { matched: false, properName: null, reason: 'No rules to match against' };
-  }
-
-  // Quick heuristic first: if any rule's match_key is a substring, use that
-  const rawLower = rawVendor.toLowerCase().replace(/[^a-z0-9]/g, '');
-  for (const rule of existingRules) {
-    const mk = (rule.match_key || rule.proper_name).toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (rawLower.includes(mk) || mk.includes(rawLower)) {
-      return { matched: true, properName: rule.proper_name, reason: 'Substring match' };
-    }
-  }
-
-  // AI fallback for ambiguous cases
-  const topRules = existingRules.slice(0, 15); // Keep prompt short
-  const prompt =
-    `Does "${rawVendor}" refer to the same merchant as any of these?\n` +
-    topRules.map((r, i) => `${i + 1}. ${r.proper_name}`).join('\n') +
-    `\n\nReply with the exact matching name, or NONE.`;
-
-  try {
-    const result = await aiGenerate(prompt, 16);
-    const match = result.trim();
-    if (/^(NONE|N\/A|NO|UNKNOWN)$/i.test(match)) {
-      return { matched: false, properName: null, reason: 'AI: no match found' };
-    }
-    const found = existingRules.find(
-      r => r.proper_name.toLowerCase() === match.toLowerCase(),
-    );
-    if (found) {
-      return { matched: true, properName: found.proper_name, reason: 'AI semantic match' };
-    }
-    return { matched: false, properName: null, reason: 'AI response did not match whitelist' };
-  } catch {
-    return { matched: false, properName: null, reason: 'AI model unavailable' };
-  }
-}
-
-// ═════════════════════════════════════════════════════════════════
 // 4. SMART RECURRING DETECTION
 // ═════════════════════════════════════════════════════════════════
 
@@ -402,103 +346,6 @@ export async function aiFindRefundMatch(
     // fall through
   }
   return null;
-}
-
-// ═════════════════════════════════════════════════════════════════
-// 6. NOTIFICATION QUALITY SCORING / REJECTION EXPLANATIONS
-// ═════════════════════════════════════════════════════════════════
-
-export async function aiExplainRejection(
-  text: string,
-  reason: string,
-): Promise<string> {
-  // Fast path for common rejections
-  const lower = text.toLowerCase();
-  if (reason.includes('balance')) return 'Balance alert';
-  if (reason.includes('otp') || reason.includes('verification')) return 'Security code';
-  if (reason.includes('login') || reason.includes('signed in')) return 'Login alert';
-  if (lower.includes('crypto') || lower.includes('bitcoin') || lower.includes('eth ')) return 'Crypto/market alert';
-  if (/\b(?:up|down)\s+\d+(?:\.\d+)?%/.test(text)) return 'Price movement alert';
-  if (reason.includes('promo') || lower.includes('limited time') || lower.includes('offer')) return 'Promotional message';
-
-  const prompt =
-    `A bank notification was skipped because: "${reason}"\n` +
-    `Text: "${text.slice(0, 200)}"\n` +
-    `Explain in 5 words or less why this was skipped.`;
-
-  try {
-    const result = await aiGenerate(prompt, 16);
-    return result.trim().slice(0, 40) || reason;
-  } catch {
-    return reason;
-  }
-}
-
-// ═════════════════════════════════════════════════════════════════
-// 7. AUTO-SUGGEST MATCH PATTERNS
-// ═════════════════════════════════════════════════════════════════
-
-export function suggestMatchPattern(rawVendor: string, properName: string): 'exact' | 'prefix' | 'contains' {
-  const rawLower = rawVendor.toLowerCase();
-  const properLower = properName.toLowerCase();
-  const rawNorm = rawLower.replace(/[^a-z0-9]/g, '');
-  const properNorm = properLower.replace(/[^a-z0-9]/g, '');
-
-  // If raw has numbers/location codes that proper name doesn't
-  if (/\d/.test(rawVendor) && !/\d/.test(properName)) {
-    const firstWord = properLower.split(' ')[0];
-    if (rawLower.startsWith(firstWord)) return 'prefix';
-    if (rawNorm.includes(firstWord)) return 'contains';
-  }
-
-  // If raw is longer but starts with same word
-  if (rawLower.startsWith(properLower.split(' ')[0]) && rawLower.length > properLower.length + 3) {
-    return 'prefix';
-  }
-
-  // If raw contains proper name as substring
-  if (rawNorm.includes(properNorm) && rawNorm !== properNorm) {
-    return 'contains';
-  }
-
-  return 'exact';
-}
-
-// ═════════════════════════════════════════════════════════════════
-// 8. BATCH CATEGORY CLASSIFICATION
-// ═════════════════════════════════════════════════════════════════
-
-export async function aiBatchClassify(
-  notifications: { id: string; text: string }[],
-  availableCategories: string[],
-): Promise<Map<string, { vendor: string | null; category: string | null; isTransaction: boolean; confidence: number }>> {
-  const results = new Map<string, { vendor: string | null; category: string | null; isTransaction: boolean; confidence: number }>();
-
-  // Process in parallel with concurrency limit
-  const concurrency = 3;
-  let idx = 0;
-
-  const workers = Array.from({ length: Math.min(concurrency, notifications.length) }, async () => {
-    while (true) {
-      const i = idx++;
-      if (i >= notifications.length) return;
-      const n = notifications[i];
-      try {
-        const res = await extractWithAI(n.text, availableCategories);
-        results.set(n.id, {
-          vendor: res.vendor,
-          category: res.suggestedCategory,
-          isTransaction: res.isTransaction,
-          confidence: res.confidence,
-        });
-      } catch {
-        results.set(n.id, { vendor: null, category: null, isTransaction: false, confidence: 0 });
-      }
-    }
-  });
-
-  await Promise.all(workers);
-  return results;
 }
 
 // ═════════════════════════════════════════════════════════════════

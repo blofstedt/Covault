@@ -79,8 +79,5 @@ export const restFetch = async (
   });
 };
 
-// Default budget limit when user has not set a budget
-export const DEFAULT_BUDGET_LIMIT = 500;
-
 // Default monthly income when user has not set income
 export const DEFAULT_MONTHLY_INCOME = 5000;
