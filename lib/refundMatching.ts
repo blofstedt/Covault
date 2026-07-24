@@ -152,7 +152,7 @@ export function matchRefundsToExpenses(
     const refundAmount = Math.abs(Number(refund.amount));
     const refundDate = new Date(txDateStr(refund) + 'T12:00:00.000Z').getTime();
     if (!Number.isFinite(refundDate)) continue;
-    const refundVendor = refund.vendor?.toLowerCase().trim() ?? '';
+    const refundVendor = normalizeVendorForRefund(refund.vendor ?? '');
     const refundBudgetId = refund.budget_id ?? (refund as any).category_id ?? '';
 
     let bestExpense: Transaction | null = null;
@@ -162,8 +162,10 @@ export function matchRefundsToExpenses(
       if (matchedExpenseIds.has(expense.id)) continue; // already claimed
       if (Number(expense.amount) <= 0) continue;
 
-      // Vendor match (case-insensitive)
-      const expenseVendor = expense.vendor?.toLowerCase().trim() ?? '';
+      // Vendor match (case-insensitive, whitespace-normalized — same as
+      // findMatchingExpense, so the two matchers can't disagree on a vendor
+      // like "You  Got").
+      const expenseVendor = normalizeVendorForRefund(expense.vendor ?? '');
       if (expenseVendor !== refundVendor) continue;
 
       // Budget match — skip if the user has since recategorized the expense
