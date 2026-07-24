@@ -53,7 +53,7 @@ constants.ts               # The 7 system budget categories + fixed UUIDs
 types.ts                   # Domain types: User, BudgetCategory, Transaction,
                            #   PendingTransaction, Recurrence, TransactionLabel, TransactionSource
 components/                # React UI
-  Dashboard.tsx, Auth.tsx, Onboarding.tsx, Tutorial.tsx, TransactionForm.tsx, ...
+  Dashboard.tsx, Auth.tsx, Onboarding.tsx, TransactionForm.tsx, TransactionItem.tsx, ...
   dashboard_components/           # Dashboard pieces: BudgetFlowChart, balance/pulse cards,
                                   #   SearchResults, useDashboardTotals, useNormalizedTransactions
     settings_modal_components/    # Settings modal sections (budget limits, income, import/export,

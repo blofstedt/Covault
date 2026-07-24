@@ -157,19 +157,6 @@ export interface NotificationInput {
   forceReprocess?: boolean;
 }
 
-export interface ProcessingResult {
-  /** Whether the notification was processed (false = dedup'd or ignored) */
-  processed: boolean;
-  /** Reason processing stopped early */
-  skipReason?: 'duplicate' | 'ignored' | 'no_user';
-  /** Whether the transaction was auto-accepted directly into transactions */
-  autoAccepted?: boolean;
-  /** The transaction ID if auto-accepted */
-  transactionId?: string;
-  /** The category ID assigned when auto-accepted */
-  categoryId?: string;
-}
-
 // ─── Step 1: Duplicate Detection Against Tables ─────────────────
 
 /**
