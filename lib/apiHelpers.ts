@@ -60,6 +60,25 @@ export const getAuthHeaders = async (): Promise<Record<string, string>> => {
   };
 };
 
+/**
+ * Thin wrapper over `fetch` for Supabase PostgREST calls. Resolves auth headers,
+ * prefixes `REST_BASE`, and merges any per-call headers — nothing else. It does
+ * NOT inspect `res.ok` or parse the body, so each caller keeps its own error
+ * handling and response parsing (some sites throw, some return early, some log
+ * and continue). Pass a path beginning with `/`, e.g.
+ * `restFetch(`/settings?select=*&user_id=eq.${userId}`)`.
+ */
+export const restFetch = async (
+  pathAndQuery: string,
+  init: RequestInit = {},
+): Promise<Response> => {
+  const authHeaders = await getAuthHeaders();
+  return fetch(`${REST_BASE}${pathAndQuery}`, {
+    ...init,
+    headers: { ...authHeaders, ...(init.headers as Record<string, string> | undefined) },
+  });
+};
+
 // Default budget limit when user has not set a budget
 export const DEFAULT_BUDGET_LIMIT = 500;
 
