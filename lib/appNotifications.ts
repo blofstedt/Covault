@@ -40,7 +40,7 @@ async function ensurePermission() {
 // system tints it with `iconColor` at render time. Without these, the
 // status bar shows a generic "(!)" placeholder and the notification
 // looks like it came from an unbranded system app.
-const NOTIF_SMALL_ICON = 'ic_stat_covault_mono';
+const NOTIF_SMALL_ICON = 'ic_stat_dollar';
 const NOTIF_ICON_COLOR = '#10B981'; // Covault emerald
 
 async function sendNotification(title: string, body: string) {
