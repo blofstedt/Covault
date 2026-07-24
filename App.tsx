@@ -56,12 +56,19 @@ const saveSettingsToStorage = (settings: AppState['settings']) => {
 
 const App: React.FC = () => {
   const [authState, setAuthState] = useState<AuthStatus>('loading');
-  // dbError + isLoadingData: only the setters are consumed (useUserData
-  // and the loadUserDataWithState wrapper need them). The values
-  // themselves are never read in this file, so we discard via the
-  // empty-pattern destructure to make the intent explicit.
-  const [, setDbError] = useState<string | null>(null);
+  // dbError surfaces read/write failures (e.g. a transaction update the DB
+  // rejects) as a dismissible toast — previously the value was discarded, so
+  // failures were completely silent and looked like "nothing happened".
+  // isLoadingData: only the setter is consumed (by the data-loading hook).
+  const [dbError, setDbError] = useState<string | null>(null);
   const [, setIsLoadingData] = useState(false);
+
+  // Auto-dismiss the error toast so it doesn't linger forever.
+  useEffect(() => {
+    if (!dbError) return;
+    const t = setTimeout(() => setDbError(null), 8000);
+    return () => clearTimeout(t);
+  }, [dbError]);
 
   const [appState, setAppState] = useState<AppState>(() => {
     const savedSettings = loadSettingsFromStorage();
@@ -274,6 +281,20 @@ const App: React.FC = () => {
   return (
     <ErrorBoundary>
     <div className="h-screen h-[100dvh] w-full bg-slate-50 dark:bg-slate-950 overflow-hidden relative flex flex-col transition-colors duration-300">
+      {dbError && (
+        <div
+          role="alert"
+          onClick={() => setDbError(null)}
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] max-w-[90%] px-4 py-2.5 rounded-2xl bg-rose-500 text-white text-xs font-semibold shadow-xl flex items-center gap-2 cursor-pointer"
+        >
+          <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <span className="truncate">{dbError}</span>
+        </div>
+      )}
       {authState === 'unauthenticated' && <Auth onSignIn={() => setAuthState('authenticated')} />}
       {authState === 'onboarding' && <Onboarding onComplete={handleOnboardingComplete} />}
       {authState === 'authenticated' && (
