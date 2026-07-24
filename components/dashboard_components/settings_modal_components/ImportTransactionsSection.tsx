@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { REST_BASE, getAuthHeaders } from '../../../lib/apiHelpers';
+import { restFetch } from '../../../lib/apiHelpers';
 import type { BudgetCategory } from '../../../types';
 import SettingsCard from '../../ui/SettingsCard';
 import SectionHeader from '../../ui/SectionHeader';
@@ -183,13 +183,11 @@ const ImportTransactionsSection: React.FC<ImportTransactionsSectionProps> = ({
       }
 
       // Insert in batches of 100
-      const authHeaders = await getAuthHeaders();
       let insertedCount = 0;
       for (let i = 0; i < rows.length; i += 100) {
         const batch = rows.slice(i, i + 100);
-        const res = await fetch(`${REST_BASE}/transactions`, {
+        const res = await restFetch(`/transactions`, {
           method: 'POST',
-          headers: authHeaders,
           body: JSON.stringify(batch),
         });
         if (!res.ok) {
