@@ -1,7 +1,7 @@
 // lib/hooks/useTransactionOps.ts
 import { useCallback } from 'react';
 import type { Transaction } from '../../types';
-import { REST_BASE, getAuthHeaders } from '../apiHelpers';
+import { REST_BASE, getAuthHeaders, restFetch } from '../apiHelpers';
 import { formatVendorName } from '../formatVendorName';
 import { checkDuplicateTransaction } from '../notificationProcessor';
 import { markReviewQueueStatus, upsertVendorMapEntry } from '../localNotificationMemory';
@@ -75,12 +75,9 @@ export const useTransactionOps = ({
         if (tx.label === 'Automatic') (row as any).caught_cleared = false;
         console.log('[insert] payload:', JSON.stringify(row));
 
-        const headers = await getAuthHeaders();
-        (headers as any)['Prefer'] = 'return=representation';
-
-        const res = await fetch(`${REST_BASE}/transactions`, {
+        const res = await restFetch(`/transactions`, {
           method: 'POST',
-          headers,
+          headers: { Prefer: 'return=representation' },
           body: JSON.stringify(row),
         });
         const body = await res.text();
@@ -185,11 +182,9 @@ export const useTransactionOps = ({
           isProjectedEdit ? `(from projected ${updatedTx.id})` : '',
         );
 
-        const headers = await getAuthHeaders();
-        (headers as any)['Prefer'] = 'return=representation';
-        const res = await fetch(
-          `${REST_BASE}/transactions?id=eq.${txToPersist.id}`,
-          { method: 'PATCH', headers, body: JSON.stringify(row) },
+        const res = await restFetch(
+          `/transactions?id=eq.${txToPersist.id}`,
+          { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify(row) },
         );
         const body = await res.text();
         console.log(
@@ -332,10 +327,9 @@ export const useTransactionOps = ({
       }));
 
       try {
-        const headers = await getAuthHeaders();
-        const res = await fetch(
-          `${REST_BASE}/transactions?id=eq.${id}`,
-          { method: 'DELETE', headers },
+        const res = await restFetch(
+          `/transactions?id=eq.${id}`,
+          { method: 'DELETE' },
         );
 
         if (!res.ok) {
@@ -390,11 +384,9 @@ export const useTransactionOps = ({
           // The system no longer auto-updates the existing row's date —
           // the user moves it manually if they want, per their "don't move
           // my data silently" preference.
-          const rejectHeaders = await getAuthHeaders();
-          (rejectHeaders as any)['Prefer'] = 'return=representation';
-          await fetch(`${REST_BASE}/pending_transactions?id=eq.${pendingId}`, {
+          await restFetch(`/pending_transactions?id=eq.${pendingId}`, {
             method: 'PATCH',
-            headers: rejectHeaders,
+            headers: { Prefer: 'return=representation' },
             body: JSON.stringify({
               status: 'rejected',
               reviewed_at: new Date().toISOString(),
@@ -430,11 +422,9 @@ export const useTransactionOps = ({
           caught_cleared: false,
         };
 
-        const insertHeaders = await getAuthHeaders();
-        (insertHeaders as any)['Prefer'] = 'return=representation';
-        const insertRes = await fetch(`${REST_BASE}/transactions`, {
+        const insertRes = await restFetch(`/transactions`, {
           method: 'POST',
-          headers: insertHeaders,
+          headers: { Prefer: 'return=representation' },
           body: JSON.stringify(transactionRow),
         });
         const insertBody = await insertRes.text();
@@ -475,11 +465,9 @@ export const useTransactionOps = ({
         }
 
         // 2) Mark pending transaction as reviewed and approved
-        const patchHeaders = await getAuthHeaders();
-        (patchHeaders as any)['Prefer'] = 'return=representation';
-        const patchRes = await fetch(`${REST_BASE}/pending_transactions?id=eq.${pendingId}`, {
+        const patchRes = await restFetch(`/pending_transactions?id=eq.${pendingId}`, {
           method: 'PATCH',
-          headers: patchHeaders,
+          headers: { Prefer: 'return=representation' },
           body: JSON.stringify({
             status: 'approved',
             reviewed_at: new Date().toISOString(),
@@ -570,13 +558,10 @@ export const useTransactionOps = ({
   const handleRejectPendingTransaction = useCallback(
     async (pendingId: string) => {
       try {
-        const headers = await getAuthHeaders();
-        (headers as any)['Prefer'] = 'return=representation';
-
         // Mark as reviewed and not approved
-        const res = await fetch(`${REST_BASE}/pending_transactions?id=eq.${pendingId}`, {
+        const res = await restFetch(`/pending_transactions?id=eq.${pendingId}`, {
           method: 'PATCH',
-          headers,
+          headers: { Prefer: 'return=representation' },
           body: JSON.stringify({
             status: 'rejected',
             reviewed_at: new Date().toISOString(),
@@ -631,11 +616,9 @@ export const useTransactionOps = ({
     async (ids: string[]) => {
       if (ids.length === 0) return;
       try {
-        const headers = await getAuthHeaders();
         const idList = ids.map(id => `"${id.replace(/"/g, '')}"`).join(',');
-        const res = await fetch(`${REST_BASE}/pending_transactions?id=in.(${idList})`, {
+        const res = await restFetch(`/pending_transactions?id=in.(${idList})`, {
           method: 'DELETE',
-          headers,
         });
         if (!res.ok) {
           const body = await res.text();
@@ -665,12 +648,10 @@ export const useTransactionOps = ({
     async (ids: string[]) => {
       if (ids.length === 0) return;
       try {
-        const headers = await getAuthHeaders();
-        (headers as any)['Prefer'] = 'return=representation';
         const idList = ids.map(id => `"${id.replace(/"/g, '')}"`).join(',');
-        const res = await fetch(`${REST_BASE}/transactions?id=in.(${idList})`, {
+        const res = await restFetch(`/transactions?id=in.(${idList})`, {
           method: 'PATCH',
-          headers,
+          headers: { Prefer: 'return=representation' },
           body: JSON.stringify({ type: 'Manual' }),
         });
         if (!res.ok) {
