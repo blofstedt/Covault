@@ -61,10 +61,7 @@ const TransactionActionModal: React.FC<TransactionActionModalProps> = ({
   return (
     <TransactionForm
       onClose={onClose}
-      onSave={(updatedTx) => {
-        onEdit(updatedTx);
-        onClose();
-      }}
+      onSave={(updatedTx) => onEdit(updatedTx)}
       budgets={budgets}
       userId={transaction.user_id}
       userName={currentUserName}
