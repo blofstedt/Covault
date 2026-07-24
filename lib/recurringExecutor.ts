@@ -5,6 +5,7 @@
 
 import { getLocalToday, toLocalIsoDay } from './dateUtils';
 import { restFetch } from './apiHelpers';
+import { stepForward } from './recurrence';
 import type { Transaction } from '../types';
 
 /**
@@ -29,21 +30,6 @@ function todayStr(): string {
 }
 
 
-
-/**
- * Step forward from `from` by one recurrence interval (monthly +14 days,
- * biweekly +14 days). Returns a NEW Date — the original is not mutated.
- */
-function stepForward(d: Date, recurrence: string): Date {
-  const next = new Date(d);
-  if (recurrence === 'biweekly') {
-    next.setDate(next.getDate() + 14);
-  } else {
-    // monthly
-    next.setMonth(next.getMonth() + 1);
-  }
-  return next;
-}
 
 /**
  * How many months back the executor is allowed to catch up. Anything
