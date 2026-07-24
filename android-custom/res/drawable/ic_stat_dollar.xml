@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Covault status bar / notification small icon — dollar-sign variant.
+
+  Android status bar icons MUST be:
+    - 24x24dp viewport
+    - Monochrome (single color: #FFFFFF) — the system tints them
+      with the notification's iconColor at runtime
+    - Strokes/shapes kept within the inner 18dp safe zone so the
+      status-bar mask doesn't clip them
+
+  A simple "$": a vertical bar with an S-curve, drawn as white strokes on
+  transparent so Android can tint it. iOS is unaffected (smallIcon is an
+  Android-only field).
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Vertical bar through the center. -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M12,3.5 L12,20.5" />
+
+    <!-- S body of the dollar sign. -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M16,7.2 C16,5.7 14.2,5 12,5 C9.8,5 8,5.9 8,7.8 C8,9.7 9.8,10.4 12,11 C14.2,11.6 16,12.4 16,14.2 C16,16.1 14.2,17 12,17 C9.8,17 8,16.3 8,14.8" />
+</vector>
