@@ -1,4 +1,5 @@
 import { log } from './log';
+import { restFetch } from './apiHelpers';
 // Known banking app package names (must match NotificationListener.java)
 export const KNOWN_BANKING_APPS: Record<string, string> = {
   // ── Canadian Banks ──────────────────────────────────────────────────
@@ -352,7 +353,6 @@ export function getBankingApps(): Record<string, string> {
  */
 export async function loadBankingAppsFromDB(): Promise<Record<string, string>> {
   try {
-    const { restFetch } = await import('./apiHelpers');
     const res = await restFetch(`/banks?select=package_name,display_name`);
 
     if (!res.ok) {
