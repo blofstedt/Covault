@@ -180,29 +180,35 @@ export async function executeRecurringTransactions(
   // DB, sees the Jul 16 row, and skips the Jul 17 insert.
   const monthKeys = new Set(toInsert.map(t => t.date.slice(0, 7)));
   const dbExistingKeys = new Set<string>();
-  for (const monthKey of monthKeys) {
-    try {
-      const res = await restFetch(
-        `/transactions?select=vendor,amount,date&user_id=eq.${userId}&date=like.${monthKey}-*`,
-      );
-      if (!res.ok) continue;
-      const rows: Array<{ vendor?: string; amount?: number; date?: string }> = await res.json();
-      for (const row of rows) {
-        if (!row.vendor || row.amount == null || !row.date) continue;
-        // Key by vendor (lowercased) + amount + day-of-month. We only
-        // need to dedup within the same month, so a same-day duplicate
-        // is the signal we care about.
-        const day = row.date.slice(8, 10);
-        dbExistingKeys.add(
-          `${String(row.vendor).toLowerCase().trim()}|${Number(row.amount).toFixed(2)}|${day}`,
+  // Each month's lookup is independent — results only accumulate into the
+  // shared set — so they run concurrently instead of one round-trip apiece.
+  // The per-month try/catch is kept so one failure still falls through to
+  // "insert anyway" without taking the others down.
+  await Promise.all(
+    [...monthKeys].map(async (monthKey) => {
+      try {
+        const res = await restFetch(
+          `/transactions?select=vendor,amount,date&user_id=eq.${userId}&date=like.${monthKey}-*`,
         );
+        if (!res.ok) return;
+        const rows: Array<{ vendor?: string; amount?: number; date?: string }> = await res.json();
+        for (const row of rows) {
+          if (!row.vendor || row.amount == null || !row.date) continue;
+          // Key by vendor (lowercased) + amount + day-of-month. We only
+          // need to dedup within the same month, so a same-day duplicate
+          // is the signal we care about.
+          const day = row.date.slice(8, 10);
+          dbExistingKeys.add(
+            `${String(row.vendor).toLowerCase().trim()}|${Number(row.amount).toFixed(2)}|${day}`,
+          );
+        }
+      } catch (err: any) {
+        log.warn('[recurringExecutor] DB dedup check failed:', err?.message || err);
+        // If the check fails, fall through and insert anyway — a duplicate
+        // is better than missing a charge. The user can clean up manually.
       }
-    } catch (err: any) {
-      log.warn('[recurringExecutor] DB dedup check failed:', err?.message || err);
-      // If the check fails, fall through and insert anyway — a duplicate
-      // is better than missing a charge. The user can clean up manually.
-    }
-  }
+    }),
+  );
 
   const filtered = toInsert.filter((row) => {
     const day = row.date.slice(8, 10);

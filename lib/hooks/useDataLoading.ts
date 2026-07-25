@@ -414,11 +414,23 @@ export const useDataLoading = ({
     async (userId: string) => {
       log.debug('loadUserData called for user:', userId);
       await loadCategories();
-      await loadUserBudgets(userId); // load user-specific budget limits
-      await loadUserSettings(userId); // load user-specific settings (monthly_income, etc.)
-      await loadTransactions(userId);
-      await loadPendingTransactions(userId); // load pending transactions awaiting approval
-      await loadHouseholdLink(userId); // load partner transactions (merged into state)
+
+      // These four are mutually independent: each uses a functional
+      // setAppState updater and they touch disjoint keys (budgets +
+      // hiddenCategories / user + theme / transactions / pendingTransactions).
+      // Running them serially cost four round-trips for no ordering benefit.
+      await Promise.all([
+        loadUserBudgets(userId), // user-specific budget limits
+        loadUserSettings(userId), // monthly_income, theme, trial flags
+        loadTransactions(userId),
+        loadPendingTransactions(userId), // awaiting approval
+      ]);
+
+      // Must stay after loadTransactions: it merges the partner's rows onto
+      // the list that call populates. It must also stay after
+      // loadUserSettings, which reads budgetingSolo and defers to the
+      // `=== false` this call sets.
+      await loadHouseholdLink(userId);
       log.debug('loadUserData completed');
     },
     [loadCategories, loadHouseholdLink, loadPendingTransactions, loadTransactions, loadUserBudgets, loadUserSettings],
