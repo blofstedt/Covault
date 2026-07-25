@@ -41,18 +41,46 @@ export interface CreateNotificationRuleInput {
  * of rows even for power users) so the in-memory filter is cheaper
  * than per-row network calls.
  */
+/**
+ * Short-lived cache of the rules table, keyed by user.
+ *
+ * checkNotificationRules runs once per captured notification, and a
+ * scanActiveNotifications() burst processes every banking notification in the
+ * shade back-to-back — which meant one identical GET per notification. The TTL
+ * is deliberately short, and every write path calls
+ * invalidateNotificationRulesCache() so a rule the user just created or
+ * deleted takes effect immediately rather than after the TTL.
+ */
+const RULES_CACHE_TTL_MS = 30_000;
+let rulesCache: { userId: string; rows: NotificationRule[]; at: number } | null = null;
+
+export function invalidateNotificationRulesCache(): void {
+  rulesCache = null;
+}
+
+async function fetchRules(userId: string): Promise<NotificationRule[] | null> {
+  const now = Date.now();
+  if (rulesCache && rulesCache.userId === userId && now - rulesCache.at < RULES_CACHE_TTL_MS) {
+    return rulesCache.rows;
+  }
+  const res = await restFetch(
+    `/notification_rules?select=*&user_id=eq.${userId}`,
+    { cache: 'no-store' },
+  );
+  if (!res.ok) return null;
+  const rows: NotificationRule[] = (await res.json()) || [];
+  rulesCache = { userId, rows, at: now };
+  return rows;
+}
+
 export async function checkNotificationRules(
   userId: string,
   rawNotification: string,
 ): Promise<NotificationRule | null> {
   if (!userId || !rawNotification) return null;
   try {
-    const res = await restFetch(
-      `/notification_rules?select=*&user_id=eq.${userId}`,
-      { cache: 'no-store' },
-    );
-    if (!res.ok) return null;
-    const rows: NotificationRule[] = await res.json();
+    const rows = await fetchRules(userId);
+    if (!rows) return null;
     const normalized = rawNotification.trim();
     for (const rule of rows) {
       if (matchesRule(normalized, rule)) return rule;
@@ -146,6 +174,7 @@ export async function createNotificationRule(
       return null;
     }
     const rows: NotificationRule[] = await res.json();
+    invalidateNotificationRulesCache();
     return rows[0] || null;
   } catch (err) {
     log.error('[notificationRules] create exception:', err);
@@ -160,6 +189,7 @@ export async function deleteNotificationRule(userId: string, ruleId: string): Pr
       `/notification_rules?id=eq.${ruleId}&user_id=eq.${userId}`,
       { method: 'DELETE' },
     );
+    if (res.ok) invalidateNotificationRulesCache();
     return res.ok;
   } catch {
     return false;
