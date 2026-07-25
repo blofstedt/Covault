@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
+import { useEscapeKey } from '../lib/hooks/useEscapeKey';
 
 interface CalendarPickerProps {
   value: string; // YYYY-MM-DD
@@ -22,13 +23,7 @@ const CalendarPicker: React.FC<CalendarPickerProps> = ({ value, onChange, onClos
   const [viewYear, setViewYear] = useState(selected.getFullYear());
   const [viewMonth, setViewMonth] = useState(selected.getMonth());
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  useEscapeKey(onClose);
 
   const today = useMemo(() => {
     const d = new Date();

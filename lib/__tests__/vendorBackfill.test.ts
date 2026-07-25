@@ -70,6 +70,25 @@ describe('countBackfillMatches (in-memory semantics)', () => {
     expect(n).toBe(2);
   });
 
+  // Regression: PostgREST always echoes a Content-Range header on a
+  // collection GET. An earlier version short-circuited on that header and
+  // counted an empty array, so the backfill preview silently reported 0
+  // matches in production while these tests (which stubbed empty headers)
+  // stayed green.
+  it('counts matches even when the response carries a Content-Range header', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      headers: new Headers({ 'content-range': '0-2/3' }),
+      json: async () => [
+        { vendor: 'AMZN MKTP' },
+        { vendor: 'AMZN MKTP' },
+        { vendor: 'Walmart' },
+      ],
+    });
+    const n = await countBackfillMatches('user-1', 'amznmktp', 'exact');
+    expect(n).toBe(2);
+  });
+
   it('returns 0 when fetch fails', async () => {
     fetchMock.mockResolvedValueOnce({ ok: false, json: async () => [] });
     const n = await countBackfillMatches('user-1', 'amzn', 'exact');

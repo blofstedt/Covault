@@ -1,5 +1,5 @@
 import { log } from '../lib/log';
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import { Transaction, BudgetCategory } from '../types';
 
@@ -11,12 +11,11 @@ import PageShell from './ui/PageShell';
 import LearnedRulesCard from './transaction_parsing/LearnedRulesCard';
 import { useNotificationRules } from './transaction_parsing/useNotificationRules';
 import type { NotATxRuleType } from './transaction_parsing/NotATransactionModal';
-import { toVendorKey } from '../lib/deviceTransactionParser';
 
 import { covaultNotification } from '../lib/covaultNotification';
-import { REST_BASE, getAuthHeaders, restFetch } from '../lib/apiHelpers';
+import { restFetch } from '../lib/apiHelpers';
 import { loadBankingAppsFromDB } from '../lib/bankingApps';
-import { getNeedsReviewCount, getNeedsReviewIdSet, getReviewQueueChangedEventName } from '../lib/localNotificationMemory';
+import { getNeedsReviewIdSet, getReviewQueueChangedEventName } from '../lib/localNotificationMemory';
 
 /** Delay (ms) after scanning to allow notification processing before reloading data */
 const SCAN_PROCESSING_DELAY_MS = 2000;
@@ -46,9 +45,9 @@ interface TransactionParsingProps {
   /** Delete a vendor override. */
   onDeleteVendorOverride?: (overrideId: string) => void;
   /** Persist and update local state for a vendor category rule. */
-  onSetVendorCategory?: (vendorName: string, categoryId: string) => void | Promise<void>;
+  onSetVendorCategory: (vendorName: string, categoryId: string) => void | Promise<void>;
   /** Persist and update local state for a vendor display name. */
-  onSetProperName?: (vendorName: string, properName: string) => void | Promise<void>;
+  onSetProperName: (vendorName: string, properName: string) => void | Promise<void>;
 }
 
 const TransactionParsing: React.FC<TransactionParsingProps> = ({
@@ -74,10 +73,12 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   // ── Clear modal state ──
   const [clearTarget, setClearTarget] = useState<'entered' | null>(null);
   // All sections always expanded per user request
+  // Only the review queue starts open. The other two are reference/settings
+  // content and previously pushed the actual task below the fold.
   const [expandedSections, setExpandedSections] = useState({
-    activeBanks: true,
+    activeBanks: false,
     caughtTransactions: true,
-    learnedRules: true,
+    learnedRules: false,
   });
 
   const toggleSection = useCallback((section: keyof typeof expandedSections) => {
@@ -119,15 +120,12 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   }, [enabled, loadMonitoredBanks]);
 
 
-  // needsReviewCount: legacy state value used to be displayed in the
-  // DashboardBottomBar badge. The list of IDs (needsReviewIds) is the
-  // live source of truth; the count is computed lazily when needed.
-  const [, setNeedsReviewCount] = useState(0);
+  // needsReviewIds is the live source of truth for the review queue; any
+  // count is derived from it at the point of use.
   const [needsReviewIds, setNeedsReviewIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const refreshReviewQueue = () => {
-      setNeedsReviewCount(getNeedsReviewCount());
       setNeedsReviewIds(getNeedsReviewIdSet());
     };
     refreshReviewQueue();
@@ -143,7 +141,11 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   );
 
   // ── Notification rules hook (skip patterns the user has trained) ──
-  const { create: createNotificationRule } = useNotificationRules({ userId });
+  const {
+    rules: notificationRules,
+    create: createNotificationRule,
+    remove: removeNotificationRule,
+  } = useNotificationRules({ userId });
 
   // ── Inline vendor rename ──
   // Persists via the existing onUpdateTransaction path. The handler in
@@ -223,7 +225,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     async (tx: Transaction, budgetId: string) => {
       const name = budgets.find((b) => b.id === budgetId)?.name;
       try {
-        await onSetVendorCategory?.(tx.vendor, budgetId);
+        await onSetVendorCategory(tx.vendor, budgetId);
       } catch (err) {
         log.warn('[TransactionParsing] create rule failed:', err);
       }
@@ -252,92 +254,19 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   // Local state for the expanded vendor (managed here so the card stays presentational)
   const [expandedVendorCategory, setExpandedVendorCategory] = useState<string | null>(null);
 
-  // ── Fallback direct write path for hosts that have not wired the canonical hook. ──
   const handleSetVendorCategory = useCallback(
     async (vendorName: string, categoryId: string) => {
-      if (onSetVendorCategory) {
-        await onSetVendorCategory(vendorName, categoryId);
-        setExpandedVendorCategory(null);
-        return;
-      }
-      if (!userId) return;
-      const category = budgets.find((b) => b.id === categoryId);
-      if (!category) return;
-      try {
-        const headers = await getAuthHeaders();
-        (headers as any)['Prefer'] = 'return=representation';
-        const vendorKey = toVendorKey(vendorName);
-        // Try match_key first, then proper_name
-        let res = await fetch(
-          `${REST_BASE}/overrides?user_id=eq.${userId}&match_key=eq.${encodeURIComponent(vendorKey)}`,
-          {
-            method: 'PATCH',
-            headers,
-            body: JSON.stringify({
-              category_id: category.name,
-              proper_name: vendorName,
-              match_type: 'exact',
-              updated_at: new Date().toISOString(),
-            }),
-          },
-        );
-        if (!res.ok) {
-          res = await fetch(
-            `${REST_BASE}/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(vendorName)}`,
-            {
-              method: 'PATCH',
-              headers,
-              body: JSON.stringify({ category_id: category.name, updated_at: new Date().toISOString() }),
-            },
-          );
-        }
-        if (!res.ok) {
-          // Insert as a new row
-          await fetch(`${REST_BASE}/overrides`, {
-            method: 'POST',
-            headers: { ...headers, 'Prefer': 'resolution=ignore-duplicates' },
-            body: JSON.stringify({
-              user_id: userId,
-              proper_name: vendorName,
-              match_key: vendorKey,
-              match_type: 'exact',
-              category_id: category.name,
-              updated_at: new Date().toISOString(),
-            }),
-          });
-        }
-      } catch (err) {
-        log.warn('[TransactionParsing] handleSetVendorCategory failed:', err);
-      }
+      await onSetVendorCategory(vendorName, categoryId);
       setExpandedVendorCategory(null);
     },
-    [userId, budgets, onSetVendorCategory],
+    [onSetVendorCategory],
   );
 
   const handleSetProperName = useCallback(
     async (vendorName: string, properName: string) => {
-      if (onSetProperName) {
-        await onSetProperName(vendorName, properName);
-        return;
-      }
-      if (!userId) return;
-      try {
-        const res = await restFetch(
-          `/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(vendorName)}`,
-          {
-            method: 'PATCH',
-            headers: { Prefer: 'return=representation' },
-            body: JSON.stringify({ proper_name: properName, updated_at: new Date().toISOString() }),
-          },
-        );
-        if (!res.ok) {
-          log.warn('[TransactionParsing] handleSetProperName failed:', res.status);
-        }
-      } catch (err) {
-        log.warn('[TransactionParsing] handleSetProperName failed:', err);
-      }
+      await onSetProperName(vendorName, properName);
     },
-    [userId, onSetProperName],
+    [onSetProperName],
   );
 
   // When notifications are enabled, trigger a scan and reload data
@@ -415,6 +344,11 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   }, [userId, aiTransactions, onClearEntered, onReloadTransactions]);
 
   // ── Refresh handler ──
+  const followUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (followUpTimerRef.current != null) clearTimeout(followUpTimerRef.current);
+  }, []);
+
   const handleRefresh = useCallback(async () => {
     if (isRefreshing) return;
     setIsRefreshing(true);
@@ -422,21 +356,23 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       if (onRefreshNotifications) {
         await onRefreshNotifications();
       }
-      // scanActiveNotifications resolves immediately while notification
-      // events are processed asynchronously through the AI pipeline.
-      // Reload after a short delay to pick up fast-processing results,
-      // then again after a longer delay for slower AI extractions.
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      if (onReloadTransactions && userId) {
-        await onReloadTransactions(userId);
-      }
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // scanActiveNotifications resolves immediately while notification events
+      // are still moving through the AI pipeline, so show whatever has landed
+      // right away rather than holding the spinner on a fixed timer.
       if (onReloadTransactions && userId) {
         await onReloadTransactions(userId);
       }
     } finally {
       setIsRefreshing(false);
       loadMonitoredBanks();
+      // Slower AI extractions land after the scan resolves. Pick them up in the
+      // background — the spinner is already gone, the list just fills in.
+      if (onReloadTransactions && userId) {
+        followUpTimerRef.current = setTimeout(() => {
+          followUpTimerRef.current = null;
+          void onReloadTransactions(userId);
+        }, 2500);
+      }
     }
   }, [isRefreshing, onRefreshNotifications, onReloadTransactions, userId, loadMonitoredBanks]);
 
@@ -447,10 +383,27 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         className="px-6 pt-safe-top pb-2 shrink-0 z-20 transition-colors bg-transparent border-none backdrop-blur-none relative"
         style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}
       >
-        <div className="flex items-center justify-center">
-          <h1 className="text-xl font-bold text-slate-500 dark:text-slate-100 tracking-tight">
-            Transaction Parsing
-          </h1>
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold text-slate-500 dark:text-slate-100 tracking-tight">
+              Review
+            </h1>
+            <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500 mt-0.5 truncate">
+              {enabled
+                ? 'Transactions Covault caught from your bank alerts'
+                : 'Turn on capture to log transactions automatically'}
+            </p>
+          </div>
+          {enabled && (
+            <button
+              type="button"
+              onClick={() => onToggle(false)}
+              className="shrink-0 inline-flex items-center gap-1.5 min-h-[36px] px-3 rounded-full bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/40 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 active:scale-95 transition-all"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+              Capture on
+            </button>
+          )}
         </div>
       </header>
 
@@ -461,14 +414,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       >
         {enabled ? (
           <>
-            <div className="shrink-0 mb-4">
-              <ActiveBanksCard
-                activeBanks={monitoredBanks}
-                isExpanded={expandedSections.activeBanks}
-                onToggleExpanded={() => toggleSection('activeBanks')}
-              />
-            </div>
-
             <AITransactionsEnteredCard
               aiTransactions={aiTransactions}
               budgets={budgets}
@@ -490,12 +435,21 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
             />
 
             <div className="shrink-0 mt-4">
+              <ActiveBanksCard
+                activeBanks={monitoredBanks}
+                isExpanded={expandedSections.activeBanks}
+                onToggleExpanded={() => toggleSection('activeBanks')}
+              />
+            </div>
+
+            <div className="shrink-0 mt-4">
               <LearnedRulesCard
-                userId={userId}
                 vendorOverrides={vendorOverrides}
                 categoryNameById={categoryNameById}
                 budgets={budgets}
                 allTransactions={allTransactions}
+                rules={notificationRules}
+                onRemoveRule={removeNotificationRule}
                 onDeleteVendorOverride={handleDeleteVendorOverride}
                 onSetVendorCategory={handleSetVendorCategory}
                 onSetProperName={handleSetProperName}

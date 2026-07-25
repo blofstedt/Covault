@@ -1,5 +1,6 @@
 import React from 'react';
 import { PREMIUM_FEATURE_LABELS, type PremiumFeature } from '../lib/entitlement';
+import { useEscapeKey } from '../lib/hooks/useEscapeKey';
 
 interface SubscribeModalProps {
   onClose: () => void;
@@ -16,6 +17,8 @@ const PREMIUM_FEATURES: PremiumFeature[] = [
 ];
 
 const SubscribeModal: React.FC<SubscribeModalProps> = ({ onClose, onSubscribe }) => {
+  useEscapeKey(onClose);
+
   return (
     <div className="fixed inset-0 z-[200] bg-slate-900/50 backdrop-blur-lg flex items-center justify-center p-6 animate-in fade-in duration-300">
       <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-[2rem] p-8 space-y-6 shadow-2xl animate-in zoom-in-95 duration-500 border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] border-slate-100 dark:border-slate-800/60">

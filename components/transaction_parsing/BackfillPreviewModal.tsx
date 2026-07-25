@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+import React from 'react';
+import { useEscapeKey } from '../../lib/hooks/useEscapeKey';
 
 interface BackfillPreviewModalProps {
   /** The OLD vendor name (what we're replacing). */
@@ -14,7 +15,6 @@ interface BackfillPreviewModalProps {
   /** User cancelled. */
   onCancel: () => void;
   /** User chose "this time only" — apply just this row, no backfill. */
-  onApplyOnce?: () => void;
 }
 
 /**
@@ -38,16 +38,9 @@ const BackfillPreviewModal: React.FC<BackfillPreviewModalProps> = ({
   isApplying = false,
   onConfirm,
   onCancel,
-  onApplyOnce,
 }) => {
-  // Escape cancels (unless a request is in flight)
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isApplying) onCancel();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onCancel, isApplying]);
+  // Escape cancels, unless a request is in flight.
+  useEscapeKey(onCancel, !isApplying);
 
   return (
     <div
@@ -95,7 +88,7 @@ const BackfillPreviewModal: React.FC<BackfillPreviewModalProps> = ({
                 historical {matchCount === 1 ? 'transaction matches' : 'transactions match'}
               </span>
             </div>
-            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
               {matchCount > 0
                 ? 'They will be renamed to match. New notifications from this vendor will also use the new name going forward.'
                 : 'No historical transactions to update. New notifications from this vendor will use the new name going forward.'}
@@ -128,16 +121,6 @@ const BackfillPreviewModal: React.FC<BackfillPreviewModalProps> = ({
                   Apply to all {matchCount}
                 </>
               )}
-            </button>
-          )}
-          {matchCount > 0 && onApplyOnce && (
-            <button
-              type="button"
-              onClick={onApplyOnce}
-              disabled={isApplying}
-              className="w-full px-4 py-2 rounded-xl text-[11px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800/60 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 transition-all duration-150 disabled:opacity-50"
-            >
-              Just this one
             </button>
           )}
           <button

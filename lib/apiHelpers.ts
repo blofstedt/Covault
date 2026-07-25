@@ -6,23 +6,40 @@ export const REST_BASE = `${supabaseUrl}/rest/v1`;
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 let cachedAccessToken = '';
+// Expiry of `cachedAccessToken`, in ms. Cached alongside the token so the
+// staleness check is a numeric compare instead of an atob + JSON.parse of the
+// JWT on every single request (loadUserData alone issues ~10).
+let cachedAccessTokenExpMs: number | null = null;
+
+/** Decode a JWT's `exp` claim, in ms. Null if it can't be read. */
+const readTokenExpMs = (token: string): number | null => {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return typeof payload.exp === 'number' ? payload.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+};
 
 export const setCachedAccessToken = (token?: string | null) => {
   cachedAccessToken = token || '';
+  cachedAccessTokenExpMs = cachedAccessToken ? readTokenExpMs(cachedAccessToken) : null;
 };
 
 export const clearCachedAccessToken = () => {
   cachedAccessToken = '';
+  cachedAccessTokenExpMs = null;
 };
 
 /** Returns true if the JWT is expired or within 90 seconds of expiry. */
 const isTokenStale = (token: string): boolean => {
-  try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    return Date.now() > (payload.exp * 1000) - 90_000;
-  } catch {
-    return true;
-  }
+  const expMs =
+    token === cachedAccessToken && cachedAccessTokenExpMs !== null
+      ? cachedAccessTokenExpMs
+      : readTokenExpMs(token);
+  // An undecodable token is treated as stale, exactly as before.
+  if (expMs === null) return true;
+  return Date.now() > expMs - 90_000;
 };
 
 const readAccessToken = async (): Promise<string> => {
@@ -38,7 +55,7 @@ const readAccessToken = async (): Promise<string> => {
 
     const token = session?.access_token || '';
     if (token) {
-      cachedAccessToken = token;
+      setCachedAccessToken(token);
       return token;
     }
 

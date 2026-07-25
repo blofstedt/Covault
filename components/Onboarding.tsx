@@ -6,44 +6,54 @@ interface OnboardingProps {
   onComplete: (isSolo: boolean, budgets: BudgetCategory[], partnerEmail?: string) => void;
 }
 
+const STEPS = [
+  {
+    title: "Spent vs. Projected",
+    content: "Solid bars show current spending. Dashed bars project your future based on recurring bills.",
+    icon: (
+      <div className="relative">
+        <div className="absolute inset-0 bg-emerald-500/10 blur-3xl rounded-full animate-pulse"></div>
+        <svg className="w-32 h-32 text-emerald-600 dark:text-emerald-400 relative" viewBox="0 0 24 24" fill="currentColor">
+          <rect x="2" y="20" width="20" height="1.5" rx="0.75" className="opacity-20" />
+          <rect x="4" y="10" width="4" height="10" rx="1" className="animate-bar" style={{ animationDelay: '0.1s' }} />
+          <rect x="10" y="6" width="4" height="14" rx="1" className="animate-bar opacity-60" style={{ animationDelay: '0.3s' }} />
+          <rect x="16" y="14" width="4" height="6" rx="1" className="animate-bar opacity-30" style={{ animationDelay: '0.5s' }} />
+        </svg>
+      </div>
+    )
+  },
+  {
+    title: "Sync & Forget",
+    content: "Covault listens for banking notifications to auto-file transactions. You just review and confirm.",
+    icon: (
+      <div className="relative">
+        <div className="absolute inset-0 bg-blue-500/10 blur-3xl rounded-full animate-pulse"></div>
+        <div className="animate-swing">
+          <svg className="w-32 h-32 text-emerald-600 dark:text-emerald-400 relative" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17v1a3 3 0 11-6 0v-1h6z" />
+          </svg>
+        </div>
+        <div className="absolute top-6 right-6 w-5 h-5 bg-emerald-500 rounded-full border-4 border-white dark:border-slate-950 animate-ping opacity-75"></div>
+        <div className="absolute top-6 right-6 w-5 h-5 bg-emerald-500 rounded-full border-4 border-white dark:border-slate-950 shadow-sm"></div>
+      </div>
+    )
+  }
+];
+
+
+/** Hoisted to module scope: defining this inside the component body gave it a
+ *  new identity every render, so React unmounted and remounted the entire step
+ *  subtree on each keystroke — which reset the partner-email input's focus. */
+const StepWrapper = ({ children, className = "" }: { children?: React.ReactNode, className?: string }) => (
+  <div className={`flex-1 flex flex-col p-8 bg-slate-50 dark:bg-slate-950 transition-colors relative overflow-hidden ${className}`}>
+    {children}
+  </div>
+);
+
 const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
   const [step, setStep] = useState(0);
   const [partnerEmail, setPartnerEmail] = useState('');
-
-  const steps = [
-    {
-      title: "Spent vs. Projected",
-      content: "Solid bars show current spending. Dashed bars project your future based on recurring bills.",
-      icon: (
-        <div className="relative">
-          <div className="absolute inset-0 bg-emerald-500/10 blur-3xl rounded-full animate-pulse"></div>
-          <svg className="w-32 h-32 text-emerald-600 dark:text-emerald-400 relative" viewBox="0 0 24 24" fill="currentColor">
-            <rect x="2" y="20" width="20" height="1.5" rx="0.75" className="opacity-20" />
-            <rect x="4" y="10" width="4" height="10" rx="1" className="animate-bar" style={{ animationDelay: '0.1s' }} />
-            <rect x="10" y="6" width="4" height="14" rx="1" className="animate-bar opacity-60" style={{ animationDelay: '0.3s' }} />
-            <rect x="16" y="14" width="4" height="6" rx="1" className="animate-bar opacity-30" style={{ animationDelay: '0.5s' }} />
-          </svg>
-        </div>
-      )
-    },
-    {
-      title: "Sync & Forget",
-      content: "Covault listens for banking notifications to auto-file transactions. You just review and confirm.",
-      icon: (
-        <div className="relative">
-          <div className="absolute inset-0 bg-blue-500/10 blur-3xl rounded-full animate-pulse"></div>
-          <div className="animate-swing">
-            <svg className="w-32 h-32 text-emerald-600 dark:text-emerald-400 relative" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17v1a3 3 0 11-6 0v-1h6z" />
-            </svg>
-          </div>
-          <div className="absolute top-6 right-6 w-5 h-5 bg-emerald-500 rounded-full border-4 border-white dark:border-slate-950 animate-ping opacity-75"></div>
-          <div className="absolute top-6 right-6 w-5 h-5 bg-emerald-500 rounded-full border-4 border-white dark:border-slate-950 shadow-sm"></div>
-        </div>
-      )
-    }
-  ];
 
   const handleNextIntro = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -58,14 +68,8 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
     onComplete(false, SYSTEM_CATEGORIES, partnerEmail || undefined);
   };
 
-  const StepWrapper = ({ children, className = "" }: { children?: React.ReactNode, className?: string }) => (
-    <div className={`flex-1 flex flex-col p-8 bg-slate-50 dark:bg-slate-950 transition-colors relative overflow-hidden ${className}`}>
-      {children}
-    </div>
-  );
-
   // STEP: WHO IS THIS FOR (after intro steps)
-  if (step === steps.length) {
+  if (step === STEPS.length) {
     return (
       <StepWrapper className="justify-center text-center space-y-12">
         <div className="space-y-4 animate-nest">
@@ -111,7 +115,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
   }
 
   // STEP: PARTNER EMAIL (for couples)
-  if (step === steps.length + 1) {
+  if (step === STEPS.length + 1) {
     return (
       <StepWrapper className="justify-center text-center space-y-12">
         <div className="space-y-4 animate-nest">
@@ -163,17 +167,17 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
       <div className="flex-1 flex flex-col items-center justify-center space-y-12">
         <div className="w-72 h-72 bg-white dark:bg-slate-900 rounded-[4rem] flex items-center justify-center shadow-2xl border border-slate-100 dark:border-slate-800/60 animate-nest overflow-hidden relative">
            <div className="absolute inset-0 bg-slate-50/50 dark:bg-slate-800/20" />
-           {steps[step].icon}
+           {STEPS[step].icon}
         </div>
         <div className="text-center space-y-6 max-w-xs animate-nest" style={{ animationDelay: '0.2s' }}>
-          <h2 className="text-3xl font-bold text-slate-600 dark:text-slate-100 tracking-tighter leading-tight">{steps[step].title}</h2>
-          <p className="text-slate-400 dark:text-slate-500 font-medium text-sm tracking-wide leading-relaxed">{steps[step].content}</p>
+          <h2 className="text-3xl font-bold text-slate-600 dark:text-slate-100 tracking-tighter leading-tight">{STEPS[step].title}</h2>
+          <p className="text-slate-400 dark:text-slate-500 font-medium text-sm tracking-wide leading-relaxed">{STEPS[step].content}</p>
         </div>
       </div>
 
       <div className="flex items-center justify-between mt-auto pt-8">
         <div className="flex space-x-4">
-          {steps.map((_, i) => (
+          {STEPS.map((_, i) => (
             <div key={i} className={`h-2 rounded-full transition-all duration-700 ${i === step ? 'w-10 bg-emerald-600' : 'w-2 bg-slate-200 dark:bg-slate-800'}`} />
           ))}
         </div>

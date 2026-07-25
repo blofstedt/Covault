@@ -148,6 +148,38 @@ export function matchRefundsToExpenses(
     (t) => !isRefund(t) && !t.is_income && !t.is_projected && Number(t.amount) > 0,
   );
 
+  // Project each expense once, then bucket by normalized vendor.
+  //
+  // The inner loop used to scan every expense per refund, re-normalizing the
+  // expense vendor (three regex passes) and re-parsing its date on each pass —
+  // O(refunds x expenses) work for values that don't depend on the refund.
+  // Vendor equality is exact, so bucketing on it drops exactly the candidates
+  // the `expenseVendor !== refundVendor` guard would have skipped. Bucket
+  // arrays keep source order, so the "first wins on equal distance"
+  // tie-breaking below is unchanged. Amount is deliberately NOT part of the
+  // key: it matches within a 1-cent tolerance, which buckets can't express.
+  interface ExpenseEntry {
+    tx: Transaction;
+    amount: number;
+    dateMs: number;
+    budgetId: string;
+  }
+  const expensesByVendor = new Map<string, ExpenseEntry[]>();
+  for (const expense of expenses) {
+    const dateMs = new Date(txDateStr(expense) + 'T12:00:00.000Z').getTime();
+    if (!Number.isFinite(dateMs)) continue;
+    const key = normalizeVendorForRefund(expense.vendor ?? '');
+    const entry: ExpenseEntry = {
+      tx: expense,
+      amount: Number(expense.amount),
+      dateMs,
+      budgetId: expense.budget_id ?? (expense as any).category_id ?? '',
+    };
+    const bucket = expensesByVendor.get(key);
+    if (bucket) bucket.push(entry);
+    else expensesByVendor.set(key, [entry]);
+  }
+
   for (const refund of refunds) {
     const refundAmount = Math.abs(Number(refund.amount));
     const refundDate = new Date(txDateStr(refund) + 'T12:00:00.000Z').getTime();
@@ -158,36 +190,28 @@ export function matchRefundsToExpenses(
     let bestExpense: Transaction | null = null;
     let bestDistance = Infinity;
 
-    for (const expense of expenses) {
-      if (matchedExpenseIds.has(expense.id)) continue; // already claimed
-      if (Number(expense.amount) <= 0) continue;
-
-      // Vendor match (case-insensitive, whitespace-normalized — same as
-      // findMatchingExpense, so the two matchers can't disagree on a vendor
-      // like "You  Got").
-      const expenseVendor = normalizeVendorForRefund(expense.vendor ?? '');
-      if (expenseVendor !== refundVendor) continue;
+    // Candidates already share the refund's normalized vendor.
+    for (const entry of expensesByVendor.get(refundVendor) ?? []) {
+      if (matchedExpenseIds.has(entry.tx.id)) continue; // already claimed
+      if (entry.amount <= 0) continue;
 
       // Budget match — skip if the user has since recategorized the expense
       // to a different budget. Without a budget match, a refund from a
       // generic-sounding vendor (e.g. "Amazon") would hit unrelated charges.
-      const expenseBudgetId = expense.budget_id ?? (expense as any).category_id ?? '';
-      if (refundBudgetId && expenseBudgetId && refundBudgetId !== expenseBudgetId) {
+      if (refundBudgetId && entry.budgetId && refundBudgetId !== entry.budgetId) {
         continue;
       }
 
       // Amount match (within 1 cent)
-      if (Math.abs(Number(expense.amount) - refundAmount) > 0.01) continue;
+      if (Math.abs(entry.amount - refundAmount) > 0.01) continue;
 
       // Date match within window
-      const expenseDate = new Date(txDateStr(expense) + 'T12:00:00.000Z').getTime();
-      if (!Number.isFinite(expenseDate)) continue;
-      const distance = Math.abs(expenseDate - refundDate) / MS_PER_DAY;
+      const distance = Math.abs(entry.dateMs - refundDate) / MS_PER_DAY;
       if (distance > REFUND_MATCH_WINDOW_DAYS) continue;
 
       if (distance < bestDistance) {
         bestDistance = distance;
-        bestExpense = expense;
+        bestExpense = entry.tx;
       }
     }
 

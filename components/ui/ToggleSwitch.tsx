@@ -5,6 +5,8 @@ interface ToggleSwitchProps {
   onToggle: () => void;
   disabled?: boolean;
   size?: 'sm' | 'md';
+  /** Accessible name. The control renders no text of its own. */
+  label?: string;
 }
 
 const ToggleSwitch: React.FC<ToggleSwitchProps> = ({
@@ -12,6 +14,7 @@ const ToggleSwitch: React.FC<ToggleSwitchProps> = ({
   onToggle,
   disabled = false,
   size = 'md',
+  label,
 }) => {
   const trackClass = size === 'sm'
     ? 'w-8 h-5'
@@ -25,6 +28,10 @@ const ToggleSwitch: React.FC<ToggleSwitchProps> = ({
 
   return (
     <button
+      type="button"
+      role="switch"
+      aria-checked={enabled}
+      aria-label={label}
       onClick={onToggle}
       disabled={disabled}
       className={`relative ${trackClass} rounded-full transition-colors duration-200 flex-shrink-0 ${
@@ -34,6 +41,7 @@ const ToggleSwitch: React.FC<ToggleSwitchProps> = ({
       }`}
     >
       <span
+        aria-hidden="true"
         className={`absolute ${thumbClass} bg-white rounded-full shadow transition-transform duration-200 ${translateClass}`}
       />
     </button>

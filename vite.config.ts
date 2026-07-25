@@ -76,6 +76,27 @@ export default defineConfig(({ mode }) => {
       target: 'es2015',
       // Useful for debugging if the white screen persists
       sourcemap: true,
+      rollupOptions: {
+        output: {
+          // Split the heavy third-party deps out of the entry chunk so a cold
+          // start doesn't parse them all. The AI stack in particular is larger
+          // than the rest of the app combined and is only reached when a
+          // notification actually needs the model; `aiExtractor` imports it
+          // dynamically, and naming the chunk here keeps it from being merged
+          // back into a shared chunk.
+          // The function form (rather than an object) only emits a chunk when
+          // the module is actually in the graph. That matters for supabase-js:
+          // a build without credentials folds the "is configured" check to a
+          // constant and tree-shakes the client away entirely, which would
+          // leave an empty named chunk behind.
+          manualChunks(id: string) {
+            if (!id.includes('node_modules')) return;
+            if (id.includes('/@supabase/')) return 'supabase';
+            if (/\/node_modules\/d3(-|\/)/.test(id)) return 'd3';
+            if (/\/node_modules\/(react|react-dom|scheduler)\//.test(id)) return 'react';
+          },
+        },
+      },
     },
   };
 });

@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import ParsingCard from '../ui/ParsingCard';
-import { useNotificationRules } from './useNotificationRules';
+import type { NotificationRule } from '../../lib/notificationRules';
 import type { VendorOverride, MatchType } from './useVendorOverrides';
 import { toVendorKey } from '../../lib/deviceTransactionParser';
 import { formatCurrency } from '../../lib/formatCurrency';
@@ -25,18 +25,6 @@ const categoryColorMap: Record<string, string> = {
   'Other': 'text-slate-600 dark:text-slate-400',
 };
 
-const fmtUpdated = (iso?: string | null): string => {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const diffMs = Date.now() - d.getTime();
-  const day = 24 * 60 * 60 * 1000;
-  if (diffMs < day) return 'today';
-  if (diffMs < 2 * day) return 'yesterday';
-  if (diffMs < 7 * day) return `${Math.floor(diffMs / day)}d ago`;
-  if (diffMs < 30 * day) return `${Math.floor(diffMs / (7 * day))}w ago`;
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-};
 
 interface LearnedRule {
   properName: string;
@@ -46,9 +34,21 @@ interface LearnedRule {
   transactions: Transaction[];
 }
 
+// Stable identities for omitted props. A fresh `[]` / `new Map()` per render
+// would invalidate the memos below on every single render.
+const EMPTY_RULES: NotificationRule[] = [];
+const EMPTY_BUDGETS: BudgetCategory[] = [];
+const EMPTY_TRANSACTIONS: Transaction[] = [];
+const EMPTY_CATEGORY_NAMES = new Map<string, string>();
+
 interface LearnedRulesCardProps {
-  userId?: string;
   vendorOverrides: VendorOverride[];
+  /** Skip-pattern rules, owned by TransactionParsing. Passed in rather than
+   *  fetched here so the two consumers share one fetch and one copy of the
+   *  state — previously each mounted its own hook, so a rule created from the
+   *  "not a transaction" flow never appeared in this list. */
+  rules?: NotificationRule[];
+  onRemoveRule?: (ruleId: string) => Promise<boolean>;
   categoryNameById?: Map<string, string>;
   budgets?: BudgetCategory[];
   allTransactions?: Transaction[];
@@ -62,11 +62,12 @@ interface LearnedRulesCardProps {
 }
 
 const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
-  userId,
   vendorOverrides,
-  categoryNameById = new Map(),
-  budgets = [],
-  allTransactions = [],
+  rules = EMPTY_RULES,
+  onRemoveRule,
+  categoryNameById = EMPTY_CATEGORY_NAMES,
+  budgets = EMPTY_BUDGETS,
+  allTransactions = EMPTY_TRANSACTIONS,
   onDeleteVendorOverride,
   onSetVendorCategory,
   onSetProperName,
@@ -75,7 +76,6 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
   isExpanded = true,
   onToggleExpanded,
 }) => {
-  const { rules, remove } = useNotificationRules({ userId });
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [editingProperName, setEditingProperName] = useState<string | null>(null);
   const [properNameDraft, setProperNameDraft] = useState('');
@@ -131,8 +131,6 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
           }
         }
       }
-      // Deduplicate transactions
-      rule.transactions = Array.from(new Map(rule.transactions.map(t => [t.id, t])).values());
     }
 
     return Array.from(groups.values()).sort((a, b) => a.properName.localeCompare(b.properName));
@@ -144,12 +142,12 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
     async (ruleId: string) => {
       setRemovingId(ruleId);
       try {
-        await remove(ruleId);
+        await onRemoveRule?.(ruleId);
       } finally {
         setRemovingId(null);
       }
     },
-    [remove],
+    [onRemoveRule],
   );
 
   const handleMerge = useCallback((ruleKey: string) => {
@@ -180,8 +178,8 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
       id="parsing-learned-rules"
       colorScheme="violet"
       icon={<path d="M12 2a3 3 0 00-3 3v1H7a3 3 0 00-3 3v3a3 3 0 003 3h10a3 3 0 003-3V9a3 3 0 00-3-3h-2V5a3 3 0 00-3-3zm0 2a1 1 0 011 1v1h-2V5a1 1 0 011-1z" />}
-      title="Learned Rules"
-      subtitle="Vendor mappings and auto-categorization"
+      title="What Covault has learned"
+      subtitle="Vendors it recognizes, and alerts it skips"
       count={totalRules}
       collapsible
       isExpanded={isExpanded}
@@ -192,7 +190,7 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
           {/* Learned Rules List */}
           {learnedRules.length === 0 ? (
             <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-4">
-              No learned rules yet. Categorize transactions to build rules.
+              Nothing learned yet. Each time you categorize a caught transaction, Covault remembers it for next time.
             </p>
           ) : (
             <div className="space-y-2">
@@ -214,17 +212,17 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                         <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">
                           {rule.properName}
                         </span>
-                        <span className="text-[10px]">→</span>
+                        <span className="text-[11px]">→</span>
                         <span className={`text-xs font-bold truncate ${categoryColor}`}>
                           {rule.categoryName}
                         </span>
-                        <span className="text-[9px] font-semibold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800/60 px-1.5 py-0.5 rounded-full shrink-0">
+                        <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800/60 px-1.5 py-0.5 rounded-full shrink-0">
                           {rule.transactions.length} tx
                         </span>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         {mergingRule === ruleKey && (
-                          <span className="text-[9px] font-bold text-amber-500">merging</span>
+                          <span className="text-[11px] font-bold text-amber-500">merging</span>
                         )}
                         <svg className={`w-3 h-3 text-slate-300 dark:text-slate-600 transition-transform ${isExpanded ? 'rotate-90' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                           <polyline points="9 18 15 12 9 6" />
@@ -237,13 +235,13 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                       <div className="px-3 pb-3 space-y-3 border-t border-violet-100 dark:border-violet-800/30 pt-2">
                         {/* Match Patterns */}
                         <div>
-                          <p className="text-[10px] font-bold tracking-wide text-slate-400 dark:text-slate-500 uppercase mb-1.5">
+                          <p className="text-[11px] font-bold tracking-wide text-slate-400 dark:text-slate-500 uppercase mb-1.5">
                             Match Patterns ({rule.patterns.length})
                           </p>
                           <div className="flex flex-wrap gap-1.5">
                             {rule.patterns.map((pattern) => (
                               <div key={pattern.id} className="flex items-center gap-1">
-                                <span className={`text-[10px] font-bold px-2 py-1 rounded-lg border ${matchTypeStyles[pattern.match_type || 'exact']}`}>
+                                <span className={`text-[11px] font-bold px-2 py-1 rounded-lg border ${matchTypeStyles[pattern.match_type || 'exact']}`}>
                                   {pattern.match_type || 'exact'}: {pattern.match_key || pattern.proper_name}
                                 </span>
                                 <button
@@ -263,7 +261,7 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                         {/* Transactions under this rule */}
                         {rule.transactions.length > 0 && (
                           <div>
-                            <p className="text-[10px] font-bold tracking-wide text-slate-400 dark:text-slate-500 uppercase mb-1.5">
+                            <p className="text-[11px] font-bold tracking-wide text-slate-400 dark:text-slate-500 uppercase mb-1.5">
                               Transactions ({rule.transactions.length})
                             </p>
                             <div className="space-y-1 max-h-40 overflow-y-auto no-scrollbar">
@@ -273,7 +271,7 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                                   <span className="text-[11px] font-mono font-semibold text-slate-700 dark:text-slate-200 shrink-0">
                                     {formatCurrency(tx.amount)}
                                   </span>
-                                  <span className="text-[9px] text-slate-400 dark:text-slate-500 ml-2 shrink-0">
+                                  <span className="text-[11px] text-slate-400 dark:text-slate-500 ml-2 shrink-0">
                                     {new Date(tx.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                                   </span>
                                 </div>
@@ -286,7 +284,7 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                         <div className="flex flex-wrap gap-1.5 pt-1">
                           {/* Change Category */}
                           <div className="relative group">
-                            <button className="px-2 py-1 text-[10px] font-bold rounded-lg bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/40 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-all">
+                            <button className="px-2 py-1 text-[11px] font-bold rounded-lg bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/40 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-all">
                               Change Category
                             </button>
                             <div className="absolute bottom-full left-0 mb-1 hidden group-hover:grid grid-cols-2 gap-1 p-2 bg-white dark:bg-slate-800 rounded-xl border border-violet-200 dark:border-violet-800/40 shadow-lg z-20 min-w-[180px]">
@@ -298,7 +296,7 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                                       onSetVendorCategory?.(p.proper_name, b.id);
                                     }
                                   }}
-                                  className="px-2 py-1 text-[10px] font-bold rounded-lg bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-all text-left"
+                                  className="px-2 py-1 text-[11px] font-bold rounded-lg bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-all text-left"
                                 >
                                   {b.name}
                                 </button>
@@ -323,7 +321,7 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                                     setEditingProperName(null);
                                   }
                                 }}
-                                className="flex-1 px-2 py-1 text-[10px] rounded-lg border border-violet-200 dark:border-violet-800/40 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                                className="flex-1 px-2 py-1 text-[11px] rounded-lg border border-violet-200 dark:border-violet-800/40 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-violet-400"
                                 autoFocus
                               />
                               <button
@@ -333,7 +331,7 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                                   }
                                   setEditingProperName(null);
                                 }}
-                                className="px-2 py-1 text-[10px] font-bold rounded-lg bg-violet-500 text-white"
+                                className="px-2 py-1 text-[11px] font-bold rounded-lg bg-violet-500 text-white"
                               >
                                 Save
                               </button>
@@ -344,7 +342,7 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                                 setProperNameDraft(rule.properName);
                                 setEditingProperName(ruleKey);
                               }}
-                              className="px-2 py-1 text-[10px] font-bold rounded-lg bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/40 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-all"
+                              className="px-2 py-1 text-[11px] font-bold rounded-lg bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/40 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-all"
                             >
                               Edit Name
                             </button>
@@ -356,7 +354,7 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                               <select
                                 value={mergeTarget || ''}
                                 onChange={(e) => setMergeTarget(e.target.value || null)}
-                                className="text-[10px] rounded-lg border border-violet-200 dark:border-violet-800/40 bg-white dark:bg-slate-800 px-2 py-1"
+                                className="text-[11px] rounded-lg border border-violet-200 dark:border-violet-800/40 bg-white dark:bg-slate-800 px-2 py-1"
                               >
                                 <option value="">Select target...</option>
                                 {learnedRules
@@ -370,13 +368,13 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                               <button
                                 onClick={confirmMerge}
                                 disabled={!mergeTarget}
-                                className="px-2 py-1 text-[10px] font-bold rounded-lg bg-amber-500 text-white disabled:opacity-50"
+                                className="px-2 py-1 text-[11px] font-bold rounded-lg bg-amber-500 text-white disabled:opacity-50"
                               >
                                 Merge
                               </button>
                               <button
                                 onClick={() => { setMergingRule(null); setMergeTarget(null); }}
-                                className="px-2 py-1 text-[10px] font-bold rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+                                className="px-2 py-1 text-[11px] font-bold rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
                               >
                                 Cancel
                               </button>
@@ -384,7 +382,7 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                           ) : (
                             <button
                               onClick={() => handleMerge(ruleKey)}
-                              className="px-2 py-1 text-[10px] font-bold rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-all"
+                              className="px-2 py-1 text-[11px] font-bold rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-all"
                             >
                               Merge
                             </button>
@@ -397,7 +395,7 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                                 onDeleteVendorOverride(p.id);
                               }
                             }}
-                            className="px-2 py-1 text-[10px] font-bold rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800/40 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/40 transition-all"
+                            className="px-2 py-1 text-[11px] font-bold rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800/40 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/40 transition-all"
                           >
                             Delete Rule
                           </button>
@@ -414,10 +412,10 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
           {rules.length > 0 && (
             <div className="pt-2 border-t border-violet-100 dark:border-violet-800/30">
               <div className="flex items-center gap-1.5 mb-1.5">
-                <p className="text-[10px] font-bold tracking-wide text-slate-400 dark:text-slate-500 uppercase">
+                <p className="text-[11px] font-bold tracking-wide text-slate-400 dark:text-slate-500 uppercase">
                   Skip Patterns
                 </p>
-                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800/60 px-1.5 py-0.5 rounded-full">
+                <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800/60 px-1.5 py-0.5 rounded-full">
                   {rules.length}
                 </span>
               </div>
@@ -431,17 +429,12 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                       <p className="text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate">
                         {rule.pattern}
                       </p>
-                      <span className={`text-[8px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border shrink-0 ${matchTypeStyles[rule.pattern_type as MatchType] || matchTypeStyles.exact}`}>
+                      <span className={`text-[11px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border shrink-0 ${matchTypeStyles[rule.pattern_type as MatchType] || matchTypeStyles.exact}`}>
                         {rule.pattern_type}
                       </span>
                       {rule.use_count !== undefined && (
-                        <span className="text-[9px] font-semibold text-violet-500 dark:text-violet-400">
+                        <span className="text-[11px] font-semibold text-violet-500 dark:text-violet-400">
                           {rule.use_count} uses
-                        </span>
-                      )}
-                      {rule.updated_at && (
-                        <span className="text-[9px] text-slate-400 dark:text-slate-500">
-                          {fmtUpdated(rule.updated_at)}
                         </span>
                       )}
                     </div>

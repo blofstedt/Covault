@@ -1,8 +1,14 @@
 import { log } from '../lib/log';
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { AppState, Transaction, BudgetCategory } from '../types';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { App as CapApp } from '@capacitor/app';
+import { AppState, Transaction } from '../types';
 
 import PageShell from './ui/PageShell';
+
+// d3 is only needed for the chart, so it loads as its own chunk rather than
+// as part of the entry bundle.
+const BudgetFlowChart = React.lazy(() => import('./dashboard_components/BudgetFlowChart'));
 import TransactionParsing from './TransactionParsing';
 import TransactionActionModal from './TransactionActionModal';
 import TransactionForm from './TransactionForm';
@@ -12,7 +18,6 @@ import { useVendorOverrides } from './transaction_parsing/useVendorOverrides';
 import DashboardBalanceSection from './dashboard_components/DashboardBalanceSection';
 import DashboardBudgetSectionsList from './dashboard_components/DashboardBudgetSectionsList';
 import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
-import BudgetFlowChart from './dashboard_components/BudgetFlowChart';
 import DashboardSettingsModal from './dashboard_components/DashboardSettingsModal';
 import SearchResults from './dashboard_components/SearchResults';
 
@@ -22,6 +27,21 @@ import { getLocalMonthKey } from '../lib/dateUtils';
 import { checkAndTriggerAppNotifications } from '../lib/appNotifications';
 import { supabase } from '../lib/supabase';
 import { resolveBudgetIdFromRow } from '../lib/hooks/transactionMappers';
+
+/** Current YYYY-MM in local time. */
+const currentMonthKey = (): string => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+};
+
+// Map from app-state setting keys to DB column names.
+const SETTING_DB_KEYS: Record<string, string> = {
+  rolloverEnabled: 'rollover_enabled',
+  useLeisureAsBuffer: 'leisure_buffer_enabled',
+  showSavingsInsight: 'show_savings_insight',
+  app_notifications_enabled: 'app_notifications_enabled',
+  smart_notifications_enabled: 'smart_notifications_enabled',
+};
 
 interface VendorHistoryItem {
   vendor: string;
@@ -34,7 +54,6 @@ interface Props {
   onAddTransaction: (t: Transaction) => void;
   onUpdateTransaction: (t: Transaction) => void;
   onDeleteTransaction: (id: string) => void;
-  onUpdateBudget: (b: BudgetCategory) => void;
   onSignOut: () => Promise<void>;
   saveBudgetLimit: (categoryId: string, newLimit: number) => Promise<void>;
   saveUserIncome: (income: number) => Promise<void>;
@@ -53,7 +72,6 @@ const Dashboard: React.FC<Props> = ({
   onAddTransaction,
   onUpdateTransaction,
   onDeleteTransaction,
-  onUpdateBudget,
   onSignOut,
   saveBudgetLimit,
   saveUserIncome,
@@ -94,8 +112,35 @@ const Dashboard: React.FC<Props> = ({
     state.user?.monthlyIncome || 0,
   );
 
-  const now = new Date();
-  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  // The month key was read straight from the clock during render, so it only
+  // advanced when something else happened to trigger a re-render. This is a
+  // Capacitor app that gets backgrounded rather than closed, so resuming on
+  // the 1st of a new month could leave the dashboard showing last month's
+  // budgets. Recompute on resume (and when the tab becomes visible on web).
+  const [monthKey, setMonthKey] = useState(currentMonthKey);
+
+  useEffect(() => {
+    const refresh = () => setMonthKey(prev => {
+      const next = currentMonthKey();
+      return next === prev ? prev : next;
+    });
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    let remove: (() => void) | undefined;
+    if (Capacitor.isNativePlatform()) {
+      const handle = CapApp.addListener('resume', refresh);
+      remove = () => { void handle.then(h => h.remove()); };
+    }
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      remove?.();
+    };
+  }, []);
 
   const currentMonthBudgetTransactions = useMemo(() => {
     const currentMonthProjected = projectedTransactions.filter(
@@ -130,7 +175,6 @@ const Dashboard: React.FC<Props> = ({
       userId: state.user.id,
       budgets: state.budgets,
       transactions: currentMonthBudgetTransactions,
-      totalIncome: state.user.monthlyIncome || 0,
       remainingMoney,
       settings: {
         app_notifications_enabled: state.settings.app_notifications_enabled,
@@ -154,33 +198,23 @@ const Dashboard: React.FC<Props> = ({
     [state.transactions],
   );
 
-  const pastTransactions = useMemo(
-    () => normalizedTransactions.filter((t) => typeof t.date === 'string' && getLocalMonthKey(t.date) < monthKey),
-    [normalizedTransactions, monthKey],
-  );
+  // Single pass: the two filters below walked the whole list separately and
+  // each called getLocalMonthKey (which allocates a Date) per transaction.
+  const { pastTransactions, futureTransactions } = useMemo(() => {
+    const past: Transaction[] = [];
+    const future: Transaction[] = [];
+    for (const t of normalizedTransactions) {
+      if (typeof t.date !== 'string') continue;
+      const key = getLocalMonthKey(t.date);
+      if (key < monthKey) past.push(t);
+      else if (key > monthKey) future.push(t);
+    }
+    return { pastTransactions: past, futureTransactions: future };
+  }, [normalizedTransactions, monthKey]);
 
-  const futureTransactions = useMemo(
-    () => normalizedTransactions.filter((t) => typeof t.date === 'string' && getLocalMonthKey(t.date) > monthKey),
-    [normalizedTransactions, monthKey],
-  );
-
-  const toggleExpand = (id: string) => {
-    setExpandedBudgets(prev => {
-      if (prev.has(id)) {
-        return new Set();
-      }
-      return new Set([id]);
-    });
-  };
-
-  // Map from app-state setting keys to DB column names
-  const SETTING_DB_KEYS: Record<string, string> = {
-    rolloverEnabled: 'rollover_enabled',
-    useLeisureAsBuffer: 'leisure_buffer_enabled',
-    showSavingsInsight: 'show_savings_insight',
-    app_notifications_enabled: 'app_notifications_enabled',
-    smart_notifications_enabled: 'smart_notifications_enabled',
-  };
+  const toggleExpand = useCallback((id: string) => {
+    setExpandedBudgets(prev => (prev.has(id) ? new Set() : new Set([id])));
+  }, []);
 
   const handleUpdateSettings = (key: string, value: any) => {
     setState(prev => ({
@@ -408,6 +442,7 @@ const Dashboard: React.FC<Props> = ({
               aria-hidden={false}
             >
               <PremiumGate hasPremium={true}>
+                <React.Suspense fallback={<div className="h-full w-full" />}>
                 <BudgetFlowChart
                   budgets={state.budgets}
                   transactions={chartTransactions}
@@ -415,6 +450,7 @@ const Dashboard: React.FC<Props> = ({
                   theme={state.settings.theme}
                   highlightedBudgetId={expandedBudgets.size > 0 ? Array.from(expandedBudgets)[0] : null}
                 />
+                </React.Suspense>
               </PremiumGate>
             </div>
 
@@ -433,7 +469,6 @@ const Dashboard: React.FC<Props> = ({
               budgetRefs={budgetRefs}
               onToggleExpand={toggleExpand}
               onTransactionTap={setSelectedTx}
-              onUpdateBudget={onUpdateBudget}
             />
           </div>
         )}

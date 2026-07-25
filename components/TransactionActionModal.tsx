@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Transaction, BudgetCategory } from '../types';
 import TransactionForm from './TransactionForm';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
+import { useEscapeKey } from '../lib/hooks/useEscapeKey';
 
 interface VendorHistoryItem {
   vendor: string;
@@ -33,17 +34,8 @@ const TransactionActionModal: React.FC<TransactionActionModalProps> = ({
 }) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  // Handle Escape key to close modal
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !showDeleteConfirm) {
-        onClose();
-      }
-    };
-    
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
-  }, [onClose, showDeleteConfirm]);
+  // Stand down while the delete confirmation is up, so Escape dismisses that first.
+  useEscapeKey(onClose, !showDeleteConfirm);
 
   if (showDeleteConfirm) {
     return (

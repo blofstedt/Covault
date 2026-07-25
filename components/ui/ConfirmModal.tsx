@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { useEscapeKey } from '../../lib/hooks/useEscapeKey';
 
 interface ConfirmModalProps {
   title: string;
@@ -24,6 +25,8 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
   onConfirm,
   onCancel,
 }) => {
+  useEscapeKey(onCancel);
+
   useEffect(() => {
     const originalStyle = window.getComputedStyle(document.body).overflow;
     document.body.style.overflow = 'hidden';

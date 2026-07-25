@@ -12,7 +12,6 @@ interface SoftDuplicateBadgeProps {
   /** Called when the user wants to delete the similar transaction */
   onDeleteSimilar: (similarTxId: string) => void;
   /** Called when the user wants to view the similar transaction's details */
-  onViewSimilar?: (similarTxId: string) => void;
   /** Whether deletion is currently in progress (disables the delete button) */
   isDeleting?: boolean;
 }
@@ -35,7 +34,6 @@ const SoftDuplicateBadge: React.FC<SoftDuplicateBadgeProps> = ({
   similar,
   onDismiss,
   onDeleteSimilar,
-  onViewSimilar,
   isDeleting = false,
 }) => {
   const [open, setOpen] = useState(false);
@@ -57,15 +55,13 @@ const SoftDuplicateBadge: React.FC<SoftDuplicateBadgeProps> = ({
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  // Stop the pulse once the user interacts
-  useEffect(() => {
-    if (open) setPulseActive(false);
-  }, [open]);
-
   const handleToggle = (e: React.MouseEvent) => {
     // Prevent the parent <button> (the transaction card) from firing.
     e.stopPropagation();
     setOpen((o) => !o);
+    // Stop the pulse once the user interacts. Doing this here rather than in
+    // an effect on `open` lets React batch it into the same render.
+    setPulseActive(false);
   };
 
   const handleDismiss = (e: React.MouseEvent) => {
@@ -80,12 +76,6 @@ const SoftDuplicateBadge: React.FC<SoftDuplicateBadgeProps> = ({
     setOpen(false);
   };
 
-  const handleView = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onViewSimilar?.(similar.id);
-    setOpen(false);
-  };
-
 
   return (
     <div className="relative inline-flex">
@@ -93,7 +83,7 @@ const SoftDuplicateBadge: React.FC<SoftDuplicateBadgeProps> = ({
         ref={buttonRef}
         type="button"
         onClick={handleToggle}
-        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide
+        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold tracking-wide
           bg-amber-100 text-amber-800 border border-amber-200
           dark:bg-amber-900/40 dark:text-amber-200 dark:border-amber-700/50
           hover:bg-amber-200 dark:hover:bg-amber-900/60
@@ -129,7 +119,7 @@ const SoftDuplicateBadge: React.FC<SoftDuplicateBadgeProps> = ({
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-[11px] font-bold text-slate-800 dark:text-slate-100">Looks like a duplicate</p>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug mt-0.5">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug mt-0.5">
                 You already have <span className="font-semibold text-slate-700 dark:text-slate-200">{similar.vendor}</span> {formatCurrency(similar.amount)} on {similar.date}.
               </p>
             </div>
@@ -161,15 +151,6 @@ const SoftDuplicateBadge: React.FC<SoftDuplicateBadgeProps> = ({
             >
               Not a duplicate — keep both
             </button>
-            {onViewSimilar && (
-              <button
-                type="button"
-                onClick={handleView}
-                className="w-full px-2 py-1.5 rounded-lg text-[10px] font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 active:scale-95 transition-all duration-150"
-              >
-                View the older transaction
-              </button>
-            )}
           </div>
         </div>
       )}

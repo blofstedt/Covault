@@ -58,7 +58,7 @@ const InlineVendorEdit: React.FC<InlineVendorEditProps> = ({
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onStartEdit(); }}
-        className="opacity-0 group-hover:opacity-100 focus:opacity-100 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-semibold tracking-wide text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-150"
+        className="opacity-0 group-hover:opacity-100 focus:opacity-100 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] font-semibold tracking-wide text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-150"
         title="Rename vendor"
         aria-label="Rename vendor"
       >
@@ -100,7 +100,7 @@ const InlineVendorEdit: React.FC<InlineVendorEditProps> = ({
         type="button"
         onClick={() => void handleSave()}
         disabled={isSaving || !draft.trim() || draft.trim() === value}
-        className="px-2 py-1 text-[10px] font-bold rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95 transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
+        className="px-2 py-1 text-[11px] font-bold rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95 transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
         title="Save (Enter)"
       >
         {isSaving ? '…' : 'Save'}
@@ -109,7 +109,7 @@ const InlineVendorEdit: React.FC<InlineVendorEditProps> = ({
         type="button"
         onClick={onCancel}
         disabled={isSaving}
-        className="px-2 py-1 text-[10px] font-bold rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 active:scale-95 transition-all duration-150 disabled:opacity-40"
+        className="px-2 py-1 text-[11px] font-bold rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 active:scale-95 transition-all duration-150 disabled:opacity-40"
         title="Cancel (Esc)"
       >
         ✕

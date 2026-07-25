@@ -1,6 +1,6 @@
 // lib/hooks/useDataLoading.ts
 import { log } from '../log';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { SYSTEM_CATEGORIES } from '../../constants';
 import type { BudgetCategory, Transaction, PendingTransaction } from '../../types';
 import { REST_BASE, getAuthHeaders, restFetch, DEFAULT_MONTHLY_INCOME } from '../apiHelpers';
@@ -26,14 +26,6 @@ export const useDataLoading = ({
 }: Pick<UseUserDataParams, 'setAppState' | 'setDbError'>) => {
   const [categoriesLoaded, setCategoriesLoaded] = useState(false);
   const fromSupabaseTransaction = useFromSupabaseTransaction();
-
-  // Ref that always mirrors the latest `appState.transactions`. Needed by
-  // `remapOrphanedTransactions` so it can read the current list without
-  // having to take `appState` as a closure dep (which would re-create the
-  // callback on every state change and trigger the useEffect in App.tsx).
-  // The ref is updated inside `loadTransactions` and `handleAddTransaction`
-  // — see the `[loadTransactions] ...` block below.
-  const transactionsRef = useRef<Transaction[]>([]);
 
   // Load budgets from Supabase (replaces both loadCategories and loadUserBudgets)
   // The budgets table now serves as both categories and per-user budget limits.
@@ -194,11 +186,30 @@ export const useDataLoading = ({
   const loadUserSettings = useCallback(
     async (userId: string) => {
       try {
-        const res = await restFetch(
-          `/settings?select=monthly_income,theme_selected,trial_started_at,trial_ends_at,trial_consumed,subscription_status,rollover_enabled,leisure_buffer_enabled,show_savings_insight,app_notifications_enabled,budgeting_solo&user_id=eq.${userId}`,
+        const BASE_COLUMNS =
+          'monthly_income,theme_selected,trial_started_at,trial_ends_at,trial_consumed,' +
+          'subscription_status,rollover_enabled,leisure_buffer_enabled,show_savings_insight,' +
+          'app_notifications_enabled,budgeting_solo';
+
+        // smart_notifications_enabled is requested separately because it was
+        // added later (supabase/migrations/2026_add_smart_notifications_column.sql).
+        // PostgREST 400s the WHOLE select if any column is unknown, and this
+        // function returns early on a non-ok response — so naming it
+        // unconditionally would take theme, income and the trial fields down
+        // with it on any project where the migration hasn't been applied yet.
+        // Same defensive shape as the user_uuid/user_id fallback below.
+        let res = await restFetch(
+          `/settings?select=${BASE_COLUMNS},smart_notifications_enabled&user_id=eq.${userId}`,
           { cache: 'no-store' }, // Prevent caching to always get fresh data
         );
-        
+
+        if (!res.ok) {
+          res = await restFetch(
+            `/settings?select=${BASE_COLUMNS}&user_id=eq.${userId}`,
+            { cache: 'no-store' },
+          );
+        }
+
         if (!res.ok) {
           log.error('[loadUserSettings] failed:', res.status);
           return;
@@ -250,6 +261,11 @@ export const useDataLoading = ({
               useLeisureAsBuffer: rows[0].leisure_buffer_enabled ?? prev.settings.useLeisureAsBuffer,
               showSavingsInsight: rows[0].show_savings_insight ?? prev.settings.showSavingsInsight,
               app_notifications_enabled: rows[0].app_notifications_enabled ?? prev.settings.app_notifications_enabled,
+              // Undefined when the column is missing (pre-migration) — the
+              // `??` then keeps whatever the local default/localStorage held,
+              // which is the behaviour users had while the write was failing.
+              smart_notifications_enabled:
+                rows[0].smart_notifications_enabled ?? prev.settings.smart_notifications_enabled,
             },
           }));
 
@@ -320,13 +336,11 @@ export const useDataLoading = ({
             const mergedTransactions = merge
               ? mergeTransactions(prev.transactions, transactions)
               : transactions;
-            transactionsRef.current = mergedTransactions;
             return { ...prev, transactions: mergedTransactions };
           });
         } else {
           log.debug('[loadTransactions] no transactions found');
           if (!merge) {
-            transactionsRef.current = [];
             setAppState(prev => ({ ...prev, transactions: [] }));
           }
         }
@@ -411,8 +425,6 @@ export const useDataLoading = ({
 
           // Load partner's transactions and merge with existing user transactions
           await loadTransactions(partnerId, { merge: true });
-          // Budget ID remapping is handled by remapOrphanedTransactions
-          // which runs after all data is loaded.
         }
       } catch (err: any) {
         log.error('[loadHouseholdLink]', err?.message || err);
@@ -421,109 +433,31 @@ export const useDataLoading = ({
     [loadTransactions, setAppState],
   );
 
-  // Remap transactions whose budget_id doesn't match any of the user's
-  // budget IDs.  This covers two scenarios:
-  //   a) Schema migration: old category_id values reference a dropped
-  //      categories table or a partner's budgets table.
-  //   b) Household: the user's own transactions were saved with the
-  //      partner's budget IDs.
-  // The function fetches ALL accessible budget rows (own + partner via
-  // RLS) so that stale IDs can be resolved to category names, then
-  // remaps to the current user's budget IDs in a single state update.
-  const remapOrphanedTransactions = useCallback(
-    async (userId: string) => {
-      try {
-        const headers = await getAuthHeaders();
-
-        // 1. Fetch the logged-in user's budgets (valid target IDs)
-        // budgets table has: user_uuid, budget (enum), amount, Visible — no id or category columns
-        let userBudgetsRes = await fetch(
-          `${REST_BASE}/budgets?select=budget&user_uuid=eq.${userId}`,
-          { headers },
-        );
-        if (!userBudgetsRes.ok) {
-          userBudgetsRes = await fetch(
-            `${REST_BASE}/budgets?select=budget&user_id=eq.${userId}`,
-            { headers },
-          );
-        }
-        if (!userBudgetsRes.ok) return;
-        const userBudgets: { budget?: string }[] = await userBudgetsRes.json();
-        if (userBudgets.length === 0) return;
-
-        const userBudgetIds = new Set(userBudgets.map(b => `budget:${(b.budget || 'other').toLowerCase()}`));
-        const categoryToUserBudgetId = new Map<string, string>();
-        for (const b of userBudgets) {
-          const categoryName = (b.budget || '').toLowerCase();
-          if (categoryName) categoryToUserBudgetId.set(categoryName, `budget:${categoryName}`);
-        }
-
-        // 2. Fetch ALL accessible budgets (own + partner via RLS).
-        const allBudgetsRes = await fetch(
-          `${REST_BASE}/budgets?select=budget`,
-          { headers },
-        );
-        if (!allBudgetsRes.ok) return;
-        const allBudgets: { budget?: string }[] = await allBudgetsRes.json();
-
-        const anyIdToCategory = new Map<string, string>();
-        for (const b of allBudgets) {
-          const categoryName = (b.budget || '').toLowerCase();
-          if (categoryName) {
-            anyIdToCategory.set(`budget:${categoryName}`, categoryName);
-          }
-        }
-
-        // 3. Compute the remap in a pure pass first, then commit it to state
-        // in a single setAppState call. The previous version mutated a counter
-        // inside the setAppState updater, which is unsafe under React 18's
-        // concurrent rendering — the updater can run more than once and the
-        // counter would be inflated, producing a misleading log line.
-        const currentTransactions = transactionsRef.current;
-        if (currentTransactions.length === 0) return;
-
-        const remapped: Transaction[] = [];
-        let remappedCount = 0;
-        for (const tx of currentTransactions) {
-          if (!tx.budget_id || userBudgetIds.has(tx.budget_id)) {
-            remapped.push(tx);
-            continue;
-          }
-          const catName = anyIdToCategory.get(tx.budget_id);
-          const correctId = catName ? categoryToUserBudgetId.get(catName) : undefined;
-          if (correctId) {
-            remapped.push({ ...tx, budget_id: correctId });
-            remappedCount++;
-          } else {
-            remapped.push(tx);
-          }
-        }
-        if (remappedCount > 0) {
-          log.debug('[remapOrphanedTransactions] remapped', remappedCount, 'transactions');
-          transactionsRef.current = remapped;
-          setAppState(prev => ({ ...prev, transactions: remapped }));
-        }
-      } catch (err: any) {
-        log.warn('[remapOrphanedTransactions] failed:', err?.message || err);
-      }
-    },
-    [setAppState],
-  );
-
   // Load all data from Supabase
   const loadUserData = useCallback(
     async (userId: string) => {
       log.debug('loadUserData called for user:', userId);
       await loadCategories();
-      await loadUserBudgets(userId); // load user-specific budget limits
-      await loadUserSettings(userId); // load user-specific settings (monthly_income, etc.)
-      await loadTransactions(userId);
-      await loadPendingTransactions(userId); // load pending transactions awaiting approval
-      await loadHouseholdLink(userId); // load partner transactions (merged into state)
-      await remapOrphanedTransactions(userId); // fix stale/partner budget IDs → user's budget IDs
+
+      // These four are mutually independent: each uses a functional
+      // setAppState updater and they touch disjoint keys (budgets +
+      // hiddenCategories / user + theme / transactions / pendingTransactions).
+      // Running them serially cost four round-trips for no ordering benefit.
+      await Promise.all([
+        loadUserBudgets(userId), // user-specific budget limits
+        loadUserSettings(userId), // monthly_income, theme, trial flags
+        loadTransactions(userId),
+        loadPendingTransactions(userId), // awaiting approval
+      ]);
+
+      // Must stay after loadTransactions: it merges the partner's rows onto
+      // the list that call populates. It must also stay after
+      // loadUserSettings, which reads budgetingSolo and defers to the
+      // `=== false` this call sets.
+      await loadHouseholdLink(userId);
       log.debug('loadUserData completed');
     },
-    [loadCategories, loadHouseholdLink, loadPendingTransactions, loadTransactions, loadUserBudgets, loadUserSettings, remapOrphanedTransactions],
+    [loadCategories, loadHouseholdLink, loadPendingTransactions, loadTransactions, loadUserBudgets, loadUserSettings],
   );
 
   return {

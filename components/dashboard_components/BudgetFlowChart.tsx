@@ -26,10 +26,14 @@ function getGradient(name: string, index: number): [string, string] {
 
 // Tooltip vertical positioning is now handled by absolute positioning above the chart
 
+const NO_BUDGETS: BudgetCategory[] = [];
+const NO_TRANSACTIONS: Transaction[] = [];
+
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
 function formatMonthLabel(key: string): string {
   const [year, month] = key.split('-');
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return `${months[parseInt(month, 10) - 1]} ${year}`;
+  return `${MONTH_ABBR[parseInt(month, 10) - 1]} ${year}`;
 }
 
 function getWindowedMonthKeys(monthKeys: string[], currentMonthKey: string, maxMonths = 6): string[] {
@@ -65,11 +69,13 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     innerWidth: number;
   } | null>(null);
   const highlightedRef = useRef<string | null>(null);
-  const safeBudgets = Array.isArray(budgets) ? budgets : [];
-  const safeTransactions = useMemo(() => {
-    const txs = Array.isArray(transactions) ? transactions : [];
-    return txs;
-  }, [transactions]);
+  // Stable fallbacks. A fresh `[]` in the defensive branch would give
+  // safeBudgets a new identity every render, cascading through budgetNameById
+  // -> categoryNames -> chartData and rebuilding the entire SVG on every
+  // render. (safeTransactions' useMemo was an identity function, so the same
+  // stable-fallback pattern replaces it.)
+  const safeBudgets = Array.isArray(budgets) ? budgets : NO_BUDGETS;
+  const safeTransactions = Array.isArray(transactions) ? transactions : NO_TRANSACTIONS;
 
   // Build a map from budget id -> budget name
   const budgetNameById = useMemo(() => {
@@ -596,7 +602,12 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
   // ── Highlighted budget band (when a budget is expanded below) ──
   const highlightedBudgetName = highlightedBudgetId ? (budgetNameById.get(highlightedBudgetId) || null) : null;
-  highlightedRef.current = highlightedBudgetName;
+  // Written in an effect rather than during render: the d3 event handlers read
+  // this ref to suppress interaction while a budget is soloed, and a render
+  // that React discards must not leave the ref pointing at uncommitted state.
+  useEffect(() => {
+    highlightedRef.current = highlightedBudgetName;
+  }, [highlightedBudgetName]);
 
   // Compute current-month totals for the highlighted budget
   const highlightedTotals = useMemo(() => {

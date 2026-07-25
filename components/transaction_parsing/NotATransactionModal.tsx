@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { formatCurrency } from '../../lib/formatCurrency';
+import { useEscapeKey } from '../../lib/hooks/useEscapeKey';
 
 export type NotATxRuleType = 'exact' | 'contains';
 
@@ -40,14 +41,8 @@ const NotATransactionModal: React.FC<NotATransactionModalProps> = ({
 }) => {
   const [ruleType, setRuleType] = useState<NotATxRuleType>('exact');
 
-  // Escape to cancel
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isSaving) onCancel();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onCancel, isSaving]);
+  // Escape cancels, unless a request is in flight.
+  useEscapeKey(onCancel, !isSaving);
 
   const pattern = rawNotification.trim();
 
@@ -80,20 +75,20 @@ const NotATransactionModal: React.FC<NotATransactionModalProps> = ({
 
         {/* Pattern preview */}
         <div className="px-6 pb-3">
-          <p className="text-[10px] font-bold tracking-wide text-slate-400 dark:text-slate-500 uppercase mb-1.5">
+          <p className="text-[11px] font-bold tracking-wide text-slate-400 dark:text-slate-500 uppercase mb-1.5">
             Pattern
           </p>
           <div className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/50 font-mono text-[11px] text-slate-700 dark:text-slate-200 break-words leading-relaxed max-h-32 overflow-y-auto">
             {pattern || <span className="italic text-slate-400">no notification text available</span>}
           </div>
-          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1.5">
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5">
             Source: {vendor} {formatCurrency(amount)} charge
           </p>
         </div>
 
         {/* Rule type selector */}
         <div className="px-6 pb-4">
-          <p className="text-[10px] font-bold tracking-wide text-slate-400 dark:text-slate-500 uppercase mb-2">
+          <p className="text-[11px] font-bold tracking-wide text-slate-400 dark:text-slate-500 uppercase mb-2">
             Match future notifications by
           </p>
           <div className="space-y-1.5">
@@ -119,9 +114,9 @@ const NotATransactionModal: React.FC<NotATransactionModalProps> = ({
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
                   Exact text match
-                  <span className="ml-2 text-[9px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/40 px-1.5 py-0.5 rounded">Recommended</span>
+                  <span className="ml-2 text-[11px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/40 px-1.5 py-0.5 rounded">Recommended</span>
                 </p>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
                   Only this exact notification text is skipped. Safest.
                 </p>
               </div>
@@ -149,7 +144,7 @@ const NotATransactionModal: React.FC<NotATransactionModalProps> = ({
                 <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
                   Contains substring
                 </p>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
                   Any notification containing this text is skipped. May block similar legitimate transactions.
                 </p>
               </div>

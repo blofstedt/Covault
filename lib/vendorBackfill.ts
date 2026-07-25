@@ -35,17 +35,9 @@ export async function countBackfillMatches(
     // even for power users.)
     const res = await restFetch(
       `/transactions?select=vendor&user_id=eq.${userId}`,
-      { headers: { Prefer: 'count=exact' }, cache: 'no-store' },
+      { cache: 'no-store' },
     );
     if (!res.ok) return 0;
-    // The count=exact header is honored on simple GETs; we also fall
-    // back to parsing the array length if the server didn't echo a
-    // count header.
-    const countHeader = res.headers.get('content-range');
-    if (countHeader) {
-      const m = countHeader.match(/\/(\d+|\*)/);
-      if (m && m[1] !== '*') return matchesInList([], matchKey, matchType);
-    }
     const rows: Array<{ vendor: string }> = await res.json();
     return matchesInList(rows, matchKey, matchType);
   } catch {
@@ -82,13 +74,12 @@ export interface BackfillResult {
 
 /**
  * Apply a vendor correction retroactively to all matching historical
- * transactions. Same matching semantics as countBackfillMatches. Uses
- * one PATCH with an ilike filter on the vendor column for exact/prefix,
- * or a custom approach for contains (PostgREST doesn't support
- * native "contains" filters).
+ * transactions. Same matching semantics as countBackfillMatches.
  *
- * For 'contains' we fetch all user transactions and patch in batches
- * by id. For 'exact' and 'prefix' we use the ilike filter directly.
+ * Vendor matching runs against the *normalized* vendor key, which
+ * PostgREST cannot express as a filter, so all three match types take
+ * the same route: fetch the user's rows, filter in memory, then patch
+ * the matching ids in batches.
  *
  * Returns the number of rows updated (best-effort; PostgREST doesn't
  * always echo the count on PATCH).
@@ -103,17 +94,9 @@ export async function applyVendorBackfill(
   const trimmed = newVendor.trim();
   if (!trimmed) return { updated: 0, sample: [] };
 
-  if (matchType === 'exact') {
-    // Find the user_id rows where vendor normalizes to matchKey exactly.
-    // PostgREST doesn't have a normalize operator, so we fetch all and
-    // filter in memory. Same as the count path.
-    return patchByIds(userId, oldMatchKey, 'exact', trimmed);
-  }
-  if (matchType === 'prefix') {
-    return patchByIds(userId, oldMatchKey, 'prefix', trimmed);
-  }
-  // contains
-  return patchByIds(userId, oldMatchKey, 'contains', trimmed);
+  // PostgREST has no normalize operator, so every match_type takes the same
+  // path: fetch the user's rows and filter in memory (same as the count path).
+  return patchByIds(userId, oldMatchKey, matchType, trimmed);
 }
 
 async function patchByIds(

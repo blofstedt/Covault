@@ -5,7 +5,7 @@ import Dashboard from './components/Dashboard';
 import Onboarding from './components/Onboarding';
 import FullScreenLoader from './components/FullScreenLoader';
 import ErrorBoundary from './components/ErrorBoundary';
-import type { AppState, BudgetCategory, Transaction, PendingTransaction } from './types';
+import type { AppState, BudgetCategory, Transaction } from './types';
 import { supabase } from './lib/supabase';
 import { useAuthState, AuthStatus } from './lib/hooks/useAuthState';
 import { useDeepLinks } from './lib/hooks/useDeepLinks';
@@ -67,9 +67,7 @@ const App: React.FC = () => {
   // A single toast surfaces transient messages: DB read/write failures
   // (previously discarded, so failures were silent and looked like "nothing
   // happened") and undoable actions like a transaction delete.
-  // isLoadingData: only the setter is consumed (by the data-loading hook).
   const [toast, setToast] = useState<Toast | null>(null);
-  const [, setIsLoadingData] = useState(false);
 
   // Back-compat shim: the data hooks report failures via setDbError(msg).
   const setDbError = useCallback(
@@ -135,13 +133,10 @@ const App: React.FC = () => {
 
   const loadUserDataWithState = useCallback(
     async (userId: string) => {
-      setIsLoadingData(true);
       try {
         await loadUserData(userId);
       } catch (error) {
         log.error('[loadUserDataWithState] Error:', error);
-      } finally {
-        setIsLoadingData(false);
       }
     },
     [loadUserData],
@@ -188,14 +183,6 @@ const App: React.FC = () => {
     });
   }, [appState.user?.id, appState.transactions]);
 
-  const handlePendingTransactionCreated = useCallback((pending: PendingTransaction) => {
-    setAppState(prev => {
-      const existing = prev.pendingTransactions || [];
-      if (existing.some(p => p.id === pending.id)) return prev;
-      return { ...prev, pendingTransactions: [pending, ...existing] };
-    });
-  }, []);
-
   const handleAutoAcceptedTransaction = useCallback((tx: Transaction) => {
     setAppState(prev => {
       if (prev.transactions.some(t => t.id === tx.id)) return prev;
@@ -214,7 +201,6 @@ const App: React.FC = () => {
     budgets: appState.budgets,
     settings: appState.settings,
     onTransactionDetected: handleAddTransaction,
-    onPendingTransactionCreated: handlePendingTransactionCreated,
     onAutoAcceptedTransaction: handleAutoAcceptedTransaction,
     onAIProcessingResult: handleAIProcessingResult,
   });
@@ -231,13 +217,6 @@ const App: React.FC = () => {
     if (!Capacitor.isNativePlatform()) return; // Safety check
     await refreshMonitoredAppsAndScan();
   }, [refreshMonitoredAppsAndScan]);
-
-  // Run a detection + scan pass on app start so pre-existing notifications
-  // can be processed immediately after install/re-open.
-  useEffect(() => {
-    if (!Capacitor.isNativePlatform() || !appState.settings.notificationsEnabled) return;
-    refreshMonitoredAppsAndScan();
-  }, [appState.settings.notificationsEnabled, refreshMonitoredAppsAndScan]);
 
   const prevNotificationsEnabled = useRef(appState.settings.notificationsEnabled);
   useEffect(() => {
@@ -291,25 +270,21 @@ const App: React.FC = () => {
     saveSettingsToStorage(appState.settings);
   }, [appState.settings]);
 
-  const handleOnboardingComplete = (isSolo: boolean, budgets: BudgetCategory[], partnerEmail?: string) => {
-    setAppState(prev => ({
-      ...prev,
-      budgets,
-      user: prev.user ? { ...prev.user, budgetingSolo: isSolo, partnerEmail } : null,
-    }));
-    setAuthState('authenticated');
-  };
+  const handleOnboardingComplete = useCallback(
+    (isSolo: boolean, budgets: BudgetCategory[], partnerEmail?: string) => {
+      setAppState(prev => ({
+        ...prev,
+        budgets,
+        user: prev.user ? { ...prev.user, budgetingSolo: isSolo, partnerEmail } : null,
+      }));
+      setAuthState('authenticated');
+    },
+    [],
+  );
 
-  const handleUpdateBudget = (updatedBudget: BudgetCategory) => {
-    setAppState(prev => ({
-      ...prev,
-      budgets: prev.budgets.map(b => (b.id === updatedBudget.id ? updatedBudget : b)),
-    }));
-  };
-
-  const handleSignOut = async () => {
+  const handleSignOut = useCallback(async () => {
     await supabase.auth.signOut();
-  };
+  }, []);
 
   // Render logic with extra safety
   if (authState === 'loading') {
@@ -361,7 +336,6 @@ const App: React.FC = () => {
           state={appState}
           setState={setAppState}
           onSignOut={handleSignOut}
-          onUpdateBudget={handleUpdateBudget}
           onAddTransaction={handleAddTransaction}
           onUpdateTransaction={handleUpdateTransaction}
           onDeleteTransaction={handleDeleteWithUndo}

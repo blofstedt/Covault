@@ -15,8 +15,9 @@ interface BudgetSectionProps {
   budget: ExtendedBudgetCategory;
   transactions: Transaction[];
   isExpanded: boolean;
-  onToggle: () => void;
-  onUpdateBudget: (b: BudgetCategory) => void;
+  /** Receives this section's budget id, so the parent can pass a single
+   *  stable handler instead of allocating a fresh arrow per card per render. */
+  onToggle: (budgetId: string) => void;
   onTransactionTap: (tx: Transaction) => void;
   currentUserName: string;
   isSharedView: boolean;
@@ -29,14 +30,13 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
   transactions,
   isExpanded,
   onToggle,
-  onUpdateBudget: _onUpdateBudget,
   onTransactionTap,
   currentUserName,
   isSharedView,
   allBudgets,
   useCompactCollapsedStyles = false,
 }) => {
-  const { matchedExpenseIds: legacyMatchedIds, unmatchedRefunds } = useMemo(
+  const { matchedExpenseIds: legacyMatchedIds } = useMemo(
     () => matchRefundsToExpenses(transactions),
     [transactions],
   );
@@ -70,9 +70,6 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
     };
   }, [legacyMatchedIds, transactions, budget.id]);
 
-  const _hasUnmatchedRefunds = unmatchedRefunds.length > 0;
-  void _hasUnmatchedRefunds;
-
   const external = budget.externalDeduction || 0;
   const spentWithExternal = spent + external;
   const total = spentWithExternal + projected;
@@ -93,13 +90,15 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
   const isWarning = spentPercent > 80 && spentPercent <= 100;
   const isOver = spentPercent > 100;
 
+  const handleHeaderClick = useCallback(() => onToggle(budget.id), [onToggle, budget.id]);
+
   const handleBackgroundClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (e.target === e.currentTarget) {
-        onToggle();
+        onToggle(budget.id);
       }
     },
-    [onToggle]
+    [onToggle, budget.id]
   );
 
   return (
@@ -150,7 +149,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
       {/* HEADER / SUMMARY */}
       <div
-        onClick={onToggle}
+        onClick={handleHeaderClick}
         className={`relative z-10 flex items-center justify-between cursor-pointer active:scale-[0.99] transition-all duration-300 ease-in-out ${
           isExpanded
             ? 'flex-none py-6 px-8'

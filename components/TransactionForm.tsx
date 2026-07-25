@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Transaction, BudgetCategory, Recurrence, TransactionLabel } from '../types';
 import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
 import { formatVendorName } from '../lib/formatVendorName';
@@ -7,6 +7,7 @@ import { parseLocalDate } from '../lib/dateUtils';
 import { log } from '../lib/log';
 import CalendarPicker from './CalendarPicker';
 import { CloseButton } from './shared';
+import { useEscapeKey } from '../lib/hooks/useEscapeKey';
 
 interface VendorHistoryItem {
   vendor: string;
@@ -70,6 +71,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   );
   const [isRefund, setIsRefund] = useState(() => initialTransaction ? initialTransaction.amount < 0 : false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
   const [isClosing, setIsClosing] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
 
@@ -97,39 +100,51 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     }
   }, []);
 
-  // Close on Escape, for keyboard/accessibility parity with the action modal.
   // Skip while the calendar sub-picker is open so Escape dismisses that first.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !showCalendar) handleClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [showCalendar]);
+  useEscapeKey(handleClose, !showCalendar);
 
   // Vendor autocomplete suggestions — substring match (so "hort" surfaces
   // "Tim Hortons"), with prefix matches ranked ahead of mid-string ones.
-  const suggestions = vendor.length > 0
-    ? vendorHistory
-        .filter(v => {
-          const name = v.vendor.toLowerCase();
-          const q = vendor.toLowerCase();
-          return name.includes(q) && name !== q;
-        })
-        .sort((a, b) => {
-          const q = vendor.toLowerCase();
-          const aPrefix = a.vendor.toLowerCase().startsWith(q) ? 0 : 1;
-          const bPrefix = b.vendor.toLowerCase().startsWith(q) ? 0 : 1;
-          return aPrefix - bPrefix;
-        })
-        .slice(0, 5)
-    : [];
+  const suggestions = useMemo(() => {
+    if (vendor.length === 0) return [];
+    const q = vendor.toLowerCase();
+    return vendorHistory
+      .map(v => ({ item: v, name: v.vendor.toLowerCase() }))
+      .filter(({ name }) => name.includes(q) && name !== q)
+      // Array.prototype.sort is stable, so equal keys keep their original
+      // order — same output as the previous comparator.
+      .sort((a, b) => (a.name.startsWith(q) ? 0 : 1) - (b.name.startsWith(q) ? 0 : 1))
+      .slice(0, 5)
+      .map(({ item }) => item);
+  }, [vendor, vendorHistory]);
 
   const selectSuggestion = (item: VendorHistoryItem) => {
     setVendor(item.vendor);
     setShowSuggestions(false);
+    setHighlightedSuggestion(-1);
     if (!initialTransaction && item.budget_id) {
       setSelectedId(item.budget_id);
+    }
+  };
+
+  // Arrow-key navigation over the suggestion list. Enter takes the highlighted
+  // entry (and is swallowed so it doesn't submit the form); Escape closes the
+  // list without closing the whole modal.
+  const handleVendorKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showSuggestions || suggestions.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightedSuggestion(i => (i + 1) % suggestions.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedSuggestion(i => (i <= 0 ? suggestions.length - 1 : i - 1));
+    } else if (e.key === 'Enter' && highlightedSuggestion >= 0) {
+      e.preventDefault();
+      selectSuggestion(suggestions[highlightedSuggestion]);
+    } else if (e.key === 'Escape') {
+      e.stopPropagation();
+      setShowSuggestions(false);
+      setHighlightedSuggestion(-1);
     }
   };
 
@@ -151,6 +166,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!amount || amount <= 0 || !selectedId || !vendor.trim()) return;
+    if (isSaving) return;
+    setIsSaving(true);
 
     const tx: Transaction = {
       id: initialTransaction?.id || generateUUID(),
@@ -188,11 +205,14 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       await onSave(tx);
     } catch (err: any) {
       log.error('Save failed:', err);
+      setIsSaving(false);
+      return;
     }
     onClose();
   };
 
   const isFormValid = amount > 0 && selectedId !== null && vendor.trim() !== '';
+  const canSubmit = isFormValid && !isSaving;
 
   return (
     <div className={`fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-xl transition-opacity duration-250 ${isClosing ? 'opacity-0' : 'animate-in fade-in duration-300'}`}>
@@ -266,22 +286,31 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                 type="text"
                 placeholder="Where was this spent?"
                 value={vendor}
-                onChange={e => { setVendor(e.target.value); setShowSuggestions(true); }}
+                onChange={e => { setVendor(e.target.value); setShowSuggestions(true); setHighlightedSuggestion(-1); }}
                 onFocus={() => setShowSuggestions(true)}
                 onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                onKeyDown={handleVendorKeyDown}
+                role="combobox"
+                aria-expanded={showSuggestions && suggestions.length > 0}
+                aria-autocomplete="list"
+                aria-controls="vendor-suggestions" 
                 className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 rounded-2xl py-3 px-6 text-sm font-bold placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500/20 text-slate-500 dark:text-slate-100 text-center shadow-sm"
               />
               {showSuggestions && suggestions.length > 0 && (
-                <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-xl overflow-hidden">
+                <div id="vendor-suggestions" role="listbox" className="absolute left-0 right-0 top-full mt-1 z-50 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-xl overflow-hidden">
                   {suggestions.map((s, i) => {
                     const budget = budgets.find(b => b.id === s.budget_id);
+                    const isHighlighted = i === highlightedSuggestion;
                     return (
                       <button
-                        key={i}
+                        key={s.vendor}
                         type="button"
+                        role="option"
+                        aria-selected={isHighlighted}
                         onMouseDown={e => e.preventDefault()}
                         onClick={() => selectSuggestion(s)}
-                        className="w-full flex items-center px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors text-left"
+                        onMouseEnter={() => setHighlightedSuggestion(i)}
+                        className={`w-full flex items-center px-4 py-3 transition-colors text-left ${isHighlighted ? 'bg-slate-50 dark:bg-slate-700/50' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}
                       >
                         <div className="w-6 h-6 flex items-center justify-center text-emerald-500 mr-3 shrink-0">
                           {budget ? getBudgetIcon(budget.name) : null}
@@ -374,10 +403,11 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
           <button
             type="submit"
-            disabled={!isFormValid}
-            className={`w-full py-3 rounded-2xl font-semibold text-xs shadow-xl active:scale-[0.97] transition-all duration-200 tracking-wide mt-1 ${isFormValid ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 opacity-50 cursor-not-allowed'}`}
+            disabled={!canSubmit}
+            aria-busy={isSaving}
+            className={`w-full py-3 rounded-2xl font-semibold text-xs shadow-xl active:scale-[0.97] transition-all duration-200 tracking-wide mt-1 ${canSubmit ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 opacity-50 cursor-not-allowed'}`}
           >
-            {initialTransaction ? 'Update Transaction' : 'Confirm Entry'}
+            {isSaving ? 'Saving…' : initialTransaction ? 'Update Transaction' : 'Confirm Entry'}
           </button>
 
           {/* Delete button only shown when editing an existing transaction */}

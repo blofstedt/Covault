@@ -190,13 +190,6 @@ function extractVendorRaw(text: string, isRefund?: boolean): string {
 
   // Strip known bank name prefixes (e.g. "Wealthsimple", "TD", "BMO") from
   // the start of the notification so they don't interfere with vendor extraction.
-  const BANK_NAME_PREFIXES = [
-    'bmo', 'scotiabank', 'td', 'td bank', 'rbc', 'cibc',
-    'wealthsimple', 'tangerine', 'simplii', 'national bank',
-    'desjardins', 'chase', 'wells fargo', 'bank of america',
-    'amex', 'american express', 'capital one', 'discover',
-    'citi', 'citibank', 'hsbc', 'barclays', 'usaa',
-  ];
   const tLowerPrefix = t.toLowerCase();
   for (const prefix of BANK_NAME_PREFIXES) {
     if (tLowerPrefix.startsWith(prefix + ' ') && t.length > prefix.length + 3) {
@@ -405,6 +398,16 @@ function titleCaseVendor(vendor: string): string {
     })
     .join(' ');
 }
+
+/** Bank name prefixes stripped from the head of a notification before vendor
+ *  extraction. Shared with aiExtractor so the two paths can't diverge. */
+export const BANK_NAME_PREFIXES = [
+  'bmo', 'scotiabank', 'td', 'td bank', 'rbc', 'cibc',
+  'wealthsimple', 'tangerine', 'simplii', 'national bank',
+  'desjardins', 'chase', 'wells fargo', 'bank of america',
+  'amex', 'american express', 'capital one', 'discover',
+  'citi', 'citibank', 'hsbc', 'barclays', 'usaa',
+];
 
 export function parseNotificationText(text: string): ParsedNotification {
   const t = text.trim();

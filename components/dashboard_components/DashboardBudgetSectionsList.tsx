@@ -19,16 +19,21 @@ interface DashboardBudgetSectionsListProps {
   currentUserName?: string;
   isSharedAccount?: boolean;
   scrollContainerRef: React.RefObject<HTMLDivElement>;
-  budgetRefs?: React.MutableRefObject<Map<string, HTMLDivElement>>;
   onToggleExpand?: (id: string) => void;
   onTransactionTap: (tx: Transaction) => void;
-  onUpdateBudget: (b: BudgetCategory) => void;
 }
+
+// Stable identities. memo(BudgetSection) can only short-circuit if every
+// prop keeps its identity across renders, so a fresh `[]` / `new Set()` here
+// would silently disable it for every card.
+const NO_TRANSACTIONS: Transaction[] = [];
+const EMPTY_EXPANDED = new Set<string>();
+const NOOP_TOGGLE = (_id: string) => {};
 
 const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = ({
   budgets,
   transactions,
-  expandedBudgets = new Set<string>(),
+  expandedBudgets = EMPTY_EXPANDED,
   isFocusMode = false,
   focusedBudgetId = null,
   leisureAdjustments = 0,
@@ -36,10 +41,8 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
   currentUserName = '',
   isSharedAccount = false,
   scrollContainerRef,
-  budgetRefs,
   onToggleExpand,
   onTransactionTap,
-  onUpdateBudget,
 }) => {
   // The settings prop is optional, so we fall back to an empty shape.
   // (Default values on destructured params cause TS to infer the param
@@ -90,7 +93,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
       }`}
     >
       {visibleBudgets.map((budget, index) => {
-          const budgetTxs = transactionsByBudgetId.get(budget.id) || [];
+          const budgetTxs = transactionsByBudgetId.get(budget.id) ?? NO_TRANSACTIONS;
 
           const isExpanded = expandedBudgets.has(budget.id);
           const isLeisure = budget.name.toLowerCase().includes('leisure');
@@ -124,13 +127,6 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
             <div
               key={budget.id}
               id={index === 0 ? 'first-budget-card' : undefined}
-              ref={(el) => {
-                if (el) {
-                  budgetRefs?.current.set(budget.id, el);
-                } else {
-                  budgetRefs?.current.delete(budget.id);
-                }
-              }}
               // Layout strategy
               // ---------------
               // Outer container is `flex flex-col` (or a 2-col grid on
@@ -195,9 +191,8 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
                 budget={displayBudget}
                 transactions={budgetTxs}
                 isExpanded={isExpanded}
-                onToggle={() => onToggleExpand?.(budget.id)}
-                onUpdateBudget={onUpdateBudget}
-                onTransactionTap={(tx) => onTransactionTap(tx)}
+                onToggle={onToggleExpand ?? NOOP_TOGGLE}
+                onTransactionTap={onTransactionTap}
                 currentUserName={currentUserName}
                 isSharedView={isSharedAccount}
                 allBudgets={budgets}

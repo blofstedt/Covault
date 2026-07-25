@@ -13,8 +13,9 @@
 // rejection explanations, and smart match-pattern suggestions.
 
 import { log } from './log';
-import { pipeline, type Text2TextGenerationPipeline } from '@huggingface/transformers';
+import type { Text2TextGenerationPipeline } from '@huggingface/transformers';
 import { formatVendorName } from './formatVendorName';
+import { BANK_NAME_PREFIXES } from './deviceTransactionParser';
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -45,11 +46,25 @@ const MODEL_ID = 'Xenova/flan-t5-small';
 
 let generatorPromise: Promise<Text2TextGenerationPipeline> | null = null;
 
+// The transformers runtime (plus ONNX Runtime Web) is ~2.2MB of the bundle —
+// more than the rest of the app combined. Importing it here rather than at
+// module scope keeps it out of the entry chunk, so it is fetched the first
+// time the model is actually needed instead of on every cold start. The
+// regex parser in deviceTransactionParser handles the common case and this
+// is only its fallback, so nothing waits on it at boot.
 function getGenerator(): Promise<Text2TextGenerationPipeline> {
   if (!generatorPromise) {
     log.debug('[aiExtractor] Loading AI model:', MODEL_ID);
-    generatorPromise = pipeline('text2text-generation', MODEL_ID, {
-      device: 'wasm',
+    generatorPromise = import('@huggingface/transformers').then(({ pipeline }) => {
+      // `pipeline` is cast before the call: resolving its full task overload
+      // union without a contextual return type overflows the checker (TS2590).
+      // The result is re-typed on the way out, so callers are unaffected.
+      const loadPipeline = pipeline as (
+        task: string,
+        model: string,
+        options: { device: string },
+      ) => Promise<Text2TextGenerationPipeline>;
+      return loadPipeline('text2text-generation', MODEL_ID, { device: 'wasm' });
     }).then(gen => {
       log.debug('[aiExtractor] AI model loaded successfully');
       return gen;
@@ -368,14 +383,6 @@ const NON_TRANSACTION_PATTERNS = [
   /\b(?:promo\s+code|coupon\s+code|discount\s+code)\b/i,
 ];
 
-const BANK_NAME_PREFIXES = [
-  'bmo', 'scotiabank', 'td', 'td bank', 'rbc', 'cibc',
-  'wealthsimple', 'tangerine', 'simplii', 'national bank',
-  'desjardins', 'chase', 'wells fargo', 'bank of america',
-  'amex', 'american express', 'capital one', 'discover',
-  'citi', 'citibank', 'hsbc', 'barclays', 'usaa',
-];
-
 function ruleBasedVendorExtraction(text: string): { vendor: string | null; isTransaction: boolean; rejectionReason: string | null } {
   for (const pattern of NON_TRANSACTION_PATTERNS) {
     if (pattern.test(text)) {
@@ -519,6 +526,10 @@ const VENDOR_CORRECTIONS: Record<string, string> = {
   'save on foods': 'Save-On-Foods', 'save-on-foods': 'Save-On-Foods',
 };
 
+// Hoisted: Object.entries() rebuilt this ~90-pair array on every
+// polishVendor() call, which runs once per captured notification.
+const VENDOR_CORRECTION_ENTRIES = Object.entries(VENDOR_CORRECTIONS);
+
 function polishVendor(raw: string): string {
   let v = raw.trim();
   v = v.replace(/^(?:SQ\s*\*|TST\s*\*|PP\s*\*|GOOGLE\s*\*|PAYPAL\s*\*)\s*/i, '');
@@ -549,7 +560,7 @@ function polishVendor(raw: string): string {
 
   const lower = v.toLowerCase();
   if (VENDOR_CORRECTIONS[lower]) return VENDOR_CORRECTIONS[lower];
-  for (const [key, corrected] of Object.entries(VENDOR_CORRECTIONS)) {
+  for (const [key, corrected] of VENDOR_CORRECTION_ENTRIES) {
     if (lower.startsWith(key)) return corrected;
   }
   return formatVendorName(v);
