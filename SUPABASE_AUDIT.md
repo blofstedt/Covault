@@ -73,15 +73,20 @@ create the table or remove the dead references — see the section in
 
 ## Open issues requiring a decision
 
-1. **`settings.subscription_status` default contradicts its own CHECK.** The
-   export shows `DEFAULT false` (the string `'false'`) with
-   `CHECK (subscription_status IN ('none','active','expired'))`. Postgres does
-   not validate defaults when a CHECK is added, so this only fails on an
-   INSERT that omits the column — which is what `handle_new_user()` does on
-   signup. **If that default is real, new-user signups are failing.**
-   `2026_fix_subscription_status_default.sql` sets it to `'none'` and includes
-   the one-line query to confirm the default first, since the dashboard export
-   is explicitly "for context only" and may be lossy.
+1. **`settings.subscription_status` default contradicts its own CHECK —
+   CONFIRMED.** `information_schema.columns.column_default` returns `false` on
+   the live project, under
+   `CHECK (subscription_status IN ('none','active','expired'))`. The default
+   coerces to the text `'false'`, which the CHECK rejects. Postgres does not
+   validate defaults when a CHECK is added, so this only fails on an INSERT
+   that omits the column — which is what `handle_new_user()` does on signup.
+   **Apply `2026_fix_subscription_status_default.sql`.** It contains a
+   transactional probe (a temp table cloned with
+   `INCLUDING DEFAULTS INCLUDING CONSTRAINTS`) that reproduces the failure
+   without creating an account or touching data. If that probe *succeeds*
+   pre-migration, the live `handle_new_user()` must be setting the column
+   explicitly — the fix is still correct, since `'false'` is never a valid
+   value here.
 
 2. **`budgets` has no UNIQUE on (user_uuid, budget).** The export shows only a
    FK. Consequences: `ensureDefaultBudgets`'s

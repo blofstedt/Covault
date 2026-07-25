@@ -87,11 +87,12 @@ CREATE TABLE IF NOT EXISTS public.settings (
   trial_started_at timestamp with time zone,
   trial_ends_at timestamp with time zone,
   trial_consumed boolean DEFAULT false,
-  -- Live DB shipped this as `DEFAULT false`, i.e. the string 'false', which is
-  -- NOT in the CHECK set. Postgres does not validate defaults when a CHECK is
-  -- added, so the contradiction only fails on an INSERT that omits the column
-  -- — which is exactly what handle_new_user() does on signup. Corrected by
-  -- 2026_fix_subscription_status_default.sql.
+  -- The live DB shipped this as `DEFAULT false` (confirmed 2026-07-25:
+  -- column_default returns `false`), i.e. the text 'false', which is NOT in
+  -- the CHECK set. Postgres does not validate defaults when a CHECK is added,
+  -- so the contradiction only fails on an INSERT that omits the column — which
+  -- is exactly what handle_new_user() does on signup. Corrected by
+  -- 2026_fix_subscription_status_default.sql; 'none' below is the fixed value.
   subscription_status text DEFAULT 'none'
     CHECK (subscription_status = ANY (ARRAY['none', 'active', 'expired'])),
   link_code text,

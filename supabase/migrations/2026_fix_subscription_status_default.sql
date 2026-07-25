@@ -18,18 +18,35 @@
 -- row is rejected with a check_violation. Because the trigger runs AFTER
 -- INSERT on auth.users, the error propagates and the signup fails.
 --
--- BEFORE RUNNING, confirm the default is really what the dashboard export
--- shows (that export is explicitly "for context only", so it may be lossy):
+-- CONFIRMED on the live project (2026-07-25):
 --
---   SELECT column_default, is_nullable
---   FROM information_schema.columns
---   WHERE table_schema = 'public'
---     AND table_name  = 'settings'
---     AND column_name = 'subscription_status';
+--   SELECT column_default FROM information_schema.columns
+--   WHERE table_schema='public' AND table_name='settings'
+--     AND column_name='subscription_status';
+--   -- returned: false
 --
--- If column_default comes back as 'none'::text (or NULL), there is no bug and
--- you can skip this migration. If it comes back as false / 'false'::text,
--- apply it.
+-- So the default really is the boolean literal, coerced to the text 'false',
+-- and it really does violate the CHECK. Apply this migration.
+--
+-- To see the failure yourself without creating a real account or touching any
+-- data — this copies the defaults and CHECK constraints but NOT the foreign
+-- keys, and rolls back either way:
+--
+--   BEGIN;
+--   CREATE TEMP TABLE probe (LIKE public.settings INCLUDING DEFAULTS INCLUDING CONSTRAINTS);
+--   INSERT INTO probe (user_id, name, email)
+--   VALUES (gen_random_uuid(), 'probe', 'probe@example.invalid');
+--   ROLLBACK;
+--
+-- Expected before this migration: ERROR, new row violates check constraint.
+-- Expected after: one row inserted, subscription_status = 'none'.
+--
+-- If that probe succeeds *before* the migration, then signups are surviving
+-- for some other reason — most likely the live handle_new_user() sets
+-- subscription_status explicitly. Check with:
+--   SELECT pg_get_functiondef('public.handle_new_user'::regproc);
+-- Applying this migration is still correct either way: 'false' is never a
+-- valid value for this column.
 --
 -- 'none' is the right default: it is a member of the CHECK set, and it is
 -- already what the app coerces a missing value to
