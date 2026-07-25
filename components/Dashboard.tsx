@@ -3,6 +3,10 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { AppState, Transaction, BudgetCategory } from '../types';
 
 import PageShell from './ui/PageShell';
+
+// d3 is only needed for the chart, so it loads as its own chunk rather than
+// as part of the entry bundle.
+const BudgetFlowChart = React.lazy(() => import('./dashboard_components/BudgetFlowChart'));
 import TransactionParsing from './TransactionParsing';
 import TransactionActionModal from './TransactionActionModal';
 import TransactionForm from './TransactionForm';
@@ -12,7 +16,6 @@ import { useVendorOverrides } from './transaction_parsing/useVendorOverrides';
 import DashboardBalanceSection from './dashboard_components/DashboardBalanceSection';
 import DashboardBudgetSectionsList from './dashboard_components/DashboardBudgetSectionsList';
 import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
-import BudgetFlowChart from './dashboard_components/BudgetFlowChart';
 import DashboardSettingsModal from './dashboard_components/DashboardSettingsModal';
 import SearchResults from './dashboard_components/SearchResults';
 
@@ -407,6 +410,7 @@ const Dashboard: React.FC<Props> = ({
               aria-hidden={false}
             >
               <PremiumGate hasPremium={true}>
+                <React.Suspense fallback={<div className="h-full w-full" />}>
                 <BudgetFlowChart
                   budgets={state.budgets}
                   transactions={chartTransactions}
@@ -414,6 +418,7 @@ const Dashboard: React.FC<Props> = ({
                   theme={state.settings.theme}
                   highlightedBudgetId={expandedBudgets.size > 0 ? Array.from(expandedBudgets)[0] : null}
                 />
+                </React.Suspense>
               </PremiumGate>
             </div>
 

@@ -1,9 +1,13 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
-import PrivacyPolicy from './components/PrivacyPolicy';
-import Terms from './components/Terms';
+import FullScreenLoader from './components/FullScreenLoader';
 import './index.css';
+
+// Only one of the three routes ever renders. The two static pages are lazy
+// so they stay out of the entry chunk that the app itself loads from.
+const PrivacyPolicy = lazy(() => import('./components/PrivacyPolicy'));
+const Terms = lazy(() => import('./components/Terms'));
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -21,6 +25,8 @@ const getPageComponent = () => {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    {getPageComponent()}
+    <Suspense fallback={<FullScreenLoader />}>
+      {getPageComponent()}
+    </Suspense>
   </React.StrictMode>
 );
