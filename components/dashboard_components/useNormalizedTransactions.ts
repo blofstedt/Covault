@@ -2,6 +2,13 @@ import { useMemo } from 'react';
 import { Transaction, BudgetCategory } from '../../types';
 import { SYSTEM_CATEGORIES } from '../../constants';
 
+// SYSTEM_CATEGORIES is a module constant, so this lookup never changes.
+// Building it per call meant re-lowercasing all 7 entries on every
+// transactions/budgets change.
+const systemCategoryIdToName = new Map<string, string>(
+  SYSTEM_CATEGORIES.map(category => [String(category.id).toLowerCase(), category.name.trim().toLowerCase()]),
+);
+
 export function normalizeTransactions(
   transactions: Transaction[],
   budgets: BudgetCategory[]
@@ -9,9 +16,6 @@ export function normalizeTransactions(
   const categoryToBudget = new Map<string, string>();
   const budgetIds = new Set<string>();
   const budgetNameToId = new Map<string, string>();
-  const systemCategoryIdToName = new Map<string, string>(
-    SYSTEM_CATEGORIES.map(category => [String(category.id).toLowerCase(), category.name.trim().toLowerCase()]),
-  );
   const otherBudgetId =
     budgets.find((b: any) => String(b?.name || '').toLowerCase() === 'other')?.id || null;
 

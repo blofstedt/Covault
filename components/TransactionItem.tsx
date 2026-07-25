@@ -1,8 +1,16 @@
-import React, { useMemo } from 'react';
+import React, { memo, useMemo } from 'react';
 import { Transaction, BudgetCategory } from '../types';
 import { parseLocalDate } from '../lib/dateUtils';
 
 import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
+
+// Hoisted: `Date.prototype.toLocaleDateString` builds a fresh
+// Intl.DateTimeFormat on every call, which is one of the more expensive
+// things a render can do. These rows are the leaf of both the expanded
+// budget list and the search results, so the cost was paid twice per row
+// per render.
+const SHORT_DATE_FMT = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
+const FULL_DATE_FMT = new Intl.DateTimeFormat();
 
 interface TransactionItemProps {
   transaction: Transaction;
@@ -58,7 +66,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
         onClick={() => onTap(transaction)}
         onKeyDown={handleKeyDown}
         className="relative z-10 p-4 rounded-[2rem] backdrop-blur-xl border shadow-sm ring-1 ring-inset ring-white/10 dark:ring-white/[0.03] bg-white/80 dark:bg-slate-900/80 border-slate-200/40 dark:border-slate-700/40 cursor-pointer hover:bg-white/90 dark:hover:bg-slate-900/90 active:scale-[0.98] transition-all duration-200 w-full text-left"
-        aria-label={`Transaction: ${transaction.vendor}, ${Math.abs(txAmount).toFixed(2)} dollars on ${transactionDate.toLocaleDateString()}`}
+        aria-label={`Transaction: ${transaction.vendor}, ${Math.abs(txAmount).toFixed(2)} dollars on ${FULL_DATE_FMT.format(transactionDate)}`}
       >
         <div className="flex items-center justify-between">
           {/* Budget icon on the left for search results */}
@@ -92,10 +100,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
               )}
 
               <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 tracking-tight">
-                {transactionDate.toLocaleDateString(undefined, {
-                  month: 'short',
-                  day: 'numeric',
-                })}
+                {SHORT_DATE_FMT.format(transactionDate)}
               </span>
 
               {transaction.recurrence !== 'One-time' && (
@@ -156,4 +161,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
   );
 };
 
-export default TransactionItem;
+// Memoized: this is the hottest leaf in the tree. Its props are stable now
+// that the list call sites pass through handlers instead of wrapping them in
+// fresh arrows each render.
+export default memo(TransactionItem);

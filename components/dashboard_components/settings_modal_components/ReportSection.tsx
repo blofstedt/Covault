@@ -24,33 +24,48 @@ const ReportSection: React.FC<ReportSectionProps> = ({
 }) => {
   const [sent, setSent] = useState(false);
 
-  const now = new Date();
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  const monthKey = getLocalMonthKey(todayStr);
-  const monthLabel = now.toLocaleString('default', { month: 'long', year: 'numeric' });
+  // Snapshot the clock once per mount. This ran on every render before,
+  // rebuilding an Intl formatter each time and invalidating the memos below
+  // that take monthKey as a dependency.
+  const { monthKey, monthLabel } = useMemo(() => {
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    return {
+      monthKey: getLocalMonthKey(todayStr),
+      monthLabel: now.toLocaleString('default', { month: 'long', year: 'numeric' }),
+    };
+  }, []);
 
   const currentMonthTxs = useMemo(
     () => transactions.filter(tx => !tx.is_projected && getLocalMonthKey(tx.date) === monthKey),
     [transactions, monthKey],
   );
 
-  const budgetRows = useMemo(() =>
-    budgets
+  const budgetRows = useMemo(() => {
+    // Pre-group once instead of filtering the whole month per budget, which
+    // walked the transaction list once for every visible budget.
+    const spentById = new Map<string, number>();
+    for (const tx of currentMonthTxs) {
+      if (!tx.budget_id) continue;
+      spentById.set(tx.budget_id, (spentById.get(tx.budget_id) ?? 0) + tx.amount);
+    }
+    return budgets
       .filter(b => b.totalLimit > 0)
-      .map((b, i) => {
-        const spent = currentMonthTxs
-          .filter(tx => tx.budget_id === b.id)
-          .reduce((acc, tx) => acc + tx.amount, 0);
-        return { name: b.name, spent, limit: b.totalLimit, color: getBudgetColor(b.name, i) };
-      }),
-    [budgets, currentMonthTxs],
-  );
+      .map((b, i) => ({
+        name: b.name,
+        spent: spentById.get(b.id) ?? 0,
+        limit: b.totalLimit,
+        color: getBudgetColor(b.name, i),
+      }));
+  }, [budgets, currentMonthTxs]);
 
   const totalSpent = budgetRows.reduce((acc, b) => acc + b.spent, 0);
   const remaining = monthlyIncome - totalSpent;
 
   const buildReportHTML = (): string => {
     const ownerLabel = isSharedAccount ? 'Our' : 'My';
+    // Read the clock at build time rather than capturing a render-time value.
+    const now = new Date();
     const generatedDate = now.toLocaleDateString('default', {
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
     });
@@ -167,6 +182,7 @@ const ReportSection: React.FC<ReportSectionProps> = ({
 
   const handleShare = async () => {
     const html = buildReportHTML();
+    const now = new Date();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const fileName = `covault-report-${now.getFullYear()}-${month}.html`;
 

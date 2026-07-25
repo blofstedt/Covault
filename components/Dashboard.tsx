@@ -1,5 +1,5 @@
 import { log } from '../lib/log';
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { AppState, Transaction, BudgetCategory } from '../types';
 
 import PageShell from './ui/PageShell';
@@ -22,6 +22,15 @@ import { getLocalMonthKey } from '../lib/dateUtils';
 import { checkAndTriggerAppNotifications } from '../lib/appNotifications';
 import { supabase } from '../lib/supabase';
 import { resolveBudgetIdFromRow } from '../lib/hooks/transactionMappers';
+
+// Map from app-state setting keys to DB column names.
+const SETTING_DB_KEYS: Record<string, string> = {
+  rolloverEnabled: 'rollover_enabled',
+  useLeisureAsBuffer: 'leisure_buffer_enabled',
+  showSavingsInsight: 'show_savings_insight',
+  app_notifications_enabled: 'app_notifications_enabled',
+  smart_notifications_enabled: 'smart_notifications_enabled',
+};
 
 interface VendorHistoryItem {
   vendor: string;
@@ -154,33 +163,23 @@ const Dashboard: React.FC<Props> = ({
     [state.transactions],
   );
 
-  const pastTransactions = useMemo(
-    () => normalizedTransactions.filter((t) => typeof t.date === 'string' && getLocalMonthKey(t.date) < monthKey),
-    [normalizedTransactions, monthKey],
-  );
+  // Single pass: the two filters below walked the whole list separately and
+  // each called getLocalMonthKey (which allocates a Date) per transaction.
+  const { pastTransactions, futureTransactions } = useMemo(() => {
+    const past: Transaction[] = [];
+    const future: Transaction[] = [];
+    for (const t of normalizedTransactions) {
+      if (typeof t.date !== 'string') continue;
+      const key = getLocalMonthKey(t.date);
+      if (key < monthKey) past.push(t);
+      else if (key > monthKey) future.push(t);
+    }
+    return { pastTransactions: past, futureTransactions: future };
+  }, [normalizedTransactions, monthKey]);
 
-  const futureTransactions = useMemo(
-    () => normalizedTransactions.filter((t) => typeof t.date === 'string' && getLocalMonthKey(t.date) > monthKey),
-    [normalizedTransactions, monthKey],
-  );
-
-  const toggleExpand = (id: string) => {
-    setExpandedBudgets(prev => {
-      if (prev.has(id)) {
-        return new Set();
-      }
-      return new Set([id]);
-    });
-  };
-
-  // Map from app-state setting keys to DB column names
-  const SETTING_DB_KEYS: Record<string, string> = {
-    rolloverEnabled: 'rollover_enabled',
-    useLeisureAsBuffer: 'leisure_buffer_enabled',
-    showSavingsInsight: 'show_savings_insight',
-    app_notifications_enabled: 'app_notifications_enabled',
-    smart_notifications_enabled: 'smart_notifications_enabled',
-  };
+  const toggleExpand = useCallback((id: string) => {
+    setExpandedBudgets(prev => (prev.has(id) ? new Set() : new Set([id])));
+  }, []);
 
   const handleUpdateSettings = (key: string, value: any) => {
     setState(prev => ({

@@ -15,7 +15,9 @@ interface BudgetSectionProps {
   budget: ExtendedBudgetCategory;
   transactions: Transaction[];
   isExpanded: boolean;
-  onToggle: () => void;
+  /** Receives this section's budget id, so the parent can pass a single
+   *  stable handler instead of allocating a fresh arrow per card per render. */
+  onToggle: (budgetId: string) => void;
   onUpdateBudget: (b: BudgetCategory) => void;
   onTransactionTap: (tx: Transaction) => void;
   currentUserName: string;
@@ -93,13 +95,15 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
   const isWarning = spentPercent > 80 && spentPercent <= 100;
   const isOver = spentPercent > 100;
 
+  const handleHeaderClick = useCallback(() => onToggle(budget.id), [onToggle, budget.id]);
+
   const handleBackgroundClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (e.target === e.currentTarget) {
-        onToggle();
+        onToggle(budget.id);
       }
     },
-    [onToggle]
+    [onToggle, budget.id]
   );
 
   return (
@@ -150,7 +154,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
       {/* HEADER / SUMMARY */}
       <div
-        onClick={onToggle}
+        onClick={handleHeaderClick}
         className={`relative z-10 flex items-center justify-between cursor-pointer active:scale-[0.99] transition-all duration-300 ease-in-out ${
           isExpanded
             ? 'flex-none py-6 px-8'

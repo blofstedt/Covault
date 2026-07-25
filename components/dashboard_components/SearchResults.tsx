@@ -8,37 +8,6 @@ import { isRefund, matchRefundsToExpenses } from '../../lib/refundMatching';
 
 type SearchResultTransaction = Transaction & { category_id?: string };
 
-interface SearchResultTransactionItemProps {
-  transaction: SearchResultTransaction;
-  currentUserName: string;
-  isSharedAccount: boolean;
-  budgets: BudgetCategory[];
-  onTransactionTap: (tx: Transaction) => void;
-  matchedExpenseIds: Set<string>;
-}
-
-const SearchResultTransactionItem: React.FC<SearchResultTransactionItemProps> = ({
-  transaction,
-  currentUserName,
-  isSharedAccount,
-  budgets,
-  onTransactionTap,
-  matchedExpenseIds,
-}) => {
-  return (
-    <TransactionItem
-      key={transaction.id}
-      transaction={transaction}
-      onTap={onTransactionTap}
-      currentUserName={currentUserName}
-      isSharedView={isSharedAccount}
-      budgets={budgets}
-      showBudgetIcon={true}
-      isRefunded={matchedExpenseIds.has(transaction.id)}
-    />
-  );
-};
-
 interface CollapsibleSectionProps {
   title: string;
   subtitle: string;
@@ -91,15 +60,16 @@ const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
       {/* Section body */}
       {open && (
         <div className="mt-3 space-y-2">
-          {transactions.filter((tx) => !isRefund(tx)).map((tx) => (
-            <SearchResultTransactionItem
+          {transactions.map((tx) => (
+            <TransactionItem
               key={tx.id}
               transaction={tx}
+              onTap={onTransactionTap}
               currentUserName={currentUserName}
-              isSharedAccount={isSharedAccount}
+              isSharedView={isSharedAccount}
               budgets={budgets}
-              onTransactionTap={onTransactionTap}
-              matchedExpenseIds={matchedExpenseIds}
+              showBudgetIcon={true}
+              isRefunded={matchedExpenseIds.has(tx.id)}
             />
           ))}
         </div>
@@ -235,14 +205,15 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 
             <div className="space-y-2">
               {filteredCurrent.map((tx) => (
-                <SearchResultTransactionItem
+                <TransactionItem
                   key={tx.id}
                   transaction={tx}
+                  onTap={onTransactionTap}
                   currentUserName={currentUserName}
-                  isSharedAccount={isSharedAccount}
+                  isSharedView={isSharedAccount}
                   budgets={budgets}
-                  onTransactionTap={onTransactionTap}
-                  matchedExpenseIds={matchedExpenseIds}
+                  showBudgetIcon={true}
+                  isRefunded={matchedExpenseIds.has(tx.id)}
                 />
               ))}
             </div>
