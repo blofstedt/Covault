@@ -414,6 +414,14 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       >
         {enabled ? (
           <>
+            <div className="shrink-0 mb-4">
+              <ActiveBanksCard
+                activeBanks={monitoredBanks}
+                isExpanded={expandedSections.activeBanks}
+                onToggleExpanded={() => toggleSection('activeBanks')}
+              />
+            </div>
+
             <AITransactionsEnteredCard
               aiTransactions={aiTransactions}
               budgets={budgets}
@@ -433,14 +441,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               onChangeCategory={handleChangeCaughtCategory}
               onCreateRule={handleCreateRuleForCaught}
             />
-
-            <div className="shrink-0 mt-4">
-              <ActiveBanksCard
-                activeBanks={monitoredBanks}
-                isExpanded={expandedSections.activeBanks}
-                onToggleExpanded={() => toggleSection('activeBanks')}
-              />
-            </div>
 
             <div className="shrink-0 mt-4">
               <LearnedRulesCard

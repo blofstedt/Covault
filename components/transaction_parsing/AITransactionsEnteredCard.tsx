@@ -94,12 +94,14 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
       subtitle={
         nonRefunds.length === 0
           ? 'Nothing waiting'
-          : `${nonRefunds.length} caught from your bank alerts${refundCount > 0 ? ` · ${refundCount} refund${refundCount === 1 ? '' : 's'} hidden` : ''}`
+          : refundCount > 0
+            ? `${refundCount} refund${refundCount === 1 ? '' : 's'} hidden`
+            : 'From your bank alerts'
       }
       count={nonRefunds.length}
-      onClear={onClear}
-      onRefresh={onRefresh}
-      isRefreshing={isRefreshing}
+      onScan={onRefresh}
+      isScanning={isRefreshing}
+      scanLabel="Scan for new transactions"
     >
       {isExpanded && (
         <div className="space-y-3">
@@ -131,6 +133,15 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
                 />
               );
             })
+          )}
+          {onClear && nonRefunds.length > 0 && (
+            <button
+              type="button"
+              onClick={onClear}
+              className="w-full min-h-[44px] mt-1 text-[11px] font-bold rounded-2xl text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors active:scale-[0.99]"
+            >
+              Clear all
+            </button>
           )}
         </div>
       )}

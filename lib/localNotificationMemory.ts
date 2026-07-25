@@ -111,6 +111,11 @@ export function isNotificationProcessed(key: string): boolean {
   return keys.includes(key);
 }
 
+/**
+ * Record a notification as CAPTURED. Permanent by design: the transaction is in
+ * the ledger and must never be inserted twice. Rejections must NOT come here —
+ * use markNotificationRejected.
+ */
 export function markNotificationProcessed(key: string): void {
   let keys = readJson<string[]>(PROCESSED_NOTIFS_KEY, []);
   if (keys.includes(key)) return;
@@ -120,6 +125,54 @@ export function markNotificationProcessed(key: string): void {
     keys = keys.slice(keys.length - MAX_PROCESSED_NOTIFS);
   }
   writeJson(PROCESSED_NOTIFS_KEY, keys);
+}
+
+// ── Rejected notifications ────────────────────────────────────────────────────
+// Distinct from the "processed" list above, which means "captured into the
+// ledger — never insert again" and is therefore permanent.
+//
+// A rejection means only "examined and not captured *this time*". Reasons are
+// frequently transient: the on-device AI model had not finished loading, a
+// refund arrived before the expense it pairs with, a bank reworded its alert.
+// Recording those permanently made them unrecoverable — no rescan could ever
+// look at them again, which defeats the scan button.
+//
+// So rejections live here instead: timestamped, expiring, and bypassable by an
+// explicit user-initiated rescan.
+const REJECTED_NOTIFS_KEY = 'covault_rejected_notifs';
+const MAX_REJECTED_NOTIFS = 500;
+/** After this, a rejection is forgotten and the notification is re-examined. */
+const REJECTED_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+type RejectedEntry = { key: string; at: number };
+
+function readRejected(): RejectedEntry[] {
+  const now = Date.now();
+  // readJson hands back whatever the blob parses to, so a corrupt value must
+  // not be assumed to be an array.
+  const raw = readJson<unknown>(REJECTED_NOTIFS_KEY, []);
+  if (!Array.isArray(raw)) return [];
+  return (raw as RejectedEntry[]).filter(
+    (e) => e && typeof e.key === 'string' && typeof e.at === 'number' && now - e.at < REJECTED_TTL_MS,
+  );
+}
+
+export function markNotificationRejected(key: string): void {
+  const entries = readRejected().filter((e) => e.key !== key);
+  entries.push({ key, at: Date.now() });
+  writeJson(
+    REJECTED_NOTIFS_KEY,
+    entries.length > MAX_REJECTED_NOTIFS ? entries.slice(entries.length - MAX_REJECTED_NOTIFS) : entries,
+  );
+}
+
+export function isNotificationRejected(key: string): boolean {
+  return readRejected().some((e) => e.key === key);
+}
+
+/** Forget every rejection, so the next pass re-examines them all. */
+export function clearRejectedNotifications(): void {
+  writeJson(REJECTED_NOTIFS_KEY, []);
 }
 
 // ── Dismissed soft-dup pairs ──────────────────────────────────────────────────
