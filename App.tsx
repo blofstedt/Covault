@@ -67,9 +67,7 @@ const App: React.FC = () => {
   // A single toast surfaces transient messages: DB read/write failures
   // (previously discarded, so failures were silent and looked like "nothing
   // happened") and undoable actions like a transaction delete.
-  // isLoadingData: only the setter is consumed (by the data-loading hook).
   const [toast, setToast] = useState<Toast | null>(null);
-  const [, setIsLoadingData] = useState(false);
 
   // Back-compat shim: the data hooks report failures via setDbError(msg).
   const setDbError = useCallback(
@@ -135,13 +133,10 @@ const App: React.FC = () => {
 
   const loadUserDataWithState = useCallback(
     async (userId: string) => {
-      setIsLoadingData(true);
       try {
         await loadUserData(userId);
       } catch (error) {
         log.error('[loadUserDataWithState] Error:', error);
-      } finally {
-        setIsLoadingData(false);
       }
     },
     [loadUserData],
@@ -232,13 +227,6 @@ const App: React.FC = () => {
     await refreshMonitoredAppsAndScan();
   }, [refreshMonitoredAppsAndScan]);
 
-  // Run a detection + scan pass on app start so pre-existing notifications
-  // can be processed immediately after install/re-open.
-  useEffect(() => {
-    if (!Capacitor.isNativePlatform() || !appState.settings.notificationsEnabled) return;
-    refreshMonitoredAppsAndScan();
-  }, [appState.settings.notificationsEnabled, refreshMonitoredAppsAndScan]);
-
   const prevNotificationsEnabled = useRef(appState.settings.notificationsEnabled);
   useEffect(() => {
     const wasEnabled = prevNotificationsEnabled.current;
@@ -291,25 +279,28 @@ const App: React.FC = () => {
     saveSettingsToStorage(appState.settings);
   }, [appState.settings]);
 
-  const handleOnboardingComplete = (isSolo: boolean, budgets: BudgetCategory[], partnerEmail?: string) => {
-    setAppState(prev => ({
-      ...prev,
-      budgets,
-      user: prev.user ? { ...prev.user, budgetingSolo: isSolo, partnerEmail } : null,
-    }));
-    setAuthState('authenticated');
-  };
+  const handleOnboardingComplete = useCallback(
+    (isSolo: boolean, budgets: BudgetCategory[], partnerEmail?: string) => {
+      setAppState(prev => ({
+        ...prev,
+        budgets,
+        user: prev.user ? { ...prev.user, budgetingSolo: isSolo, partnerEmail } : null,
+      }));
+      setAuthState('authenticated');
+    },
+    [],
+  );
 
-  const handleUpdateBudget = (updatedBudget: BudgetCategory) => {
+  const handleUpdateBudget = useCallback((updatedBudget: BudgetCategory) => {
     setAppState(prev => ({
       ...prev,
       budgets: prev.budgets.map(b => (b.id === updatedBudget.id ? updatedBudget : b)),
     }));
-  };
+  }, []);
 
-  const handleSignOut = async () => {
+  const handleSignOut = useCallback(async () => {
     await supabase.auth.signOut();
-  };
+  }, []);
 
   // Render logic with extra safety
   if (authState === 'loading') {

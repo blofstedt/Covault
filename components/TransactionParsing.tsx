@@ -16,7 +16,7 @@ import { toVendorKey } from '../lib/deviceTransactionParser';
 import { covaultNotification } from '../lib/covaultNotification';
 import { REST_BASE, getAuthHeaders, restFetch } from '../lib/apiHelpers';
 import { loadBankingAppsFromDB } from '../lib/bankingApps';
-import { getNeedsReviewCount, getNeedsReviewIdSet, getReviewQueueChangedEventName } from '../lib/localNotificationMemory';
+import { getNeedsReviewIdSet, getReviewQueueChangedEventName } from '../lib/localNotificationMemory';
 
 /** Delay (ms) after scanning to allow notification processing before reloading data */
 const SCAN_PROCESSING_DELAY_MS = 2000;
@@ -119,15 +119,12 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   }, [enabled, loadMonitoredBanks]);
 
 
-  // needsReviewCount: legacy state value used to be displayed in the
-  // DashboardBottomBar badge. The list of IDs (needsReviewIds) is the
-  // live source of truth; the count is computed lazily when needed.
-  const [, setNeedsReviewCount] = useState(0);
+  // needsReviewIds is the live source of truth for the review queue; any
+  // count is derived from it at the point of use.
   const [needsReviewIds, setNeedsReviewIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const refreshReviewQueue = () => {
-      setNeedsReviewCount(getNeedsReviewCount());
       setNeedsReviewIds(getNeedsReviewIdSet());
     };
     refreshReviewQueue();
@@ -143,7 +140,11 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   );
 
   // ── Notification rules hook (skip patterns the user has trained) ──
-  const { create: createNotificationRule } = useNotificationRules({ userId });
+  const {
+    rules: notificationRules,
+    create: createNotificationRule,
+    remove: removeNotificationRule,
+  } = useNotificationRules({ userId });
 
   // ── Inline vendor rename ──
   // Persists via the existing onUpdateTransaction path. The handler in
@@ -491,11 +492,12 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
 
             <div className="shrink-0 mt-4">
               <LearnedRulesCard
-                userId={userId}
                 vendorOverrides={vendorOverrides}
                 categoryNameById={categoryNameById}
                 budgets={budgets}
                 allTransactions={allTransactions}
+                rules={notificationRules}
+                onRemoveRule={removeNotificationRule}
                 onDeleteVendorOverride={handleDeleteVendorOverride}
                 onSetVendorCategory={handleSetVendorCategory}
                 onSetProperName={handleSetProperName}

@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import ParsingCard from '../ui/ParsingCard';
-import { useNotificationRules } from './useNotificationRules';
+import type { NotificationRule } from '../../lib/notificationRules';
 import type { VendorOverride, MatchType } from './useVendorOverrides';
 import { toVendorKey } from '../../lib/deviceTransactionParser';
 import { formatCurrency } from '../../lib/formatCurrency';
@@ -25,18 +25,6 @@ const categoryColorMap: Record<string, string> = {
   'Other': 'text-slate-600 dark:text-slate-400',
 };
 
-const fmtUpdated = (iso?: string | null): string => {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const diffMs = Date.now() - d.getTime();
-  const day = 24 * 60 * 60 * 1000;
-  if (diffMs < day) return 'today';
-  if (diffMs < 2 * day) return 'yesterday';
-  if (diffMs < 7 * day) return `${Math.floor(diffMs / day)}d ago`;
-  if (diffMs < 30 * day) return `${Math.floor(diffMs / (7 * day))}w ago`;
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-};
 
 interface LearnedRule {
   properName: string;
@@ -46,9 +34,21 @@ interface LearnedRule {
   transactions: Transaction[];
 }
 
+// Stable identities for omitted props. A fresh `[]` / `new Map()` per render
+// would invalidate the memos below on every single render.
+const EMPTY_RULES: NotificationRule[] = [];
+const EMPTY_BUDGETS: BudgetCategory[] = [];
+const EMPTY_TRANSACTIONS: Transaction[] = [];
+const EMPTY_CATEGORY_NAMES = new Map<string, string>();
+
 interface LearnedRulesCardProps {
-  userId?: string;
   vendorOverrides: VendorOverride[];
+  /** Skip-pattern rules, owned by TransactionParsing. Passed in rather than
+   *  fetched here so the two consumers share one fetch and one copy of the
+   *  state — previously each mounted its own hook, so a rule created from the
+   *  "not a transaction" flow never appeared in this list. */
+  rules?: NotificationRule[];
+  onRemoveRule?: (ruleId: string) => Promise<boolean>;
   categoryNameById?: Map<string, string>;
   budgets?: BudgetCategory[];
   allTransactions?: Transaction[];
@@ -62,11 +62,12 @@ interface LearnedRulesCardProps {
 }
 
 const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
-  userId,
   vendorOverrides,
-  categoryNameById = new Map(),
-  budgets = [],
-  allTransactions = [],
+  rules = EMPTY_RULES,
+  onRemoveRule,
+  categoryNameById = EMPTY_CATEGORY_NAMES,
+  budgets = EMPTY_BUDGETS,
+  allTransactions = EMPTY_TRANSACTIONS,
   onDeleteVendorOverride,
   onSetVendorCategory,
   onSetProperName,
@@ -75,7 +76,6 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
   isExpanded = true,
   onToggleExpanded,
 }) => {
-  const { rules, remove } = useNotificationRules({ userId });
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [editingProperName, setEditingProperName] = useState<string | null>(null);
   const [properNameDraft, setProperNameDraft] = useState('');
@@ -144,12 +144,12 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
     async (ruleId: string) => {
       setRemovingId(ruleId);
       try {
-        await remove(ruleId);
+        await onRemoveRule?.(ruleId);
       } finally {
         setRemovingId(null);
       }
     },
-    [remove],
+    [onRemoveRule],
   );
 
   const handleMerge = useCallback((ruleKey: string) => {
@@ -437,11 +437,6 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                       {rule.use_count !== undefined && (
                         <span className="text-[9px] font-semibold text-violet-500 dark:text-violet-400">
                           {rule.use_count} uses
-                        </span>
-                      )}
-                      {rule.updated_at && (
-                        <span className="text-[9px] text-slate-400 dark:text-slate-500">
-                          {fmtUpdated(rule.updated_at)}
                         </span>
                       )}
                     </div>
