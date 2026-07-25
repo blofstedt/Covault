@@ -145,6 +145,11 @@ CREATE TABLE IF NOT EXISTS public.transactions (
   caught_cleared boolean NOT NULL DEFAULT false,
   source text NOT NULL DEFAULT 'manual',
   confidence numeric,
+  -- Added by 2026_add_refunded_column.sql / 2026_learned_rules_and_refunded.sql.
+  refunded boolean NOT NULL DEFAULT false,
+  -- Added by 2026_learned_rules_and_refunded.sql. Powers the capture
+  -- reviewer's "View original notification" expander.
+  raw_notification text,
   CONSTRAINT transactions_pkey PRIMARY KEY (id),
   CONSTRAINT transactions_user_id_fkey FOREIGN KEY (user_id)
     REFERENCES auth.users(id)
@@ -210,7 +215,15 @@ CREATE TABLE IF NOT EXISTS public.budgets (
   user_uuid uuid,
   budget public."Budgets",
   amount numeric,
-  Visible boolean NOT NULL DEFAULT true
+  -- Quoted deliberately. An unquoted `Visible` folds to `visible`, but every
+  -- write in the app sends the JSON key "Visible"
+  -- (lib/hooks/useUserSettings.ts:81,141,428,486 and
+  -- lib/hooks/useDataLoading.ts:49) and PostgREST matches column names
+  -- case-sensitively. Creating a fresh project from an unquoted definition
+  -- would make every budget-limit and visibility write fail with PGRST204.
+  -- The `row.visible ?? row.Visible` fallback on the read path exists to
+  -- tolerate both spellings; the write path does not have one.
+  "Visible" boolean NOT NULL DEFAULT true
 );
 
 -- (RECONSTRUCTED) Unique constraint required for upserts via
@@ -260,6 +273,10 @@ CREATE TABLE IF NOT EXISTS public.overrides (
   category_id public."Budgets" NOT NULL,
   proper_name text,
   match_key text,
+  -- Both added by 2026_learned_rules_and_refunded.sql.
+  match_type text NOT NULL DEFAULT 'exact'
+    CHECK (match_type IN ('exact', 'prefix', 'contains')),
+  updated_at timestamp with time zone DEFAULT now(),
   CONSTRAINT overrides_pkey PRIMARY KEY (id),
   CONSTRAINT overrides_user_id_fkey FOREIGN KEY (user_id)
     REFERENCES auth.users(id)
@@ -308,6 +325,40 @@ DO $$ BEGIN
       USING (true);
   END IF;
 END $$;
+
+
+-- ============================================================
+-- TABLES USED BY THE APP BUT NOT DEFINED HERE
+-- ============================================================
+-- Both are read/written by the capture pipeline. Neither is defined
+-- above, so this file cannot bootstrap a working project on its own
+-- and the drift check will not cover them.
+--
+--   public.notification_rules
+--     Skip patterns the user has trained ("not a transaction").
+--     Read by lib/notificationRules.ts (checkNotificationRules,
+--     listNotificationRules) and written by createNotificationRule /
+--     deleteNotificationRule / bumpRuleUseCount.
+--     Columns the app relies on: id, user_id, pattern, pattern_type,
+--     use_count, last_used_at, created_at.
+--     Created by consolidate_schema.sql; extended by
+--     add_missing_notification_rule_columns.sql.
+--     NOTE: the app has NO fallback if this table is missing — a failed
+--     fetch is treated as "no rules", so trained skip patterns would
+--     silently stop applying.
+--
+--   public.pending_transactions
+--     The capture review queue. Read/written by
+--     lib/notificationProcessor.ts and lib/hooks/useDataLoading.ts.
+--     Unlike notification_rules, its absence IS tolerated:
+--     loadPendingTransactions treats a 404 as an empty queue.
+--     Referenced by consolidate_schema.sql,
+--     fix_all_rls_policies_and_constraints.sql and
+--     2026_add_confidence_column.sql.
+--
+-- Run scripts/introspect_schema.sql against the live project to
+-- confirm their real shape, then define them here.
+-- ============================================================
 
 
 -- ============================================================
