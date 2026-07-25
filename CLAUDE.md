@@ -13,8 +13,9 @@ for Android with Capacitor. (An earlier native-Kotlin rewrite was attempted and
 abandoned; there is no Kotlin app in this repo.) All work happens in the root app.
 
 See also: `AGENTS.md` (agent runbook), `README.md` (setup + Android build),
-`SETUP.md` (domain model + conventions), `SUPABASE_AUDIT.md` (schema-drift notes),
-and `supabase/schema.sql` (canonical DB schema).
+`SETUP.md` (domain model + conventions), `SUPABASE_AUDIT.md` (schema notes +
+load-bearing drift quirks), `SUBSCRIPTION_SETUP.md` (trial/billing model), and
+`supabase/schema.sql` (canonical DB schema).
 
 ## Stack
 

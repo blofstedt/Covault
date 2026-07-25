@@ -41,7 +41,7 @@ python3 scripts/check_schema_drift.py --full
 
 - `App.tsx`: root app state, auth/data orchestration, top-level routing between onboarding/dashboard/parsing/settings.
 - `components/`: React UI. Dashboard-specific pieces live in `components/dashboard_components/`; AI parsing UI lives in `components/transaction_parsing/`.
-- `lib/hooks/useUserData.ts`: facade that composes data-loading, transaction ops, household linking, settings, and theme hooks.
+- `lib/hooks/useUserData.ts`: facade that composes data-loading, transaction ops, household linking, and settings hooks. (Theme is a separate hook, `useAppTheme`, used directly in `App.tsx`.)
 - `lib/notificationProcessor.ts`: notification dedup/parsing/AI/category/insert pipeline. Treat this as high-risk; make tiny changes with tests.
 - `lib/deviceTransactionParser.ts` and `lib/aiExtractor.ts`: transaction extraction logic. Add parser tests for new bank/vendor patterns.
 - `lib/hooks/transactionMappers.ts`: database row ↔ app model conversion. Keep enum/label mapping centralized here.

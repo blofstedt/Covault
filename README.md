@@ -30,16 +30,20 @@ cd Covault
 
 2. Install dependencies:
 ```bash
-npm install
+npm install --legacy-peer-deps
 ```
+(The `--legacy-peer-deps` flag is required for the React 19 / Vite 6 peer
+ranges, and matches what CI uses.)
 
 3. Set up environment variables:
 Create a `.env` file in the root directory (see `.env.example` for reference):
 ```
 VITE_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-GEMINI_API_KEY=your_gemini_api_key (optional)
+VITE_ADMIN_EMAIL=you@example.com   # optional
 ```
+(AI extraction runs on-device via `@huggingface/transformers` — there is no
+Gemini/OpenAI key. The only optional var is `VITE_ADMIN_EMAIL`.)
 
 **Get your Supabase credentials:**
 - Go to your Supabase project dashboard
@@ -78,15 +82,17 @@ Before running the app, you MUST create the required database tables in your Sup
 3. Copy the contents of `supabase/schema.sql`
 4. Paste and run the SQL in the editor
 
-This will create all necessary tables:
-- `categories` - Budget categories
-- `settings` - User settings and preferences
+This creates the 5 tables the app uses (see `CLAUDE.md` for the per-table
+column summary):
+- `settings` - 1 row per user: preferences, partner linking, income, trial flags
 - `budgets` - Per-user budget limits
-- `transactions` - Transaction records
-- `pending_transactions` - Auto-parsed transactions awaiting review
-- `household_links` - Household partner connections
-- `link_codes` - Temporary codes for household linking
-- And other supporting tables
+- `transactions` - Confirmed transaction records
+- `overrides` - Learned vendor→category rules
+- `banks` - Known banking apps used for notification capture
+
+(The capture pipeline also reads/writes `pending_transactions`, which is
+intentionally **not** in `schema.sql`; the app treats its absence as an empty
+queue — see `SUPABASE_AUDIT.md`.)
 
 **⚠️ Without running schema.sql first, you will see 404 errors in the console for missing tables.**
 
@@ -239,7 +245,7 @@ This has been fixed! The app now uses Tailwind CSS as a proper PostCSS plugin, n
 - Watch the device logs for Supabase/auth issues: `adb logcat | grep -i supabase`
 - `vite: not found` during build usually means a broken install — reset it:
   ```bash
-  rm -rf node_modules package-lock.json && npm install
+  rm -rf node_modules package-lock.json && npm install --legacy-peer-deps
   ```
 
 ## Contributing
