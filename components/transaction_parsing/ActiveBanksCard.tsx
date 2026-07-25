@@ -31,7 +31,7 @@ const ActiveBanksCard: React.FC<ActiveBanksCardProps> = ({
         </>
       }
       title="Banking Apps"
-      subtitle="Covault AI is monitoring these apps for transactions"
+      subtitle="Apps Covault watches for transaction alerts"
       count={banks.length}
       collapsible
       isExpanded={isExpanded}
@@ -53,7 +53,7 @@ const ActiveBanksCard: React.FC<ActiveBanksCardProps> = ({
               <span className="text-xs font-bold text-slate-700 dark:text-slate-200 capitalize">
                 {name}
               </span>
-              <span className="text-[8px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded-full tracking-wide">
+              <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded-full tracking-wide">
                 Active
               </span>
             </div>

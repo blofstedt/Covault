@@ -1,5 +1,5 @@
 import { log } from '../lib/log';
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import { Transaction, BudgetCategory } from '../types';
 
@@ -73,10 +73,12 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   // ── Clear modal state ──
   const [clearTarget, setClearTarget] = useState<'entered' | null>(null);
   // All sections always expanded per user request
+  // Only the review queue starts open. The other two are reference/settings
+  // content and previously pushed the actual task below the fold.
   const [expandedSections, setExpandedSections] = useState({
-    activeBanks: true,
+    activeBanks: false,
     caughtTransactions: true,
-    learnedRules: true,
+    learnedRules: false,
   });
 
   const toggleSection = useCallback((section: keyof typeof expandedSections) => {
@@ -342,6 +344,11 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   }, [userId, aiTransactions, onClearEntered, onReloadTransactions]);
 
   // ── Refresh handler ──
+  const followUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (followUpTimerRef.current != null) clearTimeout(followUpTimerRef.current);
+  }, []);
+
   const handleRefresh = useCallback(async () => {
     if (isRefreshing) return;
     setIsRefreshing(true);
@@ -349,21 +356,23 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       if (onRefreshNotifications) {
         await onRefreshNotifications();
       }
-      // scanActiveNotifications resolves immediately while notification
-      // events are processed asynchronously through the AI pipeline.
-      // Reload after a short delay to pick up fast-processing results,
-      // then again after a longer delay for slower AI extractions.
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      if (onReloadTransactions && userId) {
-        await onReloadTransactions(userId);
-      }
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // scanActiveNotifications resolves immediately while notification events
+      // are still moving through the AI pipeline, so show whatever has landed
+      // right away rather than holding the spinner on a fixed timer.
       if (onReloadTransactions && userId) {
         await onReloadTransactions(userId);
       }
     } finally {
       setIsRefreshing(false);
       loadMonitoredBanks();
+      // Slower AI extractions land after the scan resolves. Pick them up in the
+      // background — the spinner is already gone, the list just fills in.
+      if (onReloadTransactions && userId) {
+        followUpTimerRef.current = setTimeout(() => {
+          followUpTimerRef.current = null;
+          void onReloadTransactions(userId);
+        }, 2500);
+      }
     }
   }, [isRefreshing, onRefreshNotifications, onReloadTransactions, userId, loadMonitoredBanks]);
 
@@ -374,10 +383,27 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         className="px-6 pt-safe-top pb-2 shrink-0 z-20 transition-colors bg-transparent border-none backdrop-blur-none relative"
         style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}
       >
-        <div className="flex items-center justify-center">
-          <h1 className="text-xl font-bold text-slate-500 dark:text-slate-100 tracking-tight">
-            Transaction Parsing
-          </h1>
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold text-slate-500 dark:text-slate-100 tracking-tight">
+              Review
+            </h1>
+            <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500 mt-0.5 truncate">
+              {enabled
+                ? 'Transactions Covault caught from your bank alerts'
+                : 'Turn on capture to log transactions automatically'}
+            </p>
+          </div>
+          {enabled && (
+            <button
+              type="button"
+              onClick={() => onToggle(false)}
+              className="shrink-0 inline-flex items-center gap-1.5 min-h-[36px] px-3 rounded-full bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/40 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 active:scale-95 transition-all"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+              Capture on
+            </button>
+          )}
         </div>
       </header>
 
@@ -388,14 +414,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       >
         {enabled ? (
           <>
-            <div className="shrink-0 mb-4">
-              <ActiveBanksCard
-                activeBanks={monitoredBanks}
-                isExpanded={expandedSections.activeBanks}
-                onToggleExpanded={() => toggleSection('activeBanks')}
-              />
-            </div>
-
             <AITransactionsEnteredCard
               aiTransactions={aiTransactions}
               budgets={budgets}
@@ -415,6 +433,14 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               onChangeCategory={handleChangeCaughtCategory}
               onCreateRule={handleCreateRuleForCaught}
             />
+
+            <div className="shrink-0 mt-4">
+              <ActiveBanksCard
+                activeBanks={monitoredBanks}
+                isExpanded={expandedSections.activeBanks}
+                onToggleExpanded={() => toggleSection('activeBanks')}
+              />
+            </div>
 
             <div className="shrink-0 mt-4">
               <LearnedRulesCard

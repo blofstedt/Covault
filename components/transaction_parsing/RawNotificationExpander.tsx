@@ -46,7 +46,7 @@ const RawNotificationExpander: React.FC<RawNotificationExpanderProps> = ({
       <button
         type="button"
         onClick={handleToggle}
-        className="inline-flex items-center gap-1 text-[10px] font-semibold tracking-wide text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors duration-150"
+        className="inline-flex items-center gap-1 min-h-[32px] text-[11px] font-semibold tracking-wide text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors duration-150"
         aria-expanded={expanded}
       >
         <svg
@@ -67,7 +67,7 @@ const RawNotificationExpander: React.FC<RawNotificationExpanderProps> = ({
           onClick={(e) => e.stopPropagation()}
           className="mt-1.5 rounded-xl border border-slate-200/70 dark:border-slate-700/50 bg-slate-50/80 dark:bg-slate-800/40 backdrop-blur-sm p-2.5 relative animate-in fade-in slide-in-from-top-1"
         >
-          <pre className="font-mono text-[10px] text-slate-600 dark:text-slate-300 whitespace-pre-wrap break-words leading-relaxed max-h-32 overflow-y-auto no-scrollbar">
+          <pre className="font-mono text-[11px] text-slate-600 dark:text-slate-300 whitespace-pre-wrap break-words leading-relaxed max-h-32 overflow-y-auto no-scrollbar">
             {rawNotification}
           </pre>
           <button

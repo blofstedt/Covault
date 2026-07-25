@@ -88,7 +88,7 @@ const BackfillPreviewModal: React.FC<BackfillPreviewModalProps> = ({
                 historical {matchCount === 1 ? 'transaction matches' : 'transactions match'}
               </span>
             </div>
-            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
               {matchCount > 0
                 ? 'They will be renamed to match. New notifications from this vendor will also use the new name going forward.'
                 : 'No historical transactions to update. New notifications from this vendor will use the new name going forward.'}

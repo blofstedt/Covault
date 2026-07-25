@@ -83,7 +83,7 @@ const SoftDuplicateBadge: React.FC<SoftDuplicateBadgeProps> = ({
         ref={buttonRef}
         type="button"
         onClick={handleToggle}
-        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide
+        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold tracking-wide
           bg-amber-100 text-amber-800 border border-amber-200
           dark:bg-amber-900/40 dark:text-amber-200 dark:border-amber-700/50
           hover:bg-amber-200 dark:hover:bg-amber-900/60
@@ -119,7 +119,7 @@ const SoftDuplicateBadge: React.FC<SoftDuplicateBadgeProps> = ({
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-[11px] font-bold text-slate-800 dark:text-slate-100">Looks like a duplicate</p>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug mt-0.5">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug mt-0.5">
                 You already have <span className="font-semibold text-slate-700 dark:text-slate-200">{similar.vendor}</span> {formatCurrency(similar.amount)} on {similar.date}.
               </p>
             </div>

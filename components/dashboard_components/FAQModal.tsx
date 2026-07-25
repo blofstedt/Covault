@@ -62,7 +62,7 @@ const FAQ_ITEMS: FAQItem[] = [
   },
   {
     question: "How do I set up bank notification parsing?",
-    answer: "In Vault Settings, enable the 'Bank Notification Listener.' On Android, Covault can read your banking app notifications and automatically log transactions. You can then review and approve them in the parsing view (the code icon on the bottom bar)."
+    answer: "In Vault Settings, enable the 'Bank Notification Listener.' On Android, Covault can read your banking app notifications and automatically log transactions. You can then review and approve them on the Review tab (the inbox icon on the bottom bar)."
   },
   {
     question: "What is Budget Rollover?",

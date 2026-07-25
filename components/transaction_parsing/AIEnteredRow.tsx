@@ -10,6 +10,8 @@ import RawNotificationExpander from './RawNotificationExpander';
 import InlineVendorEdit from './InlineVendorEdit';
 import NotATransactionModal, { type NotATxRuleType } from './NotATransactionModal';
 import BackfillPreviewModal from './BackfillPreviewModal';
+import RowActionSheet, { type RowAction } from './RowActionSheet';
+import CategoryPickerSheet from './CategoryPickerSheet';
 import { toVendorKey } from '../../lib/deviceTransactionParser';
 import { countBackfillMatches, applyVendorBackfill } from '../../lib/vendorBackfill';
 import { classifyMatch, type VendorMatchResult } from '../../lib/hooks/useVendorMatcher';
@@ -119,6 +121,7 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
 
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [pickerMode, setPickerMode] = useState<'change' | 'create'>('change');
+  const [showActions, setShowActions] = useState(false);
 
   const handleDismissSoftDup = useCallback((currentTxId: string, similarTxId: string) => {
     markSoftDupDismissed(currentTxId, similarTxId);
@@ -200,9 +203,9 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
   const renderMatchBadge = () => {
     if (matchKind === 'exact') {
       return (
-        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 rounded-full">
-          <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}><polyline points="20 6 9 17 4 12" /></svg>
-          Exact match{budgetName ? ` · ${budgetName}` : ''}
+        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 rounded-full">
+          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>
+          {budgetName ? budgetName : 'Known vendor'}
         </span>
       );
     }
@@ -213,60 +216,95 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
           : confTier === 'medium'
           ? 'text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/30'
           : 'text-rose-700 dark:text-rose-300 bg-rose-100 dark:bg-rose-900/30';
-      const tierBar =
-        confTier === 'high' ? 'bg-emerald-500' : confTier === 'medium' ? 'bg-amber-500' : 'bg-rose-500';
       return (
-        <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full ${tierChip}`}>
-          <span>AI</span>
-          {budgetName && <span className="opacity-70">· {budgetName}</span>}
-          {confidencePct != null && (
-            <span className="inline-flex items-center gap-1">
-              <span className="w-7 h-1 rounded-full bg-black/10 dark:bg-white/15 overflow-hidden">
-                <span className={`block h-full rounded-full ${tierBar}`} style={{ width: `${confidencePct}%` }} />
-              </span>
-              {confidencePct}%
-            </span>
-          )}
+        <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${tierChip}`}>
+          <span>{budgetName || 'Guessed'}</span>
+          {confidencePct != null && <span className="opacity-70">{confidencePct}%</span>}
         </span>
       );
     }
     return (
-      <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/60 px-2 py-0.5 rounded-full">
+      <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/60 px-2 py-0.5 rounded-full">
         Needs category
       </span>
     );
   };
 
-  const renderMatchActions = () => {
-    const canAccept = matchKind !== 'unmatched' && !!budgetName;
-    return (
-      <div className="flex items-center gap-1 mt-1.5 flex-wrap">
-        {canAccept && (
-          <button
-            onClick={(e) => { e.stopPropagation(); fileWith(`Filed to ${budgetName}`, () => onAccept?.(tx)); }}
-            className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95 transition-all"
-          >
-            <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}><polyline points="20 6 9 17 4 12" /></svg>
-            Accept
-          </button>
-        )}
+  const canAccept = matchKind !== 'unmatched' && !!budgetName;
+
+  const openPicker = useCallback((mode: 'change' | 'create') => {
+    setPickerMode(mode);
+    setShowCategoryPicker(true);
+  }, []);
+
+  // Everything except the primary action lives in the sheet, so each option gets
+  // a full-width target and a label that says what it actually does.
+  const secondaryActions = useMemo<RowAction[]>(() => {
+    const items: RowAction[] = [
+      {
+        label: canAccept ? 'Change category' : 'Choose a category',
+        hint: canAccept ? 'File this one somewhere else' : 'File this transaction',
+        onSelect: () => openPicker('change'),
+      },
+    ];
+    if (matchKind !== 'exact') {
+      items.push({
+        label: 'Always use this category',
+        hint: `Remember the category for ${tx.vendor} next time`,
+        onSelect: () => openPicker('create'),
+      });
+    }
+    if (onVendorRenamed) {
+      items.push({
+        label: 'Rename vendor',
+        hint: 'Tidy up how this shows in your history',
+        onSelect: () => setIsEditingVendor(true),
+      });
+    }
+    if (onMarkNotTransaction) {
+      items.push({
+        label: 'Not a transaction',
+        hint: 'Remove it and stop capturing ones like it',
+        tone: 'danger',
+        onSelect: () => setNotAModalOpen(true),
+      });
+    }
+    return items;
+  }, [canAccept, matchKind, onMarkNotTransaction, onVendorRenamed, openPicker, tx.vendor]);
+
+  const renderMatchActions = () => (
+    <div className="flex items-center gap-2 mt-2">
+      {canAccept ? (
         <button
-          onClick={(e) => { e.stopPropagation(); setPickerMode('change'); setShowCategoryPicker(true); }}
-          className="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600 active:scale-95 transition-all"
+          type="button"
+          onClick={() => fileWith(`Filed to ${budgetName}`, () => onAccept?.(tx))}
+          className="inline-flex items-center justify-center gap-1.5 min-h-[40px] px-4 text-[12px] font-bold rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95 transition-all"
         >
-          {canAccept ? 'Change' : 'Categorize'}
+          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>
+          Accept
         </button>
-        {matchKind !== 'exact' && (
-          <button
-            onClick={(e) => { e.stopPropagation(); setPickerMode('create'); setShowCategoryPicker(true); }}
-            className="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/40 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40 active:scale-95 transition-all"
-          >
-            Create rule
-          </button>
-        )}
-      </div>
-    );
-  };
+      ) : (
+        <button
+          type="button"
+          onClick={() => openPicker('change')}
+          className="inline-flex items-center justify-center min-h-[40px] px-4 text-[12px] font-bold rounded-xl bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 hover:opacity-90 active:scale-95 transition-all"
+        >
+          Categorize
+        </button>
+      )}
+
+      <button
+        type="button"
+        onClick={() => setShowActions(true)}
+        aria-label={`More actions for ${tx.vendor}`}
+        className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 transition-all"
+      >
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <circle cx="5" cy="12" r="1.75" /><circle cx="12" cy="12" r="1.75" /><circle cx="19" cy="12" r="1.75" />
+        </svg>
+      </button>
+    </div>
+  );
 
   // Completion state: brief success card shown while the parent removes the row.
   if (filing) {
@@ -288,16 +326,7 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
   return (
     <>
       <div
-        onClick={() => !isEditingVendor && onTransactionTap?.(tx)}
-        onKeyDown={(e) => {
-          if (!isEditingVendor && (e.key === 'Enter' || e.key === ' ')) {
-            e.preventDefault();
-            onTransactionTap?.(tx);
-          }
-        }}
-        role="button"
-        tabIndex={0}
-        className={`group w-full p-4 rounded-2xl border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] transition-all duration-200 active:scale-[0.98] cursor-pointer hover:shadow-md ${
+        className={`w-full p-4 rounded-2xl border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] transition-colors duration-200 ${
           softDup
             ? 'bg-amber-50/70 dark:bg-amber-900/15 border-amber-200 dark:border-amber-700/40'
             : isForReview
@@ -306,18 +335,19 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
             ? 'bg-slate-50/70 dark:bg-slate-900/15 border-slate-200 dark:border-slate-700/40'
             : 'bg-white/60 dark:bg-emerald-900/10 backdrop-blur-sm border-emerald-100 dark:border-emerald-800/30'
         }`}
-        aria-label={`Transaction: ${tx.vendor}, ${formatCurrency(tx.amount)}`}
       >
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center space-x-3 min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start space-x-3 min-w-0 flex-1">
             <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
               matchKind === 'unmatched' ? 'bg-slate-100 dark:bg-slate-800/60' : 'bg-emerald-100 dark:bg-emerald-900/30'
             }`}>
               {budgetName ? (
                 <span className="text-emerald-600 dark:text-emerald-400 w-4 h-4">{getBudgetIcon(budgetName)}</span>
               ) : (
-                <svg className={`w-4 h-4 ${matchKind === 'unmatched' ? 'text-slate-400' : 'text-emerald-600 dark:text-emerald-400'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                  <polyline points="20 6 9 17 4 12" />
+                <svg className={`w-4 h-4 ${matchKind === 'unmatched' ? 'text-slate-400' : 'text-emerald-600 dark:text-emerald-400'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                  {matchKind === 'unmatched'
+                    ? <><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></>
+                    : <polyline points="20 6 9 17 4 12" />}
                 </svg>
               )}
             </div>
@@ -332,19 +362,9 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
                   onSave={handleSaveVendor}
                 />
               ) : (
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate max-w-[160px]">
-                    {tx.vendor}
-                  </p>
-                  <InlineVendorEdit
-                    value={tx.vendor}
-                    editing={false}
-                    isSaving={false}
-                    onStartEdit={() => setIsEditingVendor(true)}
-                    onCancel={() => setIsEditingVendor(false)}
-                    onSave={handleSaveVendor}
-                  />
-                </div>
+                <p className="text-[13px] font-bold text-slate-700 dark:text-slate-200 truncate">
+                  {tx.vendor}
+                </p>
               )}
               <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                 {softDup && (
@@ -357,37 +377,37 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
                   />
                 )}
                 {isForReview && (
-                  <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 tracking-wide">For Review</span>
+                  <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 tracking-wide">Needs a look</span>
                 )}
                 {renderMatchBadge()}
-                <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                <span className="text-[11px] text-slate-400 dark:text-slate-500">
                   {parseLocalDate(tx.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                 </span>
               </div>
               {renderMatchActions()}
-              <RawNotificationExpander rawNotification={tx.raw_notification} />
+              {matchKind !== 'exact' && <RawNotificationExpander rawNotification={tx.raw_notification} />}
             </div>
           </div>
-          <div className="text-right shrink-0 flex items-start gap-2">
-            <div>
+          <div className="shrink-0 flex items-start gap-1">
+            <div className="text-right">
               <span className={`text-sm font-extrabold font-mono ${tx.amount < 0 ? 'text-emerald-500 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-200'}`}>
-                {tx.amount < 0 ? '+' : ''}{formatCurrency(tx.amount)}
+                {tx.amount < 0 ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
               </span>
-              <p className="text-[10px] font-semibold tracking-wide text-emerald-600 dark:text-emerald-400 mt-0.5">
-                {tx.amount < 0 ? (tx.is_income ? 'Income' : 'Refund') : 'AI'}
-              </p>
+              {tx.amount < 0 && (
+                <p className="text-[11px] font-semibold tracking-wide text-emerald-600 dark:text-emerald-400 mt-0.5">
+                  {tx.is_income ? 'Income' : 'Refund'}
+                </p>
+              )}
             </div>
-            {onMarkNotTransaction && !isEditingVendor && (
+            {onTransactionTap && (
               <button
                 type="button"
-                onClick={(e) => { e.stopPropagation(); setNotAModalOpen(true); }}
-                className="opacity-0 group-hover:opacity-100 focus:opacity-100 mt-0.5 p-1 rounded-md text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all duration-150"
-                title="Mark as not a transaction"
+                onClick={() => onTransactionTap(tx)}
+                aria-label={`Open details for ${tx.vendor}, ${formatCurrency(tx.amount)}`}
+                className="inline-flex items-center justify-center min-h-[40px] min-w-[36px] -mr-1 rounded-xl text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 transition-all"
               >
-                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="15" y1="9" x2="9" y2="15" />
-                  <line x1="9" y1="9" x2="15" y2="15" />
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <polyline points="9 18 15 12 9 6" />
                 </svg>
               </button>
             )}
@@ -395,43 +415,29 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
         </div>
       </div>
 
+      {showActions && (
+        <RowActionSheet
+          title={tx.vendor}
+          actions={secondaryActions}
+          onClose={() => setShowActions(false)}
+        />
+      )}
+
       {showCategoryPicker && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowCategoryPicker(false)}>
-          <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 max-w-sm w-full mx-4 shadow-2xl border border-slate-200 dark:border-slate-700" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-1">
-              {pickerMode === 'create' ? 'Create a rule' : 'Choose category'}
-            </h3>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-3">
-              {pickerMode === 'create'
-                ? `Always file "${tx.vendor}" under…`
-                : `File "${tx.vendor}" under…`}
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              {budgets.map((b) => (
-                <button
-                  key={b.id}
-                  onClick={() => {
-                    setShowCategoryPicker(false);
-                    if (pickerMode === 'create') {
-                      fileWith(`Rule created · ${b.name}`, () => onCreateRule?.(tx, b.id));
-                    } else {
-                      fileWith(`Moved to ${b.name}`, () => onChangeCategory?.(tx, b.id));
-                    }
-                  }}
-                  className="px-3 py-2 text-xs font-bold rounded-xl bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/40 text-violet-700 dark:text-violet-300 hover:bg-violet-100 transition-all text-left"
-                >
-                  {b.name}
-                </button>
-              ))}
-            </div>
-            <button
-              onClick={() => setShowCategoryPicker(false)}
-              className="mt-3 w-full py-2 text-xs font-bold rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 transition-all"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
+        <CategoryPickerSheet
+          mode={pickerMode}
+          vendor={tx.vendor}
+          budgets={budgets}
+          onClose={() => setShowCategoryPicker(false)}
+          onPick={(budgetId) => {
+            const target = budgets.find((b) => b.id === budgetId);
+            if (pickerMode === 'create') {
+              fileWith(`Rule saved · ${target?.name ?? ''}`, () => onCreateRule?.(tx, budgetId));
+            } else {
+              fileWith(`Moved to ${target?.name ?? ''}`, () => onChangeCategory?.(tx, budgetId));
+            }
+          }}
+        />
       )}
 
       {notAModalOpen && (

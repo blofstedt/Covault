@@ -90,8 +90,12 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
       isExpanded={isExpanded}
       onToggleExpanded={onToggleExpanded}
       icon={<><path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></>}
-      title="Caught Transactions"
-      subtitle={`${nonRefunds.length} AI-captured${refundCount > 0 ? ` (${refundCount} refund${refundCount === 1 ? '' : 's'} hidden)` : ''}`}
+      title="To review"
+      subtitle={
+        nonRefunds.length === 0
+          ? 'Nothing waiting'
+          : `${nonRefunds.length} caught from your bank alerts${refundCount > 0 ? ` · ${refundCount} refund${refundCount === 1 ? '' : 's'} hidden` : ''}`
+      }
       count={nonRefunds.length}
       onClear={onClear}
       onRefresh={onRefresh}
