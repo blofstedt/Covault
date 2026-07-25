@@ -92,3 +92,54 @@ describe('captured vs rejected notifications', () => {
     expect(isNotificationRejected(KEY)).toBe(true);
   });
 });
+
+// ── Captured-key shape ────────────────────────────────────────────────────────
+// The invariant these protect: a rescan must NEVER re-import a transaction that
+// is already captured, while two genuinely separate purchases that produce
+// identical notification text must both be able to land.
+import { buildCapturedKey, buildInMemoryDedupKey } from '../notificationProcessor';
+
+const APP = 'com.wealthsimple';
+const TEXT = 'POSTAL OUTLET 33 LD You spent $60.57 with your credit card.';
+const day = (iso: string) => new Date(iso).getTime();
+
+describe('buildCapturedKey', () => {
+  it('is stable for the same notification across rescans', () => {
+    // sbn.getPostTime() does not change between scans, so neither may the key.
+    const post = day('2026-07-25T14:00:00');
+    expect(buildCapturedKey(APP, TEXT, post)).toBe(buildCapturedKey(APP, TEXT, post));
+  });
+
+  it('separates identical purchases made on different days', () => {
+    const a = buildCapturedKey(APP, TEXT, day('2026-07-25T14:00:00'));
+    const b = buildCapturedKey(APP, TEXT, day('2026-07-28T09:30:00'));
+    expect(a).not.toBe(b);
+  });
+
+  it('still collapses identical purchases on the same day', () => {
+    // Step 4's same-day/same-amount hard skip is the intended guard here.
+    const a = buildCapturedKey(APP, TEXT, day('2026-07-25T09:00:00'));
+    const b = buildCapturedKey(APP, TEXT, day('2026-07-25T21:45:00'));
+    expect(a).toBe(b);
+  });
+
+  it('falls back to the content-only key when no post time is available', () => {
+    // Date.now() would drift across midnight and could re-import a capture, so
+    // the conservative key is used instead.
+    const contentOnly = buildInMemoryDedupKey(APP, TEXT);
+    expect(buildCapturedKey(APP, TEXT, undefined)).toBe(contentOnly);
+    expect(buildCapturedKey(APP, TEXT, 0)).toBe(contentOnly);
+    expect(buildCapturedKey(APP, TEXT, Number.NaN)).toBe(contentOnly);
+  });
+
+  it('keeps the content-only key as a prefix so legacy lookups still match', () => {
+    expect(buildCapturedKey(APP, TEXT, day('2026-07-25T14:00:00')))
+      .toContain(buildInMemoryDedupKey(APP, TEXT));
+  });
+
+  it('does not conflate different banks reporting the same purchase', () => {
+    const post = day('2026-07-25T14:00:00');
+    expect(buildCapturedKey('com.wealthsimple', TEXT, post))
+      .not.toBe(buildCapturedKey('com.google.android.apps.walletnfcrel', TEXT, post));
+  });
+});

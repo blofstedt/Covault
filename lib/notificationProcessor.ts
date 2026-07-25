@@ -20,7 +20,7 @@ import { addToReviewQueue, getVendorMapEntry, getVendorMap, isNotificationProces
 import { findMatchingExpense, REFUND_MATCH_WINDOW_DAYS } from './refundMatching';
 import { aiFindRefundMatch } from './aiExtractor';
 import { checkNotificationRules, bumpRuleUseCount } from './notificationRules';
-import { getLocalToday, parseLocalDate } from './dateUtils';
+import { getLocalToday, parseLocalDate, toLocalIsoDay } from './dateUtils';
 import { extractWithAI, aiDetectRecurring, type AIExtractionResult } from './aiExtractor';
 import type { PendingTransaction } from '../types';
 
@@ -110,6 +110,35 @@ const DEDUP_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
  * Hash is djb2 — matches the one `extractVendorSlug` uses as its
  * fallback so we don't pull in a new dependency just for this.
  */
+/**
+ * Key for the PERSISTENT captured store.
+ *
+ * The in-memory key above is content-only, which is right for collapsing
+ * re-broadcasts of one notification but wrong for a permanent record: two
+ * genuinely separate purchases at the same vendor for the same amount produce
+ * byte-identical text, so the second was silently dropped forever. A daily
+ * coffee at the same price simply stopped being captured.
+ *
+ * Appending the notification's own local day fixes that, but ONLY when a real
+ * post time is available. `sbn.getPostTime()` is stable across rescans, so the
+ * key is stable; when the field is missing the caller falls back to Date.now(),
+ * which would change across midnight and could re-capture something already in
+ * the ledger. In that case we keep the content-only key, which can over-dedup
+ * but can never double-insert.
+ *
+ * Same-day repeats still collapse here — Step 4's same-day/same-amount hard
+ * skip is the intended guard for those.
+ */
+export function buildCapturedKey(
+  bankAppId: string,
+  rawNotification: string,
+  postTimeMs?: number,
+): string {
+  const base = buildInMemoryDedupKey(bankAppId, rawNotification);
+  if (!postTimeMs || !Number.isFinite(postTimeMs) || postTimeMs <= 0) return base;
+  return `${base}|${toLocalIsoDay(new Date(postTimeMs))}`;
+}
+
 export function buildInMemoryDedupKey(
   bankAppId: string,
   rawNotification: string,
@@ -739,6 +768,15 @@ async function processNotificationWithAIImpl(
   notifTimestamp: number,
   inMemoryKey: string,
 ): Promise<AIProcessingResult> {
+  // Written for every new capture. Reads must ALSO consult inMemoryKey, because
+  // captures recorded before this key existed used that form — missing them
+  // would re-import a transaction already in the ledger.
+  const capturedKey = buildCapturedKey(
+    input.bankAppId,
+    input.rawNotification,
+    input.notificationTimestamp,
+  );
+
   // Tracks a soft-dup match found in Step 4 so the Step 6 insert can
   // surface the warning in the returned result. Cleared on every call.
   let softDupMatch: { id: string; vendor: string; amount: number; date: string } | null = null;
@@ -787,7 +825,7 @@ async function processNotificationWithAIImpl(
   // user clears it from the <> page and the app is closed/reopened.
   // A CAPTURE is permanent: the row is in the ledger and must never be
   // inserted twice, so forceReprocess deliberately does not bypass this.
-  if (isNotificationProcessed(inMemoryKey)) {
+  if (isNotificationProcessed(capturedKey) || isNotificationProcessed(inMemoryKey)) {
     log.debug('[AI pipeline] Persistent dedup hit (already captured), skipping');
     // Warm the in-memory cache so subsequent checks in this session are fast
     recentlyProcessedCache.set(inMemoryKey, Date.now());
@@ -945,7 +983,7 @@ async function processNotificationWithAIImpl(
       status: 'pending',
       created_at: new Date().toISOString(),
     });
-    markNotificationProcessed(inMemoryKey);
+    markNotificationProcessed(capturedKey);
     recentlyProcessedCache.set(inMemoryKey, Date.now());
     return {
       processed: true,
@@ -1036,7 +1074,7 @@ async function processNotificationWithAIImpl(
             `[AI pipeline] Refund matched: struck through ${match.vendor} $${match.amount} (${match.date})`,
           );
           recentlyProcessedCache.set(inMemoryKey, Date.now());
-          markNotificationProcessed(inMemoryKey);
+          markNotificationProcessed(capturedKey);
           return {
             processed: true,
             isTransaction: true,
@@ -1139,7 +1177,7 @@ async function processNotificationWithAIImpl(
       // as a belt-and-suspenders.
       log.debug(`[AI pipeline] Hard skip: same-day same-amount match ${sameDaySameAmount.vendor} $${sameDaySameAmount.amount} (${sameDaySameAmount.date})`);
       recentlyProcessedCache.set(inMemoryKey, Date.now());
-      markNotificationProcessed(inMemoryKey);
+      markNotificationProcessed(capturedKey);
       return {
         processed: true,
         isTransaction: true,
@@ -1481,7 +1519,7 @@ async function processNotificationWithAIImpl(
         // loudly so we know to investigate.
       }
       // Still mark as processed so we don't keep retrying.
-      markNotificationProcessed(inMemoryKey);
+      markNotificationProcessed(capturedKey);
       recentlyProcessedCache.set(inMemoryKey, Date.now());
       return {
         processed: true,
@@ -1508,7 +1546,7 @@ async function processNotificationWithAIImpl(
 
   // Persist to localStorage so this notification is never re-processed
   // after app restart (the in-memory cache below is cleared on reload).
-  markNotificationProcessed(inMemoryKey);
+  markNotificationProcessed(capturedKey);
   recentlyProcessedCache.set(inMemoryKey, Date.now());
 
   return {
