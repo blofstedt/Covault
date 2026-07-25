@@ -186,11 +186,30 @@ export const useDataLoading = ({
   const loadUserSettings = useCallback(
     async (userId: string) => {
       try {
-        const res = await restFetch(
-          `/settings?select=monthly_income,theme_selected,trial_started_at,trial_ends_at,trial_consumed,subscription_status,rollover_enabled,leisure_buffer_enabled,show_savings_insight,app_notifications_enabled,budgeting_solo&user_id=eq.${userId}`,
+        const BASE_COLUMNS =
+          'monthly_income,theme_selected,trial_started_at,trial_ends_at,trial_consumed,' +
+          'subscription_status,rollover_enabled,leisure_buffer_enabled,show_savings_insight,' +
+          'app_notifications_enabled,budgeting_solo';
+
+        // smart_notifications_enabled is requested separately because it was
+        // added later (supabase/migrations/2026_add_smart_notifications_column.sql).
+        // PostgREST 400s the WHOLE select if any column is unknown, and this
+        // function returns early on a non-ok response — so naming it
+        // unconditionally would take theme, income and the trial fields down
+        // with it on any project where the migration hasn't been applied yet.
+        // Same defensive shape as the user_uuid/user_id fallback below.
+        let res = await restFetch(
+          `/settings?select=${BASE_COLUMNS},smart_notifications_enabled&user_id=eq.${userId}`,
           { cache: 'no-store' }, // Prevent caching to always get fresh data
         );
-        
+
+        if (!res.ok) {
+          res = await restFetch(
+            `/settings?select=${BASE_COLUMNS}&user_id=eq.${userId}`,
+            { cache: 'no-store' },
+          );
+        }
+
         if (!res.ok) {
           log.error('[loadUserSettings] failed:', res.status);
           return;
@@ -242,6 +261,11 @@ export const useDataLoading = ({
               useLeisureAsBuffer: rows[0].leisure_buffer_enabled ?? prev.settings.useLeisureAsBuffer,
               showSavingsInsight: rows[0].show_savings_insight ?? prev.settings.showSavingsInsight,
               app_notifications_enabled: rows[0].app_notifications_enabled ?? prev.settings.app_notifications_enabled,
+              // Undefined when the column is missing (pre-migration) — the
+              // `??` then keeps whatever the local default/localStorage held,
+              // which is the behaviour users had while the write was failing.
+              smart_notifications_enabled:
+                rows[0].smart_notifications_enabled ?? prev.settings.smart_notifications_enabled,
             },
           }));
 

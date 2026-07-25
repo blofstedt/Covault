@@ -1,11 +1,10 @@
 # Supabase schema notes
 
-**Status:** `supabase/schema.sql` is the intended source of truth, but it is
-NOT currently a verified match for production. A static audit of the app's
-reads and writes against the file found gaps (listed under "Known gaps"
-below). Treat `schema.sql` as "mostly right, with known holes" until someone
-runs `scripts/introspect_schema.sql` against the live project and reconciles
-it. What follows is the context needed before touching data access.
+**Status:** `supabase/schema.sql` is the intended source of truth. Its column
+list was verified against the live project on 2026-07-25 via
+`scripts/introspect_schema.sql` (query 10) — see "Verified" and "Still
+unverified" below. What follows is the context needed before touching data
+access.
 
 ## Canonical schema
 
@@ -24,38 +23,65 @@ it. What follows is the context needed before touching data access.
   SQL editor for a full read-only dump of tables, columns (with exact case),
   enums, RLS, policies, constraints, indexes, triggers and functions.
 
-## Known gaps (found by static audit, not yet confirmed against live)
+## Verified against live (2026-07-25)
 
-1. **`settings.smart_notifications_enabled` is written but never read, and is
-   defined nowhere.** `saveSettingToDb('smart_notifications_enabled', ...)`
-   PATCHes it (Dashboard.tsx SETTING_DB_KEYS), but the column appears in no
-   migration and not in `schema.sql`, and `loadUserSettings`'s select list
-   omits it. So the toggle persists only to localStorage: it does not sync
-   across devices or to a partner, and if the column really is absent the
-   PATCH fails with PGRST204 — which `saveSettingToDb` only logs, so the UI
-   still looks like it worked. Decide: add the column and add it to the select
-   list, or make it explicitly local-only.
+Confirmed **present** in production, and now all present in `schema.sql`:
+`transactions.refunded`, `transactions.raw_notification`,
+`transactions.confidence`, `transactions.caught_cleared`,
+`transactions.source`, `overrides.match_type`, `overrides.updated_at`,
+`settings.link_code`.
 
-2. **Two tables the app uses are absent from `schema.sql`:**
-   `notification_rules` and `pending_transactions`. See the section at the
-   bottom of `schema.sql`. Only the second one's absence is tolerated at
-   runtime.
+Confirmed **`budgets."Visible"` is spelled with a capital V** in the live DB.
+`schema.sql` now quotes it. Unquoted, Postgres folds the identifier to
+`visible`, and every write path sends the JSON key `Visible`, which PostgREST
+matches case-sensitively — so an unquoted definition would produce a project
+where budget-limit and visibility writes fail.
 
-3. **`subscription_status` default disagrees with the app's type.** The column
-   defaults to `'false'`, but `types.ts` declares
-   `subscription_status?: 'none' | 'active' | 'expired'`. Nothing currently
-   branches on it (premium gating is stubbed to always-on in
-   `lib/entitlement.ts`), so this is latent rather than broken.
+Confirmed **`settings.smart_notifications_enabled` did NOT exist** — a live
+bug, now fixed:
 
-4. **Theme default disagrees.** `settings.theme_selected` defaults to
-   `'dark'`; the app's in-memory default is `'light'` (`App.tsx`
-   DEFAULT_SETTINGS) and `loadUserSettings` falls back to `'light'`. A new
-   user renders light, then flips to dark once settings load.
+- The app had been PATCHing it since smart notifications shipped
+  (`Dashboard.tsx` SETTING_DB_KEYS -> `saveSettingToDb`). Every write returned
+  PGRST204; `saveSettingToDb` only logs a failed response, and the UI had
+  already applied the change optimistically and persisted it to localStorage,
+  so the toggle looked like it worked. The preference never left the device.
+- `supabase/migrations/2026_add_smart_notifications_column.sql` adds it,
+  defaulting to `true` to match the app's in-memory default so existing users
+  keep current behaviour.
+- `loadUserSettings` now reads it back, so it finally syncs across devices and
+  to a linked partner. It is requested as a **separate select with a retry
+  that drops it**, because PostgREST 400s the entire select on an unknown
+  column and that function returns early on a non-ok response — naming it
+  unconditionally would take theme, income and the trial fields down with it
+  on any project where the migration has not been applied.
 
-5. **`budgets."Visible"` must stay quoted.** Unquoted, Postgres folds it to
-   `visible`, and every write path sends the JSON key `Visible`, which
-   PostgREST matches case-sensitively. Fixed in `schema.sql`; confirm the live
-   column's real spelling with the introspection script.
+## Still unverified
+
+Only query 10 of `scripts/introspect_schema.sql` has been run. Outstanding:
+
+1. **Do `notification_rules` and `pending_transactions` exist?** (query 1).
+   Neither is defined in `schema.sql`. Only `pending_transactions`' absence is
+   tolerated at runtime — a failed `notification_rules` fetch is read as "no
+   rules", so trained skip patterns would silently stop applying.
+2. **Does `budgets` have a UNIQUE on (user_uuid, budget)?** (query 6). The app
+   upserts with `on_conflict=user_uuid,budget`; without that constraint
+   `on_conflict` degrades to plain inserts and duplicate budget rows
+   accumulate.
+3. **RLS enabled and policies correct on every table?** (queries 4 and 5).
+4. **Were the dead RPCs actually dropped?** (query 9) — `get_my_partner_id`
+   and `generate_transaction_hash`, per `2026_cleanup_dead_rpcs.sql`.
+5. **Exact types, defaults and nullability** for everything (query 2).
+
+## Known mismatches (latent, not breaking)
+
+- **`subscription_status` default disagrees with the app's type.** The column
+  defaults to `'false'`, but `types.ts` declares
+  `subscription_status?: 'none' | 'active' | 'expired'`. Nothing branches on
+  it today — premium gating is stubbed always-on in `lib/entitlement.ts`.
+- **Theme default disagrees.** `settings.theme_selected` defaults to `'dark'`;
+  the app's in-memory default is `'light'` (`App.tsx` DEFAULT_SETTINGS) and
+  `loadUserSettings` falls back to `'light'`. A new user renders light, then
+  flips to dark once settings load.
 
 ## Load-bearing quirks — do NOT "clean these up"
 

@@ -79,6 +79,10 @@ CREATE TABLE IF NOT EXISTS public.settings (
   leisure_buffer_enabled boolean DEFAULT true,
   show_savings_insight boolean DEFAULT true,
   app_notifications_enabled boolean,
+  -- Added by 2026_add_smart_notifications_column.sql. The app had been
+  -- writing this since smart notifications shipped, but the column did not
+  -- exist, so every toggle failed with PGRST204 and was only logged.
+  smart_notifications_enabled boolean NOT NULL DEFAULT true,
   theme_selected text DEFAULT 'dark',
   trial_started_at timestamp with time zone,
   trial_ends_at timestamp with time zone,
