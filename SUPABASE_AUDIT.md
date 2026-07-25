@@ -55,29 +55,63 @@ bug, now fixed:
   unconditionally would take theme, income and the trial fields down with it
   on any project where the migration has not been applied.
 
+`schema.sql` was reconciled against the dashboard's full schema export on
+2026-07-25: live defaults, CHECK constraints, the real constraint names, and
+the `notification_rules` table are now all reflected there.
+
+**`notification_rules` exists.** Now defined in `schema.sql`. Its
+`pattern_type` CHECK allows only `'exact'`/`'contains'`, which matches
+`NotATxRuleType` exactly — note this is narrower than `overrides.match_type`,
+which also allows `'prefix'`.
+
+**`pending_transactions` does NOT exist.** The capture pipeline still writes
+to it (`notificationProcessor.ts:924` insert, `useTransactionOps.ts:447`
+patch). The read path tolerates this (404 → empty queue) so the app runs, but
+those writes fail on every captured notification and are swallowed. Either
+create the table or remove the dead references — see the section in
+`schema.sql`.
+
+## Open issues requiring a decision
+
+1. **`settings.subscription_status` default contradicts its own CHECK.** The
+   export shows `DEFAULT false` (the string `'false'`) with
+   `CHECK (subscription_status IN ('none','active','expired'))`. Postgres does
+   not validate defaults when a CHECK is added, so this only fails on an
+   INSERT that omits the column — which is what `handle_new_user()` does on
+   signup. **If that default is real, new-user signups are failing.**
+   `2026_fix_subscription_status_default.sql` sets it to `'none'` and includes
+   the one-line query to confirm the default first, since the dashboard export
+   is explicitly "for context only" and may be lossy.
+
+2. **`budgets` has no UNIQUE on (user_uuid, budget).** The export shows only a
+   FK. Consequences: `ensureDefaultBudgets`'s
+   `POST /budgets?on_conflict=user_uuid,budget` raises 42P10 rather than
+   falling back to a plain insert, so default-budget seeding fails silently
+   for new users (the UI still shows categories via the client-side
+   `SYSTEM_CATEGORIES` fallback); and nothing prevents duplicate budget rows,
+   since `saveBudgetLimit` writes via PATCH-then-plain-POST. Addressed by
+   `2026_add_budgets_unique_constraint.sql`. **Check `pg_indexes` first** — a
+   bare unique index would satisfy ON CONFLICT without appearing as a
+   constraint in the export.
+
+3. **`ensureDefaultBudgets`' retry is dead.** Its fallback posts
+   `user_id`/`category`/`limit_amount`/`visible`, but the live table has none
+   of those columns, so the retry cannot succeed. Left in place for now — it
+   is harmless — but it is not the safety net it looks like.
+
 ## Still unverified
 
-Only query 10 of `scripts/introspect_schema.sql` has been run. Outstanding:
+Queries 4, 5, 7 and 9 of `scripts/introspect_schema.sql` have not been run:
 
-1. **Do `notification_rules` and `pending_transactions` exist?** (query 1).
-   Neither is defined in `schema.sql`. Only `pending_transactions`' absence is
-   tolerated at runtime — a failed `notification_rules` fetch is read as "no
-   rules", so trained skip patterns would silently stop applying.
-2. **Does `budgets` have a UNIQUE on (user_uuid, budget)?** (query 6). The app
-   upserts with `on_conflict=user_uuid,budget`; without that constraint
-   `on_conflict` degrades to plain inserts and duplicate budget rows
-   accumulate.
-3. **RLS enabled and policies correct on every table?** (queries 4 and 5).
-4. **Were the dead RPCs actually dropped?** (query 9) — `get_my_partner_id`
-   and `generate_transaction_hash`, per `2026_cleanup_dead_rpcs.sql`.
-5. **Exact types, defaults and nullability** for everything (query 2).
+1. **RLS enabled, and policies correct, on every table** — including
+   `notification_rules`, whose policies are not documented anywhere.
+2. **Indexes** — in particular whether a unique index on
+   `budgets (user_uuid, budget)` already exists (see issue 2 above).
+3. **Were the dead RPCs dropped?** `get_my_partner_id` and
+   `generate_transaction_hash`, per `2026_cleanup_dead_rpcs.sql`.
 
 ## Known mismatches (latent, not breaking)
 
-- **`subscription_status` default disagrees with the app's type.** The column
-  defaults to `'false'`, but `types.ts` declares
-  `subscription_status?: 'none' | 'active' | 'expired'`. Nothing branches on
-  it today — premium gating is stubbed always-on in `lib/entitlement.ts`.
 - **Theme default disagrees.** `settings.theme_selected` defaults to `'dark'`;
   the app's in-memory default is `'light'` (`App.tsx` DEFAULT_SETTINGS) and
   `loadUserSettings` falls back to `'light'`. A new user renders light, then

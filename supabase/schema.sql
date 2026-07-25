@@ -74,11 +74,11 @@ CREATE TABLE IF NOT EXISTS public.settings (
   partner_email text,
   partner_name text,
   budgeting_solo boolean DEFAULT true,
-  monthly_income numeric,
+  monthly_income numeric DEFAULT 0 CHECK (monthly_income >= 0),
   rollover_enabled boolean DEFAULT true,
   leisure_buffer_enabled boolean DEFAULT true,
   show_savings_insight boolean DEFAULT true,
-  app_notifications_enabled boolean,
+  app_notifications_enabled boolean DEFAULT false,
   -- Added by 2026_add_smart_notifications_column.sql. The app had been
   -- writing this since smart notifications shipped, but the column did not
   -- exist, so every toggle failed with PGRST204 and was only logged.
@@ -86,10 +86,17 @@ CREATE TABLE IF NOT EXISTS public.settings (
   theme_selected text DEFAULT 'dark',
   trial_started_at timestamp with time zone,
   trial_ends_at timestamp with time zone,
-  trial_consumed boolean,
-  subscription_status text DEFAULT 'false',
+  trial_consumed boolean DEFAULT false,
+  -- Live DB shipped this as `DEFAULT false`, i.e. the string 'false', which is
+  -- NOT in the CHECK set. Postgres does not validate defaults when a CHECK is
+  -- added, so the contradiction only fails on an INSERT that omits the column
+  -- — which is exactly what handle_new_user() does on signup. Corrected by
+  -- 2026_fix_subscription_status_default.sql.
+  subscription_status text DEFAULT 'none'
+    CHECK (subscription_status = ANY (ARRAY['none', 'active', 'expired'])),
   link_code text,
   CONSTRAINT settings_pkey PRIMARY KEY (user_id),
+  CONSTRAINT settings_email_key UNIQUE (email),
   CONSTRAINT settings_user_id_fkey FOREIGN KEY (user_id)
     REFERENCES auth.users(id),
   CONSTRAINT settings_partner_id_fkey FOREIGN KEY (partner_id)
@@ -141,13 +148,14 @@ CREATE TABLE IF NOT EXISTS public.transactions (
   vendor text NOT NULL,
   amount numeric NOT NULL,
   date date NOT NULL,
-  is_projected boolean NOT NULL,
+  is_projected boolean NOT NULL DEFAULT false,
   budget public."Budgets" NOT NULL,
   type public."Type" NOT NULL DEFAULT 'Manual',
   recur public."Recurrence" NOT NULL DEFAULT 'One-time',
   created_at timestamp with time zone DEFAULT now(),
   caught_cleared boolean NOT NULL DEFAULT false,
-  source text NOT NULL DEFAULT 'manual',
+  source text NOT NULL DEFAULT 'manual'
+    CHECK (source = ANY (ARRAY['executor', 'notification', 'manual', 'import'])),
   confidence numeric,
   -- Added by 2026_add_refunded_column.sql / 2026_learned_rules_and_refunded.sql.
   refunded boolean NOT NULL DEFAULT false,
@@ -227,12 +235,25 @@ CREATE TABLE IF NOT EXISTS public.budgets (
   -- would make every budget-limit and visibility write fail with PGRST204.
   -- The `row.visible ?? row.Visible` fallback on the read path exists to
   -- tolerate both spellings; the write path does not have one.
-  "Visible" boolean NOT NULL DEFAULT true
+  "Visible" boolean NOT NULL DEFAULT true,
+  -- Live DB has a FK on user_uuid and NO primary key.
+  CONSTRAINT budgets_user_uuid_fkey FOREIGN KEY (user_uuid)
+    REFERENCES auth.users(id)
 );
 
--- (RECONSTRUCTED) Unique constraint required for upserts via
--- `on_conflict=user_uuid,budget`. Without this, `on_conflict`
--- silently degrades to plain inserts and duplicate rows accumulate.
+-- Unique constraint required for the upsert at
+-- lib/hooks/useDataLoading.ts:53 (`on_conflict=user_uuid,budget`).
+--
+-- NOT PRESENT IN THE LIVE DB as of the 2026-07-25 introspection — see
+-- 2026_add_budgets_unique_constraint.sql. Without a unique index or
+-- constraint on exactly these columns, Postgres raises 42P10 for that
+-- request; it does NOT degrade to a plain insert (an earlier version of this
+-- comment said otherwise and was wrong). ensureDefaultBudgets only logs the
+-- failure, so default-budget seeding fails silently for new users.
+--
+-- The constraint also prevents duplicate rows: saveBudgetLimit writes via
+-- PATCH-then-plain-POST rather than an upsert, so without it two racing saves
+-- can create two rows for the same (user_uuid, budget).
 DO $$ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
@@ -282,7 +303,8 @@ CREATE TABLE IF NOT EXISTS public.overrides (
     CHECK (match_type IN ('exact', 'prefix', 'contains')),
   updated_at timestamp with time zone DEFAULT now(),
   CONSTRAINT overrides_pkey PRIMARY KEY (id),
-  CONSTRAINT overrides_user_id_fkey FOREIGN KEY (user_id)
+  -- Live constraint name retains the table's former name.
+  CONSTRAINT vendor_overrides_user_id_fkey FOREIGN KEY (user_id)
     REFERENCES auth.users(id)
 );
 
@@ -332,36 +354,55 @@ END $$;
 
 
 -- ============================================================
--- TABLES USED BY THE APP BUT NOT DEFINED HERE
+-- 6. NOTIFICATION_RULES  (trained "not a transaction" skip patterns)
 -- ============================================================
--- Both are read/written by the capture pipeline. Neither is defined
--- above, so this file cannot bootstrap a working project on its own
--- and the drift check will not cover them.
+-- Confirmed present in the live DB (2026-07-25). Read by
+-- lib/notificationRules.ts (checkNotificationRules, listNotificationRules)
+-- and written by createNotificationRule / deleteNotificationRule /
+-- bumpRuleUseCount.
 --
---   public.notification_rules
---     Skip patterns the user has trained ("not a transaction").
---     Read by lib/notificationRules.ts (checkNotificationRules,
---     listNotificationRules) and written by createNotificationRule /
---     deleteNotificationRule / bumpRuleUseCount.
---     Columns the app relies on: id, user_id, pattern, pattern_type,
---     use_count, last_used_at, created_at.
---     Created by consolidate_schema.sql; extended by
---     add_missing_notification_rule_columns.sql.
---     NOTE: the app has NO fallback if this table is missing — a failed
---     fetch is treated as "no rules", so trained skip patterns would
---     silently stop applying.
+-- The app has NO fallback if this table is missing: a failed fetch is
+-- treated as "no rules", so trained skip patterns would silently stop
+-- applying and filtered notifications would start being captured again.
+CREATE TABLE IF NOT EXISTS public.notification_rules (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  pattern text NOT NULL,
+  -- Matches NotATxRuleType in components/transaction_parsing/NotATransactionModal.tsx
+  -- ('exact' | 'contains'). Note this is a NARROWER set than
+  -- overrides.match_type, which also allows 'prefix'.
+  pattern_type text NOT NULL DEFAULT 'exact'
+    CHECK (pattern_type = ANY (ARRAY['exact', 'contains'])),
+  use_count integer NOT NULL DEFAULT 0,
+  last_used_at timestamp with time zone DEFAULT now(),
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT notification_rules_pkey PRIMARY KEY (id),
+  CONSTRAINT notification_rules_user_id_fkey FOREIGN KEY (user_id)
+    REFERENCES auth.users(id)
+);
+
+ALTER TABLE public.notification_rules ENABLE ROW LEVEL SECURITY;
+
+
+-- ============================================================
+-- PENDING_TRANSACTIONS — DOES NOT EXIST IN THE LIVE DB
+-- ============================================================
+-- Confirmed absent by the 2026-07-25 introspection. The capture pipeline
+-- still references it:
+--   lib/notificationProcessor.ts:233, :462, :924 (insert)
+--   lib/hooks/useTransactionOps.ts:447 (PATCH to mark approved)
+--   lib/hooks/useDataLoading.ts (loadPendingTransactions)
 --
---   public.pending_transactions
---     The capture review queue. Read/written by
---     lib/notificationProcessor.ts and lib/hooks/useDataLoading.ts.
---     Unlike notification_rules, its absence IS tolerated:
---     loadPendingTransactions treats a 404 as an empty queue.
---     Referenced by consolidate_schema.sql,
---     fix_all_rls_policies_and_constraints.sql and
---     2026_add_confidence_column.sql.
+-- Its absence is tolerated on the read path — loadPendingTransactions treats
+-- a 404 as an empty queue — so the app runs without it. In practice the
+-- separate review queue is inert and captured transactions land directly in
+-- `transactions`, which is what the review UI reads.
 --
--- Run scripts/introspect_schema.sql against the live project to
--- confirm their real shape, then define them here.
+-- Decide one of:
+--   a) create the table, if the pending/approve flow is still wanted; or
+--   b) remove the dead references above.
+-- Leaving it as-is means those insert/patch calls fail on every captured
+-- notification and are swallowed.
 -- ============================================================
 
 
