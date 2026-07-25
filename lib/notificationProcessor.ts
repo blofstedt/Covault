@@ -1098,9 +1098,14 @@ async function processNotificationWithAIImpl(
   const step4WindowStart = new Date(todayMs - RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY).toISOString().slice(0, 10);
   const step4WindowEnd = new Date(todayMs + RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY).toISOString().slice(0, 10);
 
+  // Projection is the superset of what step 4 and step 5b need, so step 5b
+  // can reuse this result instead of re-issuing the identical query (same
+  // user, same +/-3 day window). Nothing between the two steps writes to
+  // `transactions`; the post-insert race check in step 6b deliberately stays
+  // a fresh query.
   const { data: existingTx } = await supabase
     .from('transactions')
-    .select('id, vendor, amount, type, date, source')
+    .select('id, vendor, amount, type, date, recur, source')
     .eq('user_id', userId)
     .gte('date', step4WindowStart)
     .lte('date', step4WindowEnd);
@@ -1333,15 +1338,9 @@ async function processNotificationWithAIImpl(
     }
   }
   if (recurrence === 'monthly' || recurrence === 'biweekly') {
-    // Query recent transactions broadly, then filter with fuzzy matching
-    const recurWindowStart = new Date(todayMs - RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY).toISOString().slice(0, 10);
-    const recurWindowEnd = new Date(todayMs + RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY).toISOString().slice(0, 10);
-    const { data: recurCandidates } = await supabase
-      .from('transactions')
-      .select('id, vendor, amount, date, recur, source')
-      .eq('user_id', userId)
-      .gte('date', recurWindowStart)
-      .lte('date', recurWindowEnd);
+    // Same user, same window as step 4 — reuse that fetch rather than
+    // repeating it.
+    const recurCandidates = existingTx;
 
     if (recurCandidates && recurCandidates.length > 0) {
       for (const tx of recurCandidates) {
