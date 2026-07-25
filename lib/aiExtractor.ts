@@ -15,6 +15,7 @@
 import { log } from './log';
 import type { Text2TextGenerationPipeline } from '@huggingface/transformers';
 import { formatVendorName } from './formatVendorName';
+import { BANK_NAME_PREFIXES } from './deviceTransactionParser';
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -382,14 +383,6 @@ const NON_TRANSACTION_PATTERNS = [
   /\b(?:promo\s+code|coupon\s+code|discount\s+code)\b/i,
 ];
 
-const BANK_NAME_PREFIXES = [
-  'bmo', 'scotiabank', 'td', 'td bank', 'rbc', 'cibc',
-  'wealthsimple', 'tangerine', 'simplii', 'national bank',
-  'desjardins', 'chase', 'wells fargo', 'bank of america',
-  'amex', 'american express', 'capital one', 'discover',
-  'citi', 'citibank', 'hsbc', 'barclays', 'usaa',
-];
-
 function ruleBasedVendorExtraction(text: string): { vendor: string | null; isTransaction: boolean; rejectionReason: string | null } {
   for (const pattern of NON_TRANSACTION_PATTERNS) {
     if (pattern.test(text)) {
@@ -533,6 +526,10 @@ const VENDOR_CORRECTIONS: Record<string, string> = {
   'save on foods': 'Save-On-Foods', 'save-on-foods': 'Save-On-Foods',
 };
 
+// Hoisted: Object.entries() rebuilt this ~90-pair array on every
+// polishVendor() call, which runs once per captured notification.
+const VENDOR_CORRECTION_ENTRIES = Object.entries(VENDOR_CORRECTIONS);
+
 function polishVendor(raw: string): string {
   let v = raw.trim();
   v = v.replace(/^(?:SQ\s*\*|TST\s*\*|PP\s*\*|GOOGLE\s*\*|PAYPAL\s*\*)\s*/i, '');
@@ -563,7 +560,7 @@ function polishVendor(raw: string): string {
 
   const lower = v.toLowerCase();
   if (VENDOR_CORRECTIONS[lower]) return VENDOR_CORRECTIONS[lower];
-  for (const [key, corrected] of Object.entries(VENDOR_CORRECTIONS)) {
+  for (const [key, corrected] of VENDOR_CORRECTION_ENTRIES) {
     if (lower.startsWith(key)) return corrected;
   }
   return formatVendorName(v);

@@ -177,7 +177,6 @@ const Dashboard: React.FC<Props> = ({
       userId: state.user.id,
       budgets: state.budgets,
       transactions: currentMonthBudgetTransactions,
-      totalIncome: state.user.monthlyIncome || 0,
       remainingMoney,
       settings: {
         app_notifications_enabled: state.settings.app_notifications_enabled,

@@ -26,10 +26,11 @@ function getGradient(name: string, index: number): [string, string] {
 
 // Tooltip vertical positioning is now handled by absolute positioning above the chart
 
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
 function formatMonthLabel(key: string): string {
   const [year, month] = key.split('-');
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return `${months[parseInt(month, 10) - 1]} ${year}`;
+  return `${MONTH_ABBR[parseInt(month, 10) - 1]} ${year}`;
 }
 
 function getWindowedMonthKeys(monthKeys: string[], currentMonthKey: string, maxMonths = 6): string[] {

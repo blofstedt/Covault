@@ -10,17 +10,18 @@ export interface NotificationSettingsShape {
 }
 
 // LocalStorage keys to avoid spamming notifications
-function makeBudgetAlertKey(userId: string, budgetId: string) {
+/** Current YYYY-MM. Alert keys embed it so the user is re-notified in a
+ *  later month. Computed once per check rather than once per budget. */
+function currentAlertMonth(): string {
   const now = new Date();
-  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function makeBudgetAlertKey(userId: string, budgetId: string, month: string) {
   return `covault_alert_budget_${userId}_${budgetId}_${month}`;
 }
 
-function makeBalanceAlertKey(userId: string) {
-  // Include the month so the user is re-notified if their balance goes
-  // negative again in a later month. Mirrors `makeBudgetAlertKey`.
-  const now = new Date();
-  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+function makeBalanceAlertKey(userId: string, month: string) {
   return `covault_alert_balance_${userId}_${month}`;
 }
 
@@ -71,24 +72,10 @@ async function sendNotification(title: string, body: string) {
   }
 }
 
-// Compute how much is spent in a budget for the given transactions
-function getSpentForBudget(budgetId: string, txs: Transaction[]): number {
-  return txs.reduce((acc, tx) => {
-    if (tx.is_projected) return acc; // only real transactions
-
-    if (tx.budget_id === budgetId) {
-      return acc + Number(tx.amount);
-    }
-
-    return acc;
-  }, 0);
-}
-
 interface CheckArgs {
   userId: string;
   budgets: BudgetCategory[];
   transactions: Transaction[]; // current month transactions
-  totalIncome: number;
   remainingMoney: number;
   settings: NotificationSettingsShape;
 }
@@ -97,7 +84,7 @@ interface CheckArgs {
  * Evaluates budget thresholds and fires local notifications.
  * Uses localStorage flags to avoid firing the same alert repeatedly.
  *
- * Alerts when a budget exceeds 90% of its limit.
+ * Alerts once a budget reaches 80% of its limit.
  */
 export async function checkAndTriggerAppNotifications({
   userId,
@@ -111,16 +98,28 @@ export async function checkAndTriggerAppNotifications({
     if (!settings?.app_notifications_enabled && !settings?.smart_notifications_enabled) return;
     if (!userId) return;
 
+    const alertMonth = currentAlertMonth();
+
+    // Pre-group spend in a single pass. This used to call getSpentForBudget
+    // per budget, so the whole month's transaction list was walked once for
+    // every budget on every transaction change.
+    const spentByBudgetId = new Map<string, number>();
+    for (const tx of transactions) {
+      if (tx.is_projected) continue; // only real transactions
+      if (!tx.budget_id) continue;
+      spentByBudgetId.set(tx.budget_id, (spentByBudgetId.get(tx.budget_id) ?? 0) + Number(tx.amount));
+    }
+
     // Check each budget for overspend
     for (const budget of budgets) {
       const limit = Number(budget.totalLimit ?? 0);
       if (!limit || limit <= 0) continue;
 
-      const spent = getSpentForBudget(budget.id, transactions);
+      const spent = spentByBudgetId.get(budget.id) ?? 0;
       const ratio = spent / limit;
 
       if (ratio >= 0.8) {
-        const key = makeBudgetAlertKey(userId, budget.id);
+        const key = makeBudgetAlertKey(userId, budget.id, alertMonth);
         const alreadySent =
           typeof localStorage !== 'undefined' && localStorage.getItem(key) === '1';
         if (!alreadySent) {
@@ -138,7 +137,7 @@ export async function checkAndTriggerAppNotifications({
 
     // Check remaining balance
     if (remainingMoney <= 0) {
-      const key = makeBalanceAlertKey(userId);
+      const key = makeBalanceAlertKey(userId, alertMonth);
       const alreadySent =
         typeof localStorage !== 'undefined' && localStorage.getItem(key) === '1';
       if (!alreadySent) {
