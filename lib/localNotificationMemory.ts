@@ -1,3 +1,4 @@
+import { djb2Base36 } from './hash';
 export type ReviewStatus = 'needs_review' | 'reviewed';
 
 export interface VendorMapEntry {
@@ -162,12 +163,7 @@ const AI_CACHE_KEY = 'covault_ai_extraction_cache_v1';
 const MAX_AI_CACHE_ENTRIES = 200;
 
 function aiCacheKey(text: string): string {
-  // Simple djb2 hash — same as the fingerprint hash in notificationProcessor.
-  let hash = 5381;
-  for (let i = 0; i < text.length; i++) {
-    hash = ((hash << 5) + hash + text.charCodeAt(i)) >>> 0;
-  }
-  return `ai:${hash.toString(36)}`;
+  return `ai:${djb2Base36(text)}`;
 }
 
 export interface CachedAIResult {

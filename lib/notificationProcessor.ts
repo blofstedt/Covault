@@ -12,6 +12,7 @@
 //   7. Insert into transactions table with 'AI' label
 
 import { log } from './log';
+import { djb2Base36 } from './hash';
 import { supabase } from './supabase';
 import { formatVendorName, fuzzyVendorMatch, normalizeVendorForDedup } from './formatVendorName';
 import { parseNotificationText } from './deviceTransactionParser';
@@ -109,20 +110,14 @@ const DEDUP_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
  * Hash is djb2 — matches the one `extractVendorSlug` uses as its
  * fallback so we don't pull in a new dependency just for this.
  */
-function buildInMemoryDedupKey(
+export function buildInMemoryDedupKey(
   bankAppId: string,
   rawNotification: string,
-  _notificationTimestamp: number, // kept for API stability; not used
 ): string {
-  // djb2 hash of the full raw text. The bankAppId prefix prevents the
-  // same text from different banks from being conflated (rare, but
-  // possible if a user has two banking apps that both notify on the
-  // same transaction).
-  let hash = 5381;
-  for (let i = 0; i < rawNotification.length; i++) {
-    hash = ((hash << 5) + hash + rawNotification.charCodeAt(i)) >>> 0;
-  }
-  return `${bankAppId || '?'}|h${hash.toString(36)}`;
+  // The bankAppId prefix prevents the same text from different banks from
+  // being conflated (rare, but possible if a user has two banking apps that
+  // both notify on the same transaction).
+  return `${bankAppId || '?'}|h${djb2Base36(rawNotification)}`;
 }
 
 /**
@@ -176,13 +171,7 @@ function generateFingerprintHash(
   // Truncate to the second so minor sub-second jitter doesn't matter
   const timestampSec = Math.floor(timestampMs / 1000);
   const raw = `${bankAppId}|${amountStr}|${normalizedVendor}|${timestampSec}`;
-
-  // Simple hash (djb2)
-  let hash = 5381;
-  for (let i = 0; i < raw.length; i++) {
-    hash = ((hash << 5) + hash + raw.charCodeAt(i)) >>> 0;
-  }
-  return hash.toString(36);
+  return djb2Base36(raw);
 }
 
 /**
@@ -347,6 +336,16 @@ export async function deduplicatePendingTransactions(
 ): Promise<PendingTransaction[]> {
   if (pendingTransactions.length <= 1) return pendingTransactions;
 
+  // Parse created_at once per row. The four grouping passes below each sort
+  // their groups by it, and `new Date(...).getTime()` inside a comparator
+  // re-parses both operands on every comparison.
+  const createdAtMs = new Map<string, number>();
+  for (const pt of pendingTransactions) {
+    createdAtMs.set(pt.id, new Date(pt.created_at).getTime());
+  }
+  const byCreatedAt = (a: PendingTransaction, b: PendingTransaction) =>
+    (createdAtMs.get(a.id) ?? 0) - (createdAtMs.get(b.id) ?? 0);
+
   const idsToDelete: string[] = [];
   const keepSet = new Set<string>();
 
@@ -368,7 +367,7 @@ export async function deduplicatePendingTransactions(
       keepSet.add(group[0].id);
       continue;
     }
-    group.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    group.sort(byCreatedAt);
     keepSet.add(group[0].id);
     for (let i = 1; i < group.length; i++) {
       idsToDelete.push(group[i].id);
@@ -396,7 +395,7 @@ export async function deduplicatePendingTransactions(
 
   for (const group of fpGroups.values()) {
     if (group.length <= 1) continue;
-    group.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    group.sort(byCreatedAt);
     for (let i = 1; i < group.length; i++) {
       keepSet.delete(group[i].id);
       idsToDelete.push(group[i].id);
@@ -419,7 +418,7 @@ export async function deduplicatePendingTransactions(
 
   for (const group of extGroups.values()) {
     if (group.length <= 1) continue;
-    group.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    group.sort(byCreatedAt);
     // The oldest is already in keepSet; mark the rest for deletion
     for (let i = 1; i < group.length; i++) {
       keepSet.delete(group[i].id);
@@ -449,7 +448,7 @@ export async function deduplicatePendingTransactions(
 
   for (const group of appAmountGroups.values()) {
     if (group.length <= 1) continue;
-    group.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    group.sort(byCreatedAt);
     for (let i = 1; i < group.length; i++) {
       keepSet.delete(group[i].id);
       idsToDelete.push(group[i].id);
@@ -688,11 +687,7 @@ export async function processNotificationWithAI(
 
   // Build the dedup key up-front so the in-flight check can run before
   // any of the expensive async work below.
-  const inMemoryKey = buildInMemoryDedupKey(
-    input.bankAppId,
-    input.rawNotification,
-    notifTimestamp,
-  );
+  const inMemoryKey = buildInMemoryDedupKey(input.bankAppId, input.rawNotification);
 
   // ── Step 0 (pre): In-flight check ──
   // If another invocation is already processing this exact notification

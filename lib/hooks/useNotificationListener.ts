@@ -1,10 +1,10 @@
 // lib/useNotificationListener.ts
 import { log } from '../log';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
-import type { Transaction, User, PendingTransaction, BudgetCategory } from '../../types';
+import type { Transaction, User, BudgetCategory } from '../../types';
 import { covaultNotification } from '../covaultNotification';
-import { processNotificationWithAI } from '../notificationProcessor';
+import { processNotificationWithAI, buildInMemoryDedupKey } from '../notificationProcessor';
 import { sendPartnerActivityNotification, sendExpenseCapturedNotification } from '../appNotifications';
 import type { NotificationSettingsShape } from '../appNotifications';
 import type { AIProcessingResult } from '../notificationProcessor';
@@ -16,7 +16,6 @@ export interface UseNotificationListenerParams {
   budgets: BudgetCategory[];
   settings?: NotificationSettingsShape;
   onTransactionDetected: (tx: Transaction) => void;
-  onPendingTransactionCreated?: (pending: PendingTransaction) => void;
   /** Called for auto-accepted transactions that are already saved in the DB. */
   onAutoAcceptedTransaction?: (tx: Transaction) => void;
   /** Called when AI processes a notification (for the parsing UI) */
@@ -56,10 +55,18 @@ export const useNotificationListener = ({
   budgets,
   settings,
   onTransactionDetected,
-  onPendingTransactionCreated,
   onAutoAcceptedTransaction,
   onAIProcessingResult,
 }: UseNotificationListenerParams) => {
+  // `settings` is read inside the native event handler but is deliberately not
+  // an effect dependency: adding it would re-register the listener on every
+  // toggle, and omitting it left the handler reading a stale value. A ref gives
+  // the handler the current settings without touching the subscription.
+  const settingsRef = useRef(settings);
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
 
@@ -104,12 +111,9 @@ export const useNotificationListener = ({
             // notificationProcessor.ts for the full rationale.
             const rawNotification = event.rawNotification || event.raw_text;
             const bankAppId = (event.bankAppId || event.source_app)?.toLowerCase();
-            let dedupHash = 5381;
-            const text = rawNotification || '';
-            for (let i = 0; i < text.length; i++) {
-              dedupHash = ((dedupHash << 5) + dedupHash + text.charCodeAt(i)) >>> 0;
-            }
-            const dedupKey = `${bankAppId || '?'}|h${dedupHash.toString(36)}`;
+            // Reuse the processor's key builder rather than re-implementing it,
+            // so the two dedup layers cannot drift apart.
+            const dedupKey = buildInMemoryDedupKey(bankAppId || '', rawNotification || '');
             const now = Date.now();
             // Evict expired entries opportunistically
             while (
@@ -205,7 +209,7 @@ export const useNotificationListener = ({
                     result.vendor || 'Unknown',
                     result.amount || 0,
                     result.categoryName || null,
-                    settings || {},
+                    settingsRef.current || {},
                   );
 
                   // If this transaction came from a partner's device (different
@@ -216,7 +220,7 @@ export const useNotificationListener = ({
                       user.partnerName,
                       result.vendor || 'Unknown',
                       result.amount || 0,
-                      settings || {},
+                      settingsRef.current || {},
                     );
                   }
                 }
@@ -272,5 +276,10 @@ export const useNotificationListener = ({
       cancelled = true;
       cleanup?.();
     };
-  }, [user, budgets, onTransactionDetected, onPendingTransactionCreated, onAutoAcceptedTransaction, onAIProcessingResult]);
+    // `user` is read for id/name/partnerName only, so those three are the real
+    // dependencies. Depending on the whole object meant every token refresh
+    // (which rebuilds it in useAuthState) tore down and re-added the native
+    // listener across the JS<->native bridge.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, user?.name, user?.partnerName, budgets, onTransactionDetected, onAutoAcceptedTransaction, onAIProcessingResult]);
 };

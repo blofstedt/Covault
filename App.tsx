@@ -5,7 +5,7 @@ import Dashboard from './components/Dashboard';
 import Onboarding from './components/Onboarding';
 import FullScreenLoader from './components/FullScreenLoader';
 import ErrorBoundary from './components/ErrorBoundary';
-import type { AppState, BudgetCategory, Transaction, PendingTransaction } from './types';
+import type { AppState, BudgetCategory, Transaction } from './types';
 import { supabase } from './lib/supabase';
 import { useAuthState, AuthStatus } from './lib/hooks/useAuthState';
 import { useDeepLinks } from './lib/hooks/useDeepLinks';
@@ -183,14 +183,6 @@ const App: React.FC = () => {
     });
   }, [appState.user?.id, appState.transactions]);
 
-  const handlePendingTransactionCreated = useCallback((pending: PendingTransaction) => {
-    setAppState(prev => {
-      const existing = prev.pendingTransactions || [];
-      if (existing.some(p => p.id === pending.id)) return prev;
-      return { ...prev, pendingTransactions: [pending, ...existing] };
-    });
-  }, []);
-
   const handleAutoAcceptedTransaction = useCallback((tx: Transaction) => {
     setAppState(prev => {
       if (prev.transactions.some(t => t.id === tx.id)) return prev;
@@ -209,7 +201,6 @@ const App: React.FC = () => {
     budgets: appState.budgets,
     settings: appState.settings,
     onTransactionDetected: handleAddTransaction,
-    onPendingTransactionCreated: handlePendingTransactionCreated,
     onAutoAcceptedTransaction: handleAutoAcceptedTransaction,
     onAIProcessingResult: handleAIProcessingResult,
   });
