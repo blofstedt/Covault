@@ -64,6 +64,13 @@ the `notification_rules` table are now all reflected there.
 `NotATxRuleType` exactly — note this is narrower than `overrides.match_type`,
 which also allows `'prefix'`.
 
+**`budgets` has a unique index on (user_uuid, budget).** It is
+`unique_user_budget`, a bare `CREATE UNIQUE INDEX` rather than a table
+constraint — so a schema export that lists only constraints appears to show
+nothing, which is misleading. `ON CONFLICT` accepts either, so
+`ensureDefaultBudgets`' `on_conflict=user_uuid,budget` upsert works and
+duplicate budget rows are prevented. Reflected in `schema.sql` as an index.
+
 **`pending_transactions` does NOT exist.** The capture pipeline still writes
 to it (`notificationProcessor.ts:924` insert, `useTransactionOps.ts:447`
 patch). The read path tolerates this (404 → empty queue) so the app runs, but
@@ -73,33 +80,16 @@ create the table or remove the dead references — see the section in
 
 ## Open issues requiring a decision
 
-1. **`settings.subscription_status` default contradicts its own CHECK —
-   CONFIRMED.** `information_schema.columns.column_default` returns `false` on
-   the live project, under
-   `CHECK (subscription_status IN ('none','active','expired'))`. The default
-   coerces to the text `'false'`, which the CHECK rejects. Postgres does not
-   validate defaults when a CHECK is added, so this only fails on an INSERT
-   that omits the column — which is what `handle_new_user()` does on signup.
-   **Apply `2026_fix_subscription_status_default.sql`.** It contains a
-   transactional probe (a temp table cloned with
-   `INCLUDING DEFAULTS INCLUDING CONSTRAINTS`) that reproduces the failure
-   without creating an account or touching data. If that probe *succeeds*
-   pre-migration, the live `handle_new_user()` must be setting the column
-   explicitly — the fix is still correct, since `'false'` is never a valid
-   value here.
+1. **`settings.subscription_status` default contradicts its own CHECK — real
+   but not reachable.** `column_default` is `false` (the text `'false'`) under
+   `CHECK (subscription_status IN ('none','active','expired'))`; Postgres does
+   not validate defaults when a CHECK is added. It never fires today: the only
+   inserter is `handle_new_user()`, which names the column explicitly, and the
+   app only ever PATCHes `/settings`. Any *future* INSERT that omits the
+   column would fail. `2026_fix_subscription_status_default.sql` sets it to
+   `'none'`. Low priority — it removes a trap, it does not fix an outage.
 
-2. **`budgets` has no UNIQUE on (user_uuid, budget).** The export shows only a
-   FK. Consequences: `ensureDefaultBudgets`'s
-   `POST /budgets?on_conflict=user_uuid,budget` raises 42P10 rather than
-   falling back to a plain insert, so default-budget seeding fails silently
-   for new users (the UI still shows categories via the client-side
-   `SYSTEM_CATEGORIES` fallback); and nothing prevents duplicate budget rows,
-   since `saveBudgetLimit` writes via PATCH-then-plain-POST. Addressed by
-   `2026_add_budgets_unique_constraint.sql`. **Check `pg_indexes` first** — a
-   bare unique index would satisfy ON CONFLICT without appearing as a
-   constraint in the export.
-
-3. **`ensureDefaultBudgets`' retry is dead.** Its fallback posts
+2. **`ensureDefaultBudgets`' retry is dead.** Its fallback posts
    `user_id`/`category`/`limit_amount`/`visible`, but the live table has none
    of those columns, so the retry cannot succeed. Left in place for now — it
    is harmless — but it is not the safety net it looks like.

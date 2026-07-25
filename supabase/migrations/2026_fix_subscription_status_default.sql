@@ -1,6 +1,8 @@
 -- ============================================================
 -- Migration: fix settings.subscription_status default
 -- ============================================================
+-- Priority: low. Nothing is broken today — see "NOT CURRENTLY REACHABLE"
+-- below. This removes a trap, it does not fix an outage.
 -- The live column is:
 --
 --   subscription_status text DEFAULT false
@@ -13,24 +15,22 @@
 -- this is accepted at definition time and only fails later, on the first
 -- INSERT that omits the column.
 --
--- That INSERT is the signup path. public.handle_new_user() inserts only
--- (user_id, name, email), so subscription_status falls to its default and the
--- row is rejected with a check_violation. Because the trigger runs AFTER
--- INSERT on auth.users, the error propagates and the signup fails.
+-- NOT CURRENTLY REACHABLE — this is a landmine, not an outage.
 --
--- CONFIRMED on the live project (2026-07-25):
+-- Verified on the live project (2026-07-25):
+--   * public.handle_new_user() names subscription_status explicitly in its
+--     INSERT column list, so the default is never applied on signup.
+--     (SELECT pg_get_functiondef('public.handle_new_user'::regproc);)
+--   * The app never POSTs to /settings — it only ever PATCHes. The trigger is
+--     the sole inserter.
 --
---   SELECT column_default FROM information_schema.columns
---   WHERE table_schema='public' AND table_name='settings'
---     AND column_name='subscription_status';
---   -- returned: false
+-- So signups work today. But any future INSERT that omits the column — a new
+-- code path, a manual backfill, a restored dump, an edited trigger — fails
+-- with a check_violation. Fixing the default costs nothing and removes that.
 --
--- So the default really is the boolean literal, coerced to the text 'false',
--- and it really does violate the CHECK. Apply this migration.
---
--- To see the failure yourself without creating a real account or touching any
--- data — this copies the defaults and CHECK constraints but NOT the foreign
--- keys, and rolls back either way:
+-- To see the failure, without creating an account or touching data. The temp
+-- table copies defaults and CHECK constraints but NOT foreign keys, and the
+-- whole thing rolls back:
 --
 --   BEGIN;
 --   CREATE TEMP TABLE probe (LIKE public.settings INCLUDING DEFAULTS INCLUDING CONSTRAINTS);
@@ -38,15 +38,8 @@
 --   VALUES (gen_random_uuid(), 'probe', 'probe@example.invalid');
 --   ROLLBACK;
 --
--- Expected before this migration: ERROR, new row violates check constraint.
--- Expected after: one row inserted, subscription_status = 'none'.
---
--- If that probe succeeds *before* the migration, then signups are surviving
--- for some other reason — most likely the live handle_new_user() sets
--- subscription_status explicitly. Check with:
---   SELECT pg_get_functiondef('public.handle_new_user'::regproc);
--- Applying this migration is still correct either way: 'false' is never a
--- valid value for this column.
+-- Before this migration: ERROR, new row violates check constraint.
+-- After: one row, subscription_status = 'none'.
 --
 -- 'none' is the right default: it is a member of the CHECK set, and it is
 -- already what the app coerces a missing value to

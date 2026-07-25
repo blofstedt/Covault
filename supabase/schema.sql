@@ -87,12 +87,13 @@ CREATE TABLE IF NOT EXISTS public.settings (
   trial_started_at timestamp with time zone,
   trial_ends_at timestamp with time zone,
   trial_consumed boolean DEFAULT false,
-  -- The live DB shipped this as `DEFAULT false` (confirmed 2026-07-25:
-  -- column_default returns `false`), i.e. the text 'false', which is NOT in
-  -- the CHECK set. Postgres does not validate defaults when a CHECK is added,
-  -- so the contradiction only fails on an INSERT that omits the column — which
-  -- is exactly what handle_new_user() does on signup. Corrected by
-  -- 2026_fix_subscription_status_default.sql; 'none' below is the fixed value.
+  -- The live DB has `DEFAULT false` (confirmed 2026-07-25), i.e. the text
+  -- 'false', which is NOT in the CHECK set — Postgres does not validate
+  -- defaults when a CHECK is added. It is currently unreachable: the only
+  -- inserter is handle_new_user(), which names subscription_status explicitly,
+  -- and the app only ever PATCHes this table. So it is a latent landmine, not
+  -- an active bug — any future INSERT that omits the column would fail.
+  -- 2026_fix_subscription_status_default.sql replaces it with 'none' below.
   subscription_status text DEFAULT 'none'
     CHECK (subscription_status = ANY (ARRAY['none', 'active', 'expired'])),
   link_code text,
@@ -242,29 +243,18 @@ CREATE TABLE IF NOT EXISTS public.budgets (
     REFERENCES auth.users(id)
 );
 
--- Unique constraint required for the upsert at
--- lib/hooks/useDataLoading.ts:53 (`on_conflict=user_uuid,budget`).
+-- Required for the upsert at lib/hooks/useDataLoading.ts:53
+-- (`on_conflict=user_uuid,budget`). Without a unique index or constraint on
+-- exactly these columns Postgres raises 42P10; it does NOT degrade to a plain
+-- insert (an earlier version of this comment said otherwise and was wrong).
 --
--- NOT PRESENT IN THE LIVE DB as of the 2026-07-25 introspection — see
--- 2026_add_budgets_unique_constraint.sql. Without a unique index or
--- constraint on exactly these columns, Postgres raises 42P10 for that
--- request; it does NOT degrade to a plain insert (an earlier version of this
--- comment said otherwise and was wrong). ensureDefaultBudgets only logs the
--- failure, so default-budget seeding fails silently for new users.
---
--- The constraint also prevents duplicate rows: saveBudgetLimit writes via
--- PATCH-then-plain-POST rather than an upsert, so without it two racing saves
--- can create two rows for the same (user_uuid, budget).
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'budgets_user_uuid_budget_key'
-  ) THEN
-    ALTER TABLE public.budgets
-      ADD CONSTRAINT budgets_user_uuid_budget_key
-      UNIQUE (user_uuid, budget);
-  END IF;
-END $$;
+-- In the live DB this is a bare UNIQUE INDEX, not a table constraint
+-- (confirmed 2026-07-25). ON CONFLICT accepts either, so the upsert works —
+-- but note that a plain schema export lists constraints and will appear to
+-- show nothing here. It also prevents duplicate rows, which matters because
+-- saveBudgetLimit writes via PATCH-then-plain-POST rather than an upsert.
+CREATE UNIQUE INDEX IF NOT EXISTS unique_user_budget
+  ON public.budgets USING btree (user_uuid, budget);
 
 ALTER TABLE public.budgets ENABLE ROW LEVEL SECURITY;
 
