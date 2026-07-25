@@ -95,7 +95,6 @@ const Dashboard: React.FC<Props> = ({
   const [expandedBudgets, setExpandedBudgets] = useState<Set<string>>(new Set());
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const budgetRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const normalizedTransactions = useNormalizedTransactions(state.transactions, state.budgets);
 
@@ -466,7 +465,6 @@ const Dashboard: React.FC<Props> = ({
               currentUserName={state.user?.name || ''}
               isSharedAccount={!state.user?.budgetingSolo}
               scrollContainerRef={scrollRef}
-              budgetRefs={budgetRefs}
               onToggleExpand={toggleExpand}
               onTransactionTap={setSelectedTx}
             />

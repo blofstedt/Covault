@@ -46,6 +46,10 @@ interface ParsingCardProps {
   subtitle: string;
   count?: number;
   headerAction?: React.ReactNode;
+  /** Rescan Android's notification shade for transactions not yet captured. */
+  onScan?: () => void;
+  isScanning?: boolean;
+  scanLabel?: string;
   collapsible?: boolean;
   isExpanded?: boolean;
   onToggleExpanded?: () => void;
@@ -65,6 +69,9 @@ const ParsingCard: React.FC<ParsingCardProps> = ({
   subtitle,
   count,
   headerAction,
+  onScan,
+  isScanning = false,
+  scanLabel = 'Scan for transactions',
   collapsible = false,
   isExpanded = true,
   onToggleExpanded,
@@ -75,7 +82,7 @@ const ParsingCard: React.FC<ParsingCardProps> = ({
     id={id}
     className={`bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] ${borderColors[colorScheme]} ${className}`}
   >
-    <div className="flex items-center space-x-3 mb-4 shrink-0">
+    <div className="flex items-center gap-3 mb-4 shrink-0">
       <button
         type="button"
         onClick={collapsible ? onToggleExpanded : undefined}
@@ -102,17 +109,44 @@ const ParsingCard: React.FC<ParsingCardProps> = ({
         disabled={!collapsible}
         aria-expanded={collapsible ? isExpanded : undefined}
       >
-        <h3 className="text-xs font-semibold tracking-wide text-slate-500 dark:text-slate-400">
+        <h3 className="text-xs font-semibold tracking-wide text-slate-500 dark:text-slate-400 truncate">
           {title}
         </h3>
-        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">
           {subtitle}
         </p>
       </button>
+      <div className="shrink-0 flex items-center gap-0.5">
       {count !== undefined && count > 0 && (
-        <span className={`text-xs font-extrabold ${badgeColors[colorScheme]} px-2.5 py-1 rounded-full`}>
+        <span className={`text-xs font-extrabold ${badgeColors[colorScheme]} px-2.5 py-1 rounded-full mr-1`}>
           {count}
         </span>
+      )}
+      {onScan && (
+        <button
+          type="button"
+          onClick={onScan}
+          disabled={isScanning}
+          aria-label={scanLabel}
+          title={scanLabel}
+          className="shrink-0 inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded-xl text-slate-400 dark:text-slate-500 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 active:scale-95 transition-all disabled:opacity-60"
+        >
+          <svg
+            className={`w-[18px] h-[18px] ${isScanning ? 'animate-spin' : ''}`}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <polyline points="23 4 23 10 17 10" />
+            <polyline points="1 20 1 14 7 14" />
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10" />
+            <path d="M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+          </svg>
+        </button>
       )}
       {headerAction}
       {collapsible && (
@@ -136,6 +170,7 @@ const ParsingCard: React.FC<ParsingCardProps> = ({
           </svg>
         </button>
       )}
+      </div>
     </div>
     {(!collapsible || isExpanded) && children}
   </div>
