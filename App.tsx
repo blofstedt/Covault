@@ -17,6 +17,7 @@ import { useUserData } from './lib/hooks/useUserData';
 import { executeRecurringTransactions } from './lib/recurringExecutor';
 import { sendRecurringCatchUpNotification } from './lib/appNotifications';
 import { preloadAIModel } from './lib/aiExtractor';
+import { log } from './lib/log';
 
 const SETTINGS_KEY = 'covault_settings';
 const SCAN_PROCESSING_DELAY_MS = 2000;
@@ -40,7 +41,7 @@ const loadSettingsFromStorage = () => {
     const stored = localStorage.getItem(SETTINGS_KEY);
     if (stored) return JSON.parse(stored);
   } catch (e) {
-    console.error('Error loading settings:', e);
+    log.error('Error loading settings:', e);
   }
   return null;
 };
@@ -50,7 +51,7 @@ const saveSettingsToStorage = (settings: AppState['settings']) => {
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   } catch (e) {
-    console.error('Error saving settings:', e);
+    log.error('Error saving settings:', e);
   }
 };
 
@@ -101,7 +102,7 @@ const App: React.FC = () => {
       try {
         await loadUserData(userId);
       } catch (error) {
-        console.error('[loadUserDataWithState] Error:', error);
+        log.error('[loadUserDataWithState] Error:', error);
       } finally {
         setIsLoadingData(false);
       }
@@ -231,14 +232,14 @@ const App: React.FC = () => {
 
     // Immediately process existing notifications when parsing is already enabled.
     refreshMonitoredAppsAndScan().catch(e => {
-      console.warn('[initial periodic scan] Error:', e);
+      log.warn('[initial periodic scan] Error:', e);
     });
 
     const intervalId = setInterval(async () => {
       try {
         await refreshMonitoredAppsAndScan();
       } catch (e) {
-        console.warn('[periodic scan] Error:', e);
+        log.warn('[periodic scan] Error:', e);
       }
     }, SCAN_INTERVAL_MS);
 

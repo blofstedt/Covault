@@ -487,11 +487,6 @@ interface DuplicateCheckResult {
   isDuplicate: boolean;
   /** Reason for rejection, if any */
   reason?: string;
-  /**
-   * If a recurring transaction's date was updated, this is its ID.
-   * @deprecated The system no longer auto-updates dates.
-   */
-  updatedExistingId?: string;
   /** If a same-day hard match was found, this is its ID. The new transaction is skipped. */
   skippedExistingId?: string;
   /**

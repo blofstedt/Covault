@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { BudgetCategory } from '../../../types';
 import SettingsCard from '../../ui/SettingsCard';
 import SectionHeader from '../../ui/SectionHeader';
+import { formatCurrency } from '../../../lib/formatCurrency';
 
 interface BudgetLimitsSectionProps {
   budgets: BudgetCategory[];
@@ -40,7 +41,7 @@ const BudgetLimitsSection: React.FC<BudgetLimitsSectionProps> = ({
 
           if (newTotal > monthlyIncome) {
             setOverAllocatedMessage(
-              `Budget total ($${newTotal.toFixed(2)}) exceeds your income ($${monthlyIncome.toFixed(2)}). To allocate more, increase your monthly income.`
+              `Budget total (${formatCurrency(newTotal)}) exceeds your income (${formatCurrency(monthlyIncome)}). To allocate more, increase your monthly income.`
             );
             // Revert input to the previous value
             setEditingBudgets(prev => {

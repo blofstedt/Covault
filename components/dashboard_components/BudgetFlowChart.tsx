@@ -55,15 +55,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [hoveredMonthIdx, setHoveredMonthIdx] = useState<number | null>(null);
-  // mouseCoords / chartWidth / chartHeight: setters are called from
-  // resize and pointer handlers but the values are never read. The
-  // setters are kept (so the handler code stays as-is) but the
-  // state slots are intentionally discarded to mark them as
-  // planned-but-unused. Safe to fully remove if confirmed dead.
-  const [, setMouseCoords] = useState<{ x: number; y: number } | null>(null);
   const [screenCoords, setScreenCoords] = useState<{ x: number; y: number } | null>(null);
-  const [, setChartWidth] = useState(0);
-  const [, setChartHeight] = useState(0);
   // Refs to store chart internals for morph animation
   const chartInternalsRef = useRef<{
     stackedData: d3.Series<MonthlyBudgetData, string>[];
@@ -188,8 +180,6 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     const margin = { top: 12, right: 0, bottom: 20, left: 0 };
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
-    setChartWidth(width);
-    setChartHeight(height);
 
     const svgElement = d3.select(svgRef.current);
     svgElement.selectAll('*').remove();
@@ -467,7 +457,6 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
       setActiveCategory(foundCat);
       setHoveredMonthIdx(monthIdx);
-      setMouseCoords({ x: xPos + margin.left, y: my });
 
       scrubber.attr('x1', xPos).attr('x2', xPos).style('opacity', 0.3);
 
@@ -505,7 +494,6 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         setHoveredMonthIdx(0);
         setActiveCategory(categoryNames[0] || null);
         const xPos = x(chartData[0].month) || 0;
-        setMouseCoords({ x: xPos + margin.left, y: my });
         scrubber.attr('x1', xPos).attr('x2', xPos).style('opacity', 0.3);
         return;
       }
@@ -529,7 +517,6 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         setHoveredMonthIdx(0);
         setActiveCategory(categoryNames[0] || null);
         const xPos = x(chartData[0].month) || 0;
-        setMouseCoords({ x: xPos + margin.left, y: my });
         scrubber.attr('x1', xPos).attr('x2', xPos).style('opacity', 0.3);
         return;
       }
@@ -557,7 +544,6 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       if (highlightedRef.current) return;
       setActiveCategory(null);
       setHoveredMonthIdx(null);
-      setMouseCoords(null);
       setScreenCoords(null);
       scrubber.style('opacity', 0);
       scrubberDot.style('opacity', 0);

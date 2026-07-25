@@ -3,6 +3,7 @@ import ParsingCard from '../ui/ParsingCard';
 import { useNotificationRules } from './useNotificationRules';
 import type { VendorOverride, MatchType } from './useVendorOverrides';
 import { toVendorKey } from '../../lib/deviceTransactionParser';
+import { formatCurrency } from '../../lib/formatCurrency';
 import { BudgetCategory, Transaction } from '../../types';
 
 // --- Static Definitions Moved Outside Component to Prevent Re-allocation ---
@@ -270,7 +271,7 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                                 <div key={tx.id} className="flex items-center justify-between px-2 py-1.5 rounded-lg bg-violet-50/50 dark:bg-violet-900/20">
                                   <span className="text-[11px] text-slate-600 dark:text-slate-300 truncate flex-1">{tx.vendor}</span>
                                   <span className="text-[11px] font-mono font-semibold text-slate-700 dark:text-slate-200 shrink-0">
-                                    ${tx.amount.toFixed(2)}
+                                    {formatCurrency(tx.amount)}
                                   </span>
                                   <span className="text-[9px] text-slate-400 dark:text-slate-500 ml-2 shrink-0">
                                     {new Date(tx.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}

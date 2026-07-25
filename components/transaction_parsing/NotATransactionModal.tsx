@@ -50,7 +50,6 @@ const NotATransactionModal: React.FC<NotATransactionModalProps> = ({
   }, [onCancel, isSaving]);
 
   const pattern = rawNotification.trim();
-  const absAmount = Math.abs(amount);
 
   return (
     <div
@@ -88,7 +87,7 @@ const NotATransactionModal: React.FC<NotATransactionModalProps> = ({
             {pattern || <span className="italic text-slate-400">no notification text available</span>}
           </div>
           <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1.5">
-            Source: {vendor} {formatCurrency(amount)} · ${absAmount.toFixed(2)} charge
+            Source: {vendor} {formatCurrency(amount)} charge
           </p>
         </div>
 

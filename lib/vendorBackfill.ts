@@ -16,8 +16,6 @@
 import { log } from './log';
 import { restFetch } from './apiHelpers';
 
-const escapePostgrestString = (s: string): string => s.replace(/'/g, "''");
-
 /**
  * Count historical transactions that would be updated by applying
  * a vendor correction with the given match_key + match_type.
@@ -184,5 +182,3 @@ async function patchByIds(
 }
 
 export { normalize as normalizeVendorKey };
-// Re-export the escape helper in case other modules want to use it.
-export { escapePostgrestString };
