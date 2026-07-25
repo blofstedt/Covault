@@ -1,5 +1,5 @@
 import { log } from '../../lib/log';
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect, memo } from 'react';
 import { formatCurrency } from '../../lib/formatCurrency';
 import { Transaction, BudgetCategory } from '../../types';
 import { getBudgetIcon } from '../dashboard_components/getBudgetIcon';
@@ -68,12 +68,19 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
 
   // ── Completion animation + file state ──
   const [filing, setFiling] = useState<string | null>(null);
+  const fileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (fileTimerRef.current != null) clearTimeout(fileTimerRef.current);
+  }, []);
+
   const fileWith = useCallback(
     (label: string, run: () => Promise<void> | void) => {
       if (filing) return;
       setFiling(label);
       // Let the check/slide animation play, then persist and drop the row.
-      window.setTimeout(async () => {
+      fileTimerRef.current = setTimeout(async () => {
+        fileTimerRef.current = null;
         try {
           await run();
         } catch (err) {
@@ -87,11 +94,13 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
 
   const [deletingSimilar, setDeletingSimilar] = useState(false);
   const [localDismissed, setLocalDismissed] = useState<Set<string>>(() => new Set());
-  const softDup = tx.softDuplicateOf
-    && !isSoftDupDismissed(tx.id, tx.softDuplicateOf.id)
-    && !localDismissed.has(`${tx.id}|${tx.softDuplicateOf.id}`)
-    ? tx.softDuplicateOf
-    : null;
+  const softDupId = tx.softDuplicateOf?.id;
+  const softDup = useMemo(() => {
+    if (!tx.softDuplicateOf || !softDupId) return null;
+    if (isSoftDupDismissed(tx.id, softDupId)) return null;
+    if (localDismissed.has(`${tx.id}|${softDupId}`)) return null;
+    return tx.softDuplicateOf;
+  }, [tx.softDuplicateOf, softDupId, tx.id, localDismissed]);
 
   const [isEditingVendor, setIsEditingVendor] = useState(false);
   const [isSavingVendor, setIsSavingVendor] = useState(false);
@@ -456,4 +465,8 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
   );
 };
 
-export default AIEnteredRow;
+// Memoized: this row re-rendered on every parent state change (filedIds,
+// isRefreshing, expandedSections, monitoredBanks, ...), re-running the budget
+// lookup, classifyMatch and the full badge/action tree each time. Its props
+// are stable now that the card's defaults and handlers keep their identities.
+export default memo(AIEnteredRow);

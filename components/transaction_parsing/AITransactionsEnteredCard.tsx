@@ -31,6 +31,11 @@ interface AITransactionsEnteredCardProps {
   onCreateRule?: (tx: Transaction, targetBudgetId: string) => Promise<void> | void;
 }
 
+// Stable identities for omitted props — a fresh Set/array per render would
+// invalidate the memos that depend on them.
+const EMPTY_IDS = new Set<string>();
+const EMPTY_OVERRIDES: VendorOverride[] = [];
+
 const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
   aiTransactions,
   budgets,
@@ -38,14 +43,14 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
   onClear,
   onRefresh,
   isRefreshing = false,
-  needsReviewIds = new Set(),
+  needsReviewIds = EMPTY_IDS,
   onDeleteTransaction,
   onVendorRenamed,
   onMarkNotTransaction,
   userId,
   isExpanded = true,
   onToggleExpanded,
-  vendorOverrides = [],
+  vendorOverrides = EMPTY_OVERRIDES,
   onAccept,
   onChangeCategory,
   onCreateRule,
@@ -64,8 +69,17 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
     });
   }, []);
 
-  const nonRefunds = aiTransactions.filter((tx) => !isRefund(tx) && !filedIds.has(tx.id));
-  const refundCount = aiTransactions.filter((tx) => isRefund(tx)).length;
+  // One pass instead of two unmemoized full scans (isRefund ran twice per row
+  // on every render of the card).
+  const { nonRefunds, refundCount } = useMemo(() => {
+    const rows: Transaction[] = [];
+    let refunds = 0;
+    for (const tx of aiTransactions) {
+      if (isRefund(tx)) refunds++;
+      else if (!filedIds.has(tx.id)) rows.push(tx);
+    }
+    return { nonRefunds: rows, refundCount: refunds };
+  }, [aiTransactions, filedIds]);
 
   return (
     <ParsingCard

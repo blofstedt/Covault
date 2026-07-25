@@ -2,6 +2,11 @@ import { useMemo, useCallback } from 'react';
 import { Transaction } from '../../types';
 import type { VendorOverride } from '../../components/transaction_parsing/useVendorOverrides';
 
+// Stable identity for the omitted-prop case. A fresh `[]` here would give
+// classifyAll a new identity every render, so the useMemo below memoized
+// nothing.
+const EMPTY_OVERRIDES: VendorOverride[] = [];
+
 export interface VendorMatchResult {
   match: VendorOverride | null;
   state: 'exact' | 'prefix' | 'contains' | 'none';
@@ -33,12 +38,26 @@ export function classifyMatch(opts: {
  * for efficient lookup when rendering the transaction list.
  */
 export function useVendorMatcher(vendorOverrides: VendorOverride[] | undefined) {
-  const overrides = vendorOverrides ?? [];
+  const overrides = vendorOverrides ?? EMPTY_OVERRIDES;
+
+  // Normalize each override's keys once. Doing it inside the transaction loop
+  // meant 2 x (transactions x overrides) toLowerCase+regex passes and just as
+  // many throwaway strings, even though the keys don't depend on the
+  // transaction at all.
+  const normalizedOverrides = useMemo(
+    () =>
+      overrides.map((vo) => ({
+        vo,
+        matchKey: (vo.match_key ?? vo.proper_name).toLowerCase().replace(/\s+/g, ''),
+        properKey: vo.proper_name.toLowerCase().replace(/\s+/g, ''),
+      })),
+    [overrides],
+  );
 
   const classifyAll = useCallback(
     (transactions: Transaction[]): Map<string, VendorMatchResult> => {
       const map = new Map<string, VendorMatchResult>();
-      if (overrides.length === 0) {
+      if (normalizedOverrides.length === 0) {
         for (const tx of transactions) {
           map.set(tx.id, { match: null, state: 'none' });
         }
@@ -49,10 +68,7 @@ export function useVendorMatcher(vendorOverrides: VendorOverride[] | undefined) 
         const vendorKey = tx.vendor.toLowerCase().replace(/\s+/g, '');
         let best: VendorMatchResult = { match: null, state: 'none' };
 
-        for (const vo of overrides) {
-          const matchKey = (vo.match_key ?? vo.proper_name).toLowerCase().replace(/\s+/g, '');
-          const properKey = vo.proper_name.toLowerCase().replace(/\s+/g, '');
-
+        for (const { vo, matchKey, properKey } of normalizedOverrides) {
           // Exact match on vendor name or match_key
           if (vendorKey === matchKey || vendorKey === properKey) {
             best = { match: vo, state: 'exact' };
@@ -82,8 +98,7 @@ export function useVendorMatcher(vendorOverrides: VendorOverride[] | undefined) 
 
         // Extra fallback: if the transaction vendor contains the proper_name as a substring
         if (best.state === 'none') {
-          for (const vo of overrides) {
-            const properNorm = vo.proper_name.toLowerCase().replace(/\s+/g, '');
+          for (const { vo, properKey: properNorm } of normalizedOverrides) {
             if (properNorm.length >= 4 && vendorKey.includes(properNorm)) {
               best = { match: vo, state: 'contains' };
               break;
@@ -95,7 +110,7 @@ export function useVendorMatcher(vendorOverrides: VendorOverride[] | undefined) 
       }
       return map;
     },
-    [overrides],
+    [normalizedOverrides],
   );
 
   return useMemo(() => ({ classifyAll }), [classifyAll]);

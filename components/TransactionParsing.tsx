@@ -11,10 +11,9 @@ import PageShell from './ui/PageShell';
 import LearnedRulesCard from './transaction_parsing/LearnedRulesCard';
 import { useNotificationRules } from './transaction_parsing/useNotificationRules';
 import type { NotATxRuleType } from './transaction_parsing/NotATransactionModal';
-import { toVendorKey } from '../lib/deviceTransactionParser';
 
 import { covaultNotification } from '../lib/covaultNotification';
-import { REST_BASE, getAuthHeaders, restFetch } from '../lib/apiHelpers';
+import { restFetch } from '../lib/apiHelpers';
 import { loadBankingAppsFromDB } from '../lib/bankingApps';
 import { getNeedsReviewIdSet, getReviewQueueChangedEventName } from '../lib/localNotificationMemory';
 
@@ -46,9 +45,9 @@ interface TransactionParsingProps {
   /** Delete a vendor override. */
   onDeleteVendorOverride?: (overrideId: string) => void;
   /** Persist and update local state for a vendor category rule. */
-  onSetVendorCategory?: (vendorName: string, categoryId: string) => void | Promise<void>;
+  onSetVendorCategory: (vendorName: string, categoryId: string) => void | Promise<void>;
   /** Persist and update local state for a vendor display name. */
-  onSetProperName?: (vendorName: string, properName: string) => void | Promise<void>;
+  onSetProperName: (vendorName: string, properName: string) => void | Promise<void>;
 }
 
 const TransactionParsing: React.FC<TransactionParsingProps> = ({
@@ -224,7 +223,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     async (tx: Transaction, budgetId: string) => {
       const name = budgets.find((b) => b.id === budgetId)?.name;
       try {
-        await onSetVendorCategory?.(tx.vendor, budgetId);
+        await onSetVendorCategory(tx.vendor, budgetId);
       } catch (err) {
         log.warn('[TransactionParsing] create rule failed:', err);
       }
@@ -253,92 +252,19 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   // Local state for the expanded vendor (managed here so the card stays presentational)
   const [expandedVendorCategory, setExpandedVendorCategory] = useState<string | null>(null);
 
-  // ── Fallback direct write path for hosts that have not wired the canonical hook. ──
   const handleSetVendorCategory = useCallback(
     async (vendorName: string, categoryId: string) => {
-      if (onSetVendorCategory) {
-        await onSetVendorCategory(vendorName, categoryId);
-        setExpandedVendorCategory(null);
-        return;
-      }
-      if (!userId) return;
-      const category = budgets.find((b) => b.id === categoryId);
-      if (!category) return;
-      try {
-        const headers = await getAuthHeaders();
-        (headers as any)['Prefer'] = 'return=representation';
-        const vendorKey = toVendorKey(vendorName);
-        // Try match_key first, then proper_name
-        let res = await fetch(
-          `${REST_BASE}/overrides?user_id=eq.${userId}&match_key=eq.${encodeURIComponent(vendorKey)}`,
-          {
-            method: 'PATCH',
-            headers,
-            body: JSON.stringify({
-              category_id: category.name,
-              proper_name: vendorName,
-              match_type: 'exact',
-              updated_at: new Date().toISOString(),
-            }),
-          },
-        );
-        if (!res.ok) {
-          res = await fetch(
-            `${REST_BASE}/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(vendorName)}`,
-            {
-              method: 'PATCH',
-              headers,
-              body: JSON.stringify({ category_id: category.name, updated_at: new Date().toISOString() }),
-            },
-          );
-        }
-        if (!res.ok) {
-          // Insert as a new row
-          await fetch(`${REST_BASE}/overrides`, {
-            method: 'POST',
-            headers: { ...headers, 'Prefer': 'resolution=ignore-duplicates' },
-            body: JSON.stringify({
-              user_id: userId,
-              proper_name: vendorName,
-              match_key: vendorKey,
-              match_type: 'exact',
-              category_id: category.name,
-              updated_at: new Date().toISOString(),
-            }),
-          });
-        }
-      } catch (err) {
-        log.warn('[TransactionParsing] handleSetVendorCategory failed:', err);
-      }
+      await onSetVendorCategory(vendorName, categoryId);
       setExpandedVendorCategory(null);
     },
-    [userId, budgets, onSetVendorCategory],
+    [onSetVendorCategory],
   );
 
   const handleSetProperName = useCallback(
     async (vendorName: string, properName: string) => {
-      if (onSetProperName) {
-        await onSetProperName(vendorName, properName);
-        return;
-      }
-      if (!userId) return;
-      try {
-        const res = await restFetch(
-          `/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(vendorName)}`,
-          {
-            method: 'PATCH',
-            headers: { Prefer: 'return=representation' },
-            body: JSON.stringify({ proper_name: properName, updated_at: new Date().toISOString() }),
-          },
-        );
-        if (!res.ok) {
-          log.warn('[TransactionParsing] handleSetProperName failed:', res.status);
-        }
-      } catch (err) {
-        log.warn('[TransactionParsing] handleSetProperName failed:', err);
-      }
+      await onSetProperName(vendorName, properName);
     },
-    [userId, onSetProperName],
+    [onSetProperName],
   );
 
   // When notifications are enabled, trigger a scan and reload data

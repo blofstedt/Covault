@@ -57,15 +57,13 @@ const SoftDuplicateBadge: React.FC<SoftDuplicateBadgeProps> = ({
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  // Stop the pulse once the user interacts
-  useEffect(() => {
-    if (open) setPulseActive(false);
-  }, [open]);
-
   const handleToggle = (e: React.MouseEvent) => {
     // Prevent the parent <button> (the transaction card) from firing.
     e.stopPropagation();
     setOpen((o) => !o);
+    // Stop the pulse once the user interacts. Doing this here rather than in
+    // an effect on `open` lets React batch it into the same render.
+    setPulseActive(false);
   };
 
   const handleDismiss = (e: React.MouseEvent) => {
