@@ -5,7 +5,6 @@ interface DashboardBottomBarProps {
   onAddTransaction: () => void;
   onOpenParsing: () => void;
   activeView?: 'home' | 'parsing';
-  shouldAnimate?: boolean;
   pendingCount?: number;
 }
 
@@ -14,7 +13,6 @@ const DashboardBottomBar: React.FC<DashboardBottomBarProps> = ({
   onAddTransaction,
   onOpenParsing,
   activeView = 'home',
-  shouldAnimate = false,
   pendingCount = 0,
 }) => {
   return (
@@ -24,9 +22,8 @@ const DashboardBottomBar: React.FC<DashboardBottomBarProps> = ({
     >
       <div
         className={`w-4/5 lg:w-1/3 backdrop-blur-3xl border rounded-full px-3 py-1.5 lg:px-6 lg:py-2.5 pointer-events-auto shadow-2xl ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] transition-all duration-700 bg-white/90 dark:bg-slate-900/90 border-slate-100 dark:border-slate-800/60 ${
-          shouldAnimate ? 'animate-nest' : ''
+          ''
         }`}
-        style={shouldAnimate ? { animationDelay: '0.4s' } : undefined}
       >
         <div className="flex items-center justify-evenly gap-3 lg:gap-0 w-full">
           {/* Home Button */}

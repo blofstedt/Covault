@@ -2,7 +2,7 @@ import { log } from '../lib/log';
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
-import { AppState, Transaction, BudgetCategory } from '../types';
+import { AppState, Transaction } from '../types';
 
 import PageShell from './ui/PageShell';
 
@@ -54,7 +54,6 @@ interface Props {
   onAddTransaction: (t: Transaction) => void;
   onUpdateTransaction: (t: Transaction) => void;
   onDeleteTransaction: (id: string) => void;
-  onUpdateBudget: (b: BudgetCategory) => void;
   onSignOut: () => Promise<void>;
   saveBudgetLimit: (categoryId: string, newLimit: number) => Promise<void>;
   saveUserIncome: (income: number) => Promise<void>;
@@ -73,7 +72,6 @@ const Dashboard: React.FC<Props> = ({
   onAddTransaction,
   onUpdateTransaction,
   onDeleteTransaction,
-  onUpdateBudget,
   onSignOut,
   saveBudgetLimit,
   saveUserIncome,
@@ -471,7 +469,6 @@ const Dashboard: React.FC<Props> = ({
               budgetRefs={budgetRefs}
               onToggleExpand={toggleExpand}
               onTransactionTap={setSelectedTx}
-              onUpdateBudget={onUpdateBudget}
             />
           </div>
         )}

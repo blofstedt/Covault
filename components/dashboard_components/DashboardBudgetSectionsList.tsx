@@ -21,7 +21,6 @@ interface DashboardBudgetSectionsListProps {
   scrollContainerRef: React.RefObject<HTMLDivElement>;
   onToggleExpand?: (id: string) => void;
   onTransactionTap: (tx: Transaction) => void;
-  onUpdateBudget: (b: BudgetCategory) => void;
 }
 
 // Stable identities. memo(BudgetSection) can only short-circuit if every
@@ -44,7 +43,6 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
   scrollContainerRef,
   onToggleExpand,
   onTransactionTap,
-  onUpdateBudget,
 }) => {
   // The settings prop is optional, so we fall back to an empty shape.
   // (Default values on destructured params cause TS to infer the param
@@ -194,7 +192,6 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
                 transactions={budgetTxs}
                 isExpanded={isExpanded}
                 onToggle={onToggleExpand ?? NOOP_TOGGLE}
-                onUpdateBudget={onUpdateBudget}
                 onTransactionTap={onTransactionTap}
                 currentUserName={currentUserName}
                 isSharedView={isSharedAccount}

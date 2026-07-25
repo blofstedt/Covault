@@ -12,7 +12,6 @@ interface SoftDuplicateBadgeProps {
   /** Called when the user wants to delete the similar transaction */
   onDeleteSimilar: (similarTxId: string) => void;
   /** Called when the user wants to view the similar transaction's details */
-  onViewSimilar?: (similarTxId: string) => void;
   /** Whether deletion is currently in progress (disables the delete button) */
   isDeleting?: boolean;
 }
@@ -35,7 +34,6 @@ const SoftDuplicateBadge: React.FC<SoftDuplicateBadgeProps> = ({
   similar,
   onDismiss,
   onDeleteSimilar,
-  onViewSimilar,
   isDeleting = false,
 }) => {
   const [open, setOpen] = useState(false);
@@ -75,12 +73,6 @@ const SoftDuplicateBadge: React.FC<SoftDuplicateBadgeProps> = ({
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
     onDeleteSimilar(similar.id);
-    setOpen(false);
-  };
-
-  const handleView = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onViewSimilar?.(similar.id);
     setOpen(false);
   };
 
@@ -159,15 +151,6 @@ const SoftDuplicateBadge: React.FC<SoftDuplicateBadgeProps> = ({
             >
               Not a duplicate — keep both
             </button>
-            {onViewSimilar && (
-              <button
-                type="button"
-                onClick={handleView}
-                className="w-full px-2 py-1.5 rounded-lg text-[10px] font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 active:scale-95 transition-all duration-150"
-              >
-                View the older transaction
-              </button>
-            )}
           </div>
         </div>
       )}

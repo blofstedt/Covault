@@ -18,7 +18,6 @@ interface BudgetSectionProps {
   /** Receives this section's budget id, so the parent can pass a single
    *  stable handler instead of allocating a fresh arrow per card per render. */
   onToggle: (budgetId: string) => void;
-  onUpdateBudget: (b: BudgetCategory) => void;
   onTransactionTap: (tx: Transaction) => void;
   currentUserName: string;
   isSharedView: boolean;
@@ -31,14 +30,13 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
   transactions,
   isExpanded,
   onToggle,
-  onUpdateBudget: _onUpdateBudget,
   onTransactionTap,
   currentUserName,
   isSharedView,
   allBudgets,
   useCompactCollapsedStyles = false,
 }) => {
-  const { matchedExpenseIds: legacyMatchedIds, unmatchedRefunds } = useMemo(
+  const { matchedExpenseIds: legacyMatchedIds } = useMemo(
     () => matchRefundsToExpenses(transactions),
     [transactions],
   );
@@ -71,9 +69,6 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
       visibleTransactions: visibleTx,
     };
   }, [legacyMatchedIds, transactions, budget.id]);
-
-  const _hasUnmatchedRefunds = unmatchedRefunds.length > 0;
-  void _hasUnmatchedRefunds;
 
   const external = budget.externalDeduction || 0;
   const spentWithExternal = spent + external;

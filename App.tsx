@@ -282,13 +282,6 @@ const App: React.FC = () => {
     [],
   );
 
-  const handleUpdateBudget = useCallback((updatedBudget: BudgetCategory) => {
-    setAppState(prev => ({
-      ...prev,
-      budgets: prev.budgets.map(b => (b.id === updatedBudget.id ? updatedBudget : b)),
-    }));
-  }, []);
-
   const handleSignOut = useCallback(async () => {
     await supabase.auth.signOut();
   }, []);
@@ -343,7 +336,6 @@ const App: React.FC = () => {
           state={appState}
           setState={setAppState}
           onSignOut={handleSignOut}
-          onUpdateBudget={handleUpdateBudget}
           onAddTransaction={handleAddTransaction}
           onUpdateTransaction={handleUpdateTransaction}
           onDeleteTransaction={handleDeleteWithUndo}

@@ -131,8 +131,6 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
           }
         }
       }
-      // Deduplicate transactions
-      rule.transactions = Array.from(new Map(rule.transactions.map(t => [t.id, t])).values());
     }
 
     return Array.from(groups.values()).sort((a, b) => a.properName.localeCompare(b.properName));
