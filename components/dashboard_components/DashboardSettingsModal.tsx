@@ -16,6 +16,7 @@ import ReportSection from './settings_modal_components/ReportSection';
 import { BudgetCategory, Transaction } from '../../types';
 import PremiumGate from '../PremiumGate';
 import { CloseButton } from '../shared';
+import { useEscapeKey } from '../../lib/hooks/useEscapeKey';
 
 export interface DashboardSettings {
   theme: string;
@@ -83,6 +84,9 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
 }) => {
   const settingsScrollRef = useRef<HTMLDivElement>(null);
   const [showFAQ, setShowFAQ] = useState(false);
+
+  // Stand down while the FAQ sub-modal is open so Escape closes that first.
+  useEscapeKey(onClose, !showFAQ);
 
   return (
     <div className="fixed inset-0 z-[110] bg-slate-900/40 backdrop-blur-lg flex items-center justify-center p-6 animate-in fade-in duration-300">

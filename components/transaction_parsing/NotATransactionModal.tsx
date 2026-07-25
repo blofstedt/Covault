@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { formatCurrency } from '../../lib/formatCurrency';
+import { useEscapeKey } from '../../lib/hooks/useEscapeKey';
 
 export type NotATxRuleType = 'exact' | 'contains';
 
@@ -40,14 +41,8 @@ const NotATransactionModal: React.FC<NotATransactionModalProps> = ({
 }) => {
   const [ruleType, setRuleType] = useState<NotATxRuleType>('exact');
 
-  // Escape to cancel
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isSaving) onCancel();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onCancel, isSaving]);
+  // Escape cancels, unless a request is in flight.
+  useEscapeKey(onCancel, !isSaving);
 
   const pattern = rawNotification.trim();
 

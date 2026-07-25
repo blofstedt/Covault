@@ -1,5 +1,7 @@
 import { log } from '../lib/log';
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { App as CapApp } from '@capacitor/app';
 import { AppState, Transaction, BudgetCategory } from '../types';
 
 import PageShell from './ui/PageShell';
@@ -25,6 +27,12 @@ import { getLocalMonthKey } from '../lib/dateUtils';
 import { checkAndTriggerAppNotifications } from '../lib/appNotifications';
 import { supabase } from '../lib/supabase';
 import { resolveBudgetIdFromRow } from '../lib/hooks/transactionMappers';
+
+/** Current YYYY-MM in local time. */
+const currentMonthKey = (): string => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+};
 
 // Map from app-state setting keys to DB column names.
 const SETTING_DB_KEYS: Record<string, string> = {
@@ -106,8 +114,35 @@ const Dashboard: React.FC<Props> = ({
     state.user?.monthlyIncome || 0,
   );
 
-  const now = new Date();
-  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  // The month key was read straight from the clock during render, so it only
+  // advanced when something else happened to trigger a re-render. This is a
+  // Capacitor app that gets backgrounded rather than closed, so resuming on
+  // the 1st of a new month could leave the dashboard showing last month's
+  // budgets. Recompute on resume (and when the tab becomes visible on web).
+  const [monthKey, setMonthKey] = useState(currentMonthKey);
+
+  useEffect(() => {
+    const refresh = () => setMonthKey(prev => {
+      const next = currentMonthKey();
+      return next === prev ? prev : next;
+    });
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    let remove: (() => void) | undefined;
+    if (Capacitor.isNativePlatform()) {
+      const handle = CapApp.addListener('resume', refresh);
+      remove = () => { void handle.then(h => h.remove()); };
+    }
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      remove?.();
+    };
+  }, []);
 
   const currentMonthBudgetTransactions = useMemo(() => {
     const currentMonthProjected = projectedTransactions.filter(

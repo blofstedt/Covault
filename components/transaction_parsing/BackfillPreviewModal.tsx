@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+import React from 'react';
+import { useEscapeKey } from '../../lib/hooks/useEscapeKey';
 
 interface BackfillPreviewModalProps {
   /** The OLD vendor name (what we're replacing). */
@@ -40,14 +41,8 @@ const BackfillPreviewModal: React.FC<BackfillPreviewModalProps> = ({
   onCancel,
   onApplyOnce,
 }) => {
-  // Escape cancels (unless a request is in flight)
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isApplying) onCancel();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onCancel, isApplying]);
+  // Escape cancels, unless a request is in flight.
+  useEscapeKey(onCancel, !isApplying);
 
   return (
     <div

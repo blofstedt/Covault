@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { CloseButton } from '../shared';
+import { useEscapeKey } from '../../lib/hooks/useEscapeKey';
 
 interface FAQItem {
   question: string;
@@ -102,6 +103,8 @@ const FAQ_ITEMS: FAQItem[] = [
 ];
 
 const FAQModal: React.FC<FAQModalProps> = ({ onClose }) => {
+  useEscapeKey(onClose);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
 

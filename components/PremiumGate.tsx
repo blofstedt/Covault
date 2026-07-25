@@ -25,8 +25,17 @@ const PremiumGate: React.FC<PremiumGateProps> = ({
   return (
     <>
       <div
+        role="button"
+        tabIndex={0}
+        aria-label="Unlock this feature"
         className="relative cursor-pointer"
         onClick={() => setShowModal(true)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setShowModal(true);
+          }
+        }}
       >
         {/* Greyed-out overlay */}
         <div className="opacity-50 pointer-events-none select-none">
