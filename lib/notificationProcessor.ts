@@ -16,7 +16,7 @@ import { djb2Base36 } from './hash';
 import { supabase } from './supabase';
 import { formatVendorName, fuzzyVendorMatch, normalizeVendorForDedup } from './formatVendorName';
 import { parseNotificationText } from './deviceTransactionParser';
-import { addToReviewQueue, getVendorMapEntry, getVendorMap, isNotificationProcessed, markNotificationProcessed, getCachedAIResult, setCachedAIResult, type CachedAIResult } from './localNotificationMemory';
+import { addToReviewQueue, getVendorMapEntry, getVendorMap, isNotificationProcessed, markNotificationProcessed, isNotificationRejected, markNotificationRejected, getCachedAIResult, setCachedAIResult, type CachedAIResult } from './localNotificationMemory';
 import { findMatchingExpense, REFUND_MATCH_WINDOW_DAYS } from './refundMatching';
 import { aiFindRefundMatch } from './aiExtractor';
 import { checkNotificationRules, bumpRuleUseCount } from './notificationRules';
@@ -769,7 +769,7 @@ async function processNotificationWithAIImpl(
       // Best-effort: bump the count without blocking the result
       void bumpRuleUseCount(matchedRule.id);
       recentlyProcessedCache.set(inMemoryKey, Date.now());
-      markNotificationProcessed(inMemoryKey);
+      markNotificationRejected(inMemoryKey);
       return {
         processed: true,
         isTransaction: false,
@@ -785,13 +785,26 @@ async function processNotificationWithAIImpl(
   // (app restart, hot reload). This localStorage-backed check ensures a
   // notification that was already processed is never re-inserted after the
   // user clears it from the <> page and the app is closed/reopened.
-  // NOTE: forceReprocess does NOT bypass this — it only bypasses the
-  // in-memory TTL cache so rescans can retry recently-rejected notifications,
-  // but a notification that was successfully inserted must never be re-inserted.
+  // A CAPTURE is permanent: the row is in the ledger and must never be
+  // inserted twice, so forceReprocess deliberately does not bypass this.
   if (isNotificationProcessed(inMemoryKey)) {
-    log.debug('[AI pipeline] Persistent dedup hit, skipping');
+    log.debug('[AI pipeline] Persistent dedup hit (already captured), skipping');
     // Warm the in-memory cache so subsequent checks in this session are fast
     recentlyProcessedCache.set(inMemoryKey, Date.now());
+    return {
+      processed: false,
+      isTransaction: false,
+      skipReason: 'duplicate_fingerprint',
+      bankName: input.bankName,
+    };
+  }
+
+  // A REJECTION is provisional. Its causes are often transient — the AI model
+  // still loading, a refund whose expense has not arrived yet, a reworded bank
+  // alert — so an explicit rescan (the scan button) is allowed to look again.
+  // Rejections also expire on their own; see localNotificationMemory.
+  if (!input.forceReprocess && isNotificationRejected(inMemoryKey)) {
+    log.debug('[AI pipeline] Previously rejected, skipping (a rescan will retry)');
     return {
       processed: false,
       isTransaction: false,
@@ -833,7 +846,7 @@ async function processNotificationWithAIImpl(
   if (!parsed.isOutgoing) {
     const reason = parsed.rejectionReason || 'Not an outgoing transaction notification';
     recentlyProcessedCache.set(inMemoryKey, Date.now());
-    markNotificationProcessed(inMemoryKey);
+    markNotificationRejected(inMemoryKey);
     return {
       processed: true,
       isTransaction: false,
@@ -902,7 +915,7 @@ async function processNotificationWithAIImpl(
         // The AI thinks this isn't a transaction. Trust it over the regex.
         log.debug(`[AI fallback] parser=${parserConfidence.toFixed(2)} → AI rejected: ${aiResult.rejectionReason}`);
         recentlyProcessedCache.set(inMemoryKey, Date.now());
-        markNotificationProcessed(inMemoryKey);
+        markNotificationRejected(inMemoryKey);
         return {
           processed: true,
           isTransaction: false,
@@ -1046,7 +1059,7 @@ async function processNotificationWithAIImpl(
           `[AI pipeline] Refund ${vendor} $${rawAmount} has no matching expense in ${REFUND_MATCH_WINDOW_DAYS}-day window; skipping`,
         );
         recentlyProcessedCache.set(inMemoryKey, Date.now());
-        markNotificationProcessed(inMemoryKey);
+        markNotificationRejected(inMemoryKey);
         return {
           processed: true,
           isTransaction: false,
@@ -1062,7 +1075,7 @@ async function processNotificationWithAIImpl(
         `[AI pipeline] Refund ${vendor} $${rawAmount} has no candidate expenses; skipping`,
       );
       recentlyProcessedCache.set(inMemoryKey, Date.now());
-      markNotificationProcessed(inMemoryKey);
+      markNotificationRejected(inMemoryKey);
       return {
         processed: true,
         isTransaction: false,
@@ -1080,7 +1093,7 @@ async function processNotificationWithAIImpl(
     const reason = 'No vendor name found in notification';
     log.debug('[AI pipeline] Skipped: no vendor identified');
     recentlyProcessedCache.set(inMemoryKey, Date.now());
-    markNotificationProcessed(inMemoryKey);
+    markNotificationRejected(inMemoryKey);
     return {
       processed: true,
       isTransaction: false,
