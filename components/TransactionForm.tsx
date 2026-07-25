@@ -4,6 +4,7 @@ import { Transaction, BudgetCategory, Recurrence, TransactionLabel } from '../ty
 import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
 import { formatVendorName } from '../lib/formatVendorName';
 import { parseLocalDate } from '../lib/dateUtils';
+import { log } from '../lib/log';
 import CalendarPicker from './CalendarPicker';
 import { CloseButton } from './shared';
 
@@ -96,12 +97,32 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     }
   }, []);
 
-  // Vendor autocomplete suggestions
+  // Close on Escape, for keyboard/accessibility parity with the action modal.
+  // Skip while the calendar sub-picker is open so Escape dismisses that first.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !showCalendar) handleClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showCalendar]);
+
+  // Vendor autocomplete suggestions — substring match (so "hort" surfaces
+  // "Tim Hortons"), with prefix matches ranked ahead of mid-string ones.
   const suggestions = vendor.length > 0
-    ? vendorHistory.filter(v =>
-        v.vendor.toLowerCase().startsWith(vendor.toLowerCase()) &&
-        v.vendor.toLowerCase() !== vendor.toLowerCase()
-      ).slice(0, 5)
+    ? vendorHistory
+        .filter(v => {
+          const name = v.vendor.toLowerCase();
+          const q = vendor.toLowerCase();
+          return name.includes(q) && name !== q;
+        })
+        .sort((a, b) => {
+          const q = vendor.toLowerCase();
+          const aPrefix = a.vendor.toLowerCase().startsWith(q) ? 0 : 1;
+          const bPrefix = b.vendor.toLowerCase().startsWith(q) ? 0 : 1;
+          return aPrefix - bPrefix;
+        })
+        .slice(0, 5)
     : [];
 
   const selectSuggestion = (item: VendorHistoryItem) => {
@@ -160,13 +181,15 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       }
     }
 
+    // onSave (add/update) surfaces DB failures via the app-level toast and
+    // reverts its own optimistic state; we only guard against an unexpected
+    // synchronous throw so the modal still closes cleanly.
     try {
       await onSave(tx);
-      onClose();
     } catch (err: any) {
-      console.error('Save failed:', err);
-      alert('Failed to save. Please check your connection and try again.');
+      log.error('Save failed:', err);
     }
+    onClose();
   };
 
   const isFormValid = amount > 0 && selectedId !== null && vendor.trim() !== '';

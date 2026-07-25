@@ -19,6 +19,13 @@ import { sendRecurringCatchUpNotification } from './lib/appNotifications';
 import { preloadAIModel } from './lib/aiExtractor';
 import { log } from './lib/log';
 
+/** A transient toast: an error, or an info message with an optional action. */
+interface Toast {
+  message: string;
+  tone: 'error' | 'info';
+  action?: { label: string; run: () => void };
+}
+
 const SETTINGS_KEY = 'covault_settings';
 const SCAN_PROCESSING_DELAY_MS = 2000;
 const SCAN_INTERVAL_MS = 5 * 60 * 1000;
@@ -57,19 +64,26 @@ const saveSettingsToStorage = (settings: AppState['settings']) => {
 
 const App: React.FC = () => {
   const [authState, setAuthState] = useState<AuthStatus>('loading');
-  // dbError surfaces read/write failures (e.g. a transaction update the DB
-  // rejects) as a dismissible toast — previously the value was discarded, so
-  // failures were completely silent and looked like "nothing happened".
+  // A single toast surfaces transient messages: DB read/write failures
+  // (previously discarded, so failures were silent and looked like "nothing
+  // happened") and undoable actions like a transaction delete.
   // isLoadingData: only the setter is consumed (by the data-loading hook).
-  const [dbError, setDbError] = useState<string | null>(null);
+  const [toast, setToast] = useState<Toast | null>(null);
   const [, setIsLoadingData] = useState(false);
 
-  // Auto-dismiss the error toast so it doesn't linger forever.
+  // Back-compat shim: the data hooks report failures via setDbError(msg).
+  const setDbError = useCallback(
+    (msg: string | null) => setToast(msg ? { message: msg, tone: 'error' } : null),
+    [],
+  );
+
+  // Auto-dismiss so a toast never lingers. The undo window is a touch
+  // shorter than a plain error so the "Undo" doesn't hang around.
   useEffect(() => {
-    if (!dbError) return;
-    const t = setTimeout(() => setDbError(null), 8000);
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), toast.action ? 6000 : 8000);
     return () => clearTimeout(t);
-  }, [dbError]);
+  }, [toast]);
 
   const [appState, setAppState] = useState<AppState>(() => {
     const savedSettings = loadSettingsFromStorage();
@@ -95,6 +109,29 @@ const App: React.FC = () => {
     saveBudgetVisibility,
     saveSettingToDb,
   } = useUserData({ appState, setAppState, setDbError });
+
+  // Delete with an Undo affordance: capture the row before deleting, then
+  // offer to re-insert it (POST reuses the original id, restoring the row).
+  const handleDeleteWithUndo = useCallback(
+    (id: string) => {
+      const deleted = appState.transactions.find(t => t.id === id);
+      handleDeleteTransaction(id);
+      if (deleted) {
+        setToast({
+          message: 'Transaction deleted',
+          tone: 'info',
+          action: {
+            label: 'Undo',
+            run: () => {
+              setToast(null);
+              handleAddTransaction(deleted);
+            },
+          },
+        });
+      }
+    },
+    [appState.transactions, handleDeleteTransaction, handleAddTransaction],
+  );
 
   const loadUserDataWithState = useCallback(
     async (userId: string) => {
@@ -282,18 +319,39 @@ const App: React.FC = () => {
   return (
     <ErrorBoundary>
     <div className="h-screen h-[100dvh] w-full bg-slate-50 dark:bg-slate-950 overflow-hidden relative flex flex-col transition-colors duration-300">
-      {dbError && (
+      {toast && (
         <div
           role="alert"
-          onClick={() => setDbError(null)}
-          className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] max-w-[90%] px-4 py-2.5 rounded-2xl bg-rose-500 text-white text-xs font-semibold shadow-xl flex items-center gap-2 cursor-pointer"
+          className={`fixed top-4 left-1/2 -translate-x-1/2 z-[200] max-w-[90%] px-4 py-2.5 rounded-2xl text-white text-xs font-semibold shadow-xl flex items-center gap-3 ${
+            toast.tone === 'error' ? 'bg-rose-500' : 'bg-slate-800 dark:bg-slate-700'
+          }`}
         >
-          <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="10" />
-            <line x1="12" y1="8" x2="12" y2="12" />
-            <line x1="12" y1="16" x2="12.01" y2="16" />
-          </svg>
-          <span className="truncate">{dbError}</span>
+          {toast.tone === 'error' && (
+            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+          )}
+          <span className="truncate">{toast.message}</span>
+          {toast.action ? (
+            <button
+              type="button"
+              onClick={toast.action.run}
+              className="shrink-0 underline underline-offset-2 font-bold tracking-wide"
+            >
+              {toast.action.label}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setToast(null)}
+              aria-label="Dismiss"
+              className="shrink-0 opacity-70 hover:opacity-100"
+            >
+              ✕
+            </button>
+          )}
         </div>
       )}
       {authState === 'unauthenticated' && <Auth onSignIn={() => setAuthState('authenticated')} />}
@@ -306,7 +364,7 @@ const App: React.FC = () => {
           onUpdateBudget={handleUpdateBudget}
           onAddTransaction={handleAddTransaction}
           onUpdateTransaction={handleUpdateTransaction}
-          onDeleteTransaction={handleDeleteTransaction}
+          onDeleteTransaction={handleDeleteWithUndo}
           saveBudgetLimit={saveBudgetLimit}
           saveUserIncome={saveUserIncome}
           saveTheme={saveTheme}

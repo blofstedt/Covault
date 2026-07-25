@@ -41,6 +41,7 @@ const DashboardBalanceSection: React.FC<DashboardBalanceSectionProps> = ({
           <button
             id="settings-button"
             onClick={onOpenSettings}
+            aria-label="Open settings"
             className="p-2 transition-all duration-200 active:scale-[0.97] bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-xl text-slate-400 hover:text-emerald-600 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] shadow-sm"
           >
             <svg
@@ -166,6 +167,18 @@ const DashboardBalanceSection: React.FC<DashboardBalanceSectionProps> = ({
               d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
             />
           </svg>
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => onSearchQueryChange('')}
+              aria-label="Clear search"
+              className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
         </div>
       ) : (
         <button
