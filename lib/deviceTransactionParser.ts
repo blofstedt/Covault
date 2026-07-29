@@ -18,11 +18,22 @@ const GO_PHRASES = [
   'payment', 'bill payment', 'bill paid', 'paid', 'payment to',
   'transfer to', 'sent to', 'e-transfer sent', 'etransfer sent', 'interac e-transfer sent',
   'cost', 'costs', 'pre-authorized debit', 'preauthorized debit',
+  // Completed-purchase wording used by BMO and others. Explicit hold phrases in
+  // PRE_AUTH_PHRASES still win over this — see isLikelyPreAuth below.
+  'approved',
   'withdrawal', 'atm withdrawal',
 ];
 
-/** Weak GO phrases — ambiguous words that can mean either pre-auth or settled. */
-const WEAK_GO_PHRASES = ['authorized', 'approved'];
+/**
+ * Weak GO phrases — ambiguous words that lean pre-authorization.
+ *
+ * 'approved' used to live here, which meant BMO's normal completed-purchase
+ * wording ("A transaction of $18.75 was approved at MCDONALDS") was rejected as
+ * a hold and never captured. Holds never settle into a capture, so those
+ * transactions were simply lost. 'authorized' stays, because "Authorized $50 at
+ * <gas station>" really is a pre-auth.
+ */
+const WEAK_GO_PHRASES = ['authorized'];
 
 const PRE_AUTH_PHRASES = [
   'authorization hold', 'pre-authorization', 'preauthorization',
@@ -454,8 +465,12 @@ export function parseNotificationText(text: string): ParsedNotification {
   // If notification matches a pre-auth phrase OR only has weak GO (authorized/approved)
   // without any strong GO or settlement phrase, reject it as a pre-auth hold.
   // A dollar sign alone doesn't override this — "Authorized $50 at Starbucks" is still pre-auth.
-  const isLikelyPreAuth = !hasRefund && !hasSettlement && !hasStrongGo
-    && (hasPreAuth || hasWeakGo);
+  // An EXPLICIT hold phrase wins outright — "Authorization hold ... approved at
+  // MARRIOTT" is a hold even though it also says approved. A weak GO on its own
+  // ("Authorized $50 at <gas station>") is still treated as a hold, but only
+  // when nothing stronger contradicts it.
+  const isLikelyPreAuth = !hasRefund && !hasSettlement
+    && (hasPreAuth || (hasWeakGo && !hasStrongGo));
 
   if (isLikelyPreAuth && amountCandidates.length > 0) {
     return {

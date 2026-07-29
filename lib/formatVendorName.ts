@@ -12,6 +12,19 @@ export function formatVendorName(name: string): string {
 }
 
 /**
+ * Clean a vendor name a PERSON typed.
+ *
+ * Trims and collapses whitespace but never touches case. formatVendorName is
+ * for taming SHOUTY bank text on the capture path; applying it to a manual edit
+ * silently overwrites the user's intent — "A&W" came back as "A&w", so a rename
+ * that only changed capitalization saved the value that was already there and
+ * looked like nothing happened. Same for IKEA, LCBO, H&M, PayPal, McDonald's.
+ */
+export function cleanVendorInput(name: string): string {
+  return (name || '').trim().replace(/\s+/g, ' ');
+}
+
+/**
  * Normalize a vendor string for duplicate detection.
  *
  * Strips common bank-notification suffixes that vary between the auto-detected

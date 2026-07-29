@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Transaction, BudgetCategory, Recurrence, TransactionLabel } from '../types';
 import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
-import { formatVendorName } from '../lib/formatVendorName';
+import { cleanVendorInput } from '../lib/formatVendorName';
 import { parseLocalDate } from '../lib/dateUtils';
 import { log } from '../lib/log';
 import CalendarPicker from './CalendarPicker';
@@ -171,7 +171,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
     const tx: Transaction = {
       id: initialTransaction?.id || generateUUID(),
-      vendor: formatVendorName(vendor || 'Untitled Vendor'),
+      vendor: cleanVendorInput(vendor) || 'Untitled Vendor',
       amount: isRefund ? -Math.abs(amount) : Math.abs(amount),
       date: date + 'T12:00:00.000Z',
       budget_id: selectedId,
@@ -187,14 +187,14 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
     // Notify about vendor override changes for AI transactions (only on save)
     if (isAITransaction && onVendorOverrideUpdated && initialTransaction) {
-      const vendorChanged = formatVendorName(vendor || '') !== formatVendorName(initialTransaction.vendor || '');
+      const vendorChanged = cleanVendorInput(vendor) !== cleanVendorInput(initialTransaction.vendor || '');
       const categoryChanged = tx.budget_id !== initialTransaction.budget_id;
       if (vendorChanged) {
-        onVendorOverrideUpdated(formatVendorName(vendor || ''), 'vendor_name_changed');
+        onVendorOverrideUpdated(cleanVendorInput(vendor), 'vendor_name_changed');
       }
       if (categoryChanged) {
         const budgetName = budgets.find(b => b.id === tx.budget_id)?.name || '';
-        onVendorOverrideUpdated(formatVendorName(vendor || ''), budgetName);
+        onVendorOverrideUpdated(cleanVendorInput(vendor), budgetName);
       }
     }
 
