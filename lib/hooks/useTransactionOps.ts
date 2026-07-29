@@ -4,7 +4,7 @@ import { useCallback } from 'react';
 import type { Transaction } from '../../types';
 import { restFetch } from '../apiHelpers';
 import { persistVendorOverride } from '../vendorOverrideWrite';
-import { formatVendorName } from '../formatVendorName';
+import { cleanVendorInput, formatVendorName } from '../formatVendorName';
 import { checkDuplicateTransaction } from '../notificationProcessor';
 import { markReviewQueueStatus, upsertVendorMapEntry } from '../localNotificationMemory';
 import { useToSupabaseTransaction, useFromSupabaseTransaction } from './transactionMappers';
@@ -165,7 +165,7 @@ export const useTransactionOps = ({
       // Check if this was an AI transaction being re-categorized or renamed
       const isAI = originalTx?.label === 'Automatic';
       const isAIRecategorize = isAI && txToPersist.budget_id !== originalTx?.budget_id;
-      const isAIVendorRename = isAI && originalTx && formatVendorName(txToPersist.vendor) !== formatVendorName(originalTx.vendor);
+      const isAIVendorRename = isAI && originalTx && cleanVendorInput(txToPersist.vendor) !== cleanVendorInput(originalTx.vendor);
 
       setAppState(prev => ({
         ...prev,
@@ -250,8 +250,8 @@ export const useTransactionOps = ({
           //   2. proper_name (display name — only matches an exact-ish ilike)
           // We always set BOTH on write so the AI pipeline can match either way.
           if ((isAIRecategorize || isAIVendorRename) && appState.user?.id && originalTx) {
-            const originalVendorName = formatVendorName(originalTx.vendor);
-            const newVendorName = formatVendorName(txToPersist.vendor);
+            const originalVendorName = cleanVendorInput(originalTx.vendor);
+            const newVendorName = cleanVendorInput(txToPersist.vendor);
             const budgetName = appState.budgets.find(b => b.id === txToPersist.budget_id)?.name || mappedBudget;
 
             // Persist to localStorage vendor map
