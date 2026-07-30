@@ -97,6 +97,59 @@ async function aiGenerate(prompt: string, maxTokens = 64): Promise<string> {
 
 const DEFAULT_CATEGORIES = ['Housing', 'Groceries', 'Transport', 'Utilities', 'Leisure', 'Services', 'Other'];
 
+/** One confirmed vendor -> category decision the user has already made. */
+export interface LearnedVendorExample {
+  vendor: string;
+  category: string;
+}
+
+/** How many learned examples to put in the prompt. */
+const MAX_LEARNED_EXAMPLES = 5;
+
+function exampleTokens(s: string): string[] {
+  return s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter((t) => t.length >= 3);
+}
+
+/**
+ * Pick the learned examples most likely to help with THIS notification.
+ *
+ * The model is flan-t5-small — a small context window and 64 new tokens — so
+ * the corpus cannot simply be dumped in. Examples sharing a token with the
+ * incoming text are far more useful ("COSTCO GAS -> Transport" when the
+ * notification says COSTCO), so those rank first; the rest fill the remaining
+ * slots most-recent-first, which keeps the model anchored to how this
+ * particular user categorizes things.
+ */
+export function selectLearnedExamples(
+  notificationText: string,
+  learned: LearnedVendorExample[],
+  limit: number = MAX_LEARNED_EXAMPLES,
+): LearnedVendorExample[] {
+  if (!learned.length || limit <= 0) return [];
+  const textTokens = new Set(exampleTokens(notificationText));
+
+  const scored = learned
+    .filter((e) => e && e.vendor && e.category)
+    .map((e, i) => {
+      const overlap = exampleTokens(e.vendor).some((t) => textTokens.has(t)) ? 1 : 0;
+      return { e, overlap, i };
+    });
+
+  // Stable: relevant first, then original order (callers pass most-recent-first).
+  scored.sort((a, b) => b.overlap - a.overlap || a.i - b.i);
+
+  const seen = new Set<string>();
+  const out: LearnedVendorExample[] = [];
+  for (const { e } of scored) {
+    const key = e.vendor.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(e);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
 /**
  * Extract vendor, category, and transaction status in a SINGLE prompt.
  * Returns structured data with confidence scoring.
@@ -104,6 +157,13 @@ const DEFAULT_CATEGORIES = ['Housing', 'Groceries', 'Transport', 'Utilities', 'L
 export async function extractWithAI(
   notificationText: string,
   availableCategories: string[],
+  /**
+   * Vendor -> category decisions the user has already confirmed. Passed into
+   * the prompt as few-shot examples so the model follows this user's habits
+   * rather than a generic prior. This is how capture improves over time: the
+   * on-device model cannot be fine-tuned, but it can be shown precedent.
+   */
+  learnedExamples: LearnedVendorExample[] = [],
 ): Promise<AIExtractionResult> {
   const text = notificationText.trim();
   if (!text) {
@@ -140,7 +200,16 @@ export async function extractWithAI(
   const hasRuleVendor = !!ruleResult.vendor;
   const vendorHint = hasRuleVendor ? `Rule-based vendor: "${ruleResult.vendor}". ` : '';
 
+  // Few-shot block: this user's own past corrections, most relevant first.
+  const examples = selectLearnedExamples(text, learnedExamples);
+  const exampleBlock = examples.length
+    ? `How this user categorizes merchants:\n` +
+      examples.map((e) => `${e.vendor} -> ${e.category}`).join('\n') +
+      `\n\n`
+    : '';
+
   const prompt =
+    exampleBlock +
     `${vendorHint}Analyze this bank notification and reply in this exact format (one per line):\n` +
     `Vendor: <merchant name, or NONE if not a purchase/payment>\n` +
     `Category: <best from: ${categories.join(', ')}>\n` +

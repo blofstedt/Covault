@@ -19,6 +19,7 @@ import { parseNotificationText } from './deviceTransactionParser';
 import { addToReviewQueue, getVendorMapEntry, getVendorMap, isNotificationProcessed, markNotificationProcessed, isNotificationRejected, markNotificationRejected, getCachedAIResult, setCachedAIResult, type CachedAIResult } from './localNotificationMemory';
 import { findMatchingExpense, REFUND_MATCH_WINDOW_DAYS } from './refundMatching';
 import { aiFindRefundMatch } from './aiExtractor';
+import type { LearnedVendorExample } from './aiExtractor';
 import { checkNotificationRules, bumpRuleUseCount } from './notificationRules';
 import { getLocalToday, parseLocalDate, toLocalIsoDay } from './dateUtils';
 import { extractWithAI, aiDetectRecurring, type AIExtractionResult } from './aiExtractor';
@@ -71,6 +72,37 @@ const recentlyProcessedCache = new Map<string, number>();
  * "duplicate" skip, and the first caller continues to insert.
  */
 const inFlightProcessingKeys = new Set<string>();
+
+/**
+ * In-flight claims on a PURCHASE, as opposed to a notification.
+ *
+ * inFlightProcessingKeys is keyed on bankAppId + raw text, so two apps
+ * announcing the SAME purchase (the bank app and Google Wallet) never collide
+ * there and can both reach the insert concurrently. Step 4's pre-insert DB
+ * check does not help either: neither row exists yet when the other queries,
+ * and the Step 6b race check has the same blind spot for the same reason.
+ * Result: two identical rows, same vendor, same amount, same day.
+ *
+ * Claiming the purchase itself closes that window. Entries carry a timestamp
+ * and expire, so a path that returns without releasing cannot wedge capture
+ * for that purchase permanently.
+ */
+const inFlightPurchaseKeys = new Map<string, number>();
+const PURCHASE_CLAIM_TTL_MS = 60_000;
+
+function claimPurchase(key: string): boolean {
+  const now = Date.now();
+  for (const [k, at] of inFlightPurchaseKeys) {
+    if (now - at > PURCHASE_CLAIM_TTL_MS) inFlightPurchaseKeys.delete(k);
+  }
+  if (inFlightPurchaseKeys.has(key)) return false;
+  inFlightPurchaseKeys.set(key, now);
+  return true;
+}
+
+function releasePurchase(key: string): void {
+  inFlightPurchaseKeys.delete(key);
+}
 
 /**
  * How long to keep entries in the in-memory dedup cache (ms).
@@ -129,6 +161,25 @@ const DEDUP_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
  * Same-day repeats still collapse here — Step 4's same-day/same-amount hard
  * skip is the intended guard for those.
  */
+/**
+ * The user's confirmed vendor -> category decisions, most recent first.
+ *
+ * Sourced from the local vendor map, which is written every time a capture is
+ * accepted, recategorized or renamed — i.e. every time the user corrects or
+ * confirms the pipeline. Recency ordering matters: a changed mind should
+ * outweigh an old habit.
+ */
+function collectLearnedExamples(): LearnedVendorExample[] {
+  try {
+    return Object.values(getVendorMap())
+      .filter((e) => e?.vendor_display && e?.budget)
+      .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')))
+      .map((e) => ({ vendor: e.vendor_display, category: e.budget }));
+  } catch {
+    return [];
+  }
+}
+
 export function buildCapturedKey(
   bankAppId: string,
   rawNotification: string,
@@ -914,7 +965,18 @@ async function processNotificationWithAIImpl(
       aiResult = cached;
     } else {
       try {
-        aiResult = await extractWithAI(input.rawNotification, availableCategories.map(c => c.name));
+        // Feed the user's own confirmed vendor -> category decisions in as
+        // few-shot examples. The deterministic override lookup (Step 5a) already
+        // short-circuits vendors the user has taught, so the model only ever
+        // sees NEW merchants — precedent from similar ones is exactly what it
+        // lacks. This is how capture improves with use: flan-t5-small cannot be
+        // fine-tuned on-device, but it can be shown how this household sorts
+        // things.
+        aiResult = await extractWithAI(
+          input.rawNotification,
+          availableCategories.map(c => c.name),
+          collectLearnedExamples(),
+        );
         // Persist for next time
         setCachedAIResult(input.rawNotification, {
           isTransaction: aiResult.isTransaction,
@@ -1429,6 +1491,25 @@ async function processNotificationWithAIImpl(
   // ── Step 6: Insert transaction with 'AI' label ──
   const transactionId = crypto.randomUUID();
   const finalVendorName = formatVendorName(displayVendor);
+
+  // Claim this purchase before inserting. Two apps reporting the same charge
+  // arrive as different notifications, so every guard above lets both through;
+  // this is the first point where we know enough to recognise them as one
+  // purchase. Whoever claims it inserts, the other backs off.
+  const purchaseKey = `${userId}|${today}|${amount.toFixed(2)}|${normalizeVendorForDedup(finalVendorName)}`;
+  if (!input.forceReprocess && !claimPurchase(purchaseKey)) {
+    log.debug(`[AI pipeline] Purchase already being inserted by a parallel capture: ${finalVendorName} $${amount}`);
+    recentlyProcessedCache.set(inMemoryKey, Date.now());
+    markNotificationProcessed(capturedKey);
+    return {
+      processed: false,
+      isTransaction: false,
+      vendor: finalVendorName,
+      amount,
+      bankName: input.bankName,
+      skipReason: 'duplicate_fingerprint',
+    };
+  }
   // AI/parser confidence for this capture. Rows reach Step 6 only after the
   // Step 2c gate, so this is the model's (or regex's) confidence in the
   // extraction; the capture-review UI shows it as a meter.
@@ -1546,7 +1627,9 @@ async function processNotificationWithAIImpl(
       };
     }
   }
+  releasePurchase(purchaseKey);
 
+  releasePurchase(purchaseKey);
   log.debug(`[AI pipeline] Transaction saved: ${finalVendorName} $${amount} → ${categoryName}`);
   addToReviewQueue(transactionId);
 
