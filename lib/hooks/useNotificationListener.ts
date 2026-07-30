@@ -2,8 +2,10 @@
 import { log } from '../log';
 import { useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { App as CapApp } from '@capacitor/app';
 import type { Transaction, User, BudgetCategory } from '../../types';
 import { covaultNotification } from '../covaultNotification';
+import type { TransactionDetectedEvent } from '../covaultNotification';
 import { processNotificationWithAI, buildInMemoryDedupKey } from '../notificationProcessor';
 import { sendPartnerActivityNotification, sendExpenseCapturedNotification } from '../appNotifications';
 import type { NotificationSettingsShape } from '../appNotifications';
@@ -50,6 +52,24 @@ const recentListenerEvents: ListenerDedupEntry[] = [];
  * Uses the AI processing pipeline:
  *   dedup → AI extraction → duplicate check → category assignment → auto-insert
  */
+async function drainQueuedNotifications(
+  handleEvent: (event: TransactionDetectedEvent) => Promise<void>,
+): Promise<void> {
+  if (!covaultNotification?.drainPendingNotifications) return;
+  try {
+    const { notifications } = await covaultNotification.drainPendingNotifications();
+    if (!notifications?.length) return;
+    log.debug('[notification] Draining', notifications.length, 'queued notification(s)');
+    // Sequential on purpose: the pipeline's dedup and refund matching both read
+    // state the previous item may have written.
+    for (const event of notifications) {
+      await handleEvent(event);
+    }
+  } catch (e) {
+    log.warn('[notification] Could not drain queued notifications:', e);
+  }
+}
+
 export const useNotificationListener = ({
   user,
   budgets,
@@ -83,9 +103,7 @@ export const useNotificationListener = ({
           return;
         }
 
-        const handle = await covaultNotification.addListener(
-          'transactionDetected',
-          async (event) => {
+        const handleEvent = async (event: TransactionDetectedEvent) => {
             log.debug('[notification] Transaction detected:', event);
             if (!user?.id) {
               log.warn(
@@ -252,8 +270,9 @@ export const useNotificationListener = ({
             };
 
             onTransactionDetected(tx);
-          },
-        );
+        };
+
+        const handle = await covaultNotification.addListener('transactionDetected', handleEvent);
 
         if (cancelled) {
           // The effect re-ran while we were awaiting; remove the just-added
@@ -262,6 +281,24 @@ export const useNotificationListener = ({
           return;
         }
         cleanup = () => handle.remove();
+
+        // Drain anything the native service captured while the JS side was not
+        // running. Without this, a notification that arrives with the app closed
+        // is broadcast to nobody, and once the user swipes it away a rescan can
+        // never recover it — which is why capture appeared to need a manual
+        // refresh before dismissing notifications.
+        void drainQueuedNotifications(handleEvent);
+
+        // Also drain when the app comes back to the foreground, so a purchase
+        // made while it sat in the background shows up without a manual scan.
+        const resumeHandle = await CapApp.addListener('resume', () => {
+          void drainQueuedNotifications(handleEvent);
+        });
+        const removeListener = cleanup;
+        cleanup = () => {
+          removeListener?.();
+          resumeHandle.remove();
+        };
       } catch (e) {
         log.warn(
           '[notification] Could not set up transaction listener:',

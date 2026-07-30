@@ -13,6 +13,7 @@ import android.util.Log;
 
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
+import org.json.JSONArray;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
@@ -203,6 +204,51 @@ public class CovaultNotificationPlugin extends Plugin {
         } catch (Exception e) {
             ret.put("apps", new JSArray());
         }
+        call.resolve(ret);
+    }
+
+    /**
+     * Hand over every notification captured while the JS side was not running,
+     * then clear the queue.
+     *
+     * The listener service outlives the WebView, so notifications that arrive
+     * with the app closed are broadcast to nobody. Without this the only
+     * recovery was scanActiveNotifications(), which fails once the user swipes
+     * the notification away. Re-delivery is safe: the JS pipeline dedups.
+     */
+    @PluginMethod
+    public void drainPendingNotifications(PluginCall call) {
+        JSObject ret = new JSObject();
+        JSArray out = new JSArray();
+        try {
+            android.content.SharedPreferences prefs =
+                getContext().getSharedPreferences("covault_prefs", 0);
+            String stored = prefs.getString("pending_notifications", "[]");
+            // Clear before returning so a failure downstream cannot loop forever
+            // on the same batch. Losing a batch is preferable to wedging capture,
+            // and anything still in the shade is recoverable by a scan.
+            prefs.edit().remove("pending_notifications").apply();
+
+            JSONArray queue = new JSONArray(stored);
+            for (int i = 0; i < queue.length(); i++) {
+                JSONObject json = queue.optJSONObject(i);
+                if (json == null) continue;
+                JSObject event = new JSObject();
+                if (json.has("amount")) {
+                    event.put("amount", json.optDouble("amount", 0));
+                }
+                event.put("vendor", json.optString("vendor", "Unknown Merchant"));
+                event.put("source_app", json.optString("source_app", ""));
+                event.put("raw_text", json.optString("raw_text", ""));
+                event.put("timestamp", json.optLong("timestamp", 0));
+                event.put("from_scan", true);
+                out.put(event);
+            }
+            Log.i(TAG, "drainPendingNotifications: returning " + out.length() + " queued notifications");
+        } catch (Exception e) {
+            Log.e(TAG, "drainPendingNotifications failed", e);
+        }
+        ret.put("notifications", out);
         call.resolve(ret);
     }
 

@@ -412,6 +412,32 @@ function titleCaseVendor(vendor: string): string {
 
 /** Bank name prefixes stripped from the head of a notification before vendor
  *  extraction. Shared with aiExtractor so the two paths can't diverge. */
+/**
+ * Strip store/terminal noise from a vendor DISPLAY name.
+ *
+ * The same purchase often arrives from two apps in two wordings. Wealthsimple's
+ * "STAPLES #462 You spent $1.85..." yields "Staples", while Google Wallet's
+ * "STAPLES #462 CA$1.85 with ..." leaves "Staples #462 Ca" — the "Ca" is the
+ * front half of "CA$". Two different display names meant two rows in the review
+ * queue for one purchase, and the uglier name was as likely to survive as the
+ * clean one.
+ *
+ * Normalizing the display name makes both sources produce the same thing, so
+ * the duplicate check collapses them and the surviving name is the tidy one.
+ */
+export function stripVendorNoise(display: string): string {
+  let v = (display || '').trim();
+  // Store/terminal numbers anywhere: "Staples #462 Ca" -> "Staples Ca"
+  v = v.replace(/\s*#\s*\d+/g, ' ');
+  // Trailing currency-prefix artifacts left by "CA$12.34" / "US$12.34"
+  v = v.replace(/\s+(?:Ca|Us|Uk)\s*$/i, ' ');
+  // Trailing bare store numbers: "Homesense 028" -> "Homesense"
+  v = v.replace(/\s+\d{2,}\s*$/, ' ');
+  v = v.replace(/\s+/g, ' ').trim();
+  // Never strip the name down to nothing.
+  return v || (display || '').trim();
+}
+
 export const BANK_NAME_PREFIXES = [
   'bmo', 'scotiabank', 'td', 'td bank', 'rbc', 'cibc',
   'wealthsimple', 'tangerine', 'simplii', 'national bank',
@@ -503,7 +529,7 @@ export function parseNotificationText(text: string): ParsedNotification {
 
   const vendorRaw = extractVendorRaw(t, hasRefund);
   const cleanedVendor = cleanVendor(vendorRaw);
-  let vendorDisplay = formatVendorName(titleCaseVendor(cleanedVendor));
+  let vendorDisplay = stripVendorNoise(formatVendorName(titleCaseVendor(cleanedVendor)));
   let vendorKey = toVendorKey(cleanedVendor || 'unknown');
 
   // ── Final vendor sanity check ──

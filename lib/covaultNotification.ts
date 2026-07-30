@@ -70,6 +70,16 @@ export interface CovaultNotificationPlugin {
    */
   scanActiveNotifications(): Promise<void>;
 
+  /**
+   * Hand over notifications the native listener captured while the JS side was
+   * not running, and clear the native queue.
+   *
+   * The listener service outlives the WebView, so a notification arriving with
+   * the app closed is broadcast to nobody. Draining on launch/resume means the
+   * user no longer has to open the app and hit refresh before dismissing it.
+   */
+  drainPendingNotifications(): Promise<{ notifications: TransactionDetectedEvent[] }>;
+
   // Our event: emits whenever a transaction notification is detected
   addListener(
     eventName: 'transactionDetected',

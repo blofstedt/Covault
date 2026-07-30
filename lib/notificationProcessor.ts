@@ -1166,9 +1166,15 @@ async function processNotificationWithAIImpl(
     // soft-dup. The only hard-skip is same-day same-amount, which is
     // almost certainly a re-broadcast of the same notification.
     const sameDaySameAmount = existingTx.find((tx) => {
-      if (normalizeVendorForDedup(tx.vendor) !== normalizedVendor) return false;
       if (tx.date !== today) return false;
-      return Math.abs(Number(tx.amount) - amount) < AMOUNT_TOLERANCE;
+      if (Math.abs(Number(tx.amount) - amount) >= AMOUNT_TOLERANCE) return false;
+      // Exact normalized equality first, then fuzzy. Two apps often report one
+      // purchase in different wordings ("Staples" vs "Staples #462 Ca"), and
+      // exact equality alone let both through as separate rows. Same day AND
+      // same amount AND a similar vendor is a double-report, not two
+      // coincidental purchases.
+      if (normalizeVendorForDedup(tx.vendor) === normalizedVendor) return true;
+      return fuzzyVendorMatch(tx.vendor || '', vendor || '');
     });
 
     if (sameDaySameAmount) {
