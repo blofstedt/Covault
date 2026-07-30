@@ -597,6 +597,84 @@ public class NotificationListener extends NotificationListenerService {
     private static final String PENDING_QUEUE_KEY = "pending_notifications";
     private static final int MAX_PENDING = 200;
 
+    /**
+     * Post a Covault notification the moment a purchase is captured.
+     *
+     * The parsing/categorising pipeline lives in JS, which only runs while the
+     * WebView is alive — so a notification posted from there appears only once
+     * the user opens the app. This service, by contrast, runs whenever the
+     * listener permission is granted, so posting here is what makes capture
+     * feel immediate. The amount and vendor come from the native regex pass
+     * that already ran above; the JS pipeline still does the real
+     * categorisation and insert when it next runs.
+     */
+    private static final String CAPTURE_CHANNEL_ID = "covault_captures";
+    private static final long CAPTURE_NOTIFY_WINDOW_MS = 60_000L;
+    private final java.util.Map<String, Long> recentCaptureNotifications = new java.util.HashMap<>();
+
+    private void ensureCaptureChannel(android.app.NotificationManager nm) {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) return;
+        if (nm.getNotificationChannel(CAPTURE_CHANNEL_ID) != null) return;
+        android.app.NotificationChannel channel = new android.app.NotificationChannel(
+            CAPTURE_CHANNEL_ID,
+            "Captured transactions",
+            android.app.NotificationManager.IMPORTANCE_DEFAULT
+        );
+        channel.setDescription("Shown when Covault captures a transaction from a bank alert");
+        nm.createNotificationChannel(channel);
+    }
+
+    private void notifyCaptured(Double amount, String vendor) {
+        // Nothing useful to show without an amount.
+        if (amount == null) return;
+        try {
+            String merchant = (vendor != null && !vendor.isEmpty()) ? vendor : "a purchase";
+
+            // The same purchase is often announced by both the bank app and a
+            // wallet app. Collapse those so the user sees one Covault
+            // notification, not two.
+            String dedupKey = merchant.toLowerCase() + "|" + String.format(java.util.Locale.US, "%.2f", amount);
+            long now = System.currentTimeMillis();
+            java.util.Iterator<java.util.Map.Entry<String, Long>> it = recentCaptureNotifications.entrySet().iterator();
+            while (it.hasNext()) {
+                if (now - it.next().getValue() > CAPTURE_NOTIFY_WINDOW_MS) it.remove();
+            }
+            if (recentCaptureNotifications.containsKey(dedupKey)) return;
+            recentCaptureNotifications.put(dedupKey, now);
+
+            android.app.NotificationManager nm =
+                (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (nm == null) return;
+            ensureCaptureChannel(nm);
+
+            Intent open = getPackageManager().getLaunchIntentForPackage(getPackageName());
+            android.app.PendingIntent contentIntent = null;
+            if (open != null) {
+                open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                contentIntent = android.app.PendingIntent.getActivity(
+                    this, 0, open,
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE
+                );
+            }
+
+            int smallIcon = getResources().getIdentifier("ic_stat_dollar", "drawable", getPackageName());
+            if (smallIcon == 0) smallIcon = android.R.drawable.ic_menu_info_details;
+
+            androidx.core.app.NotificationCompat.Builder b =
+                new androidx.core.app.NotificationCompat.Builder(this, CAPTURE_CHANNEL_ID)
+                    .setSmallIcon(smallIcon)
+                    .setContentTitle(String.format(java.util.Locale.US, "$%.2f at %s", amount, merchant))
+                    .setContentText("Captured — tap to review")
+                    .setAutoCancel(true)
+                    .setPriority(androidx.core.app.NotificationCompat.PRIORITY_DEFAULT);
+            if (contentIntent != null) b.setContentIntent(contentIntent);
+
+            nm.notify(dedupKey.hashCode(), b.build());
+        } catch (Exception e) {
+            Log.e(TAG, "Error posting capture notification", e);
+        }
+    }
+
     private void queueTransaction(JSONObject transaction) {
         try {
             android.content.SharedPreferences prefs = getSharedPreferences("covault_prefs", 0);
@@ -639,6 +717,12 @@ public class NotificationListener extends NotificationListenerService {
             // Persist first, so the transaction survives even if no receiver is
             // listening right now (app closed/backgrounded).
             queueTransaction(transaction);
+
+            // Tell the user immediately. A rescan re-walks the shade and would
+            // otherwise re-notify for things already seen, so skip those.
+            if (!fromScan) {
+                notifyCaptured(amount, vendor);
+            }
 
             // Broadcast to the app
             Intent intent = new Intent("com.covault.app.TRANSACTION_DETECTED");
