@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { formatCurrency } from '../../lib/formatCurrency';
 import { useEscapeKey } from '../../lib/hooks/useEscapeKey';
+import Portal from '../ui/Portal';
 
 export type NotATxRuleType = 'exact' | 'contains';
 
@@ -47,6 +48,7 @@ const NotATransactionModal: React.FC<NotATransactionModalProps> = ({
   const pattern = rawNotification.trim();
 
   return (
+    <Portal>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm animate-in fade-in"
       onClick={(e) => { if (e.target === e.currentTarget && !isSaving) onCancel(); }}
@@ -188,6 +190,7 @@ const NotATransactionModal: React.FC<NotATransactionModalProps> = ({
         </div>
       </div>
     </div>
+    </Portal>
   );
 };
 

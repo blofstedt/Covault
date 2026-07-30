@@ -1,5 +1,6 @@
 import React from 'react';
 import { useEscapeKey } from '../../lib/hooks/useEscapeKey';
+import Portal from '../ui/Portal';
 
 interface BackfillPreviewModalProps {
   /** The OLD vendor name (what we're replacing). */
@@ -43,6 +44,7 @@ const BackfillPreviewModal: React.FC<BackfillPreviewModalProps> = ({
   useEscapeKey(onCancel, !isApplying);
 
   return (
+    <Portal>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm animate-in fade-in"
       onClick={(e) => { if (e.target === e.currentTarget && !isApplying) onCancel(); }}
@@ -134,6 +136,7 @@ const BackfillPreviewModal: React.FC<BackfillPreviewModalProps> = ({
         </div>
       </div>
     </div>
+    </Portal>
   );
 };
 

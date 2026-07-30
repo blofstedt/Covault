@@ -2,6 +2,7 @@ import React from 'react';
 import { BudgetCategory } from '../../types';
 import { getBudgetIcon } from '../dashboard_components/getBudgetIcon';
 import { useEscapeKey } from '../../lib/hooks/useEscapeKey';
+import Portal from '../ui/Portal';
 
 interface CategoryPickerSheetProps {
   /** 'change' files this one transaction; 'create' also saves a rule for next time. */
@@ -30,8 +31,9 @@ const CategoryPickerSheet: React.FC<CategoryPickerSheetProps> = ({
   useEscapeKey(onClose);
 
   return (
+    <Portal>
     <div
-      className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-4 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] sm:pb-4 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -76,6 +78,7 @@ const CategoryPickerSheet: React.FC<CategoryPickerSheetProps> = ({
         </button>
       </div>
     </div>
+    </Portal>
   );
 };
 

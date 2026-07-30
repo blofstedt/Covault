@@ -1,5 +1,6 @@
 import React from 'react';
 import { useEscapeKey } from '../../lib/hooks/useEscapeKey';
+import Portal from '../ui/Portal';
 
 export interface RowAction {
   label: string;
@@ -27,13 +28,19 @@ interface RowActionSheetProps {
  * Rendered as a centered sheet rather than an anchored popover on purpose: the
  * row lives inside a scrolling container, and an absolutely-positioned menu
  * would clip at the container's edge.
+ *
+ * Portalled to <body> because the Review page's <main> is `relative z-10` and
+ * so caps everything inside it below the `z-40` bottom nav bar — which used to
+ * paint over this sheet's Cancel button. The bottom padding clears Android's
+ * gesture bar as well, so the last action isn't sitting under it.
  */
 const RowActionSheet: React.FC<RowActionSheetProps> = ({ title, actions, onClose }) => {
   useEscapeKey(onClose);
 
   return (
+    <Portal>
     <div
-      className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-4 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] sm:pb-4 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -83,6 +90,7 @@ const RowActionSheet: React.FC<RowActionSheetProps> = ({ title, actions, onClose
         </button>
       </div>
     </div>
+    </Portal>
   );
 };
 
