@@ -7,6 +7,10 @@ import SectionHeader from '../../ui/SectionHeader';
 import ToggleSwitch from '../../ui/ToggleSwitch';
 import { getBankingApps } from '../../../lib/bankingApps';
 import type { CovaultNotificationPlugin } from '../../../lib/covaultNotification';
+import {
+  getHideBankNotifications,
+  setHideBankNotifications,
+} from '../../../lib/covaultNotification';
 
 
 interface NotificationSettingsSectionProps {
@@ -23,6 +27,11 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
   const [selectedApps, setSelectedApps] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [plugin, setPlugin] = useState<CovaultNotificationPlugin | null>(null);
+  // Tray suppression. Device-local, so the native SharedPreferences value is
+  // the only source of truth — this is a mirror of it for rendering, never a
+  // second place the preference lives.
+  const [hideBankNotifs, setHideBankNotifs] = useState(false);
+  const [savingHideBankNotifs, setSavingHideBankNotifs] = useState(false);
 
   // Initialize plugin
   useEffect(() => {
@@ -59,6 +68,8 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
         .sort((a, b) => a.name.localeCompare(b.name));
 
       setInstalledBankApps(named);
+
+      setHideBankNotifs(await getHideBankNotifications(plugin));
 
       if (granted) {
         const { apps: saved } = await plugin.getMonitoredApps();
@@ -171,6 +182,20 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
       } catch {
         // ignore
       }
+    }
+  };
+
+  // Deliberately not optimistic: the toggle only moves once the native side
+  // confirms it stored the new value. A toggle that looks on while the
+  // listener still thinks it's off is exactly the kind of disagreement that
+  // makes this feature scary.
+  const toggleHideBankNotifs = async () => {
+    if (!plugin || savingHideBankNotifs) return;
+    setSavingHideBankNotifs(true);
+    try {
+      setHideBankNotifs(await setHideBankNotifications(!hideBankNotifs, plugin));
+    } finally {
+      setSavingHideBankNotifs(false);
     }
   };
 
@@ -305,6 +330,30 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
             This is a one-time setup. The system requirement exists so apps can't read your notifications without your explicit consent.
           </p>
         </details>
+      )}
+
+      {/* Tray suppression */}
+      {enabled && permissionGranted && (
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-700/50 bg-slate-50/60 dark:bg-slate-800/30 px-3 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex-1 mr-3">
+              <SectionHeader
+                title="Hide bank alerts after capture"
+                subtitle="Show one Covault notification instead of two."
+              />
+            </div>
+            <ToggleSwitch
+              enabled={hideBankNotifs}
+              onToggle={toggleHideBankNotifs}
+              disabled={savingHideBankNotifs}
+            />
+          </div>
+          <p className="mt-2 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
+            {hideBankNotifs
+              ? 'Covault dismisses a bank alert only after it has saved the purchase and posted its own notification. If either step fails — or you have turned Covault notifications off in Android settings — the bank alert is left alone. Alerts already in your tray are never touched.'
+              : 'When on, a bank alert is dismissed from your tray once Covault has captured the purchase and replaced it with its own notification. Nothing is dismissed until the purchase is saved.'}
+          </p>
+        </div>
       )}
 
       {/* Banking app picker */}

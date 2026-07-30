@@ -221,13 +221,15 @@ public class CovaultNotificationPlugin extends Plugin {
         JSObject ret = new JSObject();
         JSArray out = new JSArray();
         try {
-            android.content.SharedPreferences prefs =
-                getContext().getSharedPreferences("covault_prefs", 0);
-            String stored = prefs.getString("pending_notifications", "[]");
             // Clear before returning so a failure downstream cannot loop forever
             // on the same batch. Losing a batch is preferable to wedging capture,
             // and anything still in the shade is recoverable by a scan.
-            prefs.edit().remove("pending_notifications").apply();
+            //
+            // Take-and-clear happens under NotificationListener.QUEUE_LOCK so a
+            // notification arriving mid-drain cannot be swallowed by the clear.
+            // That race was survivable when the bank's notification stayed in
+            // the shade; with tray suppression on, the queue is the only copy.
+            String stored = NotificationListener.drainPendingQueue(getContext());
 
             JSONArray queue = new JSONArray(stored);
             for (int i = 0; i < queue.length(); i++) {
@@ -249,6 +251,44 @@ public class CovaultNotificationPlugin extends Plugin {
             Log.e(TAG, "drainPendingNotifications failed", e);
         }
         ret.put("notifications", out);
+        call.resolve(ret);
+    }
+
+    /**
+     * Turn tray suppression on or off.
+     *
+     * When on, the listener dismisses a bank's own notification once it has
+     * durably captured it and posted a Covault notification in its place. See
+     * NotificationListener.maybeHideBankNotification for the full gate list —
+     * every condition must hold, so the failure mode is always "the bank's
+     * notification stays", never "the purchase is lost".
+     *
+     * Stored in SharedPreferences rather than the web layer's storage because
+     * the listener service runs with the WebView dead and has to be able to
+     * read it. commit() rather than apply() so a caller that immediately reads
+     * it back sees the new value.
+     */
+    @PluginMethod
+    public void setHideBankNotifications(PluginCall call) {
+        Boolean hidden = call.getBoolean("hidden");
+        if (hidden == null) {
+            call.reject("Missing 'hidden'");
+            return;
+        }
+        getContext().getSharedPreferences("covault_prefs", 0)
+            .edit()
+            .putBoolean(NotificationListener.HIDE_BANK_NOTIFICATIONS_KEY, hidden)
+            .commit();
+        Log.i(TAG, "setHideBankNotifications: " + hidden);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void getHideBankNotifications(PluginCall call) {
+        boolean hidden = getContext().getSharedPreferences("covault_prefs", 0)
+            .getBoolean(NotificationListener.HIDE_BANK_NOTIFICATIONS_KEY, false);
+        JSObject ret = new JSObject();
+        ret.put("hidden", hidden);
         call.resolve(ret);
     }
 

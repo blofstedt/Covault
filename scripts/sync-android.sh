@@ -55,6 +55,10 @@ echo "Copying custom Covault icon resources..."
 cp -v "$CUSTOM_DIR/res/drawable/ic_covault_foreground.xml" "$RES_DIR/drawable/"
 cp -v "$CUSTOM_DIR/res/drawable/ic_launcher_legacy.xml" "$RES_DIR/drawable/" 2>/dev/null || true
 cp -v "$CUSTOM_DIR/res/drawable/ic_stat_covault.xml" "$RES_DIR/drawable/"
+cp -v "$CUSTOM_DIR/res/drawable/ic_stat_covault_mono.xml" "$RES_DIR/drawable/" 2>/dev/null || true
+# The drawable lib/appNotifications.ts names in NOTIF_SMALL_ICON. Without it
+# Android cannot resolve the small icon and substitutes a default glyph.
+cp -v "$CUSTOM_DIR/res/drawable/ic_stat_dollar.xml" "$RES_DIR/drawable/"
 cp -v "$CUSTOM_DIR/res/mipmap-anydpi-v26/ic_launcher.xml" "$RES_DIR/mipmap-anydpi-v26/"
 cp -v "$CUSTOM_DIR/res/mipmap-anydpi-v26/ic_launcher_round.xml" "$RES_DIR/mipmap-anydpi-v26/"
 cp -v "$CUSTOM_DIR/res/values/ic_launcher_background.xml" "$RES_DIR/values/"
@@ -79,6 +83,7 @@ echo "Verifying icon setup..."
 for f in \
   "$RES_DIR/drawable/ic_covault_foreground.xml" \
   "$RES_DIR/drawable/ic_stat_covault.xml" \
+  "$RES_DIR/drawable/ic_stat_dollar.xml" \
   "$RES_DIR/mipmap-anydpi-v26/ic_launcher.xml" \
   "$RES_DIR/mipmap-anydpi-v26/ic_launcher_round.xml" \
   "$RES_DIR/values/ic_launcher_background.xml"; do
@@ -103,10 +108,12 @@ if [ $FOUND_DEFAULT -eq 0 ]; then
 fi
 
 # Verify notification status bar icon is in place
-if [ -f "$RES_DIR/drawable/ic_stat_covault.xml" ] || [ -f "$RES_DIR/mipmap-xxxhdpi/ic_stat_covault.png" ]; then
-  echo "  OK: notification small icon (ic_stat_covault) present"
+if [ -f "$RES_DIR/drawable/ic_stat_dollar.xml" ]; then
+  echo "  OK: notification small icon (ic_stat_dollar) present"
 else
-  echo "  WARNING: notification small icon (ic_stat_covault) missing"
+  echo "  ERROR: ic_stat_dollar.xml missing — appNotifications.ts references it"
+  echo "         as NOTIF_SMALL_ICON; without it Android shows a default glyph."
+  exit 1
 fi
 
 # --- JAVA FILES ---
