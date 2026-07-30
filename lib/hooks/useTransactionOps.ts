@@ -4,6 +4,7 @@ import { useCallback } from 'react';
 import type { Transaction } from '../../types';
 import { restFetch } from '../apiHelpers';
 import { persistVendorOverride } from '../vendorOverrideWrite';
+import { toVendorKey } from '../deviceTransactionParser';
 import { cleanVendorInput, formatVendorName } from '../formatVendorName';
 import { checkDuplicateTransaction } from '../notificationProcessor';
 import { markReviewQueueStatus, upsertVendorMapEntry } from '../localNotificationMemory';
@@ -254,10 +255,21 @@ export const useTransactionOps = ({
             const newVendorName = cleanVendorInput(txToPersist.vendor);
             const budgetName = appState.budgets.find(b => b.id === txToPersist.budget_id)?.name || mappedBudget;
 
-            // Persist to localStorage vendor map
-            const vendorKey = newVendorName.toLowerCase().replace(/[^a-z0-9]/g, '');
-            if (vendorKey) {
-              upsertVendorMapEntry({ vendor_key: vendorKey, vendor_display: newVendorName, budget: budgetName, updated_at: new Date().toISOString() });
+            // match_key must describe what the BANK sends, not what the user
+            // renamed it to. Keying on the new name meant a rule created by
+            // renaming "TIM HORTONS #20024" to "Tim Hortons" stored
+            // match_key="timhortons", while the next notification still arrives
+            // as "TIM HORTONS #20024" and keys to "timhortons20024" — so the
+            // rule looked right in the UI but never matched again.
+            //
+            // proper_name stays the display name the user chose; match_key is
+            // the original parsed name, which is the thing that recurs.
+            const vendorKey = toVendorKey(originalVendorName) || toVendorKey(newVendorName);
+            const displayKey = newVendorName.toLowerCase().replace(/[^a-z0-9]/g, '');
+            // Map BOTH the original parsed slug and the display slug locally,
+            // so a future capture matches whichever form the bank sends.
+            for (const key of new Set([vendorKey, displayKey].filter(Boolean))) {
+              upsertVendorMapEntry({ vendor_key: key, vendor_display: newVendorName, budget: budgetName, updated_at: new Date().toISOString() });
             }
 
             // Persist to DB overrides table (upsert by match_key first, fall back to proper_name)

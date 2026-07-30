@@ -73,6 +73,37 @@ const recentlyProcessedCache = new Map<string, number>();
 const inFlightProcessingKeys = new Set<string>();
 
 /**
+ * In-flight claims on a PURCHASE, as opposed to a notification.
+ *
+ * inFlightProcessingKeys is keyed on bankAppId + raw text, so two apps
+ * announcing the SAME purchase (the bank app and Google Wallet) never collide
+ * there and can both reach the insert concurrently. Step 4's pre-insert DB
+ * check does not help either: neither row exists yet when the other queries,
+ * and the Step 6b race check has the same blind spot for the same reason.
+ * Result: two identical rows, same vendor, same amount, same day.
+ *
+ * Claiming the purchase itself closes that window. Entries carry a timestamp
+ * and expire, so a path that returns without releasing cannot wedge capture
+ * for that purchase permanently.
+ */
+const inFlightPurchaseKeys = new Map<string, number>();
+const PURCHASE_CLAIM_TTL_MS = 60_000;
+
+function claimPurchase(key: string): boolean {
+  const now = Date.now();
+  for (const [k, at] of inFlightPurchaseKeys) {
+    if (now - at > PURCHASE_CLAIM_TTL_MS) inFlightPurchaseKeys.delete(k);
+  }
+  if (inFlightPurchaseKeys.has(key)) return false;
+  inFlightPurchaseKeys.set(key, now);
+  return true;
+}
+
+function releasePurchase(key: string): void {
+  inFlightPurchaseKeys.delete(key);
+}
+
+/**
  * How long to keep entries in the in-memory dedup cache (ms).
  * 2 hours balances preventing duplicate processing during rescans
  * while allowing legitimate repeat purchases (e.g., two coffees
@@ -1429,6 +1460,25 @@ async function processNotificationWithAIImpl(
   // ── Step 6: Insert transaction with 'AI' label ──
   const transactionId = crypto.randomUUID();
   const finalVendorName = formatVendorName(displayVendor);
+
+  // Claim this purchase before inserting. Two apps reporting the same charge
+  // arrive as different notifications, so every guard above lets both through;
+  // this is the first point where we know enough to recognise them as one
+  // purchase. Whoever claims it inserts, the other backs off.
+  const purchaseKey = `${userId}|${today}|${amount.toFixed(2)}|${normalizeVendorForDedup(finalVendorName)}`;
+  if (!input.forceReprocess && !claimPurchase(purchaseKey)) {
+    log.debug(`[AI pipeline] Purchase already being inserted by a parallel capture: ${finalVendorName} $${amount}`);
+    recentlyProcessedCache.set(inMemoryKey, Date.now());
+    markNotificationProcessed(capturedKey);
+    return {
+      processed: false,
+      isTransaction: false,
+      vendor: finalVendorName,
+      amount,
+      bankName: input.bankName,
+      skipReason: 'duplicate_fingerprint',
+    };
+  }
   // AI/parser confidence for this capture. Rows reach Step 6 only after the
   // Step 2c gate, so this is the model's (or regex's) confidence in the
   // extraction; the capture-review UI shows it as a meter.
@@ -1546,7 +1596,9 @@ async function processNotificationWithAIImpl(
       };
     }
   }
+  releasePurchase(purchaseKey);
 
+  releasePurchase(purchaseKey);
   log.debug(`[AI pipeline] Transaction saved: ${finalVendorName} $${amount} → ${categoryName}`);
   addToReviewQueue(transactionId);
 
