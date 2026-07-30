@@ -7,6 +7,7 @@ import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
 import android.util.Log;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.Arrays;
@@ -580,6 +581,47 @@ public class NotificationListener extends NotificationListenerService {
         return null;
     }
 
+    /**
+     * Persist a captured notification so it survives the app being closed.
+     *
+     * This service runs independently of the WebView. When a notification
+     * arrives while the app is not running, sendBroadcast() has no receiver and
+     * the transaction is dropped; if the user then swipes the notification away,
+     * scanActiveNotifications() can never find it either, so the purchase is
+     * lost outright. Queuing here means the JS side can drain it on next launch.
+     *
+     * The queue is bounded and drained-and-cleared by the plugin. Delivering the
+     * same notification twice is harmless — the JS pipeline's in-memory and
+     * persistent dedup collapse it.
+     */
+    private static final String PENDING_QUEUE_KEY = "pending_notifications";
+    private static final int MAX_PENDING = 200;
+
+    private void queueTransaction(JSONObject transaction) {
+        try {
+            android.content.SharedPreferences prefs = getSharedPreferences("covault_prefs", 0);
+            JSONArray queue;
+            try {
+                queue = new JSONArray(prefs.getString(PENDING_QUEUE_KEY, "[]"));
+            } catch (Exception e) {
+                queue = new JSONArray();
+            }
+            queue.put(transaction);
+
+            // Drop the oldest entries if we're over the cap.
+            if (queue.length() > MAX_PENDING) {
+                JSONArray trimmed = new JSONArray();
+                for (int i = queue.length() - MAX_PENDING; i < queue.length(); i++) {
+                    trimmed.put(queue.get(i));
+                }
+                queue = trimmed;
+            }
+            prefs.edit().putString(PENDING_QUEUE_KEY, queue.toString()).apply();
+        } catch (Exception e) {
+            Log.e(TAG, "Error queueing transaction", e);
+        }
+    }
+
     private void broadcastTransaction(String sourceApp, Double amount, String vendor, String rawText, long postTime, boolean fromScan) {
         try {
             JSONObject transaction = new JSONObject();
@@ -593,6 +635,10 @@ public class NotificationListener extends NotificationListenerService {
             // instead of System.currentTimeMillis() which changes each time
             transaction.put("timestamp", postTime);
             transaction.put("from_scan", fromScan);
+
+            // Persist first, so the transaction survives even if no receiver is
+            // listening right now (app closed/backgrounded).
+            queueTransaction(transaction);
 
             // Broadcast to the app
             Intent intent = new Intent("com.covault.app.TRANSACTION_DETECTED");

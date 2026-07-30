@@ -48,8 +48,11 @@ export function normalizeVendorForDedup(vendor: string | null | undefined): stri
   // Strip trailing transaction reference numbers
   v = v.replace(/\s*(?:ref|txn|transaction)[\s#:]*\d+\s*$/i, '');
 
-  // Strip trailing store/location/terminal identifiers
-  v = v.replace(/\s*#\s*\d+\s*$/, '');
+  // Strip store/location/terminal identifiers ANYWHERE, not just at the end.
+  // Anchoring to the end meant "staples #462 ca" kept its store number (the
+  // trailing "ca" is stripped on a later line, too late to help), so it never
+  // matched the same purchase reported as plain "staples".
+  v = v.replace(/\s*#\s*\d+/g, ' ');
   v = v.replace(/\s+(?:store|str|loc|location|terminal|tml|unit|kiosk)\s*#?\s*\d*$/i, '');
 
   // Strip trailing Canadian province codes (and common US state abbreviations)
