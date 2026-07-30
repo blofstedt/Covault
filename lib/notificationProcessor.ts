@@ -19,6 +19,7 @@ import { parseNotificationText } from './deviceTransactionParser';
 import { addToReviewQueue, getVendorMapEntry, getVendorMap, isNotificationProcessed, markNotificationProcessed, isNotificationRejected, markNotificationRejected, getCachedAIResult, setCachedAIResult, type CachedAIResult } from './localNotificationMemory';
 import { findMatchingExpense, REFUND_MATCH_WINDOW_DAYS } from './refundMatching';
 import { aiFindRefundMatch } from './aiExtractor';
+import type { LearnedVendorExample } from './aiExtractor';
 import { checkNotificationRules, bumpRuleUseCount } from './notificationRules';
 import { getLocalToday, parseLocalDate, toLocalIsoDay } from './dateUtils';
 import { extractWithAI, aiDetectRecurring, type AIExtractionResult } from './aiExtractor';
@@ -160,6 +161,25 @@ const DEDUP_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
  * Same-day repeats still collapse here — Step 4's same-day/same-amount hard
  * skip is the intended guard for those.
  */
+/**
+ * The user's confirmed vendor -> category decisions, most recent first.
+ *
+ * Sourced from the local vendor map, which is written every time a capture is
+ * accepted, recategorized or renamed — i.e. every time the user corrects or
+ * confirms the pipeline. Recency ordering matters: a changed mind should
+ * outweigh an old habit.
+ */
+function collectLearnedExamples(): LearnedVendorExample[] {
+  try {
+    return Object.values(getVendorMap())
+      .filter((e) => e?.vendor_display && e?.budget)
+      .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')))
+      .map((e) => ({ vendor: e.vendor_display, category: e.budget }));
+  } catch {
+    return [];
+  }
+}
+
 export function buildCapturedKey(
   bankAppId: string,
   rawNotification: string,
@@ -945,7 +965,18 @@ async function processNotificationWithAIImpl(
       aiResult = cached;
     } else {
       try {
-        aiResult = await extractWithAI(input.rawNotification, availableCategories.map(c => c.name));
+        // Feed the user's own confirmed vendor -> category decisions in as
+        // few-shot examples. The deterministic override lookup (Step 5a) already
+        // short-circuits vendors the user has taught, so the model only ever
+        // sees NEW merchants — precedent from similar ones is exactly what it
+        // lacks. This is how capture improves with use: flan-t5-small cannot be
+        // fine-tuned on-device, but it can be shown how this household sorts
+        // things.
+        aiResult = await extractWithAI(
+          input.rawNotification,
+          availableCategories.map(c => c.name),
+          collectLearnedExamples(),
+        );
         // Persist for next time
         setCachedAIResult(input.rawNotification, {
           isTransaction: aiResult.isTransaction,
