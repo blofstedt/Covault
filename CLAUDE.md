@@ -103,6 +103,15 @@ Android banking notification
   → review-and-approve UI in components/transaction_parsing/ (approve → transactions table)
 ```
 
+**Native ordering is load-bearing.** `NotificationListener.broadcastTransaction` runs
+**persist → notify → dismiss**: it commits the notification to the SharedPreferences
+pending queue (`commit()`, not `apply()` — the return value has to mean "on disk"),
+then posts Covault's own notification, and only then may the optional tray-suppression
+feature dismiss the bank's notification. Suppression is off by default and gated on
+every step above having succeeded, because a dismissed bank notification can no longer
+be recovered by `scanActiveNotifications()`. Don't reorder these or downgrade the
+`commit()`s.
+
 ## Database (Supabase / PostgreSQL)
 
 `supabase/schema.sql` defines **5 tables**. All use RLS (`auth.uid()`-based; a user's

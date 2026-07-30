@@ -525,8 +525,80 @@ public class NotificationListener extends NotificationListenerService {
         // Broadcast to the local TypeScript pipeline which will classify
         // as transaction or non-transaction — non-transactions will appear in
         // the rejected card so the user can see what was processed.
-        broadcastTransaction(packageName, amount, vendor, fullText, sbn.getPostTime(), fromScan);
+        boolean secured = broadcastTransaction(packageName, amount, vendor, fullText, sbn.getPostTime(), fromScan);
+
+        maybeHideBankNotification(sbn, fromMonitored, amount, fromScan, secured);
     }
+
+    // ── Tray suppression ────────────────────────────────────────────────
+    //
+    // Optional (off by default): once Covault has captured a bank alert,
+    // dismiss the bank's own notification so the shade shows one Covault
+    // entry instead of two notifications for the same purchase.
+    //
+    // The hard requirement is that this must NEVER cost the user a spend
+    // notification, so dismissal is gated on every one of the following
+    // being true. Any single failure leaves the bank's notification alone,
+    // which is always the recoverable outcome — a notification still in the
+    // shade can be re-read by scanActiveNotifications() at any time.
+    //
+    //   1. The user turned the feature on.
+    //   2. This is a live post, not a rescan. A rescan re-walks notifications
+    //      that are already in the shade and already captured; clearing the
+    //      shade is not its job.
+    //   3. The notification came from a monitored banking app.
+    //      handleNotificationPosted also forwards anything containing a
+    //      dollar amount — an SMS, an email, a receipt — and we must never
+    //      delete those.
+    //   4. The native regex found an amount, i.e. this really does look like
+    //      a purchase rather than a balance alert or a login warning.
+    //   5. The notification is clearable (not an ongoing/foreground one).
+    //   6. It was durably written to the pending queue. queueTransaction
+    //      uses commit(), not apply(), so by the time this returns true the
+    //      bytes are on disk and the JS pipeline will find them on next
+    //      launch even if the process is killed a millisecond later.
+    //   7. A Covault notification for this purchase is showing. If our own
+    //      notifications are blocked at the OS level, or posting threw, we
+    //      would be removing the user's only visible record — so we don't.
+    //
+    // Ordering is the safety property: persist, then notify, then dismiss.
+    // The bank's notification is only ever removed after Covault holds a
+    // durable copy of it and has put something in its place.
+    private void maybeHideBankNotification(
+        StatusBarNotification sbn,
+        boolean fromMonitored,
+        Double amount,
+        boolean fromScan,
+        boolean secured
+    ) {
+        if (fromScan) return;                 // (2)
+        if (!fromMonitored) return;           // (3)
+        if (amount == null) return;           // (4)
+        if (!secured) return;                 // (6) + (7)
+        if (!isHideBankNotificationsEnabled()) return;  // (1)
+        try {
+            if (!sbn.isClearable()) return;   // (5)
+            String key = sbn.getKey();
+            if (key == null) return;
+            cancelNotification(key);
+            Log.i(TAG, "Dismissed bank notification after capture: " + sbn.getPackageName());
+        } catch (Exception e) {
+            // A failure here is harmless: the bank's notification simply stays.
+            Log.w(TAG, "Could not dismiss bank notification", e);
+        }
+    }
+
+    private boolean isHideBankNotificationsEnabled() {
+        try {
+            return getSharedPreferences("covault_prefs", 0)
+                .getBoolean(HIDE_BANK_NOTIFICATIONS_KEY, false);
+        } catch (Exception e) {
+            // Unreadable preference means we cannot prove the user opted in.
+            return false;
+        }
+    }
+
+    static final String HIDE_BANK_NOTIFICATIONS_KEY = "hide_bank_notifications";
 
     @Override
     public void onNotificationRemoved(StatusBarNotification sbn) {
@@ -598,6 +670,38 @@ public class NotificationListener extends NotificationListenerService {
     private static final int MAX_PENDING = 200;
 
     /**
+     * Guards the pending queue's read-modify-write.
+     *
+     * The service appends to the queue and the plugin drains-and-clears it,
+     * both in this process and on different threads. Without a lock the two
+     * interleave: the plugin reads the stored array, the service commits an
+     * appended copy, then the plugin's clear lands and the just-appended entry
+     * is gone. That used to be survivable — the notification was still sitting
+     * in the shade for scanActiveNotifications() to find. With tray
+     * suppression on, that notification has been dismissed, so the queue is
+     * the only copy and losing an entry means losing the purchase.
+     */
+    static final Object QUEUE_LOCK = new Object();
+
+    /**
+     * Atomically take everything in the pending queue and clear it.
+     * Called by the plugin on the JS side's behalf.
+     *
+     * Clearing before the caller has processed the batch is deliberate (see
+     * CovaultNotificationPlugin.drainPendingNotifications) — the point of the
+     * lock is only that a concurrent append cannot be swallowed by the clear.
+     */
+    static String drainPendingQueue(android.content.Context context) {
+        synchronized (QUEUE_LOCK) {
+            android.content.SharedPreferences prefs =
+                context.getSharedPreferences("covault_prefs", 0);
+            String stored = prefs.getString(PENDING_QUEUE_KEY, "[]");
+            prefs.edit().remove(PENDING_QUEUE_KEY).commit();
+            return stored;
+        }
+    }
+
+    /**
      * Post a Covault notification the moment a purchase is captured.
      *
      * The parsing/categorising pipeline lives in JS, which only runs while the
@@ -624,9 +728,42 @@ public class NotificationListener extends NotificationListenerService {
         nm.createNotificationChannel(channel);
     }
 
-    private void notifyCaptured(Double amount, String vendor) {
+    /**
+     * Can a Covault capture notification actually reach the shade right now?
+     *
+     * Notifications can be switched off for the whole app, or this one channel
+     * can be set to "None", in which case nm.notify() succeeds and shows
+     * nothing. The tray-suppression path must not remove a bank's notification
+     * on the strength of a replacement that is silently dropped, so it asks
+     * this first.
+     */
+    private boolean canPostCaptureNotifications(android.app.NotificationManager nm) {
+        try {
+            if (!androidx.core.app.NotificationManagerCompat.from(this).areNotificationsEnabled()) {
+                return false;
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                android.app.NotificationChannel channel = nm.getNotificationChannel(CAPTURE_CHANNEL_ID);
+                if (channel != null
+                    && channel.getImportance() == android.app.NotificationManager.IMPORTANCE_NONE) {
+                    return false;
+                }
+            }
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * @return true if a Covault notification for this purchase is showing —
+     *         either posted by this call, or posted moments ago and collapsed
+     *         by the dedup below. False means the user has no Covault-side
+     *         record of this purchase in the shade.
+     */
+    private boolean notifyCaptured(Double amount, String vendor) {
         // Nothing useful to show without an amount.
-        if (amount == null) return;
+        if (amount == null) return false;
         try {
             String merchant = (vendor != null && !vendor.isEmpty()) ? vendor : "a purchase";
 
@@ -639,13 +776,15 @@ public class NotificationListener extends NotificationListenerService {
             while (it.hasNext()) {
                 if (now - it.next().getValue() > CAPTURE_NOTIFY_WINDOW_MS) it.remove();
             }
-            if (recentCaptureNotifications.containsKey(dedupKey)) return;
-            recentCaptureNotifications.put(dedupKey, now);
+            if (recentCaptureNotifications.containsKey(dedupKey)) return true;
 
             android.app.NotificationManager nm =
                 (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-            if (nm == null) return;
+            if (nm == null) return false;
             ensureCaptureChannel(nm);
+            if (!canPostCaptureNotifications(nm)) return false;
+
+            recentCaptureNotifications.put(dedupKey, now);
 
             Intent open = getPackageManager().getLaunchIntentForPackage(getPackageName());
             android.app.PendingIntent contentIntent = null;
@@ -670,37 +809,56 @@ public class NotificationListener extends NotificationListenerService {
             if (contentIntent != null) b.setContentIntent(contentIntent);
 
             nm.notify(dedupKey.hashCode(), b.build());
+            return true;
         } catch (Exception e) {
             Log.e(TAG, "Error posting capture notification", e);
+            return false;
         }
     }
 
-    private void queueTransaction(JSONObject transaction) {
+    /**
+     * @return true only once the entry is durably on disk.
+     *
+     * This uses commit() rather than apply() deliberately. apply() returns
+     * immediately and flushes on a background thread, so a true return would
+     * say nothing about whether the write survived. The tray-suppression path
+     * dismisses the bank's own notification on the strength of this return
+     * value, so it has to mean "written", not "queued to be written".
+     */
+    private boolean queueTransaction(JSONObject transaction) {
         try {
-            android.content.SharedPreferences prefs = getSharedPreferences("covault_prefs", 0);
-            JSONArray queue;
-            try {
-                queue = new JSONArray(prefs.getString(PENDING_QUEUE_KEY, "[]"));
-            } catch (Exception e) {
-                queue = new JSONArray();
-            }
-            queue.put(transaction);
-
-            // Drop the oldest entries if we're over the cap.
-            if (queue.length() > MAX_PENDING) {
-                JSONArray trimmed = new JSONArray();
-                for (int i = queue.length() - MAX_PENDING; i < queue.length(); i++) {
-                    trimmed.put(queue.get(i));
+            synchronized (QUEUE_LOCK) {
+                android.content.SharedPreferences prefs = getSharedPreferences("covault_prefs", 0);
+                JSONArray queue;
+                try {
+                    queue = new JSONArray(prefs.getString(PENDING_QUEUE_KEY, "[]"));
+                } catch (Exception e) {
+                    queue = new JSONArray();
                 }
-                queue = trimmed;
+                queue.put(transaction);
+
+                // Drop the oldest entries if we're over the cap.
+                if (queue.length() > MAX_PENDING) {
+                    JSONArray trimmed = new JSONArray();
+                    for (int i = queue.length() - MAX_PENDING; i < queue.length(); i++) {
+                        trimmed.put(queue.get(i));
+                    }
+                    queue = trimmed;
+                }
+                return prefs.edit().putString(PENDING_QUEUE_KEY, queue.toString()).commit();
             }
-            prefs.edit().putString(PENDING_QUEUE_KEY, queue.toString()).apply();
         } catch (Exception e) {
             Log.e(TAG, "Error queueing transaction", e);
+            return false;
         }
     }
 
-    private void broadcastTransaction(String sourceApp, Double amount, String vendor, String rawText, long postTime, boolean fromScan) {
+    /**
+     * @return true if the notification was durably queued AND a Covault
+     *         notification is showing for it — the two preconditions for
+     *         dismissing the bank's own notification.
+     */
+    private boolean broadcastTransaction(String sourceApp, Double amount, String vendor, String rawText, long postTime, boolean fromScan) {
         try {
             JSONObject transaction = new JSONObject();
             transaction.put("source_app", sourceApp);
@@ -716,12 +874,13 @@ public class NotificationListener extends NotificationListenerService {
 
             // Persist first, so the transaction survives even if no receiver is
             // listening right now (app closed/backgrounded).
-            queueTransaction(transaction);
+            boolean queued = queueTransaction(transaction);
 
             // Tell the user immediately. A rescan re-walks the shade and would
             // otherwise re-notify for things already seen, so skip those.
+            boolean notified = false;
             if (!fromScan) {
-                notifyCaptured(amount, vendor);
+                notified = notifyCaptured(amount, vendor);
             }
 
             // Broadcast to the app
@@ -732,8 +891,11 @@ public class NotificationListener extends NotificationListenerService {
 
             Log.i(TAG, "Broadcast transaction: " + transaction.toString());
 
+            return queued && notified;
+
         } catch (Exception e) {
             Log.e(TAG, "Error broadcasting transaction", e);
+            return false;
         }
     }
 }

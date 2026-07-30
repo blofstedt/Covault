@@ -80,6 +80,18 @@ export interface CovaultNotificationPlugin {
    */
   drainPendingNotifications(): Promise<{ notifications: TransactionDetectedEvent[] }>;
 
+  /**
+   * Turn tray suppression on or off. When on, the native listener dismisses a
+   * bank's own notification once it has durably captured the purchase and
+   * posted a Covault notification in its place.
+   *
+   * Prefer the `getHideBankNotifications` / `setHideBankNotifications` helpers
+   * below over calling these directly — they tolerate an older APK where the
+   * native methods don't exist yet.
+   */
+  setHideBankNotifications(options: { hidden: boolean }): Promise<void>;
+  getHideBankNotifications(): Promise<{ hidden: boolean }>;
+
   // Our event: emits whenever a transaction notification is detected
   addListener(
     eventName: 'transactionDetected',
@@ -96,6 +108,52 @@ export const covaultNotification: CovaultNotificationPlugin | null =
   Capacitor.isNativePlatform()
     ? registerPlugin<CovaultNotificationPlugin>('CovaultNotification')
     : null;
+
+/**
+ * Read whether tray suppression is on.
+ *
+ * SharedPreferences on the native side is the only source of truth: the
+ * listener service reads it with the WebView dead, so mirroring it into
+ * localStorage would just create a second value that can disagree.
+ *
+ * Returns false on web, and on an APK built before the native methods
+ * existed — a Capacitor plugin proxy happily exposes any method name and only
+ * rejects when it's called.
+ */
+export async function getHideBankNotifications(
+  plugin: CovaultNotificationPlugin | null = covaultNotification,
+): Promise<boolean> {
+  if (!plugin) return false;
+  try {
+    const { hidden } = await plugin.getHideBankNotifications();
+    return hidden === true;
+  } catch (e) {
+    log.debug('[covaultNotification] getHideBankNotifications unavailable:', e);
+    return false;
+  }
+}
+
+/**
+ * Turn tray suppression on or off.
+ *
+ * Returns the value the native side is now holding, which is what the UI
+ * should render. On failure that's the unchanged old value rather than the
+ * requested one — showing the toggle as flipped when the native listener
+ * never got the message would be worse than showing it as refused.
+ */
+export async function setHideBankNotifications(
+  hidden: boolean,
+  plugin: CovaultNotificationPlugin | null = covaultNotification,
+): Promise<boolean> {
+  if (!plugin) return false;
+  try {
+    await plugin.setHideBankNotifications({ hidden });
+    return hidden;
+  } catch (e) {
+    log.warn('[covaultNotification] Could not set hide-bank-notifications:', e);
+    return getHideBankNotifications(plugin);
+  }
+}
 
 /**
  * Auto-detect installed banking apps and save them as monitored apps
