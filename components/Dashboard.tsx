@@ -27,6 +27,7 @@ import { getLocalMonthKey } from '../lib/dateUtils';
 import { checkAndTriggerAppNotifications } from '../lib/appNotifications';
 import { supabase } from '../lib/supabase';
 import { resolveBudgetIdFromRow } from '../lib/hooks/transactionMappers';
+import { useNotificationRoute } from '../lib/hooks/useNotificationRoute';
 
 /** Current YYYY-MM in local time. */
 const currentMonthKey = (): string => {
@@ -95,6 +96,18 @@ const Dashboard: React.FC<Props> = ({
   const [expandedBudgets, setExpandedBudgets] = useState<Set<string>>(new Set());
 
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // A capture notification says "tap to review", so land the user there. Any
+  // open modal is dismissed first, otherwise the Review page opens behind it
+  // and the tap looks like it did nothing.
+  useNotificationRoute(
+    useCallback(() => {
+      setShowSettings(false);
+      setSelectedTx(null);
+      setShowTransactionForm(false);
+      setShowParsing(true);
+    }, []),
+  );
 
   const normalizedTransactions = useNormalizedTransactions(state.transactions, state.budgets);
 

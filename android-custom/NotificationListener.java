@@ -600,6 +600,19 @@ public class NotificationListener extends NotificationListenerService {
 
     static final String HIDE_BANK_NOTIFICATIONS_KEY = "hide_bank_notifications";
 
+    /**
+     * Where a tapped notification should land the user.
+     *
+     * Carried as an intent extra rather than a deep-link URI so it can't be
+     * confused with the OAuth callback that already uses the com.covault.app
+     * scheme, and so it works identically on a cold start (MainActivity.onCreate)
+     * and a warm one (onNewIntent).
+     */
+    static final String ROUTE_EXTRA = "covault_route";
+    static final String ROUTE_REVIEW = "review";
+    /** SharedPreferences key MainActivity parks the route in until JS asks. */
+    static final String PENDING_ROUTE_KEY = "pending_route";
+
     @Override
     public void onNotificationRemoved(StatusBarNotification sbn) {
         // Not needed for our use case
@@ -790,6 +803,11 @@ public class NotificationListener extends NotificationListenerService {
             android.app.PendingIntent contentIntent = null;
             if (open != null) {
                 open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                // The notification says "tap to review", so say where to land.
+                // MainActivity stashes this for the WebView to pick up, since
+                // JS isn't running yet on a cold start. See MainActivity and
+                // CovaultNotificationPlugin.consumePendingRoute.
+                open.putExtra(ROUTE_EXTRA, ROUTE_REVIEW);
                 contentIntent = android.app.PendingIntent.getActivity(
                     this, 0, open,
                     android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE

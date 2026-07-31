@@ -253,10 +253,51 @@ export async function sendExpenseCapturedNotification(
           schedule: { at: new Date(Date.now() + 1000) },
           smallIcon: NOTIF_SMALL_ICON,
           iconColor: NOTIF_ICON_COLOR,
+          // Tapping a capture should land on the Review page, same as the
+          // native listener's notification. Read back in
+          // addNotificationTapListener.
+          extra: { route: NOTIFICATION_ROUTE_REVIEW },
         },
       ],
     });
   } catch (e) {
     log.error('[appNotifications] expense-captured schedule error', e);
   }
+}
+
+/** Destination carried in a notification's `extra`, mirroring the native side. */
+export const NOTIFICATION_ROUTE_REVIEW = 'review';
+
+/**
+ * Call `onRoute` when the user taps a notification that names a destination.
+ *
+ * Only covers notifications this module scheduled, and only while the WebView
+ * is alive. The ones the native listener posts (which are the ones that arrive
+ * with the app closed) carry their destination as an intent extra instead —
+ * see `consumePendingRoute` in covaultNotification.ts. Both paths are needed:
+ * this one for a tap while the app is running, that one for a cold start.
+ *
+ * Returns a cleanup function; safe to call on web, where it is a no-op.
+ */
+export function addNotificationTapListener(
+  onRoute: (route: string) => void,
+): () => void {
+  if (!Capacitor.isNativePlatform()) return () => {};
+  let remove: (() => void) | null = null;
+  let cancelled = false;
+
+  LocalNotifications.addListener('localNotificationActionPerformed', (event) => {
+    const route = (event?.notification?.extra as { route?: unknown } | undefined)?.route;
+    if (typeof route === 'string' && route) onRoute(route);
+  })
+    .then((handle) => {
+      if (cancelled) handle.remove();
+      else remove = () => handle.remove();
+    })
+    .catch((e) => log.warn('[appNotifications] tap listener setup failed', e));
+
+  return () => {
+    cancelled = true;
+    remove?.();
+  };
 }
