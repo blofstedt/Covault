@@ -9,15 +9,24 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(CovaultNotificationPlugin.class);
         super.onCreate(savedInstanceState);
+        // Belt and braces. BridgeActivity.load() already routes the launch
+        // intent through onNewIntent below, so this is normally a no-op —
+        // stashRoute clears the extra it consumes, so running twice cannot
+        // double-stash. It's here so the routing doesn't silently die if a
+        // future Capacitor version stops doing that.
         stashRoute(getIntent());
     }
 
     /**
      * The activity is singleTask, so a tap while Covault is already running
-     * arrives here rather than through onCreate.
+     * arrives here rather than through onCreate. BridgeActivity also calls
+     * this with the launch intent from its own onCreate, which is how a cold
+     * start gets handled.
+     *
+     * Kept `protected` to match BridgeActivity.
      */
     @Override
-    public void onNewIntent(Intent intent) {
+    protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
         stashRoute(intent);
