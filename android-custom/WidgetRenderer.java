@@ -115,6 +115,16 @@ final class WidgetRenderer {
         String month = snapshot.optString("monthLabel", "");
         canvas.drawText(month, pad, pad + headerSize, text);
 
+        // ── "N to review" pill ──
+        // Covault's capture notification is otherwise the only signal that
+        // something needs attention, and dismissing it by mistake loses that.
+        // Amber matches the "Needs a look" treatment in the app. Hidden
+        // entirely at zero — an always-present "0 to review" is noise.
+        int pending = snapshot.optInt("pendingReview", 0);
+        if (pending > 0) {
+            drawReviewPill(canvas, pending, widthPx, pad, headerSize, scale, p);
+        }
+
         // ── Donut geometry ──
         float headerBottom = pad + headerSize + (4f * scale);
         float availTop = headerBottom;
@@ -217,6 +227,49 @@ final class WidgetRenderer {
         }
 
         return bitmap;
+    }
+
+    /** Amber used for "needs a look" in the app (amber-500 / amber-100). */
+    private static final int PILL_BG = Color.parseColor("#FEF3C7");
+    private static final int PILL_BG_DARK = Color.parseColor("#78350F");
+    private static final int PILL_FG = Color.parseColor("#92400E");
+    private static final int PILL_FG_DARK = Color.parseColor("#FDE68A");
+
+    private static void drawReviewPill(
+        Canvas canvas, int pending, int widthPx, float pad,
+        float headerSize, float scale, Palette p
+    ) {
+        boolean dark = p == DARK;
+        Paint pill = new Paint(Paint.ANTI_ALIAS_FLAG);
+        pill.setStyle(Paint.Style.FILL);
+        pill.setColor(dark ? PILL_BG_DARK : PILL_BG);
+
+        Paint label = new Paint(Paint.ANTI_ALIAS_FLAG);
+        label.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        label.setColor(dark ? PILL_FG_DARK : PILL_FG);
+        label.setTextSize(clamp(10.5f * scale, 9f, 14f));
+
+        // Prefer words; fall back to the bare number when the widget is too
+        // narrow, which is better than clipping "3 to revi…".
+        String full = pending + " to review";
+        String text = full;
+        float textW = label.measureText(text);
+        float maxW = (widthPx / 2f) - pad;
+        if (textW + (16f * scale) > maxW) {
+            text = String.valueOf(pending);
+            textW = label.measureText(text);
+        }
+
+        float padX = Math.max(6f, 7f * scale);
+        float padY = Math.max(3f, 4f * scale);
+        float h = label.getTextSize() + (padY * 2);
+        float right = widthPx - pad;
+        float left = right - textW - (padX * 2);
+        float top = pad + (headerSize / 2f) - (h / 2f);
+
+        RectF box = new RectF(left, top, right, top + h);
+        canvas.drawRoundRect(box, h / 2f, h / 2f, pill);
+        canvas.drawText(text, left + padX, top + padY + label.getTextSize() * 0.82f, label);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────

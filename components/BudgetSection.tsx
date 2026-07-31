@@ -103,7 +103,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
   return (
     <div
-      className={`flex-1 min-h-0 overflow-hidden rounded-[2rem] relative flex flex-col transition-all duration-300 ease-in-out ${
+      className={`flex-1 min-h-0 overflow-hidden rounded-[2rem] relative flex flex-col motion-safe:transition-[background-color,border-color,box-shadow] motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)] ${
         isExpanded
           ? 'bg-white dark:bg-slate-900 shadow-2xl border'
           : 'bg-white/70 dark:bg-slate-900/70 shadow-sm border border-slate-200/40 dark:border-slate-700/30'
@@ -112,29 +112,56 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
         borderColor: isExpanded ? budgetColor : undefined,
       }}
     >
-      {/* GRADIENT BACKGROUND BARS WITH GLOW EDGE */}
-      <div className="absolute inset-0 z-0 pointer-events-none flex">
+      {/* GRADIENT BACKGROUND BARS WITH GLOW EDGE
+          ---------------------------------------------------------
+          The spent fill animates `transform: scaleX()` rather than `width`.
+          Width is a layout property, so animating it re-laid-out this flex row
+          on every frame, for every visible vial — the main mechanical cause of
+          the jank here. A transform runs on the compositor instead.
+
+          For that to be safe the fill has to have no children: scaleX would
+          squash them horizontally. So the glow edge is now a SIBLING positioned
+          at the fill's right edge, and it translates rather than scaling. The
+          gradient itself is fine — it's defined over the element's box, so it
+          scales exactly as it would have stretched.
+
+          The projected bar keeps `width`: it carries a 6px dot pattern that
+          scaleX would visibly distort, and it's the quieter of the two.
+
+          Everything runs on the same 320ms curve as `.budget-row-anim` in
+          index.css. These used to be 500ms against the row's 320ms and the
+          card's 300ms — three clocks during a single expand, which is what
+          read as "not smooth". */}
+      <div className="absolute inset-0 z-0 pointer-events-none">
         <div
           style={{
-            width: `${spentWidth}%`,
+            transform: `scaleX(${Math.max(0, Math.min(100, spentWidth)) / 100})`,
             background: `linear-gradient(90deg, ${budgetColor}55 0%, ${budgetColor}70 100%)`,
           }}
-          className="h-full transition-all duration-500 ease-out relative"
-        >
-          {spentWidth > 0 && spentWidth < 100 && (
-            <div
-              className="absolute right-0 top-0 h-full w-[3px] transition-all duration-500"
-              style={{
-                background: budgetColor,
-                boxShadow: `0 0 6px ${budgetColor}50, 0 0 12px ${budgetColor}20`,
-              }}
-            />
-          )}
-        </div>
+          // No permanent `will-change`: the browser promotes for the duration
+          // of a running transform transition and releases after. Pinning it
+          // would keep a compositor layer alive for every vial forever — the
+          // same reasoning as the note on `.budget-row-anim` in index.css.
+          className="absolute inset-0 origin-left motion-safe:transition-transform motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)]"
+        />
+
+        {spentWidth > 0 && spentWidth < 100 && (
+          <div
+            className="absolute top-0 h-full w-[3px] -ml-[3px] motion-safe:transition-[left] motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)]"
+            style={{
+              left: `${spentWidth}%`,
+              background: budgetColor,
+              boxShadow: `0 0 6px ${budgetColor}50, 0 0 12px ${budgetColor}20`,
+            }}
+          />
+        )}
 
         <div
-          style={{ width: `${projectedWidth}%` }}
-          className="h-full transition-all duration-500 ease-out relative"
+          style={{
+            left: `${spentWidth}%`,
+            width: `${projectedWidth}%`,
+          }}
+          className="absolute top-0 h-full motion-safe:transition-[left,width] motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)]"
         >
           <div className="absolute inset-0" style={{ backgroundColor: `${budgetColor}12` }} />
           <div
@@ -150,7 +177,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
       {/* HEADER / SUMMARY */}
       <div
         onClick={handleHeaderClick}
-        className={`relative z-10 flex items-center justify-between cursor-pointer active:scale-[0.99] transition-all duration-300 ease-in-out ${
+        className={`relative z-10 flex items-center justify-between cursor-pointer active:scale-[0.99] motion-safe:transition-[transform,padding] motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)] ${
           isExpanded
             ? 'flex-none py-6 px-8'
             : useCompactCollapsedStyles
@@ -163,7 +190,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
       >
         <div className={`flex items-center ${useCompactCollapsedStyles && !isExpanded ? 'space-x-2' : 'space-x-3'}`}>
           <div
-            className={`rounded-2xl flex items-center justify-center shrink-0 transition-all duration-300 ease-in-out ${
+            className={`rounded-2xl flex items-center justify-center shrink-0 motion-safe:transition-[width,height,background-color] motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)] ${
               isExpanded
                 ? 'text-white shadow-lg p-3.5'
                 : useCompactCollapsedStyles
@@ -178,13 +205,13 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           </div>
 
           <div className="flex flex-col text-left">
-            <h3 className={`font-bold tracking-tight leading-none transition-colors duration-300 text-slate-600 dark:text-slate-100 ${useCompactCollapsedStyles && !isExpanded ? 'text-[12px]' : 'text-sm'}`}>
+            <h3 className={`font-bold tracking-tight leading-none motion-safe:transition-colors motion-safe:duration-[320ms] text-slate-600 dark:text-slate-100 ${useCompactCollapsedStyles && !isExpanded ? 'text-[12px]' : 'text-sm'}`}>
               {budget.name}
             </h3>
 
             {!isExpanded && (
               <span
-                className={`tracking-wide mt-1 transition-colors duration-300 ${
+                className={`tracking-wide mt-1 motion-safe:transition-colors motion-safe:duration-[320ms] ${
                   isOver
                     ? 'text-slate-700 dark:text-slate-100 font-extrabold'
                     : isWarning
@@ -204,23 +231,23 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           {isExpanded ? (
             <>
               <div className="flex items-baseline space-x-1">
-                <span className="text-sm font-bold font-mono mr-2 tracking-tight transition-colors duration-300 text-slate-500">
+                <span className="text-sm font-bold font-mono mr-2 tracking-tight motion-safe:transition-colors motion-safe:duration-[320ms] text-slate-500">
                   ${total.toFixed(0)}
                   <span className="mx-1.5 opacity-30 font-medium text-slate-400">/</span>
                 </span>
 
-                <span className="text-xl font-extrabold font-mono tracking-tighter leading-none transition-colors duration-300 text-slate-600 dark:text-slate-100">
+                <span className="text-xl font-extrabold font-mono tracking-tighter leading-none motion-safe:transition-colors motion-safe:duration-[320ms] text-slate-600 dark:text-slate-100">
                   ${budget.totalLimit}
                 </span>
               </div>
 
-              <span className="text-[11px] font-medium tracking-wide mt-0.5 transition-colors duration-300 text-slate-400 dark:text-slate-500">
+              <span className="text-[11px] font-medium tracking-wide mt-0.5 motion-safe:transition-colors motion-safe:duration-[320ms] text-slate-400 dark:text-slate-500">
                 Vault Capacity
               </span>
             </>
           ) : (
             <span
-              className={`font-black tracking-tight transition-colors duration-300 text-slate-500 dark:text-slate-100 ${useCompactCollapsedStyles ? 'text-xs' : 'text-sm'}`}
+              className={`font-black tracking-tight motion-safe:transition-colors motion-safe:duration-[320ms] text-slate-500 dark:text-slate-100 ${useCompactCollapsedStyles ? 'text-xs' : 'text-sm'}`}
               aria-label={`${budget.totalLimit} dollar budget`}
             >
               ${budget.totalLimit}
@@ -231,7 +258,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
       {/* TRANSACTIONS LIST (Now stays mounted, styled to smoothly collapse) */}
       <div
-        className={`min-h-0 overflow-y-auto no-scrollbar relative z-10 budget-content-reveal transition-all duration-300 ease-in-out transform origin-top ${
+        className={`min-h-0 overflow-y-auto no-scrollbar relative z-10 budget-content-reveal motion-safe:transition-[opacity] motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)] transform origin-top ${
           isExpanded
             ? 'flex-1 opacity-100 translate-y-0 px-6 pb-2'
             : 'flex-none h-0 opacity-0 -translate-y-4 px-6 pb-0 overflow-hidden pointer-events-none'
@@ -247,7 +274,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
       >
         <div className="pt-1 pb-6 space-y-4">
           <div className="flex items-center justify-between px-2">
-            <span className="text-[11px] font-semibold tracking-wide transition-colors duration-300 text-slate-400 dark:text-slate-500">
+            <span className="text-[11px] font-semibold tracking-wide motion-safe:transition-colors motion-safe:duration-[320ms] text-slate-400 dark:text-slate-500">
               {isSharedView ? 'Our Activity' : 'Activity'}
             </span>
           </div>

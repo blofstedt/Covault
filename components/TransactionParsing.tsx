@@ -18,6 +18,7 @@ import { restFetch } from '../lib/apiHelpers';
 import { loadBankingAppsFromDB } from '../lib/bankingApps';
 import { getNeedsReviewIdSet, getReviewQueueChangedEventName } from '../lib/localNotificationMemory';
 import { buildFilePayload, buildUndoPayload } from '../lib/caughtTransactionOps';
+import { selectAwaitingReview, countHiddenRefunds } from '../lib/reviewQueue';
 
 /** Delay (ms) after scanning to allow notification processing before reloading data */
 const SCAN_PROCESSING_DELAY_MS = 2000;
@@ -139,9 +140,19 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     return () => window.removeEventListener(eventName, refreshReviewQueue);
   }, []);
 
-  // ── AI-entered transactions (label === 'Automatic', not yet cleared) ──
+  // ── Captures still awaiting review ──
+  // Shared definition (lib/reviewQueue.ts) so the card, the bottom-bar badge
+  // and the home-screen widget cannot disagree. They used to: this filter kept
+  // refunds, while the card rendered them out, so a captured refund made the
+  // badge read one higher than the list it pointed at.
   const aiTransactions = useMemo(
-    () => allTransactions.filter((tx) => tx.label === 'Automatic' && !tx.caught_cleared),
+    () => selectAwaitingReview(allTransactions),
+    [allTransactions],
+  );
+  // Surfaced in the card's subtitle so filtered-out refunds are explained
+  // rather than looking like captures that went missing.
+  const hiddenRefundCount = useMemo(
+    () => countHiddenRefunds(allTransactions),
     [allTransactions],
   );
 
@@ -504,6 +515,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               onClear={() => setClearTarget('entered')}
               onRefresh={handleRefresh}
               isRefreshing={isRefreshing}
+              refundCount={hiddenRefundCount}
               needsReviewIds={needsReviewIds}
               onDeleteTransaction={onDeleteTransaction}
               onVendorRenamed={handleVendorRenamed}

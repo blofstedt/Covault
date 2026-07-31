@@ -162,8 +162,25 @@ html.theme-transitioning * {
   transform-origin: top center;
 }
 @media (prefers-reduced-motion: reduce) {
+  /* Tailwind's `motion-safe:` variant already withholds the transition and
+     animation utilities added throughout the app, and tailwindcss-animate's
+     `animate-in` classes are opt-in per element. What remains is the
+     hand-rolled CSS in this file, which has no variant to hide behind. */
   .budget-content-reveal { animation: none; }
   .budget-row-anim { transition: none !important; }
+  .animate-nest,
+  .animate-breathe,
+  .animate-blob,
+  .animate-bar,
+  .animate-swing,
+  .animate-spring,
+  .animate-view-enter,
+  .animate-slide-left,
+  .animate-slide-right,
+  .sine-wave-slow,
+  .sine-wave-fast { animation: none !important; }
+  html { transition: none !important; }
+  html.theme-transitioning * { transition: none !important; }
 }
 
 /* Custom scrollbar for desktop */

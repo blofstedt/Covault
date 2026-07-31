@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 interface DashboardBottomBarProps {
   onGoHome: () => void;
@@ -15,6 +15,21 @@ const DashboardBottomBar: React.FC<DashboardBottomBarProps> = ({
   activeView = 'home',
   pendingCount = 0,
 }) => {
+  // Pop the badge when the count goes UP only. Popping on the way down would
+  // celebrate the user clearing their queue by drawing their eye back to it.
+  const [pop, setPop] = useState(false);
+  const previousCount = useRef(pendingCount);
+  useEffect(() => {
+    const rose = pendingCount > previousCount.current;
+    previousCount.current = pendingCount;
+    if (!rose) return;
+    setPop(true);
+    // Matches the badge-pop keyframe duration in tailwind.config.js. Clearing
+    // the class is what lets it re-trigger on the next arrival.
+    const t = setTimeout(() => setPop(false), 450);
+    return () => clearTimeout(t);
+  }, [pendingCount]);
+
   return (
     <div
       id="bottom-bar"
@@ -37,7 +52,7 @@ const DashboardBottomBar: React.FC<DashboardBottomBarProps> = ({
             aria-label="Go to home"
           >
             <svg
-              className="w-6 h-6 transition-all duration-200"
+              className={`w-6 h-6 motion-safe:transition-transform motion-safe:duration-[350ms] motion-safe:ease-[cubic-bezier(0.34,1.56,0.64,1)] ${activeView === 'home' ? 'scale-110' : 'scale-100'}`}
               viewBox="0 0 24 24"
               fill={activeView === 'home' ? 'currentColor' : 'none'}
               stroke="currentColor"
@@ -88,7 +103,7 @@ const DashboardBottomBar: React.FC<DashboardBottomBarProps> = ({
             aria-label="Open review"
           >
             <svg
-              className="w-6 h-6 transition-all duration-200"
+              className={`w-6 h-6 motion-safe:transition-transform motion-safe:duration-[350ms] motion-safe:ease-[cubic-bezier(0.34,1.56,0.64,1)] ${activeView === 'parsing' ? 'scale-110' : 'scale-100'}`}
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -100,7 +115,7 @@ const DashboardBottomBar: React.FC<DashboardBottomBarProps> = ({
               <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
             </svg>
             {pendingCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-amber-600 text-white text-[11px] font-black flex items-center justify-center">
+              <span className={`absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-amber-600 text-white text-[11px] font-black flex items-center justify-center ${pop ? 'motion-safe:animate-badge-pop' : ''}`}>
                 {pendingCount > 99 ? '99+' : pendingCount}
               </span>
             )}

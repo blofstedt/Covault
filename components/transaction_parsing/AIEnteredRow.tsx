@@ -16,6 +16,7 @@ import { toVendorKey } from '../../lib/deviceTransactionParser';
 import { countBackfillMatches, applyVendorBackfill } from '../../lib/vendorBackfill';
 import { classifyMatch, type VendorMatchResult } from '../../lib/hooks/useVendorMatcher';
 import Portal from '../ui/Portal';
+import { hapticTap, hapticWarn } from '../../lib/haptics';
 
 // Hoisted for the same reason TransactionItem hoists its formatters:
 // `toLocaleDateString` builds a fresh Intl.DateTimeFormat on every call, and
@@ -83,6 +84,9 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
   const fileWith = useCallback(
     (label: string, run: () => Promise<void> | void) => {
       if (filing) return;
+      // Fires with the animation, not with the DB write — the tap should feel
+      // acknowledged immediately, and the write is 620ms later.
+      hapticTap();
       setFiling(label);
       // Let the check/slide animation play, then persist and drop the row.
       fileTimerRef.current = setTimeout(async () => {
@@ -138,6 +142,7 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
 
   const handleDeleteSimilar = useCallback(async (similarTxId: string) => {
     if (!onDeleteTransaction) return;
+    hapticWarn();
     setDeletingSimilar(true);
     try {
       await onDeleteTransaction(similarTxId);

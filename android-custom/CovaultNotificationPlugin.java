@@ -340,7 +340,11 @@ public class CovaultNotificationPlugin extends Plugin {
             return;
         }
         try {
-            WidgetDeltaStore.writeSnapshot(getContext(), snapshot, call.getString("rules"));
+            WidgetDeltaStore.writeSnapshot(
+                getContext(),
+                snapshot,
+                call.getString("rules"),
+                Boolean.TRUE.equals(call.getBoolean("autoFile", false)));
             CovaultWidgetProvider.updateAll(getContext());
         } catch (Exception e) {
             Log.w(TAG, "updateWidget failed", e);

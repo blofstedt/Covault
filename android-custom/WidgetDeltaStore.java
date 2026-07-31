@@ -57,10 +57,13 @@ final class WidgetDeltaStore {
 
     // ── Snapshot ──────────────────────────────────────────────────────────
 
-    static void writeSnapshot(Context context, String snapshotJson, String rulesJson) {
+    static void writeSnapshot(Context context, String snapshotJson, String rulesJson, boolean autoFile) {
         SharedPreferences.Editor editor = prefs(context).edit();
         editor.putString(SNAPSHOT_KEY, snapshotJson);
         if (rulesJson != null) editor.putString(RULES_KEY, rulesJson);
+        // Mirrored so willAwaitReview can tell whether a capture made with the
+        // app closed will be auto-filed or will wait in Review.
+        editor.putBoolean("auto_accept_known_vendors", autoFile);
         // A fresh snapshot supersedes every optimistic delta before it. Dropping
         // them here rather than filtering at render time keeps the store from
         // growing without bound on a device the app is rarely opened on.
@@ -96,6 +99,8 @@ final class WidgetDeltaStore {
             entry.put("amount", amount);
             entry.put("category", categoryFor(context, vendor));
             entry.put("atMs", atMs);
+            // Whether this will show up in Review, for the widget's badge.
+            entry.put("pending", willAwaitReview(context, vendor));
             deltas.put(entry);
 
             while (deltas.length() > MAX_DELTAS) deltas.remove(0);
@@ -135,6 +140,7 @@ final class WidgetDeltaStore {
 
             double totalSpent = snapshot.optDouble("totalSpent", 0);
             double added = 0;
+            int pendingAdded = 0;
 
             for (int i = 0; i < deltas.length(); i++) {
                 JSONObject d = deltas.optJSONObject(i);
@@ -148,6 +154,9 @@ final class WidgetDeltaStore {
                 String category = d.optString("category", "Other");
 
                 added += amount;
+                // Absent means the delta predates this field — count it, since
+                // the badge errs high rather than low.
+                if (d.optBoolean("pending", true)) pendingAdded++;
                 slices = addToSlice(slices, category, amount);
             }
 
@@ -157,6 +166,7 @@ final class WidgetDeltaStore {
             merged.put("totalSpent", totalSpent + added);
             merged.put("remaining", snapshot.optDouble("remaining", 0) - added);
             merged.put("slices", sortDescending(slices));
+            merged.put("pendingReview", snapshot.optInt("pendingReview", 0) + pendingAdded);
             return merged;
         } catch (Exception e) {
             // Rendering the un-merged snapshot is strictly better than failing.
@@ -211,12 +221,35 @@ final class WidgetDeltaStore {
      * app's own pipeline does.
      */
     static String categoryFor(Context context, String vendor) {
+        return matchFor(context, vendor).category;
+    }
+
+    /** A resolved rule: which category, and how completely it explains the name. */
+    static final class Match {
+        final String category;
+        final double confidence;
+        Match(String category, double confidence) {
+            this.category = category;
+            this.confidence = confidence;
+        }
+    }
+
+    /**
+     * Auto-file threshold, mirroring AUTO_ACCEPT_MIN_CONFIDENCE in
+     * lib/vendorMatchConfidence.ts. widgetAutoFileThreshold.test.ts fails the
+     * build if the two drift apart.
+     */
+    // AUTO_FILE_THRESHOLD_BEGIN
+    static final double AUTO_FILE_THRESHOLD = 0.9;
+    // AUTO_FILE_THRESHOLD_END
+
+    static Match matchFor(Context context, String vendor) {
         String key = normalize(vendor);
-        if (key.isEmpty()) return "Other";
+        if (key.isEmpty()) return new Match("Other", 0);
         try {
             JSONArray rules = new JSONArray(prefs(context).getString(RULES_KEY, "[]"));
-            String contains = null;
-            String prefix = null;
+            Match contains = null;
+            Match prefix = null;
             for (int i = 0; i < rules.length(); i++) {
                 JSONObject r = rules.optJSONObject(i);
                 if (r == null) continue;
@@ -224,12 +257,21 @@ final class WidgetDeltaStore {
                 String category = r.optString("category", "");
                 if (matchKey.isEmpty() || category.isEmpty()) continue;
 
-                if (key.equals(matchKey)) return category;   // exact wins outright
+                // Exact wins outright, at full confidence.
+                if (key.equals(matchKey)) return new Match(category, 1);
+
+                // Coverage score, same formula as scoreVendorMatch in
+                // lib/vendorMatchConfidence.ts: how much of the incoming name
+                // the rule accounts for. A short rule against a long vendor
+                // scores low, which is what keeps "tim" from confidently
+                // claiming "TIM HORTONS DOWNTOWN".
+                double score = (double) matchKey.length() / (double) key.length();
+
                 String type = r.optString("matchType", "");
                 if ("prefix".equals(type) && key.startsWith(matchKey) && prefix == null) {
-                    prefix = category;
+                    prefix = new Match(category, score);
                 } else if (key.contains(matchKey) && contains == null) {
-                    contains = category;
+                    contains = new Match(category, score);
                 }
             }
             if (prefix != null) return prefix;
@@ -237,7 +279,32 @@ final class WidgetDeltaStore {
         } catch (Exception e) {
             // fall through
         }
-        return "Other";
+        return new Match("Other", 0);
+    }
+
+    /**
+     * Will this capture land in the Review queue?
+     *
+     * False only when auto-file is on AND a rule matches confidently enough to
+     * take it. Everything else — auto-file off, weak match, unreadable
+     * preferences — counts as pending, because the widget's badge exists to
+     * catch a mis-dismissed notification and is useless if it under-reports.
+     *
+     * The opposite error matters too: if this said "pending" for a capture
+     * auto-file then swallowed, the badge would show a phantom item after every
+     * matched purchase until the app was next opened, and the user would learn
+     * to ignore it.
+     */
+    static boolean willAwaitReview(Context context, String vendor) {
+        try {
+            boolean autoFile = prefs(context).getBoolean("auto_accept_known_vendors", false);
+            if (!autoFile) return true;
+            Match match = matchFor(context, vendor);
+            if ("Other".equals(match.category)) return true;
+            return match.confidence < AUTO_FILE_THRESHOLD;
+        } catch (Exception e) {
+            return true;
+        }
     }
 
     private static String normalize(String s) {

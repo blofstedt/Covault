@@ -26,6 +26,7 @@ export interface DashboardSettings {
   app_notifications_enabled?: boolean;
   smart_notifications_enabled?: boolean;
   auto_accept_known_vendors?: boolean;
+  haptics_enabled?: boolean;
 
   [key: string]: any;
 }
@@ -150,6 +151,10 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
               autoAcceptKnownVendors={settings.auto_accept_known_vendors === true}
               onToggleAutoAccept={() =>
                 onUpdateSettings('auto_accept_known_vendors', !settings.auto_accept_known_vendors)
+              }
+              hapticsEnabled={settings.haptics_enabled !== false}
+              onToggleHaptics={() =>
+                onUpdateSettings('haptics_enabled', settings.haptics_enabled === false)
               }
             />
           </PremiumGate>
