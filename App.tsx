@@ -5,7 +5,7 @@ import Dashboard from './components/Dashboard';
 import Onboarding from './components/Onboarding';
 import FullScreenLoader from './components/FullScreenLoader';
 import ErrorBoundary from './components/ErrorBoundary';
-import type { AppState, BudgetCategory, Transaction } from './types';
+import type { AppState, BudgetCategory, Transaction, Toast } from './types';
 import { supabase } from './lib/supabase';
 import { useAuthState, AuthStatus } from './lib/hooks/useAuthState';
 import { useDeepLinks } from './lib/hooks/useDeepLinks';
@@ -19,12 +19,9 @@ import { sendRecurringCatchUpNotification } from './lib/appNotifications';
 import { preloadAIModel } from './lib/aiExtractor';
 import { log } from './lib/log';
 
-/** A transient toast: an error, or an info message with an optional action. */
-interface Toast {
-  message: string;
-  tone: 'error' | 'info';
-  action?: { label: string; run: () => void };
-}
+// `Toast` lives in types.ts because Dashboard and the Review page raise their
+// own (e.g. Undo after filing a captured transaction) and importing it from
+// here would point them back at their own parent.
 
 const SETTINGS_KEY = 'covault_settings';
 const SCAN_PROCESSING_DELAY_MS = 2000;
@@ -346,6 +343,7 @@ const App: React.FC = () => {
           saveSettingToDb={saveSettingToDb}
           onLinkPartner={handleLinkPartner}
           onUnlinkPartner={handleUnlinkPartner}
+          onToast={setToast}
           onRefreshNotifications={refreshNotifications}
           onReloadTransactions={loadTransactions}
         />

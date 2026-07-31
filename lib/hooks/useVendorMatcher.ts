@@ -33,6 +33,35 @@ export function classifyMatch(opts: {
 }
 
 /**
+ * The rows a bulk "Accept" is allowed to file: those where a deterministic
+ * vendor rule matched AND the row already has a category.
+ *
+ * Deliberately `exact` only. An exact match means a rule the user wrote fired,
+ * so accepting in bulk is them ratifying their own past decision. `ai` rows are
+ * a model's guess — filing a screenful of those in one tap is how a month of
+ * budget data quietly goes wrong, so they stay one-at-a-time.
+ *
+ * `hasBudget` is required as well because Accept is only offered on rows that
+ * have somewhere to go; a rule matching with no resolved category is still a
+ * manual decision.
+ */
+export function selectBulkAcceptable(
+  transactions: Transaction[],
+  matchMap: Map<string, VendorMatchResult>,
+  hasBudget: (tx: Transaction) => boolean,
+): Transaction[] {
+  return transactions.filter((tx) => {
+    const result = matchMap.get(tx.id);
+    const hasOverrideMatch = !!(result?.match && result.state !== 'none');
+    const budget = hasBudget(tx);
+    return (
+      classifyMatch({ hasOverrideMatch, confidence: tx.confidence, hasBudget: budget }) === 'exact'
+      && budget
+    );
+  });
+}
+
+/**
  * Matches AI-extracted transactions against user-defined vendor overrides.
  * Returns a classifyAll function that produces a Map<tx.id, matchResult>
  * for efficient lookup when rendering the transaction list.

@@ -15,6 +15,12 @@ import CategoryPickerSheet from './CategoryPickerSheet';
 import { toVendorKey } from '../../lib/deviceTransactionParser';
 import { countBackfillMatches, applyVendorBackfill } from '../../lib/vendorBackfill';
 import { classifyMatch, type VendorMatchResult } from '../../lib/hooks/useVendorMatcher';
+import Portal from '../ui/Portal';
+
+// Hoisted for the same reason TransactionItem hoists its formatters:
+// `toLocaleDateString` builds a fresh Intl.DateTimeFormat on every call, and
+// this runs once per row per render of the review list.
+const SHORT_DATE_FMT = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
 
 interface AIEnteredRowProps {
   tx: Transaction;
@@ -59,14 +65,12 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
   // AI: no rule, but the pipeline assigned a category with a confidence score.
   // Unmatched: no rule, no confidence → needs a manual category.
   const overrideMatch = matchResult?.match && matchResult.state !== 'none' ? matchResult.match : null;
-  const confidencePct = tx.confidence != null ? Math.round(Math.max(0, Math.min(1, tx.confidence)) * 100) : null;
+  // tx.confidence still decides exact/ai/unmatched here; it just isn't rendered.
   const matchKind = classifyMatch({
     hasOverrideMatch: !!overrideMatch,
     confidence: tx.confidence,
     hasBudget: !!budgetName,
   });
-  const confTier: 'high' | 'medium' | 'low' =
-    confidencePct == null ? 'low' : confidencePct >= 75 ? 'high' : confidencePct >= 50 ? 'medium' : 'low';
 
   // ── Completion animation + file state ──
   const [filing, setFiling] = useState<string | null>(null);
@@ -200,26 +204,28 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
     [onMarkNotTransaction, tx],
   );
 
+  // Emerald is reserved for "a rule you wrote matched this". It used to also
+  // cover high-confidence AI, which meant the one distinction worth seeing at a
+  // glance — did this come from your own rule, or from a guess? — was carried
+  // by a 3px checkmark and a percentage.
+  //
+  // The percentage is gone too. tx.confidence is still stored and still drives
+  // classifyMatch; it just isn't shown, because nobody triages differently at
+  // 80% than at 65%. The word "Guessed" carries the whole actionable meaning.
   const renderMatchBadge = () => {
     if (matchKind === 'exact') {
       return (
         <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 rounded-full">
           <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>
-          {budgetName ? budgetName : 'Known vendor'}
+          {budgetName || 'Known vendor'}
         </span>
       );
     }
     if (matchKind === 'ai') {
-      const tierChip =
-        confTier === 'high'
-          ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/30'
-          : confTier === 'medium'
-          ? 'text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/30'
-          : 'text-rose-700 dark:text-rose-300 bg-rose-100 dark:bg-rose-900/30';
       return (
-        <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${tierChip}`}>
-          <span>{budgetName || 'Guessed'}</span>
-          {confidencePct != null && <span className="opacity-70">{confidencePct}%</span>}
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800/60 px-2 py-0.5 rounded-full">
+          <span className="opacity-60">Guessed</span>
+          {budgetName && <span>{budgetName}</span>}
         </span>
       );
     }
@@ -272,22 +278,24 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
     return items;
   }, [canAccept, matchKind, onMarkNotTransaction, onVendorRenamed, openPicker, tx.vendor]);
 
+  // Rendered at row level rather than inside the text column, so the buttons
+  // align to the card's edge instead of hanging off the vendor name.
   const renderMatchActions = () => (
-    <div className="flex items-center gap-2 mt-2">
+    <div className="flex items-center gap-2 mt-3">
       {canAccept ? (
         <button
           type="button"
           onClick={() => fileWith(`Filed to ${budgetName}`, () => onAccept?.(tx))}
-          className="inline-flex items-center justify-center gap-1.5 min-h-[40px] px-4 text-[12px] font-bold rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95 transition-all"
+          className="flex-1 inline-flex items-center justify-center gap-1.5 min-h-[44px] px-4 text-[13px] font-bold rounded-2xl bg-emerald-500 text-white shadow-sm shadow-emerald-500/20 hover:bg-emerald-600 active:scale-[0.98] transition-all"
         >
-          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>
           Accept
         </button>
       ) : (
         <button
           type="button"
           onClick={() => openPicker('change')}
-          className="inline-flex items-center justify-center min-h-[40px] px-4 text-[12px] font-bold rounded-xl bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 hover:opacity-90 active:scale-95 transition-all"
+          className="flex-1 inline-flex items-center justify-center min-h-[44px] px-4 text-[13px] font-bold rounded-2xl bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 shadow-sm hover:opacity-90 active:scale-[0.98] transition-all"
         >
           Categorize
         </button>
@@ -297,7 +305,7 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
         type="button"
         onClick={() => setShowActions(true)}
         aria-label={`More actions for ${tx.vendor}`}
-        className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 transition-all"
+        className="shrink-0 inline-flex items-center justify-center min-h-[44px] min-w-[44px] rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-[0.98] transition-all"
       >
         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <circle cx="5" cy="12" r="1.75" /><circle cx="12" cy="12" r="1.75" /><circle cx="19" cy="12" r="1.75" />
@@ -307,16 +315,18 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
   );
 
   // Completion state: brief success card shown while the parent removes the row.
+  // Same radius, padding and border weight as the row it replaces, so filing a
+  // transaction doesn't make the list jump.
   if (filing) {
     return (
-      <div className="w-full p-4 rounded-2xl border border-emerald-200 dark:border-emerald-800/40 bg-emerald-50 dark:bg-emerald-900/20 flex items-center gap-3 animate-in fade-in slide-in-from-right-2 duration-300">
+      <div className="w-full p-4 rounded-[2rem] border border-emerald-200 dark:border-emerald-800/40 bg-emerald-50 dark:bg-emerald-900/20 shadow-sm flex items-center gap-3 animate-in fade-in slide-in-from-right-2 duration-300">
         <span className="w-9 h-9 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0 animate-in zoom-in-50 duration-300">
           <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
             <polyline points="20 6 9 17 4 12" />
           </svg>
         </span>
         <div className="min-w-0">
-          <p className="text-xs font-bold text-emerald-700 dark:text-emerald-300 truncate">{tx.vendor}</p>
+          <p className="text-[14px] font-bold text-emerald-700 dark:text-emerald-300 tracking-tight truncate">{tx.vendor}</p>
           <p className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">{filing}</p>
         </div>
       </div>
@@ -325,15 +335,19 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
 
   return (
     <>
+      {/* One neutral surface matching TransactionItem, with a left accent bar
+          carrying the state. The old version tinted the whole row and gave the
+          softDup and isForReview branches identical amber classes — two
+          different meanings rendering the same way. */}
       <div
-        className={`w-full p-4 rounded-2xl border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] transition-colors duration-200 ${
+        className={`w-full p-4 rounded-[2rem] border border-l-4 shadow-sm ring-1 ring-inset ring-white/10 dark:ring-white/[0.03] backdrop-blur-xl bg-white/80 dark:bg-slate-900/80 border-slate-200/40 dark:border-slate-700/40 transition-colors duration-200 ${
           softDup
-            ? 'bg-amber-50/70 dark:bg-amber-900/15 border-amber-200 dark:border-amber-700/40'
+            ? 'border-l-amber-400 dark:border-l-amber-500'
             : isForReview
-            ? 'bg-amber-50/70 dark:bg-amber-900/15 border-amber-200 dark:border-amber-700/40'
+            ? 'border-l-amber-300 dark:border-l-amber-600'
             : matchKind === 'unmatched'
-            ? 'bg-slate-50/70 dark:bg-slate-900/15 border-slate-200 dark:border-slate-700/40'
-            : 'bg-white/60 dark:bg-emerald-900/10 backdrop-blur-sm border-emerald-100 dark:border-emerald-800/30'
+            ? 'border-l-slate-300 dark:border-l-slate-600'
+            : 'border-l-emerald-400 dark:border-l-emerald-500'
         }`}
       >
         <div className="flex items-start justify-between gap-3">
@@ -362,35 +376,28 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
                   onSave={handleSaveVendor}
                 />
               ) : (
-                <p className="text-[13px] font-bold text-slate-700 dark:text-slate-200 truncate">
+                <p className="text-[14px] font-bold text-slate-600 dark:text-slate-100 tracking-tight truncate">
                   {tx.vendor}
                 </p>
               )}
-              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                {softDup && (
-                  <SoftDuplicateBadge
-                    tx={tx}
-                    similar={softDup}
-                    onDismiss={handleDismissSoftDup}
-                    onDeleteSimilar={handleDeleteSimilar}
-                    isDeleting={deletingSimilar}
-                  />
-                )}
-                {isForReview && (
-                  <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 tracking-wide">Needs a look</span>
-                )}
+              {/* Exactly two items, never wrapping, so every row is the same
+                  height. The soft-dup badge and "Needs a look" used to share
+                  this line and pushed it to two or three lines on a narrow
+                  phone; they get their own line below. */}
+              <div className="flex items-center gap-1.5 mt-1 min-w-0">
                 {renderMatchBadge()}
-                <span className="text-[11px] text-slate-400 dark:text-slate-500">
-                  {parseLocalDate(tx.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 shrink-0">
+                  {SHORT_DATE_FMT.format(parseLocalDate(tx.date))}
                 </span>
               </div>
-              {renderMatchActions()}
-              {matchKind !== 'exact' && <RawNotificationExpander rawNotification={tx.raw_notification} />}
             </div>
           </div>
           <div className="shrink-0 flex items-start gap-1">
             <div className="text-right">
-              <span className={`text-sm font-extrabold font-mono ${tx.amount < 0 ? 'text-emerald-500 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-200'}`}>
+              {/* The amount is what you scan when triaging, so it matches the
+                  Dashboard row's weight. It used to be 14px and the only
+                  font-mono in any transaction row in the app. */}
+              <span className={`text-lg font-black tracking-tighter ${tx.amount < 0 ? 'text-emerald-500 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-50'}`}>
                 {tx.amount < 0 ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
               </span>
               {tx.amount < 0 && (
@@ -404,7 +411,7 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
                 type="button"
                 onClick={() => onTransactionTap(tx)}
                 aria-label={`Open details for ${tx.vendor}, ${formatCurrency(tx.amount)}`}
-                className="inline-flex items-center justify-center min-h-[40px] min-w-[36px] -mr-1 rounded-xl text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 transition-all"
+                className="inline-flex items-center justify-center min-h-[40px] min-w-[36px] -mr-1 rounded-xl text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 transition-all"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <polyline points="9 18 15 12 9 6" />
@@ -413,6 +420,34 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
             )}
           </div>
         </div>
+
+        {/* Attention line — only rendered when there's something to say, so a
+            clean row stays two lines tall. */}
+        {(softDup || isForReview) && (
+          <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+            {softDup && (
+              <SoftDuplicateBadge
+                tx={tx}
+                similar={softDup}
+                onDismiss={handleDismissSoftDup}
+                onDeleteSimilar={handleDeleteSimilar}
+                isDeleting={deletingSimilar}
+              />
+            )}
+            {isForReview && !softDup && (
+              <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 tracking-wide">
+                Needs a look
+              </span>
+            )}
+          </div>
+        )}
+
+        {renderMatchActions()}
+
+        {/* Shown for every row with source text, exact matches included. It used
+            to be hidden on exact matches — which is precisely when you want it,
+            because that's a rule of yours firing on something it shouldn't. */}
+        <RawNotificationExpander rawNotification={tx.raw_notification} />
       </div>
 
       {showActions && (
@@ -462,10 +497,15 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
         />
       )}
 
+      {/* Portalled for the same reason the sheets are: this renders from inside
+          the Review page's `relative z-10` <main>, so z-50 lost to the z-40
+          bottom bar. */}
       {backfillToast && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full bg-emerald-500 text-white text-[11px] font-bold shadow-lg animate-in fade-in slide-in-from-bottom-2">
-          {backfillToast}
-        </div>
+        <Portal>
+          <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[130] px-4 py-2 rounded-full bg-emerald-500 text-white text-[11px] font-bold shadow-lg animate-in fade-in slide-in-from-bottom-2">
+            {backfillToast}
+          </div>
+        </Portal>
       )}
     </>
   );
