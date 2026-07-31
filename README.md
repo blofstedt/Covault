@@ -1,261 +1,124 @@
 # Covault
 
-A modern budget tracking Progressive Web App (PWA) built with React, TypeScript, and Supabase.
+A personal budget tracker for a household. Track spending across budget
+categories, capture transactions automatically from Android banking
+notifications, and share a vault with a partner.
 
-## Features
+React 19 + TypeScript + Vite, packaged for Android with Capacitor. Data lives in
+Supabase; AI extraction runs **on-device** via `@huggingface/transformers`, so
+there is no OpenAI or Gemini key.
 
-- 📊 Budget tracking across multiple categories
-- 💰 Monthly income management
-- 🔄 Transaction tracking (manual and auto-added)
-- 🏠 Household budget sharing
-- 📱 Progressive Web App (works offline)
-- 🌙 Dark mode support
-- 🔐 Secure authentication with Google OAuth
+> **Working on this repo with an AI?** Point it at `CLAUDE.md` — that is the
+> index written for it, and it should be read before anything else.
+> `docs/ARCHITECTURE.md` has the deep detail. This file is just setup.
+
+## Requirements
+
+- Node.js 20+
+- A Supabase project
+- For local Android builds: JDK 21 and the Android SDK (or let CI do it)
 
 ## Setup
 
-### Prerequisites
-
-- Node.js >= 20.0.0
-- npm or yarn
-- A Supabase account and project
-
-### Installation
-
-1. Clone the repository:
 ```bash
 git clone https://github.com/blofstedt/Covault.git
 cd Covault
+npm install --legacy-peer-deps   # flag matches CI; needed for React 19 / Vite 6 peer ranges
+cp .env.example .env             # then fill in the values below
+npm run dev                      # http://localhost:3000
 ```
 
-2. Install dependencies:
-```bash
-npm install --legacy-peer-deps
-```
-(The `--legacy-peer-deps` flag is required for the React 19 / Vite 6 peer
-ranges, and matches what CI uses.)
+`.env`:
 
-3. Set up environment variables:
-Create a `.env` file in the root directory (see `.env.example` for reference):
 ```
-VITE_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_SUPABASE_URL=https://<your-project-ref>.supabase.co
+VITE_SUPABASE_ANON_KEY=<your anon key>
 VITE_ADMIN_EMAIL=you@example.com   # optional
 ```
-(AI extraction runs on-device via `@huggingface/transformers` — there is no
-Gemini/OpenAI key. The only optional var is `VITE_ADMIN_EMAIL`.)
 
-**Get your Supabase credentials:**
-- Go to your Supabase project dashboard
-- Navigate to Settings > API
-- Copy the "Project URL" (for `VITE_SUPABASE_URL` or `VITE_PUBLIC_SUPABASE_URL`)
-- Copy the "anon/public" key (for `VITE_SUPABASE_ANON_KEY`)
+Both required values are in Supabase → Project Settings → API ("Project URL"
+and the "anon/public" key). `VITE_PUBLIC_SUPABASE_URL` also works in place of
+the first.
 
-**Note:** Both `VITE_SUPABASE_URL` and `VITE_PUBLIC_SUPABASE_URL` are supported for compatibility.
+Without them the app falls back to a stub client that logs warnings and does
+nothing useful.
 
-**Configure Supabase Authentication URLs:**
+**Never commit the service-role key.** It belongs in an environment variable or
+a GitHub Actions secret, never in the client bundle. `.env` and anything
+matching `*credentials*` / `*secrets*` are gitignored.
 
-This is **critical** for OAuth to work on both web and Android:
+## Database
 
-1. In Supabase Dashboard, go to **Authentication > URL Configuration**
-2. Under **Redirect URLs**, add:
-   - For web development: `http://localhost:3000`
-   - For web production: `https://your-domain.com`
-   - **For Android: `com.covault.app://auth/callback`** ← REQUIRED for Android
-3. Click **Save**
+For an existing database, run
+`supabase/migrations/2026_08_01_sync_schema_to_app.sql` in the Supabase SQL
+editor. It is idempotent — safe to run twice — and brings the schema in line
+with the current app. Migration files whose header says **SUPERSEDED** are
+history; you do not need them.
 
-**Configure Google OAuth:**
+For a fresh project, run `supabase/schema.sql` first. It creates the tables the
+app uses: `settings`, `budgets`, `transactions`, `overrides`, `banks`,
+`notification_rules`. Without it you will see 404s in the console for missing
+tables.
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Navigate to APIs & Services > Credentials
-3. Edit your OAuth 2.0 Client ID
-4. Under "Authorized redirect URIs", add:
-   - `https://your-project-id.supabase.co/auth/v1/callback`
-5. Save changes
+`pending_transactions` is deliberately **not** in the schema; the app treats its
+absence as an empty queue. See `docs/ARCHITECTURE.md`.
 
-4. **IMPORTANT: Set up the Supabase database schema**
+## Auth configuration
 
-Before running the app, you MUST create the required database tables in your Supabase project:
+Required for Google OAuth to work on web and Android.
 
-1. Open your Supabase project dashboard
-2. Go to the SQL Editor
-3. Copy the contents of `supabase/schema.sql`
-4. Paste and run the SQL in the editor
+In Supabase → **Authentication → URL Configuration**, add these redirect URLs:
 
-This creates the 5 tables the app uses (see `CLAUDE.md` for the per-table
-column summary):
-- `settings` - 1 row per user: preferences, partner linking, income, trial flags
-- `budgets` - Per-user budget limits
-- `transactions` - Confirmed transaction records
-- `overrides` - Learned vendor→category rules
-- `banks` - Known banking apps used for notification capture
+- `http://localhost:3000` — local dev
+- your production web URL
+- `com.covault.app://auth/callback` — **required for Android**
 
-(The capture pipeline also reads/writes `pending_transactions`, which is
-intentionally **not** in `schema.sql`; the app treats its absence as an empty
-queue — see `SUPABASE_AUDIT.md`.)
+In [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services →
+Credentials → your OAuth 2.0 Client ID, add this authorised redirect URI:
 
-**⚠️ Without running schema.sql first, you will see 404 errors in the console for missing tables.**
+- `https://<your-project-ref>.supabase.co/auth/v1/callback`
 
-### Development
+## Commands
 
-Run the development server:
 ```bash
-npm run dev
+npm run dev              # dev server
+npm run verify           # typecheck + unused check + tests + build
+npm test                 # tests only
+npm run build            # production build to dist/
+npm run cap:build        # web build + cap sync + custom native file sync
+npm run cap:sync         # sync only, no rebuild
 ```
 
-The app will be available at `http://localhost:3000`
+## Android build
 
-### Build
+`.github/workflows/build-android.yml` builds a debug APK on every push to
+`main` and attaches it to the run as an artifact. That is the easiest way to get
+a build.
 
-Build for production:
-```bash
-npm run build
-```
+Locally:
 
-Run the recommended pre-commit verification suite:
-```bash
-npm run verify
-```
-
-Preview the production build:
-```bash
-npm run preview
-```
-
-### Capacitor (Mobile)
-
-**Prerequisites for Android:**
-- Android Studio installed
-- Java Development Kit (JDK) 11 or higher
-- Android SDK (API level 22 or higher)
-
-**Building for Android:**
-
-1. Ensure your `.env` file has the correct Supabase credentials:
-```bash
-# These MUST be set for Android builds
-# Both VITE_SUPABASE_URL and VITE_PUBLIC_SUPABASE_URL are supported
-VITE_SUPABASE_URL=https://your-project-id.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key
-```
-
-2. Build the web app and sync with Android:
 ```bash
 npm run cap:build
+cd android && ./gradlew assembleDebug
 ```
 
-This command runs:
-- `npm run build` - Builds the React app with env vars embedded
-- `npx cap sync android` - Copies build to Android project
-- `bash scripts/sync-android.sh` - Copies custom Android resources
+Custom native code lives in **`android-custom/`**, not `android/`.
+`scripts/sync-android.sh` copies it in. The `android/` directory is generated
+and gitignored — CI deletes and recreates it on every build, so edits made there
+are lost.
 
-3. Open in Android Studio:
-```bash
-npx cap open android
-```
+Transaction capture needs Android's special **Notification access** permission
+(Settings → Apps → Special app access → Notification access). The app links you
+straight there.
 
-4. Run the app from Android Studio or build APK:
-```bash
-cd android
-./gradlew assembleDebug
-```
+## Known limitations
 
-**Important: Supabase redirect URL for Android**
-
-The Android app uses a custom URL scheme for OAuth callbacks: `com.covault.app://auth/callback`
-
-You **MUST** add this to your Supabase project:
-1. Go to Supabase Dashboard > Authentication > URL Configuration
-2. Under "Redirect URLs", add: `com.covault.app://auth/callback`
-3. Click Save
-
-Without this, you'll get a "Supabase is not configured" error on Android.
-
-**Sync with Android (without rebuild):**
-```bash
-npm run cap:sync
-```
-
-**Build and sync:**
-```bash
-npm run cap:build
-```
-
-## Architecture
-
-- **Frontend**: React 19 with TypeScript
-- **Styling**: Tailwind CSS (production-ready, not CDN)
-- **Backend**: Supabase (PostgreSQL + Auth)
-- **Build Tool**: Vite
-- **Mobile**: Capacitor for native Android app
-
-## Common Issues
-
-### "Supabase is not configured" Error on Android
-
-**Symptoms**: The Android app shows "Supabase is not configured" error, but web version works fine.
-
-**Solutions**:
-
-1. **Check environment variables are set** before building:
-   ```bash
-   # Create .env file with your Supabase credentials
-   # Both VITE_SUPABASE_URL and VITE_PUBLIC_SUPABASE_URL are supported
-   cat > .env << EOF
-   VITE_SUPABASE_URL=https://your-project-id.supabase.co
-   VITE_SUPABASE_ANON_KEY=your-anon-key
-   EOF
-   
-   # Then rebuild
-   npm run cap:build
-   ```
-
-2. **Add Android redirect URL in Supabase**:
-   - Go to Supabase Dashboard > Authentication > URL Configuration
-   - Under "Redirect URLs", add: `com.covault.app://auth/callback`
-   - Save changes
-
-3. **Verify the build includes env vars**:
-   After building, check that `dist/assets/index-*.js` contains your Supabase URL (you can grep for it)
-
-4. **Clear Android app data** and reinstall:
-   - In Android Settings, go to Apps > Covault
-   - Clear Storage and Cache
-   - Uninstall and reinstall the app
-
-### Console Errors about Missing Tables
-
-If you see errors like:
-```
-Could not find the table 'public.budgets' in the schema cache
-```
-
-This means you haven't run the database schema yet. Follow step 4 in the Installation section above.
-
-### Service Worker Registration Failed
-
-This is normal in development. The service worker only works properly in production builds.
-
-### Tailwind CDN Warning
-
-This has been fixed! The app now uses Tailwind CSS as a proper PostCSS plugin, not the CDN version.
-
-### Debugging the Android build
-
-- Watch the device logs for Supabase/auth issues: `adb logcat | grep -i supabase`
-- `vite: not found` during build usually means a broken install — reset it:
-  ```bash
-  rm -rf node_modules package-lock.json && npm install --legacy-peer-deps
-  ```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run `npm run verify` to ensure type checks, tests, and production build pass
-5. Submit a pull request
+- **Google Play Billing is not implemented.** The 14-day trial works; paid
+  subscriptions are not wired up.
+- **CI never runs the app.** It type-checks, tests and builds an APK.
+  Notification capture, tray suppression, on-device AI, the home-screen widget,
+  haptics and anything visual can only be verified on a real device.
 
 ## License
 
-[Add your license here]
+Private project.

@@ -1,151 +1,102 @@
-# Covault — AI Codebase Reference
+# Covault — AI index
 
-## What is Covault?
+**Read this before opening any other file.** It exists so you can go straight to
+the two or three files a request actually touches instead of reading the repo.
 
-Personal budget-tracking app for a household. Users track spending across budget
-categories, with automatic transaction capture from Android banking notifications.
-Supports sharing a vault with a partner.
+The person you are working for does not write code and will not review a diff
+line by line. Assume every change is yours to get right, and that "it compiles"
+is not evidence it works.
 
-## Which app is this?
+## What it is
 
-This repo is a **single React/TypeScript/Vite app** at the repository root, packaged
-for Android with Capacitor. (An earlier native-Kotlin rewrite was attempted and
-abandoned; there is no Kotlin app in this repo.) All work happens in the root app.
+Personal budget app for a household. Users track spending by category;
+transactions are captured automatically from Android banking notifications. Two
+people can share a vault.
 
-See also: `AGENTS.md` (agent runbook), `README.md` (setup + Android build),
-`SETUP.md` (domain model + conventions), `SUPABASE_AUDIT.md` (schema notes +
-load-bearing drift quirks), `SUBSCRIPTION_SETUP.md` (trial/billing model), and
-`supabase/schema.sql` (canonical DB schema).
-
-## Stack
-
-- React 19 + TypeScript, built with Vite 6
-- Tailwind CSS 3 (PostCSS plugin, not CDN)
-- Supabase (`@supabase/supabase-js` 2) — PostgreSQL + Auth (Google OAuth), all access RLS-gated
-- Capacitor 8 for the native Android wrapper (`@capacitor/*` plugins: app, browser,
-  filesystem, local-notifications, share, biometric-auth)
-- `@huggingface/transformers` — on-device AI extraction (flan-T5) for notification parsing
-- d3 (budget flow chart), lucide-react (icons)
-- Tests: Vitest (unit only)
-
-## Commands (run from repo root)
+React 19 + TypeScript + Vite 6 + Tailwind 3, wrapped in Capacitor 8 for Android.
+Supabase (Postgres + RLS) for data. On-device flan-T5 via
+`@huggingface/transformers` for parsing. Vitest for tests.
 
 ```bash
-npm run dev              # Vite dev server (http://localhost:3000)
-npm test                 # vitest run (unit tests)
-npm run typecheck        # tsc --noEmit
-npm run typecheck:unused # tsc with noUnusedLocals/Parameters
-npm run build            # production build
-npm run verify           # typecheck + typecheck:unused + test + build  ← full ladder
-npm run cap:build        # build web + cap sync android + sync-android.sh
-npm run cap:sync         # cap sync android + sync-android.sh (no rebuild)
+npm run verify     # typecheck + typecheck:unused + test + build  ← run before committing
+npm run dev        # localhost:3000
+npm run cap:build  # web build + cap sync + scripts/sync-android.sh
 ```
 
-Requires a `.env` with `VITE_SUPABASE_URL` (or `VITE_PUBLIC_SUPABASE_URL`) and
-`VITE_SUPABASE_ANON_KEY` (see `.env.example`). CI (`.github/workflows/build-android.yml`)
-builds the web app and assembles a debug APK.
+## Where to look, by what the user says
 
-## Structure
+Requests arrive in plain language. Start here, not with a repo-wide search.
 
-```
-App.tsx / index.tsx        # Root state, auth/data orchestration, top-level routing
-                           #   (onboarding → dashboard → parsing → settings)
-constants.ts               # The 7 system budget categories + fixed UUIDs
-types.ts                   # Domain types: User, BudgetCategory, Transaction,
-                           #   PendingTransaction, Recurrence, TransactionLabel, TransactionSource
-components/                # React UI
-  Dashboard.tsx, Auth.tsx, Onboarding.tsx, TransactionForm.tsx, TransactionItem.tsx, ...
-  dashboard_components/           # Dashboard pieces: BudgetFlowChart, balance/pulse cards,
-                                  #   SearchResults, useDashboardTotals, useNormalizedTransactions
-    settings_modal_components/    # Settings modal sections (budget limits, income, import/export,
-                                  #   rollover, theme, vault sharing, notifications, ...)
-  transaction_parsing/            # Capture-review UI: captured/approved/rejected cards,
-                                  #   LearnedRulesCard, vendor-category rules, useVendorOverrides, ...
-  shared/, ui/                    # Reusable primitives (CardWrapper, ConfirmModal, ToggleSwitch, ...)
-lib/
-  supabase.ts                     # Supabase client
-  hooks/
-    useUserData.ts                # FACADE: composes data-loading, transaction ops,
-                                  #   household linking, and settings hooks
-    useDataLoading.ts, useTransactionOps.ts, useHouseholdLinking.ts, useUserSettings.ts,
-    useAppTheme.ts, useAuthState.ts, useDeepLinks.ts, useNotificationListener.ts, useVendorMatcher.ts
-    transactionMappers.ts         # DB row ↔ app model conversion (centralize enum/label mapping here)
-  notificationProcessor.ts        # High-risk capture pipeline (see below)
-  deviceTransactionParser.ts      # Regex parse of bank notification text
-  aiExtractor.ts                  # On-device AI extraction (vendor/amount/category/recurring/refund)
-  bankingApps.ts, notificationRules.ts, refundMatching.ts, recurringExecutor.ts,
-  projectedTransactions.ts, formatVendorName.ts, budgetColors.ts, dateUtils.ts, entitlement.ts
-  __tests__/                      # Vitest suites (parser, processor, mappers, refund matching, ...)
-supabase/
-  schema.sql                      # Canonical fresh schema
-  migrations/                     # Incremental production changes
-android/                          # Generated Capacitor Android project (regenerated by cap sync)
-android-custom/                   # SOURCE for custom Capacitor Java / manifest / icons;
-                                  #   scripts/sync-android.sh copies these into android/
-scripts/                          # sync-android.sh, schema-drift checks, icon gen
-```
+| The user says | Open, in this order |
+|---|---|
+| "a purchase wasn't captured" | `lib/deviceTransactionParser.ts` (regex) → `lib/notificationProcessor.ts` (pipeline) |
+| "I got a duplicate" | `lib/notificationProcessor.ts` — dedup is steps 1, 2, 5 and the post-insert race recovery |
+| "it picked the wrong category" | `lib/hooks/useVendorMatcher.ts`, `lib/vendorMatchConfidence.ts`, step 5a of the processor |
+| "the review list / badge is wrong" | `lib/reviewQueue.ts` — the single definition of "waiting"; the list, badge and widget all read it |
+| "the widget is stale or wrong" | `lib/widgetSnapshot.ts` → `android-custom/WidgetDeltaStore.java` → `android-custom/WidgetRenderer.java` |
+| "notifications look wrong / didn't arrive" | `lib/appNotifications.ts` (JS-posted) and `android-custom/NotificationListener.java` (native, fires with app closed) |
+| "tapping a notification goes to the wrong place" | `lib/hooks/useNotificationRoute.ts`, `android-custom/MainActivity.java` |
+| "partner sharing / linking is broken" | `lib/hooks/useHouseholdLinking.ts` + the RPCs in `supabase/migrations/2026_08_01_sync_schema_to_app.sql` |
+| "a setting doesn't stick" | `SETTING_DB_KEYS` in `components/Dashboard.tsx` → `lib/hooks/useUserSettings.ts` → `lib/hooks/useDataLoading.ts`. **Usually a missing DB column** — see Invariants |
+| "an edit didn't save" | `lib/hooks/useTransactionOps.ts`. If it's a **vendor rename**, also `lib/formatVendorName.ts` — it has previously overwritten the user's own capitalisation |
+| "the numbers are wrong" | `components/dashboard_components/useDashboardTotals.ts`, `lib/refundMatching.ts`, `lib/projectedTransactions.ts` |
+| "a modal/sheet looks broken or is cut off" | `components/ui/Portal.tsx` — overlays inside `<main>` need it; see Invariants |
+| "the animation is janky" | `index.css`, `components/BudgetSection.tsx`, `components/dashboard_components/BudgetFlowChart.tsx` |
+| anything about the Android build | `scripts/sync-android.sh`, `.github/workflows/build-android.yml` |
 
-## Notification capture pipeline
+Deeper detail on any of these: `docs/ARCHITECTURE.md`. Human setup: `README.md`.
 
-`lib/notificationProcessor.ts` — treat as high-risk; make tiny changes backed by tests.
+## Invariants — look like bugs, are not
 
-```
-Android banking notification
-  → deviceTransactionParser.parseNotificationText()   # regex: amount, vendor, confidence
-  → notificationProcessor:
-      1. in-memory dedup
-      2. duplicate check vs transactions + pending_transactions
-      3. AI extraction (aiExtractor.extractWithAI) when regex confidence is low
-      4. filter non-transactions (balance alerts, OTPs, ...)
-      5. duplicate check by vendor + amount
-      6. category assignment: vendor overrides first, then AI guess
-      7. insert into pending_transactions / transactions
-  → review-and-approve UI in components/transaction_parsing/ (approve → transactions table)
-```
+Do not "clean these up". Each one was a real failure that cost real debugging.
 
-**Native ordering is load-bearing.** `NotificationListener.broadcastTransaction` runs
-**persist → notify → dismiss**: it commits the notification to the SharedPreferences
-pending queue (`commit()`, not `apply()` — the return value has to mean "on disk"),
-then posts Covault's own notification, and only then may the optional tray-suppression
-feature dismiss the bank's notification. Suppression is off by default and gated on
-every step above having succeeded, because a dismissed bank notification can no longer
-be recovered by `scanActiveNotifications()`. Don't reorder these or downgrade the
-`commit()`s.
+- **`NotificationListener.broadcastTransaction` runs persist → notify →
+  dismiss.** Tray suppression may only delete a bank's notification *after* the
+  capture is durably on disk and Covault has posted its own. Reordering silently
+  destroys purchases.
+- **The pending queue uses `commit()`, not `apply()`.** The return value has to
+  mean "on disk", because suppression acts on it.
+- **`useDataLoading.ts` requests late-added settings columns in a separate
+  select with a fallback.** PostgREST 400s the *whole* select on one unknown
+  column, and that function returns early on a non-ok response — naming them
+  unconditionally takes theme, income and trial fields down with them.
+- **Column-name fallbacks are load-bearing**: `user_uuid`/`user_id`,
+  `Visible`/`visible`, `Budget`/`budget`, `recur`/`recurrence`.
+- **`pending_transactions` does not exist in the DB.** Reads treat a 404 as an
+  empty queue. Writes to it fail and are swallowed. Not a bug to fix casually.
+- **`tailwindcss-animate` must stay in `tailwind.config.js` plugins.** ~40 uses
+  of `animate-in` / `zoom-in-*` / `slide-in-*` emit *no CSS at all* without it,
+  silently. `lib/__tests__/tailwindAnimatePlugin.test.ts` guards this.
+- **Vendor matching exists in three places on purpose** — the TS pipeline, the
+  TS widget snapshot, and `WidgetDeltaStore.java`. The Java copy is deliberately
+  dumber. `widgetPalette.test.ts` and `widgetAutoFileThreshold.test.ts` fail the
+  build if the constants drift.
+- **Overlays rendered inside the Review page's `<main>` need `Portal`.** `<main>`
+  is `relative z-10`, which caps everything inside it below the `z-40` nav bar
+  no matter how large its own z-index is.
+- **A settings toggle that "works" may not be saving.** The UI applies changes
+  optimistically and `saveSettingToDb` only logs failures, so a missing column
+  is indistinguishable from success. Check the column exists.
 
-## Database (Supabase / PostgreSQL)
+## Do not read
 
-`supabase/schema.sql` defines **5 tables**. All use RLS (`auth.uid()`-based; a user's
-partner sees their rows via `settings.partner_id`).
+- `android/` — generated by CI (`rm -rf android && npx cap add android`) and
+  gitignored. Custom native source lives in `android-custom/`.
+- `dist/`, `node_modules/`.
+- `supabase/migrations/*.sql` marked **SUPERSEDED** in their header.
 
-| Table | Purpose |
-|-------|---------|
-| `settings` | 1 row per user: `partner_id` / `partner_name` / `partner_email` + `link_code` (partner linking lives here — there is **no** separate household table), `monthly_income`, theme, trial/subscription flags |
-| `budgets` | Per-user budget limits: `user_uuid`, `budget` (category name), `amount`, `Visible` |
-| `transactions` | Confirmed transactions: `vendor`, `amount`, `date`, `budget` (category name), `type` (Manual/Automatic), `recur`, `source` |
-| `overrides` | Learned vendor→category rules: `proper_name`, `match_key`, `match_type` (exact/prefix/contains), `category_id` (stores the category **name**) |
-| `banks` | Known banking apps (`package_name` → `display_name`) used for capture |
+## Conventions
 
-**7 system categories** (fixed UUIDs in `constants.ts`): Housing, Groceries, Transport,
-Utilities, Leisure, Services, Other.
-
-**Schema drift — read before touching data access.** The capture pipeline reads/writes
-`pending_transactions`, but that table is **not** in `supabase/schema.sql`; the code
-tolerates its absence (a 404 is treated as an empty queue). Data-loading uses defensive
-column-name fallbacks (`user_uuid`/`user_id`, `Visible`/`visible`) that are load-bearing
-during the drift period — don't "clean them up." Full details in `SUPABASE_AUDIT.md`.
-
-## Coding conventions
-
-- Prefer surgical, behavior-preserving changes; avoid broad rewrites unless asked.
-- Do **not** wrap imports in `try/catch`.
-- Keep enum/label ↔ DB mapping centralized in `lib/hooks/transactionMappers.ts`.
-- Add parser tests when adding new bank/vendor patterns.
-- Never commit secrets; `.env` and `*credentials*`/`*secrets*` are gitignored.
-- Run `npm run verify` before committing when code changes.
+- Surgical, behaviour-preserving changes. No broad rewrites unless asked.
+- Never wrap imports in `try`/`catch`.
+- Enum/label ↔ DB mapping belongs in `lib/hooks/transactionMappers.ts`.
+- New bank or vendor pattern ⇒ add a parser test.
+- Never commit secrets. `.env` and `*credentials*`/`*secrets*` are gitignored.
+- `npm run verify` before committing.
 
 ## Verification reality
 
-CI compiles, type-checks, runs unit tests, and builds — but **nothing runs the app**.
-Compile/test-green ≠ works. Runtime-heavy features (notification capture, on-device AI,
-review flow) must be exercised on a device/emulator; don't claim they work from a green
-build alone.
+CI type-checks, tests and builds an APK. **Nothing runs the app.** Compile-green
+is not evidence for: notification capture, tray suppression, on-device AI, the
+home-screen widget, haptics, or anything visual. Those need a device or
+`npm run dev`. Say so plainly rather than implying a green build means it works.
