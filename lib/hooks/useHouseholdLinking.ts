@@ -4,6 +4,65 @@ import { useCallback } from 'react';
 import { restFetch } from '../apiHelpers';
 import type { UseUserDataParams } from './types';
 
+/**
+ * Partner linking goes through SECURITY DEFINER functions, not plain REST.
+ *
+ * It has to. `settings` is RLS-gated to `auth.uid() = user_id`, but linking
+ * touches the OTHER person's row — read it by link code or email, then write
+ * partner_id onto it. Both are invisible to the client: the lookup returns zero
+ * rows and the write reports `UPDATE 0` with no error, which is why linking
+ * used to fail with "invalid or expired link code" no matter what you typed.
+ *
+ * Loosening the policies can't fix it — RLS decides row by row and can't see
+ * the client's WHERE clause, so any policy permissive enough for a code lookup
+ * would let any signed-in user read every account's name and email. The
+ * handshake therefore lives in the database:
+ * supabase/migrations/2026_08_01_sync_schema_to_app.sql.
+ */
+// A plain shape rather than a discriminated union: this project's tsconfig
+// doesn't enable `strict`, so narrowing on a `ok: true | false` discriminant
+// doesn't happen and every `result.message` read fails to compile.
+interface RpcResult<T> {
+  ok: boolean;
+  data?: T;
+  /** Present only when ok is false. */
+  message?: string;
+}
+
+async function callRpc<T>(fn: string, args: Record<string, unknown>): Promise<RpcResult<T>> {
+  try {
+    const res = await restFetch(`/rpc/${fn}`, {
+      method: 'POST',
+      body: JSON.stringify(args),
+    });
+    const body = await res.text();
+
+    if (!res.ok) {
+      // The functions RAISE EXCEPTION with messages written for the user
+      // ("Invalid or expired link code"), and PostgREST passes them through in
+      // `message`. Prefer that over anything invented here.
+      let message = '';
+      try {
+        message = (JSON.parse(body) as { message?: string })?.message || '';
+      } catch {
+        /* non-JSON error body */
+      }
+      return { ok: false, message: message || `Request failed (${res.status})` };
+    }
+
+    return { ok: true, data: (body ? JSON.parse(body) : null) as T };
+  } catch (err: any) {
+    return { ok: false, message: err?.message || 'Network error' };
+  }
+}
+
+/** Shape returned by link_partner_by_code / link_partner_by_email. */
+interface LinkedPartner {
+  partner_id: string;
+  partner_name: string | null;
+  partner_email: string | null;
+}
+
 export const useHouseholdLinking = ({
   appState,
   setAppState,
@@ -54,65 +113,35 @@ export const useHouseholdLinking = ({
           return;
         }
 
-        // Look up the settings row with this link code
-        const codeRes = await restFetch(
-          `/settings?select=user_id,name,email&link_code=eq.${encodeURIComponent(code.toUpperCase())}&limit=1`,
-        );
-
-        if (!codeRes.ok) {
-          setDbError('Invalid or expired link code');
-          return;
-        }
-
-        const codeData = JSON.parse(await codeRes.text());
-        if (!codeData || codeData.length === 0) {
-          setDbError('Invalid or expired link code');
-          return;
-        }
-
-        const otherUserId = codeData[0].user_id;
-        const otherUserName = codeData[0].name;
-        const otherUserEmail = codeData[0].email;
-
-        if (otherUserId === userId) {
-          setDbError("You can't link with yourself");
-          return;
-        }
-
-        // Atomically consume the link code (only succeeds if code still matches).
-        // Prefer: return=representation so we can tell whether a row was updated.
-        // Update other user's settings — include link_code filter to prevent race conditions
-        const otherRes = await restFetch(`/settings?user_id=eq.${otherUserId}&link_code=eq.${encodeURIComponent(code.toUpperCase())}`, {
-          method: 'PATCH',
-          headers: { Prefer: 'return=representation' },
-          body: JSON.stringify({
-            partner_id: userId,
-            partner_name: userName,
-            partner_email: appState.user?.email,
-            budgeting_solo: false,
-            link_code: null,
-          }),
+        // One call does both halves: it claims the code and writes each row's
+        // partner fields in a single statement, so two people racing on the
+        // same code can't both win — the second finds no row with that code
+        // still set. The old client-side "you can't link with yourself" check
+        // is gone because it needed a lookup we're no longer allowed to do;
+        // the function excludes the caller's own row, so your own code simply
+        // reads as invalid.
+        const result = await callRpc<LinkedPartner[]>('link_partner_by_code', {
+          p_code: code,
         });
 
-        // If no rows were updated, the code was already consumed
-        const otherBody = await otherRes.text();
-        let otherRows: any[] = [];
-        try { otherRows = otherBody ? JSON.parse(otherBody) : []; } catch { otherRows = []; }
-        if (!otherRes.ok || !Array.isArray(otherRows) || otherRows.length === 0) {
-          setDbError('Link code was already used or expired. Please generate a new one.');
+        if (!result.ok) {
+          setDbError(result.message);
           return;
         }
 
-        // Update current user's settings
+        const linked = result.data?.[0];
+        if (!linked) {
+          setDbError('Invalid or expired link code');
+          return;
+        }
+
+        // budgeting_solo isn't part of the handshake — it's a per-user display
+        // preference, and each side owns its own row for it. The partner's app
+        // derives it from partner_id on next load (useDataLoading), so only
+        // ours needs writing here.
         await restFetch(`/settings?user_id=eq.${userId}`, {
           method: 'PATCH',
-          headers: { Prefer: 'return=representation' },
-          body: JSON.stringify({
-            partner_id: otherUserId,
-            partner_name: otherUserName,
-            partner_email: otherUserEmail,
-            budgeting_solo: false,
-          }),
+          body: JSON.stringify({ budgeting_solo: false }),
         });
 
         setAppState(prev => ({
@@ -122,8 +151,9 @@ export const useHouseholdLinking = ({
                 ...prev.user,
                 budgetingSolo: false,
                 hasJointAccounts: true,
-                partnerId: otherUserId,
-                partnerName: otherUserName,
+                partnerId: linked.partner_id,
+                partnerName: linked.partner_name || undefined,
+                partnerEmail: linked.partner_email || undefined,
               }
             : null,
         }));
@@ -140,63 +170,36 @@ export const useHouseholdLinking = ({
   const handleLinkPartner = useCallback(
     async (partnerEmail: string) => {
       try {
-        const lookupRes = await restFetch(
-          `/settings?select=user_id,name,email&email=eq.${encodeURIComponent(
-            partnerEmail,
-          )}&limit=1`,
-        );
-
-        if (!lookupRes.ok) {
-          setDbError(`Could not find user with email ${partnerEmail}`);
+        const userId = appState.user?.id;
+        if (!userId) {
+          setDbError('User not logged in');
           return;
         }
 
-        const lookupData = JSON.parse(await lookupRes.text());
-        if (!lookupData || lookupData.length === 0) {
+        // Same reasoning as the code path: the lookup and the write both target
+        // a row RLS hides from us, so both happen inside the function. It also
+        // refuses to hijack an account already linked to someone else.
+        const result = await callRpc<LinkedPartner[]>('link_partner_by_email', {
+          p_email: partnerEmail,
+        });
+
+        if (!result.ok) {
+          setDbError(result.message);
+          return;
+        }
+
+        const linked = result.data?.[0];
+        if (!linked) {
           setDbError(
             `No Covault account found for ${partnerEmail}. They need to sign up first.`,
           );
           return;
         }
 
-        const partnerId = lookupData[0].user_id;
-        const partnerName = lookupData[0].name;
-        const userId = appState.user?.id;
-        const userName = appState.user?.name;
-        if (!userId || partnerId === userId) {
-          setDbError("You can't link with yourself.");
-          return;
-        }
-
-        // Update other user's settings
-        await restFetch(`/settings?user_id=eq.${partnerId}`, {
+        await restFetch(`/settings?user_id=eq.${userId}`, {
           method: 'PATCH',
-          headers: { Prefer: 'return=representation' },
-          body: JSON.stringify({
-            partner_id: userId,
-            partner_name: userName,
-            partner_email: appState.user?.email,
-            budgeting_solo: false,
-          }),
+          body: JSON.stringify({ budgeting_solo: false }),
         });
-
-        // Update current user's settings
-        const updateRes = await restFetch(`/settings?user_id=eq.${userId}`, {
-          method: 'PATCH',
-          headers: { Prefer: 'return=representation' },
-          body: JSON.stringify({
-            partner_id: partnerId,
-            partner_name: partnerName,
-            partner_email: partnerEmail,
-            budgeting_solo: false,
-          }),
-        });
-
-        if (!updateRes.ok) {
-          const body = await updateRes.text();
-          setDbError(`Link failed: ${body.slice(0, 200)}`);
-          return;
-        }
 
         setAppState(prev => ({
           ...prev,
@@ -205,9 +208,9 @@ export const useHouseholdLinking = ({
                 ...prev.user,
                 budgetingSolo: false,
                 hasJointAccounts: true,
-                partnerId,
-                partnerName,
-                partnerEmail,
+                partnerId: linked.partner_id,
+                partnerName: linked.partner_name || undefined,
+                partnerEmail: linked.partner_email || partnerEmail,
               }
             : null,
         }));
@@ -223,32 +226,24 @@ export const useHouseholdLinking = ({
   const handleUnlinkPartner = useCallback(async () => {
     try {
       const userId = appState.user?.id;
-      const partnerId = appState.user?.partnerId;
       if (!userId) return;
 
-      // Clear current user's partner fields
+      // Clears BOTH rows. Previously this cleared its own and then PATCHed the
+      // partner's, which RLS silently dropped — so the partner stayed linked to
+      // you and kept seeing your transactions and budgets through the partner
+      // SELECT policies. The function only clears the other row if it actually
+      // points back at you.
+      const result = await callRpc<null>('unlink_partner', {});
+      if (!result.ok) {
+        setDbError(result.message);
+        return;
+      }
+
+      // Our own display preference; see the note in handleJoinWithCode.
       await restFetch(`/settings?user_id=eq.${userId}`, {
         method: 'PATCH',
-        body: JSON.stringify({
-          partner_id: null,
-          partner_name: null,
-          partner_email: null,
-          budgeting_solo: true,
-        }),
+        body: JSON.stringify({ budgeting_solo: true }),
       });
-
-      // Clear partner's fields too
-      if (partnerId) {
-        await restFetch(`/settings?user_id=eq.${partnerId}`, {
-          method: 'PATCH',
-          body: JSON.stringify({
-            partner_id: null,
-            partner_name: null,
-            partner_email: null,
-            budgeting_solo: true,
-          }),
-        });
-      }
 
       setAppState(prev => ({
         ...prev,
