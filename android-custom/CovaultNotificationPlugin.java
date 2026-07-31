@@ -292,6 +292,34 @@ public class CovaultNotificationPlugin extends Plugin {
         call.resolve(ret);
     }
 
+    /**
+     * Take the destination of a tapped notification, if there is one, and
+     * clear it. MainActivity parks it; the web layer drains it on launch and
+     * on resume.
+     *
+     * Take-and-clear rather than a plain read so a route is acted on exactly
+     * once — otherwise every subsequent launch would bounce the user to the
+     * same page.
+     */
+    @PluginMethod
+    public void consumePendingRoute(PluginCall call) {
+        JSObject ret = new JSObject();
+        String route = null;
+        try {
+            android.content.SharedPreferences prefs =
+                getContext().getSharedPreferences("covault_prefs", 0);
+            route = prefs.getString(NotificationListener.PENDING_ROUTE_KEY, null);
+            if (route != null) {
+                prefs.edit().remove(NotificationListener.PENDING_ROUTE_KEY).commit();
+                Log.i(TAG, "consumePendingRoute: " + route);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "consumePendingRoute failed", e);
+        }
+        ret.put("route", route == null ? "" : route);
+        call.resolve(ret);
+    }
+
     @PluginMethod
     public void scanActiveNotifications(PluginCall call) {
         // Re-run auto-detection so newly installed banking apps are picked up

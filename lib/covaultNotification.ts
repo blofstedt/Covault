@@ -92,6 +92,12 @@ export interface CovaultNotificationPlugin {
   setHideBankNotifications(options: { hidden: boolean }): Promise<void>;
   getHideBankNotifications(): Promise<{ hidden: boolean }>;
 
+  /**
+   * Take the destination of a tapped notification and clear it, or '' if the
+   * app was opened normally. Use the `consumePendingRoute` helper below.
+   */
+  consumePendingRoute(): Promise<{ route: string }>;
+
   // Our event: emits whenever a transaction notification is detected
   addListener(
     eventName: 'transactionDetected',
@@ -152,6 +158,29 @@ export async function setHideBankNotifications(
   } catch (e) {
     log.warn('[covaultNotification] Could not set hide-bank-notifications:', e);
     return getHideBankNotifications(plugin);
+  }
+}
+
+/** Destinations a tapped notification can ask the app to open. */
+export type NotificationRoute = 'review';
+
+/**
+ * Take the destination of a tapped notification, if the app was opened by one.
+ *
+ * Returns null for an ordinary launch, on web, and on an APK built before the
+ * native method existed. The native side clears the value as it hands it over,
+ * so a route is acted on exactly once — a later launch won't re-navigate.
+ */
+export async function consumePendingRoute(
+  plugin: CovaultNotificationPlugin | null = covaultNotification,
+): Promise<NotificationRoute | null> {
+  if (!plugin) return null;
+  try {
+    const { route } = await plugin.consumePendingRoute();
+    return route === 'review' ? 'review' : null;
+  } catch (e) {
+    log.debug('[covaultNotification] consumePendingRoute unavailable:', e);
+    return null;
   }
 }
 
