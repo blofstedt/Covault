@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Everything visual is the bitmap WidgetRenderer produces, including the card
+  surface and its rounded corners. RemoteViews supports only a small set of
+  views and no custom drawing, so a single ImageView is the whole widget.
+
+  fitCenter (not fitXY) because the bitmap is deliberately clamped below the
+  widget's true pixel size to stay under the RemoteViews transaction limit —
+  it is scaled back up here, and the aspect ratio has to be preserved or the
+  donut turns into an ellipse.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <ImageView
+        android:id="@+id/widget_canvas"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="fitCenter"
+        android:contentDescription="@string/widget_description" />
+
+</FrameLayout>

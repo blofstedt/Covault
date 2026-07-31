@@ -320,6 +320,34 @@ public class CovaultNotificationPlugin extends Plugin {
         call.resolve(ret);
     }
 
+    /**
+     * Hand the home-screen widget a fresh snapshot and redraw it.
+     *
+     * The widget has no Supabase session — auth lives in the WebView — so this
+     * is the only way it gets authoritative data. Writing a snapshot also drops
+     * every optimistic delta the notification listener recorded before it, so
+     * any capture the JS pipeline went on to reject or dedup stops being
+     * counted. See WidgetDeltaStore.
+     *
+     * `rules` is the user's vendor->category overrides, mirrored so the listener
+     * can categorise a capture natively while the app is closed.
+     */
+    @PluginMethod
+    public void updateWidget(PluginCall call) {
+        String snapshot = call.getString("snapshot");
+        if (snapshot == null) {
+            call.reject("Missing 'snapshot'");
+            return;
+        }
+        try {
+            WidgetDeltaStore.writeSnapshot(getContext(), snapshot, call.getString("rules"));
+            CovaultWidgetProvider.updateAll(getContext());
+        } catch (Exception e) {
+            Log.w(TAG, "updateWidget failed", e);
+        }
+        call.resolve();
+    }
+
     @PluginMethod
     public void scanActiveNotifications(PluginCall call) {
         // Re-run auto-detection so newly installed banking apps are picked up

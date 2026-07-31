@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Shown in the launcher's widget picker and used as the ImageView's
+  contentDescription, so it is also what a screen reader announces.
+-->
+<resources>
+    <string name="widget_description">This month\'s spending by category</string>
+</resources>

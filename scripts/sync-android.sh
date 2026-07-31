@@ -63,6 +63,23 @@ cp -v "$CUSTOM_DIR/res/mipmap-anydpi-v26/ic_launcher.xml" "$RES_DIR/mipmap-anydp
 cp -v "$CUSTOM_DIR/res/mipmap-anydpi-v26/ic_launcher_round.xml" "$RES_DIR/mipmap-anydpi-v26/"
 cp -v "$CUSTOM_DIR/res/values/ic_launcher_background.xml" "$RES_DIR/values/"
 
+# Home-screen widget resources.
+#
+# The icon drawables are the category glyphs the widget draws on the donut's
+# arcs — they ARE the labels, there is no legend, so a missing one leaves a
+# slice unidentifiable. The layout and appwidget-provider XML are referenced by
+# name from CovaultWidgetProvider and AndroidManifest.xml respectively, so
+# either being absent fails the Android build rather than degrading quietly.
+mkdir -p "$RES_DIR/layout"
+mkdir -p "$RES_DIR/xml"
+echo "Copying Covault widget resources..."
+for icon in housing groceries transport utilities leisure services other; do
+  cp -v "$CUSTOM_DIR/res/drawable/ic_budget_$icon.xml" "$RES_DIR/drawable/"
+done
+cp -v "$CUSTOM_DIR/res/layout/widget_covault.xml" "$RES_DIR/layout/"
+cp -v "$CUSTOM_DIR/res/xml/covault_widget_info.xml" "$RES_DIR/xml/"
+cp -v "$CUSTOM_DIR/res/values/widget_strings.xml" "$RES_DIR/values/"
+
 # Notification status bar icon (monochrome white). Raster fallbacks at
 # each density ensure older Android versions and the system status bar
 # pick up a reliable icon. The smallIcon name referenced from
@@ -86,7 +103,17 @@ for f in \
   "$RES_DIR/drawable/ic_stat_dollar.xml" \
   "$RES_DIR/mipmap-anydpi-v26/ic_launcher.xml" \
   "$RES_DIR/mipmap-anydpi-v26/ic_launcher_round.xml" \
-  "$RES_DIR/values/ic_launcher_background.xml"; do
+  "$RES_DIR/values/ic_launcher_background.xml" \
+  "$RES_DIR/layout/widget_covault.xml" \
+  "$RES_DIR/xml/covault_widget_info.xml" \
+  "$RES_DIR/values/widget_strings.xml" \
+  "$RES_DIR/drawable/ic_budget_housing.xml" \
+  "$RES_DIR/drawable/ic_budget_groceries.xml" \
+  "$RES_DIR/drawable/ic_budget_transport.xml" \
+  "$RES_DIR/drawable/ic_budget_utilities.xml" \
+  "$RES_DIR/drawable/ic_budget_leisure.xml" \
+  "$RES_DIR/drawable/ic_budget_services.xml" \
+  "$RES_DIR/drawable/ic_budget_other.xml"; do
   if [ -f "$f" ]; then
     echo "  OK: $(basename "$f")"
   else
@@ -122,6 +149,9 @@ cp -v "$CUSTOM_DIR/MainActivity.java" "$JAVA_DIR/"
 cp -v "$CUSTOM_DIR/CovaultNotificationPlugin.java" "$JAVA_DIR/"
 cp -v "$CUSTOM_DIR/NotificationListener.java" "$JAVA_DIR/"
 cp -v "$CUSTOM_DIR/BootReceiver.java" "$JAVA_DIR/"
+cp -v "$CUSTOM_DIR/CovaultWidgetProvider.java" "$JAVA_DIR/"
+cp -v "$CUSTOM_DIR/WidgetRenderer.java" "$JAVA_DIR/"
+cp -v "$CUSTOM_DIR/WidgetDeltaStore.java" "$JAVA_DIR/"
 
 # --- MANIFEST ---
 cp -v "$CUSTOM_DIR/AndroidManifest.xml" "$MAIN_DIR/AndroidManifest.xml"

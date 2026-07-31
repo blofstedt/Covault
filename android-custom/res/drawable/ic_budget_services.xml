@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Phone/device icon — getBudgetIcon()'s "services" branch.
+  Two conversions: the <rect rx="2"> becomes an explicit rounded-rect path
+  (VectorDrawable has no <rect>), and the home button was
+  <line x1="12" y1="18" x2="12.01" y2="18"> — a zero-length segment that SVG
+  renders as a dot via its round cap. Android does not reliably stroke a
+  zero-length segment, so it is a filled circle at the radius the 2.5 stroke
+  would have produced.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+  <path
+      android:pathData="M7,2h10a2,2 0 0 1 2,2v16a2,2 0 0 1 -2,2h-10a2,2 0 0 1 -2,-2v-16a2,2 0 0 1 2,-2z"
+      android:strokeWidth="2.5"
+      android:strokeColor="#FFFFFF"
+      android:strokeLineCap="round"
+      android:strokeLineJoin="round" />
+  <path
+      android:pathData="M10.75,18a1.25,1.25 0 1,0 2.5,0a1.25,1.25 0 1,0 -2.5,0"
+      android:fillColor="#FFFFFF" />
+</vector>

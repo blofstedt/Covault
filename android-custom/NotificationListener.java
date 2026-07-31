@@ -528,6 +528,24 @@ public class NotificationListener extends NotificationListenerService {
         boolean secured = broadcastTransaction(packageName, amount, vendor, fullText, sbn.getPostTime(), fromScan);
 
         maybeHideBankNotification(sbn, fromMonitored, amount, fromScan, secured);
+
+        // Home-screen widget: nudge the donut for a purchase captured while the
+        // app is closed, so it doesn't sit stale until the next app launch.
+        //
+        // Deliberately LAST and fully guarded. Everything above — the durable
+        // queue write, the capture notification, the tray dismissal — is the
+        // load-bearing path, and none of it may be affected by widget code. A
+        // widget that misses a redraw is cosmetic; a capture pipeline that
+        // misses a purchase is not.
+        if (!fromScan && fromMonitored && amount != null) {
+            try {
+                if (WidgetDeltaStore.recordDelta(this, amount, vendor, sbn.getPostTime())) {
+                    CovaultWidgetProvider.updateAll(this);
+                }
+            } catch (Throwable t) {
+                Log.w(TAG, "widget delta failed (capture is unaffected)", t);
+            }
+        }
     }
 
     // ── Tray suppression ────────────────────────────────────────────────

@@ -98,6 +98,15 @@ export interface CovaultNotificationPlugin {
    */
   consumePendingRoute(): Promise<{ route: string }>;
 
+  /**
+   * Hand the home-screen widget a fresh snapshot and redraw it. `rules` mirrors
+   * the user's vendor→category overrides so the native notification listener
+   * can categorise a capture while the app is closed.
+   *
+   * Prefer the `pushWidgetSnapshot` helper below, which tolerates an older APK.
+   */
+  updateWidget(options: { snapshot: string; rules: string }): Promise<void>;
+
   // Our event: emits whenever a transaction notification is detected
   addListener(
     eventName: 'transactionDetected',
@@ -181,6 +190,36 @@ export async function consumePendingRoute(
   } catch (e) {
     log.debug('[covaultNotification] consumePendingRoute unavailable:', e);
     return null;
+  }
+}
+
+/** A vendor→category rule, flattened for the native matcher. */
+export interface WidgetVendorRule {
+  matchKey: string;
+  matchType: string;
+  category: string;
+}
+
+/**
+ * Push a widget snapshot to native storage and trigger a redraw.
+ *
+ * Silent on web and on an APK built before the native method existed — the
+ * widget simply isn't there to update, and a failure here must never be
+ * allowed to look like an app error.
+ */
+export async function pushWidgetSnapshot(
+  snapshot: unknown,
+  rules: WidgetVendorRule[],
+  plugin: CovaultNotificationPlugin | null = covaultNotification,
+): Promise<void> {
+  if (!plugin) return;
+  try {
+    await plugin.updateWidget({
+      snapshot: JSON.stringify(snapshot),
+      rules: JSON.stringify(rules),
+    });
+  } catch (e) {
+    log.debug('[covaultNotification] updateWidget unavailable:', e);
   }
 }
 

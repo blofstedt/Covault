@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Smiley — getBudgetIcon()'s "leisure"/"dining" branch.
+  Two conversions were needed. The <circle> face becomes arc commands, and the
+  eyes were <line x1="9" y1="9" x2="9.01" y2="9"> — zero-length segments that
+  SVG renders as dots thanks to the round cap. Android does not reliably stroke
+  a zero-length segment, so they are explicit filled circles at the radius the
+  2.5 stroke would have produced.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+  <path
+      android:pathData="M2,12a10,10 0 1,0 20,0a10,10 0 1,0 -20,0"
+      android:strokeWidth="2.5"
+      android:strokeColor="#FFFFFF"
+      android:strokeLineCap="round"
+      android:strokeLineJoin="round" />
+  <path
+      android:pathData="M8,14s1.5,2 4,2 4,-2 4,-2"
+      android:strokeWidth="2.5"
+      android:strokeColor="#FFFFFF"
+      android:strokeLineCap="round"
+      android:strokeLineJoin="round" />
+  <path
+      android:pathData="M7.75,9a1.25,1.25 0 1,0 2.5,0a1.25,1.25 0 1,0 -2.5,0 M13.75,9a1.25,1.25 0 1,0 2.5,0a1.25,1.25 0 1,0 -2.5,0"
+      android:fillColor="#FFFFFF" />
+</vector>
