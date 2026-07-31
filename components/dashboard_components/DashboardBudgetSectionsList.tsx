@@ -86,10 +86,24 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
   return (
     <div
       ref={scrollContainerRef}
-      className={`relative flex-1 min-h-0 px-4 no-scrollbar flex flex-col ${
+      // `overflow-hidden` is now constant instead of flipping to
+      // `overflow-y-auto` when everything collapses. The old version tore down
+      // and rebuilt this element's scrolling/compositing structure on the very
+      // frame the 320ms transition started, which is a guaranteed hitch.
+      //
+      // Nothing is lost: on mobile every collapsed row is `flex-basis: 0%` +
+      // `flex-grow: 1` inside a fixed-height `flex-col`, so the content always
+      // fits exactly and this never actually scrolled. `scrollContainerRef` is
+      // passed down from Dashboard but never read. Desktop keeps its scroller
+      // via `lg:overflow-y-auto`, where `lg:auto-rows-fr` genuinely can
+      // overflow.
+      //
+      // `gap` moves onto the same 320ms clock rather than snapping 12px -> 0
+      // at frame 0.
+      className={`relative flex-1 min-h-0 px-4 no-scrollbar flex flex-col overflow-hidden motion-safe:transition-[gap] motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)] pt-3 pb-3 ${
         expandedBudgetId
-          ? 'overflow-hidden pt-3 pb-3 gap-0'
-          : 'overflow-y-auto scroll-smooth pt-3 pb-3 gap-3 lg:grid lg:grid-cols-2 lg:auto-rows-fr lg:pt-3 lg:pb-3'
+          ? 'gap-0'
+          : 'gap-3 lg:grid lg:grid-cols-2 lg:auto-rows-fr lg:overflow-y-auto lg:scroll-smooth'
       }`}
     >
       {visibleBudgets.map((budget, index) => {
@@ -175,6 +189,13 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
                 flexGrow: rowFlexGrow,
                 flexShrink: rowFlexShrink,
                 flexBasis: rowFlexBasis,
+                // `flex-basis` and `grid-template-rows` are both pure-layout
+                // properties, so every frame of the expand forces a layout
+                // pass. `contain: layout paint` walls each row off: a row's
+                // internal relayout cannot dirty its siblings or the d3 chart
+                // above it, so the per-frame cost stops scaling with the
+                // number of budgets.
+                contain: 'layout paint',
                 // `0fr` for the rows being closed away from view, `1fr`
                 // for the row that is staying (or has just become) the
                 // open one — the grid-template-rows CSS animation

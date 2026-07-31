@@ -317,8 +317,15 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         return c0;
       })
       .style('stroke-width', 1.5)
-      .style('stroke-opacity', 0.6)
-      .style('filter', 'drop-shadow(0 0 2px rgba(0,0,0,0.15))');
+      // 0.7 rather than 0.6: this used to also carry
+      // `filter: drop-shadow(0 0 2px rgba(0,0,0,0.15))`. The solo effect below
+      // rewrites this path's `d` on every frame of a 320ms d3 transition, and
+      // an SVG filter means the filter region is recomputed and the shadow
+      // re-rasterized every one of those frames — on the CPU, in the Android
+      // WebView. A 2px shadow at 15% alpha over a filled band was doing almost
+      // nothing visually; the slightly stronger stroke covers the separation
+      // it provided, for free.
+      .style('stroke-opacity', 0.7);
 
     // ── Savings area: hatched white region between top of bands and income line ──
     // Income threshold Y position (must be computed before savings area uses it)
@@ -568,7 +575,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       scrubber.style('opacity', 0);
       scrubberDot.style('opacity', 0);
       svg.selectAll('.bfc-band').transition().duration(motionDuration(300)).attr('fill-opacity', 0.85);
-      svg.selectAll('.bfc-band-stroke').transition().duration(motionDuration(300)).style('stroke-opacity', 0.6);
+      svg.selectAll('.bfc-band-stroke').transition().duration(motionDuration(300)).style('stroke-opacity', 0.7);
     };
 
     svgElement.on('mousemove', handleInteraction).on('mouseleave', handleEnd);
@@ -682,7 +689,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         svgElement.selectAll('.bfc-band-stroke').each(function(this: any) {
           const el = d3.select(this);
           const orig = el.attr('data-original-d');
-          const t = el.transition().duration(snapMs).ease(easing).style('stroke-opacity', 0.6);
+          const t = el.transition().duration(snapMs).ease(easing).style('stroke-opacity', 0.7);
           if (orig) t.attr('d', orig);
         });
         // Restore savings & income
@@ -771,7 +778,12 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         .attr('fill', catColor)
         .style('opacity', 0)
         .text(`$${val.toFixed(0)}`)
-        .transition().delay(motionDuration(200)).duration(motionDuration(300)).ease(easing)
+        // Was `delay(200).duration(300)`, which ran the chart's rAF loop out to
+        // 500ms — 180ms past the end of the card's 320ms expand. That left the
+        // tail of the chart animation running alone, after the motion it was
+        // supposed to accompany had already stopped, which reads as a stutter
+        // at the end of the expand. Everything now lands on the same clock.
+        .transition().delay(motionDuration(120)).duration(motionDuration(200)).ease(easing)
         .style('opacity', 1);
     });
   }, [highlightedBudgetName, activeCategory, categoryNames, highlightedCatColor, theme]);

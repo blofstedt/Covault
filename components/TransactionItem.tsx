@@ -65,7 +65,29 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
       <button
         onClick={() => onTap(transaction)}
         onKeyDown={handleKeyDown}
-        className="relative z-10 p-4 rounded-[2rem] backdrop-blur-xl border shadow-sm ring-1 ring-inset ring-white/10 dark:ring-white/[0.03] bg-white/80 dark:bg-slate-900/80 border-slate-200/40 dark:border-slate-700/40 cursor-pointer hover:bg-white/90 dark:hover:bg-slate-900/90 active:scale-[0.98] transition-all duration-200 w-full text-left"
+        // NO `backdrop-blur` HERE — do not add it back.
+        //
+        // This used to be `backdrop-blur-xl` (a 24px backdrop-filter) clipped
+        // by the parent's `overflow-hidden rounded-[2rem]`. Every row carrying
+        // one is its own backdrop root: a separate render surface that must
+        // re-sample and re-blur everything beneath it whenever that geometry
+        // moves. BudgetSection keeps every budget's transaction list mounted,
+        // so all of the month's rows were doing that simultaneously, on every
+        // frame of the 320ms budget expand. On desktop that is free; on a
+        // Pixel 9 (~2.8x the pixels, an 8.3ms frame budget at 120Hz, tiled
+        // mobile GPU) it was the single largest cause of the choppy expand.
+        //
+        // What it blurred was PageShell's backdrop — soft radial glows plus a
+        // 2.5%-opacity noise tile — so blurring it was very nearly invisible.
+        // Going /80 -> /90 restores the same milky reading for free. The
+        // `ring-1 ring-inset` + `border` + `shadow-sm` are what actually read
+        // as "glass" on this row, and they are untouched.
+        //
+        // `transition-all` is narrowed too: it let a parent-driven style
+        // change start an all-property transition on every row mid-expand.
+        //
+        // Guarded by lib/__tests__/transactionItemNoBackdropBlur.test.ts.
+        className="relative z-10 p-4 rounded-[2rem] border shadow-sm ring-1 ring-inset ring-white/10 dark:ring-white/[0.03] bg-white/90 dark:bg-slate-900/90 border-slate-200/40 dark:border-slate-700/40 cursor-pointer hover:bg-white/95 dark:hover:bg-slate-900/95 active:scale-[0.98] transition-[background-color,transform] duration-200 w-full text-left"
         aria-label={`Transaction: ${transaction.vendor}, ${Math.abs(txAmount).toFixed(2)} dollars on ${FULL_DATE_FMT.format(transactionDate)}`}
       >
         <div className="flex items-center justify-between">

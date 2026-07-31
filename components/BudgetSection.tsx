@@ -184,13 +184,14 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
               ? 'flex-1 py-1.5 px-3'
               : 'flex-1 py-2 px-4'
         }`}
-        style={{
-          willChange: isExpanded ? 'auto' : 'transform, opacity, padding',
-        }}
       >
         <div className={`flex items-center ${useCompactCollapsedStyles && !isExpanded ? 'space-x-2' : 'space-x-3'}`}>
           <div
-            className={`rounded-2xl flex items-center justify-center shrink-0 motion-safe:transition-[width,height,background-color] motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)] ${
+            // `padding`, not `width,height`: the classes below change `p-*`,
+            // so the old list named two properties this element never animates
+            // and omitted the one it does — the chip snapped to its new size
+            // mid-expand while everything around it eased.
+            className={`rounded-2xl flex items-center justify-center shrink-0 motion-safe:transition-[padding,background-color] motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)] ${
               isExpanded
                 ? 'text-white shadow-lg p-3.5'
                 : useCompactCollapsedStyles
@@ -269,6 +270,21 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           overscrollBehaviorY: 'contain',
           overflowAnchor: 'none',
           touchAction: 'pan-y',
+          // Collapsed lists stay MOUNTED (see the comment above) but must not
+          // participate in layout or paint. `content-visibility: hidden` skips
+          // both for the entire subtree while keeping the DOM — and therefore
+          // React state and scroll position — intact.
+          //
+          // This matters because every budget's list is in the DOM at all
+          // times. Without it, a single expand relayouts and repaints every
+          // transaction row of every *other* budget too, on every frame of the
+          // 320ms transition. Unmounting instead (`{isExpanded && ...}`) would
+          // be cheaper still but makes the collapse animation drop its content
+          // on the first frame, which is worse than the jank it fixes.
+          //
+          // The collapsed branch is already `h-0 opacity-0` with no transition
+          // on either, so nothing visible is lost by skipping its paint.
+          contentVisibility: isExpanded ? 'visible' : 'hidden',
         }}
         onClick={handleBackgroundClick}
       >

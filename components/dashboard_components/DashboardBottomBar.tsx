@@ -36,9 +36,13 @@ const DashboardBottomBar: React.FC<DashboardBottomBarProps> = ({
       className="fixed bottom-0 left-0 right-0 z-40 h-[calc(env(safe-area-inset-bottom,0px)+5rem)] px-6 flex items-center justify-center pointer-events-none"
     >
       <div
-        className={`w-4/5 lg:w-1/3 backdrop-blur-3xl border rounded-full px-3 py-1.5 lg:px-6 lg:py-2.5 pointer-events-auto shadow-2xl ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] transition-all duration-700 bg-white/90 dark:bg-slate-900/90 border-slate-100 dark:border-slate-800/60 ${
-          ''
-        }`}
+        // No `backdrop-blur` here either. This pill is `fixed` and overlaps
+        // the budget list, so a 64px backdrop-filter through a `rounded-full`
+        // clip had to be recomputed on every frame that the list beneath it
+        // moved — i.e. for the whole budget expand. /90 -> /95 keeps the same
+        // frosted reading. `transition-all duration-700` is narrowed to the
+        // colour properties it actually animates (theme changes).
+        className={`w-4/5 lg:w-1/3 border rounded-full px-3 py-1.5 lg:px-6 lg:py-2.5 pointer-events-auto shadow-2xl ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] transition-[background-color,border-color] duration-700 bg-white/95 dark:bg-slate-900/95 border-slate-100 dark:border-slate-800/60`}
       >
         <div className="flex items-center justify-evenly gap-3 lg:gap-0 w-full">
           {/* Home Button */}
