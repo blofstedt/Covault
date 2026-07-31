@@ -2,6 +2,7 @@ import { log } from '../lib/log';
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import { Transaction, BudgetCategory } from '../types';
+import type { Toast } from '../types';
 
 import ActiveBanksCard from './transaction_parsing/ActiveBanksCard';
 import AITransactionsEnteredCard from './transaction_parsing/AITransactionsEnteredCard';
@@ -16,6 +17,7 @@ import { covaultNotification } from '../lib/covaultNotification';
 import { restFetch } from '../lib/apiHelpers';
 import { loadBankingAppsFromDB } from '../lib/bankingApps';
 import { getNeedsReviewIdSet, getReviewQueueChangedEventName } from '../lib/localNotificationMemory';
+import { buildFilePayload, buildUndoPayload } from '../lib/caughtTransactionOps';
 
 /** Delay (ms) after scanning to allow notification processing before reloading data */
 const SCAN_PROCESSING_DELAY_MS = 2000;
@@ -48,6 +50,8 @@ interface TransactionParsingProps {
   onSetVendorCategory: (vendorName: string, categoryId: string) => void | Promise<void>;
   /** Persist and update local state for a vendor display name. */
   onSetProperName: (vendorName: string, properName: string) => void | Promise<void>;
+  /** Raise a transient toast — used for the Undo offered after filing a row. */
+  onToast?: (toast: Toast) => void;
 }
 
 const TransactionParsing: React.FC<TransactionParsingProps> = ({
@@ -69,6 +73,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   onDeleteVendorOverride,
   onSetVendorCategory,
   onSetProperName,
+  onToast,
 }) => {
   // ── Clear modal state ──
   const [clearTarget, setClearTarget] = useState<'entered' | null>(null);
@@ -194,7 +199,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         await restFetch(`/transactions?id=eq.${txId}`, {
           method: 'PATCH',
           headers: { Prefer: 'return=minimal' },
-          body: JSON.stringify({ caught_cleared: true, ...extra }),
+          body: JSON.stringify(buildFilePayload(extra)),
         });
       } catch (err) {
         log.warn('[TransactionParsing] file caught transaction failed:', err);
@@ -204,10 +209,80 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     [userId, onReloadTransactions],
   );
 
+  // Un-file rows: the exact inverse of fileCaughtTransaction. `budget` is
+  // restored explicitly rather than left alone, because Accept can be reached
+  // from a path that also moved the row (Change category), and an Undo that
+  // brings the row back under the wrong budget is worse than no Undo.
+  const restoreCaughtTransactions = useCallback(
+    async (rows: Array<{ id: string; budget: string | null }>) => {
+      await Promise.all(
+        rows.map(async ({ id, budget }) => {
+          try {
+            await restFetch(`/transactions?id=eq.${id}`, {
+              method: 'PATCH',
+              headers: { Prefer: 'return=minimal' },
+              body: JSON.stringify(buildUndoPayload(budget)),
+            });
+          } catch (err) {
+            log.warn('[TransactionParsing] undo file failed:', err);
+          }
+        }),
+      );
+      if (userId) await onReloadTransactions?.(userId);
+    },
+    [userId, onReloadTransactions],
+  );
+
+  /** The row's category name as it stands right now, for restoring on Undo. */
+  const budgetNameOf = useCallback(
+    (tx: Transaction) => budgets.find((b) => b.id === tx.budget_id)?.name ?? null,
+    [budgets],
+  );
+
   // Accept: keep the current mapping, just file the row.
   const handleAcceptCaught = useCallback(
-    (tx: Transaction) => fileCaughtTransaction(tx.id),
-    [fileCaughtTransaction],
+    async (tx: Transaction) => {
+      const previousBudget = budgetNameOf(tx);
+      await fileCaughtTransaction(tx.id);
+      onToast?.({
+        message: `Filed ${tx.vendor}`,
+        tone: 'info',
+        action: {
+          label: 'Undo',
+          run: () => { void restoreCaughtTransactions([{ id: tx.id, budget: previousBudget }]); },
+        },
+      });
+    },
+    [fileCaughtTransaction, budgetNameOf, onToast, restoreCaughtTransactions],
+  );
+
+  // Bulk accept: same as above for every row the card offered, undone together.
+  const handleAcceptMany = useCallback(
+    async (txs: Transaction[]) => {
+      if (txs.length === 0) return;
+      // Snapshot before filing — after the reload these rows are gone from state.
+      const snapshot = txs.map((tx) => ({ id: tx.id, budget: budgetNameOf(tx) }));
+      const idList = txs.map((tx) => `"${tx.id.replace(/"/g, '')}"`).join(',');
+      try {
+        await restFetch(`/transactions?id=in.(${idList})`, {
+          method: 'PATCH',
+          headers: { Prefer: 'return=minimal' },
+          body: JSON.stringify(buildFilePayload()),
+        });
+      } catch (err) {
+        log.warn('[TransactionParsing] bulk accept failed:', err);
+      }
+      if (userId) await onReloadTransactions?.(userId);
+      onToast?.({
+        message: `Filed ${txs.length} transactions`,
+        tone: 'info',
+        action: {
+          label: 'Undo',
+          run: () => { void restoreCaughtTransactions(snapshot); },
+        },
+      });
+    },
+    [budgetNameOf, userId, onReloadTransactions, onToast, restoreCaughtTransactions],
   );
 
   // Change: move the row to a different budget, then file.
@@ -440,6 +515,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               onAccept={handleAcceptCaught}
               onChangeCategory={handleChangeCaughtCategory}
               onCreateRule={handleCreateRuleForCaught}
+              onAcceptMany={handleAcceptMany}
             />
 
             <div className="shrink-0 mt-4">
@@ -482,7 +558,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       {/* Clear confirmation modal */}
       {clearTarget && (
         <ClearConfirmModal
-          cardName="Caught Transactions"
+          count={aiTransactions.length}
           onConfirm={async () => {
             await handleClearEntered();
             setClearTarget(null);

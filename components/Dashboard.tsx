@@ -3,6 +3,7 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import { AppState, Transaction } from '../types';
+import type { Toast } from '../types';
 
 import PageShell from './ui/PageShell';
 
@@ -65,6 +66,8 @@ interface Props {
   onUnlinkPartner: () => Promise<void>;
   onRefreshNotifications?: () => Promise<void>;
   onReloadTransactions?: (userId: string) => Promise<void>;
+  /** Raise a transient toast (used for the Undo after filing a captured row). */
+  onToast?: (toast: Toast) => void;
 }
 
 const Dashboard: React.FC<Props> = ({
@@ -83,6 +86,7 @@ const Dashboard: React.FC<Props> = ({
   onUnlinkPartner,
   onRefreshNotifications,
   onReloadTransactions,
+  onToast,
 }) => {
   const [showParsing, setShowParsing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -378,6 +382,7 @@ const Dashboard: React.FC<Props> = ({
           userId={state.user?.id}
           onRefreshNotifications={onRefreshNotifications}
           onReloadTransactions={onReloadTransactions}
+          onToast={onToast}
           vendorOverrides={vendorOverrides}
           onDeleteVendorOverride={handleDeleteVendorOverride}
           onSetVendorCategory={handleSetVendorCategory}

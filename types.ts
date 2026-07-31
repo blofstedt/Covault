@@ -143,3 +143,14 @@ export interface AppState {
 }
 
 
+
+/**
+ * A transient toast: an error, or an info message with an optional action
+ * (e.g. "Undo"). Owned and rendered by App; passed down to screens that need
+ * to raise one.
+ */
+export interface Toast {
+  message: string;
+  tone: 'error' | 'info';
+  action?: { label: string; run: () => void };
+}

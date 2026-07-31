@@ -5,7 +5,7 @@ import { EmptyState } from '../shared';
 import { isRefund } from '../../lib/refundMatching';
 import AIEnteredRow from './AIEnteredRow';
 import type { NotATxRuleType } from './NotATransactionModal';
-import { useVendorMatcher } from '../../lib/hooks/useVendorMatcher';
+import { useVendorMatcher, selectBulkAcceptable } from '../../lib/hooks/useVendorMatcher';
 import type { VendorOverride } from './useVendorOverrides';
 
 interface AITransactionsEnteredCardProps {
@@ -29,6 +29,8 @@ interface AITransactionsEnteredCardProps {
   onChangeCategory?: (tx: Transaction, targetBudgetId: string) => Promise<void> | void;
   /** Create a vendor→budget rule for future captures, then file. */
   onCreateRule?: (tx: Transaction, targetBudgetId: string) => Promise<void> | void;
+  /** File several rows at once (the "Accept N known vendors" action). */
+  onAcceptMany?: (txs: Transaction[]) => Promise<void> | void;
 }
 
 // Stable identities for omitted props — a fresh Set/array per render would
@@ -54,6 +56,7 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
   onAccept,
   onChangeCategory,
   onCreateRule,
+  onAcceptMany,
 }) => {
   const { classifyAll } = useVendorMatcher(vendorOverrides);
   const matchMap = useMemo(() => classifyAll(aiTransactions), [classifyAll, aiTransactions]);
@@ -81,6 +84,25 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
     return { nonRefunds: rows, refundCount: refunds };
   }, [aiTransactions, filedIds]);
 
+  // Rows a single tap can file: rules the user wrote, already pointing at a
+  // category. Offered from two upwards — for one row the per-row Accept is
+  // right there and a second control would just be noise.
+  const budgetIds = useMemo(() => new Set(budgets.map((b) => b.id)), [budgets]);
+  const bulkAcceptable = useMemo(
+    () => selectBulkAcceptable(nonRefunds, matchMap, (tx) => !!tx.budget_id && budgetIds.has(tx.budget_id)),
+    [nonRefunds, matchMap, budgetIds],
+  );
+
+  const handleAcceptAll = useCallback(() => {
+    if (!onAcceptMany || bulkAcceptable.length === 0) return;
+    setFiledIds((prev) => {
+      const next = new Set(prev);
+      for (const tx of bulkAcceptable) next.add(tx.id);
+      return next;
+    });
+    void onAcceptMany(bulkAcceptable);
+  }, [onAcceptMany, bulkAcceptable]);
+
   return (
     <ParsingCard
       id="parsing-ai-entered"
@@ -105,11 +127,23 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
     >
       {isExpanded && (
         <div className="space-y-3">
+          {onAcceptMany && bulkAcceptable.length > 1 && (
+            <button
+              type="button"
+              onClick={handleAcceptAll}
+              className="w-full min-h-[44px] inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-200 dark:border-emerald-800/40 bg-emerald-50 dark:bg-emerald-900/20 text-[13px] font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 active:scale-[0.99] transition-all"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              Accept {bulkAcceptable.length} known {bulkAcceptable.length === 1 ? 'vendor' : 'vendors'}
+            </button>
+          )}
           {nonRefunds.length === 0 ? (
             <EmptyState
               icon={<svg className="w-8 h-8 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
               message="All caught up"
-              description="No AI transactions pending review."
+              description="New transactions from your bank alerts will show up here."
             />
           ) : (
             nonRefunds.map((tx) => {
