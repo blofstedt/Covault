@@ -1,4 +1,12 @@
 -- ============================================================
+-- SUPERSEDED by 2026_08_01_sync_schema_to_app.sql
+-- ============================================================
+-- That file is the single script to run: it contains this change
+-- plus the other outstanding ones. Kept here for history only —
+-- running it is harmless but unnecessary.
+-- ============================================================
+
+-- ============================================================
 -- Migration: add settings.haptics_enabled
 -- ============================================================
 -- Backs the "Vibration" toggle. When on, Covault fires a light haptic when a

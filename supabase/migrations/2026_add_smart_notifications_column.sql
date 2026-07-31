@@ -1,4 +1,12 @@
 -- ============================================================
+-- SUPERSEDED by 2026_08_01_sync_schema_to_app.sql
+-- ============================================================
+-- That file is the single script to run: it contains this change
+-- plus the other outstanding ones. Kept here for history only —
+-- running it is harmless but unnecessary.
+-- ============================================================
+
+-- ============================================================
 -- Migration: add settings.smart_notifications_enabled
 -- ============================================================
 -- The app has been writing this column since smart notifications
