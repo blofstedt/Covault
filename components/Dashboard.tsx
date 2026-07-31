@@ -29,6 +29,8 @@ import { checkAndTriggerAppNotifications } from '../lib/appNotifications';
 import { supabase } from '../lib/supabase';
 import { resolveBudgetIdFromRow } from '../lib/hooks/transactionMappers';
 import { useNotificationRoute } from '../lib/hooks/useNotificationRoute';
+import { buildWidgetSnapshot } from '../lib/widgetSnapshot';
+import { pushWidgetSnapshot, type WidgetVendorRule } from '../lib/covaultNotification';
 
 /** Current YYYY-MM in local time. */
 const currentMonthKey = (): string => {
@@ -127,6 +129,40 @@ const Dashboard: React.FC<Props> = ({
     normalizedTransactions,
     state.user?.monthlyIncome || 0,
   );
+
+  // ── Home-screen widget ──
+  // The widget runs in the native process with no Supabase session, so it can
+  // only draw what we hand it. Push a fresh snapshot whenever the figures it
+  // shows change — which covers app open, a reload after capture, a category
+  // correction, and a theme switch.
+  //
+  // The vendor rules ride along so the native notification listener can
+  // categorise a purchase captured while the app is closed and nudge the donut
+  // without waiting for the next launch.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const snapshot = buildWidgetSnapshot({
+      budgets: state.budgets,
+      currentMonthTransactions,
+      remaining: remainingMoney,
+      income: state.user?.monthlyIncome || 0,
+      theme: state.settings.theme ?? null,
+    });
+    const rules: WidgetVendorRule[] = vendorOverrides.map((vo) => ({
+      matchKey: vo.match_key || vo.proper_name,
+      matchType: vo.match_type || 'exact',
+      // category_id holds the category *name* in this table (see SETUP.md).
+      category: vo.category_name || vo.category_id,
+    }));
+    void pushWidgetSnapshot(snapshot, rules);
+  }, [
+    state.budgets,
+    currentMonthTransactions,
+    remainingMoney,
+    state.user?.monthlyIncome,
+    state.settings.theme,
+    vendorOverrides,
+  ]);
 
   // The month key was read straight from the clock during render, so it only
   // advanced when something else happened to trigger a re-render. This is a

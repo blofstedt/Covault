@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  updatePeriodMillis is 0 on purpose. The data only changes when the app writes
+  a snapshot or the notification listener records a capture, and both of those
+  ask AppWidgetManager to redraw immediately. A polling interval (30 min is the
+  floor Android honours anyway) would only wake the device to draw identical
+  pixels. Month rollover is handled by a one-shot alarm in the provider.
+
+  targetCellWidth/Height are the API 31+ way to express size; minWidth/minHeight
+  remain for older launchers. 4x2 is the design size — big enough for the donut
+  plus the centre figure, and icon chips on the arcs stay legible.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="250dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="180dp"
+    android:minResizeHeight="110dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
+    android:updatePeriodMillis="0"
+    android:initialLayout="@layout/widget_covault"
+    android:previewLayout="@layout/widget_covault"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:description="@string/widget_description" />

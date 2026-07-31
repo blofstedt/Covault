@@ -86,6 +86,24 @@
             </intent-filter>
         </receiver>
 
+        <!--
+            Home-screen widget: this month's spending as a donut.
+            exported="true" is required — the launcher hosts the widget in its
+            own process and has to be able to deliver APPWIDGET_UPDATE to it.
+            The provider reads only Covault's own SharedPreferences.
+        -->
+        <receiver
+            android:name=".CovaultWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.covault.app.WIDGET_MIDNIGHT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/covault_widget_info" />
+        </receiver>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
