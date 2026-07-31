@@ -173,6 +173,10 @@ export const useNotificationListener = ({
                   fallbackVendor: event.vendor,
                   fallbackAmount: event.amount,
                   forceReprocess: event.from_scan === true || event.fromScan === true,
+                  // Read through the ref so toggling it takes effect on the
+                  // next capture without re-registering the native listener.
+                  autoAcceptKnownVendors:
+                    settingsRef.current?.auto_accept_known_vendors === true,
                 }, availableCategories);
 
                 // Notify parsing UI about the result
@@ -228,6 +232,7 @@ export const useNotificationListener = ({
                     result.amount || 0,
                     result.categoryName || null,
                     settingsRef.current || {},
+                    result.autoAccepted === true,
                   );
 
                   // If this transaction came from a partner's device (different
