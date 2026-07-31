@@ -7,6 +7,8 @@ import type { BudgetCategory, Transaction } from '../types';
 export interface NotificationSettingsShape {
   app_notifications_enabled?: boolean;
   smart_notifications_enabled?: boolean;
+  /** Read by the notification listener, not by this module. */
+  auto_accept_known_vendors?: boolean;
 }
 
 // LocalStorage keys to avoid spamming notifications
@@ -214,6 +216,12 @@ export async function sendExpenseCapturedNotification(
   amount: number,
   categoryName: string | null,
   settings: NotificationSettingsShape,
+  /**
+   * True when auto-accept filed this row without review. Worth distinguishing:
+   * an auto-filed transaction never appears in Review, so this notification is
+   * the only place the user is told it happened.
+   */
+  autoAccepted = false,
 ) {
   if (!Capacitor.isNativePlatform()) return;
   if (!settings?.app_notifications_enabled) return;
@@ -228,7 +236,11 @@ export async function sendExpenseCapturedNotification(
   const body = isIncome
     ? `+$${absAmount.toFixed(2)} at ${vendor}${categorySuffix}.`
     : `$${absAmount.toFixed(2)} at ${vendor}${categorySuffix}.`;
-  const title = isIncome ? 'Income captured!' : 'Expense captured!';
+  const title = isIncome
+    ? 'Income captured!'
+    : autoAccepted
+      ? (categoryName ? `Filed to ${categoryName}` : 'Filed automatically')
+      : 'Expense captured!';
 
   try {
     await ensurePermission();

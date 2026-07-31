@@ -45,6 +45,7 @@ const SETTING_DB_KEYS: Record<string, string> = {
   showSavingsInsight: 'show_savings_insight',
   app_notifications_enabled: 'app_notifications_enabled',
   smart_notifications_enabled: 'smart_notifications_enabled',
+  auto_accept_known_vendors: 'auto_accept_known_vendors',
 };
 
 interface VendorHistoryItem {

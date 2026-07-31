@@ -16,9 +16,17 @@ import {
 interface NotificationSettingsSectionProps {
   enabled: boolean;
   onToggle: (enabled: boolean) => void;
+  /** File captures straight into a budget when a learned rule confidently matches. */
+  autoAcceptKnownVendors?: boolean;
+  onToggleAutoAccept?: () => void;
 }
 
-const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = ({ enabled, onToggle }) => {
+const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = ({
+  enabled,
+  onToggle,
+  autoAcceptKnownVendors = false,
+  onToggleAutoAccept,
+}) => {
   const isNative = Capacitor.isNativePlatform();
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [installedBankApps, setInstalledBankApps] = useState<
@@ -330,6 +338,26 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
             This is a one-time setup. The system requirement exists so apps can't read your notifications without your explicit consent.
           </p>
         </details>
+      )}
+
+      {/* Auto-accept known vendors */}
+      {enabled && permissionGranted && onToggleAutoAccept && (
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-700/50 bg-slate-50/60 dark:bg-slate-800/30 px-3 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex-1 mr-3">
+              <SectionHeader
+                title="Auto-file known vendors"
+                subtitle="Skip review when a learned rule matches."
+              />
+            </div>
+            <ToggleSwitch enabled={autoAcceptKnownVendors} onToggle={onToggleAutoAccept} />
+          </div>
+          <p className="mt-2 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
+            {autoAcceptKnownVendors
+              ? 'Captures that match one of your learned rules with 90%+ certainty are renamed to that vendor and filed to its budget without appearing in Review. Only rules you created count — an AI guess always waits for you. Everything filed this way is still in your history and budgets, and shows a notification when it lands.'
+              : 'When on, a capture that matches one of your learned rules with 90%+ certainty is renamed to that vendor and filed straight to its budget, skipping Review. Anything less certain still waits for you.'}
+          </p>
+        </div>
       )}
 
       {/* Tray suppression */}

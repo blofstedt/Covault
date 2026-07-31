@@ -36,6 +36,10 @@ const DEFAULT_SETTINGS = {
   app_notifications_enabled: false,
   hiddenCategories: [] as string[],
   smart_notifications_enabled: true,
+  // Off by default. This one files money without showing it to the user, so
+  // it has to be a deliberate choice rather than something they discover
+  // after the fact.
+  auto_accept_known_vendors: false,
 };
 
 // Fixed: Added check for 'window' so Vercel doesn't crash during build

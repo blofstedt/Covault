@@ -25,6 +25,7 @@ export interface DashboardSettings {
   notificationsEnabled?: boolean;
   app_notifications_enabled?: boolean;
   smart_notifications_enabled?: boolean;
+  auto_accept_known_vendors?: boolean;
 
   [key: string]: any;
 }
@@ -146,6 +147,10 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
             <NotificationSettingsSection
               enabled={!!settings.notificationsEnabled}
               onToggle={(v) => onUpdateSettings('notificationsEnabled', v)}
+              autoAcceptKnownVendors={settings.auto_accept_known_vendors === true}
+              onToggleAutoAccept={() =>
+                onUpdateSettings('auto_accept_known_vendors', !settings.auto_accept_known_vendors)
+              }
             />
           </PremiumGate>
 

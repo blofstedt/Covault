@@ -24,6 +24,7 @@ import { checkNotificationRules, bumpRuleUseCount } from './notificationRules';
 import { getLocalToday, parseLocalDate, toLocalIsoDay } from './dateUtils';
 import { extractWithAI, aiDetectRecurring, type AIExtractionResult } from './aiExtractor';
 import type { PendingTransaction } from '../types';
+import { scoreVendorMatch, shouldAutoAccept } from './vendorMatchConfidence';
 
 // ─── Constants ───────────────────────────────────────────────────
 
@@ -231,6 +232,15 @@ export interface NotificationInput {
   fallbackAmount?: number;
   /** True when user manually triggered a refresh scan of active notifications */
   forceReprocess?: boolean;
+  /**
+   * Opt-in: file a capture straight into its budget, skipping review, when a
+   * learned vendor rule explains the incoming name well enough
+   * (AUTO_ACCEPT_MIN_CONFIDENCE in lib/vendorMatchConfidence.ts).
+   *
+   * Only rules the user wrote can trigger this — see the auto-accept block in
+   * Step 6. Defaults to off, and any missing information means review.
+   */
+  autoAcceptKnownVendors?: boolean;
 }
 
 // ─── Step 1: Duplicate Detection Against Tables ─────────────────
@@ -707,6 +717,13 @@ export interface AIProcessingResult {
   categoryId?: string;
   /** The category name assigned */
   categoryName?: string;
+  /**
+   * True when a learned rule matched well enough that the row was filed
+   * without review. The listener uses this to word the capture notification
+   * differently — a transaction the user will never be shown should at least
+   * say where it went.
+   */
+  autoAccepted?: boolean;
   /** Reason for rejection if not a transaction or duplicate */
   rejectionReason?: string;
   /** Skip reason */
@@ -1281,6 +1298,11 @@ async function processNotificationWithAIImpl(
   let categoryId: string | null = null;
   let categoryName: string | null = null;
   let displayVendor: string = vendor;
+  // How completely the matched rule explains the incoming vendor name, 0..1.
+  // Only set by Step 5a — a localStorage or heuristic match (5b/5c) is not
+  // evidence the user ever taught us this vendor, so it stays 0 and can never
+  // reach the auto-accept threshold.
+  let overrideMatchConfidence = 0;
 
   // 5a: Check server-side overrides table.
   // Schema: overrides(id, user_id, proper_name, match_key, match_type, category_id, updated_at).
@@ -1319,6 +1341,7 @@ async function processNotificationWithAIImpl(
     }
 
     // 2) proper_name ilike fallback
+    let matchedByProperName = false;
     if (!overrideRows || overrideRows.length === 0) {
       const { data } = await supabase
         .from('overrides')
@@ -1328,6 +1351,7 @@ async function processNotificationWithAIImpl(
         .order('updated_at', { ascending: false })
         .limit(1);
       overrideRows = data;
+      matchedByProperName = !!(data && data.length > 0);
     }
 
     if (overrideRows && overrideRows.length > 0) {
@@ -1343,7 +1367,13 @@ async function processNotificationWithAIImpl(
         if (row.proper_name) {
           displayVendor = row.proper_name;
         }
-        log.debug(`[AI pipeline] overrides match: ${vendor} → ${categoryName} (match_type=${row.match_type || 'exact'})`);
+        // Score the match for auto-accept. `ilike proper_name` is a whole-name
+        // comparison, so it is exact by construction; the match_key path is
+        // scored by how much of the incoming name the rule accounts for.
+        overrideMatchConfidence = matchedByProperName
+          ? 1
+          : scoreVendorMatch(vendorKey, (row.match_key || '').toLowerCase(), row.match_type || 'exact');
+        log.debug(`[AI pipeline] overrides match: ${vendor} → ${categoryName} (match_type=${row.match_type || 'exact'}, confidence=${overrideMatchConfidence.toFixed(2)})`);
       }
     }
   }
@@ -1514,6 +1544,30 @@ async function processNotificationWithAIImpl(
   // Step 2c gate, so this is the model's (or regex's) confidence in the
   // extraction; the capture-review UI shows it as a meter.
   const captureConfidence = aiResult?.confidence ?? parsed.confidence ?? null;
+
+  // ── Auto-accept ──
+  // Opt-in. When a learned rule explains the incoming vendor name well enough,
+  // the row is filed straight into its budget under the rule's proper name and
+  // never appears in the review list.
+  //
+  // Gated on the OVERRIDE match score, not the AI's extraction confidence.
+  // Those measure different things: captureConfidence says "I read $12.40 at
+  // TIM HORTONS correctly", which tells you nothing about whether TIM HORTONS
+  // belongs in Groceries. Only a rule the user wrote themselves justifies
+  // skipping their review, so 5b/5c matches leave overrideMatchConfidence at 0
+  // and always go to the queue.
+  const autoAccepted = shouldAutoAccept({
+    enabled: input.autoAcceptKnownVendors === true,
+    confidence: overrideMatchConfidence,
+    hasCategory: !!categoryId,
+  });
+  if (autoAccepted) {
+    log.debug(
+      `[AI pipeline] Auto-accepting ${finalVendorName} → ${categoryName} ` +
+      `(rule confidence ${(overrideMatchConfidence * 100).toFixed(0)}%)`,
+    );
+  }
+
   const insertRow: Record<string, unknown> = {
     id: transactionId,
     user_id: userId,
@@ -1534,6 +1588,14 @@ async function processNotificationWithAIImpl(
     // any text column limits.
     raw_notification: (input.rawNotification || '').slice(0, 4000),
     confidence: captureConfidence,
+    // Only set when filing on arrival, so it never enters the review queue.
+    // Omitted otherwise so a normal capture's insert keeps exactly the shape it
+    // had before auto-accept existed — the column's own default is false, and
+    // naming it unconditionally would make every insert depend on it.
+    //
+    // Not deleted or hidden: an auto-filed row lands in history and counts
+    // toward the budget exactly like one the user accepted by hand.
+    ...(autoAccepted ? { caught_cleared: true } : {}),
   };
   let { error: txError } = await supabase.from('transactions').insert(insertRow);
   // Tolerate DBs where the confidence column hasn't been migrated yet: retry
@@ -1631,7 +1693,12 @@ async function processNotificationWithAIImpl(
 
   releasePurchase(purchaseKey);
   log.debug(`[AI pipeline] Transaction saved: ${finalVendorName} $${amount} → ${categoryName}`);
-  addToReviewQueue(transactionId);
+  // An auto-accepted row is already filed, so flagging it "needs a look" would
+  // be a contradiction — and the review-queue badge would count a row the list
+  // never shows.
+  if (!autoAccepted) {
+    addToReviewQueue(transactionId);
+  }
 
   // Persist to localStorage so this notification is never re-processed
   // after app restart (the in-memory cache below is cleared on reload).
@@ -1646,6 +1713,7 @@ async function processNotificationWithAIImpl(
     amount,
     categoryId,
     categoryName: categoryName || undefined,
+    autoAccepted,
     bankName: input.bankName,
     // Surface the soft-dup warning from Step 4 so the UI can show a
     // "possible duplicate" badge. The transaction is still saved — the

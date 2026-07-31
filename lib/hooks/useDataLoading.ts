@@ -191,15 +191,17 @@ export const useDataLoading = ({
           'subscription_status,rollover_enabled,leisure_buffer_enabled,show_savings_insight,' +
           'app_notifications_enabled,budgeting_solo';
 
-        // smart_notifications_enabled is requested separately because it was
-        // added later (supabase/migrations/2026_add_smart_notifications_column.sql).
-        // PostgREST 400s the WHOLE select if any column is unknown, and this
-        // function returns early on a non-ok response — so naming it
-        // unconditionally would take theme, income and the trial fields down
-        // with it on any project where the migration hasn't been applied yet.
+        // These two are requested separately because they were added later
+        // (supabase/migrations/2026_add_smart_notifications_column.sql and
+        // 2026_add_auto_accept_column.sql). PostgREST 400s the WHOLE select if
+        // any column is unknown, and this function returns early on a non-ok
+        // response — so naming them unconditionally would take theme, income
+        // and the trial fields down with them on any project where the
+        // migrations haven't been applied yet.
         // Same defensive shape as the user_uuid/user_id fallback below.
+        const LATER_COLUMNS = 'smart_notifications_enabled,auto_accept_known_vendors';
         let res = await restFetch(
-          `/settings?select=${BASE_COLUMNS},smart_notifications_enabled&user_id=eq.${userId}`,
+          `/settings?select=${BASE_COLUMNS},${LATER_COLUMNS}&user_id=eq.${userId}`,
           { cache: 'no-store' }, // Prevent caching to always get fresh data
         );
 
@@ -266,6 +268,8 @@ export const useDataLoading = ({
               // which is the behaviour users had while the write was failing.
               smart_notifications_enabled:
                 rows[0].smart_notifications_enabled ?? prev.settings.smart_notifications_enabled,
+              auto_accept_known_vendors:
+                rows[0].auto_accept_known_vendors ?? prev.settings.auto_accept_known_vendors,
             },
           }));
 
