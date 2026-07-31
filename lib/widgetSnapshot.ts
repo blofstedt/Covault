@@ -40,6 +40,13 @@ export interface WidgetSnapshot {
   theme: 'light' | 'dark' | null;
   /** Spend descending. Zero and negative slices are dropped. */
   slices: WidgetSlice[];
+  /**
+   * Captures still waiting in Review. Shown as a pill on the widget so a
+   * mis-dismissed capture notification isn't the only way to know something
+   * needs attention. Uses selectAwaitingReview so it always equals what the
+   * app's own list shows.
+   */
+  pendingReview: number;
   updatedAtMs: number;
 }
 
@@ -55,6 +62,13 @@ export interface WidgetDelta {
   amount: number;
   category: string;
   atMs: number;
+  /**
+   * Whether this capture will land in Review. False when auto-file will take
+   * it, so the widget doesn't show a phantom "1 to review" after every matched
+   * purchase — a badge that cries wolf is worse than no badge. The native side
+   * decides; anything it isn't sure about counts as pending.
+   */
+  pending?: boolean;
 }
 
 const MONTH_LABELS = [
@@ -76,6 +90,8 @@ export interface BuildWidgetSnapshotArgs {
   remaining: number;
   income: number;
   theme: 'light' | 'dark' | null;
+  /** Captures awaiting review — countAwaitingReview over ALL transactions. */
+  pendingReview: number;
   /** Injectable for tests; defaults to today. */
   monthKey?: string;
   nowMs?: number;
@@ -91,6 +107,7 @@ export function buildWidgetSnapshot({
   remaining,
   income,
   theme,
+  pendingReview,
   monthKey = getLocalMonthKey(getLocalToday()),
   nowMs = Date.now(),
 }: BuildWidgetSnapshotArgs): WidgetSnapshot {
@@ -138,6 +155,7 @@ export function buildWidgetSnapshot({
     income,
     theme,
     slices,
+    pendingReview,
     updatedAtMs: nowMs,
   };
 }
@@ -175,12 +193,16 @@ export function mergeWidgetDeltas(
   }
 
   let totalSpent = snapshot.totalSpent;
+  let pendingReview = snapshot.pendingReview;
   for (const d of applicable) {
     const amount = Number(d.amount) || 0;
     if (amount === 0) continue;
     const name = d.category || 'Other';
     amounts.set(name, (amounts.get(name) || 0) + amount);
     totalSpent += amount;
+    // Default true: a delta with no verdict is one the native side couldn't
+    // classify, and the badge errs high rather than low.
+    if (d.pending !== false) pendingReview += 1;
   }
 
   const slices: WidgetSlice[] = Array.from(amounts.entries())
@@ -198,5 +220,6 @@ export function mergeWidgetDeltas(
     // Every dollar spent is a dollar not remaining.
     remaining: snapshot.remaining - (totalSpent - snapshot.totalSpent),
     slices,
+    pendingReview,
   };
 }

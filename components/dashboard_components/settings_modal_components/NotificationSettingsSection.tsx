@@ -19,6 +19,9 @@ interface NotificationSettingsSectionProps {
   /** File captures straight into a budget when a learned rule confidently matches. */
   autoAcceptKnownVendors?: boolean;
   onToggleAutoAccept?: () => void;
+  /** Light vibration when a capture is filed or deleted. */
+  hapticsEnabled?: boolean;
+  onToggleHaptics?: () => void;
 }
 
 const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = ({
@@ -26,6 +29,8 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
   onToggle,
   autoAcceptKnownVendors = false,
   onToggleAutoAccept,
+  hapticsEnabled = true,
+  onToggleHaptics,
 }) => {
   const isNative = Capacitor.isNativePlatform();
   const [permissionGranted, setPermissionGranted] = useState(false);
@@ -356,6 +361,24 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
             {autoAcceptKnownVendors
               ? 'Captures that match one of your learned rules with 90%+ certainty are renamed to that vendor and filed to its budget without appearing in Review. Only rules you created count — an AI guess always waits for you. Everything filed this way is still in your history and budgets, and shows a notification when it lands.'
               : 'When on, a capture that matches one of your learned rules with 90%+ certainty is renamed to that vendor and filed straight to its budget, skipping Review. Anything less certain still waits for you.'}
+          </p>
+        </div>
+      )}
+
+      {/* Haptics */}
+      {isNative && onToggleHaptics && (
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-700/50 bg-slate-50/60 dark:bg-slate-800/30 px-3 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex-1 mr-3">
+              <SectionHeader
+                title="Vibration"
+                subtitle="A light tap when something is filed."
+              />
+            </div>
+            <ToggleSwitch enabled={hapticsEnabled} onToggle={onToggleHaptics} />
+          </div>
+          <p className="mt-2 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
+            Only on deliberate actions — accepting a transaction, or deleting one. Never while scrolling or moving between screens. Turned off automatically if your device is set to reduce motion.
           </p>
         </div>
       )}

@@ -31,6 +31,7 @@ import { resolveBudgetIdFromRow } from '../lib/hooks/transactionMappers';
 import { useNotificationRoute } from '../lib/hooks/useNotificationRoute';
 import { buildWidgetSnapshot } from '../lib/widgetSnapshot';
 import { pushWidgetSnapshot, type WidgetVendorRule } from '../lib/covaultNotification';
+import { countAwaitingReview } from '../lib/reviewQueue';
 
 /** Current YYYY-MM in local time. */
 const currentMonthKey = (): string => {
@@ -46,6 +47,7 @@ const SETTING_DB_KEYS: Record<string, string> = {
   app_notifications_enabled: 'app_notifications_enabled',
   smart_notifications_enabled: 'smart_notifications_enabled',
   auto_accept_known_vendors: 'auto_accept_known_vendors',
+  haptics_enabled: 'haptics_enabled',
 };
 
 interface VendorHistoryItem {
@@ -148,6 +150,9 @@ const Dashboard: React.FC<Props> = ({
       remaining: remainingMoney,
       income: state.user?.monthlyIncome || 0,
       theme: state.settings.theme ?? null,
+      // Same selector the Review list and the bottom-bar badge use, so the
+      // widget's pill can't disagree with either.
+      pendingReview: countAwaitingReview(state.transactions),
     });
     const rules: WidgetVendorRule[] = vendorOverrides.map((vo) => ({
       matchKey: vo.match_key || vo.proper_name,
@@ -155,7 +160,7 @@ const Dashboard: React.FC<Props> = ({
       // category_id holds the category *name* in this table (see SETUP.md).
       category: vo.category_name || vo.category_id,
     }));
-    void pushWidgetSnapshot(snapshot, rules);
+    void pushWidgetSnapshot(snapshot, rules, state.settings.auto_accept_known_vendors === true);
   }, [
     state.budgets,
     currentMonthTransactions,
@@ -163,6 +168,8 @@ const Dashboard: React.FC<Props> = ({
     state.user?.monthlyIncome,
     state.settings.theme,
     vendorOverrides,
+    state.transactions,
+    state.settings.auto_accept_known_vendors,
   ]);
 
   // The month key was read straight from the clock during render, so it only

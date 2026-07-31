@@ -141,6 +141,8 @@ export interface AppState {
     smart_notifications_enabled: boolean;
     /** Skip review for captures a learned vendor rule confidently matches. */
     auto_accept_known_vendors: boolean;
+    /** Light vibration on file/delete. Device-level; respects reduced motion. */
+    haptics_enabled: boolean;
   };
 }
 

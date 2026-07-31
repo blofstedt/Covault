@@ -2,11 +2,11 @@ import React, { useMemo, useState, useCallback } from 'react';
 import { Transaction, BudgetCategory } from '../../types';
 import ParsingCard from '../ui/ParsingCard';
 import { EmptyState } from '../shared';
-import { isRefund } from '../../lib/refundMatching';
 import AIEnteredRow from './AIEnteredRow';
 import type { NotATxRuleType } from './NotATransactionModal';
 import { useVendorMatcher, selectBulkAcceptable } from '../../lib/hooks/useVendorMatcher';
 import type { VendorOverride } from './useVendorOverrides';
+import { hapticSuccess } from '../../lib/haptics';
 
 interface AITransactionsEnteredCardProps {
   aiTransactions: Transaction[];
@@ -15,6 +15,8 @@ interface AITransactionsEnteredCardProps {
   onClear?: () => void;
   onRefresh?: () => void;
   isRefreshing?: boolean;
+  /** Captured refunds filtered out upstream, surfaced in the subtitle. */
+  refundCount?: number;
   needsReviewIds?: Set<string>;
   onDeleteTransaction?: (id: string) => Promise<void> | void;
   onVendorRenamed?: (tx: Transaction, newVendor: string) => Promise<void> | void;
@@ -45,6 +47,7 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
   onClear,
   onRefresh,
   isRefreshing = false,
+  refundCount = 0,
   needsReviewIds = EMPTY_IDS,
   onDeleteTransaction,
   onVendorRenamed,
@@ -72,17 +75,14 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
     });
   }, []);
 
-  // One pass instead of two unmemoized full scans (isRefund ran twice per row
-  // on every render of the card).
-  const { nonRefunds, refundCount } = useMemo(() => {
-    const rows: Transaction[] = [];
-    let refunds = 0;
-    for (const tx of aiTransactions) {
-      if (isRefund(tx)) refunds++;
-      else if (!filedIds.has(tx.id)) rows.push(tx);
-    }
-    return { nonRefunds: rows, refundCount: refunds };
-  }, [aiTransactions, filedIds]);
+  // `aiTransactions` already excludes refunds and cleared rows — the caller
+  // filters with selectAwaitingReview (lib/reviewQueue.ts), which is what keeps
+  // this list and the bottom-bar badge in agreement. All that's left here is
+  // hiding rows the user just filed, before the DB reload catches up.
+  const nonRefunds = useMemo(
+    () => aiTransactions.filter((tx) => !filedIds.has(tx.id)),
+    [aiTransactions, filedIds],
+  );
 
   // Rows a single tap can file: rules the user wrote, already pointing at a
   // category. Offered from two upwards — for one row the per-row Accept is
@@ -95,6 +95,8 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
 
   const handleAcceptAll = useCallback(() => {
     if (!onAcceptMany || bulkAcceptable.length === 0) return;
+    // A notch above the single-row tap: several things just happened at once.
+    hapticSuccess();
     setFiledIds((prev) => {
       const next = new Set(prev);
       for (const tx of bulkAcceptable) next.add(tx.id);

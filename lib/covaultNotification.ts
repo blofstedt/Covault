@@ -105,7 +105,7 @@ export interface CovaultNotificationPlugin {
    *
    * Prefer the `pushWidgetSnapshot` helper below, which tolerates an older APK.
    */
-  updateWidget(options: { snapshot: string; rules: string }): Promise<void>;
+  updateWidget(options: { snapshot: string; rules: string; autoFile: boolean }): Promise<void>;
 
   // Our event: emits whenever a transaction notification is detected
   addListener(
@@ -210,6 +210,12 @@ export interface WidgetVendorRule {
 export async function pushWidgetSnapshot(
   snapshot: unknown,
   rules: WidgetVendorRule[],
+  /**
+   * Mirrored so the native listener can tell whether a capture made with the
+   * app closed will be auto-filed or will wait in Review — which decides
+   * whether it bumps the widget's review badge.
+   */
+  autoFile: boolean,
   plugin: CovaultNotificationPlugin | null = covaultNotification,
 ): Promise<void> {
   if (!plugin) return;
@@ -217,6 +223,7 @@ export async function pushWidgetSnapshot(
     await plugin.updateWidget({
       snapshot: JSON.stringify(snapshot),
       rules: JSON.stringify(rules),
+      autoFile,
     });
   } catch (e) {
     log.debug('[covaultNotification] updateWidget unavailable:', e);

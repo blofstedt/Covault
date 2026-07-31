@@ -1,3 +1,5 @@
+import tailwindcssAnimate from 'tailwindcss-animate';
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
@@ -30,21 +32,31 @@ export default {
           '0%, 100%': { boxShadow: '0 0 0 0 rgba(245, 158, 11, 0.0)' },
           '50%': { boxShadow: '0 0 0 4px rgba(245, 158, 11, 0.18)' },
         },
-        'fade-in': {
-          '0%': { opacity: '0' },
-          '100%': { opacity: '1' },
-        },
-        'slide-in-from-top-1': {
-          '0%': { transform: 'translateY(-4px)' },
-          '100%': { transform: 'translateY(0)' },
+        // Count badge reacting to a new item. Deliberately asymmetric — a
+        // quick overshoot out, a slower settle back.
+        'badge-pop': {
+          '0%': { transform: 'scale(1)' },
+          '35%': { transform: 'scale(1.35)' },
+          '100%': { transform: 'scale(1)' },
         },
       },
       animation: {
         'softdup-pulse': 'softdup-pulse 2.4s ease-in-out infinite',
-        'fade-in': 'fade-in 150ms ease-out',
-        'slide-in-from-top-1': 'slide-in-from-top-1 150ms ease-out',
+        'badge-pop': 'badge-pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1)',
       },
     },
   },
-  plugins: [],
+  // `animate-in`, `fade-in`, `zoom-in-95`, `slide-in-from-*` and friends come
+  // from here. The codebase has used that class API in ~40 places for a long
+  // time WITHOUT this plugin installed, so every one of them emitted no CSS and
+  // every modal, sheet and toast appeared with no transition at all.
+  //
+  // The two hand-rolled `fade-in` / `slide-in-from-top-1` entries that used to
+  // sit in `keyframes` above did not help: Tailwind's `animation` theme key
+  // generates `animate-fade-in`, not `fade-in`, and nothing referenced that
+  // name. They are gone now that the real implementations exist.
+  //
+  // lib/__tests__/tailwindAnimatePlugin.test.ts fails the build if these
+  // classes are ever used again without the plugin registered here.
+  plugins: [tailwindcssAnimate],
 }

@@ -39,6 +39,7 @@ const base = {
   remaining: 1000,
   income: 5000,
   theme: 'dark' as const,
+  pendingReview: 0,
   monthKey: '2026-07',
   nowMs: 1_000_000,
 };

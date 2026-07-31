@@ -17,6 +17,7 @@ import { useUserData } from './lib/hooks/useUserData';
 import { executeRecurringTransactions } from './lib/recurringExecutor';
 import { sendRecurringCatchUpNotification } from './lib/appNotifications';
 import { preloadAIModel } from './lib/aiExtractor';
+import { setHapticsEnabled } from './lib/haptics';
 import { log } from './lib/log';
 
 // `Toast` lives in types.ts because Dashboard and the Review page raise their
@@ -40,6 +41,9 @@ const DEFAULT_SETTINGS = {
   // it has to be a deliberate choice rather than something they discover
   // after the fact.
   auto_accept_known_vendors: false,
+  // On by default: a light tap on a deliberate action is the kind of thing
+  // people miss when it's absent and rarely think to go looking for.
+  haptics_enabled: true,
 };
 
 // Fixed: Added check for 'window' so Vercel doesn't crash during build
@@ -150,6 +154,13 @@ const App: React.FC = () => {
   // notification doesn't pay the ~60MB download + WASM init cost. We
   // fire-and-forget; if it fails the AI fallback just won't be available
   // and the regex parser handles everything.
+  // The haptics helpers are called from deep in the tree (row accept, bulk
+  // accept, delete), so the preference lives in module state rather than being
+  // threaded through every call site.
+  useEffect(() => {
+    setHapticsEnabled(appState.settings.haptics_enabled !== false);
+  }, [appState.settings.haptics_enabled]);
+
   useEffect(() => {
     preloadAIModel().catch(() => {
       // Already logged inside preloadAIModel; no need to spam.

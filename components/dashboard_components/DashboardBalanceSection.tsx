@@ -1,4 +1,5 @@
 import React from 'react';
+import { useAnimatedNumber } from '../../lib/hooks/useAnimatedNumber';
 
 interface DashboardBalanceSectionProps {
   isSharedAccount: boolean;
@@ -25,6 +26,11 @@ const DashboardBalanceSection: React.FC<DashboardBalanceSectionProps> = ({
 }) => {
   const isNegative = remainingMoney < 0;
   const hasNoIncome = monthlyIncome === 0;
+
+  // Count toward the new balance rather than snapping to it. This is the
+  // number that moves when a transaction lands, so it's the one place a tween
+  // does the most work. Snaps on first render and under reduced motion.
+  const animatedRemaining = useAnimatedNumber(remainingMoney, { minDelta: 0.5 });
 
   if (!isIncomeLoaded) {
     return (
@@ -134,7 +140,7 @@ const DashboardBalanceSection: React.FC<DashboardBalanceSectionProps> = ({
                 : 'text-emerald-500 dark:text-emerald-400'
             }`}
           >
-            {remainingMoney.toLocaleString()}
+            {Math.round(animatedRemaining).toLocaleString()}
           </span>
         </div>
       </div>

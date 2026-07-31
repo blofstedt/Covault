@@ -26,6 +26,20 @@ function getGradient(name: string, index: number): [string, string] {
 
 // Tooltip vertical positioning is now handled by absolute positioning above the chart
 
+/**
+ * d3 transitions bypass CSS entirely, so `prefers-reduced-motion` and the
+ * `motion-safe:` variants used elsewhere in the app have no effect here. The
+ * chart has to ask directly, and collapse its durations to zero.
+ */
+function motionDuration(ms: number): number {
+  if (typeof window === 'undefined' || !window.matchMedia) return ms;
+  try {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : ms;
+  } catch {
+    return ms;
+  }
+}
+
 const NO_BUDGETS: BudgetCategory[] = [];
 const NO_TRANSACTIONS: Transaction[] = [];
 
@@ -473,20 +487,20 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       svg
         .selectAll('.bfc-band')
         .transition()
-        .duration(100)
+        .duration(motionDuration(100))
         .attr('fill-opacity', (d: any) => (foundCat && foundCat !== '__savings__' && d.key === foundCat ? 0.95 : 0.2));
 
       // Dim strokes for non-selected bands
       svg
         .selectAll('.bfc-band-stroke')
         .transition()
-        .duration(100)
+        .duration(motionDuration(100))
         .style('stroke-opacity', (_d: any, i: number) => (foundCat && foundCat !== '__savings__' && categoryNames[i] === foundCat ? 0.9 : 0.1));
 
       // Highlight savings area
       svg.select('.bfc-savings')
         .transition()
-        .duration(100)
+        .duration(motionDuration(100))
         .attr('fill-opacity', foundCat === '__savings__' ? 0.9 : 0.6);
     };
 
@@ -553,8 +567,8 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       setScreenCoords(null);
       scrubber.style('opacity', 0);
       scrubberDot.style('opacity', 0);
-      svg.selectAll('.bfc-band').transition().duration(300).attr('fill-opacity', 0.85);
-      svg.selectAll('.bfc-band-stroke').transition().duration(300).style('stroke-opacity', 0.6);
+      svg.selectAll('.bfc-band').transition().duration(motionDuration(300)).attr('fill-opacity', 0.85);
+      svg.selectAll('.bfc-band-stroke').transition().duration(motionDuration(300)).style('stroke-opacity', 0.6);
     };
 
     svgElement.on('mousemove', handleInteraction).on('mouseleave', handleEnd);
@@ -649,7 +663,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     // index.css `.budget-row-anim`) so the chart solos in lockstep with the
     // card instead of trailing it — the two were on different clocks (500 vs
     // 320ms), which read as "not smooth".
-    const snapMs = 320;
+    const snapMs = motionDuration(320);
     const easing = d3.easeCubicOut;
 
     // Remove any previous solo month labels
@@ -757,7 +771,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         .attr('fill', catColor)
         .style('opacity', 0)
         .text(`$${val.toFixed(0)}`)
-        .transition().delay(200).duration(300).ease(easing)
+        .transition().delay(motionDuration(200)).duration(motionDuration(300)).ease(easing)
         .style('opacity', 1);
     });
   }, [highlightedBudgetName, activeCategory, categoryNames, highlightedCatColor, theme]);
