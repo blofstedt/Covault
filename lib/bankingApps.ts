@@ -332,6 +332,47 @@ export const KNOWN_BANKING_APPS: Record<string, string> = {
 };
 
 /**
+ * Packages whose notifications are NEVER captured, even though they talk about
+ * money — checked before anything else, and it beats every other rule.
+ *
+ * This exists because of a hole in `NotificationListener.java`. Forwarding is
+ * `fromMonitored || hasDollarAmount`, so an app does not have to be a bank to
+ * get through — it only has to mention a dollar amount. That is deliberate
+ * (it catches banks nobody has listed yet), but it means wallet apps sail
+ * straight in.
+ *
+ * Google Wallet announces the same tap-to-pay purchase the card's own bank app
+ * already announced, in different wording. One purchase, two notifications, two
+ * captured rows. Commit 0c0d0d7 tried to collapse those after the fact by
+ * comparing vendor names; that only works when both sides parse to a similar
+ * vendor, and it fails the moment either one parses badly. Not capturing the
+ * duplicate in the first place is the reliable fix.
+ *
+ * Trade-off, accepted deliberately: a card that ONLY ever notifies through
+ * Wallet — tap-to-pay with no issuer app installed — will stop being captured.
+ *
+ * Must stay in sync with EXCLUDED_APPS in NotificationListener.java;
+ * lib/__tests__/bankingAppsConsistency.test.ts fails the build otherwise.
+ */
+export const EXCLUDED_APPS: Record<string, string> = {
+  'com.google.android.apps.walletnfcrel': 'Google Wallet',
+  'com.google.android.apps.wallet': 'Google Wallet (legacy)',
+};
+
+/**
+ * True if this package must never produce a capture.
+ *
+ * Checked on the JS side as well as in Java. The Java check is what actually
+ * saves the work; this one is the backstop for notifications that reach the
+ * pipeline another way (the offline queue, a rescan, an older native build
+ * still installed on the device).
+ */
+export function isExcludedApp(packageName: string | null | undefined): boolean {
+  if (!packageName) return false;
+  return Object.prototype.hasOwnProperty.call(EXCLUDED_APPS, packageName.trim());
+}
+
+/**
  * Module-level cache of banking apps loaded from Supabase.
  * Populated by loadBankingAppsFromDB() on app start.
  * Falls back to KNOWN_BANKING_APPS until the DB load completes.

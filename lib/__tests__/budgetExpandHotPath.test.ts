@@ -60,16 +60,26 @@ describe('budget expand hot path', () => {
     });
   }
 
-  it('keeps every transaction row out of layout while its budget is collapsed', () => {
+  it('keeps every transaction row out of layout until the expand has finished', () => {
     const source = readFileSync(join(ROOT, 'components/BudgetSection.tsx'), 'utf8');
 
     expect(
-      /contentVisibility:\s*isExpanded\s*\?\s*'visible'\s*:\s*'hidden'/.test(source),
+      /contentVisibility:\s*revealed\s*\?\s*'visible'\s*:\s*'hidden'/.test(source),
       'BudgetSection keeps collapsed transaction lists mounted on purpose, so ' +
       'the collapse animation does not drop its content. That is only ' +
-      'affordable with `content-visibility: hidden`, which skips layout and ' +
-      'paint for the hidden subtree.',
+      'affordable with `content-visibility: hidden`.',
     ).toBe(true);
+
+    // Keying this on `isExpanded` is the subtle wrong answer: it does remove
+    // the per-frame layout of the OTHER budgets' lists, but it forces the
+    // expanding one to lay out its whole subtree on frame 1 of the animation,
+    // which stalls the very motion it was meant to speed up. `revealed` flips
+    // only once the 320ms transition is over.
+    expect(
+      /contentVisibility:\s*isExpanded/.test(source),
+      'content-visibility must be keyed on `revealed`, not `isExpanded` — ' +
+      'see the note beside the useState in BudgetSection.tsx.',
+    ).toBe(false);
   });
 
   it('walls each budget row off from its siblings during the layout animation', () => {

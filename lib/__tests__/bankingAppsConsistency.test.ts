@@ -8,22 +8,24 @@ vi.mock('@capacitor/core', () => ({
   registerPlugin: vi.fn(),
 }));
 
-import { KNOWN_BANKING_APPS } from '../bankingApps';
+import { KNOWN_BANKING_APPS, EXCLUDED_APPS, isExcludedApp } from '../bankingApps';
+
+const JAVA_PATH = resolve(__dirname, '../../android-custom/NotificationListener.java');
 
 /**
- * Parse the BANKING_APPS set from NotificationListener.java.
+ * Parse a `static final Set<String> <name>` block from NotificationListener.java.
  * Extracts all quoted package names from the Java HashSet initializer.
  */
-function parseJavaBankingApps(): Set<string> {
-  const javaPath = resolve(__dirname, '../../android-custom/NotificationListener.java');
-  const content = readFileSync(javaPath, 'utf-8');
+function parseJavaPackageSet(setName: string): Set<string> {
+  const content = readFileSync(JAVA_PATH, 'utf-8');
 
-  // Find the BANKING_APPS set block
   const setMatch = content.match(
-    /static final Set<String> BANKING_APPS = new HashSet<>\(Arrays\.asList\(([\s\S]*?)\)\);/,
+    new RegExp(
+      `static final Set<String> ${setName} = new HashSet<>\\(Arrays\\.asList\\(([\\s\\S]*?)\\)\\);`,
+    ),
   );
   if (!setMatch) {
-    throw new Error('Could not find BANKING_APPS set in NotificationListener.java');
+    throw new Error(`Could not find ${setName} set in NotificationListener.java`);
   }
 
   const block = setMatch[1];
@@ -34,6 +36,10 @@ function parseJavaBankingApps(): Set<string> {
     packageNames.add(match[1]);
   }
   return packageNames;
+}
+
+function parseJavaBankingApps(): Set<string> {
+  return parseJavaPackageSet('BANKING_APPS');
 }
 
 describe('Banking apps consistency (Java ↔ TypeScript)', () => {
@@ -72,5 +78,67 @@ describe('Banking apps consistency (Java ↔ TypeScript)', () => {
       missingInTS,
       `These Java apps are missing from TS KNOWN_BANKING_APPS:\n  ${missingInTS.join('\n  ')}`,
     ).toEqual([]);
+  });
+});
+
+/**
+ * The exclusion list is the only thing standing between the app and Google
+ * Wallet's duplicate of every tap-to-pay purchase. It has to hold on BOTH
+ * sides: Java is where the notification is actually dropped, TypeScript is the
+ * backstop for queued events and rescans. If the two drift, one path silently
+ * starts capturing again — exactly the failure mode this whole area keeps
+ * hitting.
+ */
+describe('Excluded apps consistency (Java ↔ TypeScript)', () => {
+  const javaExcluded = parseJavaPackageSet('EXCLUDED_APPS');
+  const tsExcluded = new Set(Object.keys(EXCLUDED_APPS));
+
+  it('both sides list exactly the same packages', () => {
+    expect([...javaExcluded].sort()).toEqual([...tsExcluded].sort());
+  });
+
+  it('excludes Google Wallet', () => {
+    expect(tsExcluded.has('com.google.android.apps.walletnfcrel')).toBe(true);
+    expect(javaExcluded.has('com.google.android.apps.walletnfcrel')).toBe(true);
+  });
+
+  it('never excludes an app that is also a known bank', () => {
+    const overlap = [...tsExcluded].filter((pkg) => pkg in KNOWN_BANKING_APPS);
+    expect(
+      overlap,
+      `These packages are both a known bank and excluded, which is contradictory:\n  ${overlap.join('\n  ')}`,
+    ).toEqual([]);
+  });
+
+  it('isExcludedApp matches the list, and tolerates junk input', () => {
+    expect(isExcludedApp('com.google.android.apps.walletnfcrel')).toBe(true);
+    expect(isExcludedApp('  com.google.android.apps.wallet  ')).toBe(true);
+    expect(isExcludedApp('com.bmo.mobile')).toBe(false);
+    expect(isExcludedApp('')).toBe(false);
+    expect(isExcludedApp(null)).toBe(false);
+    expect(isExcludedApp(undefined)).toBe(false);
+  });
+
+  it('does not treat inherited Object properties as excluded', () => {
+    // `EXCLUDED_APPS` is a plain object, so a naive `EXCLUDED_APPS[pkg]` lookup
+    // would report "constructor" and "toString" as excluded packages.
+    expect(isExcludedApp('constructor')).toBe(false);
+    expect(isExcludedApp('toString')).toBe(false);
+  });
+
+  it('Java drops excluded packages before the has-a-dollar-amount fallback', () => {
+    const content = readFileSync(JAVA_PATH, 'utf-8');
+
+    const excludedCheck = content.indexOf('EXCLUDED_APPS.contains(packageName)');
+    const dollarFallback = content.indexOf('!fromMonitored && !hasDollarAmount');
+
+    expect(excludedCheck, 'EXCLUDED_APPS check missing from NotificationListener').toBeGreaterThan(-1);
+    expect(dollarFallback, 'dollar-amount fallback missing from NotificationListener').toBeGreaterThan(-1);
+    expect(
+      excludedCheck,
+      'The exclusion check must come BEFORE the `hasDollarAmount` fallback — that ' +
+      'fallback forwards ANY app mentioning a dollar amount, which is how Google ' +
+      'Wallet got in despite never being on a banking list.',
+    ).toBeLessThan(dollarFallback);
   });
 });

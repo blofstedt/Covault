@@ -83,6 +83,23 @@ public class NotificationListener extends NotificationListenerService {
         }
     }
 
+    // Packages that must NEVER be captured, whatever else they look like.
+    // Checked first in handleNotificationPosted, before the "has a dollar
+    // amount" fallback that would otherwise let them through.
+    //
+    // Google Wallet re-announces a tap-to-pay purchase that the card's own bank
+    // app has already announced, worded differently. One purchase, two
+    // notifications, two rows. Collapsing them afterwards by vendor similarity
+    // (commit 0c0d0d7) only works when both sides happen to parse to a similar
+    // vendor; not capturing the duplicate at all is what actually holds.
+    //
+    // Must stay in sync with EXCLUDED_APPS in lib/bankingApps.ts —
+    // lib/__tests__/bankingAppsConsistency.test.ts fails the build otherwise.
+    static final Set<String> EXCLUDED_APPS = new HashSet<>(Arrays.asList(
+        "com.google.android.apps.walletnfcrel",  // Google Wallet
+        "com.google.android.apps.wallet"         // Google Wallet (legacy)
+    ));
+
     // Banking app package names to listen for
     // Users can configure which apps to monitor in the app
     static final Set<String> BANKING_APPS = new HashSet<>(Arrays.asList(
@@ -425,10 +442,47 @@ public class NotificationListener extends NotificationListenerService {
     };
 
     // Patterns to extract vendor/merchant name
+    // Emoji and pictographs, stripped before vendor matching.
+    //
+    // Banks increasingly put a category glyph in the title: "OPA001-MARKET MALL
+    // 🍴 You spent $16.54 with your credit card." None of the vendor patterns
+    // below include emoji in their character classes, so without this the
+    // regex cannot cross the glyph to reach the spending verb — every
+    // merchant-leading pattern fails, and matching resumes AFTER the emoji,
+    // where the only thing left is "You spent $16.54". That is precisely how a
+    // real purchase was captured as "$16.54 at You".
+    //
+    // Mirrors stripEmoji() in lib/deviceTransactionParser.ts.
+    private static final Pattern EMOJI_PATTERN = Pattern.compile(
+        "[\\x{1F000}-\\x{1FFFF}\\x{2600}-\\x{27BF}\\x{2B00}-\\x{2BFF}\\x{FE00}-\\x{FE0F}\\x{200D}]"
+    );
+
+    /**
+     * Words that can never be a vendor on their own.
+     *
+     * The patterns below are greedy about finding *something*, and when they
+     * land in the description rather than the merchant name what they return is
+     * a pronoun or an article. lib/deviceTransactionParser.ts has rejected
+     * these for a while (NON_VENDOR_WORDS); this side never did, and this side
+     * is the one that posts the capture notification when the app is closed.
+     */
+    private static final Set<String> NON_VENDOR_WORDS = new HashSet<>(Arrays.asList(
+        "you", "your", "yours", "my", "mine", "our", "ours", "i", "me", "we", "us",
+        "they", "them", "their", "a", "an", "the", "with", "from", "on", "at", "to",
+        "for", "and", "of", "spent", "spend", "paid", "pay", "charged", "charge",
+        "purchased", "purchase", "transaction", "payment", "card", "credit", "debit",
+        "none", "unknown"
+    ));
+
     private static final Pattern[] VENDOR_PATTERNS = {
-        // "VENDOR - You spent $X" / "VENDOR – You charged $X" (e.g. Wealthsimple)
+        // "VENDOR - You spent $X" / "VENDOR You spent $X" (e.g. Wealthsimple)
         // Must come first so the clean vendor name is captured before the spending phrase.
-        Pattern.compile("^([A-Za-z0-9&'./# -]{2,60}?)\\s*[-\\u2013\\u2014]\\s*(?:[Yy]ou\\s+)?(?:spent|charged|paid|purchased)\\b", Pattern.CASE_INSENSITIVE),
+        //
+        // The dash is OPTIONAL. It was mandatory here long after
+        // lib/deviceTransactionParser.ts made it optional (its Pattern 5), so
+        // any bank that omits the separator fell through this pattern entirely
+        // and got its vendor from the far dumber amount-adjacent pattern below.
+        Pattern.compile("^([A-Za-z0-9&'./# -]{2,60}?)\\s*[-\\u2013\\u2014]?\\s*(?:[Yy]ou\\s+)?(?:spent|charged|paid|purchased)\\b", Pattern.CASE_INSENSITIVE),
         Pattern.compile("(?:at|from|to|@)\\s+([A-Za-z0-9\\s&'.-]+?)\\s+(?:for|on|\\$|USD|CAD|charged)", Pattern.CASE_INSENSITIVE),
         Pattern.compile("(?:purchase|transaction|payment)\\s+(?:at|from)\\s+([A-Za-z0-9\\s&'.-]+)", Pattern.CASE_INSENSITIVE),
         // Vendor before dollar amount — stop before spending verbs so we don't
@@ -485,6 +539,14 @@ public class NotificationListener extends NotificationListenerService {
 
         // Ignore our own notifications (e.g. guide notification)
         if (packageName.equals(getPackageName())) {
+            return;
+        }
+
+        // Hard exclusions beat everything below, including the "has a dollar
+        // amount" fallback and any user-monitored list. Returning here also
+        // means maybeHideBankNotification is never reached for these, so an
+        // excluded app's own notification is left alone in the tray.
+        if (EXCLUDED_APPS.contains(packageName)) {
             return;
         }
 
@@ -669,14 +731,45 @@ public class NotificationListener extends NotificationListenerService {
         return null;
     }
 
+    /** Remove emoji/pictographs so the vendor patterns can match across them. */
+    private static String stripEmoji(String text) {
+        if (text == null) return "";
+        return EMOJI_PATTERN.matcher(text).replaceAll(" ").replaceAll("\\s{2,}", " ").trim();
+    }
+
+    /**
+     * True if every token is a pronoun, article or verb — i.e. the pattern
+     * landed in the description instead of the merchant name.
+     */
+    private static boolean isNonVendor(String candidate) {
+        String[] tokens = candidate.toLowerCase().split("[^a-z0-9']+");
+        boolean sawToken = false;
+        for (String token : tokens) {
+            if (token.isEmpty()) continue;
+            sawToken = true;
+            if (!NON_VENDOR_WORDS.contains(token)) return false;
+        }
+        return sawToken;
+    }
+
     private String extractVendor(String text) {
+        // Strip emoji FIRST. See EMOJI_PATTERN — a category glyph between the
+        // merchant name and the spending verb otherwise defeats every
+        // merchant-leading pattern.
+        String cleaned = stripEmoji(text);
+
         for (Pattern pattern : VENDOR_PATTERNS) {
-            Matcher matcher = pattern.matcher(text);
+            Matcher matcher = pattern.matcher(cleaned);
             if (matcher.find()) {
                 String vendor = matcher.group(1).trim();
                 // Clean up the vendor name
                 vendor = vendor.replaceAll("\\s+", " ");
-                if (vendor.length() >= 2 && vendor.length() < 60) {
+                // Keep trying later patterns rather than returning "You" or
+                // "a purchase". Returning null is better than a wrong name:
+                // the TS pipeline re-parses the raw text anyway, and a wrong
+                // vendor is worse than none because the cross-app duplicate
+                // check compares vendor names to decide what to collapse.
+                if (vendor.length() >= 2 && vendor.length() < 60 && !isNonVendor(vendor)) {
                     return vendor;
                 }
             }

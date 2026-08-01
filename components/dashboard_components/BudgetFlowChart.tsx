@@ -327,6 +327,39 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       // it provided, for free.
       .style('stroke-opacity', 0.7);
 
+    // ── Solo overlay paths ───────────────────────────────────────────────────
+    // Invisible twins of the two paths above, used by the solo effect further
+    // down. They exist so that soloing a budget never has to MUTATE the `d` of
+    // a visible path.
+    //
+    // The solo transition used to interpolate `d` as a string, every frame, for
+    // 320ms: d3.interpolateString over a long CatmullRom path, then
+    // setAttribute, forcing Blink to re-parse and re-tessellate the geometry —
+    // all on the main thread, concurrently with the CSS card expand, which is
+    // itself animating two layout properties. Two per-frame costs fighting for
+    // the same frame budget on a 120Hz phone.
+    //
+    // Cross-fading two static paths instead means the shape is computed once
+    // and only `fill-opacity` animates, which the compositor can do. The `d`
+    // of these twins is assigned while they are fully transparent, so swapping
+    // geometry is never visible.
+    layerGroup
+      .append('path')
+      .attr('class', 'bfc-solo-band')
+      .style('fill', (_d, i) => `url(#bfc-grad-${i})`)
+      .attr('fill-opacity', 0);
+
+    layerGroup
+      .append('path')
+      .attr('class', 'bfc-solo-stroke')
+      .style('fill', 'none')
+      .style('stroke', (_d, i) => {
+        const [c0] = getGradient(categoryNames[i], i);
+        return c0;
+      })
+      .style('stroke-width', 1.5)
+      .style('stroke-opacity', 0);
+
     // ── Savings area: hatched white region between top of bands and income line ──
     // Income threshold Y position (must be computed before savings area uses it)
     const budgetY = y(thresholdValue);
@@ -678,20 +711,24 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
     if (!highlightedBudgetName || activeCategory) {
       if (!activeCategory) {
-        // Reset everything to defaults — combine opacity + path in one transition
-        // to avoid D3 transition conflicts that leave bands invisible
-        svgElement.selectAll('.bfc-band').each(function(this: any) {
-          const el = d3.select(this);
-          const orig = el.attr('data-original-d');
-          const t = el.transition().duration(snapMs).ease(easing).attr('fill-opacity', 0.85);
-          if (orig) t.attr('d', orig);
-        });
-        svgElement.selectAll('.bfc-band-stroke').each(function(this: any) {
-          const el = d3.select(this);
-          const orig = el.attr('data-original-d');
-          const t = el.transition().duration(snapMs).ease(easing).style('stroke-opacity', 0.7);
-          if (orig) t.attr('d', orig);
-        });
+        // Reset to defaults. Only opacities move now — the stacked bands' `d`
+        // is never mutated, so there is nothing to restore and no risk of the
+        // path/opacity transition conflict that used to leave bands invisible.
+        // (`data-original-d` and the per-element .each() bookkeeping it needed
+        // are gone with it.)
+        svgElement.selectAll('.bfc-band')
+          .transition().duration(snapMs).ease(easing)
+          .attr('fill-opacity', 0.85);
+        svgElement.selectAll('.bfc-band-stroke')
+          .transition().duration(snapMs).ease(easing)
+          .style('stroke-opacity', 0.7);
+        // Fade the solo overlays back out.
+        svgElement.selectAll('.bfc-solo-band')
+          .transition().duration(snapMs).ease(easing)
+          .attr('fill-opacity', 0);
+        svgElement.selectAll('.bfc-solo-stroke')
+          .transition().duration(snapMs).ease(easing)
+          .style('stroke-opacity', 0);
         // Restore savings & income
         svgElement.select('.bfc-savings').transition().duration(snapMs).ease(easing).attr('fill-opacity', 0.6);
         svgElement.select('.bfc-income-line').transition().duration(snapMs).ease(easing).style('opacity', 1);
@@ -702,13 +739,14 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
     // ── Solo snap: show only the highlighted band ──
 
-    // Hide non-highlighted bands
+    // Hide ALL stacked bands — including the highlighted one, whose shape is
+    // now carried by the .bfc-solo-band overlay faded in below.
     svgElement.selectAll('.bfc-band')
       .transition().duration(snapMs).ease(easing)
-      .attr('fill-opacity', (d: any) => d.key === highlightedBudgetName ? 0.95 : 0);
+      .attr('fill-opacity', 0);
     svgElement.selectAll('.bfc-band-stroke')
       .transition().duration(snapMs).ease(easing)
-      .style('stroke-opacity', (_d: any, i: number) => categoryNames[i] === highlightedBudgetName ? 0.9 : 0);
+      .style('stroke-opacity', 0);
 
     // Fade out savings area and income line/label
     svgElement.select('.bfc-savings').transition().duration(snapMs).ease(easing).attr('fill-opacity', 0);
@@ -739,21 +777,21 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .curve(d3.curveCatmullRom.alpha(0.5))(soloLinePts) || '';
     const highlightIdx = categoryNames.indexOf(highlightedBudgetName);
 
-    svgElement.selectAll('.bfc-band')
-      .filter((d: any) => d.key === highlightedBudgetName)
-      .each(function(this: any) {
-        const el = d3.select(this);
-        if (!el.attr('data-original-d')) el.attr('data-original-d', el.attr('d'));
-        el.transition().duration(snapMs).ease(easing).attr('d', soloPath);
-      });
-
-    svgElement.selectAll('.bfc-band-stroke')
+    // Cross-fade the solo shape in on its own overlay path rather than morphing
+    // the visible band's `d`. The geometry is assigned instantly here — safe,
+    // because the overlay is still at opacity 0 — and only opacity animates.
+    // See the note where .bfc-solo-band is created.
+    svgElement.selectAll('.bfc-solo-band')
       .filter((_d: any, i: number) => i === highlightIdx)
-      .each(function(this: any) {
-        const el = d3.select(this);
-        if (!el.attr('data-original-d')) el.attr('data-original-d', el.attr('d'));
-        el.transition().duration(snapMs).ease(easing).attr('d', soloStrokePath);
-      });
+      .attr('d', soloPath)
+      .transition().duration(snapMs).ease(easing)
+      .attr('fill-opacity', 0.95);
+
+    svgElement.selectAll('.bfc-solo-stroke')
+      .filter((_d: any, i: number) => i === highlightIdx)
+      .attr('d', soloStrokePath)
+      .transition().duration(snapMs).ease(easing)
+      .style('stroke-opacity', 0.9);
 
     // Show per-month totals for the highlighted category
     const isDark = theme === 'dark';

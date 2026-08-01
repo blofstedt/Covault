@@ -59,6 +59,8 @@ export interface DashboardSettingsModalProps {
   saveBudgetVisibility: (categoryId: string, visible: boolean) => void;
   hasPremium: boolean;
   onSubscribe: () => void;
+  frameMeterEnabled: boolean;
+  onToggleFrameMeter: (enabled: boolean) => void;
   onImportComplete?: () => void;
 }
 
@@ -82,6 +84,8 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
   saveBudgetVisibility,
   hasPremium,
   onSubscribe,
+  frameMeterEnabled,
+  onToggleFrameMeter,
   onImportComplete,
 }) => {
   const settingsScrollRef = useRef<HTMLDivElement>(null);
@@ -210,6 +214,28 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
 
           {/* Support & Feedback — only feature requests are premium */}
           <SupportFeedbackSection hasPremium={hasPremium} onSubscribe={onSubscribe} />
+
+          {/* Animation diagnostics.
+              Deliberately not a DB-backed setting — see the note where
+              onToggleFrameMeter is passed in Dashboard.tsx. */}
+          <div className="rounded-2xl border border-slate-200/60 dark:border-slate-700/40 p-4">
+            <label className="flex items-center justify-between gap-4 cursor-pointer">
+              <span className="flex flex-col text-left">
+                <span className="text-sm font-bold text-slate-700 dark:text-slate-100">
+                  Animation diagnostics
+                </span>
+                <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                  Shows dropped frames and the build number when you open a budget.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                className="h-5 w-5 shrink-0 accent-emerald-600"
+                checked={frameMeterEnabled}
+                onChange={(e) => onToggleFrameMeter(e.target.checked)}
+              />
+            </label>
+          </div>
 
           {/* Sign out */}
           <SignOutSection onSignOut={onSignOut} />

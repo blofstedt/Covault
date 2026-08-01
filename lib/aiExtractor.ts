@@ -15,7 +15,7 @@
 import { log } from './log';
 import type { Text2TextGenerationPipeline } from '@huggingface/transformers';
 import { formatVendorName } from './formatVendorName';
-import { BANK_NAME_PREFIXES } from './deviceTransactionParser';
+import { BANK_NAME_PREFIXES, isCommonNounOnly } from './deviceTransactionParser';
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -258,12 +258,35 @@ export async function extractWithAI(
     };
   }
 
-  // Use rule-based vendor if AI didn't find one, otherwise use AI's
-  let finalVendor = parsed.vendor;
+  // Use rule-based vendor if AI didn't find one, otherwise use AI's.
+  //
+  // The AI's answer is NOT trusted verbatim. parseAIResponse only rejects the
+  // literal strings NONE/N/A/NO/UNKNOWN, which lets the model's own prompt
+  // wording come back as a merchant: the prompt says
+  //   "Vendor: <merchant name, or NONE if not a purchase/payment>"
+  // and a real capture came through as "$16.54 at a purchase" — flan-T5
+  // echoing its instructions. `isCommonNounOnly` is the same gate the rule
+  // parser already applies to its own output; the AI path simply never had it.
+  //
+  // A hallucinated vendor is worse than no vendor. It reaches the DB, and the
+  // cross-app duplicate check compares vendor names to decide what to collapse
+  // — so garbage here silently defeats deduplication too.
+  let aiVendor = parsed.vendor;
+  if (aiVendor && isCommonNounOnly(aiVendor)) {
+    log.warn(`[aiExtractor] Discarding common-noun AI vendor: "${aiVendor}"`);
+    aiVendor = null;
+  }
+
+  let finalVendor = aiVendor;
   if (!finalVendor && hasRuleVendor) {
     finalVendor = polishVendor(ruleResult.vendor!);
   } else if (finalVendor) {
     finalVendor = polishVendor(finalVendor);
+  }
+
+  // The rule vendor is a fallback, not a free pass — check it too.
+  if (finalVendor && isCommonNounOnly(finalVendor)) {
+    finalVendor = null;
   }
 
   if (!finalVendor || finalVendor.length < 2) {

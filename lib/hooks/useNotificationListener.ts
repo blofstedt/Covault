@@ -10,7 +10,7 @@ import { processNotificationWithAI, buildInMemoryDedupKey } from '../notificatio
 import { sendPartnerActivityNotification, sendExpenseCapturedNotification } from '../appNotifications';
 import type { NotificationSettingsShape } from '../appNotifications';
 import type { AIProcessingResult } from '../notificationProcessor';
-import { getBankingApps } from '../bankingApps';
+import { getBankingApps, isExcludedApp } from '../bankingApps';
 import { getLocalToday } from '../dateUtils';
 
 export interface UseNotificationListenerParams {
@@ -129,6 +129,19 @@ export const useNotificationListener = ({
             // notificationProcessor.ts for the full rationale.
             const rawNotification = event.rawNotification || event.raw_text;
             const bankAppId = (event.bankAppId || event.source_app)?.toLowerCase();
+
+            // Hard exclusion (Google Wallet). The Java listener already drops
+            // these before they are broadcast, so normally nothing arrives
+            // here — but events also reach this pipeline from the offline
+            // queue and from rescans, and a device can still be running an
+            // older native build than the web bundle. Cheap backstop.
+            //
+            // Placed before the dedup bookkeeping so an excluded event does
+            // not consume a slot in the recent-events window.
+            if (isExcludedApp(bankAppId)) {
+              log.debug('[notification] Ignoring excluded app:', bankAppId);
+              return;
+            }
             // Reuse the processor's key builder rather than re-implementing it,
             // so the two dedup layers cannot drift apart.
             const dedupKey = buildInMemoryDedupKey(bankAppId || '', rawNotification || '');

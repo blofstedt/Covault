@@ -2,48 +2,87 @@ import { describe, it, expect } from 'vitest';
 import { generateProjectedTransactions } from '../projectedTransactions';
 import type { Transaction } from '../../types';
 
+/**
+ * Biweekly projection from a recurring anchor.
+ *
+ * These dates are derived from "today", not hardcoded. The previous version
+ * pinned the anchor to 2026-07-03 and asserted occurrences on 7/17 and 7/31;
+ * those are only *future* occurrences until the calendar passes them, so the
+ * suite began failing on 2026-08-01 with no code change behind it. A test that
+ * expires on a particular morning is worse than no test — it blocks CI, and
+ * therefore the APK build, for a reason unrelated to the change in front of it.
+ */
+
+/** Local-date YYYY-MM-DD, matching toIsoDay() in projectedTransactions.ts. */
+function isoDay(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function daysFromToday(offset: number): Date {
+  const d = new Date();
+  d.setHours(12, 0, 0, 0);
+  d.setDate(d.getDate() + offset);
+  return d;
+}
+
+const ANCHOR_OFFSET_DAYS = -28;
+const anchorDate = daysFromToday(ANCHOR_OFFSET_DAYS);
+
 const tx = (overrides: Partial<Transaction>): Transaction => ({
   id: 'kia-anchor',
   user_id: 'u',
   vendor: 'Kia',
   amount: 458.69,
-  date: '2026-07-03T12:00:00.000Z',
+  date: isoDay(anchorDate),
   budget_id: 'transport',
   recurrence: 'Biweekly',
   label: 'Manual',
   is_projected: false,
-  created_at: '2026-07-03T12:00:00.000Z',
+  created_at: anchorDate.toISOString(),
   source: 'manual',
   ...overrides,
 } as Transaction);
 
-describe('KIA projection from 7/3 anchor', () => {
-  it('generates future biweekly occurrences every 14 days', () => {
+describe('Biweekly projection from a recurring anchor', () => {
+  it('generates occurrences every 14 days', () => {
     const projected = generateProjectedTransactions([tx({})]);
     const dates = projected.map((p) => p.date).sort();
-    // From 7/3 + 14-day biweekly: 7/17, 7/31, 8/14, 8/28, 9/11, 9/25, 10/9
-    expect(dates).toContain('2026-07-17');
-    expect(dates).toContain('2026-07-31');
-    expect(dates).toContain('2026-08-14');
-    expect(dates).toContain('2026-08-28');
-    // Should not contain 7/3 (it's the real anchor)
-    expect(dates).not.toContain('2026-07-03');
+
+    expect(dates.length).toBeGreaterThan(1);
+
+    // Every occurrence sits on the anchor's 14-day cadence.
+    for (const date of dates) {
+      const deltaDays = Math.round(
+        (new Date(`${date}T12:00:00`).getTime() - anchorDate.getTime()) / 86_400_000,
+      );
+      expect(deltaDays % 14, `${date} is not on the 14-day cadence`).toBe(0);
+    }
+
+    // Consecutive occurrences are exactly 14 days apart — no gaps, no doubles.
+    for (let i = 1; i < dates.length; i++) {
+      const prev = new Date(`${dates[i - 1]}T12:00:00`).getTime();
+      const curr = new Date(`${dates[i]}T12:00:00`).getTime();
+      expect(Math.round((curr - prev) / 86_400_000)).toBe(14);
+    }
   });
 
-  it('solidifies 7/3 since it is on/before today (2026-07-17)', () => {
-    // 7/3 < today(7/17), so current-month and on-or-before-today entries
-    // become is_projected=false (solidified).
+  it('does not re-emit the anchor itself', () => {
     const projected = generateProjectedTransactions([tx({})]);
-    // The "Projected" tag in the UI shows is_projected=true for future ones.
-    // Past occurrences (7/3) are not projected; they are the real anchor.
-    const july3 = projected.find((p) => p.date === '2026-07-03');
-    expect(july3).toBeUndefined(); // anchor is not in projection list
+    const dates = projected.map((p) => p.date);
+    expect(dates).not.toContain(isoDay(anchorDate));
   });
 
   it('marks future occurrences as projected', () => {
     const projected = generateProjectedTransactions([tx({})]);
-    const future = projected.find((p) => p.date === '2026-08-14');
-    expect(future).toBeDefined();
-    expect(future!.is_projected).toBe(true);
+    const today = isoDay(new Date());
+
+    const future = projected.filter((p) => p.date > today);
+    expect(future.length).toBeGreaterThan(0);
+    for (const occurrence of future) {
+      expect(occurrence.is_projected, `${occurrence.date} should be projected`).toBe(true);
+    }
   });
 });

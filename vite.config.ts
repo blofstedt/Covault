@@ -1,6 +1,23 @@
 import path from 'path';
+import { execSync } from 'child_process';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
+
+/**
+ * Short commit SHA for the running build, for the in-app build marker.
+ * Best-effort by design — a build must never fail because git is unavailable.
+ */
+function resolveBuildSha(): string {
+  const fromCi = process.env.GITHUB_SHA || process.env.VERCEL_GIT_COMMIT_SHA;
+  if (fromCi) return fromCi.slice(0, 7);
+  try {
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim() || 'dev';
+  } catch {
+    return 'dev';
+  }
+}
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
@@ -62,6 +79,18 @@ export default defineConfig(({ mode }) => {
       // (Removed: VITE_RESEND_API_KEY and VITE_SENDER_EMAIL were
       //  intended for a send-report Edge Function that has been
       //  removed from the repo. See SUPABASE_AUDIT.md.)
+
+      // Short commit SHA of the build, shown next to the frame meter.
+      //
+      // "Is the new APK actually on the phone?" has already been an open
+      // question once during a performance investigation, and it invalidates
+      // whatever was measured. The APK filename carries only a timestamp, and
+      // nothing inside the app identified the build at all.
+      //
+      // Resolved at config time from the CI-provided SHA, falling back to a
+      // local git call, then to 'dev'. Never throws: a missing marker must not
+      // be able to fail a build.
+      'import.meta.env.VITE_BUILD_SHA': JSON.stringify(resolveBuildSha()),
     },
 
     resolve: {

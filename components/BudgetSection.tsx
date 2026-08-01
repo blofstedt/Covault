@@ -1,5 +1,5 @@
 // components/BudgetSection.tsx
-import React, { useMemo, useCallback, memo } from 'react';
+import React, { useMemo, useCallback, useState, useEffect, memo } from 'react';
 import { BudgetCategory, Transaction } from '../types';
 import TransactionItem from './TransactionItem';
 import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
@@ -9,6 +9,18 @@ import { isRefund, matchRefundsToExpenses } from '../lib/refundMatching';
 
 interface ExtendedBudgetCategory extends BudgetCategory {
   externalDeduction?: number;
+}
+
+/** Must match `.budget-row-anim`'s transition-duration in index.css. */
+const EXPAND_DURATION_MS = 320;
+
+function prefersReducedMotion(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) return false;
+  try {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
 }
 
 interface BudgetSectionProps {
@@ -89,6 +101,42 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
   const spentPercent = budget.totalLimit > 0 ? (total / budget.totalLimit) * 100 : 0;
   const isWarning = spentPercent > 80 && spentPercent <= 100;
   const isOver = spentPercent > 100;
+
+  // The transaction list is deliberately NOT laid out while the card is
+  // growing.
+  //
+  // The expand interpolates `flex-basis` and `grid-template-rows` (see
+  // index.css `.budget-row-anim`) — both pure layout, so the browser re-lays
+  // out this card on every one of the ~38 frames. Whatever is inside it is
+  // part of that cost, and an expanded budget can hold dozens of unvirtualized
+  // TransactionItems. Worse, flipping `content-visibility` to `visible` on the
+  // first frame forces the WHOLE subtree to lay out from scratch right as the
+  // animation starts — a stall at frame 1 reads as jank exactly like a
+  // per-frame cost does.
+  //
+  // So the card grows as essentially just its header (trivial to lay out), and
+  // the list is revealed once the motion has finished. `budget-content-reveal`
+  // then blooms it in. That class used to sit on the static part of the
+  // className, which meant its keyframes only ever ran on mount and never on
+  // expand — the "layered, not pop-in" effect index.css describes was not
+  // actually happening. Now it is.
+  const [revealed, setRevealed] = useState(isExpanded);
+
+  useEffect(() => {
+    if (!isExpanded) {
+      // Collapse hides immediately. The card is shrinking to nothing over the
+      // same 320ms, so a fade-out here would be both invisible and the single
+      // most expensive thing on screen while it happened.
+      setRevealed(false);
+      return;
+    }
+    if (prefersReducedMotion()) {
+      setRevealed(true);
+      return;
+    }
+    const timer = setTimeout(() => setRevealed(true), EXPAND_DURATION_MS);
+    return () => clearTimeout(timer);
+  }, [isExpanded]);
 
   const handleHeaderClick = useCallback(() => onToggle(budget.id), [onToggle, budget.id]);
 
@@ -259,32 +307,28 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
       {/* TRANSACTIONS LIST (Now stays mounted, styled to smoothly collapse) */}
       <div
-        className={`min-h-0 overflow-y-auto no-scrollbar relative z-10 budget-content-reveal motion-safe:transition-[opacity] motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)] transform origin-top ${
+        className={`min-h-0 overflow-y-auto no-scrollbar relative z-10 transform origin-top ${
           isExpanded
-            ? 'flex-1 opacity-100 translate-y-0 px-6 pb-2'
-            : 'flex-none h-0 opacity-0 -translate-y-4 px-6 pb-0 overflow-hidden pointer-events-none'
-        }`}
+            ? 'flex-1 px-6 pb-2'
+            : 'flex-none h-0 px-6 pb-0 overflow-hidden pointer-events-none'
+        } ${revealed ? 'budget-content-reveal opacity-100' : 'opacity-0'}`}
         style={{
           WebkitOverflowScrolling: 'touch',
           overscrollBehavior: 'contain',
           overscrollBehaviorY: 'contain',
           overflowAnchor: 'none',
           touchAction: 'pan-y',
-          // Collapsed lists stay MOUNTED (see the comment above) but must not
-          // participate in layout or paint. `content-visibility: hidden` skips
-          // both for the entire subtree while keeping the DOM — and therefore
-          // React state and scroll position — intact.
+          // Keyed on `revealed`, NOT `isExpanded` — see the note beside the
+          // state declaration. Every budget's list is in the DOM at all times,
+          // so without this a single expand lays out and paints every
+          // transaction row of every *other* budget too, on every frame. And
+          // keying it on `isExpanded` merely moved that cost to frame 1 of the
+          // animation instead of removing it.
           //
-          // This matters because every budget's list is in the DOM at all
-          // times. Without it, a single expand relayouts and repaints every
-          // transaction row of every *other* budget too, on every frame of the
-          // 320ms transition. Unmounting instead (`{isExpanded && ...}`) would
-          // be cheaper still but makes the collapse animation drop its content
-          // on the first frame, which is worse than the jank it fixes.
-          //
-          // The collapsed branch is already `h-0 opacity-0` with no transition
-          // on either, so nothing visible is lost by skipping its paint.
-          contentVisibility: isExpanded ? 'visible' : 'hidden',
+          // Unmounting (`{isExpanded && ...}`) would be cheaper still, but it
+          // drops the content on the first frame of a collapse and loses the
+          // list's scroll position.
+          contentVisibility: revealed ? 'visible' : 'hidden',
         }}
         onClick={handleBackgroundClick}
       >

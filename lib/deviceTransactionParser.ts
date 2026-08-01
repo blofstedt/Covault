@@ -350,6 +350,12 @@ const NON_VENDOR_WORDS = new Set([
   // verbs that often appear in transaction descriptions, not vendor names
   'got', 'sent', 'received', 'spent', 'paid', 'charged', 'purchased', 'purchases',
   'transferred', 'withdrew', 'deposited', 'moved',
+  // Singular nouns for the same concepts. These were missing while their
+  // plural/past-tense forms were present, and the gap was load-bearing: the
+  // on-device model echoed its own prompt ("...or NONE if not a
+  // purchase/payment") and "a purchase" passed isCommonNounOnly, because "a"
+  // was a stopword but "purchase" was not. It reached the DB as a merchant.
+  'purchase', 'payment', 'transaction', 'charge', 'transfer',
   'subscribe', 'subscribed', 'unsubscribed',
   // cadence / billing words
   'subscription', 'monthly', 'weekly', 'daily', 'annual', 'yearly', 'biweekly',
@@ -385,7 +391,7 @@ const NON_VENDOR_WORDS = new Set([
  * A vendor with 0 words (empty / whitespace) is also treated as
  * "common-noun-only" since it cannot be a real merchant.
  */
-function isCommonNounOnly(vendor: string): boolean {
+export function isCommonNounOnly(vendor: string): boolean {
   const words = vendor.toLowerCase().split(/\s+/).filter(Boolean);
   if (words.length === 0) return true;
   return words.every(w => NON_VENDOR_WORDS.has(w.replace(/[^a-z0-9]/g, '')));
