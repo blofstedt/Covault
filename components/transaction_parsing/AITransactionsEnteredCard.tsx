@@ -4,6 +4,7 @@ import ParsingCard from '../ui/ParsingCard';
 import { EmptyState } from '../shared';
 import AIEnteredRow from './AIEnteredRow';
 import type { NotATxRuleType } from './NotATransactionModal';
+import type { ExistingRule } from './CategoryPickerSheet';
 import { useVendorMatcher, selectBulkAcceptable } from '../../lib/hooks/useVendorMatcher';
 import type { VendorOverride } from './useVendorOverrides';
 import { hapticSuccess } from '../../lib/haptics';
@@ -27,10 +28,12 @@ interface AITransactionsEnteredCardProps {
   vendorOverrides?: VendorOverride[];
   /** Accept the current mapping and file the row. */
   onAccept?: (tx: Transaction) => Promise<void> | void;
-  /** Change the row's budget, then file. */
+  /** File the row under a budget AND remember the pairing as a rule. */
   onChangeCategory?: (tx: Transaction, targetBudgetId: string) => Promise<void> | void;
-  /** Create a vendor→budget rule for future captures, then file. */
-  onCreateRule?: (tx: Transaction, targetBudgetId: string) => Promise<void> | void;
+  /** Rules already taught for a given vendor, offered first in the picker. */
+  existingRulesFor?: (vendor: string) => ExistingRule[];
+  /** Every rule the user has taught, for the rename typeahead. */
+  knownRules?: ExistingRule[];
   /** File several rows at once (the "Accept N known vendors" action). */
   onAcceptMany?: (txs: Transaction[]) => Promise<void> | void;
 }
@@ -58,7 +61,8 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
   vendorOverrides = EMPTY_OVERRIDES,
   onAccept,
   onChangeCategory,
-  onCreateRule,
+  existingRulesFor,
+  knownRules,
   onAcceptMany,
 }) => {
   const { classifyAll } = useVendorMatcher(vendorOverrides);
@@ -164,7 +168,8 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
                   matchResult={matched}
                   onAccept={onAccept}
                   onChangeCategory={onChangeCategory}
-                  onCreateRule={onCreateRule}
+                  existingRules={existingRulesFor?.(tx.vendor)}
+                  knownRules={knownRules}
                   onFiled={handleFiled}
                 />
               );

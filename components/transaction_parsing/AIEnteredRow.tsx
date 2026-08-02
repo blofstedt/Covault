@@ -11,7 +11,7 @@ import InlineVendorEdit from './InlineVendorEdit';
 import NotATransactionModal, { type NotATxRuleType } from './NotATransactionModal';
 import BackfillPreviewModal from './BackfillPreviewModal';
 import RowActionSheet, { type RowAction } from './RowActionSheet';
-import CategoryPickerSheet from './CategoryPickerSheet';
+import CategoryPickerSheet, { type ExistingRule } from './CategoryPickerSheet';
 import { toVendorKey } from '../../lib/deviceTransactionParser';
 import { countBackfillMatches, applyVendorBackfill } from '../../lib/vendorBackfill';
 import { classifyMatch, type VendorMatchResult } from '../../lib/hooks/useVendorMatcher';
@@ -36,10 +36,19 @@ interface AIEnteredRowProps {
   matchResult?: VendorMatchResult;
   /** Accept the current mapping and file the row. */
   onAccept?: (tx: Transaction) => Promise<void> | void;
-  /** Change the mapping to a different budget, then file. */
+  /**
+   * File the row under a budget AND remember the pairing as a rule.
+   *
+   * This is now the only category action. The separate `onCreateRule` prop is
+   * gone — teaching used to be an opt-in second button that was easy to miss,
+   * so the app kept re-asking about merchants the user had already sorted
+   * several times.
+   */
   onChangeCategory?: (tx: Transaction, targetBudgetId: string) => Promise<void> | void;
-  /** Create a permanent vendor→budget rule (so future captures auto-match), then file. */
-  onCreateRule?: (tx: Transaction, targetBudgetId: string) => Promise<void> | void;
+  /** Rules already taught for this row's vendor, offered first in the picker. */
+  existingRules?: ExistingRule[];
+  /** Every rule the user has taught, for the rename typeahead. */
+  knownRules?: ExistingRule[];
   /** Called after the file animation so the parent can drop the row from the list. */
   onFiled?: (txId: string) => void;
 }
@@ -56,7 +65,8 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
   matchResult,
   onAccept,
   onChangeCategory,
-  onCreateRule,
+  existingRules,
+  knownRules,
   onFiled,
 }) => {
   const budgetName = tx.budget_id ? budgets.find((b) => b.id === tx.budget_id)?.name || null : null;
@@ -128,7 +138,8 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
   const [isMarkingNotTx, setIsMarkingNotTx] = useState(false);
 
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
-  const [pickerMode, setPickerMode] = useState<'change' | 'create'>('change');
+  // `pickerMode` is gone: there is only one category action now, and it always
+  // teaches. See the note on secondaryActions.
   const [showActions, setShowActions] = useState(false);
 
   const handleDismissSoftDup = useCallback((currentTxId: string, similarTxId: string) => {
@@ -243,28 +254,29 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
 
   const canAccept = matchKind !== 'unmatched' && !!budgetName;
 
-  const openPicker = useCallback((mode: 'change' | 'create') => {
-    setPickerMode(mode);
+  const openPicker = useCallback(() => {
     setShowCategoryPicker(true);
   }, []);
 
   // Everything except the primary action lives in the sheet, so each option gets
   // a full-width target and a label that says what it actually does.
   const secondaryActions = useMemo<RowAction[]>(() => {
+    // ONE category action, not two.
+    //
+    // There used to be "Change category" (file this one) and "Always use this
+    // category" (also save a rule). That made teaching a separate, easily
+    // missed step, and left the app repeatedly asking about a merchant the
+    // user had already categorised several times.
+    //
+    // Now every category choice teaches, and the undo on the resulting toast
+    // is what makes a one-off correction safe. The second action is gone.
     const items: RowAction[] = [
       {
         label: canAccept ? 'Change category' : 'Choose a category',
-        hint: canAccept ? 'File this one somewhere else' : 'File this transaction',
-        onSelect: () => openPicker('change'),
+        hint: `File this and remember ${tx.vendor} next time`,
+        onSelect: () => openPicker(),
       },
     ];
-    if (matchKind !== 'exact') {
-      items.push({
-        label: 'Always use this category',
-        hint: `Remember the category for ${tx.vendor} next time`,
-        onSelect: () => openPicker('create'),
-      });
-    }
     if (onVendorRenamed) {
       items.push({
         label: 'Rename vendor',
@@ -299,7 +311,7 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
       ) : (
         <button
           type="button"
-          onClick={() => openPicker('change')}
+          onClick={() => openPicker()}
           className="flex-1 inline-flex items-center justify-center min-h-[44px] px-4 text-[13px] font-bold rounded-2xl bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 shadow-sm hover:opacity-90 active:scale-[0.98] transition-all"
         >
           Categorize
@@ -374,6 +386,7 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
               {isEditingVendor ? (
                 <InlineVendorEdit
                   value={tx.vendor}
+                  knownRules={knownRules}
                   editing={true}
                   isSaving={isSavingVendor}
                   onStartEdit={() => setIsEditingVendor(true)}
@@ -465,17 +478,19 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
 
       {showCategoryPicker && (
         <CategoryPickerSheet
-          mode={pickerMode}
           vendor={tx.vendor}
           budgets={budgets}
+          existingRules={existingRules}
           onClose={() => setShowCategoryPicker(false)}
           onPick={(budgetId) => {
             const target = budgets.find((b) => b.id === budgetId);
-            if (pickerMode === 'create') {
-              fileWith(`Rule saved · ${target?.name ?? ''}`, () => onCreateRule?.(tx, budgetId));
-            } else {
-              fileWith(`Moved to ${target?.name ?? ''}`, () => onChangeCategory?.(tx, budgetId));
-            }
+            // Always the teaching path now. onChangeCategory files this row
+            // AND records the rule; the toast names what was learned so the
+            // undo is unambiguous about what it will take back.
+            fileWith(
+              `Learned ${tx.vendor} → ${target?.name ?? ''}`,
+              () => onChangeCategory?.(tx, budgetId),
+            );
           }}
         />
       )}

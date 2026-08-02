@@ -91,7 +91,27 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
         let url: string;
 
         if (overrideId.startsWith('temp-') && properName) {
-          url = `/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(properName)}`;
+          // Scoped by category as well as vendor. A vendor can now hold more
+          // than one rule, and deleting by proper_name alone would take out
+          // every category for that merchant — deleting Walmart→Other would
+          // silently destroy Walmart→Groceries too.
+          //
+          // `category_name` is the DB's Budgets enum value (the row's
+          // category_id). Without it, fall back to deleting nothing rather
+          // than deleting too much: an orphaned row is recoverable from the
+          // rules list, a wrongly-deleted rule is not.
+          const dbCategory = deletedOverride?.category_name;
+          if (!dbCategory) {
+            log.warn(
+              '[TransactionParsing] Temp override has no category; skipping remote delete for',
+              properName,
+            );
+            return;
+          }
+          url =
+            `/overrides?user_id=eq.${userId}` +
+            `&proper_name=eq.${encodeURIComponent(properName)}` +
+            `&category_id=eq.${encodeURIComponent(dbCategory)}`;
         } else {
           url = `/overrides?id=eq.${overrideId}&user_id=eq.${userId}`;
         }
@@ -141,10 +161,27 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
       const dbCategoryId = categoryName;
 
       const vendorKey = toVendorKey(vendorName);
-      const existing = vendorOverrides.find((vo) =>
-        vo.proper_name.toLowerCase() === vendorName.toLowerCase() ||
-        (vo.match_key ? vo.match_key === vendorKey : toVendorKey(vo.proper_name) === vendorKey)
-      );
+
+      // A rule is identified by vendor AND category, not vendor alone.
+      //
+      // This used to match on vendor only and PATCH the row's category, so
+      // teaching Walmart→Other silently REPLACED Walmart→Groceries. A vendor
+      // can genuinely belong to two categories (groceries and clothing bought
+      // at the same store), and the rules list has always keyed its rows
+      // `properName::categoryId` — the data layer was the only part that
+      // insisted a vendor had exactly one category.
+      //
+      // So: an identical pairing updates in place (a no-op that keeps the row's
+      // id stable), and a new category for a known vendor INSERTS a second rule
+      // rather than overwriting the first. The DB has no unique constraint on
+      // (user_id, match_key) — only the primary key on id — so nothing has to
+      // be relaxed to allow it.
+      const existing = vendorOverrides.find((vo) => {
+        const sameVendor =
+          vo.proper_name.toLowerCase() === vendorName.toLowerCase() ||
+          (vo.match_key ? vo.match_key === vendorKey : toVendorKey(vo.proper_name) === vendorKey);
+        return sameVendor && vo.category_id === categoryId;
+      });
 
       try {
         if (existing) {
@@ -216,8 +253,15 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
               );
             }
           } else {
+            // Recovery path for "the row already existed". Scoped to the same
+            // category so it can only ever touch the pairing we were trying to
+            // create — unscoped, it would rewrite a DIFFERENT rule for this
+            // vendor (Walmart→Groceries becoming Walmart→Other) on any insert
+            // failure.
             const updateRes = await restFetch(
-              `/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(vendorName)}`,
+              `/overrides?user_id=eq.${userId}` +
+                `&proper_name=eq.${encodeURIComponent(vendorName)}` +
+                `&category_id=eq.${encodeURIComponent(dbCategoryId)}`,
               { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ category_id: dbCategoryId }) },
             );
 
@@ -329,8 +373,14 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
       const categoryName = categoryNameOverride || category.name;
 
       setVendorOverrides((prev) => {
+        // Matched on vendor AND category, mirroring handleSetVendorCategory.
+        // Vendor-only matching here would make the optimistic update overwrite
+        // a different rule for the same merchant, so the UI would briefly show
+        // one Walmart rule where the DB has two.
         const existingIdx = prev.findIndex(
-          (vo) => vo.proper_name.toLowerCase() === vendorName.toLowerCase(),
+          (vo) =>
+            vo.proper_name.toLowerCase() === vendorName.toLowerCase() &&
+            vo.category_id === categoryId,
         );
         if (existingIdx >= 0) {
           // Update existing override

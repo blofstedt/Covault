@@ -19,6 +19,7 @@ import { loadBankingAppsFromDB } from '../lib/bankingApps';
 import { getNeedsReviewIdSet, getReviewQueueChangedEventName } from '../lib/localNotificationMemory';
 import { buildFilePayload, buildUndoPayload } from '../lib/caughtTransactionOps';
 import { selectAwaitingReview, countHiddenRefunds } from '../lib/reviewQueue';
+import { toVendorKey } from '../lib/deviceTransactionParser';
 
 /** Delay (ms) after scanning to allow notification processing before reloading data */
 const SCAN_PROCESSING_DELAY_MS = 2000;
@@ -297,27 +298,118 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   );
 
   // Change: move the row to a different budget, then file.
-  const handleChangeCaughtCategory = useCallback(
-    (tx: Transaction, budgetId: string) => {
-      const name = budgets.find((b) => b.id === budgetId)?.name;
-      return fileCaughtTransaction(tx.id, name ? { budget: name } : {});
-    },
-    [fileCaughtTransaction, budgets],
+  // Latest overrides, read by the Undo action. A rule created moments ago gets
+  // a temp id that is swapped for the real one once the insert returns, so the
+  // undo has to look the row up when it fires rather than close over an id.
+  const vendorOverridesRef = useRef(vendorOverrides);
+  useEffect(() => {
+    vendorOverridesRef.current = vendorOverrides;
+  }, [vendorOverrides]);
+
+  // Every taught rule, in the shape the picker and the rename typeahead use.
+  const knownRules = useMemo(
+    () =>
+      vendorOverrides.map((vo) => ({
+        properName: vo.proper_name,
+        categoryId: vo.category_id,
+        categoryName: vo.category_name || '',
+      })),
+    [vendorOverrides],
   );
 
-  // Create rule: persist a vendor→budget override (future captures auto-match),
-  // set this row's budget to match, then file.
-  const handleCreateRuleForCaught = useCallback(
+  // Rules already taught for a vendor, matched case-insensitively on the
+  // display name or the normalized key.
+  //
+  // Usually one. Two or more means the capture pipeline found conflicting
+  // rules, refused to guess, and routed the row here (see step 5a of
+  // notificationProcessor) — the picker then offers exactly these.
+  const existingRulesFor = useCallback(
+    (vendor: string) => {
+      if (!vendor) return [];
+      const key = toVendorKey(vendor);
+      const lower = vendor.toLowerCase();
+      return vendorOverrides
+        .filter((vo) => {
+          if (vo.proper_name.toLowerCase() === lower) return true;
+          return (vo.match_key || toVendorKey(vo.proper_name)) === key;
+        })
+        .map((vo) => ({
+          properName: vo.proper_name,
+          categoryId: vo.category_id,
+          categoryName: vo.category_name || '',
+        }));
+    },
+    [vendorOverrides],
+  );
+
+  // Categorising a caught transaction ALWAYS teaches the rule.
+  //
+  // This used to be two separate actions: "Change category" filed the row and
+  // forgot, "Always use this category" also saved a rule. Teaching was
+  // therefore opt-in and easy to skip, so the app went on asking about
+  // merchants the user had already sorted repeatedly.
+  //
+  // Now every choice records the pairing. The undo on the resulting toast is
+  // what keeps a one-off correction safe, which is why the old explicit
+  // create-rule step is no longer needed and `handleCreateRuleForCaught` is
+  // gone.
+  //
+  // Rule-writing is best-effort and deliberately does not block filing: the
+  // row leaving the review queue is the user's actual intent, and a failed
+  // override write must not strand it there.
+  const handleChangeCaughtCategory = useCallback(
     async (tx: Transaction, budgetId: string) => {
       const name = budgets.find((b) => b.id === budgetId)?.name;
+
+      // Was this pairing already known? If so nothing is being learned, and
+      // offering "Undo" would be a lie — it would delete a rule the user set
+      // up earlier and had every reason to keep.
+      const alreadyKnown = existingRulesFor(tx.vendor).some((r) => r.categoryId === budgetId);
+
       try {
         await onSetVendorCategory(tx.vendor, budgetId);
       } catch (err) {
-        log.warn('[TransactionParsing] create rule failed:', err);
+        log.warn('[TransactionParsing] learn rule failed:', err);
       }
       await fileCaughtTransaction(tx.id, name ? { budget: name } : {});
+
+      if (alreadyKnown) return;
+
+      // Undo takes back the RULE only, and deliberately leaves the transaction
+      // filed where the user just put it. Those are two different intentions —
+      // "don't remember this" is the common one, and reverting their
+      // categorisation as well would be a surprise.
+      //
+      // The override's id is resolved at undo time, not now: the insert
+      // completes asynchronously and its temp id is swapped for the real one,
+      // so an id captured here would frequently be stale.
+      const otherRuleCount = existingRulesFor(tx.vendor).length;
+      onToast?.({
+        message: otherRuleCount > 0
+          ? `Learned ${tx.vendor} → ${name ?? ''} · that vendor will now ask`
+          : `Learned ${tx.vendor} → ${name ?? ''}`,
+        tone: 'info',
+        action: {
+          label: 'Undo',
+          run: () => {
+            const match = vendorOverridesRef.current.find(
+              (vo) =>
+                vo.proper_name.toLowerCase() === tx.vendor.toLowerCase() &&
+                vo.category_id === budgetId,
+            );
+            if (match) onDeleteVendorOverride?.(match.id);
+          },
+        },
+      });
     },
-    [fileCaughtTransaction, budgets, onSetVendorCategory],
+    [
+      fileCaughtTransaction,
+      budgets,
+      onSetVendorCategory,
+      existingRulesFor,
+      onToast,
+      onDeleteVendorOverride,
+    ],
   );
 
   // Default no-op for vendor override deletion when not provided
@@ -526,7 +618,8 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               vendorOverrides={vendorOverrides}
               onAccept={handleAcceptCaught}
               onChangeCategory={handleChangeCaughtCategory}
-              onCreateRule={handleCreateRuleForCaught}
+              existingRulesFor={existingRulesFor}
+              knownRules={knownRules}
               onAcceptMany={handleAcceptMany}
             />
 

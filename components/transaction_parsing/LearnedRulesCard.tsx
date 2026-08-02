@@ -178,8 +178,8 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
       id="parsing-learned-rules"
       colorScheme="violet"
       icon={<path d="M12 2a3 3 0 00-3 3v1H7a3 3 0 00-3 3v3a3 3 0 003 3h10a3 3 0 003-3V9a3 3 0 00-3-3h-2V5a3 3 0 00-3-3zm0 2a1 1 0 011 1v1h-2V5a1 1 0 011-1z" />}
-      title="What Covault has learned"
-      subtitle="Vendors it recognizes, and alerts it skips"
+      title="Existing Rules"
+      subtitle="Vendor and category pairs, plus alerts it skips"
       count={totalRules}
       collapsible
       isExpanded={isExpanded}
@@ -190,7 +190,7 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
           {/* Learned Rules List */}
           {learnedRules.length === 0 ? (
             <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-4">
-              Nothing learned yet. Each time you categorize a caught transaction, Covault remembers it for next time.
+              No rules yet. Every time you categorize a caught transaction, that vendor and category become a rule.
             </p>
           ) : (
             <div className="space-y-2">

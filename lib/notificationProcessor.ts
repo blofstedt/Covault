@@ -1303,6 +1303,10 @@ async function processNotificationWithAIImpl(
   // evidence the user ever taught us this vendor, so it stays 0 and can never
   // reach the auto-accept threshold.
   let overrideMatchConfidence = 0;
+  // True when the incoming vendor matches learned rules pointing at DIFFERENT
+  // categories. The capture must then go to review for the user to pick, and
+  // must never be auto-accepted. See the note in step 5a.
+  let overrideRuleConflict = false;
 
   // 5a: Check server-side overrides table.
   // Schema: overrides(id, user_id, proper_name, match_key, match_type, category_id, updated_at).
@@ -1329,7 +1333,7 @@ async function processNotificationWithAIImpl(
       const allRows = data || [];
       // Filter in-memory by match_type semantics. Most-recent-wins is
       // already guaranteed by the ORDER BY + LIMIT 20 + first-match in loop.
-      overrideRows = allRows.filter((row: any) => {
+      const matching = allRows.filter((row: any) => {
         const mk = (row.match_key || '').toLowerCase();
         if (!mk) return false;
         const mt = row.match_type || 'exact';
@@ -1337,12 +1341,44 @@ async function processNotificationWithAIImpl(
         if (mt === 'prefix') return vendorKey.startsWith(mk);
         if (mt === 'contains') return vendorKey.includes(mk);
         return false;
-      }).slice(0, 1);
+      });
+
+      // A vendor may legitimately have more than one rule: Walmart→Groceries
+      // and Walmart→Other are both real purchases at the same merchant. When
+      // that happens the app CANNOT know which one this purchase was, so it
+      // must ask rather than guess.
+      //
+      // This used to be `.slice(0, 1)` — most-recently-updated wins — which
+      // silently picked one and, worse, handed it a full confidence score, so
+      // auto-accept filed it without the user ever seeing it. Whichever rule
+      // they happened to teach last would quietly swallow every purchase at
+      // that merchant.
+      //
+      // Leaving `categoryId` unset routes the capture to review. The review UI
+      // recomputes the candidate categories from the overrides it has already
+      // loaded, so nothing extra needs persisting.
+      const distinctCategories = new Set(
+        matching.map((row: any) => String(row.category_id || '').toLowerCase()),
+      );
+      overrideRuleConflict = distinctCategories.size > 1;
+      overrideRows = overrideRuleConflict ? [] : matching.slice(0, 1);
+
+      if (overrideRuleConflict) {
+        log.debug(
+          `[AI pipeline] ${vendor} matches ${distinctCategories.size} rules ` +
+          `(${[...distinctCategories].join(', ')}) — routing to review instead of auto-filing`,
+        );
+      }
     }
 
     // 2) proper_name ilike fallback
+    //
+    // Skipped entirely on a conflict. Otherwise the fallback would find one of
+    // the very rules we just decided were ambiguous and re-apply it with
+    // confidence 1 (`matchedByProperName` scores as exact by construction),
+    // reinstating the silent auto-file this change exists to prevent.
     let matchedByProperName = false;
-    if (!overrideRows || overrideRows.length === 0) {
+    if (!overrideRuleConflict && (!overrideRows || overrideRows.length === 0)) {
       const { data } = await supabase
         .from('overrides')
         .select('category_id, proper_name, match_key')
