@@ -20,9 +20,15 @@ import { parseNotificationText, isCommonNounOnly } from '../deviceTransactionPar
  *   2. The native Java extractor could not see past the emoji and required a
  *      dash the TS parser had already made optional, so it fell through to an
  *      amount-adjacent pattern and returned "You".
- *   3. The on-device model echoed its own prompt wording, and "a purchase"
- *      slipped through isCommonNounOnly because "purchase" (singular) was not
- *      in NON_VENDOR_WORDS.
+ *   3. "a purchase" — originally diagnosed as the on-device model echoing its
+ *      prompt. That was WRONG. It is a hardcoded fallback in
+ *      NotificationListener.java's notifyCaptured(), used whenever the native
+ *      extractor returns no vendor. The AI never produced it.
+ *
+ *      The isCommonNounOnly checks below are still worth keeping — a
+ *      common-noun vendor should never reach the DB from any path — but they
+ *      are not what fixed that symptom, and "purchase" being missing from
+ *      NON_VENDOR_WORDS was a separate latent gap rather than the cause.
  *
  * Defect 2 also explains the duplicate: cross-app dedup (commit 0c0d0d7)
  * collapses on vendor similarity, and "You" vs "a purchase" share nothing.

@@ -885,16 +885,39 @@ public class NotificationListener extends NotificationListenerService {
      *         by the dedup below. False means the user has no Covault-side
      *         record of this purchase in the shade.
      */
-    private boolean notifyCaptured(Double amount, String vendor) {
+    private boolean notifyCaptured(Double amount, String vendor, String rawText) {
         // Nothing useful to show without an amount.
-        if (amount == null) return false;
+        if (amount == null) {
+            Log.w(TAG, "CAPTURE-DIAG notify=skipped reason=no-amount");
+            return false;
+        }
         try {
-            String merchant = (vendor != null && !vendor.isEmpty()) ? vendor : "a purchase";
+            boolean haveVendor = vendor != null && !vendor.isEmpty();
+            String merchant = haveVendor ? vendor : "a purchase";
 
             // The same purchase is often announced by both the bank app and a
             // wallet app. Collapse those so the user sees one Covault
             // notification, not two.
-            String dedupKey = merchant.toLowerCase() + "|" + String.format(java.util.Locale.US, "%.2f", amount);
+            //
+            // The key must NOT be built from `merchant` when the vendor is
+            // unknown. "a purchase" is a constant, so every unparsed capture
+            // would land in one bucket keyed on the amount alone: two different
+            // shops charging the same price within CAPTURE_NOTIFY_WINDOW_MS
+            // would collide, and the second would hit the containsKey check
+            // below and return early — reporting success while posting nothing.
+            // The user simply never hears about the second purchase.
+            //
+            // That became much more likely once extractVendor started returning
+            // null instead of a junk value like "You": junk names at least
+            // differed from each other, so they collided far less often.
+            //
+            // With no vendor to key on, fall back to the raw notification text,
+            // which is what actually distinguishes two purchases at the same
+            // price. Hashed rather than concatenated to keep the key bounded.
+            String dedupBasis = haveVendor
+                ? merchant.toLowerCase()
+                : "raw:" + Integer.toHexString((rawText == null ? "" : rawText).hashCode());
+            String dedupKey = dedupBasis + "|" + String.format(java.util.Locale.US, "%.2f", amount);
             long now = System.currentTimeMillis();
             java.util.Iterator<java.util.Map.Entry<String, Long>> it = recentCaptureNotifications.entrySet().iterator();
             while (it.hasNext()) {
@@ -904,9 +927,28 @@ public class NotificationListener extends NotificationListenerService {
 
             android.app.NotificationManager nm =
                 (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-            if (nm == null) return false;
+            if (nm == null) {
+                Log.w(TAG, "CAPTURE-DIAG notify=skipped reason=no-notification-manager");
+                return false;
+            }
             ensureCaptureChannel(nm);
-            if (!canPostCaptureNotifications(nm)) return false;
+            if (!canPostCaptureNotifications(nm)) {
+                // The single most confusing failure in this whole path, and it
+                // used to be silent. Returning false here makes `secured` false
+                // in broadcastTransaction, which in turn makes
+                // maybeHideBankNotification bail — so losing permission to POST
+                // notifications ALSO silently disables tray suppression, and
+                // the app looks completely dead while the listener is in fact
+                // running fine.
+                //
+                // Note this is a DIFFERENT permission from notification-listener
+                // access: reading other apps' notifications is granted in
+                // "Notification access", posting our own needs POST_NOTIFICATIONS
+                // (Android 13+), which a reinstall can revoke on its own.
+                Log.w(TAG, "CAPTURE-DIAG notify=skipped reason=post-notifications-blocked "
+                    + "(check POST_NOTIFICATIONS permission and the Captures channel)");
+                return false;
+            }
 
             recentCaptureNotifications.put(dedupKey, now);
 
@@ -1009,7 +1051,7 @@ public class NotificationListener extends NotificationListenerService {
             // otherwise re-notify for things already seen, so skip those.
             boolean notified = false;
             if (!fromScan) {
-                notified = notifyCaptured(amount, vendor);
+                notified = notifyCaptured(amount, vendor, rawText);
             }
 
             // Broadcast to the app
@@ -1020,7 +1062,21 @@ public class NotificationListener extends NotificationListenerService {
 
             Log.i(TAG, "Broadcast transaction: " + transaction.toString());
 
-            return queued && notified;
+            // One line that explains the whole capture, so a single logcat
+            // filter answers "why did nothing happen?" without reading code.
+            // `secured` is what gates tray suppression downstream, so print the
+            // two things it is built from rather than just the result.
+            boolean secured = queued && notified;
+            Log.i(TAG, "CAPTURE-DIAG pkg=" + sourceApp
+                + " amount=" + amount
+                + " vendor=" + (vendor == null ? "<null>" : vendor)
+                + " queued=" + queued
+                + " notified=" + notified
+                + " fromScan=" + fromScan
+                + " secured=" + secured
+                + (secured ? "" : " -> tray suppression will be SKIPPED"));
+
+            return secured;
 
         } catch (Exception e) {
             Log.e(TAG, "Error broadcasting transaction", e);

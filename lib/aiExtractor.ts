@@ -261,16 +261,21 @@ export async function extractWithAI(
   // Use rule-based vendor if AI didn't find one, otherwise use AI's.
   //
   // The AI's answer is NOT trusted verbatim. parseAIResponse only rejects the
-  // literal strings NONE/N/A/NO/UNKNOWN, which lets the model's own prompt
-  // wording come back as a merchant: the prompt says
-  //   "Vendor: <merchant name, or NONE if not a purchase/payment>"
-  // and a real capture came through as "$16.54 at a purchase" — flan-T5
-  // echoing its instructions. `isCommonNounOnly` is the same gate the rule
-  // parser already applies to its own output; the AI path simply never had it.
+  // literal strings NONE/N/A/NO/UNKNOWN, so a common-noun answer would reach
+  // the DB unchallenged. `isCommonNounOnly` is the same gate the rule parser
+  // already applies to its own output; the AI path simply never had it.
   //
-  // A hallucinated vendor is worse than no vendor. It reaches the DB, and the
-  // cross-app duplicate check compares vendor names to decide what to collapse
-  // — so garbage here silently defeats deduplication too.
+  // CORRECTION: this guard was originally added believing it explained a real
+  // capture that read "$16.54 at a purchase" — supposedly the model echoing its
+  // own prompt ("Vendor: <merchant name, or NONE if not a purchase/payment>").
+  // That was wrong. "a purchase" is a hardcoded fallback in
+  // android-custom/NotificationListener.java's notifyCaptured(), used whenever
+  // the NATIVE extractor finds no vendor. The AI was never involved.
+  //
+  // The guard is kept because it is correct on its own terms — a common-noun
+  // vendor is worse than no vendor, since it reaches the DB and the cross-app
+  // duplicate check compares vendor names to decide what to collapse — but it
+  // is not the fix for that symptom, and should not be credited with it.
   let aiVendor = parsed.vendor;
   if (aiVendor && isCommonNounOnly(aiVendor)) {
     log.warn(`[aiExtractor] Discarding common-noun AI vendor: "${aiVendor}"`);
