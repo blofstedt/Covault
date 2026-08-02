@@ -23,6 +23,7 @@ import type { LearnedVendorExample } from './aiExtractor';
 import { checkNotificationRules, bumpRuleUseCount } from './notificationRules';
 import { getLocalToday, parseLocalDate, toLocalIsoDay } from './dateUtils';
 import { extractWithAI, aiDetectRecurring, type AIExtractionResult } from './aiExtractor';
+import { detectMerchantSignal, resolveSignalCategory } from './merchantCategorySignals';
 import type { PendingTransaction } from '../types';
 import { scoreVendorMatch, shouldAutoAccept } from './vendorMatchConfidence';
 
@@ -1473,6 +1474,32 @@ async function processNotificationWithAIImpl(
         categoryId = matched.id;
         categoryName = matched.name;
         log.debug(`[AI pipeline] AI suggested category: ${categoryName}`);
+      }
+    }
+
+    // Offline merchant-descriptor signal (lib/merchantCategorySignals.ts).
+    //
+    // Competes with "Other" — never with a category the model actually chose.
+    // Note the second half of the condition: a suggestion of "Other" resolves
+    // to a real categoryId above, but it is not an answer, it is the same shrug
+    // the fallback below gives. Gating on `!categoryId` alone would skip this
+    // for exactly the captures it exists to rescue.
+    //
+    // Reads the raw notification as well as the vendor because the strongest
+    // tell — the TST*/Toast processor prefix — is stripped out of the display
+    // name by polishVendor before it ever reaches here.
+    //
+    // `overrideMatchConfidence` is deliberately left at 0: a descriptor token
+    // is a decent guess, not something the user taught us, so this can suggest
+    // a category but can never clear the auto-accept threshold and file money
+    // without review.
+    if (!categoryId || (categoryName || '').toLowerCase() === 'other') {
+      const signal = detectMerchantSignal(`${vendor || ''} ${input.rawNotification || ''}`);
+      const signalCat = signal ? resolveSignalCategory(signal, availableCategories) : null;
+      if (signal && signalCat) {
+        categoryId = signalCat.id;
+        categoryName = signalCat.name;
+        log.debug(`[AI pipeline] merchant signal ${signal.kind} (${signal.evidence}) → ${categoryName}`);
       }
     }
 

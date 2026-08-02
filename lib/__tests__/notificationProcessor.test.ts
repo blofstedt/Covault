@@ -927,3 +927,118 @@ describe('In-flight dedup prevents double-insert from concurrent scans', () => {
     expect(r2.skipReason).toBe('duplicate_fingerprint');
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// MERCHANT DESCRIPTOR SIGNAL — rescuing captures headed for "Other"
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * Step 5c's last resort before "Other". These tests are about the WIRING —
+ * lib/__tests__/merchantCategorySignals.test.ts covers which tokens fire.
+ *
+ * The two things that must hold: it rescues a restaurant the model shrugged
+ * at, and it never displaces a category the model actually chose.
+ */
+describe('Merchant descriptor signal (step 5c)', () => {
+  // The stock CATEGORIES above have no dining budget, so a signal there
+  // correctly resolves to nothing. This household has one.
+  const DINING_CATEGORIES = [
+    { id: 'cat-groceries', name: 'Groceries' },
+    { id: 'cat-restaurants', name: 'Restaurants' },
+    { id: 'cat-transport', name: 'Transport' },
+    { id: 'cat-other', name: 'Other' },
+  ];
+
+  function emptyResultChain() {
+    const chain: any = {};
+    for (const m of [
+      'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'ilike', 'is', 'in', 'not',
+      'or', 'match', 'filter', 'order', 'limit', 'single', 'maybeSingle',
+    ]) {
+      chain[m] = vi.fn().mockReturnThis();
+    }
+    chain.then = (resolve: any) => resolve({ data: [], error: null });
+    return chain;
+  }
+
+  /** Run one capture and hand back the row that reached the transactions insert. */
+  async function captureRow(rawNotification: string, categories = DINING_CATEGORIES) {
+    const txChain = getChain('transactions');
+    txChain.select = vi.fn().mockReturnValue(emptyResultChain());
+    txChain.insert = vi.fn().mockResolvedValue({ error: null });
+    getChain('pending_transactions').select = vi.fn().mockReturnValue(emptyResultChain());
+
+    const result = await processNotificationWithAI(
+      'user-1',
+      makeInput({ rawNotification, notificationTimestamp: Date.now() }),
+      categories,
+    );
+    const row = txChain.insert.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+    return { result, row };
+  }
+
+  it('files a TST* charge as Restaurants instead of Other', async () => {
+    // "La Carnita" is a name no rule and no model has ever seen. The Toast
+    // prefix is the only thing in the notification that says "restaurant" —
+    // and it is stripped from the display name before step 5 runs.
+    const { row } = await captureRow('BMO You spent $18.40 at TST* LA CARNITA on your card');
+    expect(row?.budget).toBe('Restaurants');
+  });
+
+  it('files an unrecognised restaurant by its descriptor token', async () => {
+    const { row } = await captureRow('BMO You spent $32.10 at KINTON RAMEN 4 on your card');
+    expect(row?.budget).toBe('Restaurants');
+  });
+
+  it('leaves the capture in Other when the household has no dining budget', async () => {
+    // Better an honest "Other" than a restaurant charge invented into Leisure.
+    const { row } = await captureRow(
+      'BMO You spent $18.40 at TST* LA CARNITA on your card',
+      CATEGORIES,
+    );
+    expect(row?.budget).toBe('Other');
+  });
+
+  it('declines to fire on a grocery chain\'s bakery counter', async () => {
+    // A food word next to a big chain's name is a department, not the business.
+    // Suppressing the signal leaves this at Other, which is honest — and the
+    // second Loblaws run gets sorted properly by a learned vendor rule.
+    const { row } = await captureRow('BMO You spent $54.20 at LOBLAWS BAKERY on your card');
+    expect(row?.budget).toBe('Other');
+  });
+
+  it('does not displace a category that was already resolved', async () => {
+    // A learned override sends Pizza Nova to Groceries — an odd choice, but the
+    // user's choice. The PIZZA token must not overrule it.
+    const overridesChain = getChain('overrides');
+    const overrideRows = {
+      ...emptyResultChain(),
+      then: (resolve: any) => resolve({
+        data: [{
+          category_id: 'Groceries',
+          proper_name: 'Pizza Nova',
+          match_key: 'pizzanova',
+          match_type: 'contains',
+          updated_at: new Date().toISOString(),
+        }],
+        error: null,
+      }),
+    };
+    overridesChain.select = vi.fn().mockReturnValue(overrideRows);
+
+    const { row } = await captureRow('BMO You spent $27.50 at PIZZA NOVA 1147 on your card');
+    expect(row?.budget).toBe('Groceries');
+  });
+
+  it('leaves an ordinary non-food merchant alone', async () => {
+    const { row } = await captureRow('BMO You spent $61.00 at CANADIAN TIRE 182 on your card');
+    expect(row?.budget).toBe('Other');
+  });
+
+  it('never auto-files a signal match — it is a suggestion, not a learned rule', async () => {
+    // caught_cleared is only set on auto-accept. A descriptor guess must still
+    // pass in front of the user.
+    const { row } = await captureRow('BMO You spent $18.40 at TST* LA CARNITA on your card');
+    expect(row?.caught_cleared).toBeUndefined();
+  });
+});

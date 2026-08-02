@@ -140,4 +140,47 @@ describe('deviceTransactionParser', () => {
     expect(result.amount).toBeGreaterThan(0);
   });
 
+
+  // ── Payment-processor prefixes ──────────────────────────────────────────
+  //
+  // None of the vendor character classes include "*", so extraction used to
+  // stop at it and save the processor as the merchant. Every Toast, Square and
+  // PayPal charge arrived in the review queue named "Tst" / "Sq" / "Pp" with
+  // the real merchant gone — and at high enough confidence that the AI
+  // fallback never ran to fix it.
+
+  it('keeps the merchant behind a TST* (Toast) prefix', () => {
+    const result = parseNotificationText('BMO You spent $18.40 at TST* LA CARNITA on your card');
+    expect(result.vendorDisplay).toBe('La Carnita');
+    expect(result.amount).toBe(18.40);
+  });
+
+  it('keeps the merchant behind a SQ* (Square) prefix', () => {
+    const result = parseNotificationText('BMO You spent $24.00 at SQ *BRIGHTON BARBERS on your card');
+    expect(result.vendorDisplay).toBe('Brighton Barbers');
+  });
+
+  it('keeps the merchant behind a PayPal prefix', () => {
+    expect(parseNotificationText('You spent $9.99 at PP* STEAM GAMES').vendorDisplay).toBe('Steam Games');
+    expect(parseNotificationText('You spent $9.99 at PAYPAL *STEAMGAMES').vendorDisplay).toBe('Steamgames');
+  });
+
+  it('keeps the merchant behind a Google Pay prefix', () => {
+    expect(parseNotificationText('You spent $2.99 at GOOGLE *YOUTUBEPREMIUM').vendorDisplay).toBe('Youtubepremium');
+  });
+
+  it('tolerates the spacing variants banks emit around the star', () => {
+    for (const text of [
+      'You spent $18.40 at TST* LA CARNITA',
+      'You spent $18.40 at TST *LA CARNITA',
+      'You spent $18.40 at TST * LA CARNITA',
+    ]) {
+      expect(parseNotificationText(text).vendorDisplay, text).toBe('La Carnita');
+    }
+  });
+
+  it('leaves an ordinary merchant name untouched', () => {
+    expect(parseNotificationText('You spent $32.10 at KINTON RAMEN').vendorDisplay).toBe('Kinton Ramen');
+  });
+
 });

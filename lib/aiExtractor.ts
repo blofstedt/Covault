@@ -593,12 +593,14 @@ const VENDOR_CORRECTIONS: Record<string, string> = {
   'spotify.com': 'Spotify', 'spotify ab': 'Spotify', 'spotify': 'Spotify',
   'apple.com/bill': 'Apple', 'apple.com': 'Apple',
   'apple icloud': 'Apple', 'apple.com/bill one': 'Apple',
-  'google *': 'Google', 'google play': 'Google Play',
+  'google play': 'Google Play',
   'google storage': 'Google', 'google one': 'Google',
-  'paypal *': 'PayPal',
-  'sq *': 'Square', 'sq*': 'Square',
-  'tst*': 'Toast',
-  'pp*': 'PayPal',
+  // No entries for the SQ*/TST*/PP*/GOOGLE*/PAYPAL* processor prefixes here.
+  // polishVendor strips them (see the replace at the top of that function)
+  // before this table is consulted, so any such entry is unreachable — and
+  // mapping them would be wrong anyway: "TST* JOES PIZZA" was bought at Joe's
+  // Pizza, not at Toast. The prefix is still useful as a *category* signal, and
+  // that is read off the raw notification in lib/merchantCategorySignals.ts.
   'wholefds': 'Whole Foods', 'whole fds': 'Whole Foods', 'whole foods': 'Whole Foods',
   'petro-canada': 'Petro-Canada', 'petro canada': 'Petro-Canada',
   'petrocan': 'Petro-Canada',

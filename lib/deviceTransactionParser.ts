@@ -209,6 +209,20 @@ function extractVendorRaw(text: string, isRefund?: boolean): string {
     }
   }
 
+  // Strip payment-processor prefixes so the merchant behind them survives.
+  //
+  // None of the vendor character classes below include "*", so extraction stops
+  // dead at it: "at TST* LA CARNITA" yielded the vendor "Tst", and every Toast,
+  // Square, PayPal and Google Pay charge landed in the review queue named after
+  // the processor with the actual merchant discarded. Worse, those parses score
+  // as high-confidence, so the AI fallback never ran to correct them.
+  //
+  // Removed rather than kept because the processor is not the merchant — the
+  // money went to La Carnita, not to Toast. The prefix is still a useful
+  // *category* signal, which is why lib/merchantCategorySignals.ts reads the
+  // raw notification text rather than this cleaned-up vendor.
+  t = t.replace(/\b(?:TST|SQ|PP|PAYPAL|GOOGLE)\s*\*\s*/gi, '');
+
   // ── Refund-specific vendor extraction ─────────────────────────────────────
   // Handles patterns like:
   //   "$57.74 will be refunded to your credit card from AMZN MKTP CA. Your refund may take..."
