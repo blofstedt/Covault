@@ -34,3 +34,19 @@ when the work is done and say so — do not leave it parked on a branch.
 
 `main` is the branch CI builds the phone APK from, so run `npm run verify`
 (type-check, tests, build) before pushing. Breaking `main` means no APK.
+
+## What they care about
+
+They judge this app on whether it is beautiful to use — design consistency,
+UX, and animation are the point, not the polish at the end. A feature that
+works but looks wrong or stutters is not finished.
+
+- Reuse the existing design language (one category palette, the shared card and
+  control components) rather than inventing a new look for one screen.
+- Everything moving in the same interaction shares one duration and easing
+  curve. Mixed clocks are what read as "not smooth".
+- Motion has to be smooth in an Android WebView, not just on a desktop browser.
+  The performance rules in CLAUDE.md's Invariants exist to protect that feel.
+- If the easier implementation looks worse, say so in plain English and let
+  them decide. And say plainly when you have not actually seen a visual change
+  render — CI never runs this app.

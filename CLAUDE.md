@@ -45,6 +45,36 @@ makes `npm run verify` before pushing non-negotiable, not a nicety: breaking
 `main` means no APK to install. It still does not mean the app works — see the
 Verification reality section.
 
+## What they care about: how it looks and how it moves
+
+They judge this app on whether it is beautiful to use. Not as a finishing
+touch — as the point. A correct feature that looks wrong, breaks the visual
+language, or stutters on the phone is not finished, and saying "it works" about
+it will not land.
+
+- **Consistency over invention.** The app already has a design language: one
+  category palette (`lib/budgetColors.ts`, reused by bars, icons and the
+  chart), `rounded-[2rem]` cards, tight tracking on big numerals, muted glassy
+  surfaces. Reuse the existing pieces — `components/ui/`, `components/shared/`,
+  `getBudgetIcon` — before adding a new visual idea. A new control that looks
+  like it came from a different app is a regression even if it works.
+- **One clock per interaction.** Everything moving as part of the same gesture
+  shares 320ms and `cubic-bezier(0.32, 0.72, 0.24, 1)` — the budget expand, the
+  card, the chart. Mixed durations inside one interaction were what previously
+  read as "not smooth"; the fix was putting them on the same clock, not making
+  them faster.
+- **Smooth on their phone, not on your laptop.** Motion has to hold up in an
+  Android WebView at 120Hz, roughly an 8ms frame budget. That is where the
+  Invariants below come from — `backdrop-filter` over the animating list,
+  `content-visibility`, layout-property transitions. Those rules exist to
+  protect the feel, so treat them as design rules, not micro-optimisations.
+- **Never trade the look for an easier implementation** without saying so. If
+  the simple approach is uglier, say that plainly, in English, and describe the
+  alternative and what it costs. Let them choose.
+- **Be honest about what you have not seen.** Nothing in CI renders this app.
+  If you changed something visual or animated, say it is unverified rather than
+  letting a green build imply it looks right.
+
 ## What it is
 
 Personal budget app for a household. Users track spending by category;
