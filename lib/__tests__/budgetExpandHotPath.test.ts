@@ -82,6 +82,48 @@ describe('budget expand hot path', () => {
     ).toBe(false);
   });
 
+  it('never animates box-shadow on the card that is growing', () => {
+    const source = readFileSync(join(ROOT, 'components/BudgetSection.tsx'), 'utf8');
+    const code = source
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '');
+
+    const transitionLists: string[] = code.match(/transition-\[[^\]]*\]/g) || [];
+    const withShadow = transitionLists.filter((list) => list.includes('shadow'));
+
+    expect(
+      withShadow,
+      'box-shadow cannot be composited. Interpolating one around the perimeter ' +
+      'of a card that is simultaneously growing to full screen re-rasterises ' +
+      'the blur on every frame, to crossfade something nearly invisible ' +
+      'against this background. Let it swap in one step.',
+    ).toEqual([]);
+  });
+
+  it('fades the chart with CSS, not with a d3 rAF loop, while the card expands', () => {
+    const source = readFileSync(
+      join(ROOT, 'components/dashboard_components/BudgetFlowChart.tsx'),
+      'utf8',
+    );
+    const code = source
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '');
+
+    // The solo/unsolo effect runs on exactly the frames the card's layout
+    // animation needs. d3 transitions are JS: a requestAnimationFrame loop
+    // writing attributes on the main thread, and neither `fill-opacity` nor
+    // `stroke-opacity` can be handed to the compositor.
+    const soloEffect = code.slice(code.indexOf('── Solo snap'));
+    expect(soloEffect.length).toBeGreaterThan(0);
+
+    expect(
+      /\.transition\(\)/.test(soloEffect),
+      'The solo fade must stay a plain `style("opacity", ...)` write carried ' +
+      'by the CSS transition declared in soloFadeTransition(), so it competes ' +
+      'with nothing during the 320ms expand.',
+    ).toBe(false);
+  });
+
   it('walls each budget row off from its siblings during the layout animation', () => {
     const source = readFileSync(
       join(ROOT, 'components/dashboard_components/DashboardBudgetSectionsList.tsx'),

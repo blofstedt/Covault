@@ -169,4 +169,39 @@ describe('generateProjectedTransactions', () => {
     expect(netflix).toContain('2026-09-13');
     expect(netflix).toContain('2026-10-11');
   });
+
+  it('takes today from the caller so a set generated before midnight is not reused after it', () => {
+    // The dashboard memoises this on (transactions, today). Held on the
+    // transactions alone, a set generated on Jul 31 keeps answering with
+    // July's idea of "the current month" and "already happened" — which is how
+    // a Jul 31 occurrence ends up sitting in an August vial.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-31T23:59:00Z'));
+
+    const base = [makeTransaction({ date: '2026-06-30', recurrence: 'Monthly' })];
+
+    const asOfAug3 = generateProjectedTransactions(base, '2026-08-03');
+
+    // July's occurrence is no longer part of the current month, so it is not
+    // emitted even though the system clock still says July.
+    expect(asOfAug3.map((tx) => tx.date)).not.toContain('2026-07-30');
+    expect(asOfAug3.map((tx) => tx.date)).toContain('2026-08-30');
+    // Aug 30 is after Aug 3, so it is still a projection rather than solidified.
+    expect(asOfAug3.find((tx) => tx.date === '2026-08-30')?.is_projected).toBe(true);
+  });
+
+  it('falls back to the clock when no day is passed', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-03T12:00:00Z'));
+
+    const withClock = generateProjectedTransactions([
+      makeTransaction({ date: '2026-06-30', recurrence: 'Monthly' }),
+    ]);
+    const withExplicitDay = generateProjectedTransactions(
+      [makeTransaction({ date: '2026-06-30', recurrence: 'Monthly' })],
+      '2026-08-03',
+    );
+
+    expect(withClock.map((tx) => tx.date)).toEqual(withExplicitDay.map((tx) => tx.date));
+  });
 });

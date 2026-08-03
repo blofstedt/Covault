@@ -41,6 +41,7 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | "a setting doesn't stick" | `SETTING_DB_KEYS` in `components/Dashboard.tsx` → `lib/hooks/useUserSettings.ts` → `lib/hooks/useDataLoading.ts`. **Usually a missing DB column** — see Invariants |
 | "an edit didn't save" | `lib/hooks/useTransactionOps.ts`. If it's a **vendor rename**, also `lib/formatVendorName.ts` — it has previously overwritten the user's own capitalisation |
 | "the numbers are wrong" | `components/dashboard_components/useDashboardTotals.ts`, `lib/refundMatching.ts`, `lib/projectedTransactions.ts` |
+| "last month's entries are still listed" / "the list is in the wrong order" | `lib/transactionOrdering.ts` (one month, chronological) → `lib/hooks/useCurrentDay.ts` (the single clock) → `components/Dashboard.tsx` |
 | "a modal/sheet looks broken or is cut off" | `components/ui/Portal.tsx` — overlays inside `<main>` need it; see Invariants |
 | "the animation is janky" | `index.css`, `components/BudgetSection.tsx`, `components/dashboard_components/BudgetFlowChart.tsx` |
 | anything about the Android build | `scripts/sync-android.sh`, `.github/workflows/build-android.yml` |

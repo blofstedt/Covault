@@ -1,7 +1,6 @@
 import { log } from '../lib/log';
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { App as CapApp } from '@capacitor/app';
 import { AppState, Transaction } from '../types';
 import type { Toast } from '../types';
 
@@ -31,6 +30,8 @@ import SearchResults from './dashboard_components/SearchResults';
 import useNormalizedTransactions from './dashboard_components/useNormalizedTransactions';
 import useDashboardTotals from './dashboard_components/useDashboardTotals';
 import { getLocalMonthKey } from '../lib/dateUtils';
+import { useCurrentDay } from '../lib/hooks/useCurrentDay';
+import { isInMonth } from '../lib/transactionOrdering';
 import { checkAndTriggerAppNotifications } from '../lib/appNotifications';
 import { supabase } from '../lib/supabase';
 import { resolveBudgetIdFromRow } from '../lib/hooks/transactionMappers';
@@ -38,12 +39,6 @@ import { useNotificationRoute } from '../lib/hooks/useNotificationRoute';
 import { buildWidgetSnapshot } from '../lib/widgetSnapshot';
 import { pushWidgetSnapshot, type WidgetVendorRule } from '../lib/covaultNotification';
 import { countAwaitingReview } from '../lib/reviewQueue';
-
-/** Current YYYY-MM in local time. */
-const currentMonthKey = (): string => {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-};
 
 // Map from app-state setting keys to DB column names.
 const SETTING_DB_KEYS: Record<string, string> = {
@@ -139,9 +134,15 @@ const Dashboard: React.FC<Props> = ({
     handleSetProperName,
   } = useVendorOverrides({ userId: state.user?.id, budgets: state.budgets });
 
+  // Single source of truth for "now": ticks over at local midnight and on
+  // resume, so every month-scoped derivation below moves together.
+  const todayIso = useCurrentDay();
+  const monthKey = todayIso.slice(0, 7);
+
   const { currentMonthTransactions, projectedTransactions, remainingMoney, isIncomeLoaded } = useDashboardTotals(
     normalizedTransactions,
     state.user?.monthlyIncome || 0,
+    todayIso,
   );
 
   // ── Home-screen widget ──
@@ -183,42 +184,24 @@ const Dashboard: React.FC<Props> = ({
     state.settings.auto_accept_known_vendors,
   ]);
 
-  // The month key was read straight from the clock during render, so it only
-  // advanced when something else happened to trigger a re-render. This is a
-  // Capacitor app that gets backgrounded rather than closed, so resuming on
-  // the 1st of a new month could leave the dashboard showing last month's
-  // budgets. Recompute on resume (and when the tab becomes visible on web).
-  const [monthKey, setMonthKey] = useState(currentMonthKey);
-
-  useEffect(() => {
-    const refresh = () => setMonthKey(prev => {
-      const next = currentMonthKey();
-      return next === prev ? prev : next;
-    });
-
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') refresh();
-    };
-    document.addEventListener('visibilitychange', onVisible);
-
-    let remove: (() => void) | undefined;
-    if (Capacitor.isNativePlatform()) {
-      const handle = CapApp.addListener('resume', refresh);
-      remove = () => { void handle.then(h => h.remove()); };
-    }
-
-    return () => {
-      document.removeEventListener('visibilitychange', onVisible);
-      remove?.();
-    };
-  }, []);
-
+  // The vials show the current month and nothing else. Both halves of that
+  // list — real transactions and projected occurrences — are filtered here
+  // against the SAME month key, derived from the same `todayIso` that
+  // useDashboardTotals uses.
+  //
+  // They used to come from two different clocks: the real half was filtered
+  // inside useDashboardTotals against a month key recomputed during render,
+  // the projected half against a `monthKey` held in state that only advanced
+  // on resume. Any disagreement between the two put last month's rows in this
+  // month's list — which is exactly what a Jul 31 entry sitting in an August
+  // vial looks like.
   const currentMonthBudgetTransactions = useMemo(() => {
-    const currentMonthProjected = projectedTransactions.filter(
-      (t) => typeof t.date === 'string' && getLocalMonthKey(t.date) === monthKey,
-    );
+    const inCurrentMonth = (t: Transaction) => isInMonth(t, monthKey);
 
-    return [...currentMonthTransactions, ...currentMonthProjected];
+    return [
+      ...currentMonthTransactions.filter(inCurrentMonth),
+      ...projectedTransactions.filter(inCurrentMonth),
+    ];
   }, [currentMonthTransactions, projectedTransactions, monthKey]);
 
   const chartTransactions = useMemo(() => {

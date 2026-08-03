@@ -153,6 +153,18 @@ html.theme-transitioning * {
   0%   { opacity: 0; transform: translateY(-4px) scale(0.99); }
   100% { opacity: 1; transform: translateY(0) scale(1); }
 }
+@keyframes bfcSoloLabelIn {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}
+/* Per-month totals that appear over the spending chart when a budget vial is
+   expanded. A CSS animation rather than a d3 transition: these <text> nodes
+   are appended at the same moment the card starts its 320ms layout animation,
+   and a JS-driven fade would be writing to them on every one of those frames.
+   Delay + duration keep it inside the card's clock. */
+.bfc-solo-label {
+  animation: bfcSoloLabelIn 0.2s cubic-bezier(0.32, 0.72, 0.24, 1) 0.12s both;
+}
 .budget-content-reveal {
   /* Tiny delay so the inner content blooms just after the
      section has begun to grow — feels layered, not pop-in.
@@ -167,6 +179,9 @@ html.theme-transitioning * {
      `animate-in` classes are opt-in per element. What remains is the
      hand-rolled CSS in this file, which has no variant to hide behind. */
   .budget-content-reveal { animation: none; }
+  /* `animation: none` alone would strip the `both` fill and leave the label
+     stuck at its 0% keyframe, i.e. invisible. */
+  .bfc-solo-label { animation: none; opacity: 1; }
   .budget-row-anim { transition: none !important; }
   .animate-nest,
   .animate-breathe,

@@ -40,6 +40,25 @@ function motionDuration(ms: number): number {
   }
 }
 
+/**
+ * The solo fade runs on the same 320ms ease-out as the budget card's expand
+ * (`.budget-row-anim` in index.css), because it accompanies it.
+ *
+ * It is a CSS transition on `opacity`, declared once when each path is created,
+ * and NOT a d3 transition. d3 transitions are a requestAnimationFrame loop that
+ * writes attributes on the main thread every frame — and the frames they were
+ * competing for are the same ones the card expand needs for its layout
+ * animation. `fill-opacity` / `stroke-opacity` cannot be composited either, so
+ * the old version paid twice. Element `opacity` is the one form of "make this
+ * fade" the compositor can take off the main thread entirely; the static
+ * fill-opacity / stroke-opacity values below multiply through it, so the
+ * rendered result is unchanged.
+ */
+const SOLO_FADE_EASE = 'cubic-bezier(0.32, 0.72, 0.24, 1)';
+function soloFadeTransition(): string {
+  return `opacity ${motionDuration(320)}ms ${SOLO_FADE_EASE}`;
+}
+
 const NO_BUDGETS: BudgetCategory[] = [];
 const NO_TRANSACTIONS: Transaction[] = [];
 
@@ -304,6 +323,10 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .attr('class', 'bfc-band')
       .attr('d', (d: any) => makeExtendedArea(d, (pt: any) => y(pt[0]) - 1, (pt: any) => y(pt[1])))
       .style('fill', (_d, i) => `url(#bfc-grad-${i})`)
+      // fill-opacity stays the touch-scrub channel (dim the bands you are not
+      // pointing at); element opacity is the solo channel. Keeping them apart
+      // means neither animation can clobber the other's value.
+      .style('transition', soloFadeTransition())
       .attr('fill-opacity', 0.85);
 
     // Highlight stroke along the top edge of each band
@@ -325,6 +348,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       // WebView. A 2px shadow at 15% alpha over a filled band was doing almost
       // nothing visually; the slightly stronger stroke covers the separation
       // it provided, for free.
+      .style('transition', soloFadeTransition())
       .style('stroke-opacity', 0.7);
 
     // ── Solo overlay paths ───────────────────────────────────────────────────
@@ -340,14 +364,20 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     // the same frame budget on a 120Hz phone.
     //
     // Cross-fading two static paths instead means the shape is computed once
-    // and only `fill-opacity` animates, which the compositor can do. The `d`
-    // of these twins is assigned while they are fully transparent, so swapping
-    // geometry is never visible.
+    // and only opacity animates, which the compositor can do. The `d` of these
+    // twins is assigned while they are fully transparent, so swapping geometry
+    // is never visible.
+    //
+    // Their fill-opacity / stroke-opacity are the *soloed* values and never
+    // move; the element opacity below is what fades, for the reason in the
+    // note on soloFadeTransition().
     layerGroup
       .append('path')
       .attr('class', 'bfc-solo-band')
       .style('fill', (_d, i) => `url(#bfc-grad-${i})`)
-      .attr('fill-opacity', 0);
+      .attr('fill-opacity', 0.95)
+      .style('transition', soloFadeTransition())
+      .style('opacity', 0);
 
     layerGroup
       .append('path')
@@ -358,7 +388,9 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         return c0;
       })
       .style('stroke-width', 1.5)
-      .style('stroke-opacity', 0);
+      .style('stroke-opacity', 0.9)
+      .style('transition', soloFadeTransition())
+      .style('opacity', 0);
 
     // ── Savings area: hatched white region between top of bands and income line ──
     // Income threshold Y position (must be computed before savings area uses it)
@@ -393,6 +425,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .attr('class', 'bfc-savings')
       .attr('d', extSavingsPath)
       .style('fill', 'url(#bfc-savings-hatch)')
+      .style('transition', soloFadeTransition())
       .attr('fill-opacity', 0.6);
 
     // Income threshold line (dotted, stronger)
@@ -405,7 +438,8 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .attr('y2', budgetY)
       .attr('stroke', isDarkTheme ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.18)')
       .attr('stroke-width', 1.5)
-      .attr('stroke-dasharray', '2 4');
+      .attr('stroke-dasharray', '2 4')
+      .style('transition', soloFadeTransition());
 
     // "INCOME" chip label on the threshold line
     const labelX = innerWidth - 40;
@@ -420,7 +454,8 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .attr('rx', 4)
       .attr('fill', isDarkTheme ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)')
       .attr('stroke', isDarkTheme ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)')
-      .attr('stroke-width', 0.5);
+      .attr('stroke-width', 0.5)
+      .style('transition', soloFadeTransition());
     svg
       .append('text')
       .attr('class', 'bfc-income-label')
@@ -431,6 +466,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .attr('font-weight', '700')
       .attr('letter-spacing', '0.08em')
       .attr('fill', isDarkTheme ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)')
+      .style('transition', soloFadeTransition())
       .text('INCOME');
 
     // Month labels on the x-axis
@@ -699,13 +735,12 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     if (!svgRef.current) return;
     const svgElement = d3.select(svgRef.current);
     const internals = chartInternalsRef.current;
-    // Match the budget card's expand/collapse animation (320ms, ease-out in
-    // index.css `.budget-row-anim`) so the chart solos in lockstep with the
-    // card instead of trailing it — the two were on different clocks (500 vs
-    // 320ms), which read as "not smooth".
-    const snapMs = motionDuration(320);
-    const easing = d3.easeCubicOut;
 
+    // Every fade below is a one-line opacity write. The CSS transition that
+    // carries it was declared when each element was created (see
+    // soloFadeTransition), on the same 320ms ease-out as the budget card's
+    // expand — so the chart solos in lockstep with the card, without a d3
+    // rAF loop competing for the frames the card's layout animation needs.
     // Remove any previous solo month labels
     svgElement.selectAll('.bfc-solo-label').remove();
 
@@ -716,23 +751,23 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         // path/opacity transition conflict that used to leave bands invisible.
         // (`data-original-d` and the per-element .each() bookkeeping it needed
         // are gone with it.)
+        // The two channels are restored together: opacity fades (this is the
+        // one the eye follows), and the touch-scrub channel is snapped back to
+        // its resting value in case a scrub left it dimmed. Belt and braces
+        // against a band that stays invisible — this file has been there.
         svgElement.selectAll('.bfc-band')
-          .transition().duration(snapMs).ease(easing)
-          .attr('fill-opacity', 0.85);
+          .attr('fill-opacity', 0.85)
+          .style('opacity', 1);
         svgElement.selectAll('.bfc-band-stroke')
-          .transition().duration(snapMs).ease(easing)
-          .style('stroke-opacity', 0.7);
+          .style('stroke-opacity', 0.7)
+          .style('opacity', 1);
         // Fade the solo overlays back out.
-        svgElement.selectAll('.bfc-solo-band')
-          .transition().duration(snapMs).ease(easing)
-          .attr('fill-opacity', 0);
-        svgElement.selectAll('.bfc-solo-stroke')
-          .transition().duration(snapMs).ease(easing)
-          .style('stroke-opacity', 0);
+        svgElement.selectAll('.bfc-solo-band').style('opacity', 0);
+        svgElement.selectAll('.bfc-solo-stroke').style('opacity', 0);
         // Restore savings & income
-        svgElement.select('.bfc-savings').transition().duration(snapMs).ease(easing).attr('fill-opacity', 0.6);
-        svgElement.select('.bfc-income-line').transition().duration(snapMs).ease(easing).style('opacity', 1);
-        svgElement.selectAll('.bfc-income-label').transition().duration(snapMs).ease(easing).style('opacity', 1);
+        svgElement.select('.bfc-savings').style('opacity', 1);
+        svgElement.select('.bfc-income-line').style('opacity', 1);
+        svgElement.selectAll('.bfc-income-label').style('opacity', 1);
       }
       return;
     }
@@ -741,17 +776,13 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
     // Hide ALL stacked bands — including the highlighted one, whose shape is
     // now carried by the .bfc-solo-band overlay faded in below.
-    svgElement.selectAll('.bfc-band')
-      .transition().duration(snapMs).ease(easing)
-      .attr('fill-opacity', 0);
-    svgElement.selectAll('.bfc-band-stroke')
-      .transition().duration(snapMs).ease(easing)
-      .style('stroke-opacity', 0);
+    svgElement.selectAll('.bfc-band').style('opacity', 0);
+    svgElement.selectAll('.bfc-band-stroke').style('opacity', 0);
 
     // Fade out savings area and income line/label
-    svgElement.select('.bfc-savings').transition().duration(snapMs).ease(easing).attr('fill-opacity', 0);
-    svgElement.select('.bfc-income-line').transition().duration(snapMs).ease(easing).style('opacity', 0);
-    svgElement.selectAll('.bfc-income-label').transition().duration(snapMs).ease(easing).style('opacity', 0);
+    svgElement.select('.bfc-savings').style('opacity', 0);
+    svgElement.select('.bfc-income-line').style('opacity', 0);
+    svgElement.selectAll('.bfc-income-label').style('opacity', 0);
 
     if (!internals) return;
     const { stackedData, x, y, innerHeight, innerWidth } = internals;
@@ -784,14 +815,12 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     svgElement.selectAll('.bfc-solo-band')
       .filter((_d: any, i: number) => i === highlightIdx)
       .attr('d', soloPath)
-      .transition().duration(snapMs).ease(easing)
-      .attr('fill-opacity', 0.95);
+      .style('opacity', 1);
 
     svgElement.selectAll('.bfc-solo-stroke')
       .filter((_d: any, i: number) => i === highlightIdx)
       .attr('d', soloStrokePath)
-      .transition().duration(snapMs).ease(easing)
-      .style('stroke-opacity', 0.9);
+      .style('opacity', 1);
 
     // Show per-month totals for the highlighted category
     const isDark = theme === 'dark';
@@ -814,15 +843,18 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         .attr('font-size', '9px')
         .attr('font-weight', '800')
         .attr('fill', catColor)
-        .style('opacity', 0)
-        .text(`$${val.toFixed(0)}`)
-        // Was `delay(200).duration(300)`, which ran the chart's rAF loop out to
-        // 500ms — 180ms past the end of the card's 320ms expand. That left the
-        // tail of the chart animation running alone, after the motion it was
-        // supposed to accompany had already stopped, which reads as a stutter
-        // at the end of the expand. Everything now lands on the same clock.
-        .transition().delay(motionDuration(120)).duration(motionDuration(200)).ease(easing)
-        .style('opacity', 1);
+        // The fade-in is a CSS animation (`.bfc-solo-label` in index.css), not
+        // a d3 transition. A transition would not have fired here anyway
+        // without a forced style flush — the element is brand new — and a
+        // freshly appended node cannot be handed to the compositor mid-fade
+        // while JS is rewriting its opacity every frame.
+        //
+        // It still lands inside the card's 320ms: 120ms delay + 200ms fade.
+        // The old `delay(200).duration(300)` ran the chart's rAF loop out to
+        // 500ms, leaving the tail of the chart animation running alone after
+        // the motion it accompanies had stopped, which read as a stutter at
+        // the end of the expand.
+        .text(`$${val.toFixed(0)}`);
     });
   }, [highlightedBudgetName, activeCategory, categoryNames, highlightedCatColor, theme]);
 

@@ -1,10 +1,12 @@
 // components/BudgetSection.tsx
-import React, { useMemo, useCallback, useState, useEffect, memo } from 'react';
+import React, { useMemo, useCallback, useRef, useState, useEffect, memo } from 'react';
 import { BudgetCategory, Transaction } from '../types';
 import TransactionItem from './TransactionItem';
 import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
 import { EmptyState } from './shared';
 import { getBudgetColor } from '../lib/budgetColors';
+import { getLocalToday } from '../lib/dateUtils';
+import { compareByDateOccurred, findTodayIndex } from '../lib/transactionOrdering';
 import { isRefund, matchRefundsToExpenses } from '../lib/refundMatching';
 
 interface ExtendedBudgetCategory extends BudgetCategory {
@@ -74,6 +76,9 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
       }
     }
 
+    // Chronological, not insertion order — see lib/transactionOrdering.ts.
+    visibleTx.sort(compareByDateOccurred);
+
     return {
       refundedExpenseIds: ids,
       spent: calcSpent,
@@ -81,6 +86,14 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
       visibleTransactions: visibleTx,
     };
   }, [legacyMatchedIds, transactions, budget.id]);
+
+  // First row dated today or later — the boundary between what has already
+  // happened this month and what is still to come. -1 when everything in the
+  // list is in the past, in which case "Today" lands at the bottom.
+  const todayIndex = useMemo(
+    () => findTodayIndex(visibleTransactions, getLocalToday()),
+    [visibleTransactions],
+  );
 
   const external = budget.externalDeduction || 0;
   const spentWithExternal = spent + external;
@@ -138,6 +151,29 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
     return () => clearTimeout(timer);
   }, [isExpanded]);
 
+  // The scroller and the first row dated today-or-later. `offsetTop` is read
+  // against the scroller because it is the rows' offset parent (it carries
+  // `relative`), so no per-row measuring is needed.
+  const listRef = useRef<HTMLDivElement>(null);
+  const todayAnchorRef = useRef<HTMLDivElement>(null);
+
+  const scrollToToday = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    const scroller = listRef.current;
+    if (!scroller) return;
+
+    const anchor = todayAnchorRef.current;
+    const behavior: ScrollBehavior = prefersReducedMotion() ? 'auto' : 'smooth';
+
+    scroller.scrollTo({
+      // A little headroom above the row so it doesn't sit flush against the
+      // top edge. With nothing dated today or later, slide to the end of the
+      // month's activity instead.
+      top: anchor ? Math.max(0, anchor.offsetTop - 12) : scroller.scrollHeight,
+      behavior,
+    });
+  }, []);
+
   const handleHeaderClick = useCallback(() => onToggle(budget.id), [onToggle, budget.id]);
 
   const handleBackgroundClick = useCallback(
@@ -151,7 +187,16 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
   return (
     <div
-      className={`flex-1 min-h-0 overflow-hidden rounded-[2rem] relative flex flex-col motion-safe:transition-[background-color,border-color,box-shadow] motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)] ${
+      // `box-shadow` is deliberately NOT in this transition list.
+      //
+      // It is a paint property: the browser cannot composite it, so a blurred
+      // shadow that is interpolating re-rasterises on every frame — around the
+      // full perimeter of a card that is simultaneously growing to fill the
+      // screen. It was the most expensive thing still animating here, to
+      // crossfade a shadow that is nearly invisible against this background
+      // (and completely invisible in dark mode). It now swaps in one step
+      // while the size change carries the motion.
+      className={`flex-1 min-h-0 overflow-hidden rounded-[2rem] relative flex flex-col motion-safe:transition-[background-color,border-color] motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)] ${
         isExpanded
           ? 'bg-white dark:bg-slate-900 shadow-2xl border'
           : 'bg-white/70 dark:bg-slate-900/70 shadow-sm border border-slate-200/40 dark:border-slate-700/30'
@@ -307,6 +352,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
       {/* TRANSACTIONS LIST (Now stays mounted, styled to smoothly collapse) */}
       <div
+        ref={listRef}
         className={`min-h-0 overflow-y-auto no-scrollbar relative z-10 transform origin-top ${
           isExpanded
             ? 'flex-1 px-6 pb-2'
@@ -337,20 +383,52 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
             <span className="text-[11px] font-semibold tracking-wide motion-safe:transition-colors motion-safe:duration-[320ms] text-slate-400 dark:text-slate-500">
               {isSharedView ? 'Our Activity' : 'Activity'}
             </span>
+
+            {/* Jump to now. Wears the category's own colour, like the icon
+                chip in the header above it, so it reads as part of this vault
+                rather than as a generic control. */}
+            {visibleTransactions.length > 0 && (
+              <button
+                type="button"
+                onClick={scrollToToday}
+                style={{ backgroundColor: budgetColor }}
+                className="flex items-center gap-1 rounded-full pl-2.5 pr-1.5 py-1 text-[10px] font-bold tracking-wide text-white shadow-sm active:scale-95 motion-safe:transition-transform motion-safe:duration-150"
+                aria-label="Scroll to today"
+              >
+                Today
+                <svg
+                  className="w-3 h-3"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
+            )}
           </div>
 
           <div className="space-y-3">
             {visibleTransactions.length > 0 ? (
-              visibleTransactions.map((tx) => (
-                <TransactionItem
-                  key={tx.id}
-                  transaction={tx}
-                  onTap={onTransactionTap}
-                  currentUserName={currentUserName}
-                  isSharedView={isSharedView}
-                  budgets={allBudgets}
-                  isRefunded={refundedExpenseIds.has(tx.id)}
-                />
+              visibleTransactions.map((tx, index) => (
+                // The wrapper exists so the "Today" button has something to
+                // measure: TransactionItem is memoised and takes no ref, and
+                // wrapping every row (rather than only the anchor) keeps
+                // `space-y-3`'s child spacing identical either way.
+                <div key={tx.id} ref={index === todayIndex ? todayAnchorRef : undefined}>
+                  <TransactionItem
+                    transaction={tx}
+                    onTap={onTransactionTap}
+                    currentUserName={currentUserName}
+                    isSharedView={isSharedView}
+                    budgets={allBudgets}
+                    isRefunded={refundedExpenseIds.has(tx.id)}
+                  />
+                </div>
               ))
             ) : (
               <EmptyState message="No entries found" size="md" />

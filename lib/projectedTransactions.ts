@@ -42,8 +42,15 @@ function getTransactionBudgetId(tx: Transaction): string | undefined {
  * the projection would still be correctly attributed to the manual/notification
  * source rather than chained.
  */
-export function generateProjectedTransactions(base: Transaction[]): Transaction[] {
-  const today = new Date();
+export function generateProjectedTransactions(
+  base: Transaction[],
+  /** Today as YYYY-MM-DD, in the user's local calendar. Callers on the
+   *  dashboard pass `useCurrentDay()` so a set generated before midnight is
+   *  regenerated after it; omitting it reads the clock. */
+  todayIso?: string,
+): Transaction[] {
+  const parsedToday = todayIso ? parseLocalDate(todayIso) : null;
+  const today = parsedToday && !Number.isNaN(parsedToday.getTime()) ? parsedToday : new Date();
   today.setHours(0, 0, 0, 0);
 
   const horizon = addMonths(today, 3);
