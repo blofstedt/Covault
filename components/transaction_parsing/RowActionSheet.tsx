@@ -48,7 +48,7 @@ const RowActionSheet: React.FC<RowActionSheetProps> = ({ title, actions, onClose
       aria-modal="true"
       aria-label={title}
     >
-      <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-[2rem] p-4 shadow-2xl border border-slate-100 dark:border-slate-800/60 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-250">
+      <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-[2rem] p-4 shadow-2xl border border-slate-100 dark:border-slate-800/60 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-300">
         <p className="text-[11px] font-semibold tracking-wide text-slate-400 dark:text-slate-500 px-2 pb-2 truncate">
           {title}
         </p>

@@ -54,7 +54,7 @@ const CategoryPickerSheet: React.FC<CategoryPickerSheetProps> = ({
       role="dialog"
       aria-modal="true"
     >
-      <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-[2rem] p-5 shadow-2xl border border-slate-100 dark:border-slate-800/60 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-250">
+      <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-[2rem] p-5 shadow-2xl border border-slate-100 dark:border-slate-800/60 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-300">
         <h3 className="text-base font-bold text-slate-600 dark:text-slate-100 tracking-tight">
           {hasConflict ? 'Which rule applies?' : 'Choose a category'}
         </h3>

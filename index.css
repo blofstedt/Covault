@@ -150,7 +150,14 @@ html.theme-transitioning * {
      alive for every budget row forever. */
 }
 @keyframes budgetContentBloom {
-  0%   { opacity: 0; transform: translateY(-4px) scale(0.99); }
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}
+/* Each transaction settling into place, top row first. `translateY` from
+   above rather than below so the list reads as stacking downwards from under
+   the header, the way the rows are ordered. */
+@keyframes budgetRowStack {
+  0%   { opacity: 0; transform: translateY(-10px) scale(0.985); }
   100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 @keyframes bfcSoloLabelIn {
@@ -166,12 +173,25 @@ html.theme-transitioning * {
   animation: bfcSoloLabelIn 0.2s cubic-bezier(0.32, 0.72, 0.24, 1) 0.12s both;
 }
 .budget-content-reveal {
-  /* Tiny delay so the inner content blooms just after the
-     section has begun to grow — feels layered, not pop-in.
-     Kept short (0.04s) to track the row's 0.32s curve. */
-  animation: budgetContentBloom 0.28s cubic-bezier(0.32, 0.72, 0.24, 1) both;
+  /* Tiny delay so the inner content arrives just after the section has begun
+     to grow — feels layered, not pop-in. Kept short (0.04s) to track the row's
+     0.32s curve.
+
+     Opacity only. This used to also translate and scale the whole block, but
+     the rows inside it now carry their own movement, and a transform running
+     on the parent at the same time as transforms on its children is the one
+     arrangement the compositor cannot keep separate — it collapses them into a
+     single layer that has to be repainted on every frame. The block fades, the
+     rows move. */
+  animation: budgetContentBloom 0.2s cubic-bezier(0.32, 0.72, 0.24, 1) both;
   animation-delay: 0.04s;
-  transform-origin: top center;
+}
+/* One transaction row arriving. The stagger between rows is set per row as
+   `--row-delay` from BudgetSection, which also caps how many rows get one —
+   see the constants there for why it is bounded rather than index * step. */
+.budget-row-stack {
+  animation: budgetRowStack 0.26s cubic-bezier(0.32, 0.72, 0.24, 1) both;
+  animation-delay: var(--row-delay, 0ms);
 }
 @media (prefers-reduced-motion: reduce) {
   /* Tailwind's `motion-safe:` variant already withholds the transition and
@@ -182,6 +202,9 @@ html.theme-transitioning * {
   /* `animation: none` alone would strip the `both` fill and leave the label
      stuck at its 0% keyframe, i.e. invisible. */
   .bfc-solo-label { animation: none; opacity: 1; }
+  /* Same trap, and worse here: without the opacity reset every transaction in
+     an expanded budget would stay invisible. */
+  .budget-row-stack { animation: none; opacity: 1; transform: none; }
   .budget-row-anim { transition: none !important; }
   .animate-nest,
   .animate-breathe,

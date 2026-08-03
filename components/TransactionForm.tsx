@@ -79,7 +79,10 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const isAITransaction = initialTransaction?.label === 'Automatic';
   const amountInputRef = useRef<HTMLInputElement>(null);
 
-  const CLOSE_ANIMATION_MS = 250;
+  // Matches the `duration-300` on the overlay and card below, so the form is
+  // unmounted exactly as the fade finishes rather than part-way through it or
+  // a beat after it.
+  const CLOSE_ANIMATION_MS = 300;
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleClose = () => {
@@ -214,9 +217,17 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const isFormValid = amount > 0 && selectedId !== null && vendor.trim() !== '';
   const canSubmit = isFormValid && !isSaving;
 
+  // Closing is the same 300ms as opening, in reverse.
+  //
+  // A 250ms duration used to be asked for below, which is not a value
+  // Tailwind's scale generates — so it emitted no CSS, the fade out fell back
+  // to the 150ms baked into `transition-opacity`, and it finished long before
+  // the unmount. What that looked like was the form vanishing rather than
+  // closing. Durations must come from Tailwind's scale or be written as
+  // arbitrary values; `durationClasses.test.ts` enforces it.
   return (
-    <div className={`fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-xl transition-opacity duration-250 ${isClosing ? 'opacity-0' : 'animate-in fade-in duration-300'}`}>
-      <div id="tutorial-transaction-form" className={`w-full max-w-sm lg:max-w-lg bg-white dark:bg-slate-900 rounded-[3rem] p-6 space-y-4 shadow-2xl border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] border-slate-100 dark:border-slate-800/60 max-h-[90vh] overflow-y-auto no-scrollbar transition-all duration-250 ${isClosing ? 'opacity-0 scale-95' : 'animate-in zoom-in-95 duration-300'}`}>
+    <div className={`fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-xl transition-opacity duration-300 ${isClosing ? 'opacity-0' : 'animate-in fade-in duration-300'}`}>
+      <div id="tutorial-transaction-form" className={`w-full max-w-sm lg:max-w-lg bg-white dark:bg-slate-900 rounded-[3rem] p-6 space-y-4 shadow-2xl border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] border-slate-100 dark:border-slate-800/60 max-h-[90vh] overflow-y-auto no-scrollbar transition-all duration-300 ${isClosing ? 'opacity-0 scale-95' : 'animate-in zoom-in-95 duration-300'}`}>
         <div className="flex items-center justify-between">
           <div className="flex flex-col">
             <h2 className="text-lg font-bold text-slate-600 dark:text-slate-100 tracking-tight">

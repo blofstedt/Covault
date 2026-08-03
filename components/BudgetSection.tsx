@@ -16,6 +16,19 @@ interface ExtendedBudgetCategory extends BudgetCategory {
 /** Must match `.budget-row-anim`'s transition-duration in index.css. */
 const EXPAND_DURATION_MS = 320;
 
+/**
+ * The cascade the transactions arrive on when a budget opens, top row first.
+ *
+ * Bounded on purpose, in two ways. The step is small enough that the rows a
+ * phone can actually show — six or seven — are all in place within about
+ * 150ms, so it reads as one quick movement rather than a queue. And only the
+ * first `STACK_MAX_ROWS` get an animation at all: a budget can hold a month of
+ * spending, and animating forty rows would mean forty composited layers for
+ * the sake of thirty rows nobody can see below the fold.
+ */
+const STACK_STEP_MS = 24;
+const STACK_MAX_ROWS = 12;
+
 function prefersReducedMotion(): boolean {
   if (typeof window === 'undefined' || !window.matchMedia) return false;
   try {
@@ -419,7 +432,20 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                 // measure: TransactionItem is memoised and takes no ref, and
                 // wrapping every row (rather than only the anchor) keeps
                 // `space-y-3`'s child spacing identical either way.
-                <div key={tx.id} ref={index === todayIndex ? todayAnchorRef : undefined}>
+                // The stack class is keyed on `revealed`, so it is added as the
+                // card finishes growing and removed on collapse — which is
+                // what lets the animation run again on the next expand rather
+                // than only on mount.
+                <div
+                  key={tx.id}
+                  ref={index === todayIndex ? todayAnchorRef : undefined}
+                  className={revealed && index < STACK_MAX_ROWS ? 'budget-row-stack' : undefined}
+                  style={
+                    index < STACK_MAX_ROWS
+                      ? ({ '--row-delay': `${index * STACK_STEP_MS}ms` } as React.CSSProperties)
+                      : undefined
+                  }
+                >
                   <TransactionItem
                     transaction={tx}
                     onTap={onTransactionTap}
