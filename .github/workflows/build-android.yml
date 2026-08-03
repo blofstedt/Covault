@@ -75,6 +75,43 @@ jobs:
           cd android/app
           sed -i '/dependencies {/a\    implementation "androidx.biometric:biometric:1.1.0"' build.gradle
 
+      # The phone will only install a new APK over the old one when both are
+      # signed by the same key. Gradle generates a throwaway debug key when it
+      # can't find one, and this runner is fresh every time — which is why
+      # every build used to demand an uninstall first, taking the app's local
+      # data with it. Pinning the key is what makes updates in-place.
+      #
+      # The committed key is a debug key for a public repository whose APK is
+      # public anyway, so it protects nothing worth protecting. Setting the
+      # ANDROID_DEBUG_KEYSTORE_BASE64 secret overrides it and keeps the key
+      # private; switching costs exactly one more uninstall, once.
+      - name: Restore the app signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          mkdir -p "$HOME/.android"
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "Using the signing key from repository secrets."
+            printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$HOME/.android/debug.keystore"
+          else
+            echo "Using the committed debug signing key."
+            cp android-custom/covault-debug.keystore "$HOME/.android/debug.keystore"
+          fi
+
+      # The run number is the app's versionCode, and the release is tagged with
+      # the same integer — that shared number is the whole of the update check.
+      # It has to be stamped here because android/ is regenerated each run.
+      - name: Stamp the build number into the APK
+        run: |
+          cd android/app
+          sed -i "s/versionCode .*/versionCode ${{ github.run_number }}/" build.gradle
+          sed -i "s/versionName \".*\"/versionName \"1.0.${{ github.run_number }}\"/" build.gradle
+          grep -E "versionCode|versionName" build.gradle
+          # If Capacitor ever changes the shape of this file the sed above
+          # matches nothing, every build ships as versionCode 1, and the app
+          # quietly stops seeing updates. Fail here instead.
+          grep -q "versionCode ${{ github.run_number }}" build.gradle
+
       - name: Build Android APK (Debug)
         run: |
           cd android
@@ -94,3 +131,29 @@ jobs:
           path: android/app/build/outputs/apk/debug/Covault-*.apk
           retention-days: 14
           compression-level: 0
+
+      # What the app on the phone actually reads. An Actions artifact is a zip
+      # behind a login; a release asset is a plain public download, which is
+      # what lets the app fetch it itself. Pull requests never publish — only a
+      # merged change should reach anyone's phone.
+      - name: Publish the APK as a release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The release body is what the update pill shows as "what changed",
+          # so it is the commit subject rather than a generated changelog.
+          NOTES="$(git log -1 --pretty=%s)"
+          TAG="v${{ github.run_number }}"
+          APK="android/app/build/outputs/apk/debug/${APK_NAME}"
+          # Re-running a workflow reuses its run number, so the tag may already
+          # exist. Replacing the asset is the right answer there; failing the
+          # build over it is not.
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" "$APK" --clobber
+          else
+            gh release create "$TAG" "$APK" \
+              --title "Covault 1.0.${{ github.run_number }}" \
+              --notes "$NOTES" \
+              --latest
+          fi

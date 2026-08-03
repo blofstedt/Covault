@@ -147,6 +147,7 @@ fi
 mkdir -p "$JAVA_DIR"
 cp -v "$CUSTOM_DIR/MainActivity.java" "$JAVA_DIR/"
 cp -v "$CUSTOM_DIR/CovaultNotificationPlugin.java" "$JAVA_DIR/"
+cp -v "$CUSTOM_DIR/CovaultUpdaterPlugin.java" "$JAVA_DIR/"
 cp -v "$CUSTOM_DIR/NotificationListener.java" "$JAVA_DIR/"
 cp -v "$CUSTOM_DIR/BootReceiver.java" "$JAVA_DIR/"
 cp -v "$CUSTOM_DIR/CovaultWidgetProvider.java" "$JAVA_DIR/"

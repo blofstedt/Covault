@@ -20,6 +20,16 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
 
+    <!--
+        Self-update: Covault installs its own new versions rather than the user
+        downloading an APK by hand. This permission only lets the app *ask* —
+        Android still shows its own install confirmation every time, and on
+        Android 8+ the user has to allow Covault as an install source once in
+        Settings before even the ask is honoured (CovaultUpdaterPlugin sends
+        them there).
+    -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <!-- For keeping the app running in background -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />

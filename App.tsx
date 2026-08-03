@@ -5,6 +5,7 @@ import Dashboard from './components/Dashboard';
 import Onboarding from './components/Onboarding';
 import FullScreenLoader from './components/FullScreenLoader';
 import ErrorBoundary from './components/ErrorBoundary';
+import UpdateBanner from './components/UpdateBanner';
 import type { AppState, BudgetCategory, Transaction, Toast } from './types';
 import { supabase } from './lib/supabase';
 import { useAuthState, AuthStatus } from './lib/hooks/useAuthState';
@@ -13,6 +14,7 @@ import { useNotificationListener } from './lib/hooks/useNotificationListener';
 import { covaultNotification, autoDetectAndSaveMonitoredApps } from './lib/covaultNotification';
 import { loadBankingAppsFromDB } from './lib/bankingApps';
 import { useAppTheme } from './lib/hooks/useAppTheme';
+import { useAppUpdate } from './lib/hooks/useAppUpdate';
 import { useUserData } from './lib/hooks/useUserData';
 import { executeRecurringTransactions } from './lib/recurringExecutor';
 import { sendRecurringCatchUpNotification } from './lib/appNotifications';
@@ -278,6 +280,9 @@ const App: React.FC = () => {
 
   useAppTheme(appState.settings.theme);
 
+  // Checks GitHub for a newer build on launch and on resume. No-ops off-device.
+  const appUpdate = useAppUpdate();
+
   useEffect(() => {
     saveSettingsToStorage(appState.settings);
   }, [appState.settings]);
@@ -363,6 +368,9 @@ const App: React.FC = () => {
           onReloadTransactions={loadTransactions}
         />
       )}
+      {/* Only once they're in. An update pill over the sign-in screen is noise
+          in front of someone who is trying to do something else. */}
+      {authState === 'authenticated' && <UpdateBanner {...appUpdate} />}
     </div>
     </ErrorBoundary>
   );

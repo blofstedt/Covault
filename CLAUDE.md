@@ -112,6 +112,7 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | "last month's entries are still listed" / "the list is in the wrong order" | `lib/transactionOrdering.ts` (one month, chronological) → `lib/hooks/useCurrentDay.ts` (the single clock) → `components/Dashboard.tsx` |
 | "a modal/sheet looks broken or is cut off" | `components/ui/Portal.tsx` — overlays inside `<main>` need it; see Invariants |
 | "the animation is janky" | `index.css`, `components/BudgetSection.tsx`, `components/dashboard_components/BudgetFlowChart.tsx` |
+| "the app didn't offer me the update" | `lib/appUpdate.ts` (the check) → `lib/hooks/useAppUpdate.ts` (when, and the download) → `android-custom/CovaultUpdaterPlugin.java` (the install) |
 | anything about the Android build | `scripts/sync-android.sh`, `.github/workflows/build-android.yml` |
 
 Deeper detail on any of these: `docs/ARCHITECTURE.md`. Human setup: `README.md`.
@@ -144,6 +145,16 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
 - **Overlays rendered inside the Review page's `<main>` need `Portal`.** `<main>`
   is `relative z-10`, which caps everything inside it below the `z-40` nav bar
   no matter how large its own z-index is.
+- **The APK signing key is pinned on purpose.** CI copies
+  `android-custom/covault-debug.keystore` to `~/.android/debug.keystore` before
+  building. Without it Gradle mints a fresh key per run, Android refuses to
+  install the new APK over the old one, and every update means uninstalling —
+  which erases the app's local data. Changing or removing that key forces one
+  more uninstall on every phone.
+- **The CI run number is the versionCode *and* the release tag `v<n>`.** That
+  shared integer is the entire update check. Break either half and the app
+  never offers an update again, in silence. `appUpdate.test.ts` reads the
+  workflow to catch it.
 - **A settings toggle that "works" may not be saving.** The UI applies changes
   optimistically and `saveSettingToDb` only logs failures, so a missing column
   is indistinguishable from success. Check the column exists.

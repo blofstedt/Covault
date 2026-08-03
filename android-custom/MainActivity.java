@@ -8,6 +8,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(CovaultNotificationPlugin.class);
+        registerPlugin(CovaultUpdaterPlugin.class);
         super.onCreate(savedInstanceState);
         // Belt and braces. BridgeActivity.load() already routes the launch
         // intent through onNewIntent below, so this is normally a no-op —
