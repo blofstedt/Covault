@@ -994,11 +994,26 @@ describe('Merchant descriptor signal (step 5c)', () => {
     expect(row?.budget).toBe('Restaurants');
   });
 
-  it('leaves the capture in Other when the household has no dining budget', async () => {
-    // Better an honest "Other" than a restaurant charge invented into Leisure.
+  it('files a restaurant into Leisure when there is no dining budget', async () => {
+    // The stock category set has no "dining", and this used to stop there and
+    // leave the charge in Other — so the descriptor detection ran on every
+    // restaurant and was thrown away. Leisure is where this household puts
+    // eating out.
     const { row } = await captureRow(
       'BMO You spent $18.40 at TST* LA CARNITA on your card',
       CATEGORIES,
+    );
+    expect(row?.budget).toBe('Leisure');
+  });
+
+  it('still leaves it in Other when there is nowhere sensible at all', async () => {
+    // No dining category and no Leisure. Housing is not where a taqueria goes.
+    const { row } = await captureRow(
+      'BMO You spent $18.40 at TST* LA CARNITA on your card',
+      [
+        { id: 'cat-housing', name: 'Housing' },
+        { id: 'cat-other', name: 'Other' },
+      ],
     );
     expect(row?.budget).toBe('Other');
   });

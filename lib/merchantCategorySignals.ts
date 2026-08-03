@@ -155,13 +155,34 @@ const DINING_CATEGORY_PATTERNS: RegExp[] = [
 ];
 
 /**
+ * Where dining goes in a vault that has no dining category of its own.
+ *
+ * This used to return null instead, on the reasoning that dropping a
+ * restaurant into "Leisure" was a guess dressed up as a decision. The flaw in
+ * that reasoning was practical: the stock category set is Housing, Groceries,
+ * Transport, Utilities, Leisure, Services, Other, which matches none of the
+ * patterns above — so every household still on the defaults got the full
+ * descriptor detection above and then had its answer thrown away, and every
+ * restaurant landed in "Other" regardless.
+ *
+ * Restaurants belong in Leisure here — the household's own call, and the one
+ * that turns the detector back on for anyone who never renamed a category.
+ * It stays the last resort: a vault with a real dining category still uses it,
+ * and the caller still refuses to auto-file anything a signal decided, so a
+ * wrong guess costs one tap in the review list rather than a silent
+ * miscategorisation.
+ */
+const DINING_FALLBACK_PATTERN = /\b(?:leisure|entertainment|fun|lifestyle|discretionary)\b/i;
+
+/**
  * Map a signal onto one of the user's own budget categories.
  *
- * Returns null when the user has no category the signal clearly belongs in.
- * That is the intended outcome, not a failure: inventing a destination — a
- * restaurant charge dropped into "Leisure" because it was the closest of a
- * generic default set — is how a month of budget data quietly goes wrong. When
- * there is nowhere obvious to put it, "Other" and a review tap is correct.
+ * A category named for dining wins outright. Failing that, Leisure — see
+ * DINING_FALLBACK_PATTERN for why that is a decision rather than a shrug.
+ *
+ * Still returns null when the vault has neither, because inventing a
+ * destination out of whatever is left is how a month of budget data quietly
+ * goes wrong. "Other" and a review tap is the correct outcome then.
  */
 export function resolveSignalCategory<T extends { id: string; name: string }>(
   signal: MerchantSignal,
@@ -173,5 +194,6 @@ export function resolveSignalCategory<T extends { id: string; name: string }>(
     const hit = availableCategories.find((c) => c?.name && pattern.test(c.name));
     if (hit) return hit;
   }
-  return null;
+
+  return availableCategories.find((c) => c?.name && DINING_FALLBACK_PATTERN.test(c.name)) ?? null;
 }

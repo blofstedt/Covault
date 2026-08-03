@@ -34,7 +34,11 @@ const DEFAULT_SETTINGS = {
   rolloverOverspend: false,
   useLeisureAsBuffer: true,
   showSavingsInsight: true,
-  theme: 'light' as const,
+  // Dark unless the user has said otherwise. Changing this only affects a
+  // vault that has never chosen — a stored preference still wins, here and in
+  // useDataLoading, and index.html reads the same value before first paint so
+  // a new install never flashes white.
+  theme: 'dark' as const,
   notificationsEnabled: false,
   app_notifications_enabled: false,
   hiddenCategories: [] as string[],

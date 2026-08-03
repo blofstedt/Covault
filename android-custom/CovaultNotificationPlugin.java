@@ -285,8 +285,10 @@ public class CovaultNotificationPlugin extends Plugin {
 
     @PluginMethod
     public void getHideBankNotifications(PluginCall call) {
-        boolean hidden = getContext().getSharedPreferences("covault_prefs", 0)
-            .getBoolean(NotificationListener.HIDE_BANK_NOTIFICATIONS_KEY, false);
+        // Shared with the listener rather than re-reading the preference here,
+        // so the switch can never show a different answer than the one the
+        // capture path acts on. See NotificationListener for the default.
+        boolean hidden = NotificationListener.isHideBankNotificationsEnabled(getContext());
         JSObject ret = new JSObject();
         ret.put("hidden", hidden);
         call.resolve(ret);

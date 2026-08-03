@@ -1,7 +1,9 @@
 package com.covault.app;
 
 import android.app.Notification;
+import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
@@ -669,11 +671,33 @@ public class NotificationListener extends NotificationListenerService {
     }
 
     private boolean isHideBankNotificationsEnabled() {
+        return isHideBankNotificationsEnabled(this);
+    }
+
+    /**
+     * Whether a bank's own notification should be cleared once Covault has the
+     * purchase.
+     *
+     * On by default. Capturing the purchase is the point of the app, and
+     * leaving the bank's notification sitting in the tray afterwards just means
+     * reading the same thing twice. `contains` is what makes that safe to
+     * assume: it separates "has never decided" from "decided no", so turning
+     * the toggle off still sticks.
+     *
+     * The catch is deliberately NOT the same answer. An unreadable preference
+     * is not consent — deleting someone's bank notifications on the strength of
+     * a failed read is the one outcome here worth being timid about.
+     *
+     * Static and shared so the settings toggle reads exactly what the listener
+     * acts on. Two copies of this default drifting apart would show the switch
+     * off while notifications quietly disappeared.
+     */
+    static boolean isHideBankNotificationsEnabled(Context context) {
         try {
-            return getSharedPreferences("covault_prefs", 0)
-                .getBoolean(HIDE_BANK_NOTIFICATIONS_KEY, false);
+            SharedPreferences prefs = context.getSharedPreferences("covault_prefs", 0);
+            if (!prefs.contains(HIDE_BANK_NOTIFICATIONS_KEY)) return true;
+            return prefs.getBoolean(HIDE_BANK_NOTIFICATIONS_KEY, true);
         } catch (Exception e) {
-            // Unreadable preference means we cannot prove the user opted in.
             return false;
         }
     }

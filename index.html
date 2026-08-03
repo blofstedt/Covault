@@ -8,6 +8,28 @@
     <title>Covault v1</title>
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@700;800&display=swap" rel="stylesheet" />
+
+    <script>
+      /*
+        Pick the theme before the first paint.
+
+        React only adds `dark` to <html> once it has mounted and read the
+        stored settings, which is several hundred milliseconds into a cold
+        start on a phone. Until then the body renders light, so a dark vault
+        opened to a white flash every single time.
+
+        Anything other than an explicit 'light' means dark, which is also what
+        makes dark the default for a vault that has never chosen. The key and
+        shape here mirror SETTINGS_KEY / DEFAULT_SETTINGS in App.tsx.
+      */
+      try {
+        var stored = localStorage.getItem('covault_settings');
+        var theme = stored ? JSON.parse(stored).theme : null;
+        if (theme !== 'light') document.documentElement.classList.add('dark');
+      } catch (e) {
+        document.documentElement.classList.add('dark');
+      }
+    </script>
     <style>
       * {
         -webkit-tap-highlight-color: transparent;

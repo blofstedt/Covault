@@ -190,7 +190,10 @@ html.theme-transitioning * {
    `--row-delay` from BudgetSection, which also caps how many rows get one —
    see the constants there for why it is bounded rather than index * step. */
 .budget-row-stack {
-  animation: budgetRowStack 0.26s cubic-bezier(0.32, 0.72, 0.24, 1) both;
+  /* 0.32s, the same clock as the card's expand and everything else moving
+     during it. Was 0.26s, which combined with too small a gap between rows
+     made the whole cascade read as a single flicker. */
+  animation: budgetRowStack 0.32s cubic-bezier(0.32, 0.72, 0.24, 1) both;
   animation-delay: var(--row-delay, 0ms);
 }
 @media (prefers-reduced-motion: reduce) {

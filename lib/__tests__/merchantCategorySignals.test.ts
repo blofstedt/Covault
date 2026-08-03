@@ -163,13 +163,29 @@ describe('resolveSignalCategory', () => {
     expect(resolveSignalCategory(signal, cats)).toBeNull();
   });
 
-  it('returns null rather than inventing a home in a generic default set', () => {
-    // The stock categories have nowhere a restaurant obviously belongs.
-    // Dropping it in "Leisure" would be a guess dressed up as a decision;
-    // "Other" plus a review tap is the correct outcome.
+  it('falls back to Leisure in the stock category set', () => {
+    // This is the case that matters most: a vault still on the default
+    // categories has nothing matching "dining", so returning null here — which
+    // is what this used to do — meant the whole descriptor detector above ran
+    // and was then discarded, and every restaurant landed in Other.
     const defaults = ['Housing', 'Groceries', 'Transport', 'Utilities', 'Leisure', 'Services', 'Other']
       .map((name, i) => ({ id: String(i), name }));
-    expect(resolveSignalCategory(signal, defaults)).toBeNull();
+    expect(resolveSignalCategory(signal, defaults)?.name).toBe('Leisure');
+  });
+
+  it('prefers a real dining category over the Leisure fallback', () => {
+    const cats = [
+      { id: 'a', name: 'Leisure' },
+      { id: 'b', name: 'Restaurants' },
+    ].map(c => c);
+    expect(resolveSignalCategory(signal, cats)?.name).toBe('Restaurants');
+  });
+
+  it('still returns null when there is neither', () => {
+    // Housing is not where a taqueria goes, and guessing anyway is worse than
+    // Other plus a review tap.
+    const cats = [{ id: 'a', name: 'Housing' }, { id: 'b', name: 'Other' }];
+    expect(resolveSignalCategory(signal, cats)).toBeNull();
   });
 
   it('is safe on an empty category list', () => {

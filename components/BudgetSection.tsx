@@ -19,14 +19,16 @@ const EXPAND_DURATION_MS = 320;
 /**
  * The cascade the transactions arrive on when a budget opens, top row first.
  *
- * Bounded on purpose, in two ways. The step is small enough that the rows a
- * phone can actually show — six or seven — are all in place within about
- * 150ms, so it reads as one quick movement rather than a queue. And only the
- * first `STACK_MAX_ROWS` get an animation at all: a budget can hold a month of
- * spending, and animating forty rows would mean forty composited layers for
+ * The step was 24ms first, which was too quick to read as a cascade at all —
+ * the rows effectively arrived together. At 45ms the six or seven a phone can
+ * show land over about 270ms, which is long enough to see them come down in
+ * order without anyone waiting on it.
+ *
+ * Only the first `STACK_MAX_ROWS` get an animation: a budget can hold a month
+ * of spending, and animating forty rows would mean forty composited layers for
  * the sake of thirty rows nobody can see below the fold.
  */
-const STACK_STEP_MS = 24;
+const STACK_STEP_MS = 45;
 const STACK_MAX_ROWS = 12;
 
 function prefersReducedMotion(): boolean {

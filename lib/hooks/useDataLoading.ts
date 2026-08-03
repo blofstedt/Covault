@@ -231,8 +231,10 @@ export const useDataLoading = ({
             ? DEFAULT_MONTHLY_INCOME
             : parsedMonthlyIncome;
 
-          // Load theme from database
-          const theme = rows[0].theme_selected || 'light';
+          // Load theme from database. A row that has never stored one falls
+          // back to the same default as App.tsx and index.html — three places
+          // that have to agree or the app changes colour as it loads.
+          const theme = rows[0].theme_selected || 'dark';
 
           // Load trial/subscription fields
           const trial_started_at = rows[0].trial_started_at || null;
