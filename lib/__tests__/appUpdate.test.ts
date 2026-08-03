@@ -203,9 +203,19 @@ describe('the workflow that feeds it', () => {
     expect(workflow).toContain('gh release create "$TAG"');
   });
 
-  it('pins the signing key, so updates install over the old app', () => {
-    // Without this the runner mints a fresh debug key per build and Android
-    // refuses the install, which is what forced uninstall-and-reinstall.
-    expect(workflow).toContain('$HOME/.android/debug.keystore');
+  it('names the signing key in the Gradle build rather than by location', () => {
+    // Dropping the keystore where Gradle is *expected* to look for it is what
+    // this used to do, and it silently did nothing — three releases went out
+    // under three different keys with a green build every time.
+    expect(workflow).toContain('signingConfigs');
+    expect(workflow).toContain('keyAlias "androiddebugkey"');
+  });
+
+  it('proves the pinned key was the one actually used', () => {
+    // The assertion above only says the workflow asks for the right key. This
+    // is the one that says the APK got it: without a check on the built file,
+    // a signing config that fails to apply is indistinguishable from success.
+    expect(workflow).toContain('apksigner');
+    expect(workflow).toContain('certificate SHA-256 digest');
   });
 });

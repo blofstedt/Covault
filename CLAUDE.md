@@ -145,12 +145,18 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
 - **Overlays rendered inside the Review page's `<main>` need `Portal`.** `<main>`
   is `relative z-10`, which caps everything inside it below the `z-40` nav bar
   no matter how large its own z-index is.
-- **The APK signing key is pinned on purpose.** CI copies
-  `android-custom/covault-debug.keystore` to `~/.android/debug.keystore` before
-  building. Without it Gradle mints a fresh key per run, Android refuses to
-  install the new APK over the old one, and every update means uninstalling —
-  which erases the app's local data. Changing or removing that key forces one
-  more uninstall on every phone.
+- **The APK signing key is pinned, and the pinning is verified.** CI writes an
+  explicit `signingConfigs.debug` into `android/app/build.gradle` naming
+  `android-custom/covault-debug.keystore`, then checks the built APK's
+  certificate with `apksigner` and fails if it doesn't match. Both halves are
+  load-bearing. Without a pinned key Gradle mints a fresh one per run and
+  Android refuses to install the update, so the only way forward is
+  uninstalling — which erases the app's local data. And without the check the
+  pinning can fail silently: the first attempt dropped the keystore at
+  `~/.android/debug.keystore` and Gradle ignored it, which shipped three
+  uninstallable releases with a green build each time. Do not "simplify" this
+  back to copying a file into place. Changing the key forces one more uninstall
+  on every phone.
 - **The CI run number is the versionCode *and* the release tag `v<n>`.** That
   shared integer is the entire update check. Break either half and the app
   never offers an update again, in silence. `appUpdate.test.ts` reads the
