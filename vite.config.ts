@@ -1,7 +1,36 @@
 import path from 'path';
 import { execSync } from 'child_process';
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+
+/**
+ * Drop the ONNX Runtime WebAssembly binary that nothing loads.
+ *
+ * Transformers.js resolves that binary from a CDN — `lib/aiExtractor.ts` sets
+ * the path explicitly so this is a guarantee rather than a default. But the
+ * library also carries a `new URL(..., import.meta.url)` fallback for the case
+ * where the path is unset, Vite reads that statically, and emits a 21MB file
+ * that is never fetched: about a third of the APK, the same again on every
+ * deploy, and dead weight in every background web update.
+ *
+ * Deliberately not an error when there is nothing to drop — a dependency that
+ * stops emitting the file is fine. It is the pairing with aiExtractor that
+ * matters, and `lib/__tests__/aiRuntimeSource.test.ts` holds that.
+ */
+function dropUnusedOrtWasm(): Plugin {
+  return {
+    name: 'covault-drop-unused-ort-wasm',
+    apply: 'build',
+    generateBundle(_options, bundle) {
+      for (const fileName of Object.keys(bundle)) {
+        if (/ort-wasm.*\.wasm$/.test(fileName)) {
+          delete bundle[fileName];
+          console.log(`Dropped unused ONNX runtime binary: ${fileName}`);
+        }
+      }
+    },
+  };
+}
 
 /**
  * Short commit SHA for the running build, for the in-app build marker.
@@ -52,6 +81,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       react(),
+      dropUnusedOrtWasm(),
     ],
 
     // 2. DEFINE ENV VARIABLES: This replaces process.env and import.meta.env references at build time.

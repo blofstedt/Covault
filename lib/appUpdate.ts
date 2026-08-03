@@ -27,6 +27,23 @@ export interface AvailableUpdate {
   apkUrl: string;
   /** What changed: the commit subject the release was built from. */
   notes: string;
+  /**
+   * Web bundles published with this release, keyed by the fingerprint of the
+   * native code they were built against. A phone only ever applies its own.
+   */
+  webBundles: Record<string, string>;
+}
+
+/**
+ * `covault-web-<nativeHash>.zip` → the fingerprint.
+ *
+ * The fingerprint travels in the filename rather than a manifest file because
+ * that makes it impossible for the two to disagree.
+ */
+export function parseWebBundleName(name: unknown): string | null {
+  if (typeof name !== 'string') return null;
+  const match = /^covault-web-([0-9a-f]{6,64})\.zip$/.exec(name.trim());
+  return match ? match[1] : null;
 }
 
 /**
@@ -57,13 +74,19 @@ export function parseRelease(raw: unknown): AvailableUpdate | null {
 
   const assets = Array.isArray(release.assets) ? release.assets : [];
   let apkUrl: string | null = null;
+  const webBundles: Record<string, string> = {};
   for (const asset of assets) {
     if (!asset || typeof asset !== 'object') continue;
-    const url = (asset as Record<string, unknown>).browser_download_url;
-    if (typeof url === 'string' && url.toLowerCase().endsWith('.apk')) {
+    const entry = asset as Record<string, unknown>;
+    const url = entry.browser_download_url;
+    if (typeof url !== 'string') continue;
+
+    if (!apkUrl && url.toLowerCase().endsWith('.apk')) {
       apkUrl = url;
-      break;
+      continue;
     }
+    const hash = parseWebBundleName(entry.name);
+    if (hash) webBundles[hash] = url;
   }
   if (!apkUrl) return null;
 
@@ -75,7 +98,24 @@ export function parseRelease(raw: unknown): AvailableUpdate | null {
     versionName: name || `1.0.${versionCode}`,
     apkUrl,
     notes: body,
+    webBundles,
   };
+}
+
+/**
+ * The web bundle this phone may apply, or null if it must take the whole APK
+ * instead.
+ *
+ * Null is the answer whenever there is any doubt — no fingerprint, no matching
+ * bundle — because the cost of being wrong is an app that starts against
+ * native code it wasn't built for.
+ */
+export function selectWebBundle(
+  update: AvailableUpdate | null,
+  nativeHash: string,
+): string | null {
+  if (!update || !nativeHash) return null;
+  return update.webBundles[nativeHash] ?? null;
 }
 
 /**

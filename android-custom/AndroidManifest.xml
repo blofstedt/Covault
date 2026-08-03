@@ -30,6 +30,13 @@
     -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!--
+        Background web updates fetch a small bundle with no one watching, so
+        they must not put a progress bar in the notification shade. Only the
+        user-initiated APK download shows one.
+    -->
+    <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
+
     <!-- For keeping the app running in background -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />

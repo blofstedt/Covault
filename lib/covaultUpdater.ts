@@ -7,19 +7,41 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
  * straight away, JavaScript polls it, and asks for the install when it lands.
  * See the plugin for why the download isn't awaited natively.
  */
-export interface CovaultUpdaterPlugin {
+export interface UpdaterStatus {
   /** Whether Android currently lets Covault install an APK at all. */
-  getStatus(): Promise<{ canInstall: boolean }>;
-  /** Send the user to the Settings page where that is granted. */
+  canInstall: boolean;
+  /** versionCode of the installed APK. */
+  apkVersion: number;
+  /** Version of the applied web bundle; 0 means the one inside the APK. */
+  webVersion: number;
+  /**
+   * Fingerprint of this APK's native code. Empty means unknown, which the
+   * caller must read as "never apply a web bundle".
+   */
+  nativeHash: string;
+}
+
+export interface CovaultUpdaterPlugin {
+  getStatus(): Promise<UpdaterStatus>;
+  /** Send the user to the Settings page where install permission is granted. */
   openInstallSettings(): Promise<void>;
   /** Queue the download; the id comes back as a string. */
-  startDownload(options: { url: string }): Promise<{ id: string }>;
+  startDownload(options: { url: string; fileName?: string }): Promise<{ id: string }>;
   pollDownload(options: { id: string }): Promise<{
     status: 'pending' | 'running' | 'done' | 'failed';
     percent: number;
   }>;
   /** Hand the finished download to Android's installer. */
   install(options: { id: string }): Promise<void>;
+  /**
+   * Unpack a downloaded web bundle and serve it from the next launch onwards.
+   * Nothing changes in the running app.
+   */
+  stageWebBundle(options: { id: string; version: number }): Promise<void>;
+  /** Tell the native side this launch succeeded, ending a bundle's probation. */
+  confirmWebBundle(): Promise<void>;
+  /** Go back to the web build inside the APK. */
+  revertWebBundle(): Promise<void>;
 }
 
 const plugin = registerPlugin<CovaultUpdaterPlugin>('CovaultUpdater');

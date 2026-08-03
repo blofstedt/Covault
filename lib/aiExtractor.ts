@@ -55,7 +55,28 @@ let generatorPromise: Promise<Text2TextGenerationPipeline> | null = null;
 function getGenerator(): Promise<Text2TextGenerationPipeline> {
   if (!generatorPromise) {
     log.debug('[aiExtractor] Loading AI model:', MODEL_ID);
-    generatorPromise = import('@huggingface/transformers').then(({ pipeline }) => {
+    generatorPromise = import('@huggingface/transformers').then(({ pipeline, env }) => {
+      // Say out loud where the ONNX runtime's WebAssembly binary comes from.
+      //
+      // Transformers.js sets exactly this by default, so this changes nothing
+      // at runtime — what it changes is that it can no longer *silently* stop
+      // being true. The library also has a fallback that resolves the binary
+      // relative to the bundle, and Vite sees that fallback and emits a 21MB
+      // .wasm into dist/ that is never fetched. vite.config.ts drops that file
+      // on the strength of this line; the two belong together, and
+      // `aiRuntimeSource.test.ts` fails the build if they drift apart.
+      //
+      // Keeping it remote costs nothing in reach: the model weights come from
+      // huggingface.co on first use no matter what, so the AI fallback has
+      // never worked without a network and bundling the runtime would not
+      // change that. It does keep 21MB out of the APK and out of every
+      // background web update.
+      if (env.backends?.onnx?.wasm) {
+        env.backends.onnx.wasm.wasmPaths =
+          `https://cdn.jsdelivr.net/npm/@huggingface/transformers@${env.version}/dist/`;
+      }
+      return pipeline;
+    }).then((pipeline) => {
       // `pipeline` is cast before the call: resolving its full task overload
       // union without a contextual return type overflows the checker (TS2590).
       // The result is re-typed on the way out, so callers are unaffected.

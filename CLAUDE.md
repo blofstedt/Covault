@@ -112,7 +112,7 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | "last month's entries are still listed" / "the list is in the wrong order" | `lib/transactionOrdering.ts` (one month, chronological) → `lib/hooks/useCurrentDay.ts` (the single clock) → `components/Dashboard.tsx` |
 | "a modal/sheet looks broken or is cut off" | `components/ui/Portal.tsx` — overlays inside `<main>` need it; see Invariants |
 | "the animation is janky" | `index.css`, `components/BudgetSection.tsx`, `components/dashboard_components/BudgetFlowChart.tsx` |
-| "the app didn't offer me the update" | `lib/appUpdate.ts` (the check) → `lib/hooks/useAppUpdate.ts` (when, and the download) → `android-custom/CovaultUpdaterPlugin.java` (the install) |
+| "the app didn't offer me the update" / "it didn't update itself" | `lib/appUpdate.ts` (the check) → `lib/hooks/useAppUpdate.ts` (when, and which of the two routes) → `android-custom/CovaultUpdaterPlugin.java` (install, or unpack) |
 | anything about the Android build | `scripts/sync-android.sh`, `.github/workflows/build-android.yml` |
 
 Deeper detail on any of these: `docs/ARCHITECTURE.md`. Human setup: `README.md`.
@@ -155,6 +155,26 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   shared integer is the entire update check. Break either half and the app
   never offers an update again, in silence. `appUpdate.test.ts` reads the
   workflow to catch it.
+- **A web-only change updates itself; anything native needs the APK.** Which
+  route a release takes is decided by `scripts/native-hash.mjs` — a fingerprint
+  of `android-custom/`, `capacitor.config.ts` and the Capacitor plugin
+  versions, baked into the APK and used to name the published web bundle. A
+  phone applies only a bundle carrying its own fingerprint, so touching any
+  native file automatically forces a full install instead. Do not "simplify"
+  that by dropping the fingerprint: the failure it prevents is web code calling
+  into native code that isn't there. `webBundleWiring.test.ts` holds the five
+  links together.
+- **`CovaultUpdaterPlugin.load()` runs before Capacitor reads the stored
+  server path.** That ordering *is* the rollback: a staged web bundle that
+  hasn't confirmed two launches gets thrown away before the WebView is pointed
+  at it. `useAppUpdate` calling `confirmWebBundle()` a few seconds after mount
+  is the other half — remove it and every update silently reverts.
+- **The 21MB ONNX runtime is dropped from the build on purpose.**
+  `vite.config.ts` deletes it because `lib/aiExtractor.ts` pins the runtime to
+  a CDN, which makes the bundled copy unreachable. The two only work as a pair;
+  `aiRuntimeSource.test.ts` fails the build if one goes without the other. The
+  model weights come from huggingface.co regardless, so the AI fallback has
+  never worked offline.
 - **A settings toggle that "works" may not be saving.** The UI applies changes
   optimistically and `saveSettingToDb` only logs failures, so a missing column
   is indistinguishable from success. Check the column exists.

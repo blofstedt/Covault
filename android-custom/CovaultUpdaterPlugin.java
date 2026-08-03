@@ -3,6 +3,8 @@ package com.covault.app;
 import android.app.DownloadManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.pm.PackageInfo;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
@@ -16,21 +18,38 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 /**
- * Downloads a new Covault APK and hands it to Android's package installer.
+ * The two ways Covault replaces itself.
  *
- * Deliberately dumb: every method returns immediately and the JavaScript side
- * drives the sequence (start → poll → install). The alternative — one native
- * method that blocks until the download finishes — means holding a PluginCall
- * across minutes of radio time, which is exactly the shape that breaks when the
- * activity is recreated mid-download. Polling costs a timer in JS and nothing
- * else.
+ * <p><b>A new APK</b>, when the Android code changed: downloaded here and handed
+ * to the system installer, which always asks the user first. There is no API
+ * that skips that confirmation, so this route costs one tap and cannot be made
+ * silent.
  *
- * The download lands in the app's own external files directory, so it needs no
- * storage permission and is removed with the app. DownloadManager hands back a
- * content:// URI for it, which is what the installer will accept — a file://
- * URI throws FileUriExposedException on anything modern.
+ * <p><b>A new web bundle</b>, when only the React side changed: downloaded,
+ * unpacked into private storage, and pointed at for the next launch. Capacitor
+ * already knows how to serve the app from a directory instead of the APK's
+ * assets — see CAP_SERVER_PATH — so this is bookkeeping rather than invention.
+ * Nobody taps anything, and a bundle that cannot start is put back after two
+ * launches by load().
+ *
+ * <p>Deliberately dumb: every method returns immediately and the JavaScript side
+ * drives the sequence (start → poll → install or stage). The alternative — one
+ * native method that blocks until the download finishes — means holding a
+ * PluginCall across minutes of radio time, which is exactly the shape that
+ * breaks when the activity is recreated mid-download. Polling costs a timer in
+ * JS and nothing else.
+ *
+ * <p>Downloads land in the app's own external files directory, so they need no
+ * storage permission and go when the app does. DownloadManager hands back a
+ * content:// URI for the APK, which is what the installer will accept — a
+ * file:// URI throws FileUriExposedException on anything modern.
  */
 @CapacitorPlugin(name = "CovaultUpdater")
 public class CovaultUpdaterPlugin extends Plugin {
@@ -38,6 +57,81 @@ public class CovaultUpdaterPlugin extends Plugin {
     private static final String TAG = "CovaultUpdater";
     private static final String APK_NAME = "covault-update.apk";
     private static final String APK_MIME = "application/vnd.android.package-archive";
+
+    /** Where unpacked web bundles live, under the app's private files dir. */
+    private static final String WEB_DIR = "covault-web";
+
+    private static final String PREFS = "covault_updater";
+    /** Version of the web bundle currently pointed at, 0 for the built-in one. */
+    private static final String KEY_WEB_VERSION = "web_version";
+    /** Set when a bundle is staged, cleared once the app proves it can start. */
+    private static final String KEY_WEB_PENDING = "web_pending";
+    private static final String KEY_BOOT_ATTEMPTS = "web_boot_attempts";
+    /** Which APK the staged bundle belongs to. */
+    private static final String KEY_APK_BUILD = "web_apk_build";
+
+    /**
+     * How many launches a staged bundle gets to confirm itself before it is
+     * treated as broken and thrown away.
+     *
+     * Two rather than one: an app can be killed during its first launch for
+     * reasons that have nothing to do with the update — a phone call, memory
+     * pressure, the user backing straight out — and discarding a perfectly good
+     * bundle for that would be its own bug.
+     */
+    private static final int MAX_UNCONFIRMED_LAUNCHES = 2;
+
+    /**
+     * Capacitor's own record of where it should serve the app from. Writing it
+     * here is deliberate: `WebView.setServerBasePath` swaps the running app out
+     * from under the user immediately, which is not something an update should
+     * do mid-sentence. Setting the preference alone means Capacitor picks the
+     * new bundle up the next time the app starts cold, which is invisible.
+     */
+    private static final String CAP_WEBVIEW_PREFS = "CapWebViewSettings";
+    private static final String CAP_SERVER_PATH = "serverBasePath";
+
+    /**
+     * Decide, before the WebView is pointed anywhere, whether the staged bundle
+     * is trustworthy.
+     *
+     * This runs during plugin registration, which Capacitor does *before* it
+     * reads the stored server path — so clearing that preference here is enough
+     * to fall back to the version built into the APK. That ordering is the
+     * whole rollback mechanism; if a future Capacitor swaps those two steps,
+     * a bad bundle would boot once more before being caught.
+     */
+    @Override
+    public void load() {
+        try {
+            SharedPreferences prefs = prefs();
+
+            int stagedFor = prefs.getInt(KEY_APK_BUILD, 0);
+            int current = currentVersionCode();
+            if (stagedFor != 0 && current != 0 && stagedFor != current) {
+                // A new APK has been installed. Capacitor already ignores a web
+                // bundle across a reinstall; drop our own record of it so the
+                // app doesn't believe it is running code it isn't.
+                Log.i(TAG, "New APK detected; discarding the staged web bundle");
+                clearWebBundle();
+                return;
+            }
+
+            int pending = prefs.getInt(KEY_WEB_PENDING, 0);
+            if (pending == 0) return;
+
+            int attempts = prefs.getInt(KEY_BOOT_ATTEMPTS, 0) + 1;
+            if (attempts >= MAX_UNCONFIRMED_LAUNCHES) {
+                Log.w(TAG, "Web bundle " + pending + " never finished starting; reverting");
+                clearWebBundle();
+            } else {
+                prefs.edit().putInt(KEY_BOOT_ATTEMPTS, attempts).commit();
+            }
+        } catch (Exception e) {
+            // Never let update bookkeeping stop the app from starting.
+            Log.w(TAG, "Could not check the staged web bundle", e);
+        }
+    }
 
     /**
      * Whether Android will let Covault install an APK at all.
@@ -52,6 +146,10 @@ public class CovaultUpdaterPlugin extends Plugin {
     public void getStatus(PluginCall call) {
         JSObject result = new JSObject();
         result.put("canInstall", canRequestInstalls());
+        result.put("apkVersion", currentVersionCode());
+        // 0 means the app is running the web build shipped inside the APK.
+        result.put("webVersion", prefs().getInt(KEY_WEB_VERSION, 0));
+        result.put("nativeHash", nativeHash());
         call.resolve(result);
     }
 
@@ -85,9 +183,12 @@ public class CovaultUpdaterPlugin extends Plugin {
             call.reject("No download URL supplied");
             return;
         }
+        // The APK and the web bundle are both downloaded through here, and must
+        // not land on top of each other.
+        String fileName = call.getString("fileName", APK_NAME);
 
         Context context = getContext();
-        File target = new File(context.getExternalFilesDir(null), APK_NAME);
+        File target = new File(context.getExternalFilesDir(null), fileName);
         // DownloadManager refuses to overwrite, so a leftover from a previous
         // update would fail every subsequent download until the app is cleared.
         if (target.exists() && !target.delete()) {
@@ -103,13 +204,21 @@ public class CovaultUpdaterPlugin extends Plugin {
                 return;
             }
 
+            boolean isApk = fileName.endsWith(".apk");
+
             DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
             request.setTitle("Covault update");
             request.setDescription("Downloading the new version");
-            request.setMimeType(APK_MIME);
-            request.setDestinationInExternalFilesDir(context, null, APK_NAME);
+            if (isApk) request.setMimeType(APK_MIME);
+            request.setDestinationInExternalFilesDir(context, null, fileName);
+            // The APK download is something the user asked for and is waiting
+            // on, so it gets a notification. A web bundle is meant to arrive
+            // without anyone noticing; a progress bar in the shade for an
+            // update nobody requested is just noise.
             request.setNotificationVisibility(
-                DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                isApk
+                    ? DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
+                    : DownloadManager.Request.VISIBILITY_HIDDEN);
 
             long id = manager.enqueue(request);
             JSObject result = new JSObject();
@@ -218,6 +327,234 @@ public class CovaultUpdaterPlugin extends Plugin {
         } catch (Exception e) {
             Log.w(TAG, "Could not open the installer", e);
             call.reject("Could not open the installer");
+        }
+    }
+
+    /**
+     * Unpack a downloaded web bundle and point Capacitor at it for next launch.
+     *
+     * Nothing visible happens here. The running app is left exactly as it is —
+     * see CAP_SERVER_PATH above for why — and the new code takes over the next
+     * time Covault starts cold.
+     */
+    @PluginMethod
+    public void stageWebBundle(PluginCall call) {
+        Long id = parseId(call);
+        if (id == null) return;
+
+        Integer version = call.getInt("version");
+        if (version == null || version <= 0) {
+            call.reject("No web bundle version supplied");
+            return;
+        }
+
+        File zip = downloadedFile(id);
+        if (zip == null || !zip.exists()) {
+            call.reject("The downloaded web bundle could not be found");
+            return;
+        }
+
+        File target = new File(new File(getContext().getFilesDir(), WEB_DIR), String.valueOf(version));
+        try {
+            deleteTree(target);
+            if (!target.mkdirs()) {
+                call.reject("Could not make room for the web bundle");
+                return;
+            }
+
+            unzip(zip, target);
+
+            // A bundle without an entry point would boot to a blank screen and
+            // only be caught by the two-launch rollback. Cheaper to catch here.
+            if (!new File(target, "index.html").isFile()) {
+                deleteTree(target);
+                call.reject("The web bundle has no index.html");
+                return;
+            }
+
+            getContext()
+                .getSharedPreferences(CAP_WEBVIEW_PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putString(CAP_SERVER_PATH, target.getAbsolutePath())
+                .commit();
+
+            prefs()
+                .edit()
+                .putInt(KEY_WEB_VERSION, version)
+                .putInt(KEY_WEB_PENDING, version)
+                .putInt(KEY_BOOT_ATTEMPTS, 0)
+                .putInt(KEY_APK_BUILD, currentVersionCode())
+                .commit();
+
+            zip.delete();
+            Log.i(TAG, "Staged web bundle " + version);
+            call.resolve();
+        } catch (Exception e) {
+            Log.w(TAG, "Could not stage the web bundle", e);
+            deleteTree(target);
+            call.reject("Could not unpack the web bundle");
+        }
+    }
+
+    /**
+     * The running app declaring that it started successfully.
+     *
+     * Until this arrives a staged bundle is on probation, and two launches
+     * without it are read as "this bundle cannot start" — see load().
+     */
+    @PluginMethod
+    public void confirmWebBundle(PluginCall call) {
+        SharedPreferences prefs = prefs();
+        int version = prefs.getInt(KEY_WEB_VERSION, 0);
+        if (prefs.getInt(KEY_WEB_PENDING, 0) != 0) {
+            prefs.edit().remove(KEY_WEB_PENDING).remove(KEY_BOOT_ATTEMPTS).commit();
+            Log.i(TAG, "Web bundle " + version + " confirmed");
+        }
+        // Older bundles are dead weight once one has proven itself.
+        pruneOldBundles(version);
+        call.resolve();
+    }
+
+    /** Go back to the web build inside the APK. */
+    @PluginMethod
+    public void revertWebBundle(PluginCall call) {
+        clearWebBundle();
+        call.resolve();
+    }
+
+    /**
+     * Forget any staged bundle and delete it, leaving Capacitor to serve the
+     * copy inside the APK.
+     */
+    private void clearWebBundle() {
+        try {
+            getContext()
+                .getSharedPreferences(CAP_WEBVIEW_PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .remove(CAP_SERVER_PATH)
+                .commit();
+            prefs().edit().clear().commit();
+            deleteTree(new File(getContext().getFilesDir(), WEB_DIR));
+        } catch (Exception e) {
+            Log.w(TAG, "Could not clear the staged web bundle", e);
+        }
+    }
+
+    private void pruneOldBundles(int keepVersion) {
+        File root = new File(getContext().getFilesDir(), WEB_DIR);
+        File[] children = root.listFiles();
+        if (children == null) return;
+        for (File child : children) {
+            if (!child.getName().equals(String.valueOf(keepVersion))) deleteTree(child);
+        }
+    }
+
+    /** Where DownloadManager actually put a finished download. */
+    private File downloadedFile(long id) {
+        DownloadManager manager =
+            (DownloadManager) getContext().getSystemService(Context.DOWNLOAD_SERVICE);
+        if (manager == null) return null;
+
+        Cursor cursor = null;
+        try {
+            cursor = manager.query(new DownloadManager.Query().setFilterById(id));
+            if (cursor == null || !cursor.moveToFirst()) return null;
+            String local = cursor.getString(
+                cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_LOCAL_URI));
+            if (local == null) return null;
+            // Asking rather than assuming the filename: DownloadManager renames
+            // on collision, and a silently wrong path here would unpack a stale
+            // bundle over a good one.
+            String path = Uri.parse(local).getPath();
+            return path == null ? null : new File(path);
+        } catch (Exception e) {
+            Log.w(TAG, "Could not locate the finished download", e);
+            return null;
+        } finally {
+            if (cursor != null) cursor.close();
+        }
+    }
+
+    /**
+     * Extract `zip` into `target`.
+     *
+     * Entry names are checked against the destination before anything is
+     * written: a zip is just a list of paths, and one containing `../` would
+     * otherwise write wherever it liked inside the app's private storage.
+     */
+    private void unzip(File zip, File target) throws Exception {
+        String root = target.getCanonicalPath() + File.separator;
+        byte[] buffer = new byte[16 * 1024];
+
+        try (ZipInputStream in = new ZipInputStream(new FileInputStream(zip))) {
+            ZipEntry entry;
+            while ((entry = in.getNextEntry()) != null) {
+                String name = entry.getName();
+                // Archives built with `zip -r . ` carry a leading ./ on entries.
+                if (name.startsWith("./")) name = name.substring(2);
+                if (name.isEmpty()) continue;
+
+                File out = new File(target, name);
+                if (!out.getCanonicalPath().startsWith(root)) {
+                    throw new SecurityException("Zip entry escapes the bundle: " + entry.getName());
+                }
+
+                if (entry.isDirectory()) {
+                    out.mkdirs();
+                    continue;
+                }
+                File parent = out.getParentFile();
+                if (parent != null) parent.mkdirs();
+
+                try (OutputStream fos = new FileOutputStream(out)) {
+                    int read;
+                    while ((read = in.read(buffer)) != -1) fos.write(buffer, 0, read);
+                }
+            }
+        }
+    }
+
+    private void deleteTree(File file) {
+        if (file == null || !file.exists()) return;
+        File[] children = file.listFiles();
+        if (children != null) {
+            for (File child : children) deleteTree(child);
+        }
+        file.delete();
+    }
+
+    private SharedPreferences prefs() {
+        return getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    }
+
+    /**
+     * The fingerprint of the native code in this APK, written in by
+     * scripts/sync-android.sh. Empty when the resource is missing, which the
+     * JavaScript side reads as "never apply a web bundle" — the safe direction.
+     */
+    private String nativeHash() {
+        try {
+            Context context = getContext();
+            int id = context.getResources().getIdentifier(
+                "covault_native_hash", "string", context.getPackageName());
+            return id == 0 ? "" : context.getString(id);
+        } catch (Exception e) {
+            Log.w(TAG, "Could not read the native fingerprint", e);
+            return "";
+        }
+    }
+
+    private int currentVersionCode() {
+        try {
+            Context context = getContext();
+            PackageInfo info = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                return (int) info.getLongVersionCode();
+            }
+            return info.versionCode;
+        } catch (Exception e) {
+            Log.w(TAG, "Could not read the installed version", e);
+            return 0;
         }
     }
 

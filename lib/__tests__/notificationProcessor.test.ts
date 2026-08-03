@@ -20,6 +20,10 @@ vi.mock('@capacitor/core', () => ({
 // ── Mock @huggingface/transformers (used by aiExtractor) ──
 vi.mock('@huggingface/transformers', () => {
   return {
+    // aiExtractor pins where the ONNX runtime binary is fetched from before it
+    // builds a pipeline; the mock has to carry that shape or the lookup throws
+    // and the AI fallback fails for an unrelated reason.
+    env: { version: '0.0.0-test', backends: { onnx: { wasm: { wasmPaths: '' } } } },
     pipeline: async () => {
       return async (prompt: string) => {
         const lower = prompt.toLowerCase();

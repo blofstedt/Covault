@@ -3,6 +3,11 @@ import { describe, it, expect, vi } from 'vitest';
 // Mock @huggingface/transformers — vi.mock is hoisted above all imports.
 // ALL mock logic MUST be inlined here; no external references allowed.
 vi.mock('@huggingface/transformers', () => ({
+  // aiExtractor pins where the ONNX runtime binary is fetched from before it
+  // builds a pipeline (see the comment there, and aiRuntimeSource.test.ts).
+  // The mock has to carry that shape or the lookup throws and every extraction
+  // below fails for a reason that has nothing to do with extraction.
+  env: { version: '0.0.0-test', backends: { onnx: { wasm: { wasmPaths: '' } } } },
   pipeline: vi.fn(async () => {
     // This returned function simulates the Flan-T5 generator.
     // It receives prompt text and options, and returns [{ generated_text }].

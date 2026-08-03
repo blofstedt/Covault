@@ -118,6 +118,24 @@ jobs:
           chmod +x ./gradlew
           ./gradlew assembleDebug
 
+      # The web layer, publishable on its own. Almost every change here is
+      # React rather than Java, and the app can replace this without being
+      # reinstalled — see lib/hooks/useAppUpdate.ts.
+      #
+      # The native fingerprint is in the filename because that is the one place
+      # it cannot drift from the bundle it describes. A phone applies only the
+      # bundle carrying its own fingerprint, so the moment anything native
+      # changes, no bundle matches and the update becomes a normal APK install.
+      - name: Package the web bundle
+        run: |
+          NATIVE_HASH="$(node scripts/native-hash.mjs)"
+          test -n "$NATIVE_HASH"
+          test -f dist/index.html
+          WEB_BUNDLE="covault-web-${NATIVE_HASH}.zip"
+          (cd dist && zip -qr "../${WEB_BUNDLE}" .)
+          echo "WEB_BUNDLE=${WEB_BUNDLE}" >> $GITHUB_ENV
+          ls -lh "${WEB_BUNDLE}"
+
       - name: Rename APK with timestamp
         run: |
           TIMESTAMP=$(date +%Y%m%d-%H%M%S)
@@ -150,9 +168,9 @@ jobs:
           # exist. Replacing the asset is the right answer there; failing the
           # build over it is not.
           if gh release view "$TAG" > /dev/null 2>&1; then
-            gh release upload "$TAG" "$APK" --clobber
+            gh release upload "$TAG" "$APK" "$WEB_BUNDLE" --clobber
           else
-            gh release create "$TAG" "$APK" \
+            gh release create "$TAG" "$APK" "$WEB_BUNDLE" \
               --title "Covault 1.0.${{ github.run_number }}" \
               --notes "$NOTES" \
               --latest

@@ -7,19 +7,34 @@ import {
   fetchLatestRelease,
   getInstalledVersionCode,
   selectUpdate,
+  selectWebBundle,
 } from '../appUpdate';
-import { covaultUpdater } from '../covaultUpdater';
+import { covaultUpdater, type CovaultUpdaterPlugin } from '../covaultUpdater';
 import { log } from '../log';
 
 /**
  * Keeps the phone on the newest build without anyone downloading an APK by
  * hand.
  *
- * What this can and cannot do is set by Android, not by us: a normal app may
- * fetch an APK and open the installer, but the system's own "update this app?"
- * confirmation is mandatory and there is no API that skips it. So the honest
- * ceiling is *one tap* — Covault notices, downloads in the background, and the
- * user confirms. It is never silent.
+ * Two routes, and which one is taken is not a preference — it is what the
+ * change actually touched:
+ *
+ *  - **Web-only changes take themselves.** Almost everything here is React and
+ *    TypeScript, and that layer can be replaced on the phone without
+ *    reinstalling anything. The new bundle is fetched quietly, unpacked, and
+ *    picked up the next time Covault starts cold. Nobody taps anything and
+ *    nothing interrupts. If it turns out not to start, the native side puts the
+ *    previous version back after two launches.
+ *
+ *  - **Anything touching the Android code needs the APK**, and Android will not
+ *    install one without showing its own confirmation — there is no API that
+ *    skips it. So that route surfaces the pill and costs one tap.
+ *
+ * The two are told apart by a fingerprint of the native source baked into the
+ * APK (scripts/native-hash.mjs). A web bundle is published under the
+ * fingerprint it was built against, and a phone only applies a bundle carrying
+ * its own. When the native code changes, no bundle matches and the update falls
+ * through to the APK prompt on its own.
  *
  * Checks run on launch and on resume rather than on a timer, because the app is
  * backgrounded rather than closed and a timer in a frozen process proves
@@ -33,6 +48,15 @@ const DISMISSED_KEY = 'covault_update_dismissed';
 const POLL_INTERVAL_MS = 500;
 /** A stalled download should give up rather than spin the ring forever. */
 const DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000;
+const WEB_BUNDLE_FILE = 'covault-web.zip';
+/** Nothing in the background path needs to be checked four times a second. */
+const WEB_POLL_INTERVAL_MS = 2000;
+/**
+ * How long the app has to stay up before a freshly applied web bundle is
+ * considered good. Long enough to have rendered and settled; short enough that
+ * a quick look at the app still counts.
+ */
+const CONFIRM_DELAY_MS = 5000;
 
 export type UpdatePhase = 'idle' | 'downloading' | 'installing';
 
@@ -67,6 +91,25 @@ function writeNumber(key: string, value: number): void {
   }
 }
 
+const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+/**
+ * Wait for a queued download, resolving true only when the file is on disk.
+ *
+ * Separate from the APK path's polling on purpose: this one reports nothing,
+ * because there is no one watching it.
+ */
+async function waitForDownload(plugin: CovaultUpdaterPlugin, id: string): Promise<boolean> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < DOWNLOAD_TIMEOUT_MS) {
+    await delay(WEB_POLL_INTERVAL_MS);
+    const { status } = await plugin.pollDownload({ id });
+    if (status === 'done') return true;
+    if (status === 'failed') return false;
+  }
+  return false;
+}
+
 export function useAppUpdate(): AppUpdate {
   const [update, setUpdate] = useState<AvailableUpdate | null>(null);
   const [phase, setPhase] = useState<UpdatePhase>('idle');
@@ -78,6 +121,8 @@ export function useAppUpdate(): AppUpdate {
   phaseRef.current = phase;
   const pollTimer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const mounted = useRef(true);
+  /** A background web bundle is being fetched; don't start a second one. */
+  const staging = useRef(false);
 
   useEffect(() => {
     mounted.current = true;
@@ -87,27 +132,66 @@ export function useAppUpdate(): AppUpdate {
     };
   }, []);
 
+  /**
+   * Fetch the new web bundle and hand it to the native side. Silent from start
+   * to finish — a failure here just means the app stays on the version it has.
+   */
+  const stageWebUpdate = useCallback(async (version: number, url: string) => {
+    if (!covaultUpdater || staging.current) return;
+    staging.current = true;
+    try {
+      const { id } = await covaultUpdater.startDownload({ url, fileName: WEB_BUNDLE_FILE });
+      if (!(await waitForDownload(covaultUpdater, id))) {
+        log.warn('[useAppUpdate] Web bundle download did not finish');
+        return;
+      }
+      await covaultUpdater.stageWebBundle({ id, version });
+      log.info(`[useAppUpdate] Web bundle ${version} staged for next launch`);
+    } catch (e) {
+      log.warn('[useAppUpdate] Could not stage the web bundle:', e);
+    } finally {
+      staging.current = false;
+    }
+  }, []);
+
   const check = useCallback(async (force: boolean) => {
     if (!Capacitor.isNativePlatform()) return;
     // Never interrupt a download in progress with a fresh answer.
-    if (phaseRef.current !== 'idle') return;
+    if (phaseRef.current !== 'idle' || staging.current) return;
 
     const last = readNumber(LAST_CHECK_KEY);
     if (!force && last !== null && Date.now() - last < CHECK_INTERVAL_MS) return;
     writeNumber(LAST_CHECK_KEY, Date.now());
 
-    const [latest, installed] = await Promise.all([
-      fetchLatestRelease(),
-      getInstalledVersionCode(),
-    ]);
-    const next = selectUpdate(latest, installed);
-    if (!mounted.current) return;
+    let status: Awaited<ReturnType<CovaultUpdaterPlugin['getStatus']>> | null = null;
+    try {
+      status = (await covaultUpdater?.getStatus()) ?? null;
+    } catch (e) {
+      log.warn('[useAppUpdate] Could not read the updater status:', e);
+    }
+
+    const latest = await fetchLatestRelease();
+
+    // What the phone is actually running: the APK's version, or a newer web
+    // bundle applied on top of it. Comparing against the APK alone would offer
+    // the same update again after every background update.
+    const apkVersion = status?.apkVersion || (await getInstalledVersionCode()) || 0;
+    const running = Math.max(apkVersion, status?.webVersion ?? 0);
+    const next = selectUpdate(latest, running || null);
+    if (!mounted.current || !next) return;
+
+    const webUrl = selectWebBundle(next, status?.nativeHash ?? '');
+    if (webUrl) {
+      // Web-only change: take it quietly and say nothing.
+      void stageWebUpdate(next.versionCode, webUrl);
+      return;
+    }
 
     // A version the user has already waved away stays away until the one after
     // it. Nagging on every resume is how a good prompt becomes a bad one.
-    if (next && readNumber(DISMISSED_KEY) === next.versionCode) return;
+    if (readNumber(DISMISSED_KEY) === next.versionCode) return;
     setUpdate(next);
-  }, []);
+  }, [stageWebUpdate]);
 
   useEffect(() => {
     void check(false);
@@ -116,6 +200,22 @@ export function useAppUpdate(): AppUpdate {
     const handle = CapApp.addListener('resume', () => { void check(false); });
     return () => { void handle.then(h => h.remove()); };
   }, [check]);
+
+  // Tell the native side this launch worked out.
+  //
+  // Deliberately on a delay rather than at mount: the point is to prove the app
+  // reached a usable state, and a component that mounts and then throws would
+  // have already confirmed a bundle that doesn't work. Two launches without
+  // this arriving and the previous version is put back.
+  useEffect(() => {
+    if (!covaultUpdater) return;
+    const timer = setTimeout(() => {
+      covaultUpdater?.confirmWebBundle().catch(e => {
+        log.warn('[useAppUpdate] Could not confirm this launch:', e);
+      });
+    }, CONFIRM_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, []);
 
   const fallbackToBrowser = useCallback(async (url: string) => {
     // The native path is the nice one, not the only one. If DownloadManager is
