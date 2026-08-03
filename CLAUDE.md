@@ -29,6 +29,22 @@ is unreviewable.
 - **Answer the question that was asked**, then stop. If they ask whether
   something is right, the first thing they should read is whether it is right.
 
+## Where work goes: main
+
+**Commit to `main` and push to `main`.** Do not create a feature branch, and do
+not open a pull request, unless they ask for one in that request. They do not
+want to manage branches, and a PR only adds a review step that nobody performs
+— they cannot read the diff, which is the whole point of the section above.
+
+If the harness you are running under forces you onto a branch, finish the work
+there, then fast-forward `main` to it and push, and say in your reply that you
+did. Do not leave the work parked on a branch and call it delivered.
+
+`main` is what CI builds the APK from, so it is also the phone build. That
+makes `npm run verify` before pushing non-negotiable, not a nicety: breaking
+`main` means no APK to install. It still does not mean the app works — see the
+Verification reality section.
+
 ## What it is
 
 Personal budget app for a household. Users track spending by category;

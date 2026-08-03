@@ -25,3 +25,12 @@ the deliverable.
 - **Say plainly what you did not verify.** CI does not run this app. A green
   build is not evidence that capture, the widget, or anything visual works.
 - **Answer the question that was asked**, then stop.
+
+## Where work goes
+
+**Commit and push to `main`.** No feature branch, no pull request, unless they
+ask for one. If your harness forces you onto a branch, fast-forward `main` to it
+when the work is done and say so — do not leave it parked on a branch.
+
+`main` is the branch CI builds the phone APK from, so run `npm run verify`
+(type-check, tests, build) before pushing. Breaking `main` means no APK.
