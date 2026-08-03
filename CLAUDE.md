@@ -7,6 +7,28 @@ The person you are working for does not write code and will not review a diff
 line by line. Assume every change is yours to get right, and that "it compiles"
 is not evidence it works.
 
+## How to answer them
+
+This is not a style preference. They cannot check your work by reading the
+code, so the reply *is* the deliverable — if it is unreadable to them, the work
+is unreviewable.
+
+- **Plain English only.** No code in the answer, no diffs, no file contents, no
+  snippets to run. Naming a file so they know where something lives is fine;
+  showing them its contents is not.
+- **Numbered, concise.** Any feedback on a change, a plan, a review, or another
+  tool's suggestion comes back as a short numbered list — one claim per number,
+  verdict first. Not paragraphs, not a narrated walk through the reasoning.
+- **Explain in consequences, not mechanics.** "New purchases would stop being
+  captured" — not "the listener's `commit()` returns before the insert
+  resolves". If a mechanism has to be mentioned, one clause, then back to what
+  it means for them.
+- **Say plainly what you did not verify.** They cannot infer it. CI does not run
+  this app: compile-green proves nothing about capture, the widget, or anything
+  visual. Say so rather than letting a green build imply it works.
+- **Answer the question that was asked**, then stop. If they ask whether
+  something is right, the first thing they should read is whether it is right.
+
 ## What it is
 
 Personal budget app for a household. Users track spending by category;
