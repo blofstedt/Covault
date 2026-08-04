@@ -34,8 +34,16 @@
       where the pill is drawn: top-right, inset by the renderer's padding.
       GONE unless something is actually waiting, so the rest of the time the
       whole widget keeps its ordinary "open Covault" tap.
+
+      An empty FrameLayout rather than the obvious `<View>`. RemoteViews are
+      inflated by the launcher, in its process, and it will only inflate the
+      handful of classes the framework marks as remotable — `View` itself is
+      not one of them. A layout containing one fails to inflate at all, and
+      what the user sees is "Can't load widget" with no clue why.
+      widgetLayoutViews.test.ts fails the build on any element outside that
+      set.
     -->
-    <View
+    <FrameLayout
         android:id="@+id/widget_review_hit"
         android:layout_width="112dp"
         android:layout_height="44dp"
