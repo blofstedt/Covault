@@ -137,4 +137,17 @@ describe('budget expand hot path', () => {
       'the chart above, so the per-frame cost scales with the budget count.',
     ).toBe(true);
   });
+
+  it('keeps the transaction cascade able to find its rows', () => {
+    // The cascade is built in JavaScript, because a CSS class could not be
+    // relied on to restart it — the rows sit inside a `content-visibility:
+    // hidden` subtree while collapsed, and it played on the first expand only.
+    //
+    // The cost of driving it from JS is this attribute: rename it on the row
+    // and the query silently matches nothing. No error, no failing build, just
+    // a cascade that quietly stops happening.
+    const source = readFileSync(join(ROOT, 'components/BudgetSection.tsx'), 'utf8');
+    expect(source, 'row wrapper lost its data-stack-row marker').toContain('data-stack-row=""');
+    expect(source, 'the cascade no longer queries for it').toContain("'[data-stack-row]'");
+  });
 });

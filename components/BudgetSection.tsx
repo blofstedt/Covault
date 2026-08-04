@@ -1,5 +1,5 @@
 // components/BudgetSection.tsx
-import React, { useMemo, useCallback, useRef, useState, useEffect, memo } from 'react';
+import React, { useMemo, useCallback, useRef, useState, useEffect, useLayoutEffect, memo } from 'react';
 import { BudgetCategory, Transaction } from '../types';
 import TransactionItem from './TransactionItem';
 import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
@@ -171,6 +171,55 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
   // `relative`), so no per-row measuring is needed.
   const listRef = useRef<HTMLDivElement>(null);
   const todayAnchorRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Deal the transactions in, top row first, every time the budget opens.
+   *
+   * Driven from here rather than by putting a CSS class on the rows, which is
+   * how it was written first and which played exactly once. Restarting a CSS
+   * animation depends on the browser noticing the class go away and come back
+   * — and these rows spend the whole collapsed period inside a
+   * `content-visibility: hidden` subtree, where that change is not observed.
+   * The second open found the rows already sitting at the animation's end
+   * state with nothing to re-trigger. `animate()` sidesteps the question: each
+   * open builds new animations, so there is no state to get stuck in.
+   *
+   * `fill: 'backwards'` is what holds a row invisible during its stagger delay
+   * instead of showing it and then snatching it back. Nothing fills forwards —
+   * the last keyframe is the row's natural state, so once it has played there
+   * is nothing left to hold and no compositor layer kept alive.
+   *
+   * A layout effect, not an ordinary one: this has to be in place before the
+   * browser paints the frame in which the rows first become visible.
+   */
+  useLayoutEffect(() => {
+    if (!revealed || prefersReducedMotion()) return;
+    const root = listRef.current;
+    if (!root) return;
+
+    const rows = root.querySelectorAll<HTMLElement>('[data-stack-row]');
+    const running: Animation[] = [];
+    const count = Math.min(rows.length, STACK_MAX_ROWS);
+    for (let i = 0; i < count; i++) {
+      const row = rows[i];
+      if (typeof row.animate !== 'function') break;
+      running.push(row.animate(
+        [
+          { opacity: 0, transform: 'translateY(-10px) scale(0.985)' },
+          { opacity: 1, transform: 'translateY(0) scale(1)' },
+        ],
+        {
+          duration: EXPAND_DURATION_MS,
+          delay: i * STACK_STEP_MS,
+          easing: 'cubic-bezier(0.32, 0.72, 0.24, 1)',
+          fill: 'backwards',
+        },
+      ));
+    }
+
+    // Collapsing mid-cascade must not leave rows pinned at a keyframe.
+    return () => { for (const animation of running) animation.cancel(); };
+  }, [revealed]);
 
   const scrollToToday = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
@@ -434,19 +483,13 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                 // measure: TransactionItem is memoised and takes no ref, and
                 // wrapping every row (rather than only the anchor) keeps
                 // `space-y-3`'s child spacing identical either way.
-                // The stack class is keyed on `revealed`, so it is added as the
-                // card finishes growing and removed on collapse — which is
-                // what lets the animation run again on the next expand rather
-                // than only on mount.
+                // data-stack-row is how the cascade finds these. See the
+                // layout effect above for why the animation is driven from
+                // JavaScript rather than by toggling a CSS class.
                 <div
                   key={tx.id}
+                  data-stack-row=""
                   ref={index === todayIndex ? todayAnchorRef : undefined}
-                  className={revealed && index < STACK_MAX_ROWS ? 'budget-row-stack' : undefined}
-                  style={
-                    index < STACK_MAX_ROWS
-                      ? ({ '--row-delay': `${index * STACK_STEP_MS}ms` } as React.CSSProperties)
-                      : undefined
-                  }
                 >
                   <TransactionItem
                     transaction={tx}
