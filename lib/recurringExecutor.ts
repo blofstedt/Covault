@@ -7,6 +7,7 @@ import { log } from './log';
 import { getLocalToday, toLocalIsoDay } from './dateUtils';
 import { restFetch } from './apiHelpers';
 import { stepForward } from './recurrence';
+import { findSameCharge } from './duplicateCharge';
 import type { Transaction } from '../types';
 
 /**
@@ -25,6 +26,14 @@ function budgetIdToName(budgetId: string | null): string {
 }
 
 const LAST_RUN_KEY = 'covault_recurring_last_run';
+
+/** `2026-08-*` shifted by whole months, for the DB duplicate lookup. */
+function neighbouringMonth(date: string, offset: number): string {
+  const year = Number(date.slice(0, 4));
+  const month = Number(date.slice(5, 7));
+  const shifted = new Date(Date.UTC(year, month - 1 + offset, 1));
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}`;
+}
 
 function todayStr(): string {
   return getLocalToday();
@@ -110,11 +119,19 @@ export async function executeRecurringTransactions(
   const now = new Date();
   now.setHours(0, 0, 0, 0);
 
-  // Find existing transaction dates to prevent duplicates
-  // Normalize date to YYYY-MM-DD so the key matches the dueDate format
-  const existingKeys = new Set(
-    transactions.map((t) => `${t.vendor}|${t.amount}|${(t.date || '').slice(0, 10)}|${t.budget_id || ''}`),
-  );
+  // Charges already on the books, to be checked against rather than keyed on.
+  //
+  // This was an exact-match key of vendor + amount + date + budget, which meant
+  // the executor only recognised its own handiwork. A charge captured from a
+  // bank notification carries the bank's name for the merchant — "Google One"
+  // where the recurring rule says "Google" — and against an exact key that is
+  // a different charge, so the executor posted its own copy alongside it.
+  const existing: Array<{ vendor: string; amount: number; date: string }> =
+    transactions.map((t) => ({
+      vendor: t.vendor,
+      amount: t.amount,
+      date: (t.date || '').slice(0, 10),
+    }));
 
   const toInsert: Array<{
     user_id: string;
@@ -136,9 +153,9 @@ export async function executeRecurringTransactions(
     if (dueDates.length === 0) continue;
 
     for (const dueDate of dueDates) {
-      // Don't re-insert if identical transaction already exists for this date
-      const key = `${tx.vendor}|${tx.amount}|${dueDate}|${tx.budget_id || ''}`;
-      if (existingKeys.has(key)) continue;
+      // Don't re-insert if this charge already looks recorded — by any name.
+      const candidate = { vendor: tx.vendor, amount: tx.amount, date: dueDate };
+      if (findSameCharge(candidate, existing)) continue;
 
       toInsert.push({
         user_id: userId,
@@ -154,8 +171,10 @@ export async function executeRecurringTransactions(
         source: 'executor',
       });
 
-      // Track to prevent dupes within this batch
-      existingKeys.add(key);
+      // Track to prevent dupes within this batch. Added to the same list the
+      // check reads, so two due dates a day apart for the same subscription
+      // can't both be spawned.
+      existing.push(candidate);
     }
   }
 
@@ -178,8 +197,16 @@ export async function executeRecurringTransactions(
   // spawned it — but the user had already manually added a Jul 16 entry
   // that wasn't in memory yet. After this guard, the executor queries the
   // DB, sees the Jul 16 row, and skips the Jul 17 insert.
-  const monthKeys = new Set(toInsert.map(t => t.date.slice(0, 7)));
-  const dbExistingKeys = new Set<string>();
+  // Months either side as well as the month itself: a due date on the 1st or
+  // the 31st has to be able to see a charge that landed a couple of days over
+  // the boundary, and a month-scoped lookup could not.
+  const monthKeys = new Set<string>();
+  for (const row of toInsert) {
+    monthKeys.add(row.date.slice(0, 7));
+    monthKeys.add(neighbouringMonth(row.date, -1));
+    monthKeys.add(neighbouringMonth(row.date, 1));
+  }
+  const dbExisting: Array<{ vendor: string; amount: number; date: string }> = [];
   // Each month's lookup is independent — results only accumulate into the
   // shared set — so they run concurrently instead of one round-trip apiece.
   // The per-month try/catch is kept so one failure still falls through to
@@ -194,13 +221,11 @@ export async function executeRecurringTransactions(
         const rows: Array<{ vendor?: string; amount?: number; date?: string }> = await res.json();
         for (const row of rows) {
           if (!row.vendor || row.amount == null || !row.date) continue;
-          // Key by vendor (lowercased) + amount + day-of-month. We only
-          // need to dedup within the same month, so a same-day duplicate
-          // is the signal we care about.
-          const day = row.date.slice(8, 10);
-          dbExistingKeys.add(
-            `${String(row.vendor).toLowerCase().trim()}|${Number(row.amount).toFixed(2)}|${day}`,
-          );
+          dbExisting.push({
+            vendor: String(row.vendor),
+            amount: Number(row.amount),
+            date: String(row.date).slice(0, 10),
+          });
         }
       } catch (err: any) {
         log.warn('[recurringExecutor] DB dedup check failed:', err?.message || err);
@@ -211,10 +236,12 @@ export async function executeRecurringTransactions(
   );
 
   const filtered = toInsert.filter((row) => {
-    const day = row.date.slice(8, 10);
-    const key = `${row.vendor.toLowerCase().trim()}|${Number(row.amount).toFixed(2)}|${day}`;
-    if (dbExistingKeys.has(key)) {
-      log.debug(`[recurringExecutor] Skipping ${row.vendor} $${row.amount} on ${row.date} — already in DB`);
+    const match = findSameCharge(row, dbExisting);
+    if (match) {
+      log.debug(
+        `[recurringExecutor] Skipping ${row.vendor} $${row.amount} on ${row.date}` +
+        ` — already in DB as ${match.vendor} on ${match.date}`,
+      );
       return false;
     }
     return true;

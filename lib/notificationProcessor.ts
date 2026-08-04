@@ -290,8 +290,16 @@ async function checkAlreadyProcessed(
   // ── Check transactions table ──
   // Query by `date` using a ±3 day window so that recurring transactions
   // or slightly delayed notifications are caught across all budgets.
-  const today = getLocalToday();
-  const todayDate = parseLocalDate(today);
+  //
+  // Centred on the notification's own timestamp, not on today. Those are the
+  // same thing for a notification arriving now, and different for the case
+  // this exists to catch — a rescan of the shade picking up something from
+  // several days ago, where a window around today can sit entirely past the
+  // charge it should have matched.
+  const anchor = notificationTimestamp > 0
+    ? new Date(notificationTimestamp)
+    : parseLocalDate(getLocalToday());
+  const todayDate = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
   const windowStartDate = new Date(todayDate.getTime() - RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY);
   const windowEndDate = new Date(todayDate.getTime() + RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY);
   const startDateStr = windowStartDate.toISOString().slice(0, 10);
