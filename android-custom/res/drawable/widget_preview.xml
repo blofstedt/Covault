@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  What the widget picker shows before the widget exists.
+
+  Hand-drawn rather than a screenshot because it has to stand in for a bitmap
+  that is only produced at runtime: WidgetRenderer draws the real thing into an
+  ImageView, and until it does, the picker was rendering an empty rectangle.
+
+  Deliberately the same composition as the live widget — donut left, legend
+  right — and the same category colours as lib/budgetColors.ts, so what someone
+  picks is what they get. Figures are placeholder bars rather than fake numbers;
+  an invented total in the picker would read as real data.
+
+  250x110 viewport = the widget's design size in dp.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="250dp"
+    android:height="110dp"
+    android:viewportWidth="250"
+    android:viewportHeight="110">
+
+    <!-- Card surface -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M28,0 L222,0 A28,28 0 0 1 250,28 L250,82 A28,28 0 0 1 222,110 L28,110 A28,28 0 0 1 0,82 L0,28 A28,28 0 0 1 28,0 Z" />
+
+    <!-- Month label, as a bar -->
+    <path
+        android:fillColor="#E2E8F0"
+        android:pathData="M14,14 L58,14 A3,3 0 0 1 58,20 L14,20 A3,3 0 0 1 14,14 Z" />
+
+    <!-- Donut track: full ring, centred at (60,66), r=27, stroke 11 -->
+    <path
+        android:strokeColor="#E2E8F0"
+        android:strokeWidth="11"
+        android:pathData="M60,39 A27,27 0 1 1 59.9,39" />
+
+    <!-- Groceries, muted green: 12 o'clock round to ~130 degrees -->
+    <path
+        android:strokeColor="#6b9e6e"
+        android:strokeWidth="11"
+        android:pathData="M60,39 A27,27 0 0 1 80.7,83.4" />
+
+    <!-- Leisure, muted purple: ~135 to ~230 degrees -->
+    <path
+        android:strokeColor="#9a7bbf"
+        android:strokeWidth="11"
+        android:pathData="M78.4,85.1 A27,27 0 0 1 35.3,78.9" />
+
+    <!-- Transport, muted blue: ~232 to ~355 degrees -->
+    <path
+        android:strokeColor="#6e8ec4"
+        android:strokeWidth="11"
+        android:pathData="M34.2,77.2 A27,27 0 0 1 59.5,39.0" />
+
+    <!-- Centre figure, as a bar -->
+    <path
+        android:fillColor="#CBD5E1"
+        android:pathData="M45,61 L75,61 A3.5,3.5 0 0 1 75,68 L45,68 A3.5,3.5 0 0 1 45,61 Z" />
+
+    <!-- Legend: dot + name bar + amount bar, three rows -->
+    <path android:fillColor="#6b9e6e" android:pathData="M110,44 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" />
+    <path android:fillColor="#CBD5E1" android:pathData="M122,41 L170,41 A2.5,2.5 0 0 1 170,46 L122,46 A2.5,2.5 0 0 1 122,41 Z" />
+    <path android:fillColor="#E2E8F0" android:pathData="M204,41 L236,41 A2.5,2.5 0 0 1 236,46 L204,46 A2.5,2.5 0 0 1 204,41 Z" />
+
+    <path android:fillColor="#9a7bbf" android:pathData="M110,64 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" />
+    <path android:fillColor="#CBD5E1" android:pathData="M122,61 L162,61 A2.5,2.5 0 0 1 162,66 L122,66 A2.5,2.5 0 0 1 122,61 Z" />
+    <path android:fillColor="#E2E8F0" android:pathData="M210,61 L236,61 A2.5,2.5 0 0 1 236,66 L210,66 A2.5,2.5 0 0 1 210,61 Z" />
+
+    <path android:fillColor="#6e8ec4" android:pathData="M110,84 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" />
+    <path android:fillColor="#CBD5E1" android:pathData="M122,81 L166,81 A2.5,2.5 0 0 1 166,86 L122,86 A2.5,2.5 0 0 1 122,81 Z" />
+    <path android:fillColor="#E2E8F0" android:pathData="M212,81 L236,81 A2.5,2.5 0 0 1 236,86 L212,86 A2.5,2.5 0 0 1 212,81 Z" />
+</vector>

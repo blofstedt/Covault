@@ -14,11 +14,32 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
+    <!--
+      android:src is the widget PICKER's preview. previewLayout renders this
+      layout, and with no src that was an empty transparent rectangle — you
+      chose Covault from the widget list by picking a blank tile. At runtime
+      setImageViewBitmap replaces it, so the same drawable serves both.
+    -->
     <ImageView
         android:id="@+id/widget_canvas"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:scaleType="fitCenter"
+        android:src="@drawable/widget_preview"
         android:contentDescription="@string/widget_description" />
+
+    <!--
+      The tap target for the "N to review" pill, which is painted into the
+      bitmap and so cannot be clicked on its own. Sized and placed to cover
+      where the pill is drawn: top-right, inset by the renderer's padding.
+      GONE unless something is actually waiting, so the rest of the time the
+      whole widget keeps its ordinary "open Covault" tap.
+    -->
+    <View
+        android:id="@+id/widget_review_hit"
+        android:layout_width="112dp"
+        android:layout_height="44dp"
+        android:layout_gravity="top|end"
+        android:visibility="gone" />
 
 </FrameLayout>

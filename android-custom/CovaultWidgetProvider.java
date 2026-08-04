@@ -36,9 +36,15 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
      * throws and the launcher shows "Problem loading widget". So the bitmap is
      * clamped and the ImageView's fitCenter scales it back up. A donut is
      * smooth curves and short text; the downscale is invisible.
+     *
+     * The budget is a pixel COUNT, not a width and a height. It was a pair of
+     * independent caps, 720x480, which multiply out to 1.38MB — 40% past the
+     * ceiling this comment describes, reachable by anyone who stretched the
+     * widget, and failing in exactly the way the clamp exists to prevent.
+     * Capping the area also keeps the bitmap's aspect ratio equal to the
+     * widget's, which is what stops `fitCenter` letterboxing it.
      */
-    private static final int MAX_BITMAP_W = 720;
-    private static final int MAX_BITMAP_H = 480;
+    private static final int MAX_BITMAP_PIXELS = 180_000;   // ~720KB as ARGB_8888
     private static final float MAX_DENSITY = 2.0f;
 
     @Override
@@ -102,13 +108,31 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
                 snapshot = emptySnapshot();
             }
 
-            int[] size = bitmapSize(context, manager, appWidgetId);
+            float[] spec = bitmapSpec(context, manager, appWidgetId);
             boolean systemDark = (context.getResources().getConfiguration().uiMode
                 & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
 
-            Bitmap bitmap = WidgetRenderer.render(context, snapshot, size[0], size[1], systemDark);
+            Bitmap bitmap = WidgetRenderer.render(
+                context, snapshot, (int) spec[0], (int) spec[1], systemDark, spec[2]);
             views.setImageViewBitmap(R.id.widget_canvas, bitmap);
             views.setOnClickPendingIntent(R.id.widget_root, launchIntent(context));
+
+            // Everything on screen is one bitmap, so a screen reader has
+            // nothing to walk. Without this it announces a fixed sentence about
+            // spending by category and never a single figure.
+            views.setContentDescription(R.id.widget_canvas, describe(snapshot));
+
+            // The pill looks like a badge you can act on, so make it one. It
+            // lands on Review, the same place a tapped capture notification
+            // goes. Hidden when there is nothing waiting, so the rest of the
+            // widget keeps its ordinary tap.
+            int pending = snapshot.optInt("pendingReview", 0);
+            if (pending > 0) {
+                views.setViewVisibility(R.id.widget_review_hit, android.view.View.VISIBLE);
+                views.setOnClickPendingIntent(R.id.widget_review_hit, reviewIntent(context));
+            } else {
+                views.setViewVisibility(R.id.widget_review_hit, android.view.View.GONE);
+            }
 
             manager.updateAppWidget(appWidgetId, views);
         } catch (Exception e) {
@@ -153,24 +177,49 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
     }
 
     /** Widget bounds in px, clamped to keep the RemoteViews transaction small. */
-    private static int[] bitmapSize(Context context, AppWidgetManager manager, int appWidgetId) {
+    /**
+     * The bitmap to draw into: width, height, and the pixels-per-dp actually
+     * used, which the renderer needs to size text in real units.
+     *
+     * The dp bounds are read orientation-aware. AppWidgetManager reports a min
+     * and a max for each axis, and which one is the current cell depends on
+     * rotation — taking MIN_WIDTH with MAX_HEIGHT is right in portrait and
+     * wrong in landscape, where it produced a bitmap of the wrong shape that
+     * `fitCenter` then floated in the middle of the tile with transparent
+     * bands down the sides.
+     */
+    private static float[] bitmapSpec(Context context, AppWidgetManager manager, int appWidgetId) {
+        boolean landscape = context.getResources().getConfiguration().orientation
+            == Configuration.ORIENTATION_LANDSCAPE;
         int wDp = 250;
         int hDp = 110;
         try {
             Bundle options = manager.getAppWidgetOptions(appWidgetId);
             if (options != null) {
-                int w = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0);
-                int h = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0);
+                int w = options.getInt(landscape
+                    ? AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH
+                    : AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0);
+                int h = options.getInt(landscape
+                    ? AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT
+                    : AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0);
                 if (w > 0) wDp = w;
                 if (h > 0) hDp = h;
             }
         } catch (Exception e) {
             // defaults
         }
-        float density = Math.min(context.getResources().getDisplayMetrics().density, MAX_DENSITY);
-        int w = Math.min((int) (wDp * density), MAX_BITMAP_W);
-        int h = Math.min((int) (hDp * density), MAX_BITMAP_H);
-        return new int[] { Math.max(w, 120), Math.max(h, 80) };
+
+        float dp = Math.min(context.getResources().getDisplayMetrics().density, MAX_DENSITY);
+        // Scale both axes together when over budget, so the bitmap keeps the
+        // widget's aspect ratio and the text keeps a known size in dp.
+        float area = (wDp * dp) * (hDp * dp);
+        if (area > MAX_BITMAP_PIXELS) {
+            dp *= (float) Math.sqrt(MAX_BITMAP_PIXELS / area);
+        }
+
+        int w = Math.max(120, Math.round(wDp * dp));
+        int h = Math.max(80, Math.round(hDp * dp));
+        return new float[] { w, h, dp };
     }
 
     private static PendingIntent launchIntent(Context context) {
@@ -179,6 +228,42 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
         open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         return PendingIntent.getActivity(context, 0, open,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    /**
+     * The same launch, carrying the destination MainActivity parks for the web
+     * layer to collect — the mechanism a tapped capture notification already
+     * uses, so Review is reached the same way from both.
+     *
+     * A distinct request code: two PendingIntents that differ only in their
+     * extras are "the same" as far as the system is concerned, and the second
+     * would otherwise quietly reuse the first and land on the dashboard.
+     */
+    private static PendingIntent reviewIntent(Context context) {
+        Intent open = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
+        if (open == null) open = new Intent(context, MainActivity.class);
+        open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        open.putExtra(NotificationListener.ROUTE_EXTRA, NotificationListener.ROUTE_REVIEW);
+        return PendingIntent.getActivity(context, 1, open,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    /** What a screen reader says, since the widget itself is a single image. */
+    private static String describe(JSONObject snapshot) {
+        StringBuilder out = new StringBuilder();
+        out.append(snapshot.optString("monthLabel", "This month")).append(". ");
+        out.append(WidgetRenderer.money(snapshot.optDouble("totalSpent", 0))).append(" spent");
+
+        double remaining = snapshot.optDouble("remaining", 0);
+        if (remaining < 0) {
+            out.append(", ").append(WidgetRenderer.money(-remaining)).append(" over budget");
+        } else {
+            out.append(", ").append(WidgetRenderer.money(remaining)).append(" left");
+        }
+
+        int pending = snapshot.optInt("pendingReview", 0);
+        if (pending > 0) out.append(". ").append(pending).append(" to review");
+        return out.append('.').toString();
     }
 
     // ── Midnight redraw ───────────────────────────────────────────────────

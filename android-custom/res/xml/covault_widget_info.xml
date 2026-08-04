@@ -9,17 +9,30 @@
   targetCellWidth/Height are the API 31+ way to express size; minWidth/minHeight
   remain for older launchers. 4x2 is the design size — big enough for the donut
   plus the centre figure, and icon chips on the arcs stay legible.
+
+  maxResize bounds exist so the widget cannot be stretched to a size whose
+  bitmap breaches the RemoteViews transaction limit. The provider clamps the
+  bitmap regardless, but past roughly this size the donut stops growing and the
+  extra area is empty card, so there is nothing to gain by allowing it.
+
+  previewImage as well as previewLayout: the layout is what API 31+ launchers
+  render, the image is the fallback everywhere older. Both resolve to the same
+  drawable, so the picker cannot show one thing on one phone and another
+  elsewhere.
 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="250dp"
     android:minHeight="110dp"
     android:minResizeWidth="180dp"
     android:minResizeHeight="110dp"
+    android:maxResizeWidth="500dp"
+    android:maxResizeHeight="220dp"
     android:targetCellWidth="4"
     android:targetCellHeight="2"
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_covault"
     android:previewLayout="@layout/widget_covault"
+    android:previewImage="@drawable/widget_preview"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
     android:description="@string/widget_description" />

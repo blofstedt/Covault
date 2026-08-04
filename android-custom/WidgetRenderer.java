@@ -52,12 +52,13 @@ final class WidgetRenderer {
 
     /** Theme colours, matching the app's card surfaces and slate text ramp. */
     private static final class Palette {
-        final int surface, primary, secondary, track;
-        Palette(int surface, int primary, int secondary, int track) {
+        final int surface, primary, secondary, track, danger;
+        Palette(int surface, int primary, int secondary, int track, int danger) {
             this.surface = surface;
             this.primary = primary;
             this.secondary = secondary;
             this.track = track;
+            this.danger = danger;
         }
     }
 
@@ -65,13 +66,17 @@ final class WidgetRenderer {
         Color.parseColor("#FFFFFF"),   // card surface
         Color.parseColor("#475569"),   // slate-600
         Color.parseColor("#94A3B8"),   // slate-400
-        Color.parseColor("#F1F5F9"));  // slate-100
+        // slate-200, not slate-100. The track is the whole of an empty month,
+        // and against a white card slate-100 is very nearly invisible.
+        Color.parseColor("#E2E8F0"),
+        Color.parseColor("#E11D48"));  // rose-600, for being over budget
 
     private static final Palette DARK = new Palette(
         Color.parseColor("#0F172A"),   // slate-900
         Color.parseColor("#F1F5F9"),
         Color.parseColor("#64748B"),   // slate-500
-        Color.parseColor("#1E293B"));  // slate-800
+        Color.parseColor("#1E293B"),   // slate-800
+        Color.parseColor("#FB7185"));  // rose-400
 
     /**
      * Smallest arc, in degrees, that can carry an icon chip without colliding
@@ -85,7 +90,13 @@ final class WidgetRenderer {
     /** Gap between arcs, in degrees, so slice boundaries read at a glance. */
     private static final float ARC_GAP_DEGREES = 2f;
 
-    static Bitmap render(Context context, JSONObject snapshot, int widthPx, int heightPx, boolean systemDark) {
+    /**
+     * @param dp pixels per dp in the bitmap being drawn into. Everything is
+     *           sized from this rather than from the bitmap's own dimensions —
+     *           see the note on `render` below.
+     */
+    static Bitmap render(Context context, JSONObject snapshot, int widthPx, int heightPx,
+                         boolean systemDark, float dp) {
         Palette p = resolvePalette(snapshot, systemDark);
 
         Bitmap bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888);
@@ -94,15 +105,14 @@ final class WidgetRenderer {
         Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
         fill.setStyle(Paint.Style.FILL);
 
-        // Card surface, at the same corner weight as the app's cards
-        // (rounded-[2rem] = 32dp). Drawn into the bitmap so it looks right on
-        // launchers that don't clip widgets themselves.
-        float scale = Math.min(widthPx, heightPx) / 160f;
-        float corner = Math.min(32f * scale, Math.min(widthPx, heightPx) * 0.22f);
+        // Card surface, at the same corner weight as the app's cards. Drawn
+        // into the bitmap so it looks right on launchers that don't clip
+        // widgets themselves.
+        float corner = Math.min(28f * dp, Math.min(widthPx, heightPx) * 0.22f);
         fill.setColor(p.surface);
         canvas.drawRoundRect(new RectF(0, 0, widthPx, heightPx), corner, corner, fill);
 
-        float pad = Math.max(10f, 12f * scale);
+        float pad = 14f * dp;
 
         // ── Header: the SNAPSHOT's month, not today's ──
         // If the month rolled over while the app sat unopened, this says "July"
@@ -110,7 +120,7 @@ final class WidgetRenderer {
         Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
         text.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         text.setColor(p.secondary);
-        float headerSize = clamp(11f * scale, 10f, 15f);
+        float headerSize = 13f * dp;
         text.setTextSize(headerSize);
         String month = snapshot.optString("monthLabel", "");
         canvas.drawText(month, pad, pad + headerSize, text);
@@ -122,21 +132,42 @@ final class WidgetRenderer {
         // entirely at zero — an always-present "0 to review" is noise.
         int pending = snapshot.optInt("pendingReview", 0);
         if (pending > 0) {
-            drawReviewPill(canvas, pending, widthPx, pad, headerSize, scale, p);
+            drawReviewPill(canvas, pending, widthPx, pad, headerSize, dp, p);
         }
 
-        // ── Donut geometry ──
-        float headerBottom = pad + headerSize + (4f * scale);
-        float availTop = headerBottom;
+        // ── Composition ──
+        // The widget's design size is 4x2 cells, i.e. more than twice as wide
+        // as it is tall, while the donut can only ever be as big as the height
+        // allows. Centring it left a third of the card empty on either side.
+        // When there is room, the donut moves left and the space becomes the
+        // legend the donut has never had — which also gives the small
+        // categories a name, since an arc under MIN_ICON_ARC_DEGREES cannot
+        // carry an icon.
+        float availTop = pad + headerSize + (6f * dp);
         float availH = heightPx - availTop - pad;
         float availW = widthPx - (2 * pad);
-        // Leave room for icon chips, which straddle the ring's centre-line.
-        float diameter = Math.min(availW, availH);
+
+        List<Slice> slices = readSlices(snapshot);
+        double total = 0;
+        for (Slice s : slices) total += s.amount;
+
+        boolean wide = availW > availH * 1.5f && availW - availH > 96f * dp;
+        float legendLeft = 0, legendWidth = 0;
+        float diameter = availH;
+        if (wide && total > 0) {
+            legendWidth = Math.min(availW - availH - (12f * dp), 150f * dp);
+            legendLeft = widthPx - pad - legendWidth;
+        } else {
+            diameter = Math.min(availW, availH);
+        }
+
         float ringStroke = clamp(diameter * 0.17f, 8f, 34f);
         float chipRadius = Math.min(ringStroke * 0.62f, diameter * 0.085f);
         float outerInset = chipRadius; // chips overhang the ring by up to this
 
-        float cx = widthPx / 2f;
+        float cx = legendWidth > 0
+            ? pad + (diameter / 2f)
+            : widthPx / 2f;
         float cy = availTop + (availH / 2f);
         float radius = (diameter / 2f) - outerInset;
         if (radius <= 0) return bitmap;
@@ -148,19 +179,23 @@ final class WidgetRenderer {
         arc.setStrokeWidth(ringStroke);
         arc.setStrokeCap(Paint.Cap.BUTT);
 
-        List<Slice> slices = readSlices(snapshot);
-        double total = 0;
-        for (Slice s : slices) total += s.amount;
-
         // Track always drawn, so an empty month is a ring rather than a void.
         arc.setColor(p.track);
         canvas.drawArc(ring, 0, 360, false, arc);
 
         if (total > 0) {
             float start = -90f; // 12 o'clock
+            boolean gapped = slices.size() > 1;
             for (Slice s : slices) {
                 float sweep = (float) (s.amount / total) * 360f;
-                float drawSweep = Math.max(sweep - ARC_GAP_DEGREES, 0.6f);
+                // Only take the gap out of a slice wide enough to spare it.
+                // Subtracting a fixed 2 degrees from a 1-degree sliver used to
+                // draw it *wider* than its share, bleeding over its neighbour —
+                // and a single-category month came out as a full ring with an
+                // unexplained notch at 12 o'clock.
+                float drawSweep = gapped && sweep > ARC_GAP_DEGREES * 2f
+                    ? sweep - ARC_GAP_DEGREES
+                    : sweep;
                 arc.setColor(s.color);
                 canvas.drawArc(ring, start, drawSweep, false, arc);
                 s.midAngle = start + (sweep / 2f);
@@ -174,9 +209,19 @@ final class WidgetRenderer {
         centre.setTextAlign(Paint.Align.CENTER);
         centre.setColor(p.primary);
         centre.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        double totalSpent = snapshot.optDouble("totalSpent", 0);
+        String spentLabel = money(totalSpent);
+        // Shrink to fit the hole rather than drawing over the ring. The review
+        // pill has always measured itself; this did not, so a five-figure month
+        // printed straight across the arcs.
+        float hole = (radius - (ringStroke / 2f)) * 2f * 0.88f;
         float totalSize = clamp(radius * 0.42f, 13f, 40f);
         centre.setTextSize(totalSize);
-        String spentLabel = money(snapshot.optDouble("totalSpent", 0));
+        float measured = centre.measureText(spentLabel);
+        if (measured > hole && measured > 0) {
+            totalSize = Math.max(11f, totalSize * (hole / measured));
+            centre.setTextSize(totalSize);
+        }
         canvas.drawText(spentLabel, cx, cy + (totalSize * 0.34f), centre);
 
         Paint sub = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -185,14 +230,26 @@ final class WidgetRenderer {
         sub.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         float subSize = clamp(totalSize * 0.36f, 9f, 14f);
         sub.setTextSize(subSize);
+        float subY = cy + (totalSize * 0.34f) + subSize + (4f * dp);
 
-        if (total <= 0) {
-            canvas.drawText("No spending yet", cx, cy + (totalSize * 0.34f) + subSize + (4f * scale), sub);
+        // "Nothing here yet" is about there being nothing at all, not about the
+        // ring being empty. Branching on the slices alone meant a month with
+        // more refunds than purchases printed a negative total directly above
+        // the words "No spending yet".
+        if (total <= 0 && Math.abs(totalSpent) < 0.005) {
+            canvas.drawText("No spending yet", cx, subY, sub);
         } else {
             double remaining = snapshot.optDouble("remaining", 0);
-            // Negative remaining is real information — render it, don't clamp it.
-            String remainingLabel = money(remaining) + " left";
-            canvas.drawText(remainingLabel, cx, cy + (totalSize * 0.34f) + subSize + (4f * scale), sub);
+            // Negative remaining is real information — render it, don't clamp
+            // it. It also gets the app's rose and a bold weight: being over
+            // budget was previously distinguishable only by a minus sign.
+            if (remaining < 0) {
+                sub.setColor(p.danger);
+                sub.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+                canvas.drawText(money(-remaining) + " over", cx, subY, sub);
+            } else {
+                canvas.drawText(money(remaining) + " left", cx, subY, sub);
+            }
         }
 
         // ── Icons on the arcs. These are the labels; there is no legend. ──
@@ -226,7 +283,72 @@ final class WidgetRenderer {
             }
         }
 
+        if (legendWidth > 0) {
+            drawLegend(canvas, slices, legendLeft, legendWidth, availTop, availH, dp, p);
+        }
+
         return bitmap;
+    }
+
+    /**
+     * The biggest categories, named, down the right-hand side.
+     *
+     * Only drawn when the widget is wide enough that the donut cannot use the
+     * space anyway. Rows are capped by what actually fits rather than by a
+     * fixed count, so a short widget shows two and a tall one shows four —
+     * nothing is ever half-drawn at the bottom edge.
+     */
+    private static void drawLegend(Canvas canvas, List<Slice> slices, float left, float width,
+                                   float top, float height, float dp, Palette p) {
+        float rowH = 22f * dp;
+        int rows = (int) Math.floor(height / rowH);
+        if (rows < 1) return;
+        rows = Math.min(rows, Math.min(4, slices.size()));
+        // Centre the block against the donut rather than hanging it off the top.
+        float y = top + (height - (rows * rowH)) / 2f;
+
+        float dot = 4.5f * dp;
+        Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
+        fill.setStyle(Paint.Style.FILL);
+
+        Paint name = new Paint(Paint.ANTI_ALIAS_FLAG);
+        name.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        name.setColor(p.primary);
+        name.setTextSize(12f * dp);
+
+        Paint amount = new Paint(Paint.ANTI_ALIAS_FLAG);
+        amount.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        amount.setColor(p.secondary);
+        amount.setTextSize(12f * dp);
+        amount.setTextAlign(Paint.Align.RIGHT);
+
+        for (int i = 0; i < rows; i++) {
+            Slice s = slices.get(i);
+            float baseline = y + (rowH / 2f) + (4f * dp);
+
+            fill.setColor(s.color);
+            canvas.drawCircle(left + dot, y + (rowH / 2f), dot, fill);
+
+            String value = money(s.amount);
+            float valueW = amount.measureText(value);
+            float nameLeft = left + (dot * 2f) + (7f * dp);
+            float nameRoom = width - (nameLeft - left) - valueW - (6f * dp);
+
+            canvas.drawText(ellipsise(s.name, name, nameRoom), nameLeft, baseline, name);
+            canvas.drawText(value, left + width, baseline, amount);
+            y += rowH;
+        }
+    }
+
+    /** Trim to fit, with an ellipsis, rather than running under the amount. */
+    private static String ellipsise(String value, Paint paint, float room) {
+        if (value == null || value.isEmpty() || room <= 0) return "";
+        if (paint.measureText(value) <= room) return value;
+        for (int end = value.length() - 1; end > 0; end--) {
+            String candidate = value.substring(0, end) + "…";
+            if (paint.measureText(candidate) <= room) return candidate;
+        }
+        return "";
     }
 
     /** Amber used for "needs a look" in the app (amber-500 / amber-100). */
@@ -237,7 +359,7 @@ final class WidgetRenderer {
 
     private static void drawReviewPill(
         Canvas canvas, int pending, int widthPx, float pad,
-        float headerSize, float scale, Palette p
+        float headerSize, float dp, Palette p
     ) {
         boolean dark = p == DARK;
         Paint pill = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -247,7 +369,7 @@ final class WidgetRenderer {
         Paint label = new Paint(Paint.ANTI_ALIAS_FLAG);
         label.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         label.setColor(dark ? PILL_FG_DARK : PILL_FG);
-        label.setTextSize(clamp(10.5f * scale, 9f, 14f));
+        label.setTextSize(12f * dp);
 
         // Prefer words; fall back to the bare number when the widget is too
         // narrow, which is better than clipping "3 to revi…".
@@ -255,13 +377,13 @@ final class WidgetRenderer {
         String text = full;
         float textW = label.measureText(text);
         float maxW = (widthPx / 2f) - pad;
-        if (textW + (16f * scale) > maxW) {
+        if (textW + (16f * dp) > maxW) {
             text = String.valueOf(pending);
             textW = label.measureText(text);
         }
 
-        float padX = Math.max(6f, 7f * scale);
-        float padY = Math.max(3f, 4f * scale);
+        float padX = 8f * dp;
+        float padY = 4.5f * dp;
         float h = label.getTextSize() + (padY * 2);
         float right = widthPx - pad;
         float left = right - textW - (padX * 2);
@@ -351,7 +473,8 @@ final class WidgetRenderer {
     }
 
     /** Matches lib/formatCurrency.ts, minus the cents when the number is large. */
-    private static String money(double n) {
+    /** Package-private: the provider formats the same figures for TalkBack. */
+    static String money(double n) {
         String sign = n < 0 ? "-" : "";
         double abs = Math.abs(n);
         if (abs >= 1000) {

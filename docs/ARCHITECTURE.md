@@ -112,9 +112,15 @@ cannot fetch.
   self-corrects on next app open.
 - A midnight `AlarmManager` alarm handles month rollover; a stale month renders
   empty rather than showing last month's figures under this month's name.
-- The bitmap is clamped (density ≤2×, 720×480). RemoteViews cross a Binder
-  transaction with a ~1 MB ceiling; a 4×2 widget at xxhdpi is ~990 KB as
-  ARGB_8888 and throws on larger devices.
+- The bitmap is clamped by **pixel count** (density ≤2×, ≤180k px ≈ 720 KB).
+  RemoteViews cross a Binder transaction with a ~1 MB ceiling; a 4×2 widget at
+  xxhdpi is ~990 KB as ARGB_8888 and throws on larger devices. Clamping the
+  area rather than each axis also keeps the bitmap's aspect equal to the
+  widget's, which is what stops `fitCenter` letterboxing it.
+- Everything is sized in dp from the density actually used, not from the
+  bitmap's dimensions. Deriving sizes from the bitmap capped all text at ~7 dp.
+- Wide enough, and the donut moves left and a legend of the biggest categories
+  fills the right — otherwise a third of the card is empty on either side.
 
 ---
 

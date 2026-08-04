@@ -76,6 +76,7 @@ echo "Copying Covault widget resources..."
 for icon in housing groceries transport utilities leisure services other; do
   cp -v "$CUSTOM_DIR/res/drawable/ic_budget_$icon.xml" "$RES_DIR/drawable/"
 done
+cp -v "$CUSTOM_DIR/res/drawable/widget_preview.xml" "$RES_DIR/drawable/"
 cp -v "$CUSTOM_DIR/res/layout/widget_covault.xml" "$RES_DIR/layout/"
 cp -v "$CUSTOM_DIR/res/xml/covault_widget_info.xml" "$RES_DIR/xml/"
 cp -v "$CUSTOM_DIR/res/values/widget_strings.xml" "$RES_DIR/values/"
@@ -105,6 +106,7 @@ for f in \
   "$RES_DIR/mipmap-anydpi-v26/ic_launcher_round.xml" \
   "$RES_DIR/values/ic_launcher_background.xml" \
   "$RES_DIR/layout/widget_covault.xml" \
+  "$RES_DIR/drawable/widget_preview.xml" \
   "$RES_DIR/xml/covault_widget_info.xml" \
   "$RES_DIR/values/widget_strings.xml" \
   "$RES_DIR/drawable/ic_budget_housing.xml" \
