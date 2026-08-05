@@ -178,6 +178,35 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     [onUpdateTransaction],
   );
 
+  // ── Fuel-hold correction ──
+  // The user types what they actually pumped and it replaces the placeholder.
+  // Persisted through the same update path as the inline vendor rename, which
+  // also clears the row's "needs a look" flag — correct here, because supplying
+  // the number IS the look. The row stays in the review list so they can still
+  // file it where they want.
+  const handleAmountCorrected = useCallback(
+    async (tx: Transaction, amount: number) => {
+      if (!onUpdateTransaction) return;
+      onUpdateTransaction({ ...tx, amount });
+    },
+    [onUpdateTransaction],
+  );
+
+  // ── Late settlement ──
+  // The settled charge takes over the placeholder row and the duplicate goes
+  // away. Ordered deliberately: the placeholder is corrected FIRST, so a failure
+  // between the two steps leaves the user with the right amount recorded twice
+  // rather than the wrong amount recorded once. Over-counting is visible and
+  // fixable; a silently wrong total is neither.
+  const handleSettleFuelHold = useCallback(
+    async (placeholder: Transaction, charge: Transaction) => {
+      if (!onUpdateTransaction || !onDeleteTransaction) return;
+      onUpdateTransaction({ ...placeholder, amount: Number(charge.amount) });
+      await onDeleteTransaction(charge.id);
+    },
+    [onUpdateTransaction, onDeleteTransaction],
+  );
+
   // ── "Not a transaction" flow ──
   // Creates a notification_rule (so future matches are skipped) and
   // deletes the row. Both ops are independent; if one fails the other
@@ -621,6 +650,9 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               existingRulesFor={existingRulesFor}
               knownRules={knownRules}
               onAcceptMany={handleAcceptMany}
+              onAmountCorrected={handleAmountCorrected}
+              allTransactions={allTransactions}
+              onSettleFuelHold={handleSettleFuelHold}
             />
 
             <div className="shrink-0 mt-4">

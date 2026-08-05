@@ -4,7 +4,17 @@ import { formatCurrency } from '../../lib/formatCurrency';
 import { Transaction, BudgetCategory } from '../../types';
 import { getBudgetIcon } from '../dashboard_components/getBudgetIcon';
 import { parseLocalDate } from '../../lib/dateUtils';
-import { isSoftDupDismissed, markSoftDupDismissed } from '../../lib/localNotificationMemory';
+import {
+  isSoftDupDismissed,
+  markSoftDupDismissed,
+  isFuelHoldResolved,
+  markFuelHoldResolved,
+  isSettlementOfferDismissed,
+  markSettlementOfferDismissed,
+} from '../../lib/localNotificationMemory';
+import { detectFuelHoldPlaceholder, stripFuelHoldMarker } from '../../lib/fuelHold';
+import { findSettlementCandidate } from '../../lib/fuelHoldReconcile';
+import { FuelHoldPrompt, FuelSettlementOffer } from './FuelHoldPrompt';
 import SoftDuplicateBadge from './SoftDuplicateBadge';
 import RawNotificationExpander from './RawNotificationExpander';
 import InlineVendorEdit from './InlineVendorEdit';
@@ -51,6 +61,22 @@ interface AIEnteredRowProps {
   knownRules?: ExistingRule[];
   /** Called after the file animation so the parent can drop the row from the list. */
   onFiled?: (txId: string) => void;
+  /**
+   * Replace a fuel-hold placeholder with what the user actually paid. Persists
+   * through the same update path as an inline vendor rename.
+   */
+  onAmountCorrected?: (tx: Transaction, amount: number) => Promise<void> | void;
+  /**
+   * Every loaded transaction, used only to pair a settled fuel charge with the
+   * hold it replaces. Optional — without it the settlement offer simply never
+   * appears, which is the same behaviour as before it existed.
+   */
+  allTransactions?: Transaction[];
+  /**
+   * Fold a settled charge into the placeholder row it settles: the placeholder
+   * takes this amount and this row goes away.
+   */
+  onSettleFuelHold?: (placeholder: Transaction, charge: Transaction) => Promise<void> | void;
 }
 
 const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
@@ -68,6 +94,9 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
   existingRules,
   knownRules,
   onFiled,
+  onAmountCorrected,
+  allTransactions,
+  onSettleFuelHold,
 }) => {
   const budgetName = tx.budget_id ? budgets.find((b) => b.id === tx.budget_id)?.name || null : null;
 
@@ -124,6 +153,57 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
 
   const [isEditingVendor, setIsEditingVendor] = useState(false);
   const [isSavingVendor, setIsSavingVendor] = useState(false);
+
+  // ── Fuel pre-authorisation ──
+  // Recomputed from the row rather than read from a flag column: the stored
+  // marker (or, on older rows, the amount and notification text) is enough to
+  // tell a placeholder from a real charge. `holdDismissed` covers what the row
+  // cannot say for itself — that the user has already been asked and answered.
+  const [holdDismissed, setHoldDismissed] = useState(() => isFuelHoldResolved(tx.id));
+  const fuelHold = useMemo(
+    () => (holdDismissed ? null : detectFuelHoldPlaceholder(tx)),
+    [tx, holdDismissed],
+  );
+
+  // ── Late settlement ──
+  // The other half of the same problem: the bank DID send the real amount, days
+  // later, and it came in as a second row. Only computed when this row is not
+  // itself a placeholder, so the two panels can never both appear.
+  const [settlementDismissed, setSettlementDismissed] = useState(() =>
+    isSettlementOfferDismissed(tx.id),
+  );
+  const settlement = useMemo(() => {
+    if (fuelHold || settlementDismissed || !allTransactions || !onSettleFuelHold) return null;
+    return findSettlementCandidate(tx, allTransactions);
+  }, [fuelHold, settlementDismissed, allTransactions, onSettleFuelHold, tx]);
+
+  const handleFuelHoldAmount = useCallback(
+    async (actualAmount: number) => {
+      if (!onAmountCorrected) return;
+      await onAmountCorrected(tx, actualAmount);
+      // Belt and braces: if they typed the placeholder back in, the row would
+      // otherwise still look unanswered.
+      markFuelHoldResolved(tx.id);
+      setHoldDismissed(true);
+    },
+    [onAmountCorrected, tx],
+  );
+
+  const handleKeepPlaceholder = useCallback(() => {
+    markFuelHoldResolved(tx.id);
+    setHoldDismissed(true);
+  }, [tx.id]);
+
+  const handleMergeSettlement = useCallback(async () => {
+    if (!settlement || !onSettleFuelHold) return;
+    await onSettleFuelHold(settlement.placeholder, tx);
+    markFuelHoldResolved(settlement.placeholder.id);
+  }, [settlement, onSettleFuelHold, tx]);
+
+  const handleKeepBoth = useCallback(() => {
+    markSettlementOfferDismissed(tx.id);
+    setSettlementDismissed(true);
+  }, [tx.id]);
 
   const [backfillPrompt, setBackfillPrompt] = useState<{
     oldVendor: string;
@@ -423,6 +503,14 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
                   {tx.is_income ? 'Income' : 'Refund'}
                 </p>
               )}
+              {/* The amount is the first thing read when triaging, so a
+                  placeholder has to say so right there and not only in the
+                  panel below. */}
+              {fuelHold && (
+                <p className="text-[11px] font-semibold tracking-wide text-amber-600 dark:text-amber-400 mt-0.5">
+                  Placeholder
+                </p>
+              )}
             </div>
             {onTransactionTap && (
               <button
@@ -460,12 +548,28 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
           </div>
         )}
 
+        {fuelHold && onAmountCorrected && (
+          <FuelHoldPrompt
+            hold={fuelHold}
+            onSubmit={handleFuelHoldAmount}
+            onKeepPlaceholder={handleKeepPlaceholder}
+          />
+        )}
+
+        {settlement && (
+          <FuelSettlementOffer
+            candidate={settlement}
+            onMerge={handleMergeSettlement}
+            onKeepBoth={handleKeepBoth}
+          />
+        )}
+
         {renderMatchActions()}
 
         {/* Shown for every row with source text, exact matches included. It used
             to be hidden on exact matches — which is precisely when you want it,
             because that's a rule of yours firing on something it shouldn't. */}
-        <RawNotificationExpander rawNotification={tx.raw_notification} />
+        <RawNotificationExpander rawNotification={stripFuelHoldMarker(tx.raw_notification)} />
       </div>
 
       {showActions && (

@@ -544,8 +544,8 @@ public class NotificationListener extends NotificationListenerService {
             return;
         }
 
-        // Hard exclusions beat everything below, including the "has a dollar
-        // amount" fallback and any user-monitored list. Returning here also
+        // Hard exclusions beat everything below, including any user-monitored
+        // or user-approved list. Returning here also
         // means maybeHideBankNotification is never reached for these, so an
         // excluded app's own notification is left alone in the tray.
         if (EXCLUDED_APPS.contains(packageName)) {
@@ -572,10 +572,26 @@ public class NotificationListener extends NotificationListenerService {
         // Forward any notification that looks financial: either from a known/
         // monitored banking app, OR contains a dollar amount.  The local
         // TypeScript pipeline handles classification and rejection.
+        // Only banks get captured.
+        //
+        // This used to also forward ANY notification containing a dollar
+        // amount, on the theory that it would catch a bank nobody had listed
+        // yet. What it actually caught was every other app that mentions
+        // money: a Teams message quoting a price arrived as a transaction and
+        // landed in the user's ledger. Chat, email, calendar, shopping and
+        // delivery apps all talk about dollars, and no amount of downstream
+        // classification can tell "you were charged $42" from "it'll be $42"
+        // reliably enough to be worth it.
+        //
+        // The cost is that an unlisted bank stops being captured until it is
+        // added to BANKING_APPS (and the matching list in lib/bankingApps.ts)
+        // or the user picks it in notification settings, which now offers
+        // unrecognised financial-looking apps for exactly this reason. That is
+        // the recoverable failure — a missing capture the user is told about —
+        // where the old behaviour's failure was a wrong row appearing unasked.
         boolean fromMonitored = isMonitoredApp(packageName);
-        boolean hasDollarAmount = extractAmount(fullText) != null;
 
-        if (!fromMonitored && !hasDollarAmount) {
+        if (!fromMonitored) {
             return;
         }
 
@@ -628,10 +644,11 @@ public class NotificationListener extends NotificationListenerService {
     //   2. This is a live post, not a rescan. A rescan re-walks notifications
     //      that are already in the shade and already captured; clearing the
     //      shade is not its job.
-    //   3. The notification came from a monitored banking app.
-    //      handleNotificationPosted also forwards anything containing a
-    //      dollar amount — an SMS, an email, a receipt — and we must never
-    //      delete those.
+    //   3. The notification came from a monitored banking app. This is now
+    //      also the forwarding rule, so it is redundant in practice — kept
+    //      because dismissing someone's notifications is the one thing here
+    //      that cannot be undone, and it must not become possible again
+    //      through a change made two hundred lines away.
     //   4. The native regex found an amount, i.e. this really does look like
     //      a purchase rather than a balance alert or a login warning.
     //   5. The notification is clearable (not an ongoing/foreground one).

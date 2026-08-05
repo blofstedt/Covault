@@ -336,10 +336,9 @@ export const KNOWN_BANKING_APPS: Record<string, string> = {
  * money — checked before anything else, and it beats every other rule.
  *
  * This exists because of a hole in `NotificationListener.java`. Forwarding is
- * `fromMonitored || hasDollarAmount`, so an app does not have to be a bank to
- * get through — it only has to mention a dollar amount. That is deliberate
- * (it catches banks nobody has listed yet), but it means wallet apps sail
- * straight in.
+ * Google Wallet is listed here rather than simply being left off the banking
+ * list because it would otherwise be a plausible thing to add: it is a money
+ * app, a user could reasonably approve it by hand, and this beats that.
  *
  * Google Wallet announces the same tap-to-pay purchase the card's own bank app
  * already announced, in different wording. One purchase, two notifications, two
@@ -370,6 +369,149 @@ export const EXCLUDED_APPS: Record<string, string> = {
 export function isExcludedApp(packageName: string | null | undefined): boolean {
   if (!packageName) return false;
   return Object.prototype.hasOwnProperty.call(EXCLUDED_APPS, packageName.trim());
+}
+
+// ── User-approved capture sources ────────────────────────────────────────────
+//
+// Capture is restricted to banks, which leaves a gap: a bank Covault has never
+// heard of stops being captured entirely. The notification settings screen
+// closes that gap by letting the user approve an unrecognised app themselves
+// (see suggestUnknownBankApps below). Their choices live here.
+//
+// Device-local, because the native listener's monitored-app list is device-local
+// too — approving an app is a statement about the phone in your hand, not about
+// the account. Kept separate from the DB-sourced bank list so a bad manual
+// approval can never propagate to anyone else.
+
+const APPROVED_SOURCES_KEY = 'covault_approved_capture_sources_v1';
+
+function readApprovedSources(): string[] {
+  try {
+    const raw = localStorage.getItem(APPROVED_SOURCES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Package names the user has approved by hand on this device. */
+export function getApprovedCaptureSources(): string[] {
+  return readApprovedSources();
+}
+
+/**
+ * Approve or un-approve an app as a capture source.
+ *
+ * Excluded apps are refused outright — the exclusion list exists to stop a
+ * specific, known duplicate-capture problem, and a tap in settings is not a
+ * reason to reopen it.
+ */
+export function setCaptureSourceApproved(packageName: string, approved: boolean): void {
+  const pkg = (packageName || '').trim().toLowerCase();
+  if (!pkg || isExcludedApp(pkg)) return;
+  const current = new Set(readApprovedSources());
+  if (approved) current.add(pkg);
+  else current.delete(pkg);
+  try {
+    localStorage.setItem(APPROVED_SOURCES_KEY, JSON.stringify(Array.from(current)));
+  } catch {
+    log.warn('[bankingApps] Could not persist approved capture sources');
+  }
+  bankingKeyCache = null;
+}
+
+/**
+ * Words that make an installed app worth *offering* as a capture source.
+ *
+ * Only ever used to build a suggestion the user must confirm — nothing here
+ * enables capture on its own. That is why it can afford to be broader than the
+ * fuel-merchant list: the cost of a wrong guess is one ignorable row in
+ * settings, not a wrong number in the ledger.
+ */
+const BANKISH_RE = /\b(?:bank|banking|banque|credit\s*union|creditunion|\bcu\b|caisse|financial|finance|savings|trust|federal|fcu|card|visa|mastercard|amex|american\s*express|discover|wallet|pay|money|cash|invest|brokerage)\b/i;
+
+export interface UnknownBankSuggestion {
+  packageName: string;
+  /** The app's own label, as Android reports it. */
+  name: string;
+}
+
+/**
+ * Installed apps that look financial but are not on any list yet.
+ *
+ * This is the visible half of the bank-only rule. Restricting capture to known
+ * banks means an unlisted bank fails silently, and a silent failure is the one
+ * kind the user cannot act on — so the app has to volunteer what it might be
+ * missing. Matching on the app's own name is deliberate: it never reads a
+ * notification to decide, so nothing about an unapproved app's contents is
+ * examined, let alone captured.
+ */
+export function suggestUnknownBankApps(
+  installed: Array<{ packageName: string; name: string }>,
+): UnknownBankSuggestion[] {
+  const known = bankingPackageKeys();
+  const seen = new Set<string>();
+  const out: UnknownBankSuggestion[] = [];
+
+  for (const app of installed || []) {
+    const pkg = (app?.packageName || '').trim().toLowerCase();
+    const name = (app?.name || '').trim();
+    if (!pkg || !name) continue;
+    if (known.has(pkg) || isExcludedApp(pkg) || seen.has(pkg)) continue;
+    if (!BANKISH_RE.test(name)) continue;
+    seen.add(pkg);
+    out.push({ packageName: pkg, name });
+  }
+
+  out.sort((a, b) => a.name.localeCompare(b.name));
+  return out;
+}
+
+/**
+ * True if this package may produce a capture: a bank, a card issuer, or an app
+ * the user approved by hand.
+ *
+ * This is the JS half of "only banks get captured". The Java listener stops
+ * everything else before it is ever broadcast; this backstops the paths that do
+ * not come through a live broadcast — the offline queue, a rescan, and a phone
+ * still running an older APK than its web bundle.
+ *
+ * Checked against the DB-sourced list AND the hardcoded one, deliberately. The
+ * DB list replaces the cache wholesale when it loads, so consulting it alone
+ * would mean a short or partially-populated `banks` table silently switching
+ * capture off for a bank the app has always known about.
+ */
+export function isBankingApp(packageName: string | null | undefined): boolean {
+  if (!packageName) return false;
+  const pkg = packageName.trim().toLowerCase();
+  if (!pkg) return false;
+  if (isExcludedApp(pkg)) return false;
+  return bankingPackageKeys().has(pkg);
+}
+
+/**
+ * Lowercased package names of every app the JS side will accept a capture from.
+ *
+ * Case-folded because a dozen entries in KNOWN_BANKING_APPS are camelCase
+ * ('com.ally.MobileBanking', 'co.uk.Nationwide.Mobile') while the pipeline
+ * lowercases every incoming package id. A case-sensitive lookup would refuse
+ * those banks outright. Rebuilt when the DB cache is replaced or the user
+ * approves an app.
+ */
+let bankingKeyCache: Set<string> | null = null;
+let bankingKeyCacheSource: Record<string, string> | null = null;
+
+function bankingPackageKeys(): Set<string> {
+  if (bankingKeyCache && bankingKeyCacheSource === cachedBankingApps) return bankingKeyCache;
+  const keys = new Set<string>();
+  for (const pkg of Object.keys(KNOWN_BANKING_APPS)) keys.add(pkg.toLowerCase());
+  for (const pkg of Object.keys(cachedBankingApps)) keys.add(pkg.toLowerCase());
+  for (const pkg of readApprovedSources()) keys.add(pkg.toLowerCase());
+  bankingKeyCache = keys;
+  bankingKeyCacheSource = cachedBankingApps;
+  return keys;
 }
 
 /**

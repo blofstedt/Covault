@@ -24,8 +24,10 @@ import { checkNotificationRules, bumpRuleUseCount } from './notificationRules';
 import { getLocalToday, parseLocalDate, toLocalIsoDay } from './dateUtils';
 import { extractWithAI, aiDetectRecurring, type AIExtractionResult } from './aiExtractor';
 import { detectMerchantSignal, resolveSignalCategory } from './merchantCategorySignals';
-import type { PendingTransaction } from '../types';
+import type { PendingTransaction, Transaction } from '../types';
 import { scoreVendorMatch, shouldAutoAccept } from './vendorMatchConfidence';
+import { isBankingApp } from './bankingApps';
+import { detectFuelHold, isFuelMerchant, isHoldAmount, pastFillAmounts, withFuelHoldMarker } from './fuelHold';
 
 // ─── Constants ───────────────────────────────────────────────────
 
@@ -709,6 +711,29 @@ export async function checkDuplicateTransaction(
   };
 }
 
+/**
+ * The user's past settled fills at a station, for sizing a hold placeholder.
+ *
+ * Best-effort by design: if this query fails or returns nothing the caller
+ * falls back to the flat $100 default, so a slow or unavailable database costs
+ * accuracy on one row rather than blocking the capture.
+ */
+async function fetchPriorFuelFills(userId: string, vendor: string): Promise<number[]> {
+  try {
+    const { data } = await supabase
+      .from('transactions')
+      .select('id, vendor, amount, date, raw_notification, is_projected')
+      .eq('user_id', userId)
+      .order('date', { ascending: false })
+      .limit(200);
+    if (!data || data.length === 0) return [];
+    return pastFillAmounts(vendor, data as unknown as Transaction[]);
+  } catch (e) {
+    log.debug('[AI pipeline] Could not load fill history for placeholder sizing:', e);
+    return [];
+  }
+}
+
 // ─── AI Processing Pipeline ─────────────────────────────────────
 
 export interface AIProcessingResult {
@@ -736,7 +761,13 @@ export interface AIProcessingResult {
   /** Reason for rejection if not a transaction or duplicate */
   rejectionReason?: string;
   /** Skip reason */
-  skipReason?: 'duplicate_fingerprint' | 'duplicate_vendor_amount' | 'duplicate_manual' | 'duplicate_ai' | 'not_transaction' | 'extraction_failed' | 'needs_review';
+  skipReason?: 'duplicate_fingerprint' | 'duplicate_vendor_amount' | 'duplicate_manual' | 'duplicate_ai' | 'not_transaction' | 'extraction_failed' | 'needs_review' | 'not_bank_app';
+  /**
+   * Set when the capture was a fuel pre-authorisation. The stored amount is a
+   * placeholder, not what was pumped; `holdAmount` is the round figure the bank
+   * announced. The UI asks the user for the real number.
+   */
+  fuelHold?: { holdAmount: number; placeholderAmount: number; basis: 'median-fill' | 'default' };
   /** The bank name */
   bankName?: string;
   /**
@@ -788,6 +819,22 @@ export async function processNotificationWithAI(
     bankAppId: (input.bankAppId || '').toLowerCase(),
     bankName: (input.bankName || '').toLowerCase(),
   };
+
+  // ── Step 0: Banks only ──
+  // The last line of defence for "a transaction comes from a bank". The native
+  // listener drops non-banks first and the hook drops them again, but this is
+  // the one place EVERY path into the ledger passes through, so it is the one
+  // that has to be right. Cheap: a set lookup on a string already in hand.
+  if (!isBankingApp(input.bankAppId)) {
+    log.debug(`[AI pipeline] Ignoring notification from non-banking app: ${input.bankAppId || '(none)'}`);
+    return {
+      processed: false,
+      isTransaction: false,
+      skipReason: 'not_bank_app',
+      rejectionReason: 'Notification did not come from a banking app',
+      bankName: input.bankName,
+    };
+  }
 
   const notifTimestamp = input.notificationTimestamp || Date.now();
 
@@ -1593,20 +1640,54 @@ async function processNotificationWithAIImpl(
   const transactionId = crypto.randomUUID();
   const finalVendorName = formatVendorName(displayVendor);
 
+  // ── Fuel pre-authorisation ──
+  // A station announces a round hold ($150, $250, sometimes a $1 ping) and
+  // then, when the fill settles at $71.43, often sends nothing. Storing the
+  // hold means the month is wrong by the difference, permanently and
+  // invisibly. So the row carries a placeholder instead — the user's own median
+  // fill at this station when we have the history for one — is never
+  // auto-filed, and asks for the real number in Review.
+  //
+  // Detected here rather than earlier on purpose: every duplicate check above
+  // compares against the amount the BANK sent, and substituting sooner would
+  // make two separate fills at the same station on the same day look like one
+  // notification arriving twice. See lib/fuelHold.ts.
+  //
+  // The shape test runs first and costs two regex matches. Only a capture that
+  // already looks like a hold is worth a round-trip for the user's fill history,
+  // which keeps the added query off the path of every ordinary purchase.
+  let priorFills: number[] = [];
+  if (isHoldAmount(amount) && isFuelMerchant(`${finalVendorName} ${input.rawNotification || ''}`)) {
+    priorFills = await fetchPriorFuelFills(userId, finalVendorName);
+  }
+  const fuelHold = detectFuelHold({
+    vendor: finalVendorName,
+    rawText: input.rawNotification,
+    amount,
+    priorFills,
+  });
+  const storedAmount = fuelHold ? fuelHold.placeholderAmount : amount;
+  if (fuelHold) {
+    log.debug(
+      `[AI pipeline] Fuel hold at ${finalVendorName}: bank said $${fuelHold.holdAmount}, ` +
+      `storing $${storedAmount} (${fuelHold.basis}) pending the real amount`,
+    );
+  }
+
   // Claim this purchase before inserting. Two apps reporting the same charge
   // arrive as different notifications, so every guard above lets both through;
   // this is the first point where we know enough to recognise them as one
   // purchase. Whoever claims it inserts, the other backs off.
-  const purchaseKey = `${userId}|${today}|${amount.toFixed(2)}|${normalizeVendorForDedup(finalVendorName)}`;
+  const purchaseKey = `${userId}|${today}|${storedAmount.toFixed(2)}|${normalizeVendorForDedup(finalVendorName)}`;
   if (!input.forceReprocess && !claimPurchase(purchaseKey)) {
-    log.debug(`[AI pipeline] Purchase already being inserted by a parallel capture: ${finalVendorName} $${amount}`);
+    log.debug(`[AI pipeline] Purchase already being inserted by a parallel capture: ${finalVendorName} $${storedAmount}`);
     recentlyProcessedCache.set(inMemoryKey, Date.now());
     markNotificationProcessed(capturedKey);
     return {
       processed: false,
       isTransaction: false,
       vendor: finalVendorName,
-      amount,
+      amount: storedAmount,
       bankName: input.bankName,
       skipReason: 'duplicate_fingerprint',
     };
@@ -1627,7 +1708,11 @@ async function processNotificationWithAIImpl(
   // belongs in Groceries. Only a rule the user wrote themselves justifies
   // skipping their review, so 5b/5c matches leave overrideMatchConfidence at 0
   // and always go to the queue.
-  const autoAccepted = shouldAutoAccept({
+  //
+  // A fuel hold can never be auto-filed, however well the user's rule matches.
+  // Auto-accept means the row is never shown, and the whole point of a
+  // placeholder is that somebody has to replace it with the real number.
+  const autoAccepted = !fuelHold && shouldAutoAccept({
     enabled: input.autoAcceptKnownVendors === true,
     confidence: overrideMatchConfidence,
     hasCategory: !!categoryId,
@@ -1643,7 +1728,10 @@ async function processNotificationWithAIImpl(
     id: transactionId,
     user_id: userId,
     vendor: finalVendorName,
-    amount,
+    // Placeholder rather than the announced figure when this is a fuel hold.
+    // The raw notification below still carries what the bank actually said,
+    // plus a marker recording the substitution, so nothing is lost.
+    amount: storedAmount,
     date: today,
     // Use the same column names as toSupabaseTransaction (the known-working manual insert path)
     budget: categoryName || 'Other',
@@ -1657,7 +1745,14 @@ async function processNotificationWithAIImpl(
     // can show "what did the parser see?" — and the user can correct
     // the vendor from the source. Truncate to 4KB to avoid hitting
     // any text column limits.
-    raw_notification: (input.rawNotification || '').slice(0, 4000),
+    raw_notification: (
+      fuelHold
+        // Record the substitution in the row itself. This is what lets the UI
+        // recognise a placeholder later without a schema migration, and it
+        // keeps the bank's original wording alongside what we stored instead.
+        ? withFuelHoldMarker((input.rawNotification || '').slice(0, 3900), fuelHold)
+        : (input.rawNotification || '').slice(0, 4000)
+    ),
     confidence: captureConfidence,
     // Only set when filing on arrival, so it never enters the review queue.
     // Omitted otherwise so a normal capture's insert keeps exactly the shape it
@@ -1716,7 +1811,7 @@ async function processNotificationWithAIImpl(
     .select('id, vendor, amount, date, created_at')
     .eq('user_id', userId)
     .eq('date', today)
-    .eq('amount', amount)
+    .eq('amount', storedAmount)
     .neq('id', transactionId);
 
   if (raceCheck && raceCheck.length > 0) {
@@ -1726,7 +1821,7 @@ async function processNotificationWithAIImpl(
     );
     if (race) {
       log.warn(
-        `[AI pipeline] ⚠️ Race-recovery: rolling back our insert of ${finalVendorName} $${amount} ` +
+        `[AI pipeline] ⚠️ Race-recovery: rolling back our insert of ${finalVendorName} $${storedAmount} ` +
         `(${transactionId}) — duplicate of ${race.id} (${race.vendor} $${race.amount}, created ${race.created_at})`,
       );
       const { error: rollbackError } = await supabase
@@ -1745,7 +1840,7 @@ async function processNotificationWithAIImpl(
         processed: true,
         isTransaction: true,
         vendor: finalVendorName,
-        amount,
+        amount: storedAmount,
         skipReason: 'duplicate_ai' as const,
         rejectionReason: 'Duplicate detected after insert (race-recovery rollback)',
         bankName: input.bankName,
@@ -1763,7 +1858,7 @@ async function processNotificationWithAIImpl(
   releasePurchase(purchaseKey);
 
   releasePurchase(purchaseKey);
-  log.debug(`[AI pipeline] Transaction saved: ${finalVendorName} $${amount} → ${categoryName}`);
+  log.debug(`[AI pipeline] Transaction saved: ${finalVendorName} $${storedAmount} → ${categoryName}`);
   // An auto-accepted row is already filed, so flagging it "needs a look" would
   // be a contradiction — and the review-queue badge would count a row the list
   // never shows.
@@ -1781,10 +1876,11 @@ async function processNotificationWithAIImpl(
     isTransaction: true,
     transactionId,
     vendor: finalVendorName,
-    amount,
+    amount: storedAmount,
     categoryId,
     categoryName: categoryName || undefined,
     autoAccepted,
+    fuelHold: fuelHold || undefined,
     bankName: input.bankName,
     // Surface the soft-dup warning from Step 4 so the UI can show a
     // "possible duplicate" badge. The transaction is still saved — the
@@ -1792,4 +1888,3 @@ async function processNotificationWithAIImpl(
     softDuplicateOf: softDupMatch || undefined,
   };
 }
-

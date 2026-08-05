@@ -98,6 +98,10 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | The user says | Open, in this order |
 |---|---|
 | "a purchase wasn't captured" | `lib/deviceTransactionParser.ts` (regex) → `lib/notificationProcessor.ts` (pipeline) |
+| "something that isn't my bank got captured" | `android-custom/NotificationListener.java` (forwarding) → `lib/bankingApps.ts` (`isBankingApp`, the JS backstop) |
+| "my bank stopped being captured" | `lib/bankingApps.ts` — `suggestUnknownBankApps`, surfaced in `components/NotificationSettings.tsx` |
+| "the gas amount is wrong" / "it says placeholder" | `lib/fuelHold.ts` — hold detection, applied at step 6 of the processor and re-derived per row in `AIEnteredRow` |
+| "I have two rows for one tank of gas" | `lib/fuelHoldReconcile.ts` — pairs a settled charge with the hold it replaces |
 | "I got a duplicate" | `lib/notificationProcessor.ts` — dedup is steps 1, 2, 5 and the post-insert race recovery |
 | "it picked the wrong category" | `lib/hooks/useVendorMatcher.ts`, `lib/vendorMatchConfidence.ts`, step 5a of the processor |
 | "a new restaurant landed in Other" | `lib/merchantCategorySignals.ts` — the offline descriptor/POS-prefix guess, applied in step 5c |

@@ -252,3 +252,55 @@ export function setCachedAIResult(text: string, result: Omit<CachedAIResult, 'ca
   }
 }
 
+// ── Fuel holds the user has already dealt with ───────────────────────────────
+//
+// A fuel-hold row is recognised from the row itself (see lib/fuelHold.ts), which
+// means it stops looking like a hold the moment the amount changes — the right
+// behaviour in every case but two: a fill that genuinely came to the exact
+// placeholder, and a user who would rather leave the estimate than go find the
+// receipt. Both need somewhere to record "asked and answered".
+//
+// Device-local and cheap on purpose. The worst case if it is lost is one extra
+// prompt on a row the user already dismissed.
+
+const RESOLVED_FUEL_HOLDS_KEY = 'covault_resolved_fuel_holds_v1';
+const MAX_RESOLVED_FUEL_HOLDS = 300;
+
+export function isFuelHoldResolved(transactionId: string): boolean {
+  if (!transactionId) return false;
+  return readJson<string[]>(RESOLVED_FUEL_HOLDS_KEY, []).includes(transactionId);
+}
+
+export function markFuelHoldResolved(transactionId: string): void {
+  if (!transactionId) return;
+  let ids = readJson<string[]>(RESOLVED_FUEL_HOLDS_KEY, []);
+  if (ids.includes(transactionId)) return;
+  ids.push(transactionId);
+  if (ids.length > MAX_RESOLVED_FUEL_HOLDS) {
+    ids = ids.slice(ids.length - MAX_RESOLVED_FUEL_HOLDS);
+  }
+  writeJson(RESOLVED_FUEL_HOLDS_KEY, ids);
+}
+
+// ── Settlement offers the user declined ──────────────────────────────────────
+// "Keep both" on a settled-charge offer has to stick, or the same question
+// returns on every render. Keyed by the settling charge, so a later, genuinely
+// different pairing is still offered.
+
+const DISMISSED_SETTLEMENTS_KEY = 'covault_dismissed_fuel_settlements_v1';
+
+export function isSettlementOfferDismissed(chargeId: string): boolean {
+  if (!chargeId) return false;
+  return readJson<string[]>(DISMISSED_SETTLEMENTS_KEY, []).includes(chargeId);
+}
+
+export function markSettlementOfferDismissed(chargeId: string): void {
+  if (!chargeId) return;
+  let ids = readJson<string[]>(DISMISSED_SETTLEMENTS_KEY, []);
+  if (ids.includes(chargeId)) return;
+  ids.push(chargeId);
+  if (ids.length > MAX_RESOLVED_FUEL_HOLDS) {
+    ids = ids.slice(ids.length - MAX_RESOLVED_FUEL_HOLDS);
+  }
+  writeJson(DISMISSED_SETTLEMENTS_KEY, ids);
+}
