@@ -408,57 +408,6 @@ export const useTransactionOps = ({
     [appState.transactions, setAppState, setDbError],
   );
 
-  // Undo a delete: put the removed occurrences back (the original ids are
-  // reused, so the rows come back as they were) and restore the recurrence on
-  // the earlier ones the delete had ended.
-  const handleUndoDeleteTransaction = useCallback(
-    async (plan: RecurringDeletePlan) => {
-      for (const tx of plan.remove) {
-        await handleAddTransaction(tx);
-      }
-
-      if (plan.endSeries.length === 0) return;
-
-      const recurrenceById = new Map(plan.endSeries.map(t => [t.id, t.recurrence]));
-      setAppState(prev => ({
-        ...prev,
-        transactions: prev.transactions.map(t =>
-          recurrenceById.has(t.id) ? { ...t, recurrence: recurrenceById.get(t.id) } : t,
-        ),
-      }));
-
-      // One PATCH per distinct recurrence value — in practice always one.
-      const idsByRecurrence = new Map<string, string[]>();
-      for (const { id, recurrence } of plan.endSeries) {
-        const value = String(recurrence || Recurrence.ONE_TIME);
-        idsByRecurrence.set(value, [...(idsByRecurrence.get(value) || []), id]);
-      }
-
-      await Promise.all(
-        [...idsByRecurrence].map(async ([recur, ids]) => {
-          try {
-            const res = await restFetch(`/transactions?id=in.(${toIdList(ids)})`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ recur }),
-            });
-            if (!res.ok) {
-              const body = await res.text();
-              const msg = `Undo delete failed (${res.status}): ${body.slice(0, 200)}`;
-              log.error(msg);
-              setDbError(msg);
-            }
-          } catch (err: any) {
-            const msg = `Undo delete exception: ${err?.message || err}`;
-            log.error(msg);
-            setDbError(msg);
-          }
-        }),
-      );
-    },
-    [handleAddTransaction, setAppState, setDbError],
-  );
-
   // Approve a pending transaction (convert to actual transaction)
   const handleApprovePendingTransaction = useCallback(
     async (pendingId: string, categoryId: string, preferredName?: string) => {
@@ -761,7 +710,6 @@ export const useTransactionOps = ({
     handleAddTransaction,
     handleUpdateTransaction,
     handleDeleteTransaction,
-    handleUndoDeleteTransaction,
     handleApprovePendingTransaction,
     handleRejectPendingTransaction,
     handleClearFilteredNotifications,

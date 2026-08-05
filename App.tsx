@@ -110,7 +110,6 @@ const App: React.FC = () => {
     handleAddTransaction,
     handleUpdateTransaction,
     handleDeleteTransaction,
-    handleUndoDeleteTransaction,
     handleLinkPartner,
     handleUnlinkPartner,
     saveBudgetLimit,
@@ -120,36 +119,11 @@ const App: React.FC = () => {
     saveSettingToDb,
   } = useUserData({ appState, setAppState, setDbError });
 
-  // Delete with an Undo affordance. Deleting one occurrence of a recurring
-  // charge takes every later occurrence with it and ends the series, so the
-  // Undo has to restore all of that, not just one row — the delete hands back
-  // exactly what it did for that purpose.
-  const handleDeleteWithUndo = useCallback(
-    async (id: string) => {
-      const plan = await handleDeleteTransaction(id);
-      if (!plan) return;
-
-      // The warning about what a recurring delete takes with it now lives in the
-      // confirmation modal, where the user reads it BEFORE the irreversible
-      // part. What's left here is a receipt with an Undo on it, so the wording
-      // is short.
-      setToast({
-        message: plan.isSeries
-          ? 'Recurring transaction deleted'
-          : 'Transaction deleted',
-        tone: 'info',
-        action: {
-          label: 'Undo',
-          run: () => {
-            setToast(null);
-            handleUndoDeleteTransaction(plan);
-          },
-        },
-      });
-    },
-    [handleDeleteTransaction, handleUndoDeleteTransaction],
-  );
-
+  // Deleting raises nothing afterwards. The confirmation says what will go,
+  // including the future repeats of a recurring charge, and the user agreed to
+  // it a moment earlier — a strip repeating it back is one message too many.
+  // The toast element below stays for the things the user did not ask for:
+  // errors, and the Undo after a captured purchase files itself.
   const loadUserDataWithState = useCallback(
     async (userId: string) => {
       try {
@@ -376,7 +350,7 @@ const App: React.FC = () => {
           onSignOut={handleSignOut}
           onAddTransaction={handleAddTransaction}
           onUpdateTransaction={handleUpdateTransaction}
-          onDeleteTransaction={handleDeleteWithUndo}
+          onDeleteTransaction={handleDeleteTransaction}
           saveBudgetLimit={saveBudgetLimit}
           saveUserIncome={saveUserIncome}
           saveTheme={saveTheme}
