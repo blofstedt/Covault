@@ -47,9 +47,10 @@ describe('the native fingerprint', () => {
 });
 
 describe('the handover to Capacitor', () => {
-  // Covault writes Capacitor's own preference rather than calling
+  // Staging writes Capacitor's own preference rather than calling
   // setServerBasePath, so that the new bundle is picked up at the next cold
-  // start instead of reloading the app under the user. That means depending on
+  // start instead of reloading the app under the user. (The one exception is
+  // the user tapping Restart — see the block below.) That means depending on
   // two constants inside the dependency, which a Capacitor upgrade could
   // rename without any build error here.
   const capacitorWebView = readFileSync(
@@ -68,6 +69,56 @@ describe('the handover to Capacitor', () => {
   it('uses the key Capacitor reads at startup', () => {
     expect(capacitorWebView).toContain('CAP_SERVER_PATH = "serverBasePath"');
     expect(plugin).toContain('CAP_SERVER_PATH = "serverBasePath"');
+  });
+});
+
+describe('applying a downloaded bundle without a cold start', () => {
+  // A staged bundle arrives on its own at the next cold start. The Restart
+  // button exists so that someone waiting on a fix does not have to swipe the
+  // app away to get it, and it is another three-language agreement: the Java
+  // method name, the TypeScript declaration of it, and the pair of version
+  // numbers the pill decides on. Any of them can drift in silence.
+  const hook = read('lib/hooks/useAppUpdate.ts');
+  const bridgeTs = read('lib/covaultUpdater.ts');
+
+  it('is offered by the same method name on both sides', () => {
+    expect(plugin).toContain('public void applyWebBundleNow');
+    expect(bridgeTs).toContain('applyWebBundleNow()');
+    expect(hook).toContain('applyWebBundleNow()');
+  });
+
+  it('reports what is on disk and what is running as separate numbers', () => {
+    // Equal numbers mean nothing is waiting. Reporting only the stored version
+    // — which staging updates immediately — would say the new build is already
+    // running and the pill would never appear.
+    expect(plugin).toContain('"stagedWebVersion"');
+    expect(plugin).toContain('"runningWebVersion"');
+    expect(bridgeTs).toContain('stagedWebVersion');
+    expect(bridgeTs).toContain('runningWebVersion');
+    expect(hook).toContain('status.stagedWebVersion > status.runningWebVersion');
+  });
+
+  it('reloads through the Capacitor call that still exists', () => {
+    const bridge = readFileSync(
+      resolve(
+        root,
+        'node_modules/@capacitor/android/capacitor/src/main/java/com/getcapacitor/Bridge.java',
+      ),
+      'utf8',
+    );
+    expect(bridge).toContain('public void setServerBasePath(String path)');
+    expect(plugin).toContain('bridge.setServerBasePath(path)');
+  });
+
+  it('answers the caller before replacing the WebView that called it', () => {
+    // The page making the call is torn down by the reload, so a promise
+    // resolved afterwards is resolved into nothing and the button hangs.
+    const method = plugin.slice(plugin.indexOf('public void applyWebBundleNow'));
+    const resolved = method.indexOf('call.resolve()');
+    const reloaded = method.indexOf('setServerBasePath');
+    expect(resolved).toBeGreaterThan(-1);
+    expect(reloaded).toBeGreaterThan(-1);
+    expect(resolved).toBeLessThan(reloaded);
   });
 });
 

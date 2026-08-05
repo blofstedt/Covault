@@ -14,6 +14,13 @@ export interface UpdaterStatus {
   apkVersion: number;
   /** Version of the applied web bundle; 0 means the one inside the APK. */
   webVersion: number;
+  /** Bundle version sitting on disk, applied or not. */
+  stagedWebVersion: number;
+  /**
+   * Bundle version this launch is actually serving. Lower than the staged one
+   * means a downloaded update is waiting for a reload.
+   */
+  runningWebVersion: number;
   /**
    * Fingerprint of this APK's native code. Empty means unknown, which the
    * caller must read as "never apply a web bundle".
@@ -38,6 +45,11 @@ export interface CovaultUpdaterPlugin {
    * Nothing changes in the running app.
    */
   stageWebBundle(options: { id: string; version: number }): Promise<void>;
+  /**
+   * Reload the running app onto the staged bundle immediately. The WebView is
+   * replaced, so nothing after this call runs.
+   */
+  applyWebBundleNow(): Promise<void>;
   /** Tell the native side this launch succeeded, ending a bundle's probation. */
   confirmWebBundle(): Promise<void>;
   /** Go back to the web build inside the APK. */

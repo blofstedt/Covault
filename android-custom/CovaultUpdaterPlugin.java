@@ -11,6 +11,7 @@ import android.os.Build;
 import android.provider.Settings;
 import android.util.Log;
 
+import com.getcapacitor.Bridge;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -82,6 +83,19 @@ public class CovaultUpdaterPlugin extends Plugin {
     private static final int MAX_UNCONFIRMED_LAUNCHES = 2;
 
     /**
+     * The bundle version this process is actually serving, decided in load()
+     * before Capacitor reads the server path and never changed afterwards
+     * except by applyWebBundleNow().
+     *
+     * The stored version alone cannot answer "is the running app up to date":
+     * staging writes it immediately, while the WebView carries on serving the
+     * old files until something reloads it. Keeping what we booted with is
+     * what lets the app say "a new version is downloaded and waiting" rather
+     * than believing it is already running it.
+     */
+    private int runningWebVersion = 0;
+
+    /**
      * Capacitor's own record of where it should serve the app from. Writing it
      * here is deliberate: `WebView.setServerBasePath` swaps the running app out
      * from under the user immediately, which is not something an update should
@@ -105,6 +119,11 @@ public class CovaultUpdaterPlugin extends Plugin {
     public void load() {
         try {
             SharedPreferences prefs = prefs();
+
+            // Whatever is stored now is what Capacitor is about to serve, so
+            // this is the version this process runs — unless the checks below
+            // throw the bundle away, and clearWebBundle() resets it for that.
+            runningWebVersion = prefs.getInt(KEY_WEB_VERSION, 0);
 
             int stagedFor = prefs.getInt(KEY_APK_BUILD, 0);
             int current = currentVersionCode();
@@ -149,6 +168,10 @@ public class CovaultUpdaterPlugin extends Plugin {
         result.put("apkVersion", currentVersionCode());
         // 0 means the app is running the web build shipped inside the APK.
         result.put("webVersion", prefs().getInt(KEY_WEB_VERSION, 0));
+        // The pair the UI needs to say "downloaded, not yet running": staged is
+        // what is on disk, running is what this process actually started with.
+        result.put("stagedWebVersion", prefs().getInt(KEY_WEB_VERSION, 0));
+        result.put("runningWebVersion", runningWebVersion);
         result.put("nativeHash", nativeHash());
         call.resolve(result);
     }
@@ -415,6 +438,62 @@ public class CovaultUpdaterPlugin extends Plugin {
         call.resolve();
     }
 
+    /**
+     * Switch the running app onto the staged bundle now, without waiting for a
+     * cold start.
+     *
+     * This is the one place `setServerBasePath` is allowed. Staging refuses to
+     * call it on purpose — an update must never replace the screen someone is
+     * reading — but this method only runs because the user tapped a button
+     * asking for exactly that, and the reload is the point rather than a side
+     * effect.
+     *
+     * The call is resolved before the reload is posted: the WebView that made
+     * it is about to be torn down, so a promise settled afterwards would be
+     * settled into nothing and the JavaScript side would appear to hang.
+     *
+     * Probation is unaffected. The bundle stays pending until the reloaded app
+     * calls confirmWebBundle() a few seconds in, exactly as it would after a
+     * cold start; a bundle that cannot render still gets thrown away, just at
+     * the next launch rather than this one, since load() does not re-run here.
+     */
+    @PluginMethod
+    public void applyWebBundleNow(PluginCall call) {
+        int staged = prefs().getInt(KEY_WEB_VERSION, 0);
+        if (staged == 0 || staged <= runningWebVersion) {
+            call.reject("There is no newer web bundle waiting");
+            return;
+        }
+
+        String path = getContext()
+            .getSharedPreferences(CAP_WEBVIEW_PREFS, Context.MODE_PRIVATE)
+            .getString(CAP_SERVER_PATH, null);
+        if (path == null || path.isEmpty() || !new File(path, "index.html").isFile()) {
+            call.reject("The staged web bundle is missing");
+            return;
+        }
+
+        final Bridge bridge = getBridge();
+        if (bridge == null) {
+            call.reject("The app is not ready to reload");
+            return;
+        }
+
+        runningWebVersion = staged;
+        Log.i(TAG, "Applying web bundle " + staged + " on request");
+        call.resolve();
+
+        bridge.getActivity().runOnUiThread(() -> {
+            try {
+                bridge.setServerBasePath(path);
+            } catch (Exception e) {
+                // Nothing to report to — the caller has already been resolved.
+                // The bundle is still staged, so the next cold start takes it.
+                Log.w(TAG, "Could not reload onto the staged bundle", e);
+            }
+        });
+    }
+
     /** Go back to the web build inside the APK. */
     @PluginMethod
     public void revertWebBundle(PluginCall call) {
@@ -435,6 +514,7 @@ public class CovaultUpdaterPlugin extends Plugin {
                 .commit();
             prefs().edit().clear().commit();
             deleteTree(new File(getContext().getFilesDir(), WEB_DIR));
+            runningWebVersion = 0;
         } catch (Exception e) {
             Log.w(TAG, "Could not clear the staged web bundle", e);
         }

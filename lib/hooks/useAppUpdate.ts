@@ -43,6 +43,16 @@ import { log } from '../log';
  */
 
 const CHECK_INTERVAL_MS = 15 * 60 * 1000;
+/**
+ * Floor for a check the app asks for rather than one a resume triggered.
+ *
+ * Opening Covault deliberately, seconds after a release, used to be answered
+ * with the fifteen-minute throttle and nothing else — the app didn't even
+ * look. A cold launch now always asks; this only stops a burst of remounts
+ * (the reload after applying a bundle, a configuration change) from spending
+ * the hourly GitHub allowance on the same question.
+ */
+const LAUNCH_CHECK_FLOOR_MS = 60 * 1000;
 const LAST_CHECK_KEY = 'covault_update_last_check';
 const DISMISSED_KEY = 'covault_update_dismissed';
 const POLL_INTERVAL_MS = 500;
@@ -70,6 +80,15 @@ export interface AppUpdate {
   error: string | null;
   install: () => void;
   dismiss: () => void;
+  /**
+   * Version of a downloaded web bundle that is waiting for a reload, or null.
+   *
+   * It would arrive on its own at the next cold start; this exists so someone
+   * who knows a fix has shipped doesn't have to close the app to get it.
+   */
+  webUpdateReady: number | null;
+  /** Reload onto that bundle now. Replaces the running app. */
+  applyWebUpdate: () => void;
 }
 
 function readNumber(key: string): number | null {
@@ -112,6 +131,7 @@ async function waitForDownload(plugin: CovaultUpdaterPlugin, id: string): Promis
 
 export function useAppUpdate(): AppUpdate {
   const [update, setUpdate] = useState<AvailableUpdate | null>(null);
+  const [webUpdateReady, setWebUpdateReady] = useState<number | null>(null);
   const [phase, setPhase] = useState<UpdatePhase>('idle');
   const [percent, setPercent] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -147,6 +167,9 @@ export function useAppUpdate(): AppUpdate {
       }
       await covaultUpdater.stageWebBundle({ id, version });
       log.info(`[useAppUpdate] Web bundle ${version} staged for next launch`);
+      // It will arrive by itself at the next cold start. Saying so lets the
+      // user have it now instead.
+      if (mounted.current) setWebUpdateReady(version);
     } catch (e) {
       log.warn('[useAppUpdate] Could not stage the web bundle:', e);
     } finally {
@@ -160,7 +183,8 @@ export function useAppUpdate(): AppUpdate {
     if (phaseRef.current !== 'idle' || staging.current) return;
 
     const last = readNumber(LAST_CHECK_KEY);
-    if (!force && last !== null && Date.now() - last < CHECK_INTERVAL_MS) return;
+    const floor = force ? LAUNCH_CHECK_FLOOR_MS : CHECK_INTERVAL_MS;
+    if (last !== null && Date.now() - last < floor) return;
     writeNumber(LAST_CHECK_KEY, Date.now());
 
     let status: Awaited<ReturnType<CovaultUpdaterPlugin['getStatus']>> | null = null;
@@ -168,6 +192,13 @@ export function useAppUpdate(): AppUpdate {
       status = (await covaultUpdater?.getStatus()) ?? null;
     } catch (e) {
       log.warn('[useAppUpdate] Could not read the updater status:', e);
+    }
+
+    // Before anything to do with the network: a bundle taken on an earlier
+    // pass may still be waiting for a reload, and the release check below
+    // finds nothing new once it has been staged.
+    if (status && status.stagedWebVersion > status.runningWebVersion) {
+      setWebUpdateReady(status.stagedWebVersion);
     }
 
     const latest = await fetchLatestRelease();
@@ -194,12 +225,31 @@ export function useAppUpdate(): AppUpdate {
   }, [stageWebUpdate]);
 
   useEffect(() => {
-    void check(false);
+    // Opening the app is someone asking, so it always asks — subject only to
+    // the one-minute floor. A resume is not; it keeps the long throttle.
+    void check(true);
 
     if (!Capacitor.isNativePlatform()) return;
     const handle = CapApp.addListener('resume', () => { void check(false); });
     return () => { void handle.then(h => h.remove()); };
   }, [check]);
+
+  // A bundle can be staged and waiting from an earlier session, and the check
+  // above may be inside its floor and never look. This costs no network.
+  useEffect(() => {
+    if (!covaultUpdater) return;
+    void (async () => {
+      try {
+        const status = await covaultUpdater.getStatus();
+        if (!mounted.current) return;
+        if (status.stagedWebVersion > status.runningWebVersion) {
+          setWebUpdateReady(status.stagedWebVersion);
+        }
+      } catch (e) {
+        log.warn('[useAppUpdate] Could not read the updater status:', e);
+      }
+    })();
+  }, []);
 
   // Tell the native side this launch worked out.
   //
@@ -328,13 +378,29 @@ export function useAppUpdate(): AppUpdate {
     })();
   }, [update, fallbackToBrowser]);
 
+  // Reload onto a bundle that has already been downloaded. Nothing after the
+  // call runs — the WebView is replaced — so there is no success path to
+  // handle here, only the refusal.
+  const applyWebUpdate = useCallback(() => {
+    if (!covaultUpdater || webUpdateReady === null) return;
+    void covaultUpdater.applyWebBundleNow().catch(e => {
+      log.warn('[useAppUpdate] Could not switch to the staged bundle:', e);
+      if (!mounted.current) return;
+      setWebUpdateReady(null);
+      setError('That version could not be opened. It will be applied next time Covault starts.');
+    });
+  }, [webUpdateReady]);
+
   const dismiss = useCallback(() => {
     if (update) writeNumber(DISMISSED_KEY, update.versionCode);
     setUpdate(null);
+    // Waved away only for this session: the bundle is still applied at the
+    // next cold start, so there is no version to remember having refused.
+    setWebUpdateReady(null);
     setError(null);
   }, [update]);
 
-  return { update, phase, percent, error, install, dismiss };
+  return { update, phase, percent, error, install, dismiss, webUpdateReady, applyWebUpdate };
 }
 
 export default useAppUpdate;

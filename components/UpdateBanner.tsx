@@ -21,25 +21,36 @@ const UpdateBanner: React.FC<AppUpdate> = ({
   error,
   install,
   dismiss,
+  webUpdateReady,
+  applyWebUpdate,
 }) => {
-  if (!update) return null;
+  // Two things wear this pill. An APK update, which costs a download and
+  // Android's own confirmation, and a web bundle that is already on the phone
+  // and one tap from being live. The APK takes precedence: it is the rarer
+  // one, and it is the one that cannot happen by itself.
+  const waiting = !update && webUpdateReady !== null;
+
+  if (!update && !waiting) return null;
 
   const busy = phase !== 'idle';
 
-  const title =
-    phase === 'installing'
+  const title = waiting
+    ? `Covault 1.0.${webUpdateReady} is ready`
+    : phase === 'installing'
       ? 'Opening the installer'
       : phase === 'downloading'
         ? `Downloading ${percent}%`
-        : `Covault ${update.versionName} is ready`;
+        : `Covault ${update!.versionName} is ready`;
 
   const subtitle =
     error ??
-    (phase === 'installing'
-      ? 'Confirm the update when Android asks'
-      : phase === 'downloading'
-        ? 'Keep Covault open until it finishes'
-        : update.notes || 'Tap update to install the newest build');
+    (waiting
+      ? 'Tap restart to switch to it now'
+      : phase === 'installing'
+        ? 'Confirm the update when Android asks'
+        : phase === 'downloading'
+          ? 'Keep Covault open until it finishes'
+          : update!.notes || 'Tap update to install the newest build');
 
   return (
     <div
@@ -92,10 +103,10 @@ const UpdateBanner: React.FC<AppUpdate> = ({
             <>
               <button
                 type="button"
-                onClick={install}
+                onClick={waiting ? applyWebUpdate : install}
                 className="shrink-0 px-3.5 py-2 rounded-full bg-emerald-600 dark:bg-emerald-500 hover:bg-emerald-700 dark:hover:bg-emerald-600 text-white text-xs font-semibold tracking-wide active:scale-[0.97] transition-all duration-200 shadow-lg shadow-emerald-500/20"
               >
-                Update
+                {waiting ? 'Restart' : 'Update'}
               </button>
               <button
                 type="button"
