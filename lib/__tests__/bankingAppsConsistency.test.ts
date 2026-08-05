@@ -126,19 +126,19 @@ describe('Excluded apps consistency (Java ↔ TypeScript)', () => {
     expect(isExcludedApp('toString')).toBe(false);
   });
 
-  it('Java drops excluded packages before the has-a-dollar-amount fallback', () => {
+  it('Java drops excluded packages before the monitored-app check', () => {
     const content = readFileSync(JAVA_PATH, 'utf-8');
 
     const excludedCheck = content.indexOf('EXCLUDED_APPS.contains(packageName)');
-    const dollarFallback = content.indexOf('!fromMonitored && !hasDollarAmount');
+    const monitoredCheck = content.indexOf('boolean fromMonitored = isMonitoredApp(packageName)');
 
     expect(excludedCheck, 'EXCLUDED_APPS check missing from NotificationListener').toBeGreaterThan(-1);
-    expect(dollarFallback, 'dollar-amount fallback missing from NotificationListener').toBeGreaterThan(-1);
+    expect(monitoredCheck, 'monitored-app check missing from NotificationListener').toBeGreaterThan(-1);
     expect(
       excludedCheck,
-      'The exclusion check must come BEFORE the `hasDollarAmount` fallback — that ' +
-      'fallback forwards ANY app mentioning a dollar amount, which is how Google ' +
-      'Wallet got in despite never being on a banking list.',
-    ).toBeLessThan(dollarFallback);
+      'The exclusion check must come BEFORE the monitored-app check, so a user who ' +
+      'selects Google Wallet in notification settings still cannot turn it into a ' +
+      'capture source.',
+    ).toBeLessThan(monitoredCheck);
   });
 });

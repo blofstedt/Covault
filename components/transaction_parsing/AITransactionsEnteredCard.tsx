@@ -8,6 +8,8 @@ import type { ExistingRule } from './CategoryPickerSheet';
 import { useVendorMatcher, selectBulkAcceptable } from '../../lib/hooks/useVendorMatcher';
 import type { VendorOverride } from './useVendorOverrides';
 import { hapticSuccess } from '../../lib/haptics';
+import { detectFuelHoldPlaceholder } from '../../lib/fuelHold';
+import { isFuelHoldResolved } from '../../lib/localNotificationMemory';
 
 interface AITransactionsEnteredCardProps {
   aiTransactions: Transaction[];
@@ -36,6 +38,12 @@ interface AITransactionsEnteredCardProps {
   knownRules?: ExistingRule[];
   /** File several rows at once (the "Accept N known vendors" action). */
   onAcceptMany?: (txs: Transaction[]) => Promise<void> | void;
+  /** Replace a fuel-hold placeholder with what the user actually paid. */
+  onAmountCorrected?: (tx: Transaction, amount: number) => Promise<void> | void;
+  /** Every loaded transaction, for pairing a settled fuel charge with its hold. */
+  allTransactions?: Transaction[];
+  /** Fold a settled fuel charge into the placeholder row it settles. */
+  onSettleFuelHold?: (placeholder: Transaction, charge: Transaction) => Promise<void> | void;
 }
 
 // Stable identities for omitted props — a fresh Set/array per render would
@@ -64,6 +72,9 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
   existingRulesFor,
   knownRules,
   onAcceptMany,
+  onAmountCorrected,
+  allTransactions,
+  onSettleFuelHold,
 }) => {
   const { classifyAll } = useVendorMatcher(vendorOverrides);
   const matchMap = useMemo(() => classifyAll(aiTransactions), [classifyAll, aiTransactions]);
@@ -92,8 +103,18 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
   // category. Offered from two upwards — for one row the per-row Accept is
   // right there and a second control would just be noise.
   const budgetIds = useMemo(() => new Set(budgets.map((b) => b.id)), [budgets]);
+  // Fuel holds are excluded even when the vendor rule is a perfect match. The
+  // one-tap bulk action exists for rows there is nothing left to decide about,
+  // and a placeholder amount is precisely a row with something left to decide —
+  // filing it in a batch is how a wrong number gets into the budget without
+  // anyone reading it.
   const bulkAcceptable = useMemo(
-    () => selectBulkAcceptable(nonRefunds, matchMap, (tx) => !!tx.budget_id && budgetIds.has(tx.budget_id)),
+    () =>
+      selectBulkAcceptable(
+        nonRefunds,
+        matchMap,
+        (tx) => !!tx.budget_id && budgetIds.has(tx.budget_id),
+      ).filter((tx) => isFuelHoldResolved(tx.id) || !detectFuelHoldPlaceholder(tx)),
     [nonRefunds, matchMap, budgetIds],
   );
 
@@ -171,6 +192,9 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
                   existingRules={existingRulesFor?.(tx.vendor)}
                   knownRules={knownRules}
                   onFiled={handleFiled}
+                  onAmountCorrected={onAmountCorrected}
+                  allTransactions={allTransactions}
+                  onSettleFuelHold={onSettleFuelHold}
                 />
               );
             })

@@ -38,19 +38,18 @@ const TransactionActionModal: React.FC<TransactionActionModalProps> = ({
   // Stand down while the delete confirmation is up, so Escape dismisses that first.
   useEscapeKey(onClose, !showDeleteConfirm);
 
-  // A recurring entry doesn't delete alone: this occurrence and every one
-  // after it go, while the ones that already happened stay. Say so, because
-  // the difference isn't recoverable by guessing.
+  // A recurring entry doesn't delete alone: this occurrence and every one after
+  // it go, while the ones that already happened stay. The warning belongs here,
+  // BEFORE anything is deleted — it used to be carried partly by the toast that
+  // appears afterwards, which on a phone renders under the status bar and is
+  // effectively invisible. A warning nobody can read is not a warning, and it
+  // arrived after the irreversible part anyway.
   const isRecurring = normalizeRecurrence(transaction) !== 'one-time';
 
   if (showDeleteConfirm) {
     return (
       <ConfirmDeleteModal
-        message={
-          isRecurring
-            ? 'This is a recurring transaction. Deleting it removes this one and every future repeat. Entries that already happened before it stay in your vault.'
-            : undefined
-        }
+        isRecurring={isRecurring}
         onClose={() => setShowDeleteConfirm(false)}
         onConfirm={() => {
           onDelete();

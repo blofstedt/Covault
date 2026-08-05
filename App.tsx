@@ -129,9 +129,13 @@ const App: React.FC = () => {
       const plan = await handleDeleteTransaction(id);
       if (!plan) return;
 
+      // The warning about what a recurring delete takes with it now lives in the
+      // confirmation modal, where the user reads it BEFORE the irreversible
+      // part. What's left here is a receipt with an Undo on it, so the wording
+      // is short.
       setToast({
         message: plan.isSeries
-          ? 'Recurring transaction deleted, including future ones'
+          ? 'Recurring transaction deleted'
           : 'Transaction deleted',
         tone: 'info',
         action: {
@@ -322,7 +326,16 @@ const App: React.FC = () => {
       {toast && (
         <div
           role="alert"
-          className={`fixed top-4 left-1/2 -translate-x-1/2 z-[200] max-w-[90%] px-4 py-2.5 rounded-2xl text-white text-xs font-semibold shadow-xl flex items-center gap-3 ${
+          // Bottom, not top. `top-4` put this 16px from the top of the
+          // viewport, which on a phone is behind the status bar and the notch —
+          // so every toast the app has ever raised, including delete/undo and
+          // every database error, has been partly or wholly unreadable on
+          // device. Everything else in the app already offsets by the safe-area
+          // inset; this was the one thing that didn't.
+          //
+          // It sits above the bottom bar using the same measurement UpdateBanner
+          // uses, so the two never overlap the nav and never each other.
+          className={`fixed bottom-[calc(env(safe-area-inset-bottom,0px)+5.75rem)] left-1/2 -translate-x-1/2 z-[200] max-w-[90%] px-4 py-2.5 rounded-2xl text-white text-xs font-semibold shadow-xl flex items-center gap-3 ${
             toast.tone === 'error' ? 'bg-rose-500' : 'bg-slate-800 dark:bg-slate-700'
           }`}
         >

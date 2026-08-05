@@ -222,6 +222,13 @@ export async function sendExpenseCapturedNotification(
    * the only place the user is told it happened.
    */
   autoAccepted = false,
+  /**
+   * Set when the amount is a fuel-hold placeholder rather than a real charge.
+   * Worth its own wording: with the app closed this notification is the only
+   * chance to say the number is provisional, and "Expense captured! $100" reads
+   * as a fact.
+   */
+  fuelHold?: { holdAmount: number } | null,
 ) {
   if (!Capacitor.isNativePlatform()) return;
   if (!settings?.app_notifications_enabled) return;
@@ -233,14 +240,18 @@ export async function sendExpenseCapturedNotification(
   const isIncome = amount < 0;
   const absAmount = Math.abs(amount);
   const categorySuffix = categoryName ? ` → ${categoryName}` : '';
-  const body = isIncome
-    ? `+$${absAmount.toFixed(2)} at ${vendor}${categorySuffix}.`
-    : `$${absAmount.toFixed(2)} at ${vendor}${categorySuffix}.`;
-  const title = isIncome
-    ? 'Income captured!'
-    : autoAccepted
-      ? (categoryName ? `Filed to ${categoryName}` : 'Filed automatically')
-      : 'Expense captured!';
+  const body = fuelHold
+    ? `${vendor} held $${fuelHold.holdAmount.toFixed(2)}. Saved $${absAmount.toFixed(2)} for now — open Covault to enter what you paid.`
+    : isIncome
+      ? `+$${absAmount.toFixed(2)} at ${vendor}${categorySuffix}.`
+      : `$${absAmount.toFixed(2)} at ${vendor}${categorySuffix}.`;
+  const title = fuelHold
+    ? 'Gas hold captured'
+    : isIncome
+      ? 'Income captured!'
+      : autoAccepted
+        ? (categoryName ? `Filed to ${categoryName}` : 'Filed automatically')
+        : 'Expense captured!';
 
   try {
     await ensurePermission();

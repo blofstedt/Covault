@@ -10,7 +10,7 @@ import { processNotificationWithAI, buildInMemoryDedupKey } from '../notificatio
 import { sendPartnerActivityNotification, sendExpenseCapturedNotification } from '../appNotifications';
 import type { NotificationSettingsShape } from '../appNotifications';
 import type { AIProcessingResult } from '../notificationProcessor';
-import { getBankingApps, isExcludedApp } from '../bankingApps';
+import { getBankingApps, isExcludedApp, isBankingApp } from '../bankingApps';
 import { getLocalToday } from '../dateUtils';
 
 export interface UseNotificationListenerParams {
@@ -142,6 +142,17 @@ export const useNotificationListener = ({
               log.debug('[notification] Ignoring excluded app:', bankAppId);
               return;
             }
+
+            // Banks only. The native listener no longer forwards anything else,
+            // but events also arrive from the offline queue and from rescans,
+            // and a phone can be running an older APK than its web bundle —
+            // which is exactly where a chat message quoting a dollar figure used
+            // to get in. Dropped before the dedup bookkeeping so a non-bank
+            // event does not consume a slot in the recent window.
+            if (!isBankingApp(bankAppId)) {
+              log.debug('[notification] Ignoring non-banking app:', bankAppId);
+              return;
+            }
             // Reuse the processor's key builder rather than re-implementing it,
             // so the two dedup layers cannot drift apart.
             const dedupKey = buildInMemoryDedupKey(bankAppId || '', rawNotification || '');
@@ -246,6 +257,7 @@ export const useNotificationListener = ({
                     result.categoryName || null,
                     settingsRef.current || {},
                     result.autoAccepted === true,
+                    result.fuelHold ?? null,
                   );
 
                   // If this transaction came from a partner's device (different

@@ -3,7 +3,13 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import SettingsCard from './ui/SettingsCard';
 import ToggleSwitch from './ui/ToggleSwitch';
-import { getBankingApps } from '../lib/bankingApps';
+import {
+  getBankingApps,
+  suggestUnknownBankApps,
+  getApprovedCaptureSources,
+  setCaptureSourceApproved,
+  type UnknownBankSuggestion,
+} from '../lib/bankingApps';
 import type { CovaultNotificationPlugin } from '../lib/covaultNotification';
 
 interface NotificationSettingsProps {
@@ -15,6 +21,11 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
   const isNative = Capacitor.isNativePlatform();
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [installedBankApps, setInstalledBankApps] = useState<Array<{ packageName: string; name: string }>>([]);
+  // Installed apps that look financial but aren't on any list. Capture is
+  // restricted to known banks, so without this an unlisted bank fails silently
+  // and the user has no way to find out why nothing is being captured.
+  const [unknownBankApps, setUnknownBankApps] = useState<UnknownBankSuggestion[]>([]);
+  const [approvedSources, setApprovedSources] = useState<Set<string>>(new Set());
   const [selectedApps, setSelectedApps] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [plugin, setPlugin] = useState<CovaultNotificationPlugin | null>(null);
@@ -52,6 +63,8 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
       }));
       named.sort((a, b) => a.name.localeCompare(b.name));
       setInstalledBankApps(named);
+      setUnknownBankApps(suggestUnknownBankApps(installed));
+      setApprovedSources(new Set(getApprovedCaptureSources()));
 
       if (granted) {
         // Load previously saved selections
@@ -144,6 +157,37 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
     if (plugin) {
       try {
         await plugin.saveMonitoredApps({ apps: Array.from(next) });
+      } catch (e) {
+        log.warn('[NotificationSettings] save error:', e);
+      }
+    }
+  };
+
+  /**
+   * Approve an unrecognised app as a capture source.
+   *
+   * Two lists have to agree for this to work: the native listener's monitored
+   * apps (which decide what is forwarded at all) and the JS approved-sources
+   * list (the backstop that would otherwise reject the capture on arrival).
+   * Writing only one of them produces the confusing half-state where
+   * notifications are read but nothing is ever saved.
+   */
+  const toggleApprovedSource = async (pkg: string) => {
+    const next = new Set(approvedSources);
+    const approving = !next.has(pkg);
+    if (approving) next.add(pkg);
+    else next.delete(pkg);
+    setApprovedSources(next);
+    setCaptureSourceApproved(pkg, approving);
+
+    const monitored = new Set(selectedApps);
+    if (approving) monitored.add(pkg);
+    else monitored.delete(pkg);
+    setSelectedApps(monitored);
+
+    if (plugin) {
+      try {
+        await plugin.saveMonitoredApps({ apps: Array.from(monitored) });
       } catch (e) {
         log.warn('[NotificationSettings] save error:', e);
       }
@@ -251,6 +295,54 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
                   </button>
                 );
               })}
+            </div>
+          )}
+
+          {/* Unrecognised financial apps.
+              Covault only captures from apps it knows are banks, so anything
+              missing from that list is invisible until we say so here. Matching
+              is on the app's own name — no notification from an unapproved app
+              is read to build this list. */}
+          {unknownBankApps.length > 0 && (
+            <div className="pt-3 border-t border-slate-200 dark:border-slate-700/40 space-y-2">
+              <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 tracking-wide block">
+                Not recognised ({unknownBankApps.length})
+              </span>
+              <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-tight">
+                These look like they might be banks, but Covault doesn't know them. Turn one on and
+                it'll start reading that app's notifications too.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {unknownBankApps.map(app => {
+                  const approved = approvedSources.has(app.packageName);
+                  return (
+                    <button
+                      key={app.packageName}
+                      onClick={() => toggleApprovedSource(app.packageName)}
+                      className={`flex items-center space-x-2 px-3 py-2.5 rounded-xl text-left transition-all duration-200 active:scale-[0.97] border ${
+                        approved
+                          ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-300 dark:border-amber-700/50'
+                          : 'bg-slate-100 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/30'
+                      }`}
+                    >
+                      <span className={`w-4 h-4 rounded-md flex items-center justify-center flex-shrink-0 ${
+                        approved ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-600'
+                      }`}>
+                        {approved && (
+                          <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="3">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                          </svg>
+                        )}
+                      </span>
+                      <span className={`text-[10px] font-bold truncate ${
+                        approved ? 'text-amber-700 dark:text-amber-300' : 'text-slate-500 dark:text-slate-400'
+                      }`}>
+                        {app.name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 
