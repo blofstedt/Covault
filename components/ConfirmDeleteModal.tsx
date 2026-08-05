@@ -5,13 +5,15 @@ import ConfirmModal from './ui/ConfirmModal';
 interface ConfirmDeleteModalProps {
   onClose: () => void;
   onConfirm: () => void;
+  /** Override for recurring entries, where the delete reaches further. */
+  message?: string;
 }
 
-const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({ onClose, onConfirm }) => {
+const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({ onClose, onConfirm, message }) => {
   return (
     <ConfirmModal
       title="Remove Entry?"
-      message="This action will permanently delete this transaction from your vault."
+      message={message ?? 'This action will permanently delete this transaction from your vault.'}
       confirmLabel="Confirm Delete"
       variant="danger"
       onConfirm={onConfirm}

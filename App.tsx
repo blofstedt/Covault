@@ -110,6 +110,7 @@ const App: React.FC = () => {
     handleAddTransaction,
     handleUpdateTransaction,
     handleDeleteTransaction,
+    handleUndoDeleteTransaction,
     handleLinkPartner,
     handleUnlinkPartner,
     saveBudgetLimit,
@@ -119,27 +120,30 @@ const App: React.FC = () => {
     saveSettingToDb,
   } = useUserData({ appState, setAppState, setDbError });
 
-  // Delete with an Undo affordance: capture the row before deleting, then
-  // offer to re-insert it (POST reuses the original id, restoring the row).
+  // Delete with an Undo affordance. Deleting one occurrence of a recurring
+  // charge takes every later occurrence with it and ends the series, so the
+  // Undo has to restore all of that, not just one row — the delete hands back
+  // exactly what it did for that purpose.
   const handleDeleteWithUndo = useCallback(
-    (id: string) => {
-      const deleted = appState.transactions.find(t => t.id === id);
-      handleDeleteTransaction(id);
-      if (deleted) {
-        setToast({
-          message: 'Transaction deleted',
-          tone: 'info',
-          action: {
-            label: 'Undo',
-            run: () => {
-              setToast(null);
-              handleAddTransaction(deleted);
-            },
+    async (id: string) => {
+      const plan = await handleDeleteTransaction(id);
+      if (!plan) return;
+
+      setToast({
+        message: plan.isSeries
+          ? 'Recurring transaction deleted, including future ones'
+          : 'Transaction deleted',
+        tone: 'info',
+        action: {
+          label: 'Undo',
+          run: () => {
+            setToast(null);
+            handleUndoDeleteTransaction(plan);
           },
-        });
-      }
+        },
+      });
     },
-    [appState.transactions, handleDeleteTransaction, handleAddTransaction],
+    [handleDeleteTransaction, handleUndoDeleteTransaction],
   );
 
   const loadUserDataWithState = useCallback(

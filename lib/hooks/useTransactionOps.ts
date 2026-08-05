@@ -2,6 +2,7 @@
 import { log } from '../log';
 import { useCallback } from 'react';
 import type { Transaction } from '../../types';
+import { Recurrence } from '../../types';
 import { restFetch } from '../apiHelpers';
 import { persistVendorOverride } from '../vendorOverrideWrite';
 import { toVendorKey } from '../deviceTransactionParser';
@@ -10,15 +11,22 @@ import { checkDuplicateTransaction } from '../notificationProcessor';
 import { markReviewQueueStatus, upsertVendorMapEntry } from '../localNotificationMemory';
 import { useToSupabaseTransaction, useFromSupabaseTransaction } from './transactionMappers';
 import { toLocalIsoDay } from '../dateUtils';
+import { getSourceTransactionIdFromProjectedId } from '../projectedTransactions';
+import {
+  applyRecurringDeletePlan,
+  planRecurringDelete,
+  type RecurringDeletePlan,
+} from '../recurringDelete';
 import type { UseUserDataParams } from './types';
 
 
-const PROJECTED_TRANSACTION_ID_REGEX = /^projected-(.+)-(\d{4}-\d{2}-\d{2})$/;
+// Re-exported from where the projected ids are minted, so the pattern has one
+// definition. Kept exported here because callers (and tests) already import it
+// from this module.
+export { getSourceTransactionIdFromProjectedId };
 
-export const getSourceTransactionIdFromProjectedId = (transactionId: string): string | null => {
-  const match = PROJECTED_TRANSACTION_ID_REGEX.exec(String(transactionId || ''));
-  return match ? match[1] : null;
-};
+/** PostgREST `in.(...)` list, quoted the way the other bulk calls here do. */
+const toIdList = (ids: string[]) => ids.map(id => `"${String(id).replace(/"/g, '')}"`).join(',');
 
 export const buildPersistedUpdateTransaction = (
   updatedTx: Transaction,
@@ -296,49 +304,159 @@ export const useTransactionOps = ({
     [appState.transactions, appState.user, appState.budgets, setAppState, setDbError, toSupabaseTransaction],
   );
 
-  // Delete transaction
+  // Delete transaction.
+  //
+  // For a recurring charge this deletes the occurrence the user chose and
+  // every later one, and ends the series at that point so the projections and
+  // the executor don't bring it back — see lib/recurringDelete.ts. Returns the
+  // plan it carried out (null if nothing was deleted) so the caller can offer
+  // an Undo that restores all of it.
   const handleDeleteTransaction = useCallback(
-    async (id: string) => {
-      const deletedTx = appState.transactions.find(t => t.id === id);
+    async (id: string): Promise<RecurringDeletePlan | null> => {
+      const plan = planRecurringDelete(id, appState.transactions);
 
+      if (!plan) {
+        const msg = `Delete failed: no saved transaction behind ${id}`;
+        log.error(msg);
+        setDbError(msg);
+        return null;
+      }
+
+      const removedIds = plan.remove.map(t => t.id);
+      const endedIds = plan.endSeries.map(t => t.id);
+
+      // Optimistic: drop the deleted occurrences and stop the ones that
+      // already elapsed from recurring.
       setAppState(prev => ({
         ...prev,
-        transactions: prev.transactions.filter(t => t.id !== id),
+        transactions: applyRecurringDeletePlan(prev.transactions, plan),
       }));
 
-      try {
-        const res = await restFetch(
-          `/transactions?id=eq.${id}`,
-          { method: 'DELETE' },
-        );
+      const restore = () => {
+        setAppState(prev => {
+          const present = new Set(prev.transactions.map(t => t.id));
+          const recurrenceById = new Map(plan.endSeries.map(t => [t.id, t.recurrence]));
+          return {
+            ...prev,
+            transactions: [
+              ...plan.remove.filter(t => !present.has(t.id)),
+              ...prev.transactions.map(t =>
+                recurrenceById.has(t.id)
+                  ? { ...t, recurrence: recurrenceById.get(t.id) }
+                  : t,
+              ),
+            ],
+          };
+        });
+      };
 
-        if (!res.ok) {
-          const body = await res.text();
-          const msg = `Delete failed (${res.status}): ${body.slice(0, 200)}`;
-          log.error(msg);
-          setDbError(msg);
-          if (deletedTx) {
-            setAppState(prev => ({
-              ...prev,
-              transactions: [deletedTx, ...prev.transactions],
-            }));
+      try {
+        if (removedIds.length > 0) {
+          const res = await restFetch(
+            `/transactions?id=in.(${toIdList(removedIds)})`,
+            { method: 'DELETE' },
+          );
+
+          if (!res.ok) {
+            const body = await res.text();
+            const msg = `Delete failed (${res.status}): ${body.slice(0, 200)}`;
+            log.error(msg);
+            setDbError(msg);
+            restore();
+            return null;
           }
-        } else {
-          log.debug('[delete] OK:', id);
         }
+
+        // Everything before the cut keeps its money but stops recurring.
+        // `recur` is the column the app writes (reads tolerate `recurrence`).
+        if (endedIds.length > 0) {
+          const res = await restFetch(
+            `/transactions?id=in.(${toIdList(endedIds)})`,
+            {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ recur: Recurrence.ONE_TIME }),
+            },
+          );
+
+          if (!res.ok) {
+            const body = await res.text();
+            // The deletes already went through, so this is not restorable by
+            // putting the rows back — report it and leave the UI as it is.
+            // The series will reappear on the next load if this failed.
+            const msg = `Ending recurrence failed (${res.status}): ${body.slice(0, 200)}`;
+            log.error(msg);
+            setDbError(msg);
+            return plan;
+          }
+        }
+
+        log.debug(
+          '[delete] OK:',
+          removedIds.join(',') || '(none)',
+          plan.isSeries ? `series ended on ${endedIds.length} earlier row(s)` : '',
+        );
+        return plan;
       } catch (err: any) {
         const msg = `Delete exception: ${err?.message || err}`;
         log.error(msg);
         setDbError(msg);
-        if (deletedTx) {
-          setAppState(prev => ({
-            ...prev,
-            transactions: [deletedTx, ...prev.transactions],
-          }));
-        }
+        restore();
+        return null;
       }
     },
     [appState.transactions, setAppState, setDbError],
+  );
+
+  // Undo a delete: put the removed occurrences back (the original ids are
+  // reused, so the rows come back as they were) and restore the recurrence on
+  // the earlier ones the delete had ended.
+  const handleUndoDeleteTransaction = useCallback(
+    async (plan: RecurringDeletePlan) => {
+      for (const tx of plan.remove) {
+        await handleAddTransaction(tx);
+      }
+
+      if (plan.endSeries.length === 0) return;
+
+      const recurrenceById = new Map(plan.endSeries.map(t => [t.id, t.recurrence]));
+      setAppState(prev => ({
+        ...prev,
+        transactions: prev.transactions.map(t =>
+          recurrenceById.has(t.id) ? { ...t, recurrence: recurrenceById.get(t.id) } : t,
+        ),
+      }));
+
+      // One PATCH per distinct recurrence value — in practice always one.
+      const idsByRecurrence = new Map<string, string[]>();
+      for (const { id, recurrence } of plan.endSeries) {
+        const value = String(recurrence || Recurrence.ONE_TIME);
+        idsByRecurrence.set(value, [...(idsByRecurrence.get(value) || []), id]);
+      }
+
+      await Promise.all(
+        [...idsByRecurrence].map(async ([recur, ids]) => {
+          try {
+            const res = await restFetch(`/transactions?id=in.(${toIdList(ids)})`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ recur }),
+            });
+            if (!res.ok) {
+              const body = await res.text();
+              const msg = `Undo delete failed (${res.status}): ${body.slice(0, 200)}`;
+              log.error(msg);
+              setDbError(msg);
+            }
+          } catch (err: any) {
+            const msg = `Undo delete exception: ${err?.message || err}`;
+            log.error(msg);
+            setDbError(msg);
+          }
+        }),
+      );
+    },
+    [handleAddTransaction, setAppState, setDbError],
   );
 
   // Approve a pending transaction (convert to actual transaction)
@@ -643,6 +761,7 @@ export const useTransactionOps = ({
     handleAddTransaction,
     handleUpdateTransaction,
     handleDeleteTransaction,
+    handleUndoDeleteTransaction,
     handleApprovePendingTransaction,
     handleRejectPendingTransaction,
     handleClearFilteredNotifications,

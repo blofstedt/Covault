@@ -2,6 +2,27 @@ import type { Transaction } from '../types';
 import { parseLocalDate } from './dateUtils';
 import { addMonths, normalizeRecurrence, stepForward } from './recurrence';
 
+/**
+ * Shape of the ids minted below: `projected-<source row id>-<YYYY-MM-DD>`.
+ * Parsed in two places — the edit path and the delete path — so the pattern
+ * lives next to the code that builds it rather than next to either reader.
+ */
+const PROJECTED_TRANSACTION_ID_REGEX = /^projected-(.+)-(\d{4}-\d{2}-\d{2})$/;
+
+/** The real row a projected occurrence was generated from, or null. */
+export function getSourceTransactionIdFromProjectedId(transactionId: string): string | null {
+  const match = PROJECTED_TRANSACTION_ID_REGEX.exec(String(transactionId || ''));
+  return match ? match[1] : null;
+}
+
+/** Source row id + occurrence date for a projected id, or null if not one. */
+export function parseProjectedId(
+  transactionId: string,
+): { sourceId: string; date: string } | null {
+  const match = PROJECTED_TRANSACTION_ID_REGEX.exec(String(transactionId || ''));
+  return match ? { sourceId: match[1], date: match[2] } : null;
+}
+
 function toIsoDay(value: string | Date): string {
   if (typeof value === 'string') return value.slice(0, 10);
   // Use local date components, NOT toISOString(). The UTC slice

@@ -3,6 +3,7 @@ import { Transaction, BudgetCategory } from '../types';
 import TransactionForm from './TransactionForm';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import { useEscapeKey } from '../lib/hooks/useEscapeKey';
+import { normalizeRecurrence } from '../lib/recurrence';
 
 interface VendorHistoryItem {
   vendor: string;
@@ -37,9 +38,19 @@ const TransactionActionModal: React.FC<TransactionActionModalProps> = ({
   // Stand down while the delete confirmation is up, so Escape dismisses that first.
   useEscapeKey(onClose, !showDeleteConfirm);
 
+  // A recurring entry doesn't delete alone: this occurrence and every one
+  // after it go, while the ones that already happened stay. Say so, because
+  // the difference isn't recoverable by guessing.
+  const isRecurring = normalizeRecurrence(transaction) !== 'one-time';
+
   if (showDeleteConfirm) {
     return (
       <ConfirmDeleteModal
+        message={
+          isRecurring
+            ? 'This is a recurring transaction. Deleting it removes this one and every future repeat. Entries that already happened before it stay in your vault.'
+            : undefined
+        }
         onClose={() => setShowDeleteConfirm(false)}
         onConfirm={() => {
           onDelete();
