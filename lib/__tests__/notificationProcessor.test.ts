@@ -141,6 +141,7 @@ vi.mock('../apiHelpers', () => ({
 import { processNotificationWithAI, vendorMatches, _clearDedupCacheForTesting } from '../notificationProcessor';
 import { extractWithAI } from '../aiExtractor';
 import type { NotificationInput } from '../notificationProcessor';
+import { getLocalToday, parseLocalDate, toLocalIsoDay } from '../dateUtils';
 
 // ── Helpers ─────────────────────────────────────────────────────
 
@@ -1059,5 +1060,192 @@ describe('Merchant descriptor signal (step 5c)', () => {
     // pass in front of the user.
     const { row } = await captureRow('BMO You spent $18.40 at TST* LA CARNITA on your card');
     expect(row?.caught_cleared).toBeUndefined();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// A CHARGE THAT ARRIVES UNDER A PROCESSOR PREFIX
+// ═══════════════════════════════════════════════════════════════════
+//
+// "GOOGLE *YOUTUBEPREMIUM" is stripped down to "Youtubepremium" before step 5
+// ever sees it, because the processor is not the merchant. But the rule the
+// user taught was keyed on the whole thing, and the recurring row on the books
+// is called "Google" — neither of which shares a single token with
+// "Youtubepremium". So the rule stopped firing and the duplicate stopped being
+// noticed, both silently.
+
+describe('A charge that arrives under a processor prefix', () => {
+  const SERVICES = [
+    { id: 'cat-services', name: 'Services' },
+    { id: 'cat-groceries', name: 'Groceries' },
+    { id: 'cat-other', name: 'Other' },
+  ];
+
+  const RAW = 'GOOGLE *YOUTUBEPREMIUM  You spent $24.14 with your credit card.';
+
+  function emptyResultChain() {
+    const chain: any = {};
+    for (const m of [
+      'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'ilike', 'is', 'in', 'not',
+      'or', 'match', 'filter', 'order', 'limit', 'single', 'maybeSingle',
+    ]) {
+      chain[m] = vi.fn().mockReturnThis();
+    }
+    chain.then = (resolve: any) => resolve({ data: [], error: null });
+    return chain;
+  }
+
+  function resultChain(data: any[]) {
+    return { ...emptyResultChain(), then: (resolve: any) => resolve({ data, error: null }) };
+  }
+
+  /**
+   * The overrides table, answering `ilike proper_name` the way Postgres would
+   * rather than handing every query the same rows. Without that the display-name
+   * fallback matches anything and the match_key path is never really tested.
+   */
+  function overridesResultChain(rows: any[]) {
+    let ilikeName: string | null = null;
+    const chain: any = {};
+    for (const m of [
+      'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'is', 'in', 'not',
+      'or', 'match', 'filter', 'order', 'limit', 'single', 'maybeSingle',
+    ]) {
+      chain[m] = vi.fn().mockReturnThis();
+    }
+    chain.ilike = vi.fn((_column: string, value: string) => {
+      ilikeName = value;
+      return chain;
+    });
+    chain.then = (resolve: any) => resolve({
+      data: ilikeName === null
+        ? rows
+        : rows.filter((r) => String(r.proper_name || '').toLowerCase() === String(ilikeName).toLowerCase()),
+      error: null,
+    });
+    return chain;
+  }
+
+  /** The rule the user taught back when the name still carried the prefix. */
+  function teachYoutubePremiumRule() {
+    const rows = [{
+      category_id: 'Services',
+      proper_name: 'Google - Youtube Premium',
+      match_key: 'googleyoutubepremium',
+      match_type: 'exact',
+      updated_at: new Date().toISOString(),
+    }];
+    getChain('overrides').select = vi.fn(() => overridesResultChain(rows));
+  }
+
+  async function capture(
+    existingTransactions: any[],
+    input: Partial<NotificationInput> = {},
+  ) {
+    const txChain = getChain('transactions');
+    txChain.select = vi.fn().mockReturnValue(resultChain(existingTransactions));
+    txChain.insert = vi.fn().mockResolvedValue({ error: null });
+    getChain('pending_transactions').select = vi.fn().mockReturnValue(emptyResultChain());
+
+    const result = await processNotificationWithAI(
+      'user-1',
+      makeInput({ rawNotification: RAW, notificationTimestamp: Date.now(), ...input }),
+      SERVICES,
+    );
+    return { result, txChain, row: txChain.insert.mock.calls[0]?.[0] as Record<string, unknown> | undefined };
+  }
+
+  it('still matches the rule the user taught under the prefixed name', async () => {
+    teachYoutubePremiumRule();
+    const { row } = await capture([]);
+    expect(row?.budget).toBe('Services');
+    expect(row?.vendor).toBe('Google - Youtube Premium');
+  });
+
+  it('files it without review when auto-accept is on', async () => {
+    // The whole promise of auto-accept: a rule the user wrote themselves
+    // decides where the money goes, and they never see the row.
+    teachYoutubePremiumRule();
+    const { row } = await capture([], { autoAcceptKnownVendors: true });
+    expect(row?.caught_cleared).toBe(true);
+  });
+
+  it('still asks for review when no rule matches', async () => {
+    const { row } = await capture([], { autoAcceptKnownVendors: true });
+    expect(row?.budget).toBe('Other');
+    expect(row?.caught_cleared).toBeUndefined();
+  });
+
+  it('recognises the recurring charge it duplicates and does not add a second row', async () => {
+    teachYoutubePremiumRule();
+    const yesterday = toLocalIsoDay(new Date(parseLocalDate(getLocalToday()).getTime() - 86_400_000));
+    const { result, txChain } = await capture([{
+      id: 'recurring-google',
+      vendor: 'Google',
+      amount: 24.14,
+      date: yesterday,
+      recur: 'Monthly',
+      source: 'executor',
+    }]);
+
+    expect(txChain.insert).not.toHaveBeenCalled();
+    expect(result.skipReason).toBe('duplicate_recurring');
+    expect(result.softDuplicateOf?.id).toBe('recurring-google');
+  });
+
+  it('records the bank\'s wording on the recurring row it matched', async () => {
+    // Nothing is inserted, so the notification would otherwise vanish without
+    // trace. It goes onto the row that already represents the charge.
+    teachYoutubePremiumRule();
+    const yesterday = toLocalIsoDay(new Date(parseLocalDate(getLocalToday()).getTime() - 86_400_000));
+    const { txChain } = await capture([{
+      id: 'recurring-google',
+      vendor: 'Google',
+      amount: 24.14,
+      date: yesterday,
+      recur: 'Monthly',
+      source: 'executor',
+    }]);
+
+    expect(txChain.update).toHaveBeenCalledWith(
+      expect.objectContaining({ raw_notification: RAW }),
+    );
+  });
+
+  it('leaves a one-off charge at the same merchant alone', async () => {
+    // Same vendor, same window, but the row on the books is not a recurring
+    // one — two real purchases, and the user has said they would rather see
+    // both than lose one.
+    teachYoutubePremiumRule();
+    const yesterday = toLocalIsoDay(new Date(parseLocalDate(getLocalToday()).getTime() - 86_400_000));
+    const { result, row } = await capture([{
+      id: 'one-off-google',
+      vendor: 'Google',
+      amount: 24.14,
+      date: yesterday,
+      recur: 'One-time',
+      source: 'manual',
+    }]);
+
+    expect(row?.vendor).toBe('Google - Youtube Premium');
+    expect(result.softDuplicateOf?.id).toBe('one-off-google');
+  });
+
+  it('leaves a recurring charge for a different amount alone', async () => {
+    // Google bills this household three separate times a month. A $2.93 row is
+    // not this $24.14 charge, however similar the names look.
+    teachYoutubePremiumRule();
+    const yesterday = toLocalIsoDay(new Date(parseLocalDate(getLocalToday()).getTime() - 86_400_000));
+    const { result, txChain } = await capture([{
+      id: 'recurring-google-one',
+      vendor: 'Google',
+      amount: 2.93,
+      date: yesterday,
+      recur: 'Monthly',
+      source: 'executor',
+    }]);
+
+    expect(txChain.insert).toHaveBeenCalled();
+    expect(result.skipReason).toBeUndefined();
   });
 });

@@ -22,10 +22,11 @@ import { aiFindRefundMatch } from './aiExtractor';
 import type { LearnedVendorExample } from './aiExtractor';
 import { checkNotificationRules, bumpRuleUseCount } from './notificationRules';
 import { getLocalToday, parseLocalDate, toLocalIsoDay } from './dateUtils';
-import { extractWithAI, aiDetectRecurring, type AIExtractionResult } from './aiExtractor';
+import { extractWithAI, type AIExtractionResult } from './aiExtractor';
 import { detectMerchantSignal, resolveSignalCategory } from './merchantCategorySignals';
 import type { PendingTransaction, Transaction } from '../types';
-import { scoreVendorMatch, shouldAutoAccept } from './vendorMatchConfidence';
+import { scoreVendorMatch, shouldAutoAccept, toMatchKey } from './vendorMatchConfidence';
+import { isSameCharge } from './duplicateCharge';
 import { isBankingApp } from './bankingApps';
 import { detectFuelHold, isFuelMerchant, isHoldAmount, pastFillAmounts, withFuelHoldMarker } from './fuelHold';
 
@@ -761,7 +762,7 @@ export interface AIProcessingResult {
   /** Reason for rejection if not a transaction or duplicate */
   rejectionReason?: string;
   /** Skip reason */
-  skipReason?: 'duplicate_fingerprint' | 'duplicate_vendor_amount' | 'duplicate_manual' | 'duplicate_ai' | 'not_transaction' | 'extraction_failed' | 'needs_review' | 'not_bank_app';
+  skipReason?: 'duplicate_fingerprint' | 'duplicate_vendor_amount' | 'duplicate_manual' | 'duplicate_ai' | 'duplicate_recurring' | 'not_transaction' | 'extraction_failed' | 'needs_review' | 'not_bank_app';
   /**
    * Set when the capture was a fuel pre-authorisation. The stored amount is a
    * placeholder, not what was pumped; `holdAmount` is the round figure the bank
@@ -1137,6 +1138,14 @@ async function processNotificationWithAIImpl(
     ? parsed.vendorDisplay
     : null;
   const vendor = extractedVendor || input.fallbackVendor || null;
+  // Other names this same merchant answers to — today, the name with its
+  // payment-processor prefix still attached ("Google Youtubepremium" for a
+  // charge the parser reduced to "Youtubepremium"). Used for matching learned
+  // rules and for recognising a charge already on the books; never displayed
+  // and never stored. See ParsedNotification.vendorAliases.
+  const vendorAliases = (parsed.vendorAliases || []).filter(
+    (name): name is string => !!name && name !== vendor,
+  );
   const rawAmount = parsed.amount ?? input.fallbackAmount ?? 0;
   // Refunds are NOT stored as separate negative-amount rows. They are
   // applied to the original expense via the refunded=true flag (see
@@ -1280,6 +1289,22 @@ async function processNotificationWithAIImpl(
   // ── Step 4: Duplicate detection (fuzzy vendor + amount ±3 days) ──
   const today = getLocalToday();
   const normalizedVendor = normalizeVendorForDedup(vendor);
+
+  /**
+   * Is `existingName` the same merchant as the one we just captured?
+   *
+   * Checks every name the capture answers to, not just the polished one. A
+   * recurring "Google" on the books and an incoming "GOOGLE *YOUTUBEPREMIUM"
+   * are the same merchant, but only the alias makes that visible — the parser
+   * hands us "Youtubepremium", which shares nothing with "Google".
+   */
+  const matchesCapturedVendor = (existingName: string | null | undefined): boolean => {
+    const existing = String(existingName || '');
+    if (!existing) return false;
+    if (normalizeVendorForDedup(existing) === normalizedVendor) return true;
+    if (fuzzyVendorMatch(existing, vendor)) return true;
+    return vendorAliases.some((alias) => fuzzyVendorMatch(existing, alias));
+  };
   const todayMs = parseLocalDate(today).getTime();
   const step4WindowStart = new Date(todayMs - RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY).toISOString().slice(0, 10);
   const step4WindowEnd = new Date(todayMs + RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY).toISOString().slice(0, 10);
@@ -1308,8 +1333,7 @@ async function processNotificationWithAIImpl(
       // exact equality alone let both through as separate rows. Same day AND
       // same amount AND a similar vendor is a double-report, not two
       // coincidental purchases.
-      if (normalizeVendorForDedup(tx.vendor) === normalizedVendor) return true;
-      return fuzzyVendorMatch(tx.vendor || '', vendor || '');
+      return matchesCapturedVendor(tx.vendor);
     });
 
     if (sameDaySameAmount) {
@@ -1333,7 +1357,13 @@ async function processNotificationWithAIImpl(
     // Soft-dup: any other same-vendor match in the window. We do NOT skip
     // — the user has said they'd rather see both rows and dedup manually.
     // Pick the closest match (by amount) to surface in the parsing UI.
-    const allMatches = existingTx.filter((tx) => normalizeVendorForDedup(tx.vendor) === normalizedVendor);
+    //
+    // Matched the same way as the hard skip above. It used to demand exact
+    // equality of the normalised names while the hard skip matched fuzzily,
+    // so a charge whose bank wording differs from the recorded one — the
+    // common case, and the whole reason the fuzzy matcher exists — produced
+    // no warning at all.
+    const allMatches = existingTx.filter((tx) => matchesCapturedVendor(tx.vendor));
     if (allMatches.length > 0) {
       const sameAmount = allMatches.find((tx) => Math.abs(Number(tx.amount) - amount) < AMOUNT_TOLERANCE);
       const closest = sameAmount || allMatches.sort((a, b) =>
@@ -1374,7 +1404,18 @@ async function processNotificationWithAIImpl(
   //      The most recently updated row wins (ORDER BY updated_at DESC).
   //   2. proper_name ilike — fallback for legacy rows that pre-date match_key.
   if (vendor) {
-    const vendorKey = vendor.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const vendorKey = toMatchKey(vendor);
+    // The keys the alias names reduce to, e.g. "googleyoutubepremium" for a
+    // charge whose polished name is only "Youtubepremium". Tried in order,
+    // and only after the polished name has found nothing — a rule written
+    // against the name the app shows must always win over one written against
+    // a name it merely recognises.
+    const aliasKeys = vendorAliases
+      .map(toMatchKey)
+      .filter((key) => key && key !== vendorKey);
+    // Which key actually found the rule, so the confidence score below is
+    // computed against the string the match was really made on.
+    let matchedKey = vendorKey;
 
     // 1) match_key lookup (match_type aware)
     let overrideRows: any[] | null = null;
@@ -1389,15 +1430,29 @@ async function processNotificationWithAIImpl(
       const allRows = data || [];
       // Filter in-memory by match_type semantics. Most-recent-wins is
       // already guaranteed by the ORDER BY + LIMIT 20 + first-match in loop.
-      const matching = allRows.filter((row: any) => {
+      const rulesMatching = (key: string) => allRows.filter((row: any) => {
         const mk = (row.match_key || '').toLowerCase();
         if (!mk) return false;
         const mt = row.match_type || 'exact';
-        if (mt === 'exact') return vendorKey === mk;
-        if (mt === 'prefix') return vendorKey.startsWith(mk);
-        if (mt === 'contains') return vendorKey.includes(mk);
+        if (mt === 'exact') return key === mk;
+        if (mt === 'prefix') return key.startsWith(mk);
+        if (mt === 'contains') return key.includes(mk);
         return false;
       });
+
+      let matching = rulesMatching(vendorKey);
+      // Nothing under the polished name — try the merchant's other names before
+      // giving up. This is what keeps a rule taught as "googleyoutubepremium"
+      // working after the parser started stripping the "GOOGLE *" prefix off
+      // the name it extracts.
+      for (const aliasKey of aliasKeys) {
+        if (matching.length > 0) break;
+        matching = rulesMatching(aliasKey);
+        if (matching.length > 0) {
+          matchedKey = aliasKey;
+          log.debug(`[AI pipeline] No rule for "${vendor}"; matched on alias key "${aliasKey}"`);
+        }
+      }
 
       // A vendor may legitimately have more than one rule: Walmart→Groceries
       // and Walmart→Other are both real purchases at the same merchant. When
@@ -1435,15 +1490,22 @@ async function processNotificationWithAIImpl(
     // reinstating the silent auto-file this change exists to prevent.
     let matchedByProperName = false;
     if (!overrideRuleConflict && (!overrideRows || overrideRows.length === 0)) {
-      const { data } = await supabase
-        .from('overrides')
-        .select('category_id, proper_name, match_key')
-        .eq('user_id', userId)
-        .ilike('proper_name', vendor)
-        .order('updated_at', { ascending: false })
-        .limit(1);
-      overrideRows = data;
-      matchedByProperName = !!(data && data.length > 0);
+      // Same order as the match_key lookup: the polished name first, the
+      // merchant's other names only if it finds nothing.
+      for (const name of [vendor, ...vendorAliases]) {
+        const { data } = await supabase
+          .from('overrides')
+          .select('category_id, proper_name, match_key')
+          .eq('user_id', userId)
+          .ilike('proper_name', name)
+          .order('updated_at', { ascending: false })
+          .limit(1);
+        if (data && data.length > 0) {
+          overrideRows = data;
+          matchedByProperName = true;
+          break;
+        }
+      }
     }
 
     if (overrideRows && overrideRows.length > 0) {
@@ -1464,7 +1526,7 @@ async function processNotificationWithAIImpl(
         // scored by how much of the incoming name the rule accounts for.
         overrideMatchConfidence = matchedByProperName
           ? 1
-          : scoreVendorMatch(vendorKey, (row.match_key || '').toLowerCase(), row.match_type || 'exact');
+          : scoreVendorMatch(matchedKey, (row.match_key || '').toLowerCase(), row.match_type || 'exact');
         log.debug(`[AI pipeline] overrides match: ${vendor} → ${categoryName} (match_type=${row.match_type || 'exact'}, confidence=${overrideMatchConfidence.toFixed(2)})`);
       }
     }
@@ -1479,6 +1541,16 @@ async function processNotificationWithAIImpl(
   // would have to correct each variant separately.
   if (!categoryId && parsed.vendorKey) {
     let vendorMapEntry = getVendorMapEntry(parsed.vendorKey);
+
+    // Same fallback as the server rules: the merchant's other names, tried
+    // only after its polished one comes up empty.
+    if (!vendorMapEntry) {
+      for (const aliasKey of vendorAliases.map(toMatchKey)) {
+        if (!aliasKey) continue;
+        vendorMapEntry = getVendorMapEntry(aliasKey);
+        if (vendorMapEntry) break;
+      }
+    }
 
     if (!vendorMapEntry) {
       // Fuzzy fallback: scan all stored entries and find the closest one
@@ -1585,55 +1657,82 @@ async function processNotificationWithAIImpl(
     };
   }
 
-  // ── Step 5b: Recurring dedup (same vendor + amount within ±3 days) ──
-  // If a recurring transaction already exists nearby, update its date
-  // instead of inserting a duplicate.
-  let recurrence = (parsed.recurrence || '').toLowerCase();
-  if (!recurrence && vendor && amount) {
-    // AI-powered recurring detection
-    const { data: history } = await supabase
+  // ── Step 5b: The charge is already on the books as a recurring one ──
+  //
+  // A subscription is recorded twice, by two different mechanisms: the
+  // recurring machinery posts the month's occurrence on its due date, and then
+  // the bank announces the real charge a day or two later and the capture
+  // pipeline records it again. One subscription, two rows, and the month is
+  // wrong by the amount.
+  //
+  // Everything above this point failed to see it. The hard skip in step 4 only
+  // fires on the SAME DAY, and a due date is a guess that lands a day or two
+  // off; and until the alias matching added above, "Google" and
+  // "GOOGLE *YOUTUBEPREMIUM" did not even look like the same merchant.
+  //
+  // So this is the one place that treats a recurring row as authoritative:
+  // when the same charge is already recorded as recurring, the capture does
+  // not become a second row. It is recorded ON that row instead — the bank's
+  // own wording, kept so the charge can still be traced back to the
+  // notification that confirmed it.
+  //
+  // Deliberately narrower than the soft-dup above: only recurring rows, and
+  // only an amount matching to the cent (isSameCharge). Two ordinary purchases
+  // at one merchant in the same week are real and both must survive; a
+  // subscription billing twice in three days for the identical amount is not.
+  const recurringMatch = (existingTx || []).find((tx) => {
+    const txRecur = (tx.recur || '').toLowerCase();
+    const isRecurringRow =
+      txRecur === 'monthly' || txRecur === 'biweekly' || tx.source === 'executor';
+    if (!isRecurringRow) return false;
+    // Every name this capture answers to, including the one the matched rule
+    // renamed it to — that is usually the name the recurring row carries.
+    return [displayVendor, vendor, ...vendorAliases].some((name) =>
+      isSameCharge(
+        { vendor: name, amount, date: today },
+        { vendor: tx.vendor, amount: Number(tx.amount), date: tx.date },
+      ),
+    );
+  });
+
+  if (recurringMatch) {
+    log.debug(
+      `[AI pipeline] Already recorded as a recurring charge: ${recurringMatch.vendor} ` +
+      `$${recurringMatch.amount} on ${recurringMatch.date} (${recurringMatch.id}, ` +
+      `source=${recurringMatch.source || 'unknown'}) — recording the notification on it ` +
+      `instead of inserting a second row`,
+    );
+
+    // Best-effort. The point of the skip is that there is only one row; failing
+    // to attach the bank's wording to it costs traceability, not correctness,
+    // so it must not turn into a duplicate insert.
+    const { error: attachError } = await supabase
       .from('transactions')
-      .select('date, amount')
-      .eq('user_id', userId)
-      .ilike('vendor', `%${vendor.split(' ')[0]}%`)
-      .order('date', { ascending: false })
-      .limit(6);
-    if (history && history.length >= 2) {
-      const detected = await aiDetectRecurring(vendor, history, amount);
-      recurrence = detected.toLowerCase();
-      log.debug(`[AI pipeline] Recurring detection: ${detected}`);
+      .update({ raw_notification: (input.rawNotification || '').slice(0, 4000) })
+      .eq('id', recurringMatch.id);
+    if (attachError) {
+      log.warn('[AI pipeline] Could not attach the notification to the recurring row:', attachError);
     }
-  }
-  if (recurrence === 'monthly' || recurrence === 'biweekly') {
-    // Same user, same window as step 4 — reuse that fetch rather than
-    // repeating it.
-    const recurCandidates = existingTx;
 
-    if (recurCandidates && recurCandidates.length > 0) {
-      for (const tx of recurCandidates) {
-        const txRecur = (tx.recur || '').toLowerCase();
-        if (txRecur !== 'monthly' && txRecur !== 'biweekly') continue;
-        if (Math.abs(Number(tx.amount) - amount) >= AMOUNT_TOLERANCE) continue;
-        // Use fuzzy vendor matching for recurring dedup
-        if (!fuzzyVendorMatch(tx.vendor, displayVendor)) continue;
-
-        // Step 5b is now a soft-dup detector, not a hard skipper. We
-        // record the recurring match but still let the new transaction
-        // through — the user said they'd rather see both rows. The UI
-        // gets the soft-dup info via the `softDuplicateOf` field on the
-        // returned result.
-        log.debug(`[AI pipeline] Recurring soft-dup: existing tx ${tx.id} (${tx.vendor} $${tx.amount} on ${tx.date}, source=${tx.source || 'unknown'}) matches the new charge`);
-        if (!softDupMatch) {
-          softDupMatch = {
-            id: tx.id,
-            vendor: tx.vendor,
-            amount: Number(tx.amount),
-            date: tx.date,
-          };
-        }
-        break; // Only need one match for the soft-dup warning.
-      }
-    }
+    recentlyProcessedCache.set(inMemoryKey, Date.now());
+    markNotificationProcessed(capturedKey);
+    return {
+      processed: true,
+      isTransaction: true,
+      vendor: formatVendorName(displayVendor),
+      amount,
+      categoryId: categoryId || undefined,
+      categoryName: categoryName || undefined,
+      skipReason: 'duplicate_recurring',
+      rejectionReason: 'Already recorded as a recurring charge',
+      bankName: input.bankName,
+      softDuplicateOf: {
+        id: recurringMatch.id,
+        vendor: recurringMatch.vendor,
+        amount: Number(recurringMatch.amount),
+        date: recurringMatch.date,
+      },
+    };
   }
 
   // ── Step 6: Insert transaction with 'AI' label ──

@@ -80,6 +80,22 @@ export interface ParsedNotification {
   amount?: number;
   vendorDisplay?: string;
   vendorKey?: string;
+  /**
+   * Other names the SAME merchant is known by in this notification.
+   *
+   * Currently one thing: the name with its payment-processor prefix still
+   * attached. `extractVendorRaw` strips "GOOGLE *", "TST*", "SQ*" and friends
+   * because the processor is not the merchant — but that prefix is part of how
+   * the charge appears on a statement, so it is also part of how the user's
+   * learned rules and their older recorded charges name it. Dropping it
+   * outright meant a rule taught as "googleyoutubepremium" could never fire
+   * again once the strip landed, and a recurring "Google" charge already on the
+   * books stopped being recognised as the same charge.
+   *
+   * Callers should treat these as equally valid names for the merchant when
+   * matching — never as the name to display or store.
+   */
+  vendorAliases?: string[];
   recurrence: 'One-time' | 'Biweekly' | 'Monthly';
   rejectionReason?: string;
   isRefund?: boolean;
@@ -220,8 +236,10 @@ function extractVendorRaw(text: string, isRefund?: boolean): string {
   // Removed rather than kept because the processor is not the merchant — the
   // money went to La Carnita, not to Toast. The prefix is still a useful
   // *category* signal, which is why lib/merchantCategorySignals.ts reads the
-  // raw notification text rather than this cleaned-up vendor.
-  t = t.replace(/\b(?:TST|SQ|PP|PAYPAL|GOOGLE)\s*\*\s*/gi, '');
+  // raw notification text rather than this cleaned-up vendor. It is also still
+  // part of the merchant's name for MATCHING purposes — see
+  // processorPrefixedNames and ParsedNotification.vendorAliases.
+  t = t.replace(processorPrefixRegex(), '');
 
   // ── Refund-specific vendor extraction ─────────────────────────────────────
   // Handles patterns like:
@@ -342,6 +360,45 @@ function cleanVendor(raw: string): string {
 
 export function toVendorKey(vendor: string): string {
   return vendor.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Payment-processor prefixes, as they appear before the "*" in statement text.
+ *
+ * Built fresh per call because the `g` flag makes a shared literal stateful —
+ * `lastIndex` carries between calls and the second caller silently misses the
+ * first match.
+ */
+function processorPrefixRegex(): RegExp {
+  return /\b(TST|SQ|PP|PAYPAL|GOOGLE)\s*\*\s*/gi;
+}
+
+/**
+ * The merchant's name with its processor prefix restored: "GOOGLE
+ * *YOUTUBEPREMIUM" → "Google Youtubepremium".
+ *
+ * Returns nothing unless the prefix in the text is actually followed by this
+ * merchant, so a "GOOGLE *" somewhere else in a notification can't manufacture
+ * a name for an unrelated vendor.
+ */
+export function processorPrefixedNames(text: string, vendor: string): string[] {
+  const vendorKey = toVendorKey(vendor || '');
+  if (!vendorKey) return [];
+
+  const names: string[] = [];
+  const seen = new Set<string>();
+  const re = processorPrefixRegex();
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text)) !== null) {
+    const following = toVendorKey(text.slice(match.index + match[0].length));
+    if (!following.startsWith(vendorKey)) continue;
+    const name = formatVendorName(`${match[1]} ${vendor}`);
+    const key = toVendorKey(name);
+    if (key === vendorKey || seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
+  }
+  return names;
 }
 
 /**
@@ -630,6 +687,7 @@ export function parseNotificationText(text: string): ParsedNotification {
     amount: pickedAmount,
     vendorDisplay: vendorDisplay || 'Unknown',
     vendorKey,
+    vendorAliases: processorPrefixedNames(t, cleanedVendor),
     recurrence,
     isRefund: hasRefund,
     confidence,

@@ -183,4 +183,30 @@ describe('deviceTransactionParser', () => {
     expect(parseNotificationText('You spent $32.10 at KINTON RAMEN').vendorDisplay).toBe('Kinton Ramen');
   });
 
+  // ── The prefixed name is kept as an alias ────────────────────────────────
+  //
+  // Stripping the prefix is right for the name we show and store, and wrong for
+  // matching: the user's learned rules were taught on the prefixed name, and so
+  // were the charges already in their history. Handing the pipeline both names
+  // is what lets a rule keyed "googleyoutubepremium" keep firing.
+
+  it('keeps the prefixed name as an alias for matching', () => {
+    const result = parseNotificationText(
+      'GOOGLE *YOUTUBEPREMIUM  You spent $24.14 with your credit card.',
+    );
+    expect(result.vendorDisplay).toBe('Youtubepremium');
+    expect(result.vendorAliases).toEqual(['Google Youtubepremium']);
+  });
+
+  it('offers no alias for a merchant that arrived without a prefix', () => {
+    expect(parseNotificationText('You spent $32.10 at KINTON RAMEN').vendorAliases).toEqual([]);
+  });
+
+  it('does not build an alias from a prefix that belongs to a different merchant', () => {
+    // The star here sits in front of something else entirely; the extracted
+    // vendor is not what follows it, so there is no second name for it.
+    const result = parseNotificationText('You spent $18.40 at KINTON RAMEN. Paid with SQ *TERMINAL');
+    expect(result.vendorAliases).toEqual([]);
+  });
+
 });
