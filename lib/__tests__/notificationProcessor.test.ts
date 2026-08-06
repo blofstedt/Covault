@@ -1249,3 +1249,104 @@ describe('A charge that arrives under a processor prefix', () => {
     expect(result.skipReason).toBeUndefined();
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// EVERY LEARNED RULE IS CONSIDERED, NOT JUST THE RECENT ONES
+// ═══════════════════════════════════════════════════════════════════
+//
+// The rule lookup asked for the most recently updated rules and matched among
+// those. With a handful of rules that is indistinguishable from asking for all
+// of them; with a hundred it means a rule taught months ago is not in the room
+// when the charge arrives, and the capture is filed as if no rule existed.
+
+describe('Rule lookup across a large rule set', () => {
+  const GROCERY_CATEGORIES = [
+    { id: 'cat-groceries', name: 'Groceries' },
+    { id: 'cat-transport', name: 'Transport' },
+    { id: 'cat-other', name: 'Other' },
+  ];
+
+  /** A rule set where the one that matters is the oldest of many. */
+  function manyRulesWithCostcoOldest(count = 100) {
+    const rows: any[] = [];
+    for (let i = 0; i < count; i++) {
+      rows.push({
+        category_id: 'Transport',
+        proper_name: `Merchant ${i}`,
+        match_key: `merchant${i}`,
+        match_type: 'exact',
+        updated_at: new Date(Date.now() - i * 60_000).toISOString(),
+      });
+    }
+    rows.push({
+      category_id: 'Groceries',
+      proper_name: 'Costco',
+      match_key: 'costcowholesale',
+      match_type: 'exact',
+      updated_at: new Date(Date.now() - count * 60_000).toISOString(),
+    });
+    return rows;
+  }
+
+  /**
+   * A chain that honours `.limit()` the way PostgREST does. Without that the
+   * truncation is invisible to a test and the regression cannot be caught.
+   */
+  function pagedChain(rows: any[]) {
+    let take = rows.length;
+    let ilikeName: string | null = null;
+    const chain: any = {};
+    for (const m of [
+      'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'is', 'in', 'not',
+      'or', 'match', 'filter', 'order', 'single', 'maybeSingle',
+    ]) {
+      chain[m] = vi.fn().mockReturnThis();
+    }
+    chain.limit = vi.fn((n: number) => { take = n; return chain; });
+    chain.ilike = vi.fn((_column: string, value: string) => { ilikeName = value; return chain; });
+    chain.then = (resolve: any) => {
+      const matched = ilikeName === null
+        ? rows
+        : rows.filter((r) => String(r.proper_name || '').toLowerCase() === String(ilikeName).toLowerCase());
+      resolve({ data: matched.slice(0, take), error: null });
+    };
+    return chain;
+  }
+
+  function emptyChain() {
+    const chain: any = {};
+    for (const m of [
+      'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'ilike', 'is', 'in', 'not',
+      'or', 'match', 'filter', 'order', 'limit', 'single', 'maybeSingle',
+    ]) {
+      chain[m] = vi.fn().mockReturnThis();
+    }
+    chain.then = (resolve: any) => resolve({ data: [], error: null });
+    return chain;
+  }
+
+  it('applies a rule that is not among the most recently updated', async () => {
+    const rows = manyRulesWithCostcoOldest();
+    getChain('overrides').select = vi.fn(() => pagedChain(rows));
+
+    const txChain = getChain('transactions');
+    txChain.select = vi.fn(() => emptyChain());
+    txChain.insert = vi.fn().mockResolvedValue({ error: null });
+    getChain('pending_transactions').select = vi.fn(() => emptyChain());
+
+    const result = await processNotificationWithAI(
+      'user-1',
+      makeInput({
+        rawNotification:
+          'Credit Card Transaction Alert A transaction in the amount of $394.60 at COSTCO WHOLESALE was approved on your card ending in 6602.',
+        notificationTimestamp: Date.now(),
+      }),
+      GROCERY_CATEGORIES,
+    );
+
+    const row = txChain.insert.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+    expect(row?.budget).toBe('Groceries');
+    expect(row?.vendor).toBe('Costco');
+    expect(result.categoryName).toBe('Groceries');
+  });
+});

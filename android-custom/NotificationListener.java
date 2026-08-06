@@ -602,12 +602,25 @@ public class NotificationListener extends NotificationListenerService {
 
         Log.i(TAG, "Financial notification from " + packageName + ": " + (amount != null ? "$" + amount : "[amount pending]") + " at " + (vendor != null ? vendor : "Unknown"));
 
+        // Have we already captured THIS notification and put a Covault
+        // notification in its place? See rememberSecured for why that has to
+        // outlive the process.
+        String securedKey = securedKeyFor(sbn);
+        boolean alreadySecured = wasSecured(securedKey);
+
         // Broadcast to the local TypeScript pipeline which will classify
         // as transaction or non-transaction — non-transactions will appear in
         // the rejected card so the user can see what was processed.
-        boolean secured = broadcastTransaction(packageName, amount, vendor, fullText, sbn.getPostTime(), fromScan);
+        boolean secured = broadcastTransaction(
+            packageName, amount, vendor, fullText, sbn.getPostTime(), fromScan, alreadySecured);
 
-        maybeHideBankNotification(sbn, fromMonitored, amount, fromScan, secured);
+        // Recorded BEFORE the dismissal below, never after. The record is what
+        // lets a later pass dismiss this notification without re-notifying; if
+        // the dismissal happened first and the write then failed, the bank's
+        // alert would be gone with nothing saying it had ever been replaced.
+        if (secured) rememberSecured(securedKey);
+
+        maybeHideBankNotification(sbn, fromMonitored, amount, secured || alreadySecured);
 
         // Home-screen widget: nudge the donut for a purchase captured while the
         // app is closed, so it doesn't sit stale until the next app launch.
@@ -641,9 +654,18 @@ public class NotificationListener extends NotificationListenerService {
     // shade can be re-read by scanActiveNotifications() at any time.
     //
     //   1. The user turned the feature on.
-    //   2. This is a live post, not a rescan. A rescan re-walks notifications
-    //      that are already in the shade and already captured; clearing the
-    //      shade is not its job.
+    //   2. Covault has replaced this notification: it is durably queued AND a
+    //      Covault notification for it is showing — or that was true on an
+    //      earlier pass over this same notification (see rememberSecured).
+    //
+    //      This used to read "a live post, not a rescan", on the reasoning
+    //      that a rescan only re-walks notifications already captured. That
+    //      holds right up until the listener misses the live post — the
+    //      service was restarted, the phone rebooted, the app was updating —
+    //      and the scan is the FIRST time the notification is seen. There is
+    //      no second live post, so those alerts were captured and then left in
+    //      the tray forever, which is exactly the state the user sees: the
+    //      purchase is in Review and the bank's alert is still sitting there.
     //   3. The notification came from a monitored banking app. This is now
     //      also the forwarding rule, so it is redundant in practice — kept
     //      because dismissing someone's notifications is the one thing here
@@ -652,13 +674,14 @@ public class NotificationListener extends NotificationListenerService {
     //   4. The native regex found an amount, i.e. this really does look like
     //      a purchase rather than a balance alert or a login warning.
     //   5. The notification is clearable (not an ongoing/foreground one).
-    //   6. It was durably written to the pending queue. queueTransaction
-    //      uses commit(), not apply(), so by the time this returns true the
-    //      bytes are on disk and the JS pipeline will find them on next
-    //      launch even if the process is killed a millisecond later.
-    //   7. A Covault notification for this purchase is showing. If our own
-    //      notifications are blocked at the OS level, or posting threw, we
-    //      would be removing the user's only visible record — so we don't.
+    //      Gate 2 is the whole of what used to be gates 6 and 7: durably
+    //      written to the pending queue (queueTransaction uses commit(), not
+    //      apply(), so a true return means the bytes are on disk and the JS
+    //      pipeline will find them on next launch even if the process is
+    //      killed a millisecond later), AND a Covault notification showing. If
+    //      our own notifications are blocked at the OS level, or posting
+    //      threw, we would be removing the user's only visible record — so we
+    //      don't, on this pass or any later one.
     //
     // Ordering is the safety property: persist, then notify, then dismiss.
     // The bank's notification is only ever removed after Covault holds a
@@ -667,13 +690,11 @@ public class NotificationListener extends NotificationListenerService {
         StatusBarNotification sbn,
         boolean fromMonitored,
         Double amount,
-        boolean fromScan,
-        boolean secured
+        boolean replaced
     ) {
-        if (fromScan) return;                 // (2)
         if (!fromMonitored) return;           // (3)
         if (amount == null) return;           // (4)
-        if (!secured) return;                 // (6) + (7)
+        if (!replaced) return;                // (2)
         if (!isHideBankNotificationsEnabled()) return;  // (1)
         try {
             if (!sbn.isClearable()) return;   // (5)
@@ -720,6 +741,99 @@ public class NotificationListener extends NotificationListenerService {
     }
 
     static final String HIDE_BANK_NOTIFICATIONS_KEY = "hide_bank_notifications";
+
+    // ── The record of what Covault has already replaced ──────────────────
+    //
+    // A notification can be walked more than once: the live post, then a scan
+    // every time the listener reconnects. Only the first pass should tell the
+    // user about it — but every pass should be allowed to clear it out of the
+    // tray, because the pass that captured it may have been unable to (the
+    // toggle was off then, the dismissal threw, the notification was not
+    // clearable yet).
+    //
+    // Deciding that from `fromScan` alone cannot work: that flag says how we
+    // arrived, not whether the user has been told. So the answer is written
+    // down instead, and it has to survive the process — the listener service
+    // is killed and restarted freely, and an in-memory set would forget on
+    // every restart and re-notify for everything still in the shade.
+    //
+    // Only keys that were fully secured are recorded (durably queued AND a
+    // Covault notification posted). A key in here is therefore a promise that
+    // the user has already seen this purchase, which is what makes dismissing
+    // the bank's copy on a later pass safe.
+    private static final String SECURED_KEYS_PREF = "secured_notifications";
+    private static final int MAX_SECURED_KEYS = 200;
+    private static final Object SECURED_LOCK = new Object();
+
+    /**
+     * Identity of one notification, stable across rescans.
+     *
+     * getKey() alone is not enough: a bank reuses the same notification id for
+     * the next alert, so a second purchase would look like one already handled
+     * and be silently dismissed without ever being announced. The post time is
+     * what separates them, and it does not change when the shade is re-walked.
+     */
+    private static String securedKeyFor(StatusBarNotification sbn) {
+        String key = sbn.getKey();
+        return (key == null ? sbn.getPackageName() : key) + "|" + sbn.getPostTime();
+    }
+
+    private boolean wasSecured(String securedKey) {
+        if (securedKey == null) return false;
+        try {
+            synchronized (SECURED_LOCK) {
+                String stored = getSharedPreferences("covault_prefs", 0)
+                    .getString(SECURED_KEYS_PREF, "[]");
+                JSONArray keys = new JSONArray(stored);
+                for (int i = 0; i < keys.length(); i++) {
+                    if (securedKey.equals(keys.optString(i, null))) return true;
+                }
+            }
+        } catch (Exception e) {
+            // An unreadable record is not a promise that the user was told, so
+            // it must read as "no". The cost is one extra capture notification.
+            Log.w(TAG, "Could not read the secured-notification record", e);
+        }
+        return false;
+    }
+
+    /**
+     * Remember that this notification has been captured and replaced.
+     *
+     * commit(), not apply(), for the same reason the pending queue uses it: a
+     * later pass dismisses the bank's notification on the strength of this
+     * record, so it has to mean "written", not "queued to be written".
+     */
+    private void rememberSecured(String securedKey) {
+        if (securedKey == null) return;
+        try {
+            synchronized (SECURED_LOCK) {
+                SharedPreferences prefs = getSharedPreferences("covault_prefs", 0);
+                JSONArray keys;
+                try {
+                    keys = new JSONArray(prefs.getString(SECURED_KEYS_PREF, "[]"));
+                } catch (Exception e) {
+                    keys = new JSONArray();
+                }
+                for (int i = 0; i < keys.length(); i++) {
+                    if (securedKey.equals(keys.optString(i, null))) return;
+                }
+                keys.put(securedKey);
+                if (keys.length() > MAX_SECURED_KEYS) {
+                    JSONArray trimmed = new JSONArray();
+                    for (int i = keys.length() - MAX_SECURED_KEYS; i < keys.length(); i++) {
+                        trimmed.put(keys.get(i));
+                    }
+                    keys = trimmed;
+                }
+                prefs.edit().putString(SECURED_KEYS_PREF, keys.toString()).commit();
+            }
+        } catch (Exception e) {
+            // Losing the record costs one duplicate capture notification the
+            // next time the shade is walked. It never costs a purchase.
+            Log.w(TAG, "Could not record the secured notification", e);
+        }
+    }
 
     /**
      * Where a tapped notification should land the user.
@@ -1070,7 +1184,7 @@ public class NotificationListener extends NotificationListenerService {
      *         notification is showing for it — the two preconditions for
      *         dismissing the bank's own notification.
      */
-    private boolean broadcastTransaction(String sourceApp, Double amount, String vendor, String rawText, long postTime, boolean fromScan) {
+    private boolean broadcastTransaction(String sourceApp, Double amount, String vendor, String rawText, long postTime, boolean fromScan, boolean alreadySecured) {
         try {
             JSONObject transaction = new JSONObject();
             transaction.put("source_app", sourceApp);
@@ -1089,9 +1203,14 @@ public class NotificationListener extends NotificationListenerService {
             boolean queued = queueTransaction(transaction);
 
             // Tell the user immediately. A rescan re-walks the shade and would
-            // otherwise re-notify for things already seen, so skip those.
+            // otherwise re-notify for things already seen — but "seen" means
+            // we actually told them once, not merely that we arrived via a
+            // scan. A notification the listener never got a live post for (the
+            // service was restarted, the phone rebooted) is new to the user
+            // however we found it, and staying silent about it also left it
+            // undismissable, since suppression needs a replacement to exist.
             boolean notified = false;
-            if (!fromScan) {
+            if (!fromScan || !alreadySecured) {
                 notified = notifyCaptured(amount, vendor, rawText);
             }
 
@@ -1114,8 +1233,9 @@ public class NotificationListener extends NotificationListenerService {
                 + " queued=" + queued
                 + " notified=" + notified
                 + " fromScan=" + fromScan
+                + " alreadySecured=" + alreadySecured
                 + " secured=" + secured
-                + (secured ? "" : " -> tray suppression will be SKIPPED"));
+                + ((secured || alreadySecured) ? "" : " -> tray suppression will be SKIPPED"));
 
             return secured;
 

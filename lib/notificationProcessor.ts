@@ -39,6 +39,16 @@ const AMOUNT_TOLERANCE = 0.01;
 const RECURRING_DATE_TOLERANCE_DAYS = 3;
 
 /**
+ * Ceiling on the learned vendor rules loaded when categorising a capture.
+ *
+ * Not a page size — every rule has to be considered or a rule the user wrote
+ * silently stops applying. This is a runaway guard, set far above any real
+ * household's rule count, so a corrupt table can't turn one capture into a
+ * multi-megabyte download.
+ */
+const MAX_VENDOR_RULES = 2000;
+
+/**
  * Below this confidence, the regex parser is considered a guess and the
  * pipeline falls back to the on-device AI model (extractWithAI). The AI
  * model is slower to load but produces better extractions on ambiguous
@@ -1420,16 +1430,29 @@ async function processNotificationWithAIImpl(
     // 1) match_key lookup (match_type aware)
     let overrideRows: any[] | null = null;
     if (vendorKey) {
+      // ALL of the user's rules, not a recent slice of them.
+      //
+      // This asked for the 20 most recently updated and matched among those.
+      // The matching happens here rather than in the query — the stored keys
+      // are not reliably lowercase, so the comparison has to be
+      // case-insensitive, which a server-side filter on this column is not.
+      // Twenty was fine when a household had a handful of rules. At a hundred
+      // and fourteen it meant a rule taught months ago was simply not in the
+      // room: Costco → Groceries had matched every Costco run for a year and
+      // then quietly stopped, and the charge landed in Other with no sign that
+      // a rule existed. The list is small data — a few hundred short rows —
+      // and this runs a few times a day, so fetching all of it costs nothing
+      // that matters.
       const { data } = await supabase
         .from('overrides')
         .select('category_id, proper_name, match_key, match_type, updated_at')
         .eq('user_id', userId)
         .not('match_key', 'is', null)
         .order('updated_at', { ascending: false })
-        .limit(20);
+        .limit(MAX_VENDOR_RULES);
       const allRows = data || [];
       // Filter in-memory by match_type semantics. Most-recent-wins is
-      // already guaranteed by the ORDER BY + LIMIT 20 + first-match in loop.
+      // already guaranteed by the ORDER BY + first-match in loop.
       const rulesMatching = (key: string) => allRows.filter((row: any) => {
         const mk = (row.match_key || '').toLowerCase();
         if (!mk) return false;
