@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   getHideBankNotifications,
   setHideBankNotifications,
+  canPostCaptureNotifications,
+  openNotificationSettings,
   type CovaultNotificationPlugin,
 } from '../covaultNotification';
 
@@ -89,5 +91,79 @@ describe('setHideBankNotifications', () => {
 
   it('returns false with no plugin (web build)', async () => {
     expect(await setHideBankNotifications(true, null)).toBe(false);
+  });
+});
+
+/**
+ * The toggle's invisible precondition.
+ *
+ * Suppression only ever dismisses a bank alert after Covault has posted its
+ * own notification in its place, so when Android is blocking that post nothing
+ * is hidden — while the toggle still reads "on" and captures still arrive in
+ * Review. There is no symptom to notice, which is why the settings screen asks
+ * outright and warns.
+ *
+ * The defaults are the point here, and they run in opposite directions to the
+ * suppression toggle's. That toggle answers "false" to anything it cannot
+ * confirm, because acting on an unconfirmed "on" would delete a user's bank
+ * alerts. This one answers "true", because acting on an unconfirmed "blocked"
+ * would send the user off to fix a permission that was never broken.
+ */
+describe('canPostCaptureNotifications', () => {
+  it('reads the native answer', async () => {
+    const plugin = stubPlugin({
+      getCaptureNotificationStatus: vi.fn(async () => ({ canPost: false })),
+    });
+    expect(await canPostCaptureNotifications(plugin)).toBe(false);
+  });
+
+  it('reports allowed when the native side says so', async () => {
+    const plugin = stubPlugin({
+      getCaptureNotificationStatus: vi.fn(async () => ({ canPost: true })),
+    });
+    expect(await canPostCaptureNotifications(plugin)).toBe(true);
+  });
+
+  it('assumes allowed on an older APK rather than raising a false alarm', async () => {
+    const plugin = stubPlugin({
+      getCaptureNotificationStatus: vi.fn(async () => {
+        throw new Error('not implemented');
+      }),
+    });
+    expect(await canPostCaptureNotifications(plugin)).toBe(true);
+  });
+
+  it('assumes allowed with no plugin (web build)', async () => {
+    expect(await canPostCaptureNotifications(null)).toBe(true);
+  });
+
+  it('treats a non-boolean native reply as allowed', async () => {
+    const plugin = stubPlugin({
+      getCaptureNotificationStatus: vi.fn(async () => ({
+        canPost: 'no' as unknown as boolean,
+      })),
+    });
+    expect(await canPostCaptureNotifications(plugin)).toBe(true);
+  });
+});
+
+describe('openNotificationSettings', () => {
+  it('asks the native side to open the page', async () => {
+    const open = vi.fn(async () => {});
+    await openNotificationSettings(stubPlugin({ openNotificationSettings: open }));
+    expect(open).toHaveBeenCalled();
+  });
+
+  it('does not throw on an older APK', async () => {
+    const plugin = stubPlugin({
+      openNotificationSettings: vi.fn(async () => {
+        throw new Error('not implemented');
+      }),
+    });
+    await expect(openNotificationSettings(plugin)).resolves.toBeUndefined();
+  });
+
+  it('does nothing with no plugin (web build)', async () => {
+    await expect(openNotificationSettings(null)).resolves.toBeUndefined();
   });
 });

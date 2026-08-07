@@ -38,6 +38,25 @@ async function ensurePermission() {
   }
 }
 
+/**
+ * Ask Android for permission to post notifications, if it hasn't been granted.
+ *
+ * The same request the budget alerts make, exposed on its own because the
+ * notification listener needs it too and nothing was ever asking on its
+ * behalf. Posting a capture notification is a precondition of hiding the
+ * bank's alert, so a user who never triggered a budget alert had the
+ * permission silently missing and tray suppression silently off.
+ *
+ * On Android 13+ this is POST_NOTIFICATIONS, denied until asked, and reset by
+ * a reinstall. Android only shows the prompt once — after a denial this
+ * resolves without showing anything, which is why the caller checks the result
+ * and offers the settings page instead.
+ */
+export async function requestPostNotifications(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+  await ensurePermission();
+}
+
 // Android notification icon config.
 // `smallIcon` is a monochrome drawable (white on transparent) — the
 // system tints it with `iconColor` at render time. Without these, the

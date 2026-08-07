@@ -93,6 +93,18 @@ export interface CovaultNotificationPlugin {
   getHideBankNotifications(): Promise<{ hidden: boolean }>;
 
   /**
+   * Whether Covault's own capture notification can reach the shade right now.
+   * False means tray suppression is being skipped on every capture, however
+   * the toggle above is set.
+   *
+   * Prefer the `canPostCaptureNotifications` helper below.
+   */
+  getCaptureNotificationStatus(): Promise<{ canPost: boolean }>;
+
+  /** Open Android's notification settings page for Covault. */
+  openNotificationSettings(): Promise<void>;
+
+  /**
    * Take the destination of a tapped notification and clear it, or '' if the
    * app was opened normally. Use the `consumePendingRoute` helper below.
    */
@@ -167,6 +179,51 @@ export async function setHideBankNotifications(
   } catch (e) {
     log.warn('[covaultNotification] Could not set hide-bank-notifications:', e);
     return getHideBankNotifications(plugin);
+  }
+}
+
+/**
+ * Whether Covault's own capture notification can actually be posted.
+ *
+ * Tray suppression only dismisses a bank alert once Covault has put its own
+ * notification in its place, so when Android is blocking us — POST_NOTIFICATIONS
+ * never granted, revoked by a reinstall, or the "Captured transactions" channel
+ * set to None — nothing is ever hidden, silently, while capture carries on
+ * working. That is the one precondition of the toggle with no symptom of its
+ * own, so the settings screen asks about it directly.
+ *
+ * Returns true when the answer can't be had — on web, and on an APK built
+ * before the native method existed. A warning shown on a guess would send the
+ * user to fix something that isn't broken; the real answer is never a guess.
+ */
+export async function canPostCaptureNotifications(
+  plugin: CovaultNotificationPlugin | null = covaultNotification,
+): Promise<boolean> {
+  if (!plugin) return true;
+  try {
+    const { canPost } = await plugin.getCaptureNotificationStatus();
+    return canPost !== false;
+  } catch (e) {
+    log.debug('[covaultNotification] getCaptureNotificationStatus unavailable:', e);
+    return true;
+  }
+}
+
+/**
+ * Send the user to Android's notification settings for Covault.
+ *
+ * The fallback for when the runtime permission prompt is no longer offered:
+ * Android stops showing it after a denial, so the settings page is the only
+ * way back.
+ */
+export async function openNotificationSettings(
+  plugin: CovaultNotificationPlugin | null = covaultNotification,
+): Promise<void> {
+  if (!plugin) return;
+  try {
+    await plugin.openNotificationSettings();
+  } catch (e) {
+    log.warn('[covaultNotification] Could not open notification settings:', e);
   }
 }
 

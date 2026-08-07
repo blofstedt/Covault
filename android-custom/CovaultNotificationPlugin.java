@@ -295,6 +295,59 @@ public class CovaultNotificationPlugin extends Plugin {
     }
 
     /**
+     * Whether Covault's own capture notification can actually reach the shade.
+     *
+     * This is the precondition of tray suppression that has no visible symptom
+     * of its own. Dismissing a bank alert requires Covault to have put its own
+     * notification in the alert's place, so when Android is blocking us —
+     * POST_NOTIFICATIONS never granted, or revoked by a reinstall, or the
+     * "Captured transactions" channel set to None — every dismissal is skipped
+     * while capture itself carries on working. The purchase still lands in
+     * Review, the bank's alert still sits in the tray, and the toggle sits
+     * there saying "on". Reporting it here is what lets the settings screen
+     * say so instead.
+     *
+     * Creates the channel first: until it exists Android shows no switch for
+     * it, so a user sent to fix this would find nothing to fix.
+     */
+    @PluginMethod
+    public void getCaptureNotificationStatus(PluginCall call) {
+        NotificationListener.ensureCaptureChannel(getContext());
+        boolean canPost = NotificationListener.canPostCaptureNotifications(getContext());
+        JSObject ret = new JSObject();
+        ret.put("canPost", canPost);
+        Log.i(TAG, "getCaptureNotificationStatus: canPost=" + canPost);
+        call.resolve(ret);
+    }
+
+    /**
+     * Open Android's notification settings for Covault.
+     *
+     * Where the user goes when the runtime permission prompt is no longer
+     * offered — Android stops showing it after a denial, so the only remaining
+     * route is the settings page.
+     */
+    @PluginMethod
+    public void openNotificationSettings(PluginCall call) {
+        try {
+            Intent intent;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+                intent.putExtra(Settings.EXTRA_APP_PACKAGE, getContext().getPackageName());
+            } else {
+                intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                intent.setData(Uri.fromParts("package", getContext().getPackageName(), null));
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+        } catch (Exception e) {
+            // Nothing to recover — the user can still reach the page by hand.
+            Log.w(TAG, "Could not open notification settings", e);
+        }
+        call.resolve();
+    }
+
+    /**
      * Take the destination of a tapped notification, if there is one, and
      * clear it. MainActivity parks it; the web layer drains it on launch and
      * on resume.

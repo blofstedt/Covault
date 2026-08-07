@@ -61,6 +61,12 @@ public class NotificationListener extends NotificationListenerService {
     public void onListenerConnected() {
         super.onListenerConnected();
         Log.i(TAG, "onListenerConnected: notification listener connected, scanning existing notifications");
+        // Create the capture channel now rather than on the first capture.
+        // Until it exists, Android's per-channel switch for it does not appear
+        // in the app's notification settings, so a user sent there to turn our
+        // notifications back on finds nothing to turn on — and tray suppression
+        // stays off until they do. See canPostCaptureNotifications.
+        ensureCaptureChannel(this);
         scanActiveNotifications();
     }
 
@@ -995,7 +1001,7 @@ public class NotificationListener extends NotificationListenerService {
     private static final long CAPTURE_NOTIFY_WINDOW_MS = 60_000L;
     private final java.util.Map<String, Long> recentCaptureNotifications = new java.util.HashMap<>();
 
-    private void ensureCaptureChannel(android.app.NotificationManager nm) {
+    private static void ensureCaptureChannel(android.app.NotificationManager nm) {
         if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) return;
         if (nm.getNotificationChannel(CAPTURE_CHANNEL_ID) != null) return;
         android.app.NotificationChannel channel = new android.app.NotificationChannel(
@@ -1008,6 +1014,20 @@ public class NotificationListener extends NotificationListenerService {
     }
 
     /**
+     * Same, from anywhere — the settings screen creates the channel before it
+     * sends the user to Android to re-enable it.
+     */
+    static void ensureCaptureChannel(Context context) {
+        try {
+            android.app.NotificationManager nm = (android.app.NotificationManager)
+                context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) ensureCaptureChannel(nm);
+        } catch (Exception e) {
+            Log.w(TAG, "Could not create the capture channel", e);
+        }
+    }
+
+    /**
      * Can a Covault capture notification actually reach the shade right now?
      *
      * Notifications can be switched off for the whole app, or this one channel
@@ -1017,11 +1037,37 @@ public class NotificationListener extends NotificationListenerService {
      * this first.
      */
     private boolean canPostCaptureNotifications(android.app.NotificationManager nm) {
+        return canPostCaptureNotifications(this, nm);
+    }
+
+    /**
+     * Same question, asked from the settings screen instead of the capture
+     * path — so the "Hide bank alerts after capture" toggle can say that
+     * Android is the reason nothing is being hidden.
+     *
+     * Static and shared for the same reason the preference read is: a second
+     * copy of this could say "fine" while the capture path was bailing out.
+     */
+    static boolean canPostCaptureNotifications(Context context) {
         try {
-            if (!androidx.core.app.NotificationManagerCompat.from(this).areNotificationsEnabled()) {
+            android.app.NotificationManager nm = (android.app.NotificationManager)
+                context.getSystemService(Context.NOTIFICATION_SERVICE);
+            return canPostCaptureNotifications(context, nm);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static boolean canPostCaptureNotifications(
+        Context context,
+        android.app.NotificationManager nm
+    ) {
+        try {
+            if (!androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()) {
                 return false;
             }
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                if (nm == null) return false;
                 android.app.NotificationChannel channel = nm.getNotificationChannel(CAPTURE_CHANNEL_ID);
                 if (channel != null
                     && channel.getImportance() == android.app.NotificationManager.IMPORTANCE_NONE) {

@@ -10,7 +10,10 @@ import type { CovaultNotificationPlugin } from '../../../lib/covaultNotification
 import {
   getHideBankNotifications,
   setHideBankNotifications,
+  canPostCaptureNotifications,
+  openNotificationSettings,
 } from '../../../lib/covaultNotification';
+import { requestPostNotifications } from '../../../lib/appNotifications';
 
 
 interface NotificationSettingsSectionProps {
@@ -45,6 +48,13 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
   // second place the preference lives.
   const [hideBankNotifs, setHideBankNotifs] = useState(false);
   const [savingHideBankNotifs, setSavingHideBankNotifs] = useState(false);
+  // Whether Android will let Covault post its own capture notification. When
+  // it won't, the toggle above does nothing at all — a bank alert is only ever
+  // dismissed once Covault has replaced it — so this is shown rather than left
+  // for the user to work out from a tray that never empties. Assumed fine
+  // until the native side says otherwise, so an older APK raises no alarm.
+  const [captureNotifsAllowed, setCaptureNotifsAllowed] = useState(true);
+  const [fixingCaptureNotifs, setFixingCaptureNotifs] = useState(false);
 
   // Initialize plugin
   useEffect(() => {
@@ -83,6 +93,7 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
       setInstalledBankApps(named);
 
       setHideBankNotifs(await getHideBankNotifications(plugin));
+      setCaptureNotifsAllowed(await canPostCaptureNotifications(plugin));
 
       if (granted) {
         const { apps: saved } = await plugin.getMonitoredApps();
@@ -136,6 +147,13 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
           if (pollCancelledRef.current) return;
           setPermissionGranted(true);
           onToggle(true);
+          // Reading other apps' notifications and posting our own are two
+          // different permissions, and only the first one was ever asked for.
+          // Capture posts a notification of its own, and hiding the bank's
+          // alert depends on that notification existing — so ask for it at the
+          // moment capture is switched on rather than leaving it to whichever
+          // budget alert happens to fire first.
+          await requestPostNotifications();
           checkStatus();
           return;
         }
@@ -209,6 +227,23 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
       setHideBankNotifs(await setHideBankNotifications(!hideBankNotifs, plugin));
     } finally {
       setSavingHideBankNotifs(false);
+    }
+  };
+
+  // Two routes, tried in order, because Android offers the prompt only once
+  // ever: ask outright, and if permission still isn't there — already denied,
+  // or it's the channel rather than the app that's switched off — hand the
+  // user to the settings page, which is the only remaining way through.
+  const fixCaptureNotifs = async () => {
+    if (fixingCaptureNotifs) return;
+    setFixingCaptureNotifs(true);
+    try {
+      await requestPostNotifications();
+      const allowed = await canPostCaptureNotifications(plugin);
+      setCaptureNotifsAllowed(allowed);
+      if (!allowed) await openNotificationSettings(plugin);
+    } finally {
+      setFixingCaptureNotifs(false);
     }
   };
 
@@ -399,6 +434,39 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
               disabled={savingHideBankNotifs}
             />
           </div>
+
+          {/* The one precondition with no symptom of its own. A bank alert is
+              only ever dismissed once Covault has posted its own notification
+              in its place, so while Android is blocking us the toggle reads
+              "on" and hides nothing — captures keep arriving in Review and the
+              tray never empties. Say so, and offer the way out. */}
+          {hideBankNotifs && !captureNotifsAllowed && (
+            <div
+              className="mt-3 rounded-2xl border border-amber-200 dark:border-amber-800/50 bg-amber-50/70 dark:bg-amber-950/25 px-3 py-2.5"
+              data-testid="capture-notifications-blocked"
+            >
+              <div className="flex items-center">
+                <span className="w-2 h-2 rounded-full bg-amber-500 mr-2 flex-shrink-0" />
+                <span className="text-[11px] font-semibold text-amber-800 dark:text-amber-300">
+                  Android is blocking Covault's notifications
+                </span>
+              </div>
+              <p className="mt-1.5 text-[10px] leading-relaxed text-amber-900/80 dark:text-amber-200/80">
+                Nothing is being hidden while this is the case. Covault only clears a bank alert once it has posted its own notification in its place, and right now it can't post one. Your purchases are still being captured — they're waiting in Review.
+              </p>
+              <button
+                type="button"
+                onClick={fixCaptureNotifs}
+                disabled={fixingCaptureNotifs}
+                className={`mt-2 inline-flex items-center px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-900/40 border border-amber-300 dark:border-amber-700 text-[10px] font-semibold text-amber-800 dark:text-amber-200 transition-transform ${
+                  fixingCaptureNotifs ? 'opacity-50' : 'active:scale-[0.97]'
+                }`}
+              >
+                Allow notifications →
+              </button>
+            </div>
+          )}
+
           <p className="mt-2 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
             {hideBankNotifs
               ? 'Covault dismisses a bank alert only after it has saved the purchase and posted its own notification. If either step fails — or you have turned Covault notifications off in Android settings — the bank alert is left alone. Alerts already in your tray are never touched.'

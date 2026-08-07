@@ -67,7 +67,7 @@ Android bank notification
   → NotificationListener.java (native, runs with the app closed)
       persist  → SharedPreferences queue, commit() so it means "on disk"
       notify   → Covault's own "$12.40 at X" notification
-      dismiss  → optional tray suppression (opt-in), only if both above succeeded
+      dismiss  → tray suppression (on by default), only if both above succeeded
       then     → widget delta (guarded; may never affect the above)
   → JS: processNotificationWithAI()
       1. in-memory dedup
@@ -82,11 +82,28 @@ Android bank notification
 ```
 
 **The ordering is the safety property.** A dismissed bank notification cannot be
-recovered by `scanActiveNotifications()`, so suppression is gated on: user opted
-in, live post (not a rescan), monitored bank app, an amount was parsed, the
-notification is clearable, the queue write committed, and Covault's own
-notification is actually visible (not blocked at OS level). Any failure leaves
+recovered by `scanActiveNotifications()`, so suppression is gated on: the toggle
+is on, the notification came from a monitored bank app, an amount was parsed,
+the notification is clearable, and Covault has *replaced* it — the queue write
+committed and Covault's own notification is actually visible. Any failure leaves
 the bank's notification alone.
+
+"Replaced" is remembered across passes (`secured_notifications`, written with
+`commit()`), not inferred from whether this pass was a live post or a rescan.
+A notification the listener first meets during a scan — the service was
+restarted, the phone rebooted — gets announced and becomes dismissible; one
+already announced is never announced twice but stays dismissible, so a
+dismissal that failed the first time gets another chance.
+
+**The gate with no symptom of its own is Covault's own notification.** Posting
+it needs `POST_NOTIFICATIONS`, which is a different permission from notification
+*access*, is denied until asked on Android 13+, and is reset by a reinstall —
+including the ones a signing-key change forces. When it is missing, capture
+still works and suppression silently never fires: purchases arrive in Review
+while the tray never empties, and the toggle still reads "on". So the settings
+screen asks `getCaptureNotificationStatus()` and says so, and turning capture on
+now requests the permission (`requestPostNotifications()`) rather than waiting
+for whichever budget alert happens to fire first.
 
 **Auto-file** (`auto_accept_known_vendors`, off by default) files a capture
 straight to its budget when a rule *the user wrote* matches at ≥90%. Scored by
