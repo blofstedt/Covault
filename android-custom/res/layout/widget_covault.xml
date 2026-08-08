@@ -50,4 +50,51 @@
         android:layout_gravity="top|end"
         android:visibility="gone" />
 
+    <!--
+      Tap targets for the category rows in the right-hand legend, which are
+      painted into the bitmap like everything else and so cannot be clicked on
+      their own. One per row, up to the four the legend can draw.
+
+      Positioned at runtime: the rows move with the widget's size and with how
+      many categories have spending, so a fixed position in this file would be
+      right at one size and wrong at every other. The provider sets each one's
+      margins and dimensions from the geometry that actually drew the row —
+      see WidgetRenderer.lastLegendHits.
+
+      GONE by default. A target left visible over empty card would swallow taps
+      meant for the home screen behind it.
+
+      FrameLayout rather than View for the same reason as the pill above: the
+      launcher inflates these in its own process and will only inflate the
+      classes the framework marks remotable. widgetLayoutViews.test.ts fails
+      the build on anything outside that set.
+    -->
+    <FrameLayout
+        android:id="@+id/widget_legend_hit_0"
+        android:layout_width="1dp"
+        android:layout_height="1dp"
+        android:layout_gravity="top|start"
+        android:visibility="gone" />
+
+    <FrameLayout
+        android:id="@+id/widget_legend_hit_1"
+        android:layout_width="1dp"
+        android:layout_height="1dp"
+        android:layout_gravity="top|start"
+        android:visibility="gone" />
+
+    <FrameLayout
+        android:id="@+id/widget_legend_hit_2"
+        android:layout_width="1dp"
+        android:layout_height="1dp"
+        android:layout_gravity="top|start"
+        android:visibility="gone" />
+
+    <FrameLayout
+        android:id="@+id/widget_legend_hit_3"
+        android:layout_width="1dp"
+        android:layout_height="1dp"
+        android:layout_gravity="top|start"
+        android:visibility="gone" />
+
 </FrameLayout>

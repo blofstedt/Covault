@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { Transaction, BudgetCategory } from '../../types';
 import ParsingCard from '../ui/ParsingCard';
 import { EmptyState } from '../shared';
@@ -10,8 +10,15 @@ import type { VendorOverride } from './useVendorOverrides';
 import { hapticSuccess } from '../../lib/haptics';
 import { detectFuelHoldPlaceholder } from '../../lib/fuelHold';
 import { isFuelHoldResolved } from '../../lib/localNotificationMemory';
+import { useSpinHighlight } from '../../lib/hooks/useSpinHighlight';
 
 interface AITransactionsEnteredCardProps {
+  /**
+   * Bumped when the user arrived here from a capture notification or the
+   * widget's review pill. Each change runs a light around the rows that are
+   * waiting, so "something needs you" resolves to "these ones".
+   */
+  highlightNonce?: number;
   aiTransactions: Transaction[];
   budgets: BudgetCategory[];
   onTransactionTap?: (tx: Transaction) => void;
@@ -52,6 +59,7 @@ const EMPTY_IDS = new Set<string>();
 const EMPTY_OVERRIDES: VendorOverride[] = [];
 
 const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
+  highlightNonce = 0,
   aiTransactions,
   budgets,
   onTransactionTap,
@@ -98,6 +106,21 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
     () => aiTransactions.filter((tx) => !filedIds.has(tx.id)),
     [aiTransactions, filedIds],
   );
+
+  // The light that says which rows the notification meant.
+  //
+  // Driven off the nonce rather than off mounting: the Review page stays
+  // mounted between visits, so keying on arrival would light the rows once and
+  // never again. Skipped on the first render — nonce starts at zero and only a
+  // change to it means someone was sent here.
+  const { spinning, spin } = useSpinHighlight();
+  useEffect(() => {
+    if (highlightNonce <= 0) return;
+    spin(nonRefunds.map((tx) => tx.id));
+    // Only the nonce. Adding the rows would replay the light every time one is
+    // filed, which is the moment the user is looking at something else.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightNonce]);
 
   // Rows a single tap can file: rules the user wrote, already pointing at a
   // category. Offered from two upwards — for one row the per-row Accept is
@@ -175,9 +198,26 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
           ) : (
             nonRefunds.map((tx) => {
               const matched = matchMap.get(tx.id);
+              const lit = spinning.has(tx.id);
               return (
-                <AIEnteredRow
+                // The wrapper exists only to carry the light. AIEnteredRow is
+                // its own card with its own radius, and a plain div inside the
+                // list's `space-y` leaves the spacing identical either way.
+                <div
                   key={tx.id}
+                  className={lit ? 'covault-spin-highlight' : undefined}
+                  style={
+                    lit
+                      ? ({
+                          // Amber, the same "needs a look" colour the review
+                          // pill and the row's own badge already use.
+                          '--covault-spin-color': '#f59e0b',
+                          '--covault-spin-radius': '1.5rem',
+                        } as React.CSSProperties)
+                      : undefined
+                  }
+                >
+                <AIEnteredRow
                   tx={tx}
                   budgets={budgets}
                   isForReview={needsReviewIds.has(tx.id)}
@@ -196,6 +236,7 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
                   allTransactions={allTransactions}
                   onSettleFuelHold={onSettleFuelHold}
                 />
+                </div>
               );
             })
           )}

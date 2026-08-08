@@ -256,8 +256,33 @@ export async function getCaptureDiagnostics(
   }
 }
 
-/** Destinations a tapped notification can ask the app to open. */
-export type NotificationRoute = 'review';
+/**
+ * Destinations a tapped notification or widget can ask the app to open.
+ *
+ * `review` comes from a capture notification or the widget's review pill.
+ * `{ budget }` comes from tapping a category row on the widget.
+ */
+export type NotificationRoute = 'review' | { budget: string };
+
+/** "budget:Groceries" — mirrors ROUTE_BUDGET_PREFIX in NotificationListener.java. */
+const BUDGET_ROUTE_PREFIX = 'budget:';
+
+/**
+ * Read a parked destination string, or null if it isn't one we know.
+ *
+ * Unknown values are dropped rather than guessed at: a route this build has
+ * never heard of would otherwise navigate the user somewhere arbitrary.
+ */
+export function parseNotificationRoute(raw: unknown): NotificationRoute | null {
+  if (typeof raw !== 'string') return null;
+  const value = raw.trim();
+  if (value === 'review') return 'review';
+  if (value.startsWith(BUDGET_ROUTE_PREFIX)) {
+    const budget = value.slice(BUDGET_ROUTE_PREFIX.length).trim();
+    return budget ? { budget } : null;
+  }
+  return null;
+}
 
 /**
  * Take the destination of a tapped notification, if the app was opened by one.
@@ -272,7 +297,7 @@ export async function consumePendingRoute(
   if (!plugin) return null;
   try {
     const { route } = await plugin.consumePendingRoute();
-    return route === 'review' ? 'review' : null;
+    return parseNotificationRoute(route);
   } catch (e) {
     log.debug('[covaultNotification] consumePendingRoute unavailable:', e);
     return null;

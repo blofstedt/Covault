@@ -2,7 +2,7 @@
 import { useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
-import { consumePendingRoute } from '../covaultNotification';
+import { consumePendingRoute, parseNotificationRoute } from '../covaultNotification';
 import { addNotificationTapListener } from '../appNotifications';
 
 /**
@@ -25,11 +25,19 @@ import { addNotificationTapListener } from '../appNotifications';
  * `onReview` is held in a ref so a caller passing an inline arrow doesn't
  * re-register the native listeners on every render.
  */
-export function useNotificationRoute(onReview: () => void): void {
+export function useNotificationRoute(
+  onReview: () => void,
+  onBudget?: (budget: string) => void,
+): void {
   const onReviewRef = useRef(onReview);
   useEffect(() => {
     onReviewRef.current = onReview;
   }, [onReview]);
+
+  const onBudgetRef = useRef(onBudget);
+  useEffect(() => {
+    onBudgetRef.current = onBudget;
+  }, [onBudget]);
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
@@ -38,7 +46,9 @@ export function useNotificationRoute(onReview: () => void): void {
 
     const drain = async () => {
       const route = await consumePendingRoute();
-      if (!cancelled && route === 'review') onReviewRef.current();
+      if (cancelled || route === null) return;
+      if (route === 'review') onReviewRef.current();
+      else onBudgetRef.current?.(route.budget);
     };
 
     void drain();
@@ -54,8 +64,10 @@ export function useNotificationRoute(onReview: () => void): void {
       })
       .catch(() => {});
 
-    const removeTap = addNotificationTapListener((route) => {
+    const removeTap = addNotificationTapListener((raw) => {
+      const route = parseNotificationRoute(raw);
       if (route === 'review') onReviewRef.current();
+      else if (route !== null) onBudgetRef.current?.(route.budget);
     });
 
     return () => {

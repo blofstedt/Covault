@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { consumePendingRoute, type CovaultNotificationPlugin } from '../covaultNotification';
+import {
+  consumePendingRoute,
+  parseNotificationRoute,
+  type CovaultNotificationPlugin,
+} from '../covaultNotification';
+import { idsForDay } from '../hooks/useSpinHighlight';
 
 /**
  * Tapping a capture notification has to land on the Review page — it says
@@ -68,5 +73,80 @@ describe('consumePendingRoute', () => {
       }),
     });
     expect(await consumePendingRoute(plugin)).toBeNull();
+  });
+});
+
+/**
+ * Where a tap from outside the app lands.
+ *
+ * Three things can send the user somewhere: a capture notification, the
+ * widget's review pill, and a category row on the widget. All three arrive as
+ * one string parked by the native side, so this is the only place that decides
+ * what a destination means — and the thing it must never do is act on one it
+ * does not recognise. A snapshot on the home screen can be older than the app
+ * that reads it, so an unknown route is a real possibility rather than a
+ * theoretical one, and navigating somewhere arbitrary on a tap the user did
+ * make is worse than doing nothing.
+ */
+describe('parseNotificationRoute', () => {
+  it('reads the review destination', () => {
+    expect(parseNotificationRoute('review')).toBe('review');
+  });
+
+  it('reads a budget destination and keeps its name', () => {
+    expect(parseNotificationRoute('budget:Groceries')).toEqual({ budget: 'Groceries' });
+  });
+
+  it('keeps spaces inside a budget name', () => {
+    // "Eating Out" is one budget, not a malformed route.
+    expect(parseNotificationRoute('budget:Eating Out')).toEqual({ budget: 'Eating Out' });
+  });
+
+  it('trims the surrounding whitespace the intent extra can carry', () => {
+    expect(parseNotificationRoute('  review ')).toBe('review');
+    expect(parseNotificationRoute('budget:  Leisure  ')).toEqual({ budget: 'Leisure' });
+  });
+
+  it('refuses a budget route with no budget in it', () => {
+    expect(parseNotificationRoute('budget:')).toBeNull();
+    expect(parseNotificationRoute('budget:   ')).toBeNull();
+  });
+
+  it('refuses anything it does not recognise', () => {
+    expect(parseNotificationRoute('settings')).toBeNull();
+    expect(parseNotificationRoute('')).toBeNull();
+    expect(parseNotificationRoute(null)).toBeNull();
+    expect(parseNotificationRoute(undefined)).toBeNull();
+    expect(parseNotificationRoute(42)).toBeNull();
+  });
+});
+
+/**
+ * Which rows the "Today" light runs around.
+ *
+ * Every row dated today, not just the one the scroll stops at. Several
+ * purchases can share a day, and lighting only the first would quietly say the
+ * others are not today's.
+ */
+describe('idsForDay', () => {
+  const rows = [
+    { id: 'a', date: '2026-08-07' },
+    { id: 'b', date: '2026-08-08' },
+    { id: 'c', date: '2026-08-08' },
+    { id: 'd', date: '2026-08-09' },
+  ];
+  const dayOf = (t: { id: string; date: string }) => t.date;
+
+  it('returns every row on that day', () => {
+    expect(idsForDay(rows, '2026-08-08', dayOf)).toEqual(['b', 'c']);
+  });
+
+  it('returns nothing when the day has no rows', () => {
+    expect(idsForDay(rows, '2026-08-10', dayOf)).toEqual([]);
+  });
+
+  it('lights nothing rather than everything when the day is unknown', () => {
+    // An empty day string must not be read as "matches the rows with no date".
+    expect(idsForDay(rows, '', dayOf)).toEqual([]);
   });
 });

@@ -238,7 +238,11 @@ final class WidgetRenderer {
         // the words "No spending yet".
         if (total <= 0 && Math.abs(totalSpent) < 0.005) {
             canvas.drawText("No spending yet", cx, subY, sub);
-        } else {
+        } else if (legendWidth <= 0) {
+            // Only when there is no legend. On a wide widget the same figure is
+            // now the first thing in the right-hand column, at a size that can
+            // actually be read — printing it here as well would be the same
+            // number twice, one of them as a footnote.
             double remaining = snapshot.optDouble("remaining", 0);
             // Negative remaining is real information — render it, don't clamp
             // it. It also gets the app's rose and a bold weight: being over
@@ -284,10 +288,49 @@ final class WidgetRenderer {
         }
 
         if (legendWidth > 0) {
-            drawLegend(canvas, slices, legendLeft, legendWidth, availTop, availH, dp, p);
+            drawLegend(canvas, snapshot, slices, legendLeft, legendWidth, availTop, availH, dp, p);
         }
 
         return bitmap;
+    }
+
+    /**
+     * Where each legend row was drawn, so the provider can lay an invisible tap
+     * target over it.
+     *
+     * The widget is one bitmap and the launcher cannot hit-test a picture, so a
+     * row is only tappable if something tells the provider where it ended up.
+     * Filled by the last render; read immediately after. Values are in bitmap
+     * pixels — the caller scales them to the widget's own bounds, which differ
+     * because the bitmap is deliberately drawn smaller (see the provider's
+     * MAX_BITMAP_PIXELS).
+     */
+    static final class HitRect {
+        final String category;
+        final float left, top, right, bottom;
+
+        HitRect(String category, float left, float top, float right, float bottom) {
+            this.category = category;
+            this.left = left;
+            this.top = top;
+            this.right = right;
+            this.bottom = bottom;
+        }
+    }
+
+    /**
+     * Legend row hit rectangles from the most recent render, in draw order.
+     *
+     * Static, and therefore shared by every placed widget. That is safe only
+     * because rendering and reading both happen on the main thread inside one
+     * renderOne() call — the provider draws, reads, and is done before the next
+     * widget starts. Anything that made rendering concurrent would have to
+     * return these instead.
+     */
+    private static final List<HitRect> LAST_LEGEND_HITS = new ArrayList<>();
+
+    static List<HitRect> lastLegendHits() {
+        return new ArrayList<>(LAST_LEGEND_HITS);
     }
 
     /**
@@ -298,14 +341,59 @@ final class WidgetRenderer {
      * fixed count, so a short widget shows two and a tall one shows four —
      * nothing is ever half-drawn at the bottom edge.
      */
-    private static void drawLegend(Canvas canvas, List<Slice> slices, float left, float width,
+    private static void drawLegend(Canvas canvas, JSONObject snapshot, List<Slice> slices,
+                                   float left, float width,
                                    float top, float height, float dp, Palette p) {
+        LAST_LEGEND_HITS.clear();
+
+        // ── What's left, above the categories ──
+        //
+        // The figure that answers "can I spend this" reads first, at the top of
+        // the column, in the same weight and colour the app gives its own
+        // total. It used to live under the donut's centre figure at a third of
+        // the size, where it was a footnote to the number nobody needs as
+        // often. Over budget keeps the app's rose, because a minus sign at this
+        // size is easy to miss.
+        float headH = 0;
+        double remaining = snapshot.optDouble("remaining", 0);
+        boolean haveRemaining = snapshot.has("remaining");
+        if (haveRemaining) {
+            Paint remainingPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            remainingPaint.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+            remainingPaint.setColor(remaining < 0 ? p.danger : p.primary);
+            float size = 19f * dp;
+            remainingPaint.setTextSize(size);
+
+            String value = remaining < 0 ? money(-remaining) : money(remaining);
+            // Shrink rather than run under the donut. A five-figure month at a
+            // narrow widget width would otherwise print straight off the left
+            // edge of its own column.
+            float measured = remainingPaint.measureText(value);
+            if (measured > width && measured > 0) {
+                size = Math.max(12f * dp, size * (width / measured));
+                remainingPaint.setTextSize(size);
+            }
+
+            Paint caption = new Paint(Paint.ANTI_ALIAS_FLAG);
+            caption.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            caption.setColor(p.secondary);
+            caption.setTextSize(10f * dp);
+
+            canvas.drawText(value, left, top + size, remainingPaint);
+            canvas.drawText(remaining < 0 ? "over budget" : "left to spend",
+                left, top + size + (11f * dp), caption);
+            headH = size + (11f * dp) + (10f * dp);
+        }
+
         float rowH = 22f * dp;
-        int rows = (int) Math.floor(height / rowH);
+        float legendTop = top + headH;
+        float legendHeight = height - headH;
+        int rows = (int) Math.floor(legendHeight / rowH);
         if (rows < 1) return;
         rows = Math.min(rows, Math.min(4, slices.size()));
-        // Centre the block against the donut rather than hanging it off the top.
-        float y = top + (height - (rows * rowH)) / 2f;
+        // Centre what remains against the donut rather than hanging it off the
+        // top — with the figure above, the block now sits under it.
+        float y = legendTop + (legendHeight - (rows * rowH)) / 2f;
 
         float dot = 4.5f * dp;
         Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -336,6 +424,12 @@ final class WidgetRenderer {
 
             canvas.drawText(ellipsise(s.name, name, nameRoom), nameLeft, baseline, name);
             canvas.drawText(value, left + width, baseline, amount);
+
+            // Where the provider should put this row's tap target. Recorded
+            // from the geometry that actually drew it rather than recomputed,
+            // so the target cannot drift from the row it belongs to.
+            LAST_LEGEND_HITS.add(new HitRect(s.name, left, y, left + width, y + rowH));
+
             y += rowH;
         }
     }

@@ -104,8 +104,21 @@ const Dashboard: React.FC<Props> = ({
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [remoteVendorHistory, setRemoteVendorHistory] = useState<VendorHistoryItem[]>([]);
   const [expandedBudgets, setExpandedBudgets] = useState<Set<string>>(new Set());
+  // Bumped each time Review is opened from a notification or the widget pill.
+  // A counter rather than a boolean so two taps in a row both replay the
+  // light — a flag already true is not a change and nothing would happen.
+  const [reviewHighlightNonce, setReviewHighlightNonce] = useState(0);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // The widget hands over a budget by name, and the callback that receives it
+  // is registered once. Reading budgets through a ref keeps that registration
+  // stable — depending on `state.budgets` directly would tear down and
+  // re-attach the native route listeners on every data load.
+  const budgetsRef = useRef(state.budgets);
+  useEffect(() => {
+    budgetsRef.current = state.budgets;
+  }, [state.budgets]);
 
   // Animation diagnostics. Off unless the user turns it on; when off,
   // useFrameMeter never schedules a rAF loop and the overlay never renders.
@@ -121,6 +134,27 @@ const Dashboard: React.FC<Props> = ({
       setSelectedTx(null);
       setShowTransactionForm(false);
       setShowParsing(true);
+      // Arriving here from outside means something specific is waiting. The
+      // page alone doesn't say which rows those are once there is a mix of
+      // filed and unfiled ones, so ask the list to run its light around them.
+      setReviewHighlightNonce((n) => n + 1);
+    }, []),
+    // Tapping a category row on the home-screen widget lands on that budget,
+    // open. Matched by name because that is all the widget has — it draws from
+    // a snapshot of figures, not from budget rows, and has no ids in it.
+    // Unknown names are ignored rather than opening something arbitrary: the
+    // snapshot can outlive a renamed or deleted budget.
+    useCallback((budgetName: string) => {
+      setShowSettings(false);
+      setSelectedTx(null);
+      setShowTransactionForm(false);
+      setShowParsing(false);
+      setExpandedBudgets((prev) => {
+        const match = budgetsRef.current.find(
+          (b) => b.name.trim().toLowerCase() === budgetName.trim().toLowerCase(),
+        );
+        return match ? new Set([match.id]) : prev;
+      });
     }, []),
   );
 
@@ -403,6 +437,7 @@ const Dashboard: React.FC<Props> = ({
     return (
       <>
         <TransactionParsing
+          reviewHighlightNonce={reviewHighlightNonce}
           enabled={state.settings.notificationsEnabled}
           onToggle={(enabled) =>
             setState(prev => ({

@@ -115,7 +115,15 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
             Bitmap bitmap = WidgetRenderer.render(
                 context, snapshot, (int) spec[0], (int) spec[1], systemDark, spec[2]);
             views.setImageViewBitmap(R.id.widget_canvas, bitmap);
-            views.setOnClickPendingIntent(R.id.widget_root, launchIntent(context));
+
+            // The card itself is deliberately not a button. It used to open
+            // Covault from anywhere, which meant every attempt to reach a
+            // category row or the review pill that missed by a few pixels
+            // launched the app instead of doing the thing that was aimed at.
+            // The things worth opening now say so individually.
+
+            // Category rows open Covault at that budget, expanded.
+            placeLegendHits(context, views, spec);
 
             // Everything on screen is one bitmap, so a screen reader has
             // nothing to walk. Without this it announces a fixed sentence about
@@ -222,11 +230,87 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
         return new float[] { w, h, dp };
     }
 
-    private static PendingIntent launchIntent(Context context) {
+    /** The legend hit views, in the order the renderer draws the rows. */
+    private static final int[] LEGEND_HIT_IDS = {
+        R.id.widget_legend_hit_0,
+        R.id.widget_legend_hit_1,
+        R.id.widget_legend_hit_2,
+        R.id.widget_legend_hit_3,
+    };
+
+    /**
+     * Lay an invisible tap target over each legend row.
+     *
+     * The rows are pixels in a bitmap, so the launcher cannot hit-test them —
+     * a target only lands in the right place if it is positioned from the same
+     * geometry that drew the row. The renderer records that; this scales it
+     * from bitmap pixels into the widget's own dp and sets it on the view.
+     *
+     * The scale matters: the bitmap is drawn smaller than the widget on purpose
+     * (see MAX_BITMAP_PIXELS) and `fitCenter` stretches it back up, so bitmap
+     * coordinates are not widget coordinates and a target placed with the raw
+     * numbers would sit above and left of the row it belongs to.
+     *
+     * Runtime positioning needs setViewLayoutMargin, which is API 31+. Below
+     * that the targets stay hidden and the rows are simply not tappable —
+     * the widget keeps working, it just does less.
+     */
+    private static void placeLegendHits(Context context, RemoteViews views, float[] spec) {
+        for (int id : LEGEND_HIT_IDS) {
+            views.setViewVisibility(id, android.view.View.GONE);
+        }
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) return;
+
+        java.util.List<WidgetRenderer.HitRect> hits = WidgetRenderer.lastLegendHits();
+        if (hits.isEmpty()) return;
+
+        // Bitmap px -> widget dp. spec[2] is the pixels-per-dp the bitmap was
+        // drawn at, which already carries the clamp, so dividing by it lands
+        // back in the dp the launcher lays the views out in.
+        float pxPerDp = spec[2];
+        if (pxPerDp <= 0) return;
+
+        int count = Math.min(hits.size(), LEGEND_HIT_IDS.length);
+        for (int i = 0; i < count; i++) {
+            WidgetRenderer.HitRect hit = hits.get(i);
+            int id = LEGEND_HIT_IDS[i];
+            float leftDp = hit.left / pxPerDp;
+            float topDp = hit.top / pxPerDp;
+            float widthDp = (hit.right - hit.left) / pxPerDp;
+            float heightDp = (hit.bottom - hit.top) / pxPerDp;
+            if (widthDp <= 0 || heightDp <= 0) continue;
+
+            views.setViewLayoutMargin(id, RemoteViews.MARGIN_START, leftDp,
+                android.util.TypedValue.COMPLEX_UNIT_DIP);
+            views.setViewLayoutMargin(id, RemoteViews.MARGIN_TOP, topDp,
+                android.util.TypedValue.COMPLEX_UNIT_DIP);
+            views.setViewLayoutWidth(id, widthDp, android.util.TypedValue.COMPLEX_UNIT_DIP);
+            views.setViewLayoutHeight(id, heightDp, android.util.TypedValue.COMPLEX_UNIT_DIP);
+            views.setViewVisibility(id, android.view.View.VISIBLE);
+            views.setOnClickPendingIntent(id, budgetIntent(context, hit.category, i));
+        }
+    }
+
+    /**
+     * Open Covault with this budget expanded.
+     *
+     * Carried the same way the review destination is — parked by MainActivity
+     * for the web layer to collect — so there is one mechanism for "open the
+     * app somewhere specific" rather than a second one that can rot separately.
+     *
+     * The request code has to differ per category. Two PendingIntents that
+     * differ only in their extras are the same intent as far as the system is
+     * concerned, so without this every row would open whichever budget was
+     * registered first. Offset past the codes the launch and review intents
+     * already use.
+     */
+    private static PendingIntent budgetIntent(Context context, String category, int index) {
         Intent open = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
         if (open == null) open = new Intent(context, MainActivity.class);
         open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        return PendingIntent.getActivity(context, 0, open,
+        open.putExtra(NotificationListener.ROUTE_EXTRA,
+            NotificationListener.ROUTE_BUDGET_PREFIX + category);
+        return PendingIntent.getActivity(context, 10 + index, open,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 

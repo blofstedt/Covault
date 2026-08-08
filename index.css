@@ -227,3 +227,90 @@ html.theme-transitioning * {
     background: rgba(16, 185, 129, 0.4);
   }
 }
+
+/* Spin highlight — "this row"
+   ---------------------------------------------------------
+   A light that runs once around a transaction row, used by
+   the "Today" button and by arriving at Review from the
+   widget or a capture notification. See
+   lib/hooks/useSpinHighlight.ts for why it is a moving light
+   rather than a colour change or a ring that stays.
+
+   Built as a masked conic gradient so the light is the
+   border itself rather than a box drawn on top of the row:
+   the gradient fills the padding box, and the mask punches
+   out everything inside it, leaving a 2px edge. Drawing a
+   ring instead would sit over the row's own rounded corners
+   and read as a second card.
+
+   @property is what makes the sweep animatable. A plain
+   custom property interpolates as a string — the gradient
+   would jump between keyframes instead of turning — and
+   registering it as an <angle> is the only way to get the
+   browser to tween it. Unsupported browsers ignore the block
+   and the light simply holds still while it fades, which is
+   a graceful loss rather than a broken frame. */
+@property --covault-spin {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes covaultSpinSweep {
+  0% { --covault-spin: 0deg; }
+  100% { --covault-spin: 720deg; }
+}
+
+/* Fast in, slow out — the shape asked for. The light is at
+   full strength by 12% of the run and spends the rest of it
+   leaving, so it catches the eye immediately and then gets
+   out of the way instead of blinking off. */
+@keyframes covaultSpinFade {
+  0% { opacity: 0; }
+  12% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.covault-spin-highlight {
+  position: relative;
+}
+
+.covault-spin-highlight::after {
+  content: '';
+  position: absolute;
+  /* Outside the row's own edge, so it never covers content. */
+  inset: -2px;
+  border-radius: var(--covault-spin-radius, 1rem);
+  padding: 2px;
+  background: conic-gradient(
+    from var(--covault-spin),
+    transparent 0deg,
+    var(--covault-spin-color, #10b981) 40deg,
+    transparent 120deg,
+    transparent 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  /* Never eats a tap meant for the row underneath. */
+  pointer-events: none;
+  opacity: 0;
+  animation:
+    covaultSpinSweep 1.8s cubic-bezier(0.32, 0.72, 0.24, 1) forwards,
+    covaultSpinFade 1.8s cubic-bezier(0.32, 0.72, 0.24, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The hook already declines to light anything here; this is the
+     belt-and-braces half, so a class left behind by a render cannot
+     animate on its own. */
+  .covault-spin-highlight::after {
+    animation: none;
+    opacity: 0;
+  }
+}

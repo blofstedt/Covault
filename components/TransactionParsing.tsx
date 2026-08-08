@@ -25,6 +25,13 @@ import { toVendorKey } from '../lib/deviceTransactionParser';
 const SCAN_PROCESSING_DELAY_MS = 2000;
 
 interface TransactionParsingProps {
+  /**
+   * Bumped when Review is opened from a capture notification or the widget's
+   * review pill, to run the light around the rows that are waiting. Ignored
+   * when the user walked here themselves — they already know what they came
+   * for, and a highlight then is decoration.
+   */
+  reviewHighlightNonce?: number;
   enabled: boolean;
   onToggle: (enabled: boolean) => void;
   onBack: () => void;
@@ -57,6 +64,7 @@ interface TransactionParsingProps {
 }
 
 const TransactionParsing: React.FC<TransactionParsingProps> = ({
+  reviewHighlightNonce = 0,
   enabled,
   onToggle,
   onBack,
@@ -630,6 +638,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
             </div>
 
             <AITransactionsEnteredCard
+              highlightNonce={reviewHighlightNonce}
               aiTransactions={aiTransactions}
               budgets={budgets}
               onTransactionTap={onTransactionTap}

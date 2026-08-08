@@ -1035,6 +1035,15 @@ public class NotificationListener extends NotificationListenerService {
      */
     static final String ROUTE_EXTRA = "covault_route";
     static final String ROUTE_REVIEW = "review";
+    /**
+     * "budget:Groceries" — open the dashboard with that budget expanded.
+     *
+     * A prefix rather than a second extra so the whole destination stays one
+     * string. MainActivity parks it, the plugin hands it over, and the web
+     * layer decides what it means; nothing in between has to learn a new shape
+     * when another destination is added.
+     */
+    static final String ROUTE_BUDGET_PREFIX = "budget:";
     /** SharedPreferences key MainActivity parks the route in until JS asks. */
     static final String PENDING_ROUTE_KEY = "pending_route";
 

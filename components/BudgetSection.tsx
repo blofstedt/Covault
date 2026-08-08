@@ -6,8 +6,9 @@ import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
 import { EmptyState } from './shared';
 import { getBudgetColor } from '../lib/budgetColors';
 import { getLocalToday } from '../lib/dateUtils';
-import { compareByDateOccurred, findTodayIndex } from '../lib/transactionOrdering';
+import { compareByDateOccurred, findTodayIndex, transactionDay } from '../lib/transactionOrdering';
 import { isRefund, matchRefundsToExpenses } from '../lib/refundMatching';
+import { useSpinHighlight, idsForDay } from '../lib/hooks/useSpinHighlight';
 
 interface ExtendedBudgetCategory extends BudgetCategory {
   externalDeduction?: number;
@@ -109,6 +110,9 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
     () => findTodayIndex(visibleTransactions, getLocalToday()),
     [visibleTransactions],
   );
+
+  // The light the "Today" button runs around the rows it scrolled to.
+  const { spinning, spin } = useSpinHighlight();
 
   const external = budget.externalDeduction || 0;
   const spentWithExternal = spent + external;
@@ -236,7 +240,13 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
       top: anchor ? Math.max(0, anchor.offsetTop - 12) : scroller.scrollHeight,
       behavior,
     });
-  }, []);
+
+    // Scrolling answers "where", not "which". With three purchases dated today
+    // the arrival point alone says nothing about how many of the rows around
+    // it are the ones meant, so every row dated today is lit — not only the
+    // one the scroll lands on.
+    spin(idsForDay(visibleTransactions, getLocalToday(), transactionDay));
+  }, [spin, visibleTransactions]);
 
   const handleHeaderClick = useCallback(() => onToggle(budget.id), [onToggle, budget.id]);
 
@@ -490,6 +500,20 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                   key={tx.id}
                   data-stack-row=""
                   ref={index === todayIndex ? todayAnchorRef : undefined}
+                  className={spinning.has(tx.id) ? 'covault-spin-highlight' : undefined}
+                  // The light wears this vault's own colour, like the Today
+                  // button and the header chip, so it reads as part of this
+                  // budget rather than as a generic system highlight. The
+                  // radius matches TransactionItem's card so it traces the
+                  // row's real edge instead of cutting its corners.
+                  style={
+                    spinning.has(tx.id)
+                      ? ({
+                          '--covault-spin-color': budgetColor,
+                          '--covault-spin-radius': '2rem',
+                        } as React.CSSProperties)
+                      : undefined
+                  }
                 >
                   <TransactionItem
                     transaction={tx}
