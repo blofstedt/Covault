@@ -321,6 +321,22 @@ public class CovaultNotificationPlugin extends Plugin {
     }
 
     /**
+     * What happened to each of the last few bank alerts.
+     *
+     * Suppression has six ways to decline and every one of them looks the same
+     * in the tray: the alert stays. Without this the only account of which gate
+     * stopped it is logcat, which needs a computer and a cable — so a report of
+     * "it still isn't hiding them" costs a release per guess. The settings
+     * screen reads these and says which it was.
+     */
+    @PluginMethod
+    public void getCaptureDiagnostics(PluginCall call) {
+        JSObject ret = new JSObject();
+        ret.put("entries", NotificationListener.readCaptureOutcomes(getContext()));
+        call.resolve(ret);
+    }
+
+    /**
      * Open Android's notification settings for Covault.
      *
      * Where the user goes when the runtime permission prompt is no longer

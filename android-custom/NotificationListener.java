@@ -617,8 +617,9 @@ public class NotificationListener extends NotificationListenerService {
         // Broadcast to the local TypeScript pipeline which will classify
         // as transaction or non-transaction — non-transactions will appear in
         // the rejected card so the user can see what was processed.
-        boolean secured = broadcastTransaction(
+        CaptureResult result = broadcastTransaction(
             packageName, amount, vendor, fullText, sbn.getPostTime(), fromScan, alreadySecured);
+        boolean secured = result.secured();
 
         // Recorded BEFORE the dismissal below, never after. The record is what
         // lets a later pass dismiss this notification without re-notifying; if
@@ -626,7 +627,8 @@ public class NotificationListener extends NotificationListenerService {
         // alert would be gone with nothing saying it had ever been replaced.
         if (secured) rememberSecured(securedKey);
 
-        maybeHideBankNotification(sbn, fromMonitored, amount, secured || alreadySecured);
+        maybeHideBankNotification(
+            sbn, securedKey, fromMonitored, amount, secured || alreadySecured, result);
 
         // Home-screen widget: nudge the donut for a purchase captured while the
         // app is closed, so it doesn't sit stale until the next app launch.
@@ -692,25 +694,107 @@ public class NotificationListener extends NotificationListenerService {
     // Ordering is the safety property: persist, then notify, then dismiss.
     // The bank's notification is only ever removed after Covault holds a
     // durable copy of it and has put something in its place.
+    //
+    // Every path out of here writes down what it decided (see recordOutcome).
+    // Which gate stopped a dismissal is invisible from the outside — the tray
+    // looks identical whichever one it was — and the only reader of the log
+    // that explains it is logcat, which needs a computer and a cable. The
+    // settings screen shows these instead, so "it still isn't hiding them"
+    // can be answered by looking rather than by guessing across releases.
     private void maybeHideBankNotification(
         StatusBarNotification sbn,
+        String securedKey,
         boolean fromMonitored,
         Double amount,
-        boolean replaced
+        boolean replaced,
+        CaptureResult result
     ) {
         if (!fromMonitored) return;           // (3)
-        if (amount == null) return;           // (4)
-        if (!replaced) return;                // (2)
-        if (!isHideBankNotificationsEnabled()) return;  // (1)
+        String app = sbn.getPackageName();
+        if (amount == null) {                 // (4)
+            recordOutcome(securedKey, app, null, OUTCOME_NO_AMOUNT);
+            return;
+        }
+        if (!replaced) {                      // (2)
+            // The two halves fail for completely different reasons and need
+            // completely different fixes, so they are never reported as one.
+            recordOutcome(securedKey, app, amount,
+                result.queued ? OUTCOME_BLOCKED : OUTCOME_NOT_SAVED);
+            return;
+        }
+        if (!isHideBankNotificationsEnabled()) {  // (1)
+            recordOutcome(securedKey, app, amount, OUTCOME_TOGGLE_OFF);
+            return;
+        }
         try {
-            if (!sbn.isClearable()) return;   // (5)
+            if (!sbn.isClearable()) {         // (5)
+                recordOutcome(securedKey, app, amount, OUTCOME_NOT_CLEARABLE);
+                return;
+            }
             String key = sbn.getKey();
-            if (key == null) return;
+            if (key == null) {
+                recordOutcome(securedKey, app, amount, OUTCOME_NOT_CLEARABLE);
+                return;
+            }
             cancelNotification(key);
-            Log.i(TAG, "Dismissed bank notification after capture: " + sbn.getPackageName());
+            Log.i(TAG, "Asked to dismiss bank notification after capture: " + app);
+            verifyDismissal(key, securedKey, app, amount);
         } catch (Exception e) {
             // A failure here is harmless: the bank's notification simply stays.
             Log.w(TAG, "Could not dismiss bank notification", e);
+            recordOutcome(securedKey, app, amount, OUTCOME_CANCEL_IGNORED);
+        }
+    }
+
+    /**
+     * Check the alert actually left the shade, and ask once more if it didn't.
+     *
+     * `cancelNotification` is a request, not a guarantee, and it is being made
+     * from inside the callback that is telling us the notification has just
+     * been posted — the system can still be finishing that post, in which case
+     * the cancel lands on a notification that isn't there yet and is dropped.
+     * Nothing reports this: the call returns void, capture looks perfect, and
+     * the bank's alert simply stays.
+     *
+     * So the shade is re-read a moment later. Gone means done. Still there
+     * means ask again, once — and if it survives that too, record it, because
+     * at that point the phone is refusing rather than racing and no amount of
+     * retrying will change it.
+     */
+    private void verifyDismissal(String key, String securedKey, String app, Double amount) {
+        dismissHandler.postDelayed(() -> {
+            if (!isStillPosted(key)) {
+                recordOutcome(securedKey, app, amount, OUTCOME_HIDDEN);
+                return;
+            }
+            Log.i(TAG, "Bank notification survived the first dismissal, retrying: " + app);
+            try {
+                cancelNotification(key);
+            } catch (Exception e) {
+                Log.w(TAG, "Retry of the dismissal threw", e);
+                recordOutcome(securedKey, app, amount, OUTCOME_CANCEL_IGNORED);
+                return;
+            }
+            dismissHandler.postDelayed(() -> {
+                boolean gone = !isStillPosted(key);
+                if (!gone) {
+                    Log.w(TAG, "Bank notification still in the tray after two dismissals: " + app);
+                }
+                recordOutcome(securedKey, app, amount, gone ? OUTCOME_HIDDEN : OUTCOME_CANCEL_IGNORED);
+            }, DISMISS_VERIFY_DELAY_MS);
+        }, DISMISS_VERIFY_DELAY_MS);
+    }
+
+    /** Is this notification still in the shade? */
+    private boolean isStillPosted(String key) {
+        try {
+            StatusBarNotification[] active = getActiveNotifications(new String[] { key });
+            return active != null && active.length > 0;
+        } catch (Exception e) {
+            // Unable to tell. Read as "gone" so a notification that was in fact
+            // dismissed is never cancelled a second time on a guess.
+            Log.w(TAG, "Could not re-read the shade", e);
+            return false;
         }
     }
 
@@ -747,6 +831,106 @@ public class NotificationListener extends NotificationListenerService {
     }
 
     static final String HIDE_BANK_NOTIFICATIONS_KEY = "hide_bank_notifications";
+
+    // ── What happened to each bank alert ─────────────────────────────────
+    //
+    // Suppression has six ways to decline and they all look the same from the
+    // outside: the alert stays. Told only through logcat, "it still isn't
+    // hiding them" costs a release per guess. So each bank alert's outcome is
+    // written down and the settings screen reads it back in plain English.
+    //
+    // Keyed by the notification's identity and replaced rather than appended,
+    // so one alert is one row however many passes walk it — and a later pass
+    // that manages to dismiss what an earlier one couldn't updates the answer
+    // instead of leaving a stale complaint behind it.
+    //
+    // apply() rather than commit() here, deliberately and unlike everything
+    // else in this file: nothing acts on this record. Losing it costs an empty
+    // diagnostics list, never a purchase, so it must not make the capture path
+    // wait on a disk write.
+    private static final String CAPTURE_LOG_PREF = "capture_outcomes";
+    private static final int MAX_CAPTURE_LOG = 8;
+    private static final Object CAPTURE_LOG_LOCK = new Object();
+
+    /** Dismissed, and confirmed gone from the shade. */
+    static final String OUTCOME_HIDDEN = "hidden";
+    /** Android is refusing to let Covault post its replacement notification. */
+    static final String OUTCOME_BLOCKED = "blocked";
+    /** The durable queue write failed, so there is nothing to fall back on. */
+    static final String OUTCOME_NOT_SAVED = "not_saved";
+    /** The user has the toggle off. */
+    static final String OUTCOME_TOGGLE_OFF = "toggle_off";
+    /** The native regex found no amount, so this may not be a purchase. */
+    static final String OUTCOME_NO_AMOUNT = "no_amount";
+    /** An ongoing notification the system does not allow anyone to clear. */
+    static final String OUTCOME_NOT_CLEARABLE = "not_clearable";
+    /** Dismissal was asked for twice and the alert is still in the tray. */
+    static final String OUTCOME_CANCEL_IGNORED = "cancel_ignored";
+
+    private static final long DISMISS_VERIFY_DELAY_MS = 700L;
+    private final android.os.Handler dismissHandler =
+        new android.os.Handler(android.os.Looper.getMainLooper());
+
+    private void recordOutcome(String securedKey, String app, Double amount, String outcome) {
+        try {
+            synchronized (CAPTURE_LOG_LOCK) {
+                SharedPreferences prefs = getSharedPreferences("covault_prefs", 0);
+                JSONArray stored;
+                try {
+                    stored = new JSONArray(prefs.getString(CAPTURE_LOG_PREF, "[]"));
+                } catch (Exception e) {
+                    stored = new JSONArray();
+                }
+
+                JSONObject entry = new JSONObject();
+                entry.put("key", securedKey == null ? "" : securedKey);
+                entry.put("at", System.currentTimeMillis());
+                entry.put("app", app == null ? "" : app);
+                if (amount != null) entry.put("amount", amount);
+                entry.put("outcome", outcome);
+
+                // Rebuild without any earlier row for this same alert, then put
+                // the new answer last — newest at the end, one row per alert.
+                JSONArray next = new JSONArray();
+                for (int i = 0; i < stored.length(); i++) {
+                    JSONObject row = stored.optJSONObject(i);
+                    if (row == null) continue;
+                    if (securedKey != null && securedKey.equals(row.optString("key", null))) continue;
+                    next.put(row);
+                }
+                next.put(entry);
+
+                JSONArray trimmed = next;
+                if (next.length() > MAX_CAPTURE_LOG) {
+                    trimmed = new JSONArray();
+                    for (int i = next.length() - MAX_CAPTURE_LOG; i < next.length(); i++) {
+                        trimmed.put(next.get(i));
+                    }
+                }
+                prefs.edit().putString(CAPTURE_LOG_PREF, trimmed.toString()).apply();
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Could not record the capture outcome", e);
+        }
+    }
+
+    /**
+     * The recent outcomes as a JSON array string, newest last.
+     *
+     * Handed over as text rather than a parsed structure so the shape lives in
+     * exactly one place — the JS side already has to validate whatever arrives.
+     */
+    static String readCaptureOutcomes(Context context) {
+        try {
+            synchronized (CAPTURE_LOG_LOCK) {
+                return context.getSharedPreferences("covault_prefs", 0)
+                    .getString(CAPTURE_LOG_PREF, "[]");
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Could not read the capture outcomes", e);
+            return "[]";
+        }
+    }
 
     // ── The record of what Covault has already replaced ──────────────────
     //
@@ -1226,11 +1410,34 @@ public class NotificationListener extends NotificationListenerService {
     }
 
     /**
-     * @return true if the notification was durably queued AND a Covault
-     *         notification is showing for it — the two preconditions for
-     *         dismissing the bank's own notification.
+     * The two preconditions for dismissing a bank's own notification, kept
+     * apart rather than reduced to one boolean.
+     *
+     * Both failures leave the alert in the tray and look identical there, but
+     * one means "the purchase isn't safely written down" and the other means
+     * "Android won't let us tell you about it". They need different fixes, so
+     * the caller is told which it was.
      */
-    private boolean broadcastTransaction(String sourceApp, Double amount, String vendor, String rawText, long postTime, boolean fromScan, boolean alreadySecured) {
+    private static final class CaptureResult {
+        final boolean queued;
+        final boolean notified;
+
+        CaptureResult(boolean queued, boolean notified) {
+            this.queued = queued;
+            this.notified = notified;
+        }
+
+        boolean secured() {
+            return queued && notified;
+        }
+    }
+
+    /**
+     * @return whether the notification was durably queued, and whether a
+     *         Covault notification is showing for it — the two preconditions
+     *         for dismissing the bank's own notification.
+     */
+    private CaptureResult broadcastTransaction(String sourceApp, Double amount, String vendor, String rawText, long postTime, boolean fromScan, boolean alreadySecured) {
         try {
             JSONObject transaction = new JSONObject();
             transaction.put("source_app", sourceApp);
@@ -1283,11 +1490,11 @@ public class NotificationListener extends NotificationListenerService {
                 + " secured=" + secured
                 + ((secured || alreadySecured) ? "" : " -> tray suppression will be SKIPPED"));
 
-            return secured;
+            return new CaptureResult(queued, notified);
 
         } catch (Exception e) {
             Log.e(TAG, "Error broadcasting transaction", e);
-            return false;
+            return new CaptureResult(false, false);
         }
     }
 }

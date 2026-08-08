@@ -12,8 +12,19 @@ import {
   setHideBankNotifications,
   canPostCaptureNotifications,
   openNotificationSettings,
+  getCaptureDiagnostics,
 } from '../../../lib/covaultNotification';
 import { requestPostNotifications } from '../../../lib/appNotifications';
+import {
+  captureOutcomeAdvice,
+  captureOutcomeAppName,
+  captureOutcomeLabel,
+  captureProblemHeadline,
+  describeCaptureOutcome,
+  isCaptureProblem,
+  type CaptureOutcome,
+  type CaptureOutcomeCode,
+} from '../../../lib/captureOutcome';
 
 
 interface NotificationSettingsSectionProps {
@@ -55,6 +66,8 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
   // until the native side says otherwise, so an older APK raises no alarm.
   const [captureNotifsAllowed, setCaptureNotifsAllowed] = useState(true);
   const [fixingCaptureNotifs, setFixingCaptureNotifs] = useState(false);
+  // What actually happened to the last few bank alerts. Newest first.
+  const [captureOutcomes, setCaptureOutcomes] = useState<CaptureOutcome[]>([]);
 
   // Initialize plugin
   useEffect(() => {
@@ -94,6 +107,7 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
 
       setHideBankNotifs(await getHideBankNotifications(plugin));
       setCaptureNotifsAllowed(await canPostCaptureNotifications(plugin));
+      setCaptureOutcomes(await getCaptureDiagnostics(plugin));
 
       if (granted) {
         const { apps: saved } = await plugin.getMonitoredApps();
@@ -291,6 +305,17 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
   const autoAddActive =
     enabled && permissionGranted && selectedApps.size > 0 && installedBankApps.length > 0;
 
+  // Why alerts aren't being hidden, or null when nothing is wrong.
+  //
+  // The live permission check wins over the recorded history: it is the state
+  // right now, the history is what happened last time. They agree in the
+  // ordinary case, and when they don't it is because the user has just fixed
+  // it — in which case telling them about the alert that failed before the fix
+  // would be wrong.
+  const trayProblem: CaptureOutcomeCode | null = !captureNotifsAllowed
+    ? 'blocked'
+    : captureOutcomes.find((entry) => isCaptureProblem(entry.outcome))?.outcome ?? null;
+
   return (
     <SettingsCard id="settings-notifications-container" className="space-y-4">
       {/* TOGGLE + STATUS */}
@@ -435,35 +460,69 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
             />
           </div>
 
-          {/* The one precondition with no symptom of its own. A bank alert is
-              only ever dismissed once Covault has posted its own notification
-              in its place, so while Android is blocking us the toggle reads
-              "on" and hides nothing — captures keep arriving in Review and the
-              tray never empties. Say so, and offer the way out. */}
-          {hideBankNotifs && !captureNotifsAllowed && (
+          {/* Why an alert is still in the tray.
+              Suppression has six ways to decline and every one of them looks
+              identical from the outside — the alert simply stays. The listener
+              writes down which it was for each alert; this reads it back, so
+              the answer is on screen instead of in a log nobody can reach. */}
+          {hideBankNotifs && trayProblem && (
             <div
               className="mt-3 rounded-2xl border border-amber-200 dark:border-amber-800/50 bg-amber-50/70 dark:bg-amber-950/25 px-3 py-2.5"
-              data-testid="capture-notifications-blocked"
+              data-testid="tray-suppression-problem"
             >
               <div className="flex items-center">
                 <span className="w-2 h-2 rounded-full bg-amber-500 mr-2 flex-shrink-0" />
                 <span className="text-[11px] font-semibold text-amber-800 dark:text-amber-300">
-                  Android is blocking Covault's notifications
+                  {captureProblemHeadline(trayProblem)}
                 </span>
               </div>
               <p className="mt-1.5 text-[10px] leading-relaxed text-amber-900/80 dark:text-amber-200/80">
-                Nothing is being hidden while this is the case. Covault only clears a bank alert once it has posted its own notification in its place, and right now it can't post one. Your purchases are still being captured — they're waiting in Review.
+                {captureOutcomeAdvice(trayProblem) ??
+                  'Your purchases are still being captured — they are waiting in Review.'}
               </p>
-              <button
-                type="button"
-                onClick={fixCaptureNotifs}
-                disabled={fixingCaptureNotifs}
-                className={`mt-2 inline-flex items-center px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-900/40 border border-amber-300 dark:border-amber-700 text-[10px] font-semibold text-amber-800 dark:text-amber-200 transition-transform ${
-                  fixingCaptureNotifs ? 'opacity-50' : 'active:scale-[0.97]'
-                }`}
-              >
-                Allow notifications →
-              </button>
+              {trayProblem === 'blocked' && (
+                <button
+                  type="button"
+                  onClick={fixCaptureNotifs}
+                  disabled={fixingCaptureNotifs}
+                  className={`mt-2 inline-flex items-center px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-900/40 border border-amber-300 dark:border-amber-700 text-[10px] font-semibold text-amber-800 dark:text-amber-200 transition-transform ${
+                    fixingCaptureNotifs ? 'opacity-50' : 'active:scale-[0.97]'
+                  }`}
+                >
+                  Allow notifications →
+                </button>
+              )}
+
+              {captureOutcomes.length > 0 && (
+                <details className="mt-2">
+                  <summary className="cursor-pointer select-none text-[10px] font-semibold text-amber-800/90 dark:text-amber-300/90">
+                    Recent bank alerts
+                  </summary>
+                  <ul className="mt-1.5 space-y-1">
+                    {captureOutcomes.map((entry) => (
+                      <li
+                        key={`${entry.at}-${entry.app}`}
+                        className="flex items-baseline justify-between gap-2 text-[10px] leading-relaxed"
+                      >
+                        <span className="text-amber-900/80 dark:text-amber-200/80">
+                          {captureOutcomeAppName(entry.app)}
+                          {entry.amount !== null && ` · $${entry.amount.toFixed(2)}`}
+                        </span>
+                        <span
+                          className={`flex-shrink-0 font-semibold ${
+                            entry.outcome === 'hidden'
+                              ? 'text-emerald-700 dark:text-emerald-400'
+                              : 'text-amber-800 dark:text-amber-300'
+                          }`}
+                          title={describeCaptureOutcome(entry.outcome)}
+                        >
+                          {captureOutcomeLabel(entry.outcome)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
             </div>
           )}
 

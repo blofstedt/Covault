@@ -1,6 +1,7 @@
 // lib/covaultNotification.ts
 import { log } from './log';
 import { Capacitor, registerPlugin } from '@capacitor/core';
+import { parseCaptureOutcomes, type CaptureOutcome } from './captureOutcome';
 
 export interface TransactionDetectedEvent {
   /**
@@ -103,6 +104,14 @@ export interface CovaultNotificationPlugin {
 
   /** Open Android's notification settings page for Covault. */
   openNotificationSettings(): Promise<void>;
+
+  /**
+   * What happened to each of the last few bank alerts, as a JSON array string.
+   *
+   * Prefer the `getCaptureDiagnostics` helper below, which parses and
+   * validates it.
+   */
+  getCaptureDiagnostics(): Promise<{ entries: string }>;
 
   /**
    * Take the destination of a tapped notification and clear it, or '' if the
@@ -224,6 +233,26 @@ export async function openNotificationSettings(
     await plugin.openNotificationSettings();
   } catch (e) {
     log.warn('[covaultNotification] Could not open notification settings:', e);
+  }
+}
+
+/**
+ * What happened to each of the last few bank alerts, newest first.
+ *
+ * Empty on web, on an APK built before the native method existed, and when
+ * nothing has been captured yet — all three mean "nothing to show", which is
+ * what the settings screen does with them.
+ */
+export async function getCaptureDiagnostics(
+  plugin: CovaultNotificationPlugin | null = covaultNotification,
+): Promise<CaptureOutcome[]> {
+  if (!plugin) return [];
+  try {
+    const { entries } = await plugin.getCaptureDiagnostics();
+    return parseCaptureOutcomes(entries);
+  } catch (e) {
+    log.debug('[covaultNotification] getCaptureDiagnostics unavailable:', e);
+    return [];
   }
 }
 
