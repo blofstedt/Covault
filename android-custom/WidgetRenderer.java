@@ -202,17 +202,34 @@ final class WidgetRenderer {
         // becomes the category's spend, and the right-hand column becomes its
         // purchases. Drawn before the ordinary arcs so there is exactly one
         // path through this and no chance of both appearing.
+        // ── Opening and closing a category ──
+        //
+        // One path, not two, with `t` running 0 (the whole month) to 1 (one
+        // category filling the ring). The provider renders a run of frames
+        // across that range to animate it and passes 0 or 1 for a settled
+        // widget, so what is drawn mid-flight is the same code that draws
+        // either end — there is no separate animation to fall out of step.
+        //
+        // The slices keep their own places and their own colours; only their
+        // shares move. Because every share is interpolated towards a set of
+        // targets that also sums to 360, the total stays 360 at every value of
+        // t, so laying them out end to end from 12 o'clock works throughout.
+        // What that looks like is the chosen category eating the others, which
+        // is what opening it means.
         Slice focused = findFocused(slices, focusName(snapshot));
-        if (focused != null) {
-            arc.setColor(focused.color);
-            canvas.drawArc(ring, -90f, 360f, false, arc);
-            focused.midAngle = 90f;
-            focused.sweep = 360f;
-        } else if (total > 0) {
+        float t = focused == null
+            ? 0f
+            : clamp((float) snapshot.optDouble("focusProgress", 1.0), 0f, 1f);
+
+        if (total > 0) {
             float start = -90f; // 12 o'clock
-            boolean gapped = slices.size() > 1;
+            // No gaps once a single category owns the ring — a notch in a solid
+            // ring has nothing to separate.
+            boolean gapped = slices.size() > 1 && t < 1f;
             for (Slice s : slices) {
-                float sweep = (float) (s.amount / total) * 360f;
+                float share = (float) (s.amount / total) * 360f;
+                float target = focused == null ? share : (s == focused ? 360f : 0f);
+                float sweep = share + ((target - share) * t);
                 // Only take the gap out of a slice wide enough to spare it.
                 // Subtracting a fixed 2 degrees from a 1-degree sliver used to
                 // draw it *wider* than its share, bleeding over its neighbour —
@@ -221,8 +238,10 @@ final class WidgetRenderer {
                 float drawSweep = gapped && sweep > ARC_GAP_DEGREES * 2f
                     ? sweep - ARC_GAP_DEGREES
                     : sweep;
-                arc.setColor(s.color);
-                canvas.drawArc(ring, start, drawSweep, false, arc);
+                if (sweep > 0.05f) {
+                    arc.setColor(s.color);
+                    canvas.drawArc(ring, start, drawSweep, false, arc);
+                }
                 s.midAngle = start + (sweep / 2f);
                 s.sweep = sweep;
                 start += sweep;
@@ -237,8 +256,12 @@ final class WidgetRenderer {
         double totalSpent = snapshot.optDouble("totalSpent", 0);
         // Opened on a category, the centre is that category's spend. Showing
         // the month's total inside a ring that is entirely one category would
-        // be two different questions answered in the same place.
-        if (focused != null) totalSpent = focused.amount;
+        // be two different questions answered in the same place. It counts
+        // across rather than cutting, on the same clock as the ring, so the
+        // figure and the arc that produced it arrive together.
+        if (focused != null) {
+            totalSpent = totalSpent + ((focused.amount - totalSpent) * t);
+        }
         String spentLabel = money(totalSpent);
         // Shrink to fit the hole rather than drawing over the ring. The review
         // pill has always measured itself; this did not, so a five-figure month
@@ -267,10 +290,21 @@ final class WidgetRenderer {
         // the words "No spending yet".
         if (focused != null) {
             // The category's own name, because the ring no longer says which
-            // one it is — every arc is the same colour now.
+            // one it is — every arc is the same colour now. Faded in against
+            // whatever it replaces, so neither line pops.
+            if (t < 1f && legendWidth <= 0) {
+                double resting = snapshot.optDouble("remaining", 0);
+                sub.setColor(resting < 0 ? p.danger : p.secondary);
+                sub.setAlpha(alpha255(1f - t));
+                canvas.drawText(
+                    resting < 0 ? money(-resting) + " over" : money(resting) + " left",
+                    cx, subY, sub);
+            }
             sub.setColor(focused.color);
+            sub.setAlpha(alpha255(t));
             sub.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
             canvas.drawText(focused.name, cx, subY, sub);
+            sub.setAlpha(255);
         } else if (total <= 0 && Math.abs(totalSpent) < 0.005) {
             canvas.drawText("No spending yet", cx, subY, sub);
         } else if (legendWidth <= 0) {
@@ -295,7 +329,8 @@ final class WidgetRenderer {
         // Icon chips are how the arcs are labelled. With one category filling
         // the ring there is nothing to tell apart, and a single chip adrift on
         // a solid ring reads as a stray dot.
-        if (focused == null && total > 0 && chipRadius >= 6f) {
+        if (t < 1f && total > 0 && chipRadius >= 6f) {
+            int chipAlpha = alpha255(1f - t);
             for (Slice s : slices) {
                 if (s.sweep < MIN_ICON_ARC_DEGREES) continue;
                 double rad = Math.toRadians(s.midAngle);
@@ -303,7 +338,9 @@ final class WidgetRenderer {
                 float iy = cy + (float) (Math.sin(rad) * radius);
 
                 fill.setColor(s.color);
+                fill.setAlpha(chipAlpha);
                 canvas.drawCircle(ix, iy, chipRadius, fill);
+                fill.setAlpha(255);
 
                 Drawable icon = iconFor(context, s.name);
                 if (icon != null) {
@@ -316,6 +353,7 @@ final class WidgetRenderer {
                     // Knocked out in the surface colour so the glyph reads
                     // against its own category colour in either theme.
                     icon.setColorFilter(p.surface, PorterDuff.Mode.SRC_IN);
+                    icon.setAlpha(chipAlpha);
                     int glyph = (int) Math.max(6f, chipRadius * 1.15f);
                     icon.setBounds(
                         (int) (ix - glyph / 2f), (int) (iy - glyph / 2f),
@@ -325,13 +363,17 @@ final class WidgetRenderer {
             }
         }
 
+        // Both columns are drawn while the ring is moving, one leaving and one
+        // arriving. Neither is a different widget; the column is saying a
+        // different thing about the same month.
         if (legendWidth > 0) {
-            if (focused != null) {
-                drawRecent(canvas, snapshot, focused, legendLeft, legendWidth,
-                    availTop, availH, dp, p);
-            } else {
+            if (t < 1f) {
                 drawLegend(canvas, snapshot, slices, legendLeft, legendWidth,
-                    availTop, availH, dp, p);
+                    availTop, availH, dp, p, 1f - t);
+            }
+            if (focused != null && t > 0f) {
+                drawRecent(canvas, snapshot, focused, legendLeft, legendWidth,
+                    availTop, availH, dp, p, t);
             }
         }
 
@@ -340,7 +382,7 @@ final class WidgetRenderer {
         // launcher cannot hit-test a picture, so without these the ring is not
         // tappable at all. Recorded even for slices too thin to carry an icon —
         // the provider drops the ones whose targets would overlap.
-        if (focused == null && total > 0) {
+        if (t <= 0f && total > 0) {
             for (Slice s : slices) {
                 double rad = Math.toRadians(s.midAngle);
                 float ix = cx + (float) (Math.cos(rad) * radius);
@@ -354,7 +396,7 @@ final class WidgetRenderer {
         // focused donut that is not the category itself. A widget is never told
         // about taps that land outside it, so tapping away cannot close this —
         // this is the gesture that does.
-        LAST_CENTRE_HIT = focused == null
+        LAST_CENTRE_HIT = (focused == null || t < 1f)
             ? null
             : new HitRect(focused.name,
                 cx - (radius * 0.6f), cy - (radius * 0.6f),
@@ -444,10 +486,11 @@ final class WidgetRenderer {
      */
     private static void drawRecent(Canvas canvas, JSONObject snapshot, Slice focused,
                                    float left, float width, float top, float height,
-                                   float dp, Palette p) {
+                                   float dp, Palette p, float alpha) {
         Paint heading = new Paint(Paint.ANTI_ALIAS_FLAG);
         heading.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         heading.setColor(p.secondary);
+        heading.setAlpha(alpha255(alpha));
         heading.setTextSize(11.5f * dp);
         canvas.drawText("Recent", left, top + (11.5f * dp), heading);
         float headH = (11.5f * dp) + (10f * dp);
@@ -458,6 +501,7 @@ final class WidgetRenderer {
             Paint empty = new Paint(Paint.ANTI_ALIAS_FLAG);
             empty.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
             empty.setColor(p.secondary);
+            empty.setAlpha(alpha255(alpha));
             empty.setTextSize(12.5f * dp);
             canvas.drawText("Nothing yet", left, top + headH + (12.5f * dp), empty);
             return;
@@ -466,17 +510,20 @@ final class WidgetRenderer {
         Paint vendor = new Paint(Paint.ANTI_ALIAS_FLAG);
         vendor.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         vendor.setColor(p.primary);
+        vendor.setAlpha(alpha255(alpha));
         vendor.setTextSize(13.5f * dp);
 
         Paint value = new Paint(Paint.ANTI_ALIAS_FLAG);
         value.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         value.setColor(p.secondary);
+        value.setAlpha(alpha255(alpha));
         value.setTextSize(13.5f * dp);
         value.setTextAlign(Paint.Align.RIGHT);
 
         Paint when = new Paint(Paint.ANTI_ALIAS_FLAG);
         when.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
         when.setColor(p.secondary);
+        when.setAlpha(alpha255(alpha));
         when.setTextSize(10f * dp);
 
         float rowH = 24f * dp;
@@ -515,7 +562,8 @@ final class WidgetRenderer {
      */
     private static void drawLegend(Canvas canvas, JSONObject snapshot, List<Slice> slices,
                                    float left, float width,
-                                   float top, float height, float dp, Palette p) {
+                                   float top, float height, float dp, Palette p,
+                                   float alpha) {
         // ── What's left, above the categories ──
         //
         // The figure that answers "can I spend this" reads first, at the top of
@@ -534,6 +582,7 @@ final class WidgetRenderer {
             // it has gone negative. It was the ordinary text colour, which made
             // the one number on the widget you look for read as a label.
             remainingPaint.setColor(remaining < 0 ? p.danger : p.balance);
+            remainingPaint.setAlpha(alpha255(alpha));
             float size = 30f * dp;
             remainingPaint.setTextSize(size);
 
@@ -550,6 +599,7 @@ final class WidgetRenderer {
             Paint caption = new Paint(Paint.ANTI_ALIAS_FLAG);
             caption.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
             caption.setColor(p.secondary);
+            caption.setAlpha(alpha255(alpha));
             caption.setTextSize(11.5f * dp);
 
             canvas.drawText(value, left, top + size, remainingPaint);
@@ -575,11 +625,13 @@ final class WidgetRenderer {
         Paint name = new Paint(Paint.ANTI_ALIAS_FLAG);
         name.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         name.setColor(p.primary);
+        name.setAlpha(alpha255(alpha));
         name.setTextSize(14.5f * dp);
 
         Paint amount = new Paint(Paint.ANTI_ALIAS_FLAG);
         amount.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         amount.setColor(p.secondary);
+        amount.setAlpha(alpha255(alpha));
         amount.setTextSize(14.5f * dp);
         amount.setTextAlign(Paint.Align.RIGHT);
 
@@ -588,6 +640,7 @@ final class WidgetRenderer {
             float baseline = y + (rowH / 2f) + (4f * dp);
 
             fill.setColor(s.color);
+            fill.setAlpha(alpha255(alpha));
             canvas.drawCircle(left + dot, y + (rowH / 2f), dot, fill);
 
             String value = money(s.amount);
@@ -601,7 +654,9 @@ final class WidgetRenderer {
             // Where the provider should put this row's tap target. Recorded
             // from the geometry that actually drew it rather than recomputed,
             // so the target cannot drift from the row it belongs to.
-            LAST_LEGEND_HITS.add(new HitRect(s.name, left, y, left + width, y + rowH));
+            if (alpha >= 1f) {
+                LAST_LEGEND_HITS.add(new HitRect(s.name, left, y, left + width, y + rowH));
+            }
 
             y += rowH;
         }
@@ -752,5 +807,10 @@ final class WidgetRenderer {
 
     private static float clamp(float v, float min, float max) {
         return Math.max(min, Math.min(max, v));
+    }
+
+    /** A 0–1 fade as a Paint alpha, which is what Canvas actually takes. */
+    private static int alpha255(float fraction) {
+        return (int) clamp(fraction * 255f, 0f, 255f);
     }
 }

@@ -4,6 +4,7 @@ import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProvider;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -84,10 +85,19 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
             String current = readFocus(context, id);
             String next = (category == null || category.equals(current)) ? "" : category;
             writeFocus(context, id, next);
+            BroadcastReceiver.PendingResult pending = null;
             try {
-                renderOne(context, AppWidgetManager.getInstance(context), id);
+                pending = goAsync();
             } catch (Exception e) {
-                Log.w(TAG, "focus redraw failed", e);
+                // Without it the frames may stop early; the settled state is
+                // already stored, so the widget still ends up correct.
+                Log.w(TAG, "could not hold the broadcast open", e);
+            }
+            try {
+                animateFocus(context, id, current, next, pending);
+            } catch (Exception e) {
+                Log.w(TAG, "focus animation failed", e);
+                if (pending != null) pending.finish();
             }
         }
     }
@@ -114,7 +124,109 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
         }
     }
 
+    /**
+     * The morph between the whole month and one category.
+     *
+     * Matches the app's own interaction clock — 320ms on
+     * cubic-bezier(0.32, 0.72, 0.24, 1) — because opening a category on the
+     * widget and opening a budget in the app are the same gesture and should
+     * not run at two speeds.
+     */
+    private static final long FOCUS_ANIM_MS = 320L;
+    /**
+     * Frames in that 320ms. Twelve would be smoother and is the wrong trade:
+     * every frame is a full bitmap crossing a Binder transaction, so the cost
+     * of this animation is nine of those in a third of a second. The
+     * intermediate frames are also drawn smaller (see FOCUS_ANIM_SCALE) since
+     * nothing is legible mid-morph anyway and `fitCenter` scales them back up.
+     */
+    private static final int FOCUS_ANIM_FRAMES = 9;
+    private static final float FOCUS_ANIM_SCALE = 0.62f;
+
+    /**
+     * Run the ring between two states, then leave it settled.
+     *
+     * `goAsync` is what makes this possible at all. A broadcast receiver's
+     * process is killable the moment onReceive returns, so posted frames would
+     * simply stop arriving and leave the donut stranded halfway. Holding the
+     * result keeps the process up for the third of a second this takes, and
+     * finishing it hands that back.
+     *
+     * The settled state is written to storage before any of it runs, so an
+     * animation cut short by anything else still redraws correctly the next
+     * time the widget is touched.
+     */
+    private static void animateFocus(Context context, int appWidgetId,
+                                     String from, String to,
+                                     BroadcastReceiver.PendingResult pending) {
+        // Opening runs 0 -> 1 against the category being opened; closing runs
+        // 1 -> 0 against the one being closed. Either way one name is on the
+        // ring for the whole run, which is what makes it a single morph rather
+        // than a cut between two pictures.
+        final boolean opening = !to.isEmpty();
+        final String subject = opening ? to : from;
+
+        if (subject.isEmpty() || animationsDisabled(context)) {
+            renderFrame(context, appWidgetId, subject, opening ? 1f : 0f, 1f, true);
+            if (pending != null) pending.finish();
+            return;
+        }
+
+        final android.view.animation.Interpolator easing =
+            new android.view.animation.PathInterpolator(0.32f, 0.72f, 0.24f, 1f);
+        final android.os.Handler handler =
+            new android.os.Handler(android.os.Looper.getMainLooper());
+        final long step = Math.max(1L, FOCUS_ANIM_MS / FOCUS_ANIM_FRAMES);
+
+        for (int i = 0; i < FOCUS_ANIM_FRAMES; i++) {
+            final boolean last = i == FOCUS_ANIM_FRAMES - 1;
+            final float linear = (i + 1) / (float) FOCUS_ANIM_FRAMES;
+            final float eased = easing.getInterpolation(linear);
+            final float progress = opening ? eased : 1f - eased;
+            handler.postDelayed(() -> {
+                try {
+                    renderFrame(context, appWidgetId, subject, progress,
+                        last ? 1f : FOCUS_ANIM_SCALE, last);
+                } catch (Exception e) {
+                    Log.w(TAG, "focus frame failed", e);
+                }
+                if (last && pending != null) pending.finish();
+            }, step * (i + 1));
+        }
+    }
+
+    /**
+     * Whether the phone has animations turned off.
+     *
+     * The same switch that stops the rest of Android animating. Someone who has
+     * asked for that should not get a widget that morphs — and skipping it also
+     * skips eight bitmaps they did not want drawn.
+     */
+    private static boolean animationsDisabled(Context context) {
+        try {
+            float scale = android.provider.Settings.Global.getFloat(
+                context.getContentResolver(),
+                android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f);
+            return scale == 0f;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** One frame of the morph. `settled` is what earns the tap targets. */
+    private static void renderFrame(Context context, int appWidgetId, String focus,
+                                    float progress, float scale, boolean settled) {
+        renderOne(context, AppWidgetManager.getInstance(context), appWidgetId,
+            focus, progress, scale, settled);
+    }
+
     private static void renderOne(Context context, AppWidgetManager manager, int appWidgetId) {
+        renderOne(context, manager, appWidgetId, null, -1f, 1f, true);
+    }
+
+    private static void renderOne(Context context, AppWidgetManager manager, int appWidgetId,
+                                  String focusOverride, float progress, float scale,
+                                  boolean settled) {
         try {
             RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_covault);
 
@@ -133,16 +245,28 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
             // only while the figures it was opened against still stand. A fresh
             // snapshot clears it: the list behind it has changed, and leaving
             // it open would show yesterday's purchases under today's ring.
-            String focus = readFocus(context, appWidgetId);
+            String focus = focusOverride != null ? focusOverride : readFocus(context, appWidgetId);
             if (!focus.isEmpty()) {
                 try {
                     snapshot.put("focus", focus);
+                    if (progress >= 0f) snapshot.put("focusProgress", progress);
                 } catch (Exception e) {
                     Log.w(TAG, "could not apply focus", e);
                 }
             }
 
             float[] spec = bitmapSpec(context, manager, appWidgetId);
+            if (scale < 1f) {
+                // Mid-morph frames are drawn smaller and scaled back up by the
+                // ImageView. Nothing on one is readable while the ring is
+                // moving, and it is the difference between this animation
+                // costing 6MB of Binder traffic and costing 2.
+                spec = new float[] {
+                    Math.max(120f, spec[0] * scale),
+                    Math.max(80f, spec[1] * scale),
+                    spec[2] * scale,
+                };
+            }
             boolean systemDark = (context.getResources().getConfiguration().uiMode
                 & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
 
@@ -156,11 +280,18 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
             // launched the app instead of doing the thing that was aimed at.
             // The things worth opening now say so individually.
 
-            // Category rows open Covault at that budget, expanded.
-            placeLegendHits(context, views, spec);
-            // The donut's bands open a category on the widget itself, and the
-            // hole in the middle closes it again.
-            placeDonutHits(context, views, spec, appWidgetId);
+            // Tap targets belong to a widget that has stopped moving. Placing
+            // them on a mid-morph frame would put them where an arc was for a
+            // fortieth of a second, which is a way to open the wrong category.
+            if (settled) {
+                // Category rows open Covault at that budget, expanded.
+                placeLegendHits(context, views, spec);
+                // The donut's bands open a category on the widget itself, and
+                // the hole in the middle closes it again.
+                placeDonutHits(context, views, spec, appWidgetId);
+            } else {
+                hideAllHits(views);
+            }
 
             // Everything on screen is one bitmap, so a screen reader has
             // nothing to walk. Without this it announces a fixed sentence about
@@ -381,6 +512,14 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
             placed.add(arc);
             slot++;
         }
+    }
+
+    /** Every tap target off, for a frame that is still moving. */
+    private static void hideAllHits(RemoteViews views) {
+        for (int id : LEGEND_HIT_IDS) views.setViewVisibility(id, android.view.View.GONE);
+        for (int id : ARC_HIT_IDS) views.setViewVisibility(id, android.view.View.GONE);
+        views.setViewVisibility(R.id.widget_centre_hit, android.view.View.GONE);
+        views.setViewVisibility(R.id.widget_review_hit, android.view.View.GONE);
     }
 
     private static final int[] ARC_HIT_IDS = {
