@@ -230,3 +230,63 @@ describe('mergeWidgetDeltas', () => {
     ]);
   });
 });
+
+/**
+ * The purchases the widget lists when a category is opened on it.
+ *
+ * Bucketed by the same rule the donut's slices use, so a category the ring can
+ * show always has a list behind it — a slice that opened onto "Nothing yet"
+ * would look broken rather than empty.
+ */
+describe('buildWidgetSnapshot — recent purchases per category', () => {
+  it('lists a category\'s purchases newest first', () => {
+    const snap = buildWidgetSnapshot({
+      ...base,
+      currentMonthTransactions: [
+        tx({ amount: 10, vendor: 'Older', date: '2026-07-02', budget_id: 'b-groceries' }),
+        tx({ amount: 20, vendor: 'Newer', date: '2026-07-20', budget_id: 'b-groceries' }),
+      ],
+    });
+    expect(snap.recent.Groceries.map((r) => r.vendor)).toEqual(['Newer', 'Older']);
+  });
+
+  it('keeps only what the column can show', () => {
+    const snap = buildWidgetSnapshot({
+      ...base,
+      currentMonthTransactions: Array.from({ length: 9 }, (_, i) =>
+        tx({ amount: 5, vendor: `V${i}`, date: `2026-07-0${i + 1}`, budget_id: 'b-groceries' }),
+      ),
+    });
+    expect(snap.recent.Groceries).toHaveLength(4);
+    // The four newest, not the first four found.
+    expect(snap.recent.Groceries[0].vendor).toBe('V8');
+  });
+
+  it('carries the day without the year, which the column has no room for', () => {
+    const snap = buildWidgetSnapshot({
+      ...base,
+      currentMonthTransactions: [tx({ amount: 8, date: '2026-07-04', budget_id: 'b-groceries' })],
+    });
+    expect(snap.recent.Groceries[0].day).toBe('07-04');
+  });
+
+  it('buckets an unknown budget into Other, exactly as the slices do', () => {
+    const snap = buildWidgetSnapshot({
+      ...base,
+      currentMonthTransactions: [tx({ amount: 12, vendor: 'Mystery', budget_id: 'gone' })],
+    });
+    expect(snap.slices.map((s) => s.name)).toContain('Other');
+    expect(snap.recent.Other.map((r) => r.vendor)).toEqual(['Mystery']);
+  });
+
+  it('leaves refunds out — the list is what you spent', () => {
+    const snap = buildWidgetSnapshot({
+      ...base,
+      currentMonthTransactions: [
+        tx({ amount: 30, vendor: 'Bought', budget_id: 'b-groceries' }),
+        tx({ amount: -30, vendor: 'Returned', budget_id: 'b-groceries' }),
+      ],
+    });
+    expect(snap.recent.Groceries.map((r) => r.vendor)).toEqual(['Bought']);
+  });
+});

@@ -236,20 +236,32 @@ html.theme-transitioning * {
    lib/hooks/useSpinHighlight.ts for why it is a moving light
    rather than a colour change or a ring that stays.
 
-   Built as a masked conic gradient so the light is the
-   border itself rather than a box drawn on top of the row:
-   the gradient fills the padding box, and the mask punches
-   out everything inside it, leaving a 2px edge. Drawing a
-   ring instead would sit over the row's own rounded corners
-   and read as a second card.
+   Built as a masked conic gradient so the light IS the
+   border rather than a box drawn on top of the row: the
+   gradient fills the padding box and the mask punches out
+   everything inside it, leaving an edge. Drawing a ring
+   instead would sit over the row's own rounded corners and
+   read as a second card.
+
+   Two details are load-bearing, and the first version
+   without them drew nothing anyone could see:
+
+   - z-index. TransactionItem's own content is `relative
+     z-10`, so a pseudo-element at the default level paints
+     UNDERNEATH the card. The light was being drawn, exactly
+     as specified, behind an opaque surface.
+   - inset: 0, not a negative inset. Sitting the ring
+     outside the row's box put it at the mercy of every
+     ancestor's `overflow-hidden` — the row list is a
+     scroller, and the sides were clipped away. On the edge
+     it traces the card's own border, which nothing clips.
 
    @property is what makes the sweep animatable. A plain
-   custom property interpolates as a string — the gradient
-   would jump between keyframes instead of turning — and
-   registering it as an <angle> is the only way to get the
-   browser to tween it. Unsupported browsers ignore the block
-   and the light simply holds still while it fades, which is
-   a graceful loss rather than a broken frame. */
+   custom property interpolates as a string, so the gradient
+   would jump between keyframes instead of turning.
+   Unsupported browsers ignore the block and the light holds
+   still while it fades, which is a graceful loss rather than
+   a broken frame. */
 @property --covault-spin {
   syntax: '<angle>';
   initial-value: 0deg;
@@ -258,16 +270,17 @@ html.theme-transitioning * {
 
 @keyframes covaultSpinSweep {
   0% { --covault-spin: 0deg; }
-  100% { --covault-spin: 720deg; }
+  100% { --covault-spin: 540deg; }
 }
 
-/* Fast in, slow out — the shape asked for. The light is at
-   full strength by 12% of the run and spends the rest of it
-   leaving, so it catches the eye immediately and then gets
-   out of the way instead of blinking off. */
+/* Fast in, slow out — the shape asked for. Full strength by
+   8% of the run, held while it turns, then most of the time
+   spent leaving, so it catches the eye at once and gets out
+   of the way instead of blinking off. */
 @keyframes covaultSpinFade {
   0% { opacity: 0; }
-  12% { opacity: 1; }
+  8% { opacity: 1; }
+  55% { opacity: 1; }
   100% { opacity: 0; }
 }
 
@@ -278,15 +291,19 @@ html.theme-transitioning * {
 .covault-spin-highlight::after {
   content: '';
   position: absolute;
-  /* Outside the row's own edge, so it never covers content. */
-  inset: -2px;
+  /* On the row's own edge. See the note above on clipping. */
+  inset: 0;
+  /* Above TransactionItem's `relative z-10` content. */
+  z-index: 30;
   border-radius: var(--covault-spin-radius, 1rem);
-  padding: 2px;
+  padding: 3px;
   background: conic-gradient(
     from var(--covault-spin),
     transparent 0deg,
-    var(--covault-spin-color, #10b981) 40deg,
-    transparent 120deg,
+    var(--covault-spin-color, #10b981) 50deg,
+    #ffffff 75deg,
+    var(--covault-spin-color, #10b981) 100deg,
+    transparent 165deg,
     transparent 360deg
   );
   -webkit-mask:
@@ -297,12 +314,15 @@ html.theme-transitioning * {
     linear-gradient(#000 0 0) content-box,
     linear-gradient(#000 0 0);
   mask-composite: exclude;
+  /* Lifts the light off the card so it reads on a dark
+     surface as well as a light one. */
+  filter: drop-shadow(0 0 5px var(--covault-spin-color, #10b981));
   /* Never eats a tap meant for the row underneath. */
   pointer-events: none;
   opacity: 0;
   animation:
-    covaultSpinSweep 1.8s cubic-bezier(0.32, 0.72, 0.24, 1) forwards,
-    covaultSpinFade 1.8s cubic-bezier(0.32, 0.72, 0.24, 1) forwards;
+    covaultSpinSweep 2.2s cubic-bezier(0.32, 0.72, 0.24, 1) forwards,
+    covaultSpinFade 2.2s cubic-bezier(0.32, 0.72, 0.24, 1) forwards;
 }
 
 @media (prefers-reduced-motion: reduce) {

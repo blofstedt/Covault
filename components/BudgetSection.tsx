@@ -8,7 +8,7 @@ import { getBudgetColor } from '../lib/budgetColors';
 import { getLocalToday } from '../lib/dateUtils';
 import { compareByDateOccurred, findTodayIndex, transactionDay } from '../lib/transactionOrdering';
 import { isRefund, matchRefundsToExpenses } from '../lib/refundMatching';
-import { useSpinHighlight, idsForDay } from '../lib/hooks/useSpinHighlight';
+import { useSpinHighlight, idsForTodayJump } from '../lib/hooks/useSpinHighlight';
 
 interface ExtendedBudgetCategory extends BudgetCategory {
   externalDeduction?: number;
@@ -245,7 +245,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
     // the arrival point alone says nothing about how many of the rows around
     // it are the ones meant, so every row dated today is lit — not only the
     // one the scroll lands on.
-    spin(idsForDay(visibleTransactions, getLocalToday(), transactionDay));
+    spin(idsForTodayJump(visibleTransactions, getLocalToday(), transactionDay));
   }, [spin, visibleTransactions]);
 
   const handleHeaderClick = useCallback(() => onToggle(budget.id), [onToggle, budget.id]);

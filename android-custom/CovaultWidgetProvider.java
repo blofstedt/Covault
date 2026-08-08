@@ -28,6 +28,10 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
 
     private static final String TAG = "CovaultWidget";
     private static final String ACTION_MIDNIGHT = "com.covault.app.WIDGET_MIDNIGHT";
+    /** Open one category on the donut, or close whatever is open. */
+    private static final String ACTION_FOCUS = "com.covault.app.WIDGET_FOCUS";
+    private static final String EXTRA_FOCUS = "focus";
+    private static final String FOCUS_PREF = "widget_focus";
 
     /**
      * RemoteViews cross a Binder transaction with a hard size ceiling (~1MB in
@@ -68,6 +72,23 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
         super.onReceive(context, intent);
         if (intent != null && ACTION_MIDNIGHT.equals(intent.getAction())) {
             updateAll(context);
+            return;
+        }
+        if (intent != null && ACTION_FOCUS.equals(intent.getAction())) {
+            int id = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID,
+                AppWidgetManager.INVALID_APPWIDGET_ID);
+            if (id == AppWidgetManager.INVALID_APPWIDGET_ID) return;
+            String category = intent.getStringExtra(EXTRA_FOCUS);
+            // Tapping the slice that is already open closes it, so the band
+            // itself is a toggle and not only the hole in the middle.
+            String current = readFocus(context, id);
+            String next = (category == null || category.equals(current)) ? "" : category;
+            writeFocus(context, id, next);
+            try {
+                renderOne(context, AppWidgetManager.getInstance(context), id);
+            } catch (Exception e) {
+                Log.w(TAG, "focus redraw failed", e);
+            }
         }
     }
 
@@ -108,6 +129,19 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
                 snapshot = emptySnapshot();
             }
 
+            // A category is only ever open on the widget it was opened on, and
+            // only while the figures it was opened against still stand. A fresh
+            // snapshot clears it: the list behind it has changed, and leaving
+            // it open would show yesterday's purchases under today's ring.
+            String focus = readFocus(context, appWidgetId);
+            if (!focus.isEmpty()) {
+                try {
+                    snapshot.put("focus", focus);
+                } catch (Exception e) {
+                    Log.w(TAG, "could not apply focus", e);
+                }
+            }
+
             float[] spec = bitmapSpec(context, manager, appWidgetId);
             boolean systemDark = (context.getResources().getConfiguration().uiMode
                 & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
@@ -124,6 +158,9 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
 
             // Category rows open Covault at that budget, expanded.
             placeLegendHits(context, views, spec);
+            // The donut's bands open a category on the widget itself, and the
+            // hole in the middle closes it again.
+            placeDonutHits(context, views, spec, appWidgetId);
 
             // Everything on screen is one bitmap, so a screen reader has
             // nothing to walk. Without this it announces a fixed sentence about
@@ -304,6 +341,146 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
      * registered first. Offset past the codes the launch and review intents
      * already use.
      */
+    /**
+     * Lay a tap target on each of the donut's bands, and one in the hole.
+     *
+     * A rectangle cannot follow an arc, so each target sits where the renderer
+     * draws that slice's icon chip — the middle of its band. Targets that would
+     * overlap an earlier one are dropped rather than shrunk: a box straddling
+     * two slices opens the wrong category, which is worse than a slice you have
+     * to reach from the list instead.
+     */
+    private static void placeDonutHits(Context context, RemoteViews views, float[] spec,
+                                       int appWidgetId) {
+        for (int id : ARC_HIT_IDS) {
+            views.setViewVisibility(id, android.view.View.GONE);
+        }
+        views.setViewVisibility(R.id.widget_centre_hit, android.view.View.GONE);
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) return;
+
+        float pxPerDp = spec[2];
+        if (pxPerDp <= 0) return;
+
+        WidgetRenderer.HitRect centre = WidgetRenderer.lastCentreHit();
+        if (centre != null) {
+            place(views, R.id.widget_centre_hit, centre, pxPerDp);
+            views.setOnClickPendingIntent(R.id.widget_centre_hit,
+                focusIntent(context, appWidgetId, "", 0));
+            return;
+        }
+
+        java.util.List<WidgetRenderer.HitRect> arcs = WidgetRenderer.lastArcHits();
+        java.util.List<WidgetRenderer.HitRect> placed = new java.util.ArrayList<>();
+        int slot = 0;
+        for (WidgetRenderer.HitRect arc : arcs) {
+            if (slot >= ARC_HIT_IDS.length) break;
+            if (overlapsAny(arc, placed)) continue;
+            place(views, ARC_HIT_IDS[slot], arc, pxPerDp);
+            views.setOnClickPendingIntent(ARC_HIT_IDS[slot],
+                focusIntent(context, appWidgetId, arc.category, slot + 1));
+            placed.add(arc);
+            slot++;
+        }
+    }
+
+    private static final int[] ARC_HIT_IDS = {
+        R.id.widget_arc_hit_0,
+        R.id.widget_arc_hit_1,
+        R.id.widget_arc_hit_2,
+        R.id.widget_arc_hit_3,
+        R.id.widget_arc_hit_4,
+        R.id.widget_arc_hit_5,
+    };
+
+    private static boolean overlapsAny(WidgetRenderer.HitRect candidate,
+                                       java.util.List<WidgetRenderer.HitRect> placed) {
+        for (WidgetRenderer.HitRect other : placed) {
+            boolean apart = candidate.right <= other.left || candidate.left >= other.right
+                || candidate.bottom <= other.top || candidate.top >= other.bottom;
+            if (!apart) return true;
+        }
+        return false;
+    }
+
+    /** Position one target, converting bitmap pixels into the widget's dp. */
+    private static void place(RemoteViews views, int id, WidgetRenderer.HitRect hit,
+                              float pxPerDp) {
+        float widthDp = (hit.right - hit.left) / pxPerDp;
+        float heightDp = (hit.bottom - hit.top) / pxPerDp;
+        if (widthDp <= 0 || heightDp <= 0) return;
+        views.setViewLayoutMargin(id, RemoteViews.MARGIN_START, hit.left / pxPerDp,
+            android.util.TypedValue.COMPLEX_UNIT_DIP);
+        views.setViewLayoutMargin(id, RemoteViews.MARGIN_TOP, hit.top / pxPerDp,
+            android.util.TypedValue.COMPLEX_UNIT_DIP);
+        views.setViewLayoutWidth(id, widthDp, android.util.TypedValue.COMPLEX_UNIT_DIP);
+        views.setViewLayoutHeight(id, heightDp, android.util.TypedValue.COMPLEX_UNIT_DIP);
+        views.setViewVisibility(id, android.view.View.VISIBLE);
+    }
+
+    /**
+     * Open or close a category, on this widget only.
+     *
+     * A broadcast back to the provider rather than an activity launch: opening
+     * a category happens on the home screen and must not pull the app up.
+     *
+     * The request code has to be unique per target for the same reason the
+     * budget intents' are — extras alone do not distinguish two PendingIntents
+     * — and it also has to carry the widget id, or two placed widgets would
+     * share one intent and open a category on each other.
+     */
+    private static PendingIntent focusIntent(Context context, int appWidgetId,
+                                             String category, int slot) {
+        Intent intent = new Intent(context, CovaultWidgetProvider.class);
+        intent.setAction(ACTION_FOCUS);
+        intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
+        intent.putExtra(EXTRA_FOCUS, category);
+        return PendingIntent.getBroadcast(context, (appWidgetId * 16) + 100 + slot, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    /**
+     * Close any opened category, on every placed widget.
+     *
+     * Called when the app writes a new snapshot. An opened category is a view
+     * of figures that have just been replaced — leaving it up would show the
+     * previous load's purchases inside a ring drawn from the new one, and the
+     * user has no way to tell that has happened.
+     */
+    static void clearFocus(Context context) {
+        try {
+            AppWidgetManager manager = AppWidgetManager.getInstance(context);
+            int[] ids = manager.getAppWidgetIds(
+                new ComponentName(context, CovaultWidgetProvider.class));
+            if (ids == null || ids.length == 0) return;
+            android.content.SharedPreferences.Editor editor =
+                context.getSharedPreferences("covault_prefs", 0).edit();
+            for (int id : ids) editor.remove(FOCUS_PREF + "_" + id);
+            editor.apply();
+        } catch (Exception e) {
+            Log.w(TAG, "could not clear the widget focus", e);
+        }
+    }
+
+    private static String readFocus(Context context, int appWidgetId) {
+        try {
+            return context.getSharedPreferences("covault_prefs", 0)
+                .getString(FOCUS_PREF + "_" + appWidgetId, "");
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private static void writeFocus(Context context, int appWidgetId, String category) {
+        try {
+            context.getSharedPreferences("covault_prefs", 0)
+                .edit()
+                .putString(FOCUS_PREF + "_" + appWidgetId, category == null ? "" : category)
+                .apply();
+        } catch (Exception e) {
+            Log.w(TAG, "could not store the widget focus", e);
+        }
+    }
+
     private static PendingIntent budgetIntent(Context context, String category, int index) {
         Intent open = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
         if (open == null) open = new Intent(context, MainActivity.class);

@@ -68,6 +68,9 @@ final class WidgetDeltaStore {
         // them here rather than filtering at render time keeps the store from
         // growing without bound on a device the app is rarely opened on.
         editor.remove(DELTAS_KEY);
+        // And it supersedes any category the user had opened on the donut. See
+        // CovaultWidgetProvider.clearFocus for why that cannot simply stay.
+        CovaultWidgetProvider.clearFocus(context);
         editor.commit();
     }
 

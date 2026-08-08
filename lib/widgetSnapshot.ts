@@ -17,13 +17,29 @@ import { getLocalMonthKey, getLocalToday } from './dateUtils';
 import type { BudgetCategory, Transaction } from '../types';
 
 /** Bumped if the shape changes, so an old native reader can bail rather than misread. */
-export const WIDGET_SNAPSHOT_VERSION = 1;
+export const WIDGET_SNAPSHOT_VERSION = 2;
+
+/**
+ * How many purchases the widget lists when a category is opened on it.
+ *
+ * Four is what the right-hand column can show at the widget's design height
+ * without shrinking the type back to the size that made it unreadable.
+ */
+export const WIDGET_RECENT_PER_CATEGORY = 4;
 
 export interface WidgetSlice {
   name: string;
   amount: number;
   /** Hex, straight from budgetColors so the widget never guesses. */
   color: string;
+}
+
+/** One line in the list shown when a category is opened on the widget. */
+export interface WidgetRecent {
+  vendor: string;
+  amount: number;
+  /** "08-07" — day and month, which is all the column has room for. */
+  day: string;
 }
 
 export interface WidgetSnapshot {
@@ -47,6 +63,15 @@ export interface WidgetSnapshot {
    * app's own list shows.
    */
   pendingReview: number;
+  /**
+   * The most recent purchases in each category, keyed by category name.
+   *
+   * Only read when the user opens a category on the widget, which is why it is
+   * a few lines per category rather than the month: the whole snapshot crosses
+   * a Binder transaction with a hard size ceiling, and the widget is drawn from
+   * it on every redraw.
+   */
+  recent: Record<string, WidgetRecent[]>;
   updatedAtMs: number;
 }
 
@@ -156,8 +181,51 @@ export function buildWidgetSnapshot({
     theme,
     slices,
     pendingReview,
+    recent: buildRecent(currentMonthTransactions, nameById),
     updatedAtMs: nowMs,
   };
+}
+
+/**
+ * The last few purchases in each category, newest first.
+ *
+ * Bucketed by the same rule the slices use — an unknown budget lands in
+ * "Other" — so a category the donut can show always has a list behind it.
+ * Refunds and anything at zero are left out: the list is what you spent, and a
+ * credit sitting in it reads as a purchase.
+ */
+function buildRecent(
+  transactions: Transaction[],
+  nameById: Map<string, string>,
+): Record<string, WidgetRecent[]> {
+  const byCategory = new Map<string, { at: number; entry: WidgetRecent }[]>();
+
+  for (const tx of transactions) {
+    const amount = Number(tx.amount) || 0;
+    if (amount <= 0) continue;
+    const name = (tx.budget_id && nameById.get(tx.budget_id)) || 'Other';
+    const day = typeof tx.date === 'string' ? tx.date.slice(0, 10) : '';
+    const at = day ? Date.parse(day) : 0;
+    const bucket = byCategory.get(name) ?? [];
+    bucket.push({
+      at: Number.isFinite(at) ? at : 0,
+      entry: {
+        vendor: (tx.vendor || 'Unknown').trim() || 'Unknown',
+        amount,
+        day: day.length === 10 ? day.slice(5) : '',
+      },
+    });
+    byCategory.set(name, bucket);
+  }
+
+  const out: Record<string, WidgetRecent[]> = {};
+  for (const [name, rows] of byCategory) {
+    out[name] = rows
+      .sort((a, b) => b.at - a.at)
+      .slice(0, WIDGET_RECENT_PER_CATEGORY)
+      .map((r) => r.entry);
+  }
+  return out;
 }
 
 /**

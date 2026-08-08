@@ -97,4 +97,67 @@
         android:layout_gravity="top|start"
         android:visibility="gone" />
 
+    <!--
+      Tap targets on the donut's coloured bands, one per category, plus one in
+      the hole in the middle to close an opened category again.
+
+      A rectangle cannot follow an arc, so each of these sits on the point the
+      renderer draws that slice's icon chip — the middle of its band, which is
+      the one place a box lands on that slice and no other. Thin slivers are
+      skipped by the provider rather than given a target that overlaps their
+      neighbour: hitting the wrong category is worse than not hitting one, and
+      the list on the right reaches every category anyway.
+
+      Positioned at runtime for the same reason the legend targets are, and
+      GONE until they have been, so nothing swallows a tap over empty card.
+    -->
+    <FrameLayout
+        android:id="@+id/widget_arc_hit_0"
+        android:layout_width="1dp"
+        android:layout_height="1dp"
+        android:layout_gravity="top|start"
+        android:visibility="gone" />
+
+    <FrameLayout
+        android:id="@+id/widget_arc_hit_1"
+        android:layout_width="1dp"
+        android:layout_height="1dp"
+        android:layout_gravity="top|start"
+        android:visibility="gone" />
+
+    <FrameLayout
+        android:id="@+id/widget_arc_hit_2"
+        android:layout_width="1dp"
+        android:layout_height="1dp"
+        android:layout_gravity="top|start"
+        android:visibility="gone" />
+
+    <FrameLayout
+        android:id="@+id/widget_arc_hit_3"
+        android:layout_width="1dp"
+        android:layout_height="1dp"
+        android:layout_gravity="top|start"
+        android:visibility="gone" />
+
+    <FrameLayout
+        android:id="@+id/widget_arc_hit_4"
+        android:layout_width="1dp"
+        android:layout_height="1dp"
+        android:layout_gravity="top|start"
+        android:visibility="gone" />
+
+    <FrameLayout
+        android:id="@+id/widget_arc_hit_5"
+        android:layout_width="1dp"
+        android:layout_height="1dp"
+        android:layout_gravity="top|start"
+        android:visibility="gone" />
+
+    <FrameLayout
+        android:id="@+id/widget_centre_hit"
+        android:layout_width="1dp"
+        android:layout_height="1dp"
+        android:layout_gravity="top|start"
+        android:visibility="gone" />
+
 </FrameLayout>
