@@ -16,6 +16,7 @@
 
 import { log } from './log';
 import { restFetch } from './apiHelpers';
+import { covaultNotification, pushSkipRules } from './covaultNotification';
 
 export type PatternType = 'exact' | 'contains';
 
@@ -70,7 +71,46 @@ async function fetchRules(userId: string): Promise<NotificationRule[] | null> {
   if (!res.ok) return null;
   const rows: NotificationRule[] = (await res.json()) || [];
   rulesCache = { userId, rows, at: now };
+  mirrorRulesToNative(rows);
   return rows;
+}
+
+/**
+ * Keep the native listener's copy of the skip rules in step with this one.
+ *
+ * Applying a rule in here is only half the job. The web pipeline decides
+ * whether a row reaches the ledger, but the "$X at Y — captured" notification
+ * is posted by a service that runs with the WebView dead — so a rule known
+ * only here silences the row and leaves the notification, which is precisely
+ * the case where the user is told about a capture that never appears in
+ * Review.
+ *
+ * Fire-and-forget, and called from the paths that already know the full set:
+ * every refresh of the cache, and every create/delete. A failed mirror costs
+ * one unwanted notification, never a purchase, so it must not be allowed to
+ * fail a capture or block the caller.
+ */
+function mirrorRulesToNative(rows: NotificationRule[]): void {
+  void pushSkipRules(
+    rows.map((row) => ({ pattern: row.pattern, pattern_type: row.pattern_type })),
+  );
+}
+
+/**
+ * Re-read the rules and push them down after a create or delete.
+ *
+ * Waiting for the next capture to refresh the cache would leave the native
+ * copy one notification behind — and the notification the user wants silenced
+ * is usually the very next one, since they only just told us to ignore it.
+ */
+function refreshNativeSkipRules(userId: string): void {
+  // The read exists only to feed the native copy, so there is no reason to
+  // make it anywhere there is no native copy to feed.
+  if (!covaultNotification) return;
+  void fetchRules(userId).catch(() => {
+    // Best-effort. The rule is already saved and the web pipeline honours it;
+    // only the native silence is delayed until the next successful read.
+  });
 }
 
 export async function checkNotificationRules(
@@ -147,7 +187,9 @@ export async function listNotificationRules(userId: string): Promise<Notificatio
       { cache: 'no-store' },
     );
     if (!res.ok) return [];
-    return (await res.json()) || [];
+    const rows: NotificationRule[] = (await res.json()) || [];
+    mirrorRulesToNative(rows);
+    return rows;
   } catch {
     return [];
   }
@@ -175,6 +217,7 @@ export async function createNotificationRule(
     }
     const rows: NotificationRule[] = await res.json();
     invalidateNotificationRulesCache();
+    refreshNativeSkipRules(userId);
     return rows[0] || null;
   } catch (err) {
     log.error('[notificationRules] create exception:', err);
@@ -189,7 +232,10 @@ export async function deleteNotificationRule(userId: string, ruleId: string): Pr
       `/notification_rules?id=eq.${ruleId}&user_id=eq.${userId}`,
       { method: 'DELETE' },
     );
-    if (res.ok) invalidateNotificationRulesCache();
+    if (res.ok) {
+      invalidateNotificationRulesCache();
+      refreshNativeSkipRules(userId);
+    }
     return res.ok;
   } catch {
     return false;

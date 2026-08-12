@@ -57,6 +57,18 @@ const MAX_VENDOR_RULES = 2000;
  */
 const AI_FALLBACK_CONFIDENCE_THRESHOLD = 0.65;
 
+/**
+ * Below this AI confidence, the capture still goes into the ledger but must
+ * never be filed without the user seeing it.
+ *
+ * The row lands in Review like any other capture — that list exists precisely
+ * for the ones the app is unsure about, and the review card renders the stored
+ * confidence as a meter. What the threshold blocks is auto-accept: a learned
+ * rule that says "Tim Hortons → Coffee" is no reason to file a charge whose
+ * merchant name the model only half-read.
+ */
+const LOW_CONFIDENCE_REVIEW_THRESHOLD = 0.75;
+
 /** Milliseconds per day */
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 /** Milliseconds per minute — strict duplicate matching window */
@@ -935,22 +947,33 @@ async function processNotificationWithAIImpl(
   // <> page. That creates a rule in `notification_rules` and every
   // future notification matching the rule is dropped here, before any
   // parsing. We bump the rule's use_count best-effort (fire-and-forget).
-  if (!input.forceReprocess) {
-    const matchedRule = await checkNotificationRules(userId, input.rawNotification);
-    if (matchedRule) {
-      log.debug(`[AI pipeline] Skipped by user rule #${matchedRule.id} (${matchedRule.pattern_type}: "${matchedRule.pattern.slice(0, 50)}...")`);
-      // Best-effort: bump the count without blocking the result
-      void bumpRuleUseCount(matchedRule.id);
-      recentlyProcessedCache.set(inMemoryKey, Date.now());
-      markNotificationRejected(inMemoryKey);
-      return {
-        processed: true,
-        isTransaction: false,
-        skipReason: 'not_transaction',
-        rejectionReason: `Skipped by user rule (${matchedRule.pattern_type} match)`,
-        bankName: input.bankName,
-      };
-    }
+  //
+  // Applied even under forceReprocess, unlike every other early exit here. A
+  // rescan is allowed to look again at things the app GUESSED were not
+  // transactions — the rejection cache below is exactly that, a record of
+  // guesses — but a rule is not a guess, it is a standing instruction from the
+  // user, and rescanning is no reason to overrule it.
+  //
+  // That distinction was not being made, and it mattered far more than it
+  // sounds: everything captured while the app is closed comes back through
+  // drainPendingNotifications, which marks the whole batch as a scan. So the
+  // skip rules were bypassed for precisely the captures the user never saw
+  // happen — every alert they had already marked as noise was quietly
+  // re-imported on the next launch.
+  const matchedRule = await checkNotificationRules(userId, input.rawNotification);
+  if (matchedRule) {
+    log.debug(`[AI pipeline] Skipped by user rule #${matchedRule.id} (${matchedRule.pattern_type}: "${matchedRule.pattern.slice(0, 50)}...")`);
+    // Best-effort: bump the count without blocking the result
+    void bumpRuleUseCount(matchedRule.id);
+    recentlyProcessedCache.set(inMemoryKey, Date.now());
+    markNotificationRejected(inMemoryKey);
+    return {
+      processed: true,
+      isTransaction: false,
+      skipReason: 'not_transaction',
+      rejectionReason: `Skipped by user rule (${matchedRule.pattern_type} match)`,
+      bankName: input.bankName,
+    };
   }
 
   // ── Step 0b: Persistent dedup (survives app restarts) ──
@@ -1114,32 +1137,29 @@ async function processNotificationWithAIImpl(
   }
 
   // ── Step 2c: Confidence gating ──
-  // If AI is uncertain, route to pending review instead of auto-inserting
-  if (aiResult && aiResult.isTransaction && (aiResult.confidence ?? 1) < 0.75) {
-    log.debug(`[AI pipeline] Low confidence (${aiResult.confidenceLabel}, ${(aiResult.confidence ?? 0).toFixed(2)}) — routing to review queue`);
-    const pendingId = crypto.randomUUID();
-    await supabase.from('pending_transactions').insert({
-      id: pendingId,
-      user_id: userId,
-      extracted_vendor: aiResult.vendor,
-      extracted_amount: aiResult.amount,
-      suggested_category: aiResult.suggestedCategory,
-      confidence: aiResult.confidence,
-      raw_notification: (input.rawNotification || '').slice(0, 4000),
-      status: 'pending',
-      created_at: new Date().toISOString(),
-    });
-    markNotificationProcessed(capturedKey);
-    recentlyProcessedCache.set(inMemoryKey, Date.now());
-    return {
-      processed: true,
-      isTransaction: true,
-      vendor: aiResult.vendor,
-      amount: aiResult.amount,
-      skipReason: 'needs_review',
-      rejectionReason: `AI confidence too low (${aiResult.confidenceLabel})`,
-      bankName: input.bankName,
-    };
+  //
+  // An uncertain extraction is exactly what the review list is for, so it goes
+  // down the same path as every other capture and lands there with its
+  // confidence shown as a meter. The only thing low confidence changes is that
+  // the row can never be auto-filed (see `lowConfidenceExtraction` at the
+  // insert below) — the user has to look at it.
+  //
+  // This used to divert instead: it inserted a row into `pending_transactions`
+  // and returned. That table does not exist in this database, so the insert
+  // 404'd, supabase-js reported the failure in a return value nobody read, and
+  // the purchase went nowhere. Worse, the diversion called
+  // markNotificationProcessed first, which is permanent — so the capture could
+  // never be recovered by a rescan either. The user was told "$X at Y
+  // captured" by the notification and then found nothing in Review, with no
+  // error anywhere. Every purchase the on-device model was unsure about was
+  // silently destroyed.
+  const lowConfidenceExtraction =
+    !!aiResult && aiResult.isTransaction && (aiResult.confidence ?? 1) < LOW_CONFIDENCE_REVIEW_THRESHOLD;
+  if (lowConfidenceExtraction) {
+    log.debug(
+      `[AI pipeline] Low confidence (${aiResult!.confidenceLabel}, ` +
+      `${(aiResult!.confidence ?? 0).toFixed(2)}) — capturing for review rather than auto-filing`,
+    );
   }
 
   // Use the deterministic extraction result unless it failed ('Unknown'), in which
@@ -1814,9 +1834,10 @@ async function processNotificationWithAIImpl(
       skipReason: 'duplicate_fingerprint',
     };
   }
-  // AI/parser confidence for this capture. Rows reach Step 6 only after the
-  // Step 2c gate, so this is the model's (or regex's) confidence in the
-  // extraction; the capture-review UI shows it as a meter.
+  // AI/parser confidence for this capture — how sure the extraction is, not
+  // how sure the categorisation is. Stored on the row so the capture-review UI
+  // can show it as a meter, which is the whole reason a low-confidence read is
+  // worth keeping: the user can see the app was guessing and correct it.
   const captureConfidence = aiResult?.confidence ?? parsed.confidence ?? null;
 
   // ── Auto-accept ──
@@ -1834,7 +1855,13 @@ async function processNotificationWithAIImpl(
   // A fuel hold can never be auto-filed, however well the user's rule matches.
   // Auto-accept means the row is never shown, and the whole point of a
   // placeholder is that somebody has to replace it with the real number.
-  const autoAccepted = !fuelHold && shouldAutoAccept({
+  //
+  // Nor can an extraction the model was unsure about (Step 2c). A rule match
+  // scores how well a NAME is explained, and a low-confidence read is evidence
+  // the name itself may be wrong — filing on the strength of a rule matched
+  // against a misread merchant is how a charge ends up in the wrong budget
+  // with nobody ever seeing it.
+  const autoAccepted = !fuelHold && !lowConfidenceExtraction && shouldAutoAccept({
     enabled: input.autoAcceptKnownVendors === true,
     confidence: overrideMatchConfidence,
     hasCategory: !!categoryId,

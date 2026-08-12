@@ -53,6 +53,20 @@ export interface TransactionDetectedEvent {
   from_scan?: boolean;
   /** camelCase alias for `from_scan`. */
   fromScan?: boolean;
+
+  /**
+   * Android id of the "$X at Y — captured" notification the native listener
+   * posted for this alert.
+   *
+   * The listener has to post before anything has classified the alert — it is
+   * the only part of Covault running when the app is closed. This is the
+   * handle for undoing that: when the pipeline decides the alert was not an
+   * expense, `cancelCaptureNotification` takes it back down.
+   *
+   * Absent on an APK built before the native side sent it, in which case the
+   * notification simply stays as it did before.
+   */
+  capture_notification_id?: number;
 }
 
 export interface CovaultNotificationPlugin {
@@ -101,6 +115,22 @@ export interface CovaultNotificationPlugin {
    * Prefer the `canPostCaptureNotifications` helper below.
    */
   getCaptureNotificationStatus(): Promise<{ canPost: boolean }>;
+
+  /**
+   * Take down the capture notification with this id. Used when the pipeline
+   * concludes the alert it announced was not an expense.
+   *
+   * Prefer the `cancelCaptureNotification` helper below.
+   */
+  cancelCaptureNotification(options: { id: number }): Promise<void>;
+
+  /**
+   * Mirror the user's "not a transaction" rules into native storage so the
+   * listener can stay silent about them with the app closed.
+   *
+   * Prefer the `pushSkipRules` helper below.
+   */
+  setSkipRules(options: { rules: string }): Promise<void>;
 
   /** Open Android's notification settings page for Covault. */
   openNotificationSettings(): Promise<void>;
@@ -215,6 +245,70 @@ export async function canPostCaptureNotifications(
   } catch (e) {
     log.debug('[covaultNotification] getCaptureNotificationStatus unavailable:', e);
     return true;
+  }
+}
+
+/**
+ * Withdraw the capture notification that announced an alert which turned out
+ * not to be an expense.
+ *
+ * The listener posts the moment a bank alert arrives, because with the app
+ * closed that is the only way capture is immediate — but it posts on the
+ * strength of a dollar amount and nothing else. Anything the pipeline then
+ * rejects has a notification standing behind it promising a purchase that will
+ * never appear in Review, and this is what clears it.
+ *
+ * Silent on web, when the event carried no id, and on an APK built before the
+ * native method existed. In all three the notification just stays, which is
+ * what happened before this existed.
+ */
+export async function cancelCaptureNotification(
+  id: number | null | undefined,
+  plugin: CovaultNotificationPlugin | null = covaultNotification,
+): Promise<void> {
+  if (!plugin) return;
+  if (typeof id !== 'number' || !Number.isFinite(id)) return;
+  try {
+    await plugin.cancelCaptureNotification({ id });
+  } catch (e) {
+    log.debug('[covaultNotification] cancelCaptureNotification unavailable:', e);
+  }
+}
+
+/** One "not a transaction" rule, in the shape the native matcher reads. */
+export interface SkipRule {
+  pattern: string;
+  pattern_type: string;
+}
+
+/**
+ * Hand the native listener the user's current "not a transaction" rules.
+ *
+ * The rules live in the database, but the listener runs with the WebView dead
+ * and no network — so without a local copy an alert the user has already
+ * marked as noise keeps posting a capture notification every time it arrives.
+ *
+ * Silent on web and on an older APK: the web pipeline still applies the rules,
+ * so the only thing lost is the silence.
+ */
+export async function pushSkipRules(
+  rules: SkipRule[],
+  plugin: CovaultNotificationPlugin | null = covaultNotification,
+): Promise<void> {
+  if (!plugin) return;
+  try {
+    await plugin.setSkipRules({
+      rules: JSON.stringify(
+        rules
+          .filter((rule) => !!rule && typeof rule.pattern === 'string' && rule.pattern.trim() !== '')
+          .map((rule) => ({
+            pattern: rule.pattern,
+            pattern_type: rule.pattern_type === 'contains' ? 'contains' : 'exact',
+          })),
+      ),
+    });
+  } catch (e) {
+    log.debug('[covaultNotification] setSkipRules unavailable:', e);
   }
 }
 

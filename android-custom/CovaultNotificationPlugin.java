@@ -51,6 +51,10 @@ public class CovaultNotificationPlugin extends Plugin {
                             event.put("raw_text", json.optString("raw_text", ""));
                             event.put("timestamp", json.optLong("timestamp", System.currentTimeMillis()));
                             event.put("from_scan", json.optBoolean("from_scan", false));
+                            if (json.has("capture_notification_id")) {
+                                event.put("capture_notification_id",
+                                    json.optInt("capture_notification_id"));
+                            }
 
                             // Send to JavaScript listeners
                             notifyListeners("transactionDetected", event);
@@ -244,6 +248,9 @@ public class CovaultNotificationPlugin extends Plugin {
                 event.put("raw_text", json.optString("raw_text", ""));
                 event.put("timestamp", json.optLong("timestamp", 0));
                 event.put("from_scan", true);
+                if (json.has("capture_notification_id")) {
+                    event.put("capture_notification_id", json.optInt("capture_notification_id"));
+                }
                 out.put(event);
             }
             Log.i(TAG, "drainPendingNotifications: returning " + out.length() + " queued notifications");
@@ -252,6 +259,52 @@ public class CovaultNotificationPlugin extends Plugin {
         }
         ret.put("notifications", out);
         call.resolve(ret);
+    }
+
+    /**
+     * Take down a capture notification the pipeline has since decided was not
+     * an expense.
+     *
+     * The listener posts "$X at Y — captured" from a cold process, before
+     * anything has classified the alert, because that is the only way capture
+     * feels immediate with the app closed. When the web pipeline later rejects
+     * it — a bank promo, a balance alert, something the user's own rule says to
+     * ignore — this is what stops the shade claiming a purchase was captured
+     * that will never appear in Review.
+     */
+    @PluginMethod
+    public void cancelCaptureNotification(PluginCall call) {
+        Integer id = call.getInt("id");
+        if (id == null) {
+            call.reject("Missing 'id'");
+            return;
+        }
+        NotificationListener.cancelCaptureNotification(getContext(), id);
+        Log.i(TAG, "cancelCaptureNotification: " + id);
+        call.resolve();
+    }
+
+    /**
+     * Mirror the user's "not a transaction" rules into native storage.
+     *
+     * The rules live in the database and the web pipeline reads them from
+     * there, but the notification is posted by a service that runs with the
+     * WebView dead and no network. Without a local copy, an alert the user has
+     * already dismissed as noise goes on announcing itself as a capture every
+     * time it arrives, and is only withdrawn when the app is next opened.
+     *
+     * Rules arrive as the JSON the web layer already holds — a list of
+     * {pattern, pattern_type} — so neither side has to learn a second shape.
+     */
+    @PluginMethod
+    public void setSkipRules(PluginCall call) {
+        String rules = call.getString("rules");
+        if (rules == null) {
+            call.reject("Missing 'rules'");
+            return;
+        }
+        NotificationListener.saveSkipRules(getContext(), rules);
+        call.resolve();
     }
 
     /**
@@ -323,7 +376,7 @@ public class CovaultNotificationPlugin extends Plugin {
     /**
      * What happened to each of the last few bank alerts.
      *
-     * Suppression has six ways to decline and every one of them looks the same
+     * Suppression has several ways to decline and every one looks the same
      * in the tray: the alert stays. Without this the only account of which gate
      * stopped it is logcat, which needs a computer and a cable — so a report of
      * "it still isn't hiding them" costs a release per guess. The settings

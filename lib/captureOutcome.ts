@@ -3,7 +3,7 @@ import { getBankingApps } from './bankingApps';
 /**
  * What happened to a bank alert after Covault captured the purchase from it.
  *
- * Tray suppression has six ways to decline, and in the tray they are
+ * Tray suppression has several ways to decline, and in the tray they are
  * indistinguishable — the alert simply stays. The native listener writes down
  * which one it was for each alert; this turns that into something the user can
  * read, so "it still isn't hiding them" is answered by looking at the screen
@@ -16,7 +16,8 @@ export type CaptureOutcomeCode =
   | 'toggle_off'
   | 'no_amount'
   | 'not_clearable'
-  | 'cancel_ignored';
+  | 'cancel_ignored'
+  | 'user_ignored';
 
 const OUTCOME_CODES: readonly CaptureOutcomeCode[] = [
   'hidden',
@@ -26,6 +27,7 @@ const OUTCOME_CODES: readonly CaptureOutcomeCode[] = [
   'no_amount',
   'not_clearable',
   'cancel_ignored',
+  'user_ignored',
 ];
 
 export interface CaptureOutcome {
@@ -87,7 +89,12 @@ export function parseCaptureOutcomes(raw: unknown): CaptureOutcome[] {
  * The rest are worth surfacing.
  */
 export function isCaptureProblem(outcome: CaptureOutcomeCode): boolean {
-  return outcome !== 'hidden' && outcome !== 'toggle_off' && outcome !== 'no_amount';
+  return (
+    outcome !== 'hidden' &&
+    outcome !== 'toggle_off' &&
+    outcome !== 'no_amount' &&
+    outcome !== 'user_ignored'
+  );
 }
 
 /** One line saying what happened, in the user's terms. */
@@ -107,6 +114,8 @@ export function describeCaptureOutcome(outcome: CaptureOutcomeCode): string {
       return "Kept — your bank marked this alert as one that can't be dismissed";
     case 'cancel_ignored':
       return 'Kept — Android refused to dismiss it';
+    case 'user_ignored':
+      return "Kept — you told Covault to ignore alerts like this one";
   }
 }
 

@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import type { Transaction, User, BudgetCategory } from '../../types';
-import { covaultNotification } from '../covaultNotification';
+import { covaultNotification, cancelCaptureNotification } from '../covaultNotification';
 import type { TransactionDetectedEvent } from '../covaultNotification';
 import { processNotificationWithAI, buildInMemoryDedupKey } from '../notificationProcessor';
 import { sendPartnerActivityNotification, sendExpenseCapturedNotification } from '../appNotifications';
@@ -210,6 +210,23 @@ export const useNotificationListener = ({
                   log.debug(
                     `[notification] Skipped: ${result.skipReason || result.rejectionReason}`,
                   );
+                  // ── Take back the capture notification ──
+                  // The native listener posted "$X at Y — captured" the moment
+                  // the bank alert arrived, before anything had decided whether
+                  // it was a purchase at all. It has to: with the app closed it
+                  // is the only part of Covault running. Now that the pipeline
+                  // has said this is not an expense, the notification is a
+                  // promise of a row that will never appear in Review — so it
+                  // goes.
+                  //
+                  // Only for 'not_transaction'. A duplicate is a re-broadcast
+                  // of a purchase that WAS captured, and its notification is
+                  // the one still standing for that purchase; cancelling on a
+                  // duplicate would silently erase the notice for a real
+                  // capture.
+                  if (result.skipReason === 'not_transaction') {
+                    void cancelCaptureNotification(event.capture_notification_id);
+                  }
                   return;
                 }
 

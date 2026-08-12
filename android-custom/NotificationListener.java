@@ -614,11 +614,20 @@ public class NotificationListener extends NotificationListenerService {
         String securedKey = securedKeyFor(sbn);
         boolean alreadySecured = wasSecured(securedKey);
 
+        // Something the user has already marked as "not a transaction". Still
+        // captured and still handed to the pipeline — see SKIP_RULES_KEY — but
+        // announced to nobody.
+        boolean ignoredByUser = matchesSkipRule(this, fullText);
+        if (ignoredByUser) {
+            Log.i(TAG, "Matches a user skip rule; capturing quietly: " + packageName);
+        }
+
         // Broadcast to the local TypeScript pipeline which will classify
         // as transaction or non-transaction — non-transactions will appear in
         // the rejected card so the user can see what was processed.
         CaptureResult result = broadcastTransaction(
-            packageName, amount, vendor, fullText, sbn.getPostTime(), fromScan, alreadySecured);
+            packageName, amount, vendor, fullText, sbn.getPostTime(), fromScan, alreadySecured,
+            ignoredByUser);
         boolean secured = result.secured();
 
         // Recorded BEFORE the dismissal below, never after. The record is what
@@ -628,7 +637,8 @@ public class NotificationListener extends NotificationListenerService {
         if (secured) rememberSecured(securedKey);
 
         maybeHideBankNotification(
-            sbn, securedKey, fromMonitored, amount, secured || alreadySecured, result);
+            sbn, securedKey, fromMonitored, amount, secured || alreadySecured, result,
+            ignoredByUser);
 
         // Home-screen widget: nudge the donut for a purchase captured while the
         // app is closed, so it doesn't sit stale until the next app launch.
@@ -707,12 +717,20 @@ public class NotificationListener extends NotificationListenerService {
         boolean fromMonitored,
         Double amount,
         boolean replaced,
-        CaptureResult result
+        CaptureResult result,
+        boolean ignoredByUser
     ) {
         if (!fromMonitored) return;           // (3)
         String app = sbn.getPackageName();
         if (amount == null) {                 // (4)
             recordOutcome(securedKey, app, null, OUTCOME_NO_AMOUNT);
+            return;
+        }
+        // Gate 2 by another name — nothing was posted in this alert's place, so
+        // there is nothing to dismiss it in favour of. Reported separately
+        // because it is the user's own instruction rather than a fault.
+        if (ignoredByUser) {
+            recordOutcome(securedKey, app, amount, OUTCOME_USER_IGNORED);
             return;
         }
         if (!replaced) {                      // (2)
@@ -832,9 +850,89 @@ public class NotificationListener extends NotificationListenerService {
 
     static final String HIDE_BANK_NOTIFICATIONS_KEY = "hide_bank_notifications";
 
+    // ── Alerts the user has told Covault to ignore ───────────────────────
+    //
+    // The user marks a capture "not a transaction" on the review page, which
+    // writes a pattern to `notification_rules` in the database. The web
+    // pipeline honours it, but the web pipeline is not what posts the "$X at Y
+    // — captured" notification: this service does, from a cold process, before
+    // anything has classified the alert. So a bank promo the user has already
+    // dismissed as noise once went on announcing itself as a capture every
+    // week, and the only cure was opening the app so the web layer could take
+    // it back down again.
+    //
+    // A copy of the rules therefore lives here, mirrored from the web layer
+    // (see setSkipRules in CovaultNotificationPlugin), and a match means no
+    // notification is posted at all.
+    //
+    // What a match does NOT do is stop the capture. The alert is still queued
+    // and still broadcast, so the web pipeline remains the authority on what
+    // reaches the ledger and the review page still shows it among the things
+    // it rejected. That asymmetry is deliberate: a badly-worded `contains` rule
+    // can then only ever cost a notification, never a purchase.
+    static final String SKIP_RULES_KEY = "notification_skip_rules";
+
+    /**
+     * Replace the mirrored copy of the user's skip rules.
+     *
+     * commit() rather than apply(): the caller is the web layer telling us the
+     * user just changed their mind, and the very next notification — which can
+     * arrive before a background flush lands — is the one they want silenced.
+     */
+    static void saveSkipRules(Context context, String rulesJson) {
+        try {
+            // Parse before storing so a malformed payload is rejected here
+            // rather than throwing on every notification afterwards.
+            String toStore = new JSONArray(rulesJson == null ? "[]" : rulesJson).toString();
+            context.getSharedPreferences("covault_prefs", 0)
+                .edit()
+                .putString(SKIP_RULES_KEY, toStore)
+                .commit();
+        } catch (Exception e) {
+            Log.w(TAG, "Could not store skip rules", e);
+        }
+    }
+
+    /**
+     * Has the user asked for alerts like this one to be ignored?
+     *
+     * Mirrors matchesRule in lib/notificationRules.ts exactly — an `exact` rule
+     * compares the trimmed text, a `contains` rule is case-insensitive. The two
+     * must agree: this decides whether a notification is posted, the web copy
+     * decides whether a row is created, and a disagreement shows up as a
+     * capture notification for something that never appears in Review.
+     */
+    static boolean matchesSkipRule(Context context, String text) {
+        if (text == null) return false;
+        String trimmed = text.trim();
+        if (trimmed.isEmpty()) return false;
+        try {
+            String stored = context.getSharedPreferences("covault_prefs", 0)
+                .getString(SKIP_RULES_KEY, "[]");
+            JSONArray rules = new JSONArray(stored);
+            String lower = trimmed.toLowerCase();
+            for (int i = 0; i < rules.length(); i++) {
+                JSONObject rule = rules.optJSONObject(i);
+                if (rule == null) continue;
+                String pattern = rule.optString("pattern", "").trim();
+                if (pattern.isEmpty()) continue;
+                if ("contains".equals(rule.optString("pattern_type", "exact"))) {
+                    if (lower.contains(pattern.toLowerCase())) return true;
+                } else if (trimmed.equals(pattern)) {
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            // An unreadable rule list means we do not know the user said ignore,
+            // and the safe reading of "don't know" is to behave as before.
+            Log.w(TAG, "Could not read skip rules", e);
+        }
+        return false;
+    }
+
     // ── What happened to each bank alert ─────────────────────────────────
     //
-    // Suppression has six ways to decline and they all look the same from the
+    // Suppression has several ways to decline and they all look the same from the
     // outside: the alert stays. Told only through logcat, "it still isn't
     // hiding them" costs a release per guess. So each bank alert's outcome is
     // written down and the settings screen reads it back in plain English.
@@ -866,6 +964,12 @@ public class NotificationListener extends NotificationListenerService {
     static final String OUTCOME_NOT_CLEARABLE = "not_clearable";
     /** Dismissal was asked for twice and the alert is still in the tray. */
     static final String OUTCOME_CANCEL_IGNORED = "cancel_ignored";
+    /**
+     * The user told Covault to ignore alerts like this one, so nothing was
+     * posted in its place — and an alert we have not replaced is one we must
+     * not remove.
+     */
+    static final String OUTCOME_USER_IGNORED = "user_ignored";
 
     private static final long DISMISS_VERIFY_DELAY_MS = 700L;
     private final android.os.Handler dismissHandler =
@@ -1274,6 +1378,55 @@ public class NotificationListener extends NotificationListenerService {
     }
 
     /**
+     * The key that decides whether two captures are the same purchase, and —
+     * via its hash — which notification id the capture is posted under.
+     *
+     * The same purchase is often announced by both the bank app and a wallet
+     * app. Collapse those so the user sees one Covault notification, not two.
+     *
+     * The key must NOT be built from the "a purchase" placeholder when the
+     * vendor is unknown. That is a constant, so every unparsed capture would
+     * land in one bucket keyed on the amount alone: two different shops
+     * charging the same price within CAPTURE_NOTIFY_WINDOW_MS would collide,
+     * and the second would hit the containsKey check in notifyCaptured and
+     * return early — reporting success while posting nothing. The user simply
+     * never hears about the second purchase.
+     *
+     * That became much more likely once extractVendor started returning null
+     * instead of a junk value like "You": junk names at least differed from
+     * each other, so they collided far less often.
+     *
+     * With no vendor to key on, fall back to the raw notification text, which
+     * is what actually distinguishes two purchases at the same price. Hashed
+     * rather than concatenated to keep the key bounded.
+     *
+     * Static and shared with captureNotificationId so the id handed to the web
+     * layer is provably the id the notification was posted under. The web layer
+     * cancels by that id when the pipeline decides the alert was not a purchase
+     * after all, and a second copy of this arithmetic drifting apart would mean
+     * cancelling a notification that isn't there while the wrong one stays.
+     */
+    private static String captureDedupKey(Double amount, String vendor, String rawText) {
+        boolean haveVendor = vendor != null && !vendor.isEmpty();
+        String dedupBasis = haveVendor
+            ? vendor.toLowerCase()
+            : "raw:" + Integer.toHexString((rawText == null ? "" : rawText).hashCode());
+        return dedupBasis + "|" + String.format(java.util.Locale.US, "%.2f", amount == null ? 0d : amount);
+    }
+
+    /**
+     * The Android notification id a capture is (or would be) posted under.
+     *
+     * Computed from the inputs alone, so it can be written into the durable
+     * queue before the post is attempted — the queue entry outlives the
+     * process, and the web layer that drains it hours later needs to be able to
+     * take the notification back down.
+     */
+    static int captureNotificationId(Double amount, String vendor, String rawText) {
+        return captureDedupKey(amount, vendor, rawText).hashCode();
+    }
+
+    /**
      * @return true if a Covault notification for this purchase is showing —
      *         either posted by this call, or posted moments ago and collapsed
      *         by the dedup below. False means the user has no Covault-side
@@ -1289,35 +1442,17 @@ public class NotificationListener extends NotificationListenerService {
             boolean haveVendor = vendor != null && !vendor.isEmpty();
             String merchant = haveVendor ? vendor : "a purchase";
 
-            // The same purchase is often announced by both the bank app and a
-            // wallet app. Collapse those so the user sees one Covault
-            // notification, not two.
-            //
-            // The key must NOT be built from `merchant` when the vendor is
-            // unknown. "a purchase" is a constant, so every unparsed capture
-            // would land in one bucket keyed on the amount alone: two different
-            // shops charging the same price within CAPTURE_NOTIFY_WINDOW_MS
-            // would collide, and the second would hit the containsKey check
-            // below and return early — reporting success while posting nothing.
-            // The user simply never hears about the second purchase.
-            //
-            // That became much more likely once extractVendor started returning
-            // null instead of a junk value like "You": junk names at least
-            // differed from each other, so they collided far less often.
-            //
-            // With no vendor to key on, fall back to the raw notification text,
-            // which is what actually distinguishes two purchases at the same
-            // price. Hashed rather than concatenated to keep the key bounded.
-            String dedupBasis = haveVendor
-                ? merchant.toLowerCase()
-                : "raw:" + Integer.toHexString((rawText == null ? "" : rawText).hashCode());
-            String dedupKey = dedupBasis + "|" + String.format(java.util.Locale.US, "%.2f", amount);
+            String dedupKey = captureDedupKey(amount, vendor, rawText);
             long now = System.currentTimeMillis();
-            java.util.Iterator<java.util.Map.Entry<String, Long>> it = recentCaptureNotifications.entrySet().iterator();
-            while (it.hasNext()) {
-                if (now - it.next().getValue() > CAPTURE_NOTIFY_WINDOW_MS) it.remove();
+            // Locked because cancelCaptureNotification prunes the same map from
+            // whichever thread the web layer's cancel arrives on.
+            synchronized (recentCaptureNotifications) {
+                java.util.Iterator<java.util.Map.Entry<String, Long>> it = recentCaptureNotifications.entrySet().iterator();
+                while (it.hasNext()) {
+                    if (now - it.next().getValue() > CAPTURE_NOTIFY_WINDOW_MS) it.remove();
+                }
+                if (recentCaptureNotifications.containsKey(dedupKey)) return true;
             }
-            if (recentCaptureNotifications.containsKey(dedupKey)) return true;
 
             android.app.NotificationManager nm =
                 (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
@@ -1344,7 +1479,9 @@ public class NotificationListener extends NotificationListenerService {
                 return false;
             }
 
-            recentCaptureNotifications.put(dedupKey, now);
+            synchronized (recentCaptureNotifications) {
+                recentCaptureNotifications.put(dedupKey, now);
+            }
 
             Intent open = getPackageManager().getLaunchIntentForPackage(getPackageName());
             android.app.PendingIntent contentIntent = null;
@@ -1378,6 +1515,46 @@ public class NotificationListener extends NotificationListenerService {
         } catch (Exception e) {
             Log.e(TAG, "Error posting capture notification", e);
             return false;
+        }
+    }
+
+    /**
+     * Take a capture notification back down.
+     *
+     * The notification is posted from here, before anything has decided whether
+     * the alert was a purchase at all — it has to be, because this service is
+     * the only part of Covault running when the app is closed, and tray
+     * suppression may only dismiss a bank's alert once ours is in its place.
+     * The classifying happens in the web layer, which may be minutes or hours
+     * behind. When it concludes the alert was not an expense, this is how the
+     * "$X at Y — captured" that was posted on spec gets withdrawn.
+     *
+     * The dedup entry goes with it. Leaving it behind would mean the next
+     * genuine purchase at the same merchant for the same amount inside
+     * CAPTURE_NOTIFY_WINDOW_MS silently posts nothing, having "already"
+     * notified — the exact failure the raw-text fallback in captureDedupKey
+     * exists to prevent.
+     */
+    static void cancelCaptureNotification(Context context, int id) {
+        try {
+            android.app.NotificationManager nm = (android.app.NotificationManager)
+                context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) nm.cancel(id);
+        } catch (Exception e) {
+            Log.w(TAG, "Could not cancel capture notification " + id, e);
+        }
+        NotificationListener live = getInstance();
+        if (live == null) return;
+        try {
+            synchronized (live.recentCaptureNotifications) {
+                java.util.Iterator<java.util.Map.Entry<String, Long>> it =
+                    live.recentCaptureNotifications.entrySet().iterator();
+                while (it.hasNext()) {
+                    if (it.next().getKey().hashCode() == id) it.remove();
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Could not clear the dedup entry for " + id, e);
         }
     }
 
@@ -1446,7 +1623,7 @@ public class NotificationListener extends NotificationListenerService {
      *         Covault notification is showing for it — the two preconditions
      *         for dismissing the bank's own notification.
      */
-    private CaptureResult broadcastTransaction(String sourceApp, Double amount, String vendor, String rawText, long postTime, boolean fromScan, boolean alreadySecured) {
+    private CaptureResult broadcastTransaction(String sourceApp, Double amount, String vendor, String rawText, long postTime, boolean fromScan, boolean alreadySecured, boolean ignoredByUser) {
         try {
             JSONObject transaction = new JSONObject();
             transaction.put("source_app", sourceApp);
@@ -1459,6 +1636,16 @@ public class NotificationListener extends NotificationListenerService {
             // instead of System.currentTimeMillis() which changes each time
             transaction.put("timestamp", postTime);
             transaction.put("from_scan", fromScan);
+            // Which notification announced this capture, so the web layer can
+            // take it back down if it turns out not to be an expense. Written
+            // before the post is attempted — and so before the queue write —
+            // because the queue is what survives the process, and a capture
+            // drained hours later still needs to be able to clear the shade.
+            // Computed from the same inputs the post uses, so it is right
+            // whether the post succeeded, was collapsed as a duplicate, or was
+            // skipped for a skip rule.
+            transaction.put("capture_notification_id",
+                captureNotificationId(amount, vendor, rawText));
 
             // Persist first, so the transaction survives even if no receiver is
             // listening right now (app closed/backgrounded).
@@ -1471,8 +1658,13 @@ public class NotificationListener extends NotificationListenerService {
             // service was restarted, the phone rebooted) is new to the user
             // however we found it, and staying silent about it also left it
             // undismissable, since suppression needs a replacement to exist.
+            //
+            // Unless the user has told us to ignore alerts like this one, in
+            // which case the whole point is that nothing is announced. Note
+            // this leaves `notified` false, which is what keeps tray
+            // suppression from dismissing an alert we never replaced.
             boolean notified = false;
-            if (!fromScan || !alreadySecured) {
+            if (!ignoredByUser && (!fromScan || !alreadySecured)) {
                 notified = notifyCaptured(amount, vendor, rawText);
             }
 
