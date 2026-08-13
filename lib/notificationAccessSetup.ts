@@ -2,29 +2,40 @@
 //
 // The state machine behind the guided "turn on capture" flow.
 //
-// Granting notification access to a sideloaded Android app is four actions
-// across three screens, and the platform signposts none of them: allow
-// restricted settings behind an unlabelled overflow menu and a fingerprint,
-// grant notification access, allow Covault to post notifications, and switch
-// capture on inside Covault. Miss any one and the symptom is identical —
-// nothing is ever captured — so the flow has to name each step, check the ones
-// that can be checked, and never depend on the user remembering the order.
+// Granting notification access to a sideloaded Android app takes three grants
+// across three screens, and the platform signposts none of them: notification
+// access itself, the restricted-settings unlock that Android 13 puts in front
+// of it, and permission for Covault to post its own notifications. Miss any
+// one and the symptom is identical — nothing is ever captured — so the flow has
+// to name each step, check the ones that can be checked, and never depend on
+// the user remembering the order.
+//
+// The order is the part that is easy to get wrong, and it is not the order the
+// steps read in. "Allow restricted settings" does not exist in the App info
+// menu until Android has blocked the app at least once: the user has to go to
+// the notification-access switch, watch it refuse to move, and only then does
+// the way to unlock it appear. So the flow leads with the attempt, and the
+// unlock step is revealed by the failure rather than offered up front — sending
+// someone to an overflow menu that does not yet contain the item they were told
+// to look for is worse than saying nothing.
 //
 // Kept free of React and of Capacitor so the ordering rules are testable
 // without a device; the component is only responsible for rendering these
 // steps and for asking the native side the three questions they read.
 
-/** The three things Android needs from the user, in the order it needs them. */
-export type SetupStepId = 'restricted' | 'listener' | 'post';
+/** The three things Android needs from the user. */
+export type SetupStepId = 'listener' | 'restricted' | 'post';
 
 /**
  * `done` — verified just now against the OS.
  * `assumed` — the user has been sent to do it, but Android exposes no way to
  *   read the result. Only ever the restricted-settings step.
  * `active` — the one to do next.
- * `waiting` — blocked behind an earlier step.
+ * `blocked` — tried, and Android refused. Only ever the notification-access
+ *   step, and it means the unlock below it is now the thing to do.
+ * `waiting` — behind an earlier step.
  */
-export type SetupStepStatus = 'done' | 'assumed' | 'active' | 'waiting';
+export type SetupStepStatus = 'done' | 'assumed' | 'active' | 'blocked' | 'waiting';
 
 export interface SetupStep {
   id: SetupStepId;
@@ -41,6 +52,13 @@ export interface AccessState {
    * not installed from a store. False leaves the step out of the flow.
    */
   restrictedApplies: boolean;
+  /**
+   * The user has been sent to the notification-access page at least once and
+   * come back without it. What makes the unlock step appear — and, on the
+   * device, what makes Android put "Allow restricted settings" in the App info
+   * menu in the first place.
+   */
+  listenerAttempted: boolean;
   /** The user has tapped through to the App info page at least once. */
   restrictedVisited: boolean;
 }
@@ -48,33 +66,35 @@ export interface AccessState {
 /**
  * The steps to show, in order, with each one's state.
  *
- * The restricted-settings step is the awkward one: there is no API that
- * reports whether the user allowed it, so it can never be confirmed directly.
- * What can be said is that notification access being granted is proof the
- * block is no longer in the way — nothing else could have let the toggle move
- * — so the step resolves the moment the next one succeeds, and until then it
- * reads as assumed rather than done.
+ * The restricted-settings step is the awkward one twice over. It cannot be
+ * offered until the user has already been refused, because until then Android
+ * does not show the menu item it asks for. And it can never be confirmed: there
+ * is no API that reports whether the unlock was granted. What can be said is
+ * that notification access being granted afterwards is proof the block is gone
+ * — nothing else could have let that switch move — so it resolves when the step
+ * above it succeeds, and reads as assumed until then.
  */
 export function buildSetupSteps(state: AccessState): SetupStep[] {
   const steps: SetupStep[] = [];
 
-  const restrictedSettled = state.listenerGranted || state.restrictedVisited;
-
-  if (state.restrictedApplies) {
-    steps.push({
-      id: 'restricted',
-      status: state.listenerGranted ? 'done' : state.restrictedVisited ? 'assumed' : 'active',
-    });
-  }
+  // Revealed by the refusal, never before it.
+  const showRestricted =
+    state.restrictedApplies && state.listenerAttempted && !state.listenerGranted;
 
   steps.push({
     id: 'listener',
     status: state.listenerGranted
       ? 'done'
-      : state.restrictedApplies && !restrictedSettled
-        ? 'waiting'
+      : // Refused, and the unlock hasn't been done yet: the step below is the
+        // way forward, not another go at this one.
+        showRestricted && !state.restrictedVisited
+        ? 'blocked'
         : 'active',
   });
+
+  if (showRestricted) {
+    steps.push({ id: 'restricted', status: state.restrictedVisited ? 'assumed' : 'active' });
+  }
 
   steps.push({
     id: 'post',
@@ -123,6 +143,7 @@ export function isCaptureWorking(state: AccessState): boolean {
 
 const SETUP_PENDING_KEY = 'covault_notification_setup_pending_v1';
 const RESTRICTED_VISITED_KEY = 'covault_restricted_settings_visited_v1';
+const LISTENER_ATTEMPTED_KEY = 'covault_listener_attempted_v1';
 
 function readFlag(key: string): boolean {
   try {
@@ -165,6 +186,23 @@ export function hasVisitedRestrictedSettings(): boolean {
 /** Called as the user is sent to the App info page. */
 export function markRestrictedSettingsVisited(): void {
   writeFlag(RESTRICTED_VISITED_KEY, true);
+}
+
+/**
+ * The user has been sent to the notification-access page at least once.
+ *
+ * Recorded on the way out rather than on the way back, because the trip
+ * frequently outlives the WebView. It is also the closest thing to a signal
+ * that Android's restricted-settings block is now unlockable: the menu item
+ * appears only after an attempt, and an attempt is exactly what this records.
+ */
+export function hasAttemptedListener(): boolean {
+  return readFlag(LISTENER_ATTEMPTED_KEY);
+}
+
+/** Called as the user is sent to the notification-access page. */
+export function markListenerAttempted(): void {
+  writeFlag(LISTENER_ATTEMPTED_KEY, true);
 }
 
 /**

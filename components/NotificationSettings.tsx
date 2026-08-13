@@ -233,8 +233,8 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
       </div>
 
       {/* The guided route through Android's permissions — including the
-          restricted-settings step that has to come first on a sideloaded
-          install, and which nothing in the platform points at. */}
+          restricted-settings unlock a sideloaded install needs, which Android
+          only offers after it has refused the switch once. */}
       {guideOpen && (
         <NotificationAccessGuide plugin={plugin} onGranted={handleGuideGranted} />
       )}

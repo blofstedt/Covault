@@ -21,6 +21,8 @@ import {
   clearSetupPending,
   hasVisitedRestrictedSettings,
   markRestrictedSettingsVisited,
+  hasAttemptedListener,
+  markListenerAttempted,
   shouldEnableAfterGrant,
   type AccessState,
   type SetupStepId,
@@ -43,6 +45,7 @@ function state(over: Partial<AccessState> = {}): AccessState {
     listenerGranted: false,
     canPostNotifications: false,
     restrictedApplies: true,
+    listenerAttempted: false,
     restrictedVisited: false,
     ...over,
   };
@@ -53,36 +56,50 @@ const statusOf = (s: AccessState, id: SetupStepId) =>
   buildSetupSteps(s).find((step) => step.id === id)?.status;
 
 describe('buildSetupSteps', () => {
-  it('asks for restricted settings first — the switch below it is dead until then', () => {
-    expect(ids(state())).toEqual(['restricted', 'listener', 'post']);
-    expect(statusOf(state(), 'restricted')).toBe('active');
-    expect(statusOf(state(), 'listener')).toBe('waiting');
+  it('leads with the attempt, and does not mention the unlock yet', () => {
+    // "Allow restricted settings" is absent from the App info menu until
+    // Android has refused the app once. Offering the unlock first sends the
+    // user to look for something that is not there.
+    expect(ids(state())).toEqual(['listener', 'post']);
+    expect(statusOf(state(), 'listener')).toBe('active');
     expect(statusOf(state(), 'post')).toBe('waiting');
   });
 
-  it('leaves the restricted step out where the block does not apply', () => {
-    // Android 12 and below, or installed from a store. Sending the user after
-    // a menu item that isn't there would be worse than saying nothing.
-    expect(ids(state({ restrictedApplies: false }))).toEqual(['listener', 'post']);
-    expect(statusOf(state({ restrictedApplies: false }), 'listener')).toBe('active');
+  it('reveals the unlock once the switch has been tried and refused', () => {
+    const s = state({ listenerAttempted: true });
+    expect(ids(s)).toEqual(['listener', 'restricted', 'post']);
+    expect(statusOf(s, 'restricted')).toBe('active');
+    // And the refused step stops asking to be pressed again — the same dead
+    // switch is not the way forward.
+    expect(statusOf(s, 'listener')).toBe('blocked');
   });
 
-  it('moves on once the user has been sent to the App info page', () => {
-    const s = state({ restrictedVisited: true });
+  it('never shows the unlock where the block does not apply', () => {
+    // Android 12 and below, or installed from a store: the attempt failed for
+    // some other reason and this menu item does not exist at all.
+    const s = state({ restrictedApplies: false, listenerAttempted: true });
+    expect(ids(s)).toEqual(['listener', 'post']);
+    expect(statusOf(s, 'listener')).toBe('active');
+  });
+
+  it('hands the user back to the switch after the unlock', () => {
+    const s = state({ listenerAttempted: true, restrictedVisited: true });
     expect(statusOf(s, 'restricted')).toBe('assumed');
     expect(statusOf(s, 'listener')).toBe('active');
   });
 
-  it('never claims the restricted step is confirmed on its own', () => {
+  it('never claims the unlock is confirmed on its own', () => {
     // Android exposes no read for it. "assumed" is what keeps the way back
-    // on screen for a user whose next toggle still won't move.
-    expect(statusOf(state({ restrictedVisited: true }), 'restricted')).not.toBe('done');
+    // on screen for a user whose switch still won't move.
+    const s = state({ listenerAttempted: true, restrictedVisited: true });
+    expect(statusOf(s, 'restricted')).not.toBe('done');
   });
 
-  it('treats notification access being granted as proof the block is gone', () => {
-    // Nothing else could have let that switch move.
-    const s = state({ listenerGranted: true, restrictedVisited: false });
-    expect(statusOf(s, 'restricted')).toBe('done');
+  it('drops the unlock once access is granted', () => {
+    // Nothing else could have let that switch move, so there is nothing left
+    // to say about it.
+    const s = state({ listenerGranted: true, listenerAttempted: true });
+    expect(ids(s)).toEqual(['listener', 'post']);
     expect(statusOf(s, 'listener')).toBe('done');
     expect(statusOf(s, 'post')).toBe('active');
   });
@@ -188,5 +205,14 @@ describe('setup flags', () => {
     expect(hasVisitedRestrictedSettings()).toBe(false);
     markRestrictedSettingsVisited();
     expect(hasVisitedRestrictedSettings()).toBe(true);
+  });
+
+  it('remembers that the switch was tried', () => {
+    // The flag the unlock step is revealed by. It has to survive the trip for
+    // the same reason, or the user comes back to a card that has forgotten
+    // they were ever refused.
+    expect(hasAttemptedListener()).toBe(false);
+    markListenerAttempted();
+    expect(hasAttemptedListener()).toBe(true);
   });
 });

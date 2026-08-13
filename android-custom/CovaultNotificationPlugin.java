@@ -204,6 +204,10 @@ public class CovaultNotificationPlugin extends Plugin {
      * to move, with the way through hidden behind an unlabelled ⋮ and a
      * fingerprint. Nothing in the platform will lead the user there, so this is
      * the only way the app can.
+     *
+     * Order matters: the menu item does not exist until Android has refused the
+     * app once, so this is only ever offered after an attempt at the
+     * notification-access switch, never before it.
      */
     @PluginMethod
     public void openAppInfo(PluginCall call) {

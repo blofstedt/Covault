@@ -367,7 +367,8 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
           This used to be a collapsed list of written directions, and it left
           out the step nobody can guess: on Android 13+ a sideloaded app's
           notification-access switch is dead until "Allow restricted settings"
-          is granted from an unlabelled overflow menu behind a fingerprint.
+          is granted from an unlabelled overflow menu behind a fingerprint —
+          a menu item that only appears once the switch has been refused.
           Every step here is a button that opens the exact page it names. */}
       {guideOpen && (
         <NotificationAccessGuide
