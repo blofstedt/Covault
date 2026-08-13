@@ -29,6 +29,13 @@ interface AITransactionsEnteredCardProps {
   refundCount?: number;
   needsReviewIds?: Set<string>;
   onDeleteTransaction?: (id: string) => Promise<void> | void;
+  /**
+   * Delete every row shown here, outright. Handed the rows themselves rather
+   * than called bare, so what gets deleted is exactly what the user was looking
+   * at when they tapped — not whatever the parent's copy of the list says a
+   * reload later.
+   */
+  onDeleteAll?: (txs: Transaction[]) => void;
   onVendorRenamed?: (tx: Transaction, newVendor: string) => Promise<void> | void;
   onMarkNotTransaction?: (tx: Transaction, ruleType: NotATxRuleType) => Promise<void> | void;
   userId?: string;
@@ -69,6 +76,7 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
   refundCount = 0,
   needsReviewIds = EMPTY_IDS,
   onDeleteTransaction,
+  onDeleteAll,
   onVendorRenamed,
   onMarkNotTransaction,
   userId,
@@ -174,6 +182,37 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
       onScan={onRefresh}
       isScanning={isRefreshing}
       scanLabel="Scan for new transactions"
+      headerAction={
+        onDeleteAll && nonRefunds.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => onDeleteAll(nonRefunds)}
+            aria-label={`Delete all ${nonRefunds.length} captured transactions`}
+            title="Delete all captured transactions"
+            // Sized and shaped like the scan button beside it — same square
+            // target, same radius, muted until touched — so the header reads as
+            // one row of controls rather than a warning bolted onto it. The
+            // colour only turns red on press, where it means something.
+            className="shrink-0 inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded-xl text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 active:scale-95 transition-all"
+          >
+            <svg
+              className="w-[18px] h-[18px]"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-.867 12.142A2 2 0 0116.138 20H7.862a2 2 0 01-1.995-1.858L5 6" />
+              <path d="M10 11v6M14 11v6" />
+              <path d="M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2" />
+            </svg>
+          </button>
+        ) : undefined
+      }
     >
       {isExpanded && (
         <div className="space-y-3">

@@ -8,6 +8,7 @@ import ActiveBanksCard from './transaction_parsing/ActiveBanksCard';
 import AITransactionsEnteredCard from './transaction_parsing/AITransactionsEnteredCard';
 import SetupInfoCard from './transaction_parsing/SetupInfoCard';
 import ClearConfirmModal from './transaction_parsing/ClearConfirmModal';
+import DeleteAllConfirmModal from './transaction_parsing/DeleteAllConfirmModal';
 import PageShell from './ui/PageShell';
 import LearnedRulesCard from './transaction_parsing/LearnedRulesCard';
 import { useNotificationRules } from './transaction_parsing/useNotificationRules';
@@ -87,6 +88,10 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
 }) => {
   // ── Clear modal state ──
   const [clearTarget, setClearTarget] = useState<'entered' | null>(null);
+  // The rows the trash icon was tapped on. Held as the rows themselves, not a
+  // flag: a scan or a reload can change the list while the confirmation is open,
+  // and the user agreed to delete what they were looking at.
+  const [deleteTargets, setDeleteTargets] = useState<Transaction[] | null>(null);
   // All sections always expanded per user request
   // Only the review queue starts open. The other two are reference/settings
   // content and previously pushed the actual task below the fold.
@@ -558,6 +563,32 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     await onReloadTransactions?.(userId);
   }, [userId, aiTransactions, onClearEntered, onReloadTransactions]);
 
+  // ── Delete every captured row, for real ──
+  //
+  // Deliberately NOT routed through the per-row delete handler. That one plans a
+  // recurring delete — deleting one occurrence of a series takes every later one
+  // with it and stops the ones before — which is right when the user picks a row
+  // out of their history, and wrong here: a captured row often carries a
+  // recurrence the parser read out of the bank's own wording ("recurring
+  // payment"), so a single tap on the trash could take out charges that are not
+  // in this list and that the user never saw. One delete, exactly the rows they
+  // were shown.
+  const handleDeleteAllEntered = useCallback(async (rows: Transaction[]) => {
+    if (!userId || rows.length === 0) return;
+    const idList = rows.map((tx) => `"${String(tx.id).replace(/"/g, '')}"`).join(',');
+    try {
+      const res = await restFetch(`/transactions?id=in.(${idList})`, { method: 'DELETE' });
+      if (!res.ok) {
+        log.error('[TransactionParsing] Error deleting captured transactions:', res.status);
+        return;
+      }
+    } catch (err) {
+      log.error('[TransactionParsing] Error deleting captured transactions:', err);
+      return;
+    }
+    await onReloadTransactions?.(userId);
+  }, [userId, onReloadTransactions]);
+
   // ── Refresh handler ──
   const followUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => {
@@ -648,6 +679,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               refundCount={hiddenRefundCount}
               needsReviewIds={needsReviewIds}
               onDeleteTransaction={onDeleteTransaction}
+              onDeleteAll={(rows) => setDeleteTargets(rows)}
               onVendorRenamed={handleVendorRenamed}
               onMarkNotTransaction={handleMarkNotTransaction}
               userId={userId}
@@ -710,6 +742,19 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
             setClearTarget(null);
           }}
           onCancel={() => setClearTarget(null)}
+        />
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteTargets && deleteTargets.length > 0 && (
+        <DeleteAllConfirmModal
+          count={deleteTargets.length}
+          onConfirm={async () => {
+            const rows = deleteTargets;
+            setDeleteTargets(null);
+            await handleDeleteAllEntered(rows);
+          }}
+          onCancel={() => setDeleteTargets(null)}
         />
       )}
     </PageShell>
