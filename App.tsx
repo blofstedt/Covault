@@ -11,6 +11,7 @@ import { supabase } from './lib/supabase';
 import { useAuthState, AuthStatus } from './lib/hooks/useAuthState';
 import { useDeepLinks } from './lib/hooks/useDeepLinks';
 import { useNotificationListener } from './lib/hooks/useNotificationListener';
+import { useNotificationSetupCompletion } from './lib/hooks/useNotificationSetupCompletion';
 import { covaultNotification, autoDetectAndSaveMonitoredApps } from './lib/covaultNotification';
 import { loadBankingAppsFromDB } from './lib/bankingApps';
 import { useAppTheme } from './lib/hooks/useAppTheme';
@@ -195,6 +196,23 @@ const App: React.FC = () => {
       await loadTransactions(appState.user.id);
     }
   }, [appState.user?.id, loadTransactions]);
+
+  // Notices notification access being granted while the user was away in
+  // Android's settings, and switches capture on. Has to live here rather than
+  // on the settings screen: the WebView is routinely destroyed during that
+  // trip, so the screen the user left from is often gone by the time they
+  // return.
+  const handleSetupGranted = useCallback(() => {
+    setAppState(prev => {
+      if (prev.settings.notificationsEnabled) return prev;
+      return { ...prev, settings: { ...prev.settings, notificationsEnabled: true } };
+    });
+  }, []);
+
+  useNotificationSetupCompletion({
+    enabled: appState.settings.notificationsEnabled,
+    onEnable: handleSetupGranted,
+  });
 
   useNotificationListener({
     user: appState.user,

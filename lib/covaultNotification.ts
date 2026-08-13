@@ -136,6 +136,22 @@ export interface CovaultNotificationPlugin {
   openNotificationSettings(): Promise<void>;
 
   /**
+   * Open Covault's App info page — the one with the overflow menu holding
+   * "Allow restricted settings".
+   *
+   * Prefer the `openAppInfo` helper below.
+   */
+  openAppInfo(): Promise<void>;
+
+  /**
+   * Whether Android's restricted-settings block applies to this install, and
+   * so whether the setup flow needs to mention it.
+   *
+   * Prefer the `restrictedSettingsApply` helper below.
+   */
+  getRestrictedSettingsInfo(): Promise<{ applies: boolean; installer: string }>;
+
+  /**
    * What happened to each of the last few bank alerts, as a JSON array string.
    *
    * Prefer the `getCaptureDiagnostics` helper below, which parses and
@@ -327,6 +343,47 @@ export async function openNotificationSettings(
     await plugin.openNotificationSettings();
   } catch (e) {
     log.warn('[covaultNotification] Could not open notification settings:', e);
+  }
+}
+
+/**
+ * Send the user to Covault's App info page.
+ *
+ * This is the screen with the ⋮ menu that holds "Allow restricted settings" —
+ * the gate Android 13 puts in front of notification access for any app that
+ * didn't come from a store. Nothing on the notification-access page itself
+ * says so; the toggle simply refuses to move.
+ */
+export async function openAppInfo(
+  plugin: CovaultNotificationPlugin | null = covaultNotification,
+): Promise<void> {
+  if (!plugin) return;
+  try {
+    await plugin.openAppInfo();
+  } catch (e) {
+    log.warn('[covaultNotification] Could not open app info:', e);
+  }
+}
+
+/**
+ * Whether the setup flow should include the restricted-settings step.
+ *
+ * False on web, on Android 12 and below, when the app came from a store, and
+ * on an APK built before the native method existed. That last one is the
+ * reason for the default: an older build can't answer, and a step the user
+ * doesn't need is a smaller failure than a step they can't find, so it stays
+ * false only where the answer is a real "no".
+ */
+export async function restrictedSettingsApply(
+  plugin: CovaultNotificationPlugin | null = covaultNotification,
+): Promise<boolean> {
+  if (!plugin) return false;
+  try {
+    const { applies } = await plugin.getRestrictedSettingsInfo();
+    return applies === true;
+  } catch (e) {
+    log.debug('[covaultNotification] getRestrictedSettingsInfo unavailable:', e);
+    return false;
   }
 }
 

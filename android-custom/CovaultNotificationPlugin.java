@@ -1,6 +1,7 @@
 package com.covault.app;
 
 import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -142,13 +143,119 @@ public class CovaultNotificationPlugin extends Plugin {
         }
     }
 
+    /** Installers that mean "came from a store", and so escape restricted settings. */
+    private static boolean isStoreInstaller(String installer) {
+        if (installer == null) return false;
+        return installer.equals("com.android.vending")
+            || installer.equals("com.google.android.feedback")
+            || installer.equals("com.sec.android.app.samsungapps")
+            || installer.equals("com.amazon.venezia");
+    }
+
+    /**
+     * Send the user to the page where notification access is granted.
+     *
+     * Two routes. Android 11 added a deep link to one app's own notification
+     * access page, which lands on the single toggle that matters; without it
+     * the only route is the device-wide list, where Covault has to be found
+     * among every installed app. The list is kept as the fallback because the
+     * deep link is optional for OEMs and a few skins don't implement it.
+     */
     @PluginMethod
     public void requestAccess(PluginCall call) {
-        // Always open the notification listener settings page
-        // This allows the user to enable "Notification read, reply & control" for Covault
-        Intent intent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
-        getActivity().startActivity(intent);
+        boolean opened = false;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                ComponentName listener =
+                    new ComponentName(getContext(), NotificationListener.class);
+                Intent intent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS);
+                intent.putExtra(
+                    Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
+                    listener.flattenToString()
+                );
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(intent);
+                opened = true;
+            } catch (Exception e) {
+                Log.w(TAG, "requestAccess: per-app listener page unavailable", e);
+            }
+        }
+
+        if (!opened) {
+            try {
+                Intent intent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(intent);
+            } catch (Exception e) {
+                Log.w(TAG, "requestAccess: could not open notification listener settings", e);
+            }
+        }
+
         call.resolve();
+    }
+
+    /**
+     * Open Covault's App info page — the screen carrying the overflow menu with
+     * "Allow restricted settings".
+     *
+     * Android 13 blocks notification access for anything not installed by a
+     * store, and Covault never is. The block shows up as a toggle that refuses
+     * to move, with the way through hidden behind an unlabelled ⋮ and a
+     * fingerprint. Nothing in the platform will lead the user there, so this is
+     * the only way the app can.
+     */
+    @PluginMethod
+    public void openAppInfo(PluginCall call) {
+        try {
+            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            intent.setData(Uri.fromParts("package", getContext().getPackageName(), null));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+        } catch (Exception e) {
+            Log.w(TAG, "Could not open app info", e);
+        }
+        call.resolve();
+    }
+
+    /**
+     * Whether the restricted-settings block is likely to be in the user's way.
+     *
+     * Android exposes no way to read whether the user has already allowed
+     * restricted settings for this app, so this answers the question it can:
+     * does the rule apply at all. Android 13 and up, installed from anywhere
+     * other than a store. False means the step can be left out of the setup
+     * flow entirely rather than sending the user after something that was never
+     * blocking them.
+     */
+    @PluginMethod
+    public void getRestrictedSettingsInfo(PluginCall call) {
+        boolean applies = false;
+        String installer = null;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            try {
+                PackageManager pm = getContext().getPackageManager();
+                String pkg = getContext().getPackageName();
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    installer = pm.getInstallSourceInfo(pkg).getInstallingPackageName();
+                } else {
+                    installer = pm.getInstallerPackageName(pkg);
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "getRestrictedSettingsInfo: install source unavailable", e);
+            }
+            // Unknown installer counts as "applies". Being told about a step
+            // that turns out to be unnecessary costs one tap; not being told
+            // about it leaves the user stuck at a toggle that won't move.
+            applies = !isStoreInstaller(installer);
+        }
+
+        JSObject ret = new JSObject();
+        ret.put("applies", applies);
+        ret.put("installer", installer == null ? "" : installer);
+        Log.i(TAG, "getRestrictedSettingsInfo: applies=" + applies + " installer=" + installer);
+        call.resolve(ret);
     }
 
     @PluginMethod

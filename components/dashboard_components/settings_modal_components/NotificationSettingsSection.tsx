@@ -1,10 +1,12 @@
 // components/dashboard_components/settings_modal_components/NotificationSettingsSection.tsx
 import { log } from '../../../lib/log';
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import SettingsCard from '../../ui/SettingsCard';
 import SectionHeader from '../../ui/SectionHeader';
 import ToggleSwitch from '../../ui/ToggleSwitch';
+import NotificationAccessGuide from '../../NotificationAccessGuide';
+import { clearSetupPending, markSetupPending } from '../../../lib/notificationAccessSetup';
 import { getBankingApps } from '../../../lib/bankingApps';
 import type { CovaultNotificationPlugin } from '../../../lib/covaultNotification';
 import {
@@ -146,58 +148,52 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
     return () => document.removeEventListener('resume', onResume);
   }, [isNative, checkStatus]);
 
-  // Poll after requesting access
-  const pollCancelledRef = useRef(false);
-  const pollForPermission = useCallback(async () => {
-    if (!plugin) return;
-    pollCancelledRef.current = false;
-    for (let i = 0; i < 20; i++) {
-      if (pollCancelledRef.current) return;
-      await new Promise((r) => setTimeout(r, 2000));
-      if (pollCancelledRef.current) return;
-      try {
-        const { enabled: granted } = await plugin.isEnabled();
-        if (granted) {
-          if (pollCancelledRef.current) return;
-          setPermissionGranted(true);
-          onToggle(true);
-          // Reading other apps' notifications and posting our own are two
-          // different permissions, and only the first one was ever asked for.
-          // Capture posts a notification of its own, and hiding the bank's
-          // alert depends on that notification existing — so ask for it at the
-          // moment capture is switched on rather than leaving it to whichever
-          // budget alert happens to fire first.
-          await requestPostNotifications();
-          checkStatus();
-          return;
-        }
-      } catch {
-        // ignore
-      }
-    }
-  }, [plugin, checkStatus]);
-
+  // Show the setup steps whenever capture is meant to be on and Android hasn't
+  // granted access. Latched: once open it stays for as long as this screen is,
+  // so the card can show the user finishing rather than vanishing mid-flow.
+  const [guideOpen, setGuideOpen] = useState(false);
   useEffect(() => {
-    return () => { pollCancelledRef.current = true; };
-  }, []);
+    if (!loading && enabled && !permissionGranted) setGuideOpen(true);
+  }, [loading, enabled, permissionGranted]);
+
+  /** Access has just been granted — capture is on, and the picker can load. */
+  const handleGuideGranted = useCallback(() => {
+    setPermissionGranted(true);
+    onToggle(true);
+    checkStatus();
+  }, [onToggle, checkStatus]);
+
+  const handleGuideComplete = useCallback(() => {
+    clearSetupPending();
+    checkStatus();
+  }, [checkStatus]);
 
   const handleToggle = async () => {
     if (!isNative || !plugin) return;
 
     if (enabled) {
-      // Logical off (we still can't revoke OS permission from here)
+      // Logical off — the OS permission can't be revoked from here, and a
+      // pending setup has to be cancelled with it or the next launch would
+      // switch capture straight back on.
+      clearSetupPending();
+      setGuideOpen(false);
       onToggle(false);
       return;
     }
 
-    // Turning on — open Android notification listener settings
-    // Don't set enabled yet; wait for permission to be confirmed
-    try {
-      await plugin.requestAccess();
-      pollForPermission();
-    } catch (e) {
-      log.error('[NotificationSettingsSection] handleToggle error:', e);
+    if (permissionGranted) {
+      // Nothing to grant; the switch is the whole action.
+      onToggle(true);
+      return;
     }
+
+    // Android has three things to ask for and they have to be done in order,
+    // so the toggle opens the steps rather than dropping the user on a system
+    // page whose switch may refuse to move. Marked pending first: the trip
+    // through Settings often outlives this WebView, and the flag is what tells
+    // the next launch to finish the job.
+    markSetupPending();
+    setGuideOpen(true);
   };
 
   const toggleApp = async (pkg: string) => {
@@ -353,20 +349,6 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
               </span>
             )}
 
-            {!permissionGranted && enabled && (
-              <button
-                type="button"
-                onClick={() => {
-                  // Re-open the system settings page so the user can finish
-                  // granting the special "Notification access" permission.
-                  plugin?.requestAccess();
-                }}
-                className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 border border-amber-300 dark:border-amber-700 text-[10px] font-semibold text-amber-800 dark:text-amber-200 active:scale-[0.97] transition-transform"
-              >
-                Open settings →
-              </button>
-            )}
-
             {!enabled && installedBankApps.length > 0 && (
               <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700">
                 <span className="w-2 h-2 rounded-full bg-blue-500 mr-2" />
@@ -381,28 +363,18 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
         <ToggleSwitch enabled={enabled} onToggle={handleToggle} />
       </div>
 
-      {/* Step-by-step help when the special "Notification access" permission
-          isn't granted yet. Android routes this through Settings > Apps >
-          Special app access, which is buried and easy to miss — so we
-          surface the exact steps in-app. */}
-      {isNative && !permissionGranted && (
-        <details
-          className="rounded-2xl border border-amber-200/70 dark:border-amber-800/40 bg-amber-50/60 dark:bg-amber-950/20 px-3 py-2"
-          data-testid="notification-permission-help"
-        >
-          <summary className="cursor-pointer text-[11px] font-semibold text-amber-800 dark:text-amber-300 select-none">
-            How to grant notification access
-          </summary>
-          <ol className="mt-2 space-y-1.5 text-[10px] leading-relaxed text-amber-900/80 dark:text-amber-200/80 list-decimal pl-4">
-            <li>Tap <span className="font-semibold">Open settings</span> above (or the toggle) — Android opens <span className="font-semibold">Settings &gt; Apps &gt; Special app access &gt; Notification access</span>.</li>
-            <li>Find <span className="font-semibold">Covault</span> in the list and tap it.</li>
-            <li>Toggle <span className="font-semibold">Allow notification access</span> on, then confirm <span className="font-semibold">Allow</span> on the system dialog.</li>
-            <li>Come back to Covault — the status pill will turn green automatically (no need to reopen this screen).</li>
-          </ol>
-          <p className="mt-2 text-[10px] text-amber-700/80 dark:text-amber-300/70">
-            This is a one-time setup. The system requirement exists so apps can't read your notifications without your explicit consent.
-          </p>
-        </details>
+      {/* The guided route through Android's permissions.
+          This used to be a collapsed list of written directions, and it left
+          out the step nobody can guess: on Android 13+ a sideloaded app's
+          notification-access switch is dead until "Allow restricted settings"
+          is granted from an unlabelled overflow menu behind a fingerprint.
+          Every step here is a button that opens the exact page it names. */}
+      {guideOpen && (
+        <NotificationAccessGuide
+          plugin={plugin}
+          onGranted={handleGuideGranted}
+          onComplete={handleGuideComplete}
+        />
       )}
 
       {/* Auto-accept known vendors */}

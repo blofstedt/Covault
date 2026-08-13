@@ -1,8 +1,10 @@
 import { log } from '../lib/log';
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import SettingsCard from './ui/SettingsCard';
 import ToggleSwitch from './ui/ToggleSwitch';
+import NotificationAccessGuide from './NotificationAccessGuide';
+import { clearSetupPending, markSetupPending } from '../lib/notificationAccessSetup';
 import {
   getBankingApps,
   suggestUnknownBankApps,
@@ -100,48 +102,41 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
     return () => document.removeEventListener('resume', onResume);
   }, [isNative, checkStatus]);
 
-  // Also poll briefly after requesting access (covers cases where resume doesn't fire)
-  const pollCancelledRef = useRef(false);
-  const pollForPermission = useCallback(async () => {
-    if (!plugin) return;
-    pollCancelledRef.current = false;
-    for (let i = 0; i < 20; i++) {
-      if (pollCancelledRef.current) return;
-      await new Promise(r => setTimeout(r, 2000));
-      if (pollCancelledRef.current) return;
-      try {
-        const { enabled: granted } = await plugin.isEnabled();
-        if (granted) {
-          if (pollCancelledRef.current) return;
-          setPermissionGranted(true);
-          checkStatus();
-          return;
-        }
-      } catch { /* ignore */ }
-    }
-  }, [plugin, checkStatus]);
-
+  // The setup steps, shown whenever capture is meant to be on and Android
+  // hasn't granted access. Latched so the card can show the user finishing
+  // rather than disappearing part-way through.
+  const [guideOpen, setGuideOpen] = useState(false);
   useEffect(() => {
-    return () => { pollCancelledRef.current = true; };
-  }, []);
+    if (!loading && enabled && !permissionGranted) setGuideOpen(true);
+  }, [loading, enabled, permissionGranted]);
+
+  const handleGuideGranted = useCallback(() => {
+    setPermissionGranted(true);
+    onToggle(true);
+    checkStatus();
+  }, [onToggle, checkStatus]);
 
   const handleToggle = async () => {
     if (!isNative || !plugin) return;
 
     if (enabled) {
+      // A pending setup is cancelled with the switch, or the next launch would
+      // turn capture back on the moment Android reported access granted.
+      clearSetupPending();
+      setGuideOpen(false);
       onToggle(false);
       return;
     }
 
-    // Turning on — immediately open the real Android notification listener settings
-    onToggle(true);
-    try {
-      await plugin.requestAccess();
-      // Poll for permission after user returns from settings
-      pollForPermission();
-    } catch (e) {
-      log.error('[NotificationSettings] handleToggle error:', e);
+    if (permissionGranted) {
+      onToggle(true);
+      return;
     }
+
+    // Three permissions in a fixed order, so the toggle opens the steps rather
+    // than dropping the user on a system page whose switch may refuse to move.
+    markSetupPending();
+    setGuideOpen(true);
   };
 
   const toggleApp = async (pkg: string) => {
@@ -236,6 +231,13 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({ enabled, on
         </div>
         <ToggleSwitch enabled={enabled} onToggle={handleToggle} />
       </div>
+
+      {/* The guided route through Android's permissions — including the
+          restricted-settings step that has to come first on a sideloaded
+          install, and which nothing in the platform points at. */}
+      {guideOpen && (
+        <NotificationAccessGuide plugin={plugin} onGranted={handleGuideGranted} />
+      )}
 
       {/* Banking app picker */}
       {enabled && permissionGranted && (
