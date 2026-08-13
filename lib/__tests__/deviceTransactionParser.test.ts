@@ -209,4 +209,29 @@ describe('deviceTransactionParser', () => {
     expect(result.vendorAliases).toEqual([]);
   });
 
+  // ── A bracketed aside is never the merchant ──────────────────────────────
+  //
+  // The all-caps fallback picks the longest run of capitals, and a qualifier is
+  // routinely longer than the name it qualifies. "FIZZ (TX. INCL.)" therefore
+  // came out as the vendor "Tx. Incl" — which no learned rule, no recurring row
+  // and no duplicate check can recognise as Fizz, so a subscription already on
+  // the books was captured a second time.
+
+  it('reads the merchant, not the parenthetical qualifier next to it', () => {
+    const result = parseNotificationText(
+      'FIZZ (TX. INCL.) You made a recurring payment for $26.20 with your credit card.',
+    );
+    expect(result.isOutgoing).toBe(true);
+    expect(result.amount).toBe(26.20);
+    expect(result.vendorDisplay).toBe('Fizz');
+    expect(result.recurrence).toBe('Monthly');
+  });
+
+  it('ignores a bracketed aside mid-sentence too', () => {
+    const result = parseNotificationText(
+      'You spent $41.95 at PUBLIC MOBILE (PRE-AUTHORIZED PAYMENT) with your credit card.',
+    );
+    expect(result.vendorDisplay).toBe('Public Mobile');
+  });
+
 });

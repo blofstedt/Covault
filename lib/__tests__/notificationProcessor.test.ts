@@ -1350,3 +1350,94 @@ describe('Rule lookup across a large rule set', () => {
     expect(result.categoryName).toBe('Groceries');
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// A SUBSCRIPTION ALREADY ON THE BOOKS IS NOT CAPTURED AGAIN
+// ═══════════════════════════════════════════════════════════════════
+//
+// The user's Fizz bill is a recurring charge Covault already records. The bank
+// then announces the same charge, and the capture landed in Review as a
+// separate transaction asking to be categorised — one bill, two rows, and the
+// month over by $26.20.
+//
+// The pipeline has a guard for exactly this (step 5b), and it was not the guard
+// that failed: the vendor never got as far as being compared. "FIZZ (TX. INCL.)"
+// extracted as the merchant "Tx. Incl", which resembles nothing on the books.
+
+describe('A recurring charge the bank announces', () => {
+  const SERVICES = [
+    { id: 'cat-services', name: 'Services' },
+    { id: 'cat-other', name: 'Other' },
+  ];
+
+  const RAW = 'FIZZ (TX. INCL.) You made a recurring payment for $26.20 with your credit card.';
+
+  function chainReturning(rows: any[]) {
+    const chain: any = {};
+    for (const m of [
+      'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'ilike', 'is', 'in', 'not',
+      'or', 'match', 'filter', 'order', 'limit', 'single', 'maybeSingle',
+    ]) {
+      chain[m] = vi.fn().mockReturnThis();
+    }
+    chain.then = (resolve: any) => resolve({ data: rows, error: null });
+    return chain;
+  }
+
+  async function capture(existingTransactions: any[]) {
+    const txChain = getChain('transactions');
+    txChain.select = vi.fn(() => chainReturning(existingTransactions));
+    txChain.insert = vi.fn().mockResolvedValue({ error: null });
+    getChain('overrides').select = vi.fn(() => chainReturning([]));
+    getChain('pending_transactions').select = vi.fn(() => chainReturning([]));
+
+    const result = await processNotificationWithAI(
+      'user-1',
+      makeInput({ rawNotification: RAW, notificationTimestamp: Date.now() }),
+      SERVICES,
+    );
+    return { result, txChain };
+  }
+
+  it('does not add a second row when the subscription is already recorded', async () => {
+    const { result, txChain } = await capture([{
+      id: 'recurring-fizz',
+      vendor: 'Fizz',
+      amount: 26.20,
+      date: getLocalToday(),
+      recur: 'Monthly',
+      source: 'executor',
+    }]);
+
+    expect(txChain.insert).not.toHaveBeenCalled();
+    expect(result.processed).toBe(true);
+  });
+
+  it('recognises it even when the recurring row was posted a couple of days early', async () => {
+    // A due date is a guess; the bank settles when it settles. Two days apart
+    // for the identical amount at the same merchant is one bill, not two.
+    const twoDaysAgo = toLocalIsoDay(
+      new Date(parseLocalDate(getLocalToday()).getTime() - 2 * 86_400_000),
+    );
+    const { result, txChain } = await capture([{
+      id: 'recurring-fizz',
+      vendor: 'Fizz',
+      amount: 26.20,
+      date: twoDaysAgo,
+      recur: 'Monthly',
+      source: 'executor',
+    }]);
+
+    expect(txChain.insert).not.toHaveBeenCalled();
+    expect(result.skipReason).toBe('duplicate_recurring');
+    expect(result.softDuplicateOf?.id).toBe('recurring-fizz');
+  });
+
+  it('still captures it when nothing like it is on the books', async () => {
+    const { result, txChain } = await capture([]);
+    expect(txChain.insert).toHaveBeenCalled();
+    const row = txChain.insert.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(row?.vendor).toBe('Fizz');
+    expect(result.skipReason).toBeUndefined();
+  });
+});

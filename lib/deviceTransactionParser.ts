@@ -241,6 +241,23 @@ function extractVendorRaw(text: string, isRefund?: boolean): string {
   // processorPrefixedNames and ParsedNotification.vendorAliases.
   t = t.replace(processorPrefixRegex(), '');
 
+  // Drop parenthetical qualifiers before anything tries to read a merchant out
+  // of this text. A bracketed aside in a bank alert is a note ABOUT the charge —
+  // "(TX. INCL.)", "(AUTO)", "(ONLINE)", "(PRE-AUTH)" — never the merchant.
+  //
+  // The all-caps fallback at the bottom of this function picks the LONGEST run
+  // of capitals, and a qualifier is routinely longer than the name it qualifies.
+  // "FIZZ (TX. INCL.) You made a recurring payment for $26.20" therefore
+  // extracted the vendor "Tx. Incl", which is wrong in a way that costs money
+  // rather than looks: the subscription was already on the books as a recurring
+  // Fizz charge, and nothing downstream can recognise "Tx. Incl" as Fizz, so the
+  // capture bypassed the recurring-duplicate guard and the month counted the
+  // same $26.20 twice.
+  //
+  // normalizeVendorForDedup already strips these for matching, so removing them
+  // here makes extraction agree with comparison instead of contradicting it.
+  t = t.replace(/\s*\([^)]*\)\s*/g, ' ');
+
   // ── Refund-specific vendor extraction ─────────────────────────────────────
   // Handles patterns like:
   //   "$57.74 will be refunded to your credit card from AMZN MKTP CA. Your refund may take..."
