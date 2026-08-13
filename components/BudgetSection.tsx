@@ -8,7 +8,8 @@ import { getBudgetColor } from '../lib/budgetColors';
 import { getLocalToday } from '../lib/dateUtils';
 import { compareByDateOccurred, findTodayIndex, transactionDay } from '../lib/transactionOrdering';
 import { isRefund, matchRefundsToExpenses } from '../lib/refundMatching';
-import { useSpinHighlight, idsForTodayJump } from '../lib/hooks/useSpinHighlight';
+import { useSpinHighlight, idsForDay } from '../lib/hooks/useSpinHighlight';
+import NoticeModal from './ui/NoticeModal';
 
 interface ExtendedBudgetCategory extends BudgetCategory {
   externalDeduction?: number;
@@ -225,18 +226,34 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
     return () => { for (const animation of running) animation.cancel(); };
   }, [revealed]);
 
+  // Raised when "Today" is tapped on a day this budget has nothing on.
+  const [showNoTodayNotice, setShowNoTodayNotice] = useState(false);
+
   const scrollToToday = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
     const scroller = listRef.current;
     if (!scroller) return;
+
+    // Nothing dated today: say so, and leave the list where it is.
+    //
+    // The button used to scroll to whatever sat nearest the date and light that
+    // instead, which is a worse answer than no answer — a lit row is the app
+    // saying "here it is", and pointing at last Thursday's groceries when the
+    // question was about today reads as either a bug or a wrong date. Most days,
+    // in most budgets, there is no spending, so this is the common case rather
+    // than the edge one.
+    const todaysIds = idsForDay(visibleTransactions, getLocalToday(), transactionDay);
+    if (todaysIds.length === 0) {
+      setShowNoTodayNotice(true);
+      return;
+    }
 
     const anchor = todayAnchorRef.current;
     const behavior: ScrollBehavior = prefersReducedMotion() ? 'auto' : 'smooth';
 
     scroller.scrollTo({
       // A little headroom above the row so it doesn't sit flush against the
-      // top edge. With nothing dated today or later, slide to the end of the
-      // month's activity instead.
+      // top edge.
       top: anchor ? Math.max(0, anchor.offsetTop - 12) : scroller.scrollHeight,
       behavior,
     });
@@ -245,7 +262,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
     // the arrival point alone says nothing about how many of the rows around
     // it are the ones meant, so every row dated today is lit — not only the
     // one the scroll lands on.
-    spin(idsForTodayJump(visibleTransactions, getLocalToday(), transactionDay));
+    spin(todaysIds);
   }, [spin, visibleTransactions]);
 
   const handleHeaderClick = useCallback(() => onToggle(budget.id), [onToggle, budget.id]);
@@ -531,6 +548,15 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           </div>
         </div>
       </div>
+
+      {showNoTodayNotice && (
+        <NoticeModal
+          title="No expenses recorded today"
+          message={`Nothing in ${budget.name} is dated today.`}
+          accentColor={budgetColor}
+          onDismiss={() => setShowNoTodayNotice(false)}
+        />
+      )}
     </div>
   );
 };

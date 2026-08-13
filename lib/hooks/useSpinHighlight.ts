@@ -100,30 +100,11 @@ export function idsForDay<T extends { id: string }>(
   return transactions.filter((t) => dayOf(t) === day).map((t) => t.id);
 }
 
-/**
- * Ids of whatever the "Today" button actually scrolled to.
- *
- * Not the same question as "what is dated today", and answering that one was
- * the bug: on any day with no spending in this budget — most days, in most
- * budgets — there were no matching rows, so the button scrolled somewhere and
- * lit nothing, which reads exactly like a broken animation.
- *
- * The button lands on the first row dated today or later, and on the last row
- * when everything is in the past. This lights whatever that is: today's rows
- * when there are some, otherwise the single row the scroll came to rest on, so
- * the light always has something to point at.
+/*
+ * There was a second helper here — idsForTodayJump — which lit whatever row the
+ * scroll came to rest on when nothing was dated today, so the light always had
+ * something to point at. That is the wrong answer to give: a lit row is the app
+ * saying "here it is", and on a day with no spending it pointed at the nearest
+ * other day instead. "Today" now says plainly that there is nothing today, so
+ * there is no longer anything to fall back to.
  */
-export function idsForTodayJump<T extends { id: string }>(
-  transactions: readonly T[],
-  today: string,
-  dayOf: (transaction: T) => string,
-): string[] {
-  if (transactions.length === 0) return [];
-
-  const exact = idsForDay(transactions, today, dayOf);
-  if (exact.length > 0) return exact;
-
-  const upcoming = transactions.findIndex((t) => dayOf(t) >= today);
-  const landed = upcoming >= 0 ? transactions[upcoming] : transactions[transactions.length - 1];
-  return landed ? [landed.id] : [];
-}
