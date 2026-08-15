@@ -45,7 +45,7 @@ export interface ChargeLike {
 }
 
 /** Whole days between two `YYYY-MM-DD` strings, or null if either is unusable. */
-function daysApart(a: string, b: string): number | null {
+export function daysApart(a: string, b: string): number | null {
   const parse = (value: string) => {
     const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
     if (!match) return null;

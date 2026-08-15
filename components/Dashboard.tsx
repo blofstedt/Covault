@@ -37,8 +37,9 @@ import { supabase } from '../lib/supabase';
 import { resolveBudgetIdFromRow } from '../lib/hooks/transactionMappers';
 import { useNotificationRoute } from '../lib/hooks/useNotificationRoute';
 import { buildWidgetSnapshot } from '../lib/widgetSnapshot';
-import { pushWidgetSnapshot, type WidgetVendorRule } from '../lib/covaultNotification';
+import { pushWidgetSnapshot, pushRecurringCharges, type WidgetVendorRule } from '../lib/covaultNotification';
 import { countAwaitingReview } from '../lib/reviewQueue';
+import { collectRecurringCharges } from '../lib/recurringSchedule';
 
 // Map from app-state setting keys to DB column names.
 const SETTING_DB_KEYS: Record<string, string> = {
@@ -217,6 +218,43 @@ const Dashboard: React.FC<Props> = ({
     state.transactions,
     state.settings.auto_accept_known_vendors,
   ]);
+
+  // ── Charges the listener should stay quiet about ──
+  // A subscription is announced by the bank AND already on Covault's books, so
+  // the capture notification tells the user about money they have accounted
+  // for. The pipeline knows not to create a second row, but it only runs when
+  // the app does — the notification is posted by the native listener the
+  // instant the alert lands. Handing it the user's recurring charges is what
+  // lets it decline to announce one.
+  //
+  // Read from the full transaction list rather than this month's: a monthly
+  // template can sit in any month, and the point is to recognise the charge
+  // whenever it arrives.
+  //
+  // Serialised into the effect's dependency so a write to native storage only
+  // happens when the SET of subscriptions changes. The transaction list changes
+  // on every capture and edit; the household's subscriptions change a few times
+  // a year, and each push is a synchronous disk commit on the native side.
+  const recurringChargesKey = useMemo(
+    () =>
+      JSON.stringify(
+        collectRecurringCharges(
+          state.transactions.map((tx) => ({
+            vendor: tx.vendor,
+            amount: tx.amount,
+            date: tx.date,
+            recur: (tx as any).recur ?? tx.recurrence ?? null,
+            source: (tx as any).source ?? null,
+          })),
+        ),
+      ),
+    [state.transactions],
+  );
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    void pushRecurringCharges(JSON.parse(recurringChargesKey));
+  }, [recurringChargesKey]);
 
   // The vials show the current month and nothing else. Both halves of that
   // list — real transactions and projected occurrences — are filtered here

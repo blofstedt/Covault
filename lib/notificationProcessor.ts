@@ -26,7 +26,8 @@ import { extractWithAI, type AIExtractionResult } from './aiExtractor';
 import { detectMerchantSignal, resolveSignalCategory } from './merchantCategorySignals';
 import type { PendingTransaction, Transaction } from '../types';
 import { scoreVendorMatch, shouldAutoAccept, toMatchKey } from './vendorMatchConfidence';
-import { isSameCharge } from './duplicateCharge';
+import { daysApart } from './duplicateCharge';
+import { findRecurringScheduleMatch, type RecurringChargeRow } from './recurringSchedule';
 import { isBankingApp } from './bankingApps';
 import { detectFuelHold, isFuelMerchant, isHoldAmount, pastFillAmounts, withFuelHoldMarker } from './fuelHold';
 
@@ -47,6 +48,18 @@ const RECURRING_DATE_TOLERANCE_DAYS = 3;
  * multi-megabyte download.
  */
 const MAX_VENDOR_RULES = 2000;
+
+/**
+ * Ceiling on the recurring rows loaded when checking whether a capture is a
+ * subscription the app already knows about.
+ *
+ * A runaway guard like MAX_VENDOR_RULES, not a page size. A household has a
+ * handful of subscriptions, plus one executor-spawned row per month per
+ * subscription — a few hundred rows after years of use. Newest first, so if
+ * this ever truncates it drops the oldest history rather than the templates
+ * still in force.
+ */
+const MAX_RECURRING_ROWS = 500;
 
 /**
  * Below this confidence, the regex parser is considered a guess and the
@@ -776,6 +789,61 @@ async function fetchPriorFuelFills(userId: string, vendor: string): Promise<numb
     return pastFillAmounts(vendor, data as unknown as Transaction[]);
   } catch (e) {
     log.debug('[AI pipeline] Could not load fill history for placeholder sizing:', e);
+    return [];
+  }
+}
+
+/**
+ * The user's recurring templates, with no date window on them.
+ *
+ * Every other lookup in this file is windowed to +/-3 days, which is right for
+ * "have we already written this charge down" and wrong for "is this charge one
+ * we are expecting". A monthly subscription's only real row can be a month old
+ * — its next occurrence is not written until its due date arrives — so a window
+ * around today cannot see the schedule it belongs to.
+ *
+ * Cached for a few seconds, for the same reason the notification rules are: a
+ * `scanActiveNotifications()` burst runs every banking notification in the shade
+ * back-to-back, and without this that is one identical query per notification.
+ * Short enough that a subscription the user added a moment ago is recognised on
+ * the next capture rather than the next launch.
+ *
+ * Best-effort: a failure here means the charge is captured as an ordinary one,
+ * which is the recoverable direction. A duplicate row the user can delete beats
+ * a purchase that was silently dropped because a query timed out.
+ */
+const RECURRING_CACHE_TTL_MS = 30_000;
+let recurringCache: { userId: string; rows: RecurringChargeRow[]; at: number } | null = null;
+
+/** Exposed for testing: forget the cached recurring templates. */
+export function _clearRecurringCacheForTesting(): void {
+  recurringCache = null;
+}
+
+async function fetchRecurringCharges(userId: string): Promise<RecurringChargeRow[]> {
+  const now = Date.now();
+  if (recurringCache && recurringCache.userId === userId && now - recurringCache.at < RECURRING_CACHE_TTL_MS) {
+    return recurringCache.rows;
+  }
+  try {
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('id, vendor, amount, date, recur, source')
+      .eq('user_id', userId)
+      .in('recur', ['Monthly', 'Biweekly', 'monthly', 'biweekly'])
+      .order('date', { ascending: false })
+      .limit(MAX_RECURRING_ROWS);
+    if (error) {
+      log.warn('[AI pipeline] Could not load recurring charges:', error);
+      return [];
+    }
+    const rows = (data || []) as RecurringChargeRow[];
+    // Only a successful read is cached. Caching a failure would mean one bad
+    // query silenced the check for the whole burst that follows it.
+    recurringCache = { userId, rows, at: now };
+    return rows;
+  } catch (e) {
+    log.warn('[AI pipeline] Could not load recurring charges:', e);
     return [];
   }
 }
@@ -1723,61 +1791,86 @@ async function processNotificationWithAIImpl(
     };
   }
 
-  // ── Step 5b: The charge is already on the books as a recurring one ──
+  // ── Step 5b: The charge is one Covault already knows about ──
   //
-  // A subscription is recorded twice, by two different mechanisms: the
-  // recurring machinery posts the month's occurrence on its due date, and then
-  // the bank announces the real charge a day or two later and the capture
-  // pipeline records it again. One subscription, two rows, and the month is
-  // wrong by the amount.
+  // A subscription is accounted for twice, by two different mechanisms: the
+  // recurring machinery has it on the books and posts the month's occurrence on
+  // its due date, and then the bank announces the real charge a day or two
+  // either side and the capture pipeline records it again. One subscription,
+  // two rows, and the month is wrong by the amount — plus a review item and a
+  // notification for money the user had already accounted for.
   //
   // Everything above this point failed to see it. The hard skip in step 4 only
   // fires on the SAME DAY, and a due date is a guess that lands a day or two
   // off; and until the alias matching added above, "Google" and
   // "GOOGLE *YOUTUBEPREMIUM" did not even look like the same merchant.
   //
-  // So this is the one place that treats a recurring row as authoritative:
-  // when the same charge is already recorded as recurring, the capture does
-  // not become a second row. It is recorded ON that row instead — the bank's
-  // own wording, kept so the charge can still be traced back to the
-  // notification that confirmed it.
+  // So this is the one place that treats the recurring machinery as
+  // authoritative: when the same charge is already recorded — or already
+  // scheduled — as recurring, the capture does not become a second row. Where
+  // the row IS this occurrence, the bank's own wording is kept on it, so the
+  // charge can still be traced back to the notification that confirmed it.
   //
   // Deliberately narrower than the soft-dup above: only recurring rows, and
-  // only an amount matching to the cent (isSameCharge). Two ordinary purchases
-  // at one merchant in the same week are real and both must survive; a
-  // subscription billing twice in three days for the identical amount is not.
-  const recurringMatch = (existingTx || []).find((tx) => {
-    const txRecur = (tx.recur || '').toLowerCase();
-    const isRecurringRow =
-      txRecur === 'monthly' || txRecur === 'biweekly' || tx.source === 'executor';
-    if (!isRecurringRow) return false;
-    // Every name this capture answers to, including the one the matched rule
-    // renamed it to — that is usually the name the recurring row carries.
-    return [displayVendor, vendor, ...vendorAliases].some((name) =>
-      isSameCharge(
-        { vendor: name, amount, date: today },
-        { vendor: tx.vendor, amount: Number(tx.amount), date: tx.date },
-      ),
-    );
-  });
+  // only an amount matching to the cent. Two ordinary purchases at one
+  // merchant in the same week are real and both must survive; a subscription
+  // billing twice in three days for the identical amount is not.
+  //
+  // Matched against the SCHEDULE, not just against rows sitting nearby.
+  //
+  // The window queried above is +/-3 days, which only ever contained a
+  // subscription the executor had already posted. A subscription that has not
+  // come due yet has no row at all — the executor writes occurrences up to
+  // today and no further, and the future ones on the dashboard are display-only
+  // projections — so its only real row is the previous month's, a month outside
+  // that window. A Netflix charge announced today with the monthly Netflix due
+  // tomorrow therefore matched nothing, and was captured a second time.
+  //
+  // So the recurring templates are fetched separately, without a date window,
+  // and lib/recurringSchedule.ts asks whether an occurrence of each falls near
+  // today rather than whether its row happens to.
+  //
+  // The rows already in hand are checked first, so the common case — the
+  // executor posted this month's occurrence a day or two ago — costs nothing
+  // extra. The unwindowed lookup only happens when that finds nothing.
+  //
+  // Every name this capture answers to, including the one the matched rule
+  // renamed it to — that is usually the name the recurring row carries.
+  const recurringCandidate = {
+    vendors: [displayVendor, vendor, ...vendorAliases],
+    amount,
+    date: today,
+  };
+  const recurringMatch =
+    findRecurringScheduleMatch(recurringCandidate, existingTx || []) ??
+    findRecurringScheduleMatch(recurringCandidate, await fetchRecurringCharges(userId));
 
   if (recurringMatch) {
     log.debug(
-      `[AI pipeline] Already recorded as a recurring charge: ${recurringMatch.vendor} ` +
+      `[AI pipeline] Already known as a recurring charge: ${recurringMatch.vendor} ` +
       `$${recurringMatch.amount} on ${recurringMatch.date} (${recurringMatch.id}, ` +
-      `source=${recurringMatch.source || 'unknown'}) — recording the notification on it ` +
-      `instead of inserting a second row`,
+      `recur=${recurringMatch.recur || 'none'}, source=${recurringMatch.source || 'unknown'}) ` +
+      `— not capturing a second row`,
     );
 
-    // Best-effort. The point of the skip is that there is only one row; failing
-    // to attach the bank's wording to it costs traceability, not correctness,
-    // so it must not turn into a duplicate insert.
-    const { error: attachError } = await supabase
-      .from('transactions')
-      .update({ raw_notification: (input.rawNotification || '').slice(0, 4000) })
-      .eq('id', recurringMatch.id);
-    if (attachError) {
-      log.warn('[AI pipeline] Could not attach the notification to the recurring row:', attachError);
+    // Attach the bank's wording to the row, but only when the row IS this
+    // occurrence. A template matched through its schedule is a different
+    // month's charge, and writing today's notification onto it would rewrite
+    // history for a row this capture is not.
+    //
+    // Best-effort either way. The point of the skip is that there is only one
+    // row; failing to record where the confirmation came from costs
+    // traceability, not correctness, so it must not turn into a duplicate
+    // insert.
+    const rowGap = daysApart(String(recurringMatch.date || ''), today);
+    if (rowGap !== null && rowGap <= RECURRING_DATE_TOLERANCE_DAYS) {
+      const { error: attachError } = await supabase
+        .from('transactions')
+        .update({ raw_notification: (input.rawNotification || '').slice(0, 4000) })
+        .eq('id', recurringMatch.id);
+      if (attachError) {
+        log.warn('[AI pipeline] Could not attach the notification to the recurring row:', attachError);
+      }
     }
 
     recentlyProcessedCache.set(inMemoryKey, Date.now());
@@ -1793,10 +1886,10 @@ async function processNotificationWithAIImpl(
       rejectionReason: 'Already recorded as a recurring charge',
       bankName: input.bankName,
       softDuplicateOf: {
-        id: recurringMatch.id,
-        vendor: recurringMatch.vendor,
+        id: String(recurringMatch.id || ''),
+        vendor: String(recurringMatch.vendor || ''),
         amount: Number(recurringMatch.amount),
-        date: recurringMatch.date,
+        date: String(recurringMatch.date || ''),
       },
     };
   }

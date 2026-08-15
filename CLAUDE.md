@@ -103,6 +103,8 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | "the gas amount is wrong" / "it says placeholder" | `lib/fuelHold.ts` — hold detection, applied at step 6 of the processor and re-derived per row in `AIEnteredRow` |
 | "I have two rows for one tank of gas" | `lib/fuelHoldReconcile.ts` — pairs a settled charge with the hold it replaces |
 | "I got a duplicate" | `lib/notificationProcessor.ts` — dedup is steps 1, 2, 5 and the post-insert race recovery |
+| "a subscription got captured / notified about anyway" | `lib/recurringSchedule.ts` — matches the capture against the recurring *schedule*, not just nearby rows; applied at step 5b. The notification is suppressed in `NotificationListener.java` (`RECURRING_CHARGES_KEY`) and withdrawn by `useNotificationListener.ts` when it slipped through |
+| "the budget pills keep rearranging" | `lib/budgetOrder.ts` — the `budgets` table has no sort column, so the order is fixed in code. See Invariants |
 | "it picked the wrong category" | `lib/hooks/useVendorMatcher.ts`, `lib/vendorMatchConfidence.ts`, step 5a of the processor |
 | "a new restaurant landed in Other" | `lib/merchantCategorySignals.ts` — the offline descriptor/POS-prefix guess, applied in step 5c |
 | "the review list / badge is wrong" | `lib/reviewQueue.ts` — the single definition of "waiting"; the list, badge and widget all read it |
@@ -189,6 +191,14 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
 - **A settings toggle that "works" may not be saving.** The UI applies changes
   optimistically and `saveSettingToDb` only logs failures, so a missing column
   is indistinguishable from success. Check the column exists.
+- **The budget order comes from `lib/budgetOrder.ts`, not from the database.**
+  `budgets` has no primary key and no sort column, and `loadUserBudgets` reads
+  it with a plain `select=*`, so PostgREST returns Postgres's heap order — which
+  moves a row to the end the moment it is UPDATEd. Editing one budget's limit
+  therefore sent that vial to the bottom of the dashboard on the next load. An
+  `order=` on the query cannot fix it (there is nothing worth ordering on), so
+  the order is fixed in code and every consumer inherits it from the one sorted
+  list in app state. `budgetOrder.test.ts` pins it.
 
 ## Do not read
 

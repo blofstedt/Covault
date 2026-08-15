@@ -194,6 +194,29 @@ export const useNotificationListener = ({
                 // Notify parsing UI about the result
                 onAIProcessingResult?.(result);
 
+                // ── A charge the app was already expecting ──
+                // The pipeline recognised this as a subscription already on
+                // the books (or already scheduled), so no row was created and
+                // nothing will appear in Review. The capture notification the
+                // native listener posted the instant the alert arrived is
+                // therefore announcing something that will never be there, and
+                // announcing money the user has already accounted for — so it
+                // comes back down.
+                //
+                // The listener declines to post this one at all when it
+                // recognises the charge itself (see the recurring-charge list
+                // mirrored to native). This is the fallback for the cases it
+                // cannot: an unfamiliar wording of the merchant's name, or a
+                // phone still on an APK built before that list existed.
+                if (result.skipReason === 'duplicate_recurring') {
+                  log.debug(
+                    `[notification] Already a known recurring charge; withdrawing the capture notice: ` +
+                    `${result.vendor} $${result.amount}`,
+                  );
+                  void cancelCaptureNotification(event.capture_notification_id);
+                  return;
+                }
+
                 if (!result.processed || !result.isTransaction) {
                   log.debug(
                     `[notification] Skipped: ${result.skipReason || result.rejectionReason}`,

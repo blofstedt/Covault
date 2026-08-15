@@ -17,7 +17,8 @@ export type CaptureOutcomeCode =
   | 'no_amount'
   | 'not_clearable'
   | 'cancel_ignored'
-  | 'user_ignored';
+  | 'user_ignored'
+  | 'known_recurring';
 
 const OUTCOME_CODES: readonly CaptureOutcomeCode[] = [
   'hidden',
@@ -28,6 +29,7 @@ const OUTCOME_CODES: readonly CaptureOutcomeCode[] = [
   'not_clearable',
   'cancel_ignored',
   'user_ignored',
+  'known_recurring',
 ];
 
 export interface CaptureOutcome {
@@ -86,14 +88,17 @@ export function parseCaptureOutcomes(raw: unknown): CaptureOutcome[] {
  * `hidden` is the feature working. `toggle_off` is the user's own choice, not
  * a fault. `no_amount` means the alert probably wasn't a purchase at all —
  * a balance warning, a login alert — and hiding those was never the intent.
- * The rest are worth surfacing.
+ * `known_recurring` is Covault deliberately staying quiet about a subscription
+ * already on the books, which leaves the bank's own alert as the only notice
+ * of it — on purpose, not by failure. The rest are worth surfacing.
  */
 export function isCaptureProblem(outcome: CaptureOutcomeCode): boolean {
   return (
     outcome !== 'hidden' &&
     outcome !== 'toggle_off' &&
     outcome !== 'no_amount' &&
-    outcome !== 'user_ignored'
+    outcome !== 'user_ignored' &&
+    outcome !== 'known_recurring'
   );
 }
 
@@ -116,6 +121,8 @@ export function describeCaptureOutcome(outcome: CaptureOutcomeCode): string {
       return 'Kept — Android refused to dismiss it';
     case 'user_ignored':
       return "Kept — you told Covault to ignore alerts like this one";
+    case 'known_recurring':
+      return 'Kept — already on your books as a recurring charge';
   }
 }
 

@@ -138,7 +138,7 @@ vi.mock('../apiHelpers', () => ({
   }),
 }));
 
-import { processNotificationWithAI, vendorMatches, _clearDedupCacheForTesting } from '../notificationProcessor';
+import { processNotificationWithAI, vendorMatches, _clearDedupCacheForTesting, _clearRecurringCacheForTesting } from '../notificationProcessor';
 import { extractWithAI } from '../aiExtractor';
 import type { NotificationInput } from '../notificationProcessor';
 import { getLocalToday, parseLocalDate, toLocalIsoDay } from '../dateUtils';
@@ -174,6 +174,9 @@ beforeEach(() => {
   }
   // Clear the in-memory dedup cache so each test starts fresh
   _clearDedupCacheForTesting();
+  // Same for the cached recurring templates — its TTL outlives a test run, so
+  // one test's subscriptions would otherwise still be on the books in the next.
+  _clearRecurringCacheForTesting();
   // Default fetch: return empty array (no vendor overrides)
   mockFetch.mockResolvedValue({
     ok: true,
@@ -1439,5 +1442,145 @@ describe('A recurring charge the bank announces', () => {
     const row = txChain.insert.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(row?.vendor).toBe('Fizz');
     expect(result.skipReason).toBeUndefined();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// A SUBSCRIPTION THAT HAS NOT COME DUE YET
+// ═══════════════════════════════════════════════════════════════════
+//
+// The user's Netflix is due tomorrow. The bank announced the charge today, and
+// Covault captured it: a row in Review, a "captured" notification, and a second
+// copy of a bill already on the books.
+//
+// Nothing above could have seen it. Every lookup in the pipeline is windowed to
+// +/-3 days, and a subscription that has not come due has no row inside that
+// window — the executor writes occurrences only up to today, and the ones the
+// dashboard shows for the future are display-only projections. The only real
+// Netflix row was last month's, a month outside every window.
+//
+// So the recurring templates are now fetched without a date window and matched
+// against their SCHEDULE: "due tomorrow" counts as much as "recorded
+// yesterday".
+
+describe('A subscription that has not come due yet', () => {
+  const LEISURE = [
+    { id: 'cat-leisure', name: 'Leisure' },
+    { id: 'cat-other', name: 'Other' },
+  ];
+
+  const RAW = 'NETFLIX.COM You spent $20.33 with your credit card.';
+
+  /**
+   * The transactions table, answering the windowed lookups and the unwindowed
+   * recurring one differently — which is the whole point of the change. The
+   * recurring query is the one that filters on `recur`.
+   */
+  function transactionsChain(windowRows: any[], recurringRows: any[]) {
+    let askedForRecurring = false;
+    const chain: any = {};
+    for (const m of [
+      'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'ilike', 'is', 'not',
+      'or', 'match', 'filter', 'order', 'limit', 'single', 'maybeSingle',
+    ]) {
+      chain[m] = vi.fn().mockReturnThis();
+    }
+    chain.in = vi.fn((column: string) => {
+      if (column === 'recur') askedForRecurring = true;
+      return chain;
+    });
+    chain.then = (resolve: any) =>
+      resolve({ data: askedForRecurring ? recurringRows : windowRows, error: null });
+    return chain;
+  }
+
+  function emptyChain() {
+    return transactionsChain([], []);
+  }
+
+  async function capture(recurringRows: any[], windowRows: any[] = []) {
+    const txChain = getChain('transactions');
+    txChain.select = vi.fn(() => transactionsChain(windowRows, recurringRows));
+    txChain.insert = vi.fn().mockResolvedValue({ error: null });
+    txChain.update = vi.fn(() => emptyChain());
+    getChain('overrides').select = vi.fn(() => emptyChain());
+    getChain('pending_transactions').select = vi.fn(() => emptyChain());
+
+    const result = await processNotificationWithAI(
+      'user-1',
+      makeInput({ rawNotification: RAW, notificationTimestamp: Date.now() }),
+      LEISURE,
+    );
+    return { result, txChain };
+  }
+
+  /** A monthly template whose next occurrence falls `days` from today. */
+  function templateDueIn(days: number, overrides: Record<string, unknown> = {}) {
+    const due = parseLocalDate(getLocalToday()).getTime() + days * 86_400_000;
+    const lastMonth = new Date(due);
+    lastMonth.setMonth(lastMonth.getMonth() - 1);
+    return {
+      id: 'netflix-template',
+      vendor: 'Netflix*',
+      amount: 20.33,
+      date: toLocalIsoDay(lastMonth),
+      recur: 'Monthly',
+      source: 'manual',
+      ...overrides,
+    };
+  }
+
+  it('does not capture a charge whose recurring occurrence is due tomorrow', async () => {
+    const { result, txChain } = await capture([templateDueIn(1)]);
+
+    expect(txChain.insert).not.toHaveBeenCalled();
+    expect(result.skipReason).toBe('duplicate_recurring');
+    expect(result.softDuplicateOf?.id).toBe('netflix-template');
+  });
+
+  it('leaves last month\'s row alone rather than rewriting its history', async () => {
+    // Nothing is inserted, but the row that matched is a DIFFERENT month's
+    // charge — writing today's notification onto it would make that row claim
+    // to have been confirmed by an alert that was not about it.
+    const { txChain } = await capture([templateDueIn(1)]);
+    expect(txChain.update).not.toHaveBeenCalled();
+  });
+
+  it('records the bank\'s wording when the row that matched IS this occurrence', async () => {
+    const yesterday = toLocalIsoDay(
+      new Date(parseLocalDate(getLocalToday()).getTime() - 86_400_000),
+    );
+    const { txChain } = await capture([{
+      id: 'netflix-this-month',
+      vendor: 'Netflix*',
+      amount: 20.33,
+      date: yesterday,
+      recur: 'Monthly',
+      source: 'executor',
+    }]);
+
+    expect(txChain.insert).not.toHaveBeenCalled();
+    expect(txChain.update).toHaveBeenCalledWith(
+      expect.objectContaining({ raw_notification: RAW }),
+    );
+  });
+
+  it('still captures a charge nowhere near the due date', async () => {
+    // Mid-cycle, so this is a real second purchase — the user would rather see
+    // it and delete it than lose it.
+    const { result, txChain } = await capture([templateDueIn(14)]);
+
+    expect(txChain.insert).toHaveBeenCalled();
+    expect(result.skipReason).toBeUndefined();
+  });
+
+  it('still captures a charge for a different amount near the due date', async () => {
+    const { txChain } = await capture([templateDueIn(1, { amount: 9.99 })]);
+    expect(txChain.insert).toHaveBeenCalled();
+  });
+
+  it('still captures when the subscription is a one-off row, not a recurring one', async () => {
+    const { txChain } = await capture([templateDueIn(1, { recur: 'One-time', source: 'manual' })]);
+    expect(txChain.insert).toHaveBeenCalled();
   });
 });

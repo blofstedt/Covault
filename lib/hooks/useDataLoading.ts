@@ -2,6 +2,7 @@
 import { log } from '../log';
 import { useCallback, useState } from 'react';
 import { SYSTEM_CATEGORIES } from '../../constants';
+import { sortBudgets } from '../budgetOrder';
 import type { BudgetCategory, Transaction, PendingTransaction } from '../../types';
 import { REST_BASE, getAuthHeaders, restFetch, DEFAULT_MONTHLY_INCOME } from '../apiHelpers';
 import { useFromSupabaseTransaction } from './transactionMappers';
@@ -162,16 +163,26 @@ export const useDataLoading = ({
           }
         }
 
+        // Fixed order, decided here rather than by the database.
+        //
+        // `budgets` has no sort column and this select has no ORDER BY, so
+        // PostgREST returns rows in Postgres's heap order — which changes the
+        // moment a row is UPDATEd, because the new version is written at the
+        // end of the heap. Editing one budget's limit therefore moved that
+        // vial to the bottom of the dashboard on the next load, for no reason
+        // the user could see. See lib/budgetOrder.ts.
+        const orderedBudgets = sortBudgets(budgets);
+
         setAppState(prev => ({
           ...prev,
-          budgets,
+          budgets: orderedBudgets,
           settings: {
             ...prev.settings,
             hiddenCategories: hiddenCategoryIds,
           },
         }));
 
-        log.debug('[loadUserBudgets] loaded:', budgets.map(b => ({ id: b.id, name: b.name, limit: b.totalLimit })));
+        log.debug('[loadUserBudgets] loaded:', orderedBudgets.map(b => ({ id: b.id, name: b.name, limit: b.totalLimit })));
         setCategoriesLoaded(true);
       } catch (err: any) {
         log.error('[loadUserBudgets] exception:', err?.message || err);

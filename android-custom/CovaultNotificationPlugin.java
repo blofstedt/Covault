@@ -419,6 +419,30 @@ public class CovaultNotificationPlugin extends Plugin {
     }
 
     /**
+     * Mirror the charges the app is already expecting into native storage.
+     *
+     * A subscription is announced twice — once by the bank, once by Covault's
+     * own recurring machinery, which has had it on the books for months. The
+     * web pipeline knows to ignore the bank's copy, but this notification is
+     * posted long before that pipeline runs, so without a local copy of the
+     * user's recurring charges they are told about money already accounted for.
+     *
+     * Charges arrive as a JSON list of {vendor, amount}. A match here only
+     * skips the notification: the alert is still queued and still handed to the
+     * pipeline, so a wrong entry costs a notice, never a purchase.
+     */
+    @PluginMethod
+    public void setRecurringCharges(PluginCall call) {
+        String charges = call.getString("charges");
+        if (charges == null) {
+            call.reject("Missing 'charges'");
+            return;
+        }
+        NotificationListener.saveRecurringCharges(getContext(), charges);
+        call.resolve();
+    }
+
+    /**
      * Turn tray suppression on or off.
      *
      * When on, the listener dismisses a bank's own notification once it has

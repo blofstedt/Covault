@@ -622,12 +622,22 @@ public class NotificationListener extends NotificationListenerService {
             Log.i(TAG, "Matches a user skip rule; capturing quietly: " + packageName);
         }
 
+        // A charge Covault already has on the books as a recurring one. Same
+        // treatment as a skip rule — captured, handed to the pipeline, and
+        // announced to nobody, because the user already knows this money is
+        // going out. Tracked separately from the skip rule so the diagnostics
+        // can say which of the two it was. See RECURRING_CHARGES_KEY.
+        boolean knownRecurring = !ignoredByUser && matchesRecurringCharge(this, amount, fullText);
+        if (knownRecurring) {
+            Log.i(TAG, "Already a known recurring charge; capturing quietly: " + packageName);
+        }
+
         // Broadcast to the local TypeScript pipeline which will classify
         // as transaction or non-transaction — non-transactions will appear in
         // the rejected card so the user can see what was processed.
         CaptureResult result = broadcastTransaction(
             packageName, amount, vendor, fullText, sbn.getPostTime(), fromScan, alreadySecured,
-            ignoredByUser);
+            ignoredByUser || knownRecurring);
         boolean secured = result.secured();
 
         // Recorded BEFORE the dismissal below, never after. The record is what
@@ -638,7 +648,7 @@ public class NotificationListener extends NotificationListenerService {
 
         maybeHideBankNotification(
             sbn, securedKey, fromMonitored, amount, secured || alreadySecured, result,
-            ignoredByUser);
+            ignoredByUser, knownRecurring);
 
         // Home-screen widget: nudge the donut for a purchase captured while the
         // app is closed, so it doesn't sit stale until the next app launch.
@@ -718,7 +728,8 @@ public class NotificationListener extends NotificationListenerService {
         Double amount,
         boolean replaced,
         CaptureResult result,
-        boolean ignoredByUser
+        boolean ignoredByUser,
+        boolean knownRecurring
     ) {
         if (!fromMonitored) return;           // (3)
         String app = sbn.getPackageName();
@@ -731,6 +742,14 @@ public class NotificationListener extends NotificationListenerService {
         // because it is the user's own instruction rather than a fault.
         if (ignoredByUser) {
             recordOutcome(securedKey, app, amount, OUTCOME_USER_IGNORED);
+            return;
+        }
+        // Same shape of reason, different cause: nothing was posted because
+        // Covault already had this charge on the books, so there is again
+        // nothing to dismiss the bank's alert in favour of. Told apart from the
+        // line above so the settings screen can explain which it was.
+        if (knownRecurring) {
+            recordOutcome(securedKey, app, amount, OUTCOME_KNOWN_RECURRING);
             return;
         }
         if (!replaced) {                      // (2)
@@ -930,6 +949,113 @@ public class NotificationListener extends NotificationListenerService {
         return false;
     }
 
+    // ── Charges the app is already expecting ─────────────────────────────
+    //
+    // A subscription arrives twice. Covault's recurring machinery has had it on
+    // the books for months and posts the month's occurrence on its due date;
+    // the bank then announces the same charge, and this listener announces it
+    // again as a fresh capture. The user is told about money they had already
+    // accounted for, every month, for every subscription.
+    //
+    // The web pipeline knows better and creates no second row — but it runs
+    // when the app runs, and this notification is posted the instant the alert
+    // lands, with the WebView dead. So a copy of the user's recurring charges
+    // lives here, mirrored from the web layer (see setRecurringCharges in
+    // CovaultNotificationPlugin), and a match means nothing is announced.
+    //
+    // Exactly the same asymmetry as the skip rules above: a match does NOT stop
+    // the capture. The alert is still queued and still broadcast, so the web
+    // pipeline remains the authority on what reaches the ledger. It also leaves
+    // `notified` false, which keeps tray suppression from dismissing an alert we
+    // never replaced — so the bank's own notification stays in the shade and
+    // nothing about the charge is hidden from the user.
+    //
+    // The matcher is deliberately dumber than the web one, in the same spirit
+    // as WidgetDeltaStore: the amount to the cent, plus the stored vendor name
+    // appearing in the alert's text once punctuation is stripped from both. A
+    // name the bank words differently ("PUB MOBILE" for "Public Mobile") simply
+    // fails to match, the notification is posted as before, and the web layer
+    // withdraws it a moment later.
+    static final String RECURRING_CHARGES_KEY = "recurring_charges";
+
+    /** Cents, so a rounding difference cannot call two equal amounts different. */
+    private static final double RECURRING_AMOUNT_TOLERANCE = 0.005;
+
+    /**
+     * Shortest normalised vendor name allowed to match.
+     *
+     * The comparison below strips punctuation and spaces out of BOTH sides,
+     * which is what makes "Netflix*" on the books recognise "NETFLIX.COM" in the
+     * alert — but it also destroys word boundaries, so a two- or three-letter
+     * name could match inside an unrelated word. Anything that short is left to
+     * the web layer.
+     */
+    private static final int RECURRING_MIN_VENDOR_LENGTH = 4;
+
+    /** Lowercase letters and digits only — the form both sides are compared in. */
+    private static String normaliseForRecurring(String value) {
+        if (value == null) return "";
+        return value.toLowerCase().replaceAll("[^a-z0-9]", "");
+    }
+
+    /**
+     * Replace the mirrored copy of the user's recurring charges.
+     *
+     * commit() rather than apply(): the next notification can arrive before a
+     * background flush lands, and that notification is the one this exists to
+     * silence.
+     */
+    static void saveRecurringCharges(Context context, String chargesJson) {
+        try {
+            // Parse before storing so a malformed payload is rejected here
+            // rather than throwing on every notification afterwards.
+            String toStore = new JSONArray(chargesJson == null ? "[]" : chargesJson).toString();
+            context.getSharedPreferences("covault_prefs", 0)
+                .edit()
+                .putString(RECURRING_CHARGES_KEY, toStore)
+                .commit();
+        } catch (Exception e) {
+            Log.w(TAG, "Could not store recurring charges", e);
+        }
+    }
+
+    /**
+     * Is this alert a charge Covault is already expecting?
+     *
+     * Both halves have to agree. The amount is the anchor — a subscription
+     * bills the same figure every month — and the vendor keeps a coincidentally
+     * equal amount at another merchant from being silenced.
+     */
+    static boolean matchesRecurringCharge(Context context, Double amount, String text) {
+        if (amount == null || text == null) return false;
+        // Punctuation stripped from the alert as well as from the stored name,
+        // because the two are almost never punctuated the same way: the books
+        // say "Netflix*" and the bank says "NETFLIX.COM".
+        String haystack = normaliseForRecurring(text);
+        if (haystack.isEmpty()) return false;
+        try {
+            String stored = context.getSharedPreferences("covault_prefs", 0)
+                .getString(RECURRING_CHARGES_KEY, "[]");
+            JSONArray charges = new JSONArray(stored);
+            for (int i = 0; i < charges.length(); i++) {
+                JSONObject charge = charges.optJSONObject(i);
+                if (charge == null) continue;
+                double chargeAmount = charge.optDouble("amount", Double.NaN);
+                if (Double.isNaN(chargeAmount)) continue;
+                if (Math.abs(chargeAmount - amount) > RECURRING_AMOUNT_TOLERANCE) continue;
+                String vendor = normaliseForRecurring(charge.optString("vendor", ""));
+                if (vendor.length() < RECURRING_MIN_VENDOR_LENGTH) continue;
+                if (haystack.contains(vendor)) return true;
+            }
+        } catch (Exception e) {
+            // Not knowing means behaving as before: announce the capture, and
+            // let the web layer take it back down if it turns out to be one of
+            // these after all.
+            Log.w(TAG, "Could not read recurring charges", e);
+        }
+        return false;
+    }
+
     // ── What happened to each bank alert ─────────────────────────────────
     //
     // Suppression has several ways to decline and they all look the same from the
@@ -970,6 +1096,12 @@ public class NotificationListener extends NotificationListenerService {
      * not remove.
      */
     static final String OUTCOME_USER_IGNORED = "user_ignored";
+    /**
+     * Covault already had this charge on the books as a recurring one, so it
+     * announced nothing — and again, an alert we have not replaced is one we
+     * must not remove.
+     */
+    static final String OUTCOME_KNOWN_RECURRING = "known_recurring";
 
     private static final long DISMISS_VERIFY_DELAY_MS = 700L;
     private final android.os.Handler dismissHandler =

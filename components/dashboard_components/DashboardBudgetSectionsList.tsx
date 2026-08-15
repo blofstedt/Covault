@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { BudgetCategory, Transaction } from '../../types';
 import BudgetSection from '../BudgetSection';
+import { compareBudgets } from '../../lib/budgetOrder';
 
 interface DashboardSettingsShape {
   useLeisureAsBuffer: boolean;
@@ -53,16 +54,15 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
   const visibleBudgets = useMemo(() => {
     const hiddenCategories: string[] = safeSettings.hiddenCategories || [];
 
+    // `compareBudgets` rather than a local "Other last" rule. The list that
+    // arrives here is already in that order (loadUserBudgets sorts it), so
+    // this is belt-and-braces for any path that sets budgets some other way —
+    // but it has to be the SAME order, or the vials would sit in one order on
+    // the dashboard and another in the chart above them.
     return budgets
       .filter((budget) => !isFocusMode || budget.id === focusedBudgetId)
       .filter((budget) => !hiddenCategories.includes(budget.id))
-      .sort((a, b) => {
-        const aIsOther = a.name.toLowerCase() === 'other';
-        const bIsOther = b.name.toLowerCase() === 'other';
-        if (aIsOther && !bIsOther) return 1;
-        if (!aIsOther && bIsOther) return -1;
-        return 0;
-      });
+      .sort(compareBudgets);
   }, [budgets, isFocusMode, focusedBudgetId, safeSettings.hiddenCategories]);
 
   const transactionsByBudgetId = useMemo(() => {

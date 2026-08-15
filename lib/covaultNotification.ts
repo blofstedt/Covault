@@ -132,6 +132,15 @@ export interface CovaultNotificationPlugin {
    */
   setSkipRules(options: { rules: string }): Promise<void>;
 
+  /**
+   * Mirror the charges the app is already expecting — the user's recurring
+   * transactions — into native storage, so the listener does not announce a
+   * subscription Covault has had on the books for months.
+   *
+   * Prefer the `pushRecurringCharges` helper below.
+   */
+  setRecurringCharges(options: { charges: string }): Promise<void>;
+
   /** Open Android's notification settings page for Covault. */
   openNotificationSettings(): Promise<void>;
 
@@ -325,6 +334,59 @@ export async function pushSkipRules(
     });
   } catch (e) {
     log.debug('[covaultNotification] setSkipRules unavailable:', e);
+  }
+}
+
+/** One subscription the listener should stay quiet about. */
+export interface RecurringChargeHint {
+  vendor: string;
+  amount: number;
+}
+
+/**
+ * Hand the native listener the charges the app is already expecting.
+ *
+ * A subscription is announced twice: once by the bank, and once by Covault's
+ * own recurring machinery, which has had it on the books for months. The web
+ * pipeline knows to ignore the bank's copy — but the "$X at Y — captured"
+ * notification is posted by a service that runs with the WebView dead, long
+ * before that pipeline gets a look, so without this list the user is still
+ * told about money they already accounted for.
+ *
+ * A match here only skips the notification. The alert is still captured and
+ * still handed to the pipeline, which remains the sole authority on what
+ * reaches the ledger — so a wrong entry in this list costs a notice, never a
+ * purchase. It also leaves tray suppression off for that alert, so the bank's
+ * own notification stays in the shade.
+ *
+ * Silent on web and on an APK built before the native method existed, where the
+ * notification is instead withdrawn a moment later by the pipeline.
+ */
+export async function pushRecurringCharges(
+  charges: RecurringChargeHint[],
+  plugin: CovaultNotificationPlugin | null = covaultNotification,
+): Promise<void> {
+  if (!plugin) return;
+  try {
+    await plugin.setRecurringCharges({
+      charges: JSON.stringify(
+        (charges || [])
+          .filter(
+            (charge) =>
+              !!charge &&
+              typeof charge.vendor === 'string' &&
+              charge.vendor.trim() !== '' &&
+              Number.isFinite(charge.amount) &&
+              charge.amount > 0,
+          )
+          .map((charge) => ({
+            vendor: charge.vendor.trim(),
+            amount: Number(charge.amount),
+          })),
+      ),
+    });
+  } catch (e) {
+    log.debug('[covaultNotification] setRecurringCharges unavailable:', e);
   }
 }
 
