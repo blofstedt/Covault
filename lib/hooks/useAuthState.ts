@@ -3,6 +3,7 @@ import { log } from '../log';
 import React, { useCallback, useEffect, useRef } from 'react';
 import { supabase } from '../supabase';
 import { clearCachedAccessToken, setCachedAccessToken } from '../apiHelpers';
+import { clearFirstPaintCache } from '../firstPaintCache';
 import type { AppState, User } from '../../types';
 
 export type AuthStatus = 'loading' | 'unauthenticated' | 'onboarding' | 'authenticated';
@@ -137,6 +138,7 @@ export const useAuthState = ({
           supabase.auth.signOut();
           clearSessionTimestamp();
           clearCachedAccessToken();
+          clearFirstPaintCache();
           lastLoadedUserIdRef.current = null;
           loadUserDataPromiseRef.current = null;
           loadingUserIdRef.current = null;
@@ -174,6 +176,9 @@ export const useAuthState = ({
       } else {
         clearSessionTimestamp();
         clearCachedAccessToken();
+        // The next person on this phone should not see the last one's
+        // spending flash up behind the sign-in screen.
+        clearFirstPaintCache();
         lastLoadedUserIdRef.current = null;
         loadUserDataPromiseRef.current = null;
         loadingUserIdRef.current = null;

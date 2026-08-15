@@ -25,6 +25,14 @@ import { toVendorKey } from '../lib/deviceTransactionParser';
 /** Delay (ms) after scanning to allow notification processing before reloading data */
 const SCAN_PROCESSING_DELAY_MS = 2000;
 
+function prefersReducedMotion(): boolean {
+  try {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+}
+
 interface TransactionParsingProps {
   /**
    * Bumped when Review is opened from a capture notification or the widget's
@@ -107,6 +115,38 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       [section]: !current[section],
     }));
   }, []);
+
+  // ── Arriving from a capture notification or the widget's review pill ──
+  // The tap said "a purchase is waiting", so it has to land on the purchases,
+  // not on the top of a page that happens to contain them. Two things are
+  // needed and neither is enough alone: the section has to be open (the user
+  // may have collapsed it on their last visit, in which case there is
+  // literally nothing to arrive at), and the page has to be scrolled to it.
+  const mainRef = useRef<HTMLElement>(null);
+  const reviewCardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (reviewHighlightNonce <= 0) return;
+
+    setExpandedSections((current) =>
+      current.caughtTransactions ? current : { ...current, caughtTransactions: true },
+    );
+
+    // After paint, so the expansion above is measured rather than guessed at.
+    const frame = requestAnimationFrame(() => {
+      const scroller = mainRef.current;
+      const card = reviewCardRef.current;
+      if (!scroller || !card) return;
+      scroller.scrollTo({
+        // A little headroom above the card, matching the "Today" jump in
+        // BudgetSection so the two arrivals feel like the same gesture.
+        top: Math.max(0, card.offsetTop - 12),
+        behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+      });
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [reviewHighlightNonce]);
 
 
   // ── Refresh spinner state ──
@@ -655,6 +695,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
 
       {/* Main content — single flex container (no extra wrapper) */}
       <main
+        ref={mainRef}
         className="flex-1 min-h-0 overflow-y-auto no-scrollbar p-4 pb-0 max-w-2xl mx-auto w-full relative z-10"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
@@ -668,6 +709,10 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               />
             </div>
 
+            {/* The wrapper is what the arrival scroll measures — the card is a
+                composed component with no ref of its own, and offsetTop has to
+                come from the element the scroller actually contains. */}
+            <div ref={reviewCardRef}>
             <AITransactionsEnteredCard
               highlightNonce={reviewHighlightNonce}
               aiTransactions={aiTransactions}
@@ -695,6 +740,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               allTransactions={allTransactions}
               onSettleFuelHold={handleSettleFuelHold}
             />
+            </div>
 
             <div className="shrink-0 mt-4">
               <LearnedRulesCard

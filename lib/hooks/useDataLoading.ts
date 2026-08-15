@@ -7,6 +7,7 @@ import type { BudgetCategory, Transaction, PendingTransaction } from '../../type
 import { REST_BASE, getAuthHeaders, restFetch, DEFAULT_MONTHLY_INCOME } from '../apiHelpers';
 import { useFromSupabaseTransaction } from './transactionMappers';
 import { deduplicatePendingTransactions } from '../notificationProcessor';
+import { readFirstPaintCache } from '../firstPaintCache';
 import type { UseUserDataParams } from './types';
 
 /** Merge incoming transactions into existing ones, deduplicating by ID. */
@@ -452,10 +453,51 @@ export const useDataLoading = ({
     [loadTransactions, setAppState],
   );
 
+  /**
+   * Draw the last known state before the network is asked anything.
+   *
+   * Only into empty slots. This runs on every load, including the reloads a
+   * token refresh or a resume triggers mid-session, and at those moments the
+   * live list is the newer one — hydrating over it would put deleted rows back
+   * on screen until the fetch returned.
+   */
+  const hydrateFromCache = useCallback(
+    (userId: string) => {
+      const cached = readFirstPaintCache(userId);
+      if (!cached) return;
+
+      setAppState(prev => {
+        const wantsTransactions = prev.transactions.length === 0 && cached.transactions.length > 0;
+        const wantsBudgets = prev.budgets.length === 0 && cached.budgets.length > 0;
+        const wantsIncome =
+          !!prev.user && !prev.user.monthlyIncome && cached.monthlyIncome > 0;
+        if (!wantsTransactions && !wantsBudgets && !wantsIncome) return prev;
+
+        return {
+          ...prev,
+          transactions: wantsTransactions ? cached.transactions : prev.transactions,
+          budgets: wantsBudgets ? cached.budgets : prev.budgets,
+          user:
+            prev.user && wantsIncome
+              ? { ...prev.user, monthlyIncome: cached.monthlyIncome }
+              : prev.user,
+          settings: wantsBudgets
+            ? { ...prev.settings, hiddenCategories: cached.hiddenCategories }
+            : prev.settings,
+        };
+      });
+      log.debug('[loadUserData] painted from cache:', cached.transactions.length, 'transactions');
+    },
+    [setAppState],
+  );
+
   // Load all data from Supabase
   const loadUserData = useCallback(
     async (userId: string) => {
       log.debug('loadUserData called for user:', userId);
+      // Before the round-trips, not after: the whole point is the second the
+      // fetches spend in flight.
+      hydrateFromCache(userId);
       await loadCategories();
 
       // These four are mutually independent: each uses a functional
@@ -476,7 +518,7 @@ export const useDataLoading = ({
       await loadHouseholdLink(userId);
       log.debug('loadUserData completed');
     },
-    [loadCategories, loadHouseholdLink, loadPendingTransactions, loadTransactions, loadUserBudgets, loadUserSettings],
+    [hydrateFromCache, loadCategories, loadHouseholdLink, loadPendingTransactions, loadTransactions, loadUserBudgets, loadUserSettings],
   );
 
   return {

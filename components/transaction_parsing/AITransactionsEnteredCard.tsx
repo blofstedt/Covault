@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback, useEffect } from 'react';
+import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { Transaction, BudgetCategory } from '../../types';
 import ParsingCard from '../ui/ParsingCard';
 import { EmptyState } from '../shared';
@@ -117,18 +117,25 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
 
   // The light that says which rows the notification meant.
   //
-  // Driven off the nonce rather than off mounting: the Review page stays
-  // mounted between visits, so keying on arrival would light the rows once and
-  // never again. Skipped on the first render — nonce starts at zero and only a
-  // change to it means someone was sent here.
+  // A nonce of zero means the user walked here themselves and nothing is lit.
+  // Anything above it is an arrival, and each arrival plays exactly once — the
+  // ref is what enforces that, because this now also runs when the rows change
+  // and filing a row must not replay the light around the ones that are left.
+  //
+  // The wait for `nonRefunds` is the whole reason it is written this way. On a
+  // cold start the tap opens this page before any data has arrived, so the
+  // light used to run around an empty list: the one moment it was asked for
+  // was the one moment it had nothing to point at. It now holds until there is
+  // something to light — from the cached first paint, usually in the same
+  // frame, and otherwise whenever the fetch lands.
   const { spinning, spin } = useSpinHighlight();
+  const playedNonceRef = useRef(0);
   useEffect(() => {
-    if (highlightNonce <= 0) return;
+    if (highlightNonce <= 0 || highlightNonce === playedNonceRef.current) return;
+    if (nonRefunds.length === 0) return;
+    playedNonceRef.current = highlightNonce;
     spin(nonRefunds.map((tx) => tx.id));
-    // Only the nonce. Adding the rows would replay the light every time one is
-    // filed, which is the moment the user is looking at something else.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [highlightNonce]);
+  }, [highlightNonce, nonRefunds, spin]);
 
   // Rows a single tap can file: rules the user wrote, already pointing at a
   // category. Offered from two upwards — for one row the per-row Accept is

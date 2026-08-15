@@ -110,6 +110,15 @@ const Dashboard: React.FC<Props> = ({
   // light — a flag already true is not a change and nothing would happen.
   const [reviewHighlightNonce, setReviewHighlightNonce] = useState(0);
 
+  // Leaving Review puts the nonce back to "nobody sent me here". Without this
+  // the counter stays raised for the rest of the session, and the next time
+  // the user opens Review themselves the page would scroll and light up as
+  // though a notification had sent them — an arrival they didn't make.
+  const closeParsing = useCallback(() => {
+    setShowParsing(false);
+    setReviewHighlightNonce(0);
+  }, []);
+
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // The widget hands over a budget by name, and the callback that receives it
@@ -149,14 +158,14 @@ const Dashboard: React.FC<Props> = ({
       setShowSettings(false);
       setSelectedTx(null);
       setShowTransactionForm(false);
-      setShowParsing(false);
+      closeParsing();
       setExpandedBudgets((prev) => {
         const match = budgetsRef.current.find(
           (b) => b.name.trim().toLowerCase() === budgetName.trim().toLowerCase(),
         );
         return match ? new Set([match.id]) : prev;
       });
-    }, []),
+    }, [closeParsing]),
   );
 
   const normalizedTransactions = useNormalizedTransactions(state.transactions, state.budgets);
@@ -486,8 +495,8 @@ const Dashboard: React.FC<Props> = ({
               },
             }))
           }
-          onBack={() => setShowParsing(false)}
-          onGoHome={() => setShowParsing(false)}
+          onBack={closeParsing}
+          onGoHome={closeParsing}
           onAddTransaction={() => setShowTransactionForm(true)}
           allTransactions={normalizedTransactions}
           onTransactionTap={setSelectedTx}
@@ -613,7 +622,7 @@ const Dashboard: React.FC<Props> = ({
         />
 
         <DashboardBottomBar
-          onGoHome={() => setShowParsing(false)}
+          onGoHome={closeParsing}
           onAddTransaction={() => setShowTransactionForm(true)}
           onOpenParsing={() => setShowParsing(true)}
           activeView="home"

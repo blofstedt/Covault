@@ -17,6 +17,7 @@ import { loadBankingAppsFromDB } from './lib/bankingApps';
 import { useAppTheme } from './lib/hooks/useAppTheme';
 import { useAppUpdate } from './lib/hooks/useAppUpdate';
 import { useUserData } from './lib/hooks/useUserData';
+import { useFirstPaintCache } from './lib/hooks/useFirstPaintCache';
 import { executeRecurringTransactions } from './lib/recurringExecutor';
 import { sendRecurringCatchUpNotification } from './lib/appNotifications';
 import { preloadAIModel } from './lib/aiExtractor';
@@ -138,6 +139,10 @@ const App: React.FC = () => {
 
   useAuthState({ setAppState, setAuthState, loadUserData: loadUserDataWithState });
   useDeepLinks();
+
+  // Keep a copy of what is on screen so the next launch can draw it before the
+  // network answers. See lib/firstPaintCache.ts.
+  useFirstPaintCache(appState);
 
   // Pre-load the on-device AI model in the background so the first
   // notification doesn't pay the ~60MB download + WASM init cost. We
