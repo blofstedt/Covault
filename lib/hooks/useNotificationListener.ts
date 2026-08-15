@@ -231,6 +231,12 @@ export const useNotificationListener = ({
                     label: 'Automatic',
                     userName: user.name || 'User',
                     created_at: new Date().toISOString(),
+                    // An auto-filed row is stored already cleared, so leaving
+                    // this off put it in the review list until the reload
+                    // replaced it with the real row — the capture appeared for
+                    // a moment and then vanished in front of the user, which
+                    // reads exactly like a purchase being lost.
+                    caught_cleared: result.autoAccepted === true,
                   };
 
                   // Soft-dup warning from the AI pipeline. The transaction

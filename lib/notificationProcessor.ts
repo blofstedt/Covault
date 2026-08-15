@@ -132,6 +132,29 @@ function releasePurchase(key: string): void {
 }
 
 /**
+ * Which of several rows for the same charge is the one to keep.
+ *
+ * Used by the post-insert race check, where two invocations that inserted the
+ * same purchase at the same moment each have to decide whether to withdraw.
+ * The rule has one job: both sides must reach the same answer from the same
+ * rows, so that exactly one row survives. Asking "does another row exist?"
+ * does not have that property — both sides answer yes and both withdraw,
+ * which deletes the purchase entirely.
+ *
+ * Oldest wins, because a row that was already there is the one the user may
+ * have seen. `created_at` comes back from Postgres with microsecond precision
+ * so a genuine tie is vanishingly unlikely, but ids break it if it happens,
+ * and any total order will do as long as it is the same one on both sides.
+ */
+export function pickSurvivingCharge<T extends { id: string; created_at: string }>(
+  rows: T[],
+): T | null {
+  if (rows.length === 0) return null;
+  const rank = (row: T) => `${row.created_at}|${row.id}`;
+  return rows.reduce((best, row) => (rank(row) < rank(best) ? row : best));
+}
+
+/**
  * How long to keep entries in the in-memory dedup cache (ms).
  * 2 hours balances preventing duplicate processing during rescans
  * while allowing legitimate repeat purchases (e.g., two coffees
@@ -1821,10 +1844,21 @@ async function processNotificationWithAIImpl(
   // this is the first point where we know enough to recognise them as one
   // purchase. Whoever claims it inserts, the other backs off.
   const purchaseKey = `${userId}|${today}|${storedAmount.toFixed(2)}|${normalizeVendorForDedup(finalVendorName)}`;
-  if (!input.forceReprocess && !claimPurchase(purchaseKey)) {
+  //
+  // This one applies to a forced reprocess as well, unlike the dedup checks at
+  // the top. Those ask "have we seen this before?", which a rescan is entitled
+  // to answer again. This asks "is another invocation inserting this exact
+  // purchase right now?", and the answer is no less true for a rescan — while
+  // everything drained from the native queue is marked as a scan, so exempting
+  // scans left the whole cold-start path with no concurrency guard at all.
+  //
+  // Deliberately does NOT mark the notification permanently processed. We are
+  // backing off on the strength of another invocation's insert that has not
+  // happened yet; if it fails or rolls back, the purchase has to stay
+  // recoverable. The invocation that actually writes the row marks it.
+  if (!claimPurchase(purchaseKey)) {
     log.debug(`[AI pipeline] Purchase already being inserted by a parallel capture: ${finalVendorName} $${storedAmount}`);
     recentlyProcessedCache.set(inMemoryKey, Date.now());
-    markNotificationProcessed(capturedKey);
     return {
       processed: false,
       isTransaction: false,
@@ -1943,68 +1977,92 @@ async function processNotificationWithAIImpl(
   // exact double-capture bug the user is hitting.
   //
   // Recovery: immediately after our insert completes, re-query the
-  // transactions table for any OTHER row matching our vendor + amount
-  // + date. If we find one, we're the loser of the race — the other
-  // row was inserted between our Step 1 check and our Step 6 insert
-  // (or by a parallel invocation that won the in-flight check). Roll
-  // back our insert so the user only sees the winner.
+  // transactions table for every row matching our vendor + amount + date,
+  // ours included, and let exactly one of them win.
   //
-  // The `created_at` order isn't strictly required here — the pre-
-  // existing row is the winner by definition (it existed before ours)
-  // — but we use it for clearer log output. We compare vendor after
-  // normalization so that two surface forms of the same merchant
-  // (e.g. "AMZN MKTP" vs "Amazon Prime") are correctly recognized
-  // as duplicates.
+  // Reading our own row back is the whole point. The original version asked
+  // only "does another row like this exist?" and rolled itself back if one
+  // did — which is correct when the other row was already there, and
+  // catastrophic when both rows were inserted at the same moment: each
+  // invocation saw the other as pre-existing, each deleted its own insert,
+  // and the purchase disappeared completely with both sides believing they
+  // had merely avoided a duplicate.
+  //
+  // So the winner is chosen by a rule both sides compute identically —
+  // oldest `created_at`, ties broken on id — rather than by "the other one".
+  // Every interleaving then leaves exactly one row: whoever queries early
+  // enough to see only itself keeps its row, and anyone who sees the pair
+  // agrees on which of them survives.
+  //
+  // We compare vendor after normalization so that two surface forms of the
+  // same merchant (e.g. "AMZN MKTP" vs "Amazon Prime") are recognized as the
+  // same charge.
   const { data: raceCheck } = await supabase
     .from('transactions')
     .select('id, vendor, amount, date, created_at')
     .eq('user_id', userId)
     .eq('date', today)
-    .eq('amount', storedAmount)
-    .neq('id', transactionId);
+    .eq('amount', storedAmount);
 
-  if (raceCheck && raceCheck.length > 0) {
+  if (raceCheck && raceCheck.length > 1) {
     const normalizedOur = normalizeVendorForDedup(finalVendorName);
-    const race = raceCheck.find(
+    const sameCharge = raceCheck.filter(
       (row) => normalizeVendorForDedup(row.vendor) === normalizedOur,
     );
-    if (race) {
-      log.warn(
-        `[AI pipeline] ⚠️ Race-recovery: rolling back our insert of ${finalVendorName} $${storedAmount} ` +
-        `(${transactionId}) — duplicate of ${race.id} (${race.vendor} $${race.amount}, created ${race.created_at})`,
-      );
-      const { error: rollbackError } = await supabase
-        .from('transactions')
-        .delete()
-        .eq('id', transactionId);
-      if (rollbackError) {
-        log.error('[AI pipeline] Race-recovery rollback failed:', rollbackError);
-        // We couldn't roll back, so the user will see both rows. Log
-        // loudly so we know to investigate.
+    const ours = sameCharge.find((row) => row.id === transactionId);
+    const others = sameCharge.filter((row) => row.id !== transactionId);
+
+    // Our own row missing from a read taken after our own successful insert
+    // means we cannot establish an order, so we keep it. A visible duplicate
+    // is something the user can delete in one tap; a purchase deleted on a
+    // guess is gone.
+    if (ours && others.length > 0) {
+      const winner = pickSurvivingCharge(sameCharge);
+
+      if (winner && winner.id !== transactionId) {
+        log.warn(
+          `[AI pipeline] ⚠️ Race-recovery: rolling back our insert of ${finalVendorName} $${storedAmount} ` +
+          `(${transactionId}) — duplicate of ${winner.id} (${winner.vendor} $${winner.amount}, created ${winner.created_at})`,
+        );
+        const { error: rollbackError } = await supabase
+          .from('transactions')
+          .delete()
+          .eq('id', transactionId);
+        if (rollbackError) {
+          log.error('[AI pipeline] Race-recovery rollback failed:', rollbackError);
+          // We couldn't roll back, so the user will see both rows. Log
+          // loudly so we know to investigate.
+        }
+        // The winning row is in the ledger, so this notification is captured
+        // and must not be imported again.
+        markNotificationProcessed(capturedKey);
+        recentlyProcessedCache.set(inMemoryKey, Date.now());
+        releasePurchase(purchaseKey);
+        return {
+          processed: true,
+          isTransaction: true,
+          vendor: finalVendorName,
+          amount: storedAmount,
+          skipReason: 'duplicate_ai' as const,
+          rejectionReason: 'Duplicate detected after insert (race-recovery rollback)',
+          bankName: input.bankName,
+          // Surface the winning row as the soft-dup so the UI can
+          // show the "possible duplicate" badge.
+          softDuplicateOf: {
+            id: winner.id,
+            vendor: winner.vendor,
+            amount: Number(winner.amount),
+            date: winner.date,
+          },
+        };
       }
-      // Still mark as processed so we don't keep retrying.
-      markNotificationProcessed(capturedKey);
-      recentlyProcessedCache.set(inMemoryKey, Date.now());
-      return {
-        processed: true,
-        isTransaction: true,
-        vendor: finalVendorName,
-        amount: storedAmount,
-        skipReason: 'duplicate_ai' as const,
-        rejectionReason: 'Duplicate detected after insert (race-recovery rollback)',
-        bankName: input.bankName,
-        // Surface the winning row as the soft-dup so the UI can
-        // show the "possible duplicate" badge.
-        softDuplicateOf: {
-          id: race.id,
-          vendor: race.vendor,
-          amount: Number(race.amount),
-          date: race.date,
-        },
-      };
+
+      log.warn(
+        `[AI pipeline] Race-recovery: keeping our insert of ${finalVendorName} $${storedAmount} ` +
+        `(${transactionId}); ${others.length} concurrent duplicate(s) will roll themselves back`,
+      );
     }
   }
-  releasePurchase(purchaseKey);
 
   releasePurchase(purchaseKey);
   log.debug(`[AI pipeline] Transaction saved: ${finalVendorName} $${storedAmount} → ${categoryName}`);
