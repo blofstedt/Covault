@@ -6,6 +6,7 @@ import { App as CapApp } from '@capacitor/app';
 import type { Transaction, User, BudgetCategory } from '../../types';
 import { covaultNotification, cancelCaptureNotification } from '../covaultNotification';
 import type { TransactionDetectedEvent } from '../covaultNotification';
+import { drainQueuedNotifications } from '../pendingCaptureQueue';
 import { processNotificationWithAI, buildInMemoryDedupKey } from '../notificationProcessor';
 import { sendPartnerActivityNotification, sendExpenseCapturedNotification } from '../appNotifications';
 import type { NotificationSettingsShape } from '../appNotifications';
@@ -52,24 +53,6 @@ const recentListenerEvents: ListenerDedupEntry[] = [];
  * Uses the AI processing pipeline:
  *   dedup → AI extraction → duplicate check → category assignment → auto-insert
  */
-async function drainQueuedNotifications(
-  handleEvent: (event: TransactionDetectedEvent) => Promise<void>,
-): Promise<void> {
-  if (!covaultNotification?.drainPendingNotifications) return;
-  try {
-    const { notifications } = await covaultNotification.drainPendingNotifications();
-    if (!notifications?.length) return;
-    log.debug('[notification] Draining', notifications.length, 'queued notification(s)');
-    // Sequential on purpose: the pipeline's dedup and refund matching both read
-    // state the previous item may have written.
-    for (const event of notifications) {
-      await handleEvent(event);
-    }
-  } catch (e) {
-    log.warn('[notification] Could not drain queued notifications:', e);
-  }
-}
-
 export const useNotificationListener = ({
   user,
   budgets,
@@ -106,6 +89,11 @@ export const useNotificationListener = ({
         const handleEvent = async (event: TransactionDetectedEvent) => {
             log.debug('[notification] Transaction detected:', event);
             if (!user?.id) {
+              // Only reachable from a live native broadcast. That purchase is
+              // also sitting in the native queue, so it is not lost — the drain
+              // below picks it up once the session has been restored. Draining
+              // is what must never run without a user, since it empties the
+              // queue as it reads it.
               log.warn(
                 '[notification] No user logged in, ignoring transaction',
               );
@@ -334,11 +322,20 @@ export const useNotificationListener = ({
         // is broadcast to nobody, and once the user swipes it away a rescan can
         // never recover it — which is why capture appeared to need a manual
         // refresh before dismissing notifications.
-        void drainQueuedNotifications(handleEvent);
+        //
+        // Never before there is a user, though. Draining empties the native
+        // queue as it reads it, and on a cold start — exactly what tapping the
+        // capture notification does — this hook mounts a long way before
+        // Supabase has restored the session. Every drained purchase was then
+        // dropped for having nobody to file it under, with the bank's own alert
+        // already dismissed and the queue already cleared. The effect re-runs
+        // when the session lands, and drains then.
+        if (user?.id) void drainQueuedNotifications(handleEvent);
 
         // Also drain when the app comes back to the foreground, so a purchase
         // made while it sat in the background shows up without a manual scan.
         const resumeHandle = await CapApp.addListener('resume', () => {
+          if (!user?.id) return;
           void drainQueuedNotifications(handleEvent);
         });
         const removeListener = cleanup;
