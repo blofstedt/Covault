@@ -2037,14 +2037,24 @@ async function processNotificationWithAIImpl(
     //
     // Not deleted or hidden: an auto-filed row lands in history and counts
     // toward the budget exactly like one the user accepted by hand.
-    ...(autoAccepted ? { caught_cleared: true } : {}),
+    //
+    // `auto_filed` rides along with it, and is the only thing that later
+    // distinguishes a row the user never saw from one they reviewed and filed
+    // themselves. Without it an auto-filed capture left no trace anywhere: the
+    // review list said "All caught up" while purchases were being recorded, and
+    // the user re-entered them by hand a minute later. The "Filed
+    // automatically" card reads this.
+    ...(autoAccepted ? { caught_cleared: true, auto_filed: true } : {}),
   };
   let { error: txError } = await supabase.from('transactions').insert(insertRow);
-  // Tolerate DBs where the confidence column hasn't been migrated yet: retry
-  // once without it rather than dropping the whole capture.
-  if (txError && /confidence/i.test(txError.message || '')) {
-    const { confidence: _omit, ...withoutConfidence } = insertRow;
-    ({ error: txError } = await supabase.from('transactions').insert(withoutConfidence));
+  // Tolerate DBs where a late-added column hasn't been migrated yet: retry
+  // once without them rather than dropping the whole capture. Both are
+  // decoration on a row whose purpose is the amount — losing the meter or the
+  // "we filed this for you" mark costs the user information, losing the
+  // insert costs them a purchase.
+  if (txError && /confidence|auto_filed/i.test(txError.message || '')) {
+    const { confidence: _omitConfidence, auto_filed: _omitAutoFiled, ...withoutLateColumns } = insertRow;
+    ({ error: txError } = await supabase.from('transactions').insert(withoutLateColumns));
   }
 
   if (txError) {

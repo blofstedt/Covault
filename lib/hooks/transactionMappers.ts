@@ -177,6 +177,10 @@ export const useFromSupabaseTransaction = () =>
       is_projected: shouldSolidify ? false : row.is_projected,
       is_income: row.is_income === true,
       caught_cleared: row.caught_cleared === true,
+      // Filed on arrival by the auto-file setting rather than by the user.
+      // False for legacy rows and pre-migration DBs, which is the honest
+      // answer — the distinction was not recorded before the column existed.
+      auto_filed: row.auto_filed === true,
       // Refunded flag: set by the notification pipeline when a refund
       // notification matches an existing expense. Legacy rows (from
       // before the migration) will be undefined here; the

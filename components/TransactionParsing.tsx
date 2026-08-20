@@ -6,6 +6,7 @@ import type { Toast } from '../types';
 
 import ActiveBanksCard from './transaction_parsing/ActiveBanksCard';
 import AITransactionsEnteredCard from './transaction_parsing/AITransactionsEnteredCard';
+import AutoFiledCard from './transaction_parsing/AutoFiledCard';
 import SetupInfoCard from './transaction_parsing/SetupInfoCard';
 import ClearConfirmModal from './transaction_parsing/ClearConfirmModal';
 import DeleteAllConfirmModal from './transaction_parsing/DeleteAllConfirmModal';
@@ -19,7 +20,8 @@ import { restFetch } from '../lib/apiHelpers';
 import { loadBankingAppsFromDB } from '../lib/bankingApps';
 import { getNeedsReviewIdSet, getReviewQueueChangedEventName } from '../lib/localNotificationMemory';
 import { buildFilePayload, buildUndoPayload } from '../lib/caughtTransactionOps';
-import { selectAwaitingReview, countHiddenRefunds } from '../lib/reviewQueue';
+import { selectAwaitingReview, countHiddenRefunds, selectRecentlyAutoFiled } from '../lib/reviewQueue';
+import { useCurrentDay } from '../lib/hooks/useCurrentDay';
 import { toVendorKey } from '../lib/deviceTransactionParser';
 
 /** Delay (ms) after scanning to allow notification processing before reloading data */
@@ -106,6 +108,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   const [expandedSections, setExpandedSections] = useState({
     activeBanks: false,
     caughtTransactions: true,
+    autoFiled: true,
     learnedRules: false,
   });
 
@@ -208,6 +211,19 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   const hiddenRefundCount = useMemo(
     () => countHiddenRefunds(allTransactions),
     [allTransactions],
+  );
+
+  // ── What the app filed without asking ──
+  // With auto-file on, a capture matching a learned rule never reaches the
+  // list above — which is the point, but it also meant it reached nothing at
+  // all, and the page said "All caught up" while purchases were being
+  // recorded. These are shown separately so a filed purchase is still a
+  // purchase the user has seen. Read off the same clock as everything else
+  // on the page, so the window rolls over at local midnight with the rest.
+  const todayIso = useCurrentDay();
+  const autoFiled = useMemo(
+    () => selectRecentlyAutoFiled(allTransactions, todayIso),
+    [allTransactions, todayIso],
   );
 
   // ── Notification rules hook (skip patterns the user has trained) ──
@@ -741,6 +757,22 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               onSettleFuelHold={handleSettleFuelHold}
             />
             </div>
+
+            {/* Gated out here as well as inside the card: the card renders
+                nothing when nothing was filed for you, and a wrapper left
+                behind would still push a blank 1rem between the two cards. */}
+            {autoFiled.length > 0 && (
+            <div className="shrink-0 mt-4">
+              <AutoFiledCard
+                transactions={autoFiled}
+                budgets={budgets}
+                onChangeCategory={handleChangeCaughtCategory}
+                existingRulesFor={existingRulesFor}
+                isExpanded={expandedSections.autoFiled}
+                onToggleExpanded={() => toggleSection('autoFiled')}
+              />
+            </div>
+            )}
 
             <div className="shrink-0 mt-4">
               <LearnedRulesCard

@@ -70,6 +70,16 @@ export interface Transaction {
   is_income?: boolean;
   caught_cleared?: boolean;
   /**
+   * True when the capture pipeline filed this row on arrival, because
+   * "file known vendors automatically" is on and a learned rule explained the
+   * merchant well enough. Such a row is stored already cleared and never
+   * enters the review list, so this is the only record that the user was
+   * never shown it — the "Filed automatically" card on the capture page reads
+   * it. False for everything filed by hand, and for rows written before the
+   * `transactions.auto_filed` column existed.
+   */
+  auto_filed?: boolean;
+  /**
    * AI extraction confidence (0..1) captured by the notification pipeline.
    * Null for manually-entered rows and legacy rows from before the
    * `transactions.confidence` column existed. Surfaced in the capture-review
