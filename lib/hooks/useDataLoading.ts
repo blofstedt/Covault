@@ -1,6 +1,6 @@
 // lib/hooks/useDataLoading.ts
 import { log } from '../log';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { SYSTEM_CATEGORIES } from '../../constants';
 import { sortBudgets } from '../budgetOrder';
 import type { BudgetCategory, Transaction, PendingTransaction } from '../../types';
@@ -8,6 +8,7 @@ import { REST_BASE, getAuthHeaders, restFetch, DEFAULT_MONTHLY_INCOME } from '..
 import { useFromSupabaseTransaction } from './transactionMappers';
 import { deduplicatePendingTransactions } from '../notificationProcessor';
 import { readFirstPaintCache } from '../firstPaintCache';
+import { createReadGate, type ReadGate } from '../readGate';
 import type { UseUserDataParams } from './types';
 
 /** Merge incoming transactions into existing ones, deduplicating by ID. */
@@ -28,6 +29,29 @@ export const useDataLoading = ({
 }: Pick<UseUserDataParams, 'setAppState' | 'setDbError'>) => {
   const [categoriesLoaded, setCategoriesLoaded] = useState(false);
   const fromSupabaseTransaction = useFromSupabaseTransaction();
+
+  // ── Which transaction load is allowed to win ──
+  //
+  // Loading transactions REPLACES the list, and two loads are routinely in
+  // flight at the same moment: the one loadUserData issues while the app is
+  // starting, and the one a capture issues the instant its row is written.
+  // Launching the app by tapping a capture notification starts both.
+  //
+  // Nothing made them arrive in the order they were sent. When the launch
+  // request — issued a moment BEFORE the capture was written — answered last,
+  // it put back the list as it stood before the purchase existed, and the
+  // purchase was gone from the dashboard until something happened to reload
+  // again. On a capture the user still has to review, that is one tap away
+  // from being noticed and fixed; on one filed automatically there is no such
+  // tap, so the row simply was not there, and the purchase got entered a
+  // second time by hand. See lib/readGate.ts.
+  //
+  // A ref, not state: this must not re-render anything, and it has to be
+  // readable inside a callback created several renders ago. Initialised
+  // lazily so a fresh gate is not allocated on every render.
+  const readGateRef = useRef<ReadGate | null>(null);
+  if (!readGateRef.current) readGateRef.current = createReadGate();
+  const transactionReads = readGateRef.current;
 
   // Load budgets from Supabase (replaces both loadCategories and loadUserBudgets)
   // The budgets table now serves as both categories and per-user budget limits.
@@ -318,9 +342,16 @@ export const useDataLoading = ({
   // When merge is true, new transactions are appended to existing ones (used for partner data)
   const loadTransactions = useCallback(
     async (userId: string, { merge = false }: { merge?: boolean } = {}) => {
+      // Claimed before the request goes out, so tickets are ordered by when
+      // the read STARTED — which is what decides whose answer is older.
+      const ticket = transactionReads.take();
       try {
         const res = await restFetch(
           `/transactions?select=*&user_id=eq.${userId}&order=date.desc`,
+          // The settings read has said this for a while, for the same reason.
+          // A capture's whole purpose is that the list is different now, so a
+          // cached answer to "what are my transactions" is always the wrong one.
+          { cache: 'no-store' },
         );
         const body = await res.text();
         log.debug(
@@ -352,6 +383,12 @@ export const useDataLoading = ({
           }
 
           log.debug('[loadTransactions] OK, count:', transactions.length);
+          // A partner merge only ever adds rows, so it can never take one away
+          // and is applied whenever it lands. A replace has to be the newest.
+          if (!merge && !transactionReads.accepts(ticket)) {
+            log.debug('[loadTransactions] dropping a slower, older read');
+            return;
+          }
           setAppState(prev => {
             const mergedTransactions = merge
               ? mergeTransactions(prev.transactions, transactions)
@@ -361,6 +398,12 @@ export const useDataLoading = ({
         } else {
           log.debug('[loadTransactions] no transactions found');
           if (!merge) {
+            // The most destructive answer of all, and the one most worth
+            // dropping when it is out of date: emptying the list.
+            if (!transactionReads.accepts(ticket)) {
+              log.debug('[loadTransactions] dropping a slower, older empty read');
+              return;
+            }
             setAppState(prev => ({ ...prev, transactions: [] }));
           }
         }
@@ -370,7 +413,7 @@ export const useDataLoading = ({
         setDbError(msg);
       }
     },
-    [fromSupabaseTransaction, setAppState, setDbError],
+    [fromSupabaseTransaction, transactionReads, setAppState, setDbError],
   );
 
   // Load pending transactions awaiting approval
