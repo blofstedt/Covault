@@ -260,6 +260,12 @@ export const useNotificationListener = ({
                     // a moment and then vanished in front of the user, which
                     // reads exactly like a purchase being lost.
                     caught_cleared: result.autoAccepted === true,
+                    // Carried for the same reason, one card over: without it
+                    // the optimistic row is filed but shows up nowhere, so the
+                    // "Filed automatically" receipt stayed empty until the DB
+                    // reload landed — which is the exact gap that receipt was
+                    // added to close.
+                    auto_filed: result.autoAccepted === true,
                   };
 
                   // Soft-dup warning from the AI pipeline. The transaction

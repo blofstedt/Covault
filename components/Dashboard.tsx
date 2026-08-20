@@ -325,11 +325,19 @@ const Dashboard: React.FC<Props> = ({
     state.settings.app_notifications_enabled,
   ]);
 
-  // Badge count: number of AI-caught transactions not yet cleared.
-  // Derived directly from app state so it automatically decreases when
-  // a transaction is deleted (optimistic removal) or cleared (reload).
+  // Badge count: captures still waiting in Review.
+  //
+  // Read through the shared selector (lib/reviewQueue.ts) rather than filtered
+  // here. This used to do its own `label === 'Automatic' && !caught_cleared`,
+  // which keeps refunds — so a captured refund made this badge say 3 while the
+  // Review page's own badge, its list, and the widget pill all said 2. That
+  // disagreement is the whole reason the selector exists; the home screen was
+  // the one caller still not using it.
+  //
+  // Still derived from app state, so it drops as soon as a row is deleted
+  // (optimistic removal) or cleared (reload).
   const aiTransactionsCount = useMemo(
-    () => state.transactions.filter(tx => tx.label === 'Automatic' && !tx.caught_cleared).length,
+    () => countAwaitingReview(state.transactions),
     [state.transactions],
   );
 

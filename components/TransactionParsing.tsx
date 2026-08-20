@@ -9,6 +9,7 @@ import AITransactionsEnteredCard from './transaction_parsing/AITransactionsEnter
 import AutoFiledCard from './transaction_parsing/AutoFiledCard';
 import SetupInfoCard from './transaction_parsing/SetupInfoCard';
 import ClearConfirmModal from './transaction_parsing/ClearConfirmModal';
+import ClearAutoFiledConfirmModal from './transaction_parsing/ClearAutoFiledConfirmModal';
 import DeleteAllConfirmModal from './transaction_parsing/DeleteAllConfirmModal';
 import PageShell from './ui/PageShell';
 import LearnedRulesCard from './transaction_parsing/LearnedRulesCard';
@@ -19,7 +20,7 @@ import { covaultNotification } from '../lib/covaultNotification';
 import { restFetch } from '../lib/apiHelpers';
 import { loadBankingAppsFromDB } from '../lib/bankingApps';
 import { getNeedsReviewIdSet, getReviewQueueChangedEventName } from '../lib/localNotificationMemory';
-import { buildFilePayload, buildUndoPayload } from '../lib/caughtTransactionOps';
+import { buildAutoFiledClearPayload, buildFilePayload, buildUndoPayload } from '../lib/caughtTransactionOps';
 import { selectAwaitingReview, countHiddenRefunds, selectRecentlyAutoFiled } from '../lib/reviewQueue';
 import { useCurrentDay } from '../lib/hooks/useCurrentDay';
 import { toVendorKey } from '../lib/deviceTransactionParser';
@@ -96,11 +97,13 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   onSetProperName,
   onToast,
 }) => {
-  // ── Clear modal state ──
-  const [clearTarget, setClearTarget] = useState<'entered' | null>(null);
-  // The rows the trash icon was tapped on. Held as the rows themselves, not a
-  // flag: a scan or a reload can change the list while the confirmation is open,
-  // and the user agreed to delete what they were looking at.
+  // ── Clear/delete modal state ──
+  //
+  // All three hold the ROWS the user tapped on, never a flag. A scan or a
+  // reload can change either list while a confirmation is open, and what the
+  // user agreed to is what they were looking at when they tapped.
+  const [clearTargets, setClearTargets] = useState<Transaction[] | null>(null);
+  const [clearAutoFiledTargets, setClearAutoFiledTargets] = useState<Transaction[] | null>(null);
   const [deleteTargets, setDeleteTargets] = useState<Transaction[] | null>(null);
   // All sections always expanded per user request
   // Only the review queue starts open. The other two are reference/settings
@@ -596,16 +599,19 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   }, [loadMonitoredBanks]);
 
   // ── Clear handlers ──
-  const handleClearEntered = useCallback(async () => {
-    if (!userId) return;
-    const aiIds = aiTransactions.map((tx) => tx.id);
-    if (aiIds.length === 0) return;
+  //
+  // Neither of these deletes anything. Both only flip the flag that decides
+  // whether a row is still listed on this page — see lib/caughtTransactionOps.
+
+  // File every row the review list was showing.
+  const handleClearEntered = useCallback(async (rows: Transaction[]) => {
+    if (!userId || rows.length === 0) return;
     try {
-      const idList = aiIds.map(id => `"${id.replace(/"/g, '')}"`).join(',');
+      const idList = rows.map((tx) => `"${String(tx.id).replace(/"/g, '')}"`).join(',');
       const res = await restFetch(`/transactions?id=in.(${idList})`, {
         method: 'PATCH',
         headers: { Prefer: 'return=representation' },
-        body: JSON.stringify({ caught_cleared: true }),
+        body: JSON.stringify(buildFilePayload()),
       });
       if (!res.ok) {
         log.error('[TransactionParsing] Error clearing entered:', res.status);
@@ -617,7 +623,34 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     }
     onClearEntered?.();
     await onReloadTransactions?.(userId);
-  }, [userId, aiTransactions, onClearEntered, onReloadTransactions]);
+  }, [userId, onClearEntered, onReloadTransactions]);
+
+  // Clear the "Filed automatically" receipt.
+  //
+  // These rows are already filed and already counted; unsetting `auto_filed` is
+  // the whole change, and it only takes them off this card. No column-missing
+  // fallback is needed the way the capture insert has one: a database without
+  // the column can never report `auto_filed === true`, so the card that carries
+  // this button would not be on screen at all.
+  const handleClearAutoFiled = useCallback(async (rows: Transaction[]) => {
+    if (!userId || rows.length === 0) return;
+    try {
+      const idList = rows.map((tx) => `"${String(tx.id).replace(/"/g, '')}"`).join(',');
+      const res = await restFetch(`/transactions?id=in.(${idList})`, {
+        method: 'PATCH',
+        headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify(buildAutoFiledClearPayload()),
+      });
+      if (!res.ok) {
+        log.error('[TransactionParsing] Error clearing auto-filed:', res.status);
+        return;
+      }
+    } catch (err) {
+      log.error('[TransactionParsing] Error clearing auto-filed:', err);
+      return;
+    }
+    await onReloadTransactions?.(userId);
+  }, [userId, onReloadTransactions]);
 
   // ── Delete every captured row, for real ──
   //
@@ -734,7 +767,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               aiTransactions={aiTransactions}
               budgets={budgets}
               onTransactionTap={onTransactionTap}
-              onClear={() => setClearTarget('entered')}
+              onClear={(rows) => setClearTargets(rows)}
               onRefresh={handleRefresh}
               isRefreshing={isRefreshing}
               refundCount={hiddenRefundCount}
@@ -768,6 +801,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                 budgets={budgets}
                 onChangeCategory={handleChangeCaughtCategory}
                 existingRulesFor={existingRulesFor}
+                onClear={(rows) => setClearAutoFiledTargets(rows)}
                 isExpanded={expandedSections.autoFiled}
                 onToggleExpanded={() => toggleSection('autoFiled')}
               />
@@ -811,15 +845,29 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         pendingCount={aiTransactions.length}
       />
 
-      {/* Clear confirmation modal */}
-      {clearTarget && (
+      {/* Clear confirmation modal — files the review list, deletes nothing */}
+      {clearTargets && clearTargets.length > 0 && (
         <ClearConfirmModal
-          count={aiTransactions.length}
+          count={clearTargets.length}
           onConfirm={async () => {
-            await handleClearEntered();
-            setClearTarget(null);
+            const rows = clearTargets;
+            setClearTargets(null);
+            await handleClearEntered(rows);
           }}
-          onCancel={() => setClearTarget(null)}
+          onCancel={() => setClearTargets(null)}
+        />
+      )}
+
+      {/* Clear confirmation for the "Filed automatically" receipt */}
+      {clearAutoFiledTargets && clearAutoFiledTargets.length > 0 && (
+        <ClearAutoFiledConfirmModal
+          count={clearAutoFiledTargets.length}
+          onConfirm={async () => {
+            const rows = clearAutoFiledTargets;
+            setClearAutoFiledTargets(null);
+            await handleClearAutoFiled(rows);
+          }}
+          onCancel={() => setClearAutoFiledTargets(null)}
         />
       )}
 

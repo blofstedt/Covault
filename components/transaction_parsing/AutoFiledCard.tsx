@@ -20,6 +20,14 @@ interface AutoFiledCardProps {
   onChangeCategory?: (tx: Transaction, budgetId: string) => Promise<void> | void;
   /** Rules already taught for a vendor, offered first in the picker. */
   existingRulesFor?: (vendor: string) => ExistingRule[];
+  /**
+   * Clear the receipt. Nothing is deleted — see buildAutoFiledClearPayload.
+   *
+   * Handed the rows on screen rather than called bare, for the same reason the
+   * review card's bulk actions are: a reload can land while the confirmation is
+   * open, and the user agreed to clear what they were looking at.
+   */
+  onClear?: (txs: Transaction[]) => void;
   isExpanded?: boolean;
   onToggleExpanded?: () => void;
 }
@@ -45,6 +53,7 @@ const AutoFiledCard: React.FC<AutoFiledCardProps> = ({
   budgets,
   onChangeCategory,
   existingRulesFor,
+  onClear,
   isExpanded = true,
   onToggleExpanded,
 }) => {
@@ -146,6 +155,21 @@ const AutoFiledCard: React.FC<AutoFiledCardProps> = ({
           );
         })}
       </div>
+
+      {onClear && (
+        // Same control as the review card's "Clear all", deliberately: it is
+        // the same gesture on the same page and should not look like a
+        // different idea. No trash-can twin here, though — these rows are
+        // already filed, and offering to delete them from the receipt is not
+        // what anybody reading a receipt is trying to do.
+        <button
+          type="button"
+          onClick={() => onClear(rows)}
+          className="w-full min-h-[44px] mt-3 text-[11px] font-bold rounded-2xl text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors active:scale-[0.99]"
+        >
+          Clear all
+        </button>
+      )}
 
       {movingTx && (
         <CategoryPickerSheet

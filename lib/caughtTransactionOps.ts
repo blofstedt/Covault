@@ -37,3 +37,22 @@ export function buildUndoPayload(
     ? { caught_cleared: false, budget: previousBudget }
     : { caught_cleared: false };
 }
+
+/**
+ * Fields written when the user clears a row off the "Filed automatically" list.
+ *
+ * Also not a delete. `auto_filed` is the only thing that puts a row on that
+ * card (lib/reviewQueue.ts — `selectRecentlyAutoFiled`), and the card is a
+ * receipt rather than a queue: it exists so a purchase the app filed on its own
+ * is still a purchase the user has seen. Once they have seen it and said so,
+ * the flag has done its job, and unsetting it is the honest way to say "no
+ * longer news" — the transaction itself, its amount, its category and its place
+ * in the budget are all untouched.
+ *
+ * Chosen over a device-local dismissal list on purpose: two people share a
+ * vault, and a receipt one of them has already acknowledged should not come
+ * back on the other's phone.
+ */
+export function buildAutoFiledClearPayload(): Record<string, unknown> {
+  return { auto_filed: false };
+}

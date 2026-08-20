@@ -22,6 +22,18 @@ const PROCESSED_NOTIFS_KEY = 'covault_processed_notifs_v1';
 /** Max entries to keep in the processed-notifications set (oldest trimmed beyond this) */
 const MAX_PROCESSED_NOTIFS = 500;
 
+/**
+ * Max entries to keep in the review queue.
+ *
+ * This list only decides whether a row wears the amber "needs a look" badge, so
+ * losing the oldest end of it costs nothing. Without a cap it grew by one entry
+ * per capture forever — every capture ever made, on a device where localStorage
+ * is a few megabytes shared with the AI extraction cache and the processed-
+ * notification set. Trimmed from the back because entries are unshifted on, so
+ * the front is the newest.
+ */
+const MAX_REVIEW_QUEUE = 500;
+
 function canUseStorage(): boolean {
   return typeof window !== 'undefined' && typeof localStorage !== 'undefined';
 }
@@ -74,7 +86,7 @@ export function addToReviewQueue(transactionId: string): void {
     created_at: new Date().toISOString(),
     status: 'needs_review',
   });
-  writeJson(REVIEW_QUEUE_KEY, queue);
+  writeJson(REVIEW_QUEUE_KEY, queue.slice(0, MAX_REVIEW_QUEUE));
   emitReviewQueueChanged();
 }
 

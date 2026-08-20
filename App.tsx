@@ -347,7 +347,16 @@ const App: React.FC = () => {
           {toast.action ? (
             <button
               type="button"
-              onClick={toast.action.run}
+              // Dismissed on the way out. Leaving it up meant the strip sat
+              // there after an Undo had already run, still offering an Undo —
+              // so the only way to tell whether the tap had registered was to
+              // watch the list behind it, and tapping again "to be sure" fired
+              // a second undo.
+              onClick={() => {
+                const run = toast.action?.run;
+                setToast(null);
+                run?.();
+              }}
               className="shrink-0 underline underline-offset-2 font-bold tracking-wide"
             >
               {toast.action.label}

@@ -53,6 +53,28 @@ export const useDataLoading = ({
   if (!readGateRef.current) readGateRef.current = createReadGate();
   const transactionReads = readGateRef.current;
 
+  // ── The linked partner, remembered between loads ──
+  //
+  // Loading transactions REPLACES the list, and the query is scoped to one
+  // user_id. loadHouseholdLink merges the partner's rows in on top afterwards —
+  // but only it did, and only on a full loadUserData. Every other reload
+  // (filing a caught row, a capture landing, the Review page's scan button)
+  // calls loadTransactions with the signed-in user alone, which threw the
+  // partner's spending straight back out of app state.
+  //
+  // On a shared vault that is a wrong number on the screen, not a missing list:
+  // the donut, the vials and "remaining" all silently rose by whatever the
+  // partner had spent this month, until the next cold start put it back.
+  //
+  // So a replace-load now fetches both halves and applies them together. A ref
+  // rather than state: this is read inside a callback and must not re-render or
+  // re-create anything.
+  const partnerIdRef = useRef<string | null>(null);
+  // Whose partner that is. A different account signing in must not inherit the
+  // previous one's partner: RLS would refuse the read anyway, but "the read
+  // comes back empty" is a weak place to be relying on for correctness.
+  const partnerOwnerIdRef = useRef<string | null>(null);
+
   // Load budgets from Supabase (replaces both loadCategories and loadUserBudgets)
   // The budgets table now serves as both categories and per-user budget limits.
   const loadCategories = useCallback(async () => {
@@ -338,6 +360,51 @@ export const useDataLoading = ({
     [setAppState],
   );
 
+  /**
+   * One user's rows, mapped. Null means the request failed and the caller must
+   * leave app state alone — an empty array is an answer, null is the absence of
+   * one, and conflating them is how a failed read empties the dashboard.
+   */
+  const fetchTransactionsFor = useCallback(
+    async (userId: string): Promise<Transaction[] | null> => {
+      const res = await restFetch(
+        `/transactions?select=*&user_id=eq.${userId}&order=date.desc`,
+        // The settings read has said this for a while, for the same reason.
+        // A capture's whole purpose is that the list is different now, so a
+        // cached answer to "what are my transactions" is always the wrong one.
+        { cache: 'no-store' },
+      );
+      const body = await res.text();
+      log.debug(
+        '[loadTransactions] status:',
+        res.status,
+        'body:',
+        body.slice(0, 300),
+      );
+
+      if (!res.ok) {
+        const msg = `Load transactions failed (${res.status}): ${body.slice(0, 200)}`;
+        log.error(msg);
+        setDbError(msg);
+        return null;
+      }
+
+      const data = JSON.parse(body);
+      if (!data || data.length === 0) return [];
+
+      const transactions: Transaction[] = [];
+      for (const row of data) {
+        try {
+          transactions.push(fromSupabaseTransaction(row));
+        } catch (mapErr: any) {
+          log.warn('[loadTransactions] Skipping invalid row:', row?.id, mapErr?.message);
+        }
+      }
+      return transactions;
+    },
+    [fromSupabaseTransaction, setDbError],
+  );
+
   // Load transactions from Supabase via raw fetch
   // When merge is true, new transactions are appended to existing ones (used for partner data)
   const loadTransactions = useCallback(
@@ -346,41 +413,23 @@ export const useDataLoading = ({
       // the read STARTED — which is what decides whose answer is older.
       const ticket = transactionReads.take();
       try {
-        const res = await restFetch(
-          `/transactions?select=*&user_id=eq.${userId}&order=date.desc`,
-          // The settings read has said this for a while, for the same reason.
-          // A capture's whole purpose is that the list is different now, so a
-          // cached answer to "what are my transactions" is always the wrong one.
-          { cache: 'no-store' },
-        );
-        const body = await res.text();
-        log.debug(
-          '[loadTransactions] status:',
-          res.status,
-          'body:',
-          body.slice(0, 300),
-        );
+        const own = await fetchTransactionsFor(userId);
+        if (own === null) return;
 
-        if (!res.ok) {
-          const msg = `Load transactions failed (${res.status}): ${body.slice(
-            0,
-            200,
-          )}`;
-          log.error(msg);
-          setDbError(msg);
-          return;
+        // A replace has to carry the partner's rows too, or it drops them.
+        // Best-effort: a partner read that fails leaves the signed-in user's
+        // own list intact rather than blocking the whole reload.
+        let data = own;
+        const partnerId = partnerOwnerIdRef.current === userId ? partnerIdRef.current : null;
+        if (!merge && partnerId && partnerId !== userId) {
+          const partnerRows = await fetchTransactionsFor(partnerId);
+          if (partnerRows && partnerRows.length > 0) {
+            data = mergeTransactions(own, partnerRows);
+          }
         }
 
-        const data = JSON.parse(body);
-        if (data && data.length > 0) {
-          const transactions: Transaction[] = [];
-          for (const row of data) {
-            try {
-              transactions.push(fromSupabaseTransaction(row));
-            } catch (mapErr: any) {
-              log.warn('[loadTransactions] Skipping invalid row:', row?.id, mapErr?.message);
-            }
-          }
+        if (data.length > 0) {
+          const transactions = data;
 
           log.debug('[loadTransactions] OK, count:', transactions.length);
           // A partner merge only ever adds rows, so it can never take one away
@@ -413,7 +462,7 @@ export const useDataLoading = ({
         setDbError(msg);
       }
     },
-    [fromSupabaseTransaction, transactionReads, setAppState, setDbError],
+    [fetchTransactionsFor, transactionReads, setAppState, setDbError],
   );
 
   // Load pending transactions awaiting approval
@@ -469,6 +518,13 @@ export const useDataLoading = ({
 
         const body = await res.text();
         const data = JSON.parse(body);
+        // Recorded (or cleared) before anything else, so a reload triggered
+        // while this is still resolving already knows who to fetch alongside
+        // the signed-in user — and so unlinking, or signing in as somebody
+        // else, does not leave a stale partner's rows being pulled in.
+        partnerIdRef.current =
+          data && data.length > 0 && data[0].partner_id ? String(data[0].partner_id) : null;
+        partnerOwnerIdRef.current = userId;
         if (data && data.length > 0 && data[0].partner_id) {
           const partnerId = data[0].partner_id;
           const partnerName = data[0].partner_name;

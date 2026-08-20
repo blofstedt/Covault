@@ -22,7 +22,14 @@ interface AITransactionsEnteredCardProps {
   aiTransactions: Transaction[];
   budgets: BudgetCategory[];
   onTransactionTap?: (tx: Transaction) => void;
-  onClear?: () => void;
+  /**
+   * File every row shown here. Handed the rows themselves, for the same reason
+   * onDeleteAll is: the confirmation quotes a count, and it has to be the count
+   * of what the user was actually looking at. Called bare, it left the parent
+   * to re-derive the list — which still held rows the user had just filed one
+   * by one, so the dialog offered to file three when one was on screen.
+   */
+  onClear?: (txs: Transaction[]) => void;
   onRefresh?: () => void;
   isRefreshing?: boolean;
   /** Captured refunds filtered out upstream, surfaced in the subtitle. */
@@ -105,6 +112,30 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
       return next;
     });
   }, []);
+
+  // Let go the moment the reload confirms the row is filed.
+  //
+  // This set is only a bridge across the DB round-trip, but it used to be kept
+  // for the life of the page — which quietly broke the Undo on the "Filed X"
+  // toast. Undo puts `caught_cleared` back and reloads, so the row returns to
+  // `aiTransactions`, and this filter then hid it again: the user tapped Undo
+  // and nothing came back.
+  //
+  // An id that has left `aiTransactions` has been confirmed filed by the
+  // server, so the bridge is no longer holding anything up and can be dropped.
+  // If Undo later brings that row back it is no longer on the list and shows
+  // again, which is the whole point of offering the Undo.
+  useEffect(() => {
+    setFiledIds((prev) => {
+      if (prev.size === 0) return prev;
+      const present = new Set(aiTransactions.map((tx) => tx.id));
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (present.has(id)) next.add(id);
+      }
+      return next.size === prev.size ? prev : next;
+    });
+  }, [aiTransactions]);
 
   // `aiTransactions` already excludes refunds and cleared rows — the caller
   // filters with selectAwaitingReview (lib/reviewQueue.ts), which is what keeps
@@ -289,7 +320,7 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
           {onClear && nonRefunds.length > 0 && (
             <button
               type="button"
-              onClick={onClear}
+              onClick={() => onClear(nonRefunds)}
               className="w-full min-h-[44px] mt-1 text-[11px] font-bold rounded-2xl text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors active:scale-[0.99]"
             >
               Clear all
