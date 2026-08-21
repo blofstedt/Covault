@@ -8,24 +8,63 @@ import { getLocalToday, toLocalIsoDay } from './dateUtils';
 import { restFetch } from './apiHelpers';
 import { stepForward } from './recurrence';
 import { findSameCharge } from './duplicateCharge';
+import { SYSTEM_CATEGORIES } from '../constants';
 import type { Transaction } from '../types';
 
 /**
- * Resolve a budget_id (e.g. 'budget:groceries') to the enum name ('Groceries')
- * that the transactions.budget column expects.
+ * The only names `transactions.budget` accepts. It is a Postgres enum, so a
+ * value outside this set is not a bad row — it is a rejected statement, and
+ * the whole batch goes with it.
  */
-function budgetIdToName(budgetId: string | null): string {
+const BUDGET_NAMES = new Map(
+  SYSTEM_CATEGORIES.map((category) => [category.name.toLowerCase(), category.name]),
+);
+
+/**
+ * Resolve a transaction's `budget_id` to the enum name the `budget` column
+ * expects, or null when it cannot be resolved.
+ *
+ * Null rather than a guess, deliberately. This used to end with "return
+ * budgetId" for anything that wasn't the 'budget:groceries' form — and every
+ * transaction the app loads carries the category's UUID, not that form. So
+ * every run posted a UUID where the enum expected 'Groceries', Postgres
+ * rejected the insert, and the executor has never once managed to write a
+ * row: recurring charges were never filled in, and because the once-a-day
+ * marker is only set after a successful write, it retried on every reload —
+ * six failed writes per app launch, all of them silent.
+ */
+export function budgetIdToName(budgetId: string | null): string | null {
   if (!budgetId) return 'Other';
-  // 'budget:groceries' -> 'Groceries'
+
+  const system = SYSTEM_CATEGORIES.find((category) => category.id === budgetId);
+  if (system) return system.name;
+
   if (budgetId.startsWith('budget:')) {
     const name = budgetId.slice('budget:'.length).replace(/-/g, ' ');
-    return name.charAt(0).toUpperCase() + name.slice(1);
+    return BUDGET_NAMES.get(name.toLowerCase()) ?? null;
   }
-  // Already a plain name or UUID fallback
-  return budgetId;
+
+  return BUDGET_NAMES.get(budgetId.toLowerCase()) ?? null;
 }
 
 const LAST_RUN_KEY = 'covault_recurring_last_run';
+
+/**
+ * How many failed write attempts one app session is allowed before the
+ * executor stops trying until the next launch.
+ *
+ * The day-marker is only set after a successful write, and the caller re-runs
+ * this on every change to the transaction list — so a write that always fails
+ * is a write that is retried five or six times per launch, forever, in
+ * silence. The same payload failing twice more is not going to succeed.
+ */
+const MAX_FAILURES_PER_SESSION = 3;
+let failuresThisSession = 0;
+
+/** Exposed for testing: forget this session's failure count. */
+export function _resetFailureCountForTesting(): void {
+  failuresThisSession = 0;
+}
 
 /** `2026-08-*` shifted by whole months, for the DB duplicate lookup. */
 function neighbouringMonth(date: string, offset: number): string {
@@ -116,6 +155,8 @@ export async function executeRecurringTransactions(
     if (lastRun === today) return [];
   }
 
+  if (failuresThisSession >= MAX_FAILURES_PER_SESSION) return [];
+
   const now = new Date();
   now.setHours(0, 0, 0, 0);
 
@@ -152,6 +193,17 @@ export async function executeRecurringTransactions(
     const dueDates = dueDatesUpTo(tx.date, rec, now);
     if (dueDates.length === 0) continue;
 
+    // Resolved once per template: a category the enum doesn't have cannot be
+    // written at all, and including such a row would take the whole batch —
+    // every other subscription with it — down with it.
+    const budgetName = budgetIdToName(tx.budget_id);
+    if (!budgetName) {
+      log.warn(
+        `[recurringExecutor] Skipping ${tx.vendor}: no category name for budget_id ${tx.budget_id}`,
+      );
+      continue;
+    }
+
     for (const dueDate of dueDates) {
       // Don't re-insert if this charge already looks recorded — by any name.
       const candidate = { vendor: tx.vendor, amount: tx.amount, date: dueDate };
@@ -162,7 +214,7 @@ export async function executeRecurringTransactions(
         vendor: tx.vendor,
         amount: tx.amount,
         date: dueDate,
-        budget: budgetIdToName(tx.budget_id),
+        budget: budgetName,
         recur: rec,
         type: 'Automatic',
         is_projected: false,
@@ -214,8 +266,13 @@ export async function executeRecurringTransactions(
   await Promise.all(
     [...monthKeys].map(async (monthKey) => {
       try {
+        // A range, not a pattern. `date=like.2026-08-*` asks Postgres to LIKE
+        // a date against text, which has no operator — PostgREST answered 404
+        // every time, the check fell through to "insert anyway", and the guard
+        // this whole block exists to provide has never actually run.
         const res = await restFetch(
-          `/transactions?select=vendor,amount,date&user_id=eq.${userId}&date=like.${monthKey}-*`,
+          `/transactions?select=vendor,amount,date&user_id=eq.${userId}` +
+          `&date=gte.${monthKey}-01&date=lt.${neighbouringMonth(`${monthKey}-01`, 1)}-01`,
         );
         if (!res.ok) return;
         const rows: Array<{ vendor?: string; amount?: number; date?: string }> = await res.json();
@@ -265,11 +322,13 @@ export async function executeRecurringTransactions(
     });
     const body = await res.text();
     if (!res.ok) {
+      failuresThisSession += 1;
       log.error('[recurringExecutor] insert failed:', res.status, body.slice(0, 200));
       return [];
     }
     data = JSON.parse(body);
   } catch (err: any) {
+    failuresThisSession += 1;
     log.error('[recurringExecutor] insert error:', err?.message || err);
     return [];
   }

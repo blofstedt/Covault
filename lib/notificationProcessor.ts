@@ -840,7 +840,13 @@ async function fetchRecurringCharges(userId: string): Promise<RecurringChargeRow
       .from('transactions')
       .select('id, vendor, amount, date, recur, source')
       .eq('user_id', userId)
-      .in('recur', ['Monthly', 'Biweekly', 'monthly', 'biweekly'])
+      // The two labels the enum actually has, and no lowercase "just in case"
+      // spellings. `recur` is a Postgres enum: a value outside its labels does
+      // not match nothing, it fails the query — so asking for 'monthly' as
+      // well returned a 400 every time and this check, which is what stops a
+      // subscription being captured and announced a second time, has never
+      // seen a single row.
+      .in('recur', ['Monthly', 'Biweekly'])
       .order('date', { ascending: false })
       .limit(MAX_RECURRING_ROWS);
     if (error) {
