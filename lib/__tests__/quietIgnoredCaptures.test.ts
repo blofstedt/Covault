@@ -122,10 +122,16 @@ describe('the native and web rule matchers', () => {
   it('agree that `exact` compares the trimmed text', () => {
     const r = rule({ pattern: 'Your statement is ready', pattern_type: 'exact' });
     expect(matchesRule('  Your statement is ready  ', r)).toBe(true);
-    expect(matchesRule('Your Statement Is Ready', r)).toBe(false);
+    // Casing alone no longer separates two copies of the same alert — both
+    // sides now also compare shapes, which are lowercase. See
+    // notificationShapeMirror.test.ts.
+    expect(matchesRule('Your Statement Is Ready', r)).toBe(true);
+    // A different alert is still a different alert on both sides.
+    expect(matchesRule('Your payment is due', r)).toBe(false);
 
     expect(LISTENER_JAVA).toMatch(/String trimmed = text\.trim\(\);/);
     expect(LISTENER_JAVA).toMatch(/trimmed\.equals\(pattern\)/);
+    expect(LISTENER_JAVA).toMatch(/textShape\.equals\(patternShape\)/);
   });
 
   it('agree that `contains` ignores case', () => {

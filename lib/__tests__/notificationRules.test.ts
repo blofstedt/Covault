@@ -23,11 +23,16 @@ describe('matchesRule', () => {
     expect(matchesRule('Market alert · Subscription Hope', r)).toBe(false);
   });
 
-  it('is case-insensitive for exact matches', () => {
+  it('treats the same alert in different casing as the same alert', () => {
+    // The raw comparison is still case-sensitive, but a rule is now ALSO
+    // matched on the alert's shape, and shapes are compared in lowercase. A
+    // bank that changes the casing of its own alert is not sending a different
+    // notification, and a rule that stopped working because of it was the same
+    // dead rule as one that stopped working because the amount changed.
     const r = rule({ pattern: 'Market Alert · Subscription Panic', pattern_type: 'exact' });
-    // exact match is whitespace-trimmed and case-SENSITIVE by default
-    // (consistent with the user's "exact" intent). Lowercase shouldn't match uppercase.
-    expect(matchesRule('market alert · subscription panic', r)).toBe(false);
+    expect(matchesRule('market alert · subscription panic', r)).toBe(true);
+    // A different alert is still a different alert.
+    expect(matchesRule('Market Alert · Something Else', r)).toBe(false);
   });
 
   it('matches contains substring (case-insensitive)', () => {
@@ -68,6 +73,10 @@ describe('matchesRule', () => {
   it('defaults missing pattern_type to exact semantics', () => {
     const r = { ...rule(), pattern_type: undefined as any };
     expect(matchesRule('Subscription Panic · $200', r)).toBe(true);
-    expect(matchesRule('Subscription Panic · $300', r)).toBe(false);
+    // $300 now matches too, and that is the point: the rule was created from an
+    // alert whose own amount was in it, so under the old comparison it could
+    // never fire again. The words still have to be the same ones.
+    expect(matchesRule('Subscription Panic · $300', r)).toBe(true);
+    expect(matchesRule('Something Else · $300', r)).toBe(false);
   });
 });

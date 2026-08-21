@@ -1010,14 +1010,22 @@ public class NotificationListener extends NotificationListenerService {
                 .getString(SKIP_RULES_KEY, "[]");
             JSONArray rules = new JSONArray(stored);
             String lower = trimmed.toLowerCase();
+            String textShape = shapeOf(trimmed);
             for (int i = 0; i < rules.length(); i++) {
                 JSONObject rule = rules.optJSONObject(i);
                 if (rule == null) continue;
                 String pattern = rule.optString("pattern", "").trim();
                 if (pattern.isEmpty()) continue;
-                if ("contains".equals(rule.optString("pattern_type", "exact"))) {
+                boolean contains = "contains".equals(rule.optString("pattern_type", "exact"));
+                if (contains) {
                     if (lower.contains(pattern.toLowerCase())) return true;
                 } else if (trimmed.equals(pattern)) {
+                    return true;
+                }
+                // The same alert with a different number in it. See shapeOf.
+                String patternShape = shapeOf(pattern);
+                if (patternShape.isEmpty() || !HAS_LETTER.matcher(patternShape).find()) continue;
+                if (contains ? textShape.contains(patternShape) : textShape.equals(patternShape)) {
                     return true;
                 }
             }
@@ -1028,6 +1036,55 @@ public class NotificationListener extends NotificationListenerService {
         }
         return false;
     }
+
+    /**
+     * What a notification looks like with its numbers taken out.
+     *
+     * A rule is created from the whole text of the alert the user marked, and
+     * that text carries the alert's own figure — so a rule made from "BTC is
+     * trading at $104,455.73" could never fire again, because the next one says
+     * $98,220.10. Every rule made from an alert that reports a changing number
+     * was dead on arrival, while appearing in the rules list as though the app
+     * were following it.
+     *
+     * Masking the numbers leaves something that compares: "btc is trading at
+     * $#". Nothing else is masked — the merchant and every other word survive,
+     * which is what stops a rule made from one shop's alert from matching
+     * another's.
+     *
+     * Mirrors notificationShape in lib/notificationShape.ts, character for
+     * character in what it produces; notificationShapeMirror.test.ts fails the
+     * build if the two drift. Locale.US rather than the device locale for the
+     * same reason: the web copy lowercases the ASCII way, and a Turkish phone
+     * lowercasing "I" differently would put the two sides quietly out of step.
+     */
+    // NOTIFICATION_SHAPE_BEGIN
+    private static final Pattern NUMBER_RUN = Pattern.compile("[0-9][0-9.,:/-]*");
+    // Month and weekday names, masked ONLY where they sit against a number —
+    // "as of Aug 21" and "as of Sep 02" are the same alert. Several of these
+    // are ordinary English ("may", "march", "sat"), so masking them anywhere
+    // else would rub out real words; next to a number they are a date.
+    private static final String DATE_WORDS =
+        "january|february|march|april|may|june|july|august|september|october|november|december|"
+        + "jan|feb|mar|apr|jun|jul|aug|sept|sep|oct|nov|dec|"
+        + "monday|tuesday|wednesday|thursday|friday|saturday|sunday|"
+        + "mon|tues|tue|wed|thurs|thur|thu|fri|sat|sun";
+    private static final Pattern DATE_WORD_BEFORE_NUMBER =
+        Pattern.compile("\\b(?:" + DATE_WORDS + ")\\s+#");
+    private static final Pattern DATE_WORD_AFTER_NUMBER =
+        Pattern.compile("#\\s+(?:" + DATE_WORDS + ")\\b");
+    private static final Pattern WHITESPACE_RUN = Pattern.compile("\\s+");
+    private static final Pattern HAS_LETTER = Pattern.compile("[a-z]");
+
+    static String shapeOf(String text) {
+        if (text == null || text.isEmpty()) return "";
+        String lowered = text.toLowerCase(java.util.Locale.US);
+        String masked = NUMBER_RUN.matcher(lowered).replaceAll("#");
+        masked = DATE_WORD_BEFORE_NUMBER.matcher(masked).replaceAll("# #");
+        masked = DATE_WORD_AFTER_NUMBER.matcher(masked).replaceAll("# #");
+        return WHITESPACE_RUN.matcher(masked).replaceAll(" ").trim();
+    }
+    // NOTIFICATION_SHAPE_END
 
     // ── Charges the app is already expecting ─────────────────────────────
     //

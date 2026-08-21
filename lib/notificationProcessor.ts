@@ -18,9 +18,10 @@ import { formatVendorName, fuzzyVendorMatch, normalizeVendorForDedup } from './f
 import { parseNotificationText } from './deviceTransactionParser';
 import { addToReviewQueue, getVendorMapEntry, getVendorMap, isNotificationProcessed, markNotificationProcessed, isNotificationRejected, markNotificationRejected, getCachedAIResult, setCachedAIResult, type CachedAIResult } from './localNotificationMemory';
 import { findMatchingExpense, REFUND_MATCH_WINDOW_DAYS } from './refundMatching';
-import { aiFindRefundMatch } from './aiExtractor';
+import { aiFindRefundMatch, aiLooksLikeIgnoredAlert } from './aiExtractor';
 import type { LearnedVendorExample } from './aiExtractor';
-import { checkNotificationRules, bumpRuleUseCount } from './notificationRules';
+import { checkNotificationRules, bumpRuleUseCount, listIgnoredPatterns } from './notificationRules';
+import { candidatePatternsFor } from './notificationShape';
 import { getLocalToday, parseLocalDate, toLocalIsoDay } from './dateUtils';
 import { extractWithAI, type AIExtractionResult } from './aiExtractor';
 import { detectMerchantSignal, resolveSignalCategory } from './merchantCategorySignals';
@@ -1174,6 +1175,53 @@ async function processNotificationWithAIImpl(
       rejectionReason: reason,
       bankName: input.bankName,
     };
+  }
+
+  // ── Step 2d: the same alert, reworded ──
+  //
+  // The user's rules are matched two ways before this: the text as it was
+  // written, and the text with its numbers masked, which is what makes "ignore
+  // alerts like this one" survive tomorrow's price. Neither survives the alert
+  // being REWORDED — a bank changing its phrasing, "Bitcoin price update"
+  // where last week said "BTC price alert" — and to the user that is obviously
+  // the same notification they have already dealt with once.
+  //
+  // So the model gets a second look, under two conditions that keep it off the
+  // path of ordinary captures entirely:
+  //
+  //   - only for alerts already sharing most of their wording with something
+  //     the user ignored (candidatePatternsFor), so a Loblaws charge is never
+  //     compared against anything;
+  //   - only once the parser has decided this IS a purchase, so nothing the
+  //     app was going to reject anyway costs an inference.
+  //
+  // And the verdict is recorded as a GUESS, not as a rule. A rule is the
+  // user's standing instruction and is never revisited; this is the app's
+  // opinion about a wording nobody has ruled on, so it goes in the rejection
+  // memory that the scan button is allowed to overrule, and it shows up in the
+  // processed list with its reason rather than disappearing.
+  const ignoredPatterns = await listIgnoredPatterns(userId);
+  const rewordCandidates = ignoredPatterns.length > 0
+    ? candidatePatternsFor(ignoredPatterns, input.rawNotification)
+    : [];
+  if (rewordCandidates.length > 0) {
+    // A model that throws — no runtime, no network, a WebView that killed the
+    // worker — is not an opinion, and must never be the reason a purchase
+    // fails to be captured. Same answer as a "no".
+    const sameKind = await aiLooksLikeIgnoredAlert(input.rawNotification, rewordCandidates[0])
+      .catch(() => false);
+    if (sameKind) {
+      log.debug('[AI pipeline] Reads as a reworded version of an alert the user ignores');
+      recentlyProcessedCache.set(inMemoryKey, Date.now());
+      markNotificationRejected(inMemoryKey);
+      return {
+        processed: true,
+        isTransaction: false,
+        skipReason: 'not_transaction',
+        rejectionReason: "Looks like the alerts you've marked as not a transaction",
+        bankName: input.bankName,
+      };
+    }
   }
 
   // ── The three lookups the rest of this needs, started together ──

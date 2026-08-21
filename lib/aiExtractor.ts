@@ -576,6 +576,55 @@ export async function aiFindRefundMatch(
 }
 
 // ═════════════════════════════════════════════════════════════════
+// 6. "IS THIS ANOTHER ONE OF THOSE?"
+// ═════════════════════════════════════════════════════════════════
+
+/**
+ * Does this alert look like one the user has already told Covault to ignore?
+ *
+ * The deterministic layer — comparing shapes, with the numbers masked — catches
+ * the same alert with tomorrow's price in it. What it cannot catch is the same
+ * alert *reworded*: a bank that changes its wording, or a service that sends
+ * "Bitcoin price update" one week and "BTC price alert" the next. To the shape
+ * comparison those are two different notifications; to a person they are
+ * plainly the same thing, and the user has already said what they think of it.
+ *
+ * So the model is asked, and only ever asked about alerts that already share
+ * most of their wording with something ignored — see candidatePatternsFor. It
+ * is never on the path of an ordinary purchase.
+ *
+ * Deliberately hard to get a yes out of:
+ *   - one candidate, the closest, rather than a list to pick from, because a
+ *     list invites the model to choose something rather than nothing;
+ *   - a reply of exactly "yes" counts, and everything else — "maybe", "no",
+ *     an empty reply, a thrown error, a model that will not load — is a no.
+ *
+ * A yes is recorded as a GUESS, not as a rule (see the caller). The user's
+ * rules are instructions and are never revisited; this is the app's opinion,
+ * and the scan button is allowed to overrule it.
+ */
+export async function aiLooksLikeIgnoredAlert(
+  incoming: string,
+  ignoredExample: string,
+): Promise<boolean> {
+  if (!incoming || !ignoredExample) return false;
+  const clip = (text: string) => text.replace(/\s+/g, ' ').trim().slice(0, 240);
+  const prompt =
+    `Notification A: "${clip(ignoredExample)}"\n` +
+    `Notification B: "${clip(incoming)}"\n\n` +
+    `A is not a purchase. Are A and B the same kind of notification, ` +
+    `differing only in details like the amount or the date? Answer yes or no.`;
+
+  try {
+    const reply = (await aiGenerate(prompt, 4)).toLowerCase().trim();
+    return /^yes\b/.test(reply);
+  } catch {
+    // No model, no network, no opinion. The capture proceeds as it would have.
+    return false;
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════
 // LEGACY / INTERNAL HELPERS
 // ═════════════════════════════════════════════════════════════════
 

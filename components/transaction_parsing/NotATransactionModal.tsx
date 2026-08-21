@@ -22,11 +22,18 @@ interface NotATransactionModalProps {
 /**
  * Confirmation modal for "this isn't a transaction". Lets the user pick
  * how the skip rule should match future notifications:
- *   - exact   : full text must match (safest, ship-first per user)
- *   - contains: substring match (broader, riskier)
+ *   - exact   : this alert, and later ones with the same wording
+ *   - contains: this wording anywhere inside a longer alert (broader, riskier)
+ *
+ * Both are matched on the alert's SHAPE as well as its text — the same wording
+ * with a different amount or date in it counts as the same alert. Without that
+ * a rule made from anything reporting a changing figure could never fire
+ * again, which is what "exact text match" used to promise and quietly fail to
+ * deliver. See lib/notificationShape.ts. The wording here says so, because a
+ * rule that silently does more than it says is worse than one that does less.
  *
  * The user is shown the rule that will be created before they confirm,
- * so they can sanity-check. Defaults to 'exact' to be safe.
+ * so they can sanity-check. Defaults to the narrower of the two.
  *
  * Visually consistent with the rest of the app: dark backdrop blur,
  * rounded-[2.5rem] card, emerald accents, monospace for the pattern
@@ -69,7 +76,7 @@ const NotATransactionModal: React.FC<NotATransactionModalProps> = ({
                 Mark as not a transaction?
               </h2>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
-                <span className="font-semibold text-slate-700 dark:text-slate-200">{vendor}</span> {formatCurrency(amount)} will be removed and a skip rule will be created so future notifications matching it are ignored.
+                <span className="font-semibold text-slate-700 dark:text-slate-200">{vendor}</span> {formatCurrency(amount)} will be removed, and alerts like it will be ignored from now on — including the same wording with a different amount in it.
               </p>
             </div>
           </div>
@@ -115,11 +122,11 @@ const NotATransactionModal: React.FC<NotATransactionModalProps> = ({
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
-                  Exact text match
+                  Alerts like this one
                   <span className="ml-2 text-[11px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/40 px-1.5 py-0.5 rounded">Recommended</span>
                 </p>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
-                  Only this exact notification text is skipped. Safest.
+                  This wording is skipped whatever the amount or date says. A different merchant still comes through.
                 </p>
               </div>
             </button>
@@ -147,7 +154,7 @@ const NotATransactionModal: React.FC<NotATransactionModalProps> = ({
                   Contains substring
                 </p>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
-                  Any notification containing this text is skipped. May block similar legitimate transactions.
+                  Skipped wherever this wording appears, even inside a longer alert. Broader, and may block real purchases.
                 </p>
               </div>
             </button>

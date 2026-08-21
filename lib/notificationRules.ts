@@ -17,6 +17,7 @@
 import { log } from './log';
 import { restFetch } from './apiHelpers';
 import { covaultNotification, pushSkipRules } from './covaultNotification';
+import { shapeMatches } from './notificationShape';
 
 export type PatternType = 'exact' | 'contains';
 
@@ -132,16 +133,48 @@ export async function checkNotificationRules(
   }
 }
 
+/**
+ * The patterns the user has told Covault to ignore, for the second look the
+ * model takes at anything close to one of them.
+ *
+ * Reads through the same cache the check above just filled, so on the path
+ * that uses it this costs nothing. A failed read is an empty list: no
+ * patterns, no candidates, no second look — which is where the app was before
+ * any of this existed.
+ */
+export async function listIgnoredPatterns(userId: string): Promise<string[]> {
+  if (!userId) return [];
+  try {
+    const rows = await fetchRules(userId);
+    return (rows || []).map((row) => row.pattern).filter((pattern) => !!pattern);
+  } catch {
+    return [];
+  }
+}
+
 export function matchesRule(rawNotification: string, rule: NotificationRule): boolean {
   if (!rule.pattern) return false;
   const text = rawNotification.trim();
   const pattern = rule.pattern.trim();
   if (!text || !pattern) return false;
   if (rule.pattern_type === 'contains') {
-    return text.toLowerCase().includes(pattern.toLowerCase());
+    if (text.toLowerCase().includes(pattern.toLowerCase())) return true;
+  } else if (text === pattern) {
+    return true;
   }
-  // default: exact
-  return text === pattern;
+  // ── The same alert, a different number ──
+  //
+  // A rule is created from the whole text of the alert the user marked, and
+  // that text carries the alert's own figure. So a rule made from a price
+  // alert, a balance warning or a points update could never fire again — the
+  // next one says a different number — while sitting in the rules list looking
+  // like an instruction the app was following.
+  //
+  // Comparing shapes instead is what makes "ignore alerts like this one" mean
+  // what the user meant. It only ever ADDS matches to the comparison above, so
+  // nothing a rule used to catch stops being caught. See notificationShape.ts
+  // for why this cannot quietly widen to a different merchant.
+  return shapeMatches(pattern, text, rule.pattern_type === 'contains' ? 'contains' : 'exact');
 }
 
 /**
