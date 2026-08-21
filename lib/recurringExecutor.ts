@@ -61,9 +61,24 @@ const LAST_RUN_KEY = 'covault_recurring_last_run';
 const MAX_FAILURES_PER_SESSION = 3;
 let failuresThisSession = 0;
 
+/**
+ * The run currently under way, if any.
+ *
+ * The caller re-runs this on every change to the transaction list, and a
+ * capture arriving changes it several times in a couple of seconds — the
+ * server log shows two runs starting 50ms apart. The once-a-day marker is
+ * written at the END of a run, so it cannot separate two that overlap: both
+ * would read the same "not recorded yet", and both would post the same
+ * charges. A second caller waits for the run already in progress and reports
+ * nothing of its own, because the run it waited for has already reported
+ * those rows to the caller that started it.
+ */
+let inFlight: Promise<Transaction[]> | null = null;
+
 /** Exposed for testing: forget this session's failure count. */
 export function _resetFailureCountForTesting(): void {
   failuresThisSession = 0;
+  inFlight = null;
 }
 
 /** `2026-08-*` shifted by whole months, for the DB duplicate lookup. */
@@ -146,6 +161,23 @@ export async function executeRecurringTransactions(
   userId: string,
   transactions: Transaction[],
   options: { force?: boolean } = {},
+): Promise<Transaction[]> {
+  if (inFlight) {
+    await inFlight.catch(() => {});
+    return [];
+  }
+  inFlight = runRecurringTransactions(userId, transactions, options);
+  try {
+    return await inFlight;
+  } finally {
+    inFlight = null;
+  }
+}
+
+async function runRecurringTransactions(
+  userId: string,
+  transactions: Transaction[],
+  options: { force?: boolean },
 ): Promise<Transaction[]> {
   const today = todayStr();
 

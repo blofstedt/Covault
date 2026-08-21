@@ -109,6 +109,18 @@ describe('recurring executor writes', () => {
     }
   });
 
+  it('posts once when two reloads start a run at the same moment', async () => {
+    const [first, second] = await Promise.all([
+      executeRecurringTransactions('u1', [template()], { force: true }),
+      executeRecurringTransactions('u1', [template()], { force: true }),
+    ]);
+    expect(calls.filter((c) => c.init?.method === 'POST')).toHaveLength(1);
+    // Only the run that did the work reports the rows, so the caller cannot
+    // add the same charge to the screen twice.
+    expect(second).toEqual([]);
+    expect(Array.isArray(first)).toBe(true);
+  });
+
   it('stops retrying after a few failures instead of re-posting on every reload', async () => {
     insertOk = false;
     for (let i = 0; i < 6; i++) {
