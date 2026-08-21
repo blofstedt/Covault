@@ -144,9 +144,14 @@ describe('the native and web rule matchers', () => {
 describe('the native listener', () => {
   it('stays silent for an alert the user ignores', () => {
     expect(LISTENER_JAVA).toMatch(/boolean ignoredByUser = matchesSkipRule\(this, fullText\);/);
+    // A rule match is one of several reasons to capture without announcing —
+    // a subscription already on the books and a price alert are the others —
+    // so what reaches the post is the combined flag. See the call itself for
+    // the assertion that a rule match still feeds it.
     expect(LISTENER_JAVA).toMatch(
-      /if \(!ignoredByUser && \(!fromScan \|\| !alreadySecured\)\) \{\s*\n\s*notified = notifyCaptured/,
+      /if \(!captureQuietly && \(!fromScan \|\| !alreadySecured\)\) \{\s*\n\s*notified = notifyCaptured/,
     );
+    expect(LISTENER_JAVA).toMatch(/ignoredByUser \|\| knownRecurring \|\| notAPurchase\);/);
   });
 
   it('still captures it, so a bad rule can only cost a notification', () => {

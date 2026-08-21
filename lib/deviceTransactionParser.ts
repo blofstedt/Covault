@@ -57,7 +57,16 @@ const INCOME_PHRASES = [
 /**
  * Non-financial notification patterns that should be rejected before parsing.
  * Matches crypto price alerts, market data, promos, marketing, etc.
+ *
+ * Mirrored into NON_PURCHASE_PATTERNS in
+ * android-custom/NotificationListener.java, which consults the same list to
+ * decide whether to ANNOUNCE a capture — the notification is posted with the
+ * app closed, hours before anything here runs, so without the copy a price
+ * alert announced itself as a purchase and was only thrown away at the next
+ * launch. The two are kept identical by quietNonPurchaseAlerts.test.ts;
+ * anything added here must be added there.
  */
+// NON_FINANCIAL_PATTERNS_BEGIN
 const NON_FINANCIAL_PATTERNS: RegExp[] = [
   // Crypto price alerts: "ETH is down 5.06%", "BTC trading at $45k"
   /\b(?:ETH|BTC|SOL|ADA|DOT|DOGE|XRP|MATIC|AVAX|LINK|LTC|USDT|USDC|BNB|SHIB)\b.*?\b(?:up|down|trading|price|market|rally|crash|surge|drop|gain|loss|fell|rose|climb)/i,
@@ -72,6 +81,7 @@ const NON_FINANCIAL_PATTERNS: RegExp[] = [
   // App feature announcements
   /\b(?:new\s+feature|update\s+available|what'?s\s+new)\b/i,
 ];
+// NON_FINANCIAL_PATTERNS_END
 
 const amountRegex = /(?<!\w)(?:\$|cad\s*)\s*([0-9]{1,3}(?:,[0-9]{3})*|[0-9]+)(?:[.,]([0-9]{1,2}))?(?!\w)|(?<!\w)([0-9]{1,3}(?:,[0-9]{3})*|[0-9]+)(?:\.([0-9]{2}))(?!\w)/gi;
 

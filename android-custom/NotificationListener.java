@@ -499,6 +499,65 @@ public class NotificationListener extends NotificationListenerService {
         Pattern.compile("(?:merchant|vendor|store)\\s*:?\\s*([A-Za-z0-9\\s&'.-]+)", Pattern.CASE_INSENSITIVE)
     };
 
+
+    /**
+     * Wording that is never a purchase, mirrored from the web parser.
+     *
+     * The capture notification is posted from here on the strength of a dollar
+     * amount and nothing else, because with the app closed this service is the
+     * only part of Covault running. Everything that decides whether an alert is
+     * actually an expense lives in the web pipeline, which may not run for
+     * hours — so a crypto price alert from a monitored app ("BTC is trading at
+     * $104,455.73") announced itself as a captured purchase, sat in the shade
+     * all afternoon, and was then rejected the moment the app was next opened.
+     *
+     * These are the exact patterns lib/deviceTransactionParser.ts already
+     * rejects outright, before it parses anything (NON_FINANCIAL_PATTERNS).
+     * Copying them here does not add a new opinion about what counts as a
+     * purchase — it applies the app's existing one earlier, so the shade and
+     * the review list agree from the start rather than hours later. Because
+     * the two lists are identical, anything silenced here is something the
+     * pipeline was always going to throw away: no purchase can be lost to it,
+     * only an announcement of something that was never going to appear.
+     *
+     * A match makes the capture QUIET, never dropped. The alert is still
+     * queued, still broadcast, still classified, and still shows up in the
+     * processed list — see the ignoredByUser path, which this joins.
+     *
+     * Kept in step by quietNonPurchaseAlerts.test.ts, which parses both lists
+     * and fails the build if they drift.
+     */
+    // NON_PURCHASE_PATTERNS_BEGIN
+    private static final Pattern[] NON_PURCHASE_PATTERNS = {
+        // Crypto price alerts: "ETH is down 5.06%", "BTC trading at $45k"
+        Pattern.compile("\\b(?:ETH|BTC|SOL|ADA|DOT|DOGE|XRP|MATIC|AVAX|LINK|LTC|USDT|USDC|BNB|SHIB)\\b.*?\\b(?:up|down|trading|price|market|rally|crash|surge|drop|gain|loss|fell|rose|climb)", Pattern.CASE_INSENSITIVE),
+        Pattern.compile("\\b(?:is\\s+)?trading\\s+at\\b", Pattern.CASE_INSENSITIVE),
+        Pattern.compile("\\bmarket\\s+cap\\b", Pattern.CASE_INSENSITIVE),
+        Pattern.compile("\\bprice\\s+alert\\b", Pattern.CASE_INSENSITIVE),
+        Pattern.compile("\\b(?:up|down)\\s+\\d+(?:\\.\\d+)?%", Pattern.CASE_INSENSITIVE),
+        // Promotional / marketing language
+        Pattern.compile("\\b(?:limited\\s+time|act\\s+now|don't\\s+miss|exclusive\\s+offer|flash\\s+sale)\\b", Pattern.CASE_INSENSITIVE),
+        Pattern.compile("\\b(?:promo\\s+code|coupon\\s+code|discount\\s+code|referral\\s+code)\\b", Pattern.CASE_INSENSITIVE),
+        Pattern.compile("\\b(?:earn\\s+(?:up\\s+to|bonus)|free\\s+(?:shipping|trial|gift))\\b", Pattern.CASE_INSENSITIVE),
+        // App feature announcements
+        Pattern.compile("\\b(?:new\\s+feature|update\\s+available|what'?s\\s+new)\\b", Pattern.CASE_INSENSITIVE),
+    };
+    // NON_PURCHASE_PATTERNS_END
+
+    /**
+     * True when the alert is one the web parser rejects on sight.
+     *
+     * Only ever consulted to decide whether to ANNOUNCE a capture. Nothing
+     * about queueing, broadcasting or classifying reads this.
+     */
+    static boolean looksNonFinancial(String text) {
+        if (text == null || text.isEmpty()) return false;
+        for (Pattern pattern : NON_PURCHASE_PATTERNS) {
+            if (pattern.matcher(text).find()) return true;
+        }
+        return false;
+    }
+
     // Keywords that indicate a transaction notification (not just a promo)
     private static final String[] TRANSACTION_KEYWORDS = {
         "purchase", "transaction", "charged", "spent", "paid", "payment",
@@ -632,12 +691,24 @@ public class NotificationListener extends NotificationListenerService {
             Log.i(TAG, "Already a known recurring charge; capturing quietly: " + packageName);
         }
 
+        // Wording the web parser rejects on sight — a crypto price alert, a
+        // promo, a feature announcement. A dollar amount alone is all this
+        // service has to go on, which is how "BTC is trading at $104,455.73"
+        // came to announce itself as a captured purchase and then sit in the
+        // shade until the app was next opened and threw it away. Same handling
+        // as the two above: captured, queued, broadcast, classified — and
+        // announced to nobody. See NON_PURCHASE_PATTERNS.
+        boolean notAPurchase = !ignoredByUser && !knownRecurring && looksNonFinancial(fullText);
+        if (notAPurchase) {
+            Log.i(TAG, "Reads as a price alert or promo rather than a purchase; capturing quietly: " + packageName);
+        }
+
         // Broadcast to the local TypeScript pipeline which will classify
         // as transaction or non-transaction — non-transactions will appear in
         // the rejected card so the user can see what was processed.
         CaptureResult result = broadcastTransaction(
             packageName, amount, vendor, fullText, sbn.getPostTime(), fromScan, alreadySecured,
-            ignoredByUser || knownRecurring);
+            ignoredByUser || knownRecurring || notAPurchase);
         boolean secured = result.secured();
 
         // Recorded BEFORE the dismissal below, never after. The record is what
@@ -648,7 +719,7 @@ public class NotificationListener extends NotificationListenerService {
 
         maybeHideBankNotification(
             sbn, securedKey, fromMonitored, amount, secured || alreadySecured, result,
-            ignoredByUser, knownRecurring);
+            ignoredByUser, knownRecurring, notAPurchase);
 
         // Home-screen widget: nudge the donut for a purchase captured while the
         // app is closed, so it doesn't sit stale until the next app launch.
@@ -729,7 +800,8 @@ public class NotificationListener extends NotificationListenerService {
         boolean replaced,
         CaptureResult result,
         boolean ignoredByUser,
-        boolean knownRecurring
+        boolean knownRecurring,
+        boolean notAPurchase
     ) {
         if (!fromMonitored) return;           // (3)
         String app = sbn.getPackageName();
@@ -750,6 +822,14 @@ public class NotificationListener extends NotificationListenerService {
         // line above so the settings screen can explain which it was.
         if (knownRecurring) {
             recordOutcome(securedKey, app, amount, OUTCOME_KNOWN_RECURRING);
+            return;
+        }
+        // And again: this one read as a price alert or a promo rather than a
+        // purchase, so nothing was posted in its place. The bank's own alert
+        // stays, which is right — Covault has no replacement to offer for
+        // something it does not believe is a purchase.
+        if (notAPurchase) {
+            recordOutcome(securedKey, app, amount, OUTCOME_NOT_A_PURCHASE);
             return;
         }
         if (!replaced) {                      // (2)
@@ -1102,6 +1182,13 @@ public class NotificationListener extends NotificationListenerService {
      * must not remove.
      */
     static final String OUTCOME_KNOWN_RECURRING = "known_recurring";
+
+    /**
+     * The alert read as a price alert, a promo or an announcement rather than a
+     * purchase, so nothing was posted in its place — and an alert we have not
+     * replaced is one we must not remove.
+     */
+    static final String OUTCOME_NOT_A_PURCHASE = "not_a_purchase";
 
     private static final long DISMISS_VERIFY_DELAY_MS = 700L;
     private final android.os.Handler dismissHandler =
@@ -1755,7 +1842,7 @@ public class NotificationListener extends NotificationListenerService {
      *         Covault notification is showing for it — the two preconditions
      *         for dismissing the bank's own notification.
      */
-    private CaptureResult broadcastTransaction(String sourceApp, Double amount, String vendor, String rawText, long postTime, boolean fromScan, boolean alreadySecured, boolean ignoredByUser) {
+    private CaptureResult broadcastTransaction(String sourceApp, Double amount, String vendor, String rawText, long postTime, boolean fromScan, boolean alreadySecured, boolean captureQuietly) {
         try {
             JSONObject transaction = new JSONObject();
             transaction.put("source_app", sourceApp);
@@ -1791,12 +1878,14 @@ public class NotificationListener extends NotificationListenerService {
             // however we found it, and staying silent about it also left it
             // undismissable, since suppression needs a replacement to exist.
             //
-            // Unless the user has told us to ignore alerts like this one, in
-            // which case the whole point is that nothing is announced. Note
-            // this leaves `notified` false, which is what keeps tray
-            // suppression from dismissing an alert we never replaced.
+            // Unless this is one of the quiet captures — an alert the user
+            // has told us to ignore, a subscription already on the books, or
+            // wording the parser rejects on sight — in which case the whole
+            // point is that nothing is announced. Note this leaves `notified`
+            // false, which is what keeps tray suppression from dismissing an
+            // alert we never replaced.
             boolean notified = false;
-            if (!ignoredByUser && (!fromScan || !alreadySecured)) {
+            if (!captureQuietly && (!fromScan || !alreadySecured)) {
                 notified = notifyCaptured(amount, vendor, rawText);
             }
 
