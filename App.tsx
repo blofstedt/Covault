@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core'; // Added safety check
+import { App as CapApp } from '@capacitor/app';
 import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
 import Onboarding from './components/Onboarding';
@@ -23,6 +24,7 @@ import { sendRecurringCatchUpNotification } from './lib/appNotifications';
 import { preloadAIModel } from './lib/aiExtractor';
 import { setHapticsEnabled } from './lib/haptics';
 import { log } from './lib/log';
+import { resolveToastMessage } from './lib/toastSubject';
 
 // `Toast` lives in types.ts because Dashboard and the Review page raise their
 // own (e.g. Undo after filing a captured transaction) and importing it from
@@ -90,10 +92,43 @@ const App: React.FC = () => {
 
   // Auto-dismiss so a toast never lingers. The undo window is a touch
   // shorter than a plain error so the "Undo" doesn't hang around.
+  //
+  // Measured against the clock, not left to a bare timer. This app is
+  // backgrounded rather than closed, and Android freezes the WebView's timers
+  // while it is away — so the strip, and its live Undo, could still be sitting
+  // there on return, reporting something the user did before they left.
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), toast.action ? 6000 : 8000);
-    return () => clearTimeout(t);
+    const deadline = Date.now() + (toast.action ? 6000 : 8000);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const arm = () => {
+      if (timer !== undefined) clearTimeout(timer);
+      const left = deadline - Date.now();
+      if (left <= 0) {
+        setToast(null);
+        return;
+      }
+      timer = setTimeout(() => setToast(null), left);
+    };
+    arm();
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') arm();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    let removeResume: (() => void) | undefined;
+    if (Capacitor.isNativePlatform()) {
+      const handle = CapApp.addListener('resume', arm);
+      removeResume = () => { void handle.then(h => h.remove()); };
+    }
+
+    return () => {
+      if (timer !== undefined) clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      removeResume?.();
+    };
   }, [toast]);
 
   const [appState, setAppState] = useState<AppState>(() => {
@@ -343,7 +378,7 @@ const App: React.FC = () => {
               <line x1="12" y1="16" x2="12.01" y2="16" />
             </svg>
           )}
-          <span className="truncate">{toast.message}</span>
+          <span className="truncate">{resolveToastMessage(toast, appState.transactions)}</span>
           {toast.action ? (
             <button
               type="button"

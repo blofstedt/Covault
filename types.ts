@@ -167,4 +167,15 @@ export interface Toast {
   message: string;
   tone: 'error' | 'info';
   action?: { label: string; run: () => void };
+  /**
+   * The row this message is about, when it names one.
+   *
+   * `message` is written once, at the moment the action happened, so the
+   * vendor name baked into it is the name as it was then. Renaming the row
+   * while the strip is still up left the bottom of the screen insisting on the
+   * old name — which reads as the rename not having saved. With this set, the
+   * name is re-read from live state on every render; see
+   * lib/toastSubject.ts.
+   */
+  subject?: { transactionId: string; vendor: string };
 }

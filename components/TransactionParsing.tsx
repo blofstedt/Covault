@@ -360,6 +360,9 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       onToast?.({
         message: `Filed ${tx.vendor}`,
         tone: 'info',
+        // Named row: a rename while this is still up rewrites the name here
+        // too, rather than leaving the screen arguing with itself.
+        subject: { transactionId: tx.id, vendor: tx.vendor },
         action: {
           label: 'Undo',
           run: () => { void restoreCaughtTransactions([{ id: tx.id, budget: previousBudget }]); },
@@ -490,6 +493,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
           ? `Learned ${tx.vendor} → ${name ?? ''} · that vendor will now ask`
           : `Learned ${tx.vendor} → ${name ?? ''}`,
         tone: 'info',
+        subject: { transactionId: tx.id, vendor: tx.vendor },
         action: {
           label: 'Undo',
           run: () => {
