@@ -12,11 +12,13 @@ import BudgetLimitsSection from './settings_modal_components/BudgetLimitsSection
 import ExportTransactionsSection from './settings_modal_components/ExportTransactionsSection';
 import ImportTransactionsSection from './settings_modal_components/ImportTransactionsSection';
 import SmartNotificationsSection from './settings_modal_components/SmartNotificationsSection';
+import OnDeviceAISection from './settings_modal_components/OnDeviceAISection';
 import ReportSection from './settings_modal_components/ReportSection';
 import { BudgetCategory, Transaction } from '../../types';
 import PremiumGate from '../PremiumGate';
 import { CloseButton } from '../shared';
 import { useEscapeKey } from '../../lib/hooks/useEscapeKey';
+import type { AIModelOnDevice } from '../../lib/hooks/useAIModelOnDevice';
 
 export interface DashboardSettings {
   theme: string;
@@ -40,6 +42,9 @@ export interface DashboardUser {
 }
 
 export interface DashboardSettingsModalProps {
+  /** The reading model's state on this phone. Owned by Dashboard so the
+   *  download runs while the app is open, not only while this modal is. */
+  aiModel: AIModelOnDevice;
   isSharedAccount: boolean;
   settings: DashboardSettings;
   user: DashboardUser | null | undefined;
@@ -65,6 +70,7 @@ export interface DashboardSettingsModalProps {
 }
 
 const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
+  aiModel,
   isSharedAccount,
   settings,
   user,
@@ -167,6 +173,13 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           <RolloverSection
             rolloverEnabled={settings.rolloverEnabled}
             onUpdateSettings={onUpdateSettings}
+          />
+
+          {/* Reading model — where the AI lives */}
+          <OnDeviceAISection
+            report={aiModel.report}
+            downloading={aiModel.downloading}
+            onDownload={() => { void aiModel.downloadNow(); }}
           />
 
           {/* Smart Notifications */}

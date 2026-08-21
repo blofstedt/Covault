@@ -14,6 +14,18 @@
 
 import { log } from './log';
 import type { Text2TextGenerationPipeline } from '@huggingface/transformers';
+import {
+  createIdbStore,
+  createModelCache,
+  loadStoredRuntime,
+  markModelReady,
+  readModelReport,
+  requestDurableStorage,
+  storageSupported,
+  storeRuntime,
+  type AIModelReport,
+  type ModelFileStore,
+} from './aiModelStore';
 import { formatVendorName } from './formatVendorName';
 import { BANK_NAME_PREFIXES, isCommonNounOnly } from './deviceTransactionParser';
 
@@ -44,6 +56,26 @@ export interface AIExtractionResult {
 
 const MODEL_ID = 'Xenova/flan-t5-small';
 
+/**
+ * Where the runtime is fetched from when it is not already on the phone.
+ *
+ * Transformers.js sets exactly this by default, so as a fallback it changes
+ * nothing — what it changes is that it can no longer *silently* stop being
+ * true. The library also has a path that resolves the binary relative to the
+ * bundle, and Vite sees that path and emits a 21MB .wasm into dist/ that is
+ * never fetched; vite.config.ts drops that file on the strength of this
+ * constant, and `aiRuntimeSource.test.ts` fails the build if the two drift
+ * apart.
+ */
+const RUNTIME_CDN_PREFIX_FOR = (version: string) =>
+  `https://cdn.jsdelivr.net/npm/@huggingface/transformers@${version}/dist/`;
+
+/** The one store the model and the runtime are kept in. See aiModelStore.ts. */
+const modelStore: ModelFileStore = createIdbStore();
+
+/** The prefix the last load used, so the settings screen can report on it. */
+let lastRuntimePrefix = RUNTIME_CDN_PREFIX_FOR('3.8.1');
+
 let generatorPromise: Promise<Text2TextGenerationPipeline> | null = null;
 
 // The transformers runtime (plus ONNX Runtime Web) is ~2.2MB of the bundle —
@@ -55,25 +87,50 @@ let generatorPromise: Promise<Text2TextGenerationPipeline> | null = null;
 function getGenerator(): Promise<Text2TextGenerationPipeline> {
   if (!generatorPromise) {
     log.debug('[aiExtractor] Loading AI model:', MODEL_ID);
-    generatorPromise = import('@huggingface/transformers').then(({ pipeline, env }) => {
-      // Say out loud where the ONNX runtime's WebAssembly binary comes from.
+    generatorPromise = import('@huggingface/transformers').then(async ({ pipeline, env }) => {
+      // ── Where the model and the runtime come from ──
       //
-      // Transformers.js sets exactly this by default, so this changes nothing
-      // at runtime — what it changes is that it can no longer *silently* stop
-      // being true. The library also has a fallback that resolves the binary
-      // relative to the bundle, and Vite sees that fallback and emits a 21MB
-      // .wasm into dist/ that is never fetched. vite.config.ts drops that file
-      // on the strength of this line; the two belong together, and
-      // `aiRuntimeSource.test.ts` fails the build if they drift apart.
+      // Both are kept on the phone once they have been fetched, so that the
+      // AI fallback works with no connection and, more to the point, does not
+      // stop to download 70MB at the exact moment a purchase is waiting to be
+      // read. See lib/aiModelStore.ts for why that store is IndexedDB.
       //
-      // Keeping it remote costs nothing in reach: the model weights come from
-      // huggingface.co on first use no matter what, so the AI fallback has
-      // never worked without a network and bundling the runtime would not
-      // change that. It does keep 21MB out of the APK and out of every
-      // background web update.
+      // Everything here is a preference, not a requirement. If the store is
+      // unavailable, or empty, or the phone has cleared it, each line below
+      // falls back to what the library would have done unaided: fetch the
+      // weights from huggingface.co and the runtime from the CDN.
+      const prefix = `https://cdn.jsdelivr.net/npm/@huggingface/transformers@${env.version}/dist/`;
+      lastRuntimePrefix = prefix;
+
+      void requestDurableStorage();
+
+      // The weights. `customCache` is the library's own hook for this — an
+      // object with the `match` and `put` of the Web Cache API — and the
+      // adapter falls back to the browser cache it used before, so a phone
+      // that already downloaded the model does not download it again.
+      try {
+        const browserCache =
+          typeof caches !== 'undefined'
+            ? { match: (key: string) => caches.open('transformers-cache').then((c) => c.match(key)) }
+            : undefined;
+        env.useCustomCache = true;
+        env.customCache = createModelCache(modelStore, browserCache);
+      } catch (e) {
+        log.warn('[aiExtractor] Keeping the model on this phone is unavailable:', e);
+      }
+
+      // The runtime. The .wasm goes in as bytes, which the loader prefers over
+      // any path; the .mjs has to be a URL because it is imported as a module,
+      // so it is served from a blob over the stored copy. Only used when BOTH
+      // are present — see loadStoredRuntime.
       if (env.backends?.onnx?.wasm) {
-        env.backends.onnx.wasm.wasmPaths =
-          `https://cdn.jsdelivr.net/npm/@huggingface/transformers@${env.version}/dist/`;
+        env.backends.onnx.wasm.wasmPaths = prefix;
+        const stored = await loadStoredRuntime(modelStore, prefix);
+        if (stored) {
+          (env.backends.onnx.wasm as { wasmBinary?: ArrayBuffer }).wasmBinary = stored.wasmBinary;
+          env.backends.onnx.wasm.wasmPaths = { mjs: stored.mjsUrl };
+          log.debug('[aiExtractor] Using the AI runtime stored on this phone');
+        }
       }
       return pipeline;
     }).then((pipeline) => {
@@ -100,6 +157,42 @@ function getGenerator(): Promise<Text2TextGenerationPipeline> {
 
 export function preloadAIModel(): Promise<void> {
   return getGenerator().then(() => {}).catch(() => {});
+}
+
+/**
+ * Put the model on this phone, once, and confirm it is loadable.
+ *
+ * Ordered deliberately: the model is loaded for real FIRST, then the runtime
+ * is stored. Loading it is what pulls the weights through the cache above, and
+ * it is also what settles which version of the runtime this build actually
+ * uses — storing the runtime before that would risk keeping 21MB of the wrong
+ * version, which the loader would then ignore.
+ *
+ * "Ready" is marked only after a load has succeeded, because a load is the
+ * only honest test that what is stored can actually be used. A failure leaves
+ * the state exactly as it was rather than claiming success.
+ */
+export async function downloadAIModelToDevice(): Promise<AIModelReport> {
+  await requestDurableStorage();
+  try {
+    await getGenerator();
+    await storeRuntime(modelStore, lastRuntimePrefix);
+    await markModelReady(modelStore);
+  } catch (e) {
+    log.warn('[aiExtractor] Could not put the AI model on this phone:', e);
+    // The generator resets itself on failure, so a later attempt starts clean.
+  }
+  return readModelReport(modelStore, lastRuntimePrefix);
+}
+
+/** What is on this phone right now. Read from the store, never from a flag. */
+export function readAIModelReport(): Promise<AIModelReport> {
+  if (!storageSupported()) {
+    return Promise.resolve({
+      state: 'unsupported', bytes: 0, weights: false, runtime: false, at: 0,
+    });
+  }
+  return readModelReport(modelStore, lastRuntimePrefix);
 }
 
 async function aiGenerate(prompt: string, maxTokens = 64): Promise<string> {

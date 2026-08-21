@@ -40,6 +40,7 @@ import { buildWidgetSnapshot } from '../lib/widgetSnapshot';
 import { pushWidgetSnapshot, pushRecurringCharges, type WidgetVendorRule } from '../lib/covaultNotification';
 import { countAwaitingReview } from '../lib/reviewQueue';
 import { collectRecurringCharges } from '../lib/recurringSchedule';
+import { useAIModelOnDevice } from '../lib/hooks/useAIModelOnDevice';
 
 // Map from app-state setting keys to DB column names.
 const SETTING_DB_KEYS: Record<string, string> = {
@@ -97,6 +98,12 @@ const Dashboard: React.FC<Props> = ({
 }) => {
   const [showParsing, setShowParsing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+
+  // The reading model, kept on this phone rather than fetched mid-capture.
+  // Held here rather than in the settings modal so the one download it needs
+  // happens while the app is simply open, at a quiet moment on a connection
+  // that is not metered — see useAIModelOnDevice.
+  const aiModel = useAIModelOnDevice(true);
   const [isLinkingPartner, setIsLinkingPartner] = useState(false);
   const [partnerLinkEmail, setPartnerLinkEmail] = useState('');
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
@@ -642,6 +649,7 @@ const Dashboard: React.FC<Props> = ({
 
       {showSettings && (
         <DashboardSettingsModal
+          aiModel={aiModel}
           isSharedAccount={!state.user?.budgetingSolo}
           settings={state.settings}
           user={state.user}
