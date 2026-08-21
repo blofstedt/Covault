@@ -62,7 +62,7 @@ interface Props {
   state: AppState;
   setState: React.Dispatch<React.SetStateAction<AppState>>;
   onAddTransaction: (t: Transaction) => void;
-  onUpdateTransaction: (t: Transaction) => void;
+  onUpdateTransaction: (t: Transaction) => void | Promise<void>;
   onDeleteTransaction: (id: string) => void;
   onSignOut: () => Promise<void>;
   saveBudgetLimit: (categoryId: string, newLimit: number) => Promise<void>;

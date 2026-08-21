@@ -62,7 +62,7 @@ interface TransactionParsingProps {
   /** Update a transaction (full record, persisted). Used by the inline
    *  vendor rename in the Caught Transactions list. The handler also
    *  writes the vendor correction to the overrides table. */
-  onUpdateTransaction?: (tx: Transaction) => void;
+  onUpdateTransaction?: (tx: Transaction) => void | Promise<void>;
   /** Currently-loaded vendor overrides, used by the Learned Rules card. */
   vendorOverrides?: import('./transaction_parsing/useVendorOverrides').VendorOverride[];
   /** Delete a vendor override. */
@@ -245,7 +245,10 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     async (tx: Transaction, newVendor: string) => {
       if (!onUpdateTransaction) return;
       const updated: Transaction = { ...tx, vendor: newVendor };
-      onUpdateTransaction(updated);
+      // Awaited, so the row's saving state covers the write rather than just
+      // the hand-off, and a failure reaches the caller instead of being
+      // dropped on the floor.
+      await onUpdateTransaction(updated);
     },
     [onUpdateTransaction],
   );

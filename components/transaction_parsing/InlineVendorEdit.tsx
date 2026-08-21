@@ -6,6 +6,30 @@ import type { ExistingRule } from './CategoryPickerSheet';
 const NO_RULES: ExistingRule[] = [];
 const MAX_SUGGESTIONS = 4;
 
+/**
+ * The stored spelling worth offering instead of what was just typed, or null
+ * when the typed name should simply be saved.
+ *
+ * Exported for its test. The rule carrying the name being renamed AWAY from is
+ * never offered: it fuzzy-matches nearly anything typed over it ("Tst-pizza
+ * Culture" contains "Pizza Culture"), so the prompt would ask whether to keep
+ * the very name the user is trying to get rid of — and choosing it saved
+ * nothing at all, which looks exactly like the rename failing.
+ */
+export function pickNearMatchName(
+  rules: ExistingRule[],
+  typed: string,
+  currentValue: string,
+): string | null {
+  const current = currentValue.trim().toLowerCase();
+  const match = rules.find(
+    (rule) =>
+      rule.properName.trim().toLowerCase() !== current &&
+      fuzzyVendorMatch(rule.properName, typed),
+  );
+  return match ? match.properName : null;
+}
+
 interface InlineVendorEditProps {
   /** Current vendor display name. */
   value: string;
@@ -51,6 +75,15 @@ const InlineVendorEdit: React.FC<InlineVendorEditProps> = ({
   // on a rule. Holds the stored spelling so the user can choose between them.
   const [nearMatch, setNearMatch] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // The whole editor, so a blur can tell "focus moved to my own Save button"
+  // from "focus left entirely".
+  const editorRef = useRef<HTMLDivElement>(null);
+  // Guards a second save while one is in flight — the blur below and a tap on
+  // Save can both arrive for the same rename.
+  const savingRef = useRef(false);
+  // Set on the way down on Cancel, before the input blurs, so dismissing the
+  // editor never commits what was typed.
+  const cancelRef = useRef(false);
 
   useEffect(() => {
     if (editing) {
@@ -82,6 +115,41 @@ const InlineVendorEdit: React.FC<InlineVendorEditProps> = ({
   };
 
   const handleSave = async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    try {
+      await runSave();
+    } finally {
+      savingRef.current = false;
+    }
+  };
+
+  /**
+   * Leaving the field saves what was typed.
+   *
+   * The Save tap is not reliable on its own here. On Android the field losing
+   * focus closes the soft keyboard, which resizes the WebView — so the button
+   * moves out from under the finger between touch-down and touch-up and the
+   * tap lands on nothing. The rename then vanished without a trace: no write,
+   * not even a local change, which is indistinguishable from the app ignoring
+   * it. Committing on the way out means the typed name survives however the
+   * field is left.
+   *
+   * Two exits are not a save: Cancel (flagged on the way down, before this
+   * runs) and focus moving to this editor's own buttons, which do their own
+   * thing.
+   */
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    if (cancelRef.current) {
+      cancelRef.current = false;
+      return;
+    }
+    const next = e.relatedTarget as Node | null;
+    if (next && editorRef.current?.contains(next)) return;
+    void handleSave();
+  };
+
+  const runSave = async () => {
     const trimmed = draft.trim();
     if (!trimmed) {
       onCancel();
@@ -108,9 +176,9 @@ const InlineVendorEdit: React.FC<InlineVendorEditProps> = ({
     // Deliberately checked regardless of category — the fragmentation this
     // prevents ("WAL-MART #3106" alongside "Walmart") is about the vendor
     // name, and it happens just as easily across categories as within one.
-    const near = knownRules.find((rule) => fuzzyVendorMatch(rule.properName, trimmed));
+    const near = pickNearMatchName(knownRules, trimmed, value);
     if (near && !nearMatch) {
-      setNearMatch(near.properName);
+      setNearMatch(near);
       return;
     }
 
@@ -173,6 +241,7 @@ const InlineVendorEdit: React.FC<InlineVendorEditProps> = ({
 
   return (
     <div
+      ref={editorRef}
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => e.stopPropagation()}
       className="flex flex-col gap-1.5"
@@ -192,6 +261,7 @@ const InlineVendorEdit: React.FC<InlineVendorEditProps> = ({
             onCancel();
           }
         }}
+        onBlur={handleBlur}
         disabled={isSaving}
         className="flex-1 min-w-0 px-2 py-1 text-[11px] font-semibold rounded-lg border border-emerald-300 dark:border-emerald-700/60 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-400/40 disabled:opacity-50"
         autoFocus
@@ -208,6 +278,9 @@ const InlineVendorEdit: React.FC<InlineVendorEditProps> = ({
       </button>
       <button
         type="button"
+        // Down, not up: this has to be recorded before the input blurs, so
+        // dismissing the editor doesn't get read as leaving the field.
+        onPointerDown={() => { cancelRef.current = true; }}
         onClick={onCancel}
         disabled={isSaving}
         className="px-2 py-1 text-[11px] font-bold rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 active:scale-95 transition-all duration-150 disabled:opacity-40"
