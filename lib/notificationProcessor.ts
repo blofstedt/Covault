@@ -365,12 +365,32 @@ async function checkAlreadyProcessed(
   const windowEndDate = new Date(todayDate.getTime() + RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY);
   const startDateStr = windowStartDate.toISOString().slice(0, 10);
   const endDateStr = windowEndDate.toISOString().slice(0, 10);
-  const { data: txRows } = await supabase
-    .from('transactions')
-    .select('id, vendor, amount, date')
-    .eq('user_id', userId)
-    .gte('date', startDateStr)
-    .lte('date', endDateStr);
+
+  // ── Check pending_transactions table ──
+  // Use the notification_timestamp column (bigint ms) for a tighter match.
+  const windowStartMs = notificationTimestamp - 5 * MS_PER_MINUTE;
+  const windowEndMs   = notificationTimestamp + 5 * MS_PER_MINUTE;
+
+  // Both reads are issued together and neither depends on the other's answer.
+  // They used to run one after the other, which cost two round trips on a
+  // phone waking its radio — and the second one is a table that does not exist
+  // here, so a capture arriving with the app closed waited out a 404 before it
+  // could appear. The order the ANSWERS are considered below is unchanged:
+  // transactions first, then the pending queue.
+  const [{ data: txRows }, { data: ptRows }] = await Promise.all([
+    supabase
+      .from('transactions')
+      .select('id, vendor, amount, date')
+      .eq('user_id', userId)
+      .gte('date', startDateStr)
+      .lte('date', endDateStr),
+    supabase
+      .from('pending_transactions')
+      .select('id, extracted_vendor, extracted_amount, notification_timestamp')
+      .eq('user_id', userId)
+      .gte('notification_timestamp', windowStartMs)
+      .lte('notification_timestamp', windowEndMs),
+  ]);
 
   if (txRows && txRows.length > 0) {
     for (const tx of txRows) {
@@ -384,17 +404,6 @@ async function checkAlreadyProcessed(
       }
     }
   }
-
-  // ── Check pending_transactions table ──
-  // Use the notification_timestamp column (bigint ms) for a tighter match.
-  const windowStartMs = notificationTimestamp - 5 * MS_PER_MINUTE;
-  const windowEndMs   = notificationTimestamp + 5 * MS_PER_MINUTE;
-  const { data: ptRows } = await supabase
-    .from('pending_transactions')
-    .select('id, extracted_vendor, extracted_amount, notification_timestamp')
-    .eq('user_id', userId)
-    .gte('notification_timestamp', windowStartMs)
-    .lte('notification_timestamp', windowEndMs);
 
   if (ptRows && ptRows.length > 0) {
     for (const pt of ptRows) {
@@ -1033,6 +1042,38 @@ async function processNotificationWithAIImpl(
     };
   }
 
+  // ── The first two lookups run together ──
+  //
+  // The rules lookup and the duplicate lookup below need nothing from each
+  // other, but ran one after the other — and on a phone that has just woken
+  // its radio, each one is most of a second. That wait is the whole reason a
+  // purchase captured while the app was closed took a few seconds to appear
+  // after opening it: nothing was slow, everything was just in a queue behind
+  // something else.
+  //
+  // Starting the duplicate lookup here changes nothing about the decisions
+  // below or the order they are made in — the rule still wins, and still wins
+  // first. It only means the answer has arrived by the time Step 1 asks for
+  // it. The cost is one wasted read when a rule matches, which is a rare path
+  // and a read either way.
+  const quickAmountMatch = input.rawNotification.match(/\$([\d,]+(?:\.\d{1,2})?)/);
+  const quickAmount = quickAmountMatch
+    ? parseFloat(quickAmountMatch[1].replace(/,/g, ''))
+    : null;
+  const duplicateCheck = checkAlreadyProcessed(
+    userId,
+    quickAmount,
+    input.fallbackVendor || null,
+    notifTimestamp,
+  ).catch((e) => {
+    // Never allowed to reject: this promise is created before the early exits
+    // below and may end up with nobody awaiting it. Falling back to "not a
+    // duplicate" is also what the function itself does on a failed read, so
+    // the behaviour is unchanged.
+    log.warn('[AI pipeline] Duplicate check failed; treating as not a duplicate:', e);
+    return false;
+  });
+
   // ── Step 0c: User-learned skip rules ──
   // The user can mark a captured item as "not a transaction" from the
   // <> page. That creates a rule in `notification_rules` and every
@@ -1101,19 +1142,9 @@ async function processNotificationWithAIImpl(
   }
 
   // ── Step 1: Duplicate Detection ──
-  // Extract a quick amount from the raw text for the duplicate check.
-  let quickAmount: number | null = null;
-  const quickAmountMatch = input.rawNotification.match(/\$([\d,]+(?:\.\d{1,2})?)/);
-  if (quickAmountMatch) {
-    quickAmount = parseFloat(quickAmountMatch[1].replace(/,/g, ''));
-  }
-
-  const isDuplicate = await checkAlreadyProcessed(
-    userId,
-    quickAmount,
-    input.fallbackVendor || null,
-    notifTimestamp,
-  );
+  // Started above, so by now this is usually just reading an answer that has
+  // already arrived rather than waiting for one.
+  const isDuplicate = await duplicateCheck;
 
   if (isDuplicate) {
     log.debug('[AI pipeline] Duplicate detected, skipping');
@@ -1144,6 +1175,61 @@ async function processNotificationWithAIImpl(
       bankName: input.bankName,
     };
   }
+
+  // ── The three lookups the rest of this needs, started together ──
+  //
+  // Everything below this point is one purchase being checked against the
+  // user's own history: nearby transactions (Step 4 and Step 5b), their vendor
+  // rules (Step 5a) and their recurring charges (Step 5b). None of the three
+  // reads depends on another, and none of them depends on the vendor or amount
+  // this call is still working out — the transactions read is a date window,
+  // the rules read fetches the whole small table and matches in memory, and
+  // the recurring read is the user's recurring rows. They were nonetheless
+  // issued one at a time, three round trips deep, which is most of the wait
+  // between opening the app and seeing a capture appear.
+  //
+  // Started here rather than at the top of the function so an alert that is
+  // not a purchase at all still costs nothing: the parser has just said this
+  // one is. Each promise is made safe to abandon, because the paths below can
+  // return before some of them are read.
+  const today = getLocalToday();
+  const todayMs = parseLocalDate(today).getTime();
+  const step4WindowStart = new Date(todayMs - RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY).toISOString().slice(0, 10);
+  const step4WindowEnd = new Date(todayMs + RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY).toISOString().slice(0, 10);
+
+  // Promise.resolve rather than calling .then on the builder: a query builder
+  // is thenable, so this issues the read immediately, and it also survives a
+  // caller that hands back a plain object instead of a promise.
+  const nearbyTransactions = Promise.resolve(
+    supabase
+      .from('transactions')
+      .select('id, vendor, amount, type, date, recur, source')
+      .eq('user_id', userId)
+      .gte('date', step4WindowStart)
+      .lte('date', step4WindowEnd),
+  ).catch((e) => {
+    log.warn('[AI pipeline] Could not read nearby transactions:', e);
+    return { data: null } as { data: null };
+  });
+
+  // ALL of the user's rules, not a recent slice of them — see the match_key
+  // lookup in Step 5a for why, and note that the query itself mentions no
+  // vendor, which is what makes it safe to start before one is settled on.
+  const vendorRules = Promise.resolve(
+    supabase
+      .from('overrides')
+      .select('category_id, proper_name, match_key, match_type, updated_at')
+      .eq('user_id', userId)
+      .not('match_key', 'is', null)
+      .order('updated_at', { ascending: false })
+      .limit(MAX_VENDOR_RULES),
+  ).catch((e) => {
+    log.warn('[AI pipeline] Could not read the vendor rules:', e);
+    return { data: null } as { data: null };
+  });
+
+  // Already caches its own result and never rejects, so it needs no guard.
+  const recurringCharges = fetchRecurringCharges(userId);
 
   // ── Step 2b: AI fallback for low-confidence extractions ──
   // The regex parser is fast but brittle. If it wasn't confident (e.g. no
@@ -1408,7 +1494,6 @@ async function processNotificationWithAIImpl(
   }
 
   // ── Step 4: Duplicate detection (fuzzy vendor + amount ±3 days) ──
-  const today = getLocalToday();
   const normalizedVendor = normalizeVendorForDedup(vendor);
 
   /**
@@ -1426,21 +1511,12 @@ async function processNotificationWithAIImpl(
     if (fuzzyVendorMatch(existing, vendor)) return true;
     return vendorAliases.some((alias) => fuzzyVendorMatch(existing, alias));
   };
-  const todayMs = parseLocalDate(today).getTime();
-  const step4WindowStart = new Date(todayMs - RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY).toISOString().slice(0, 10);
-  const step4WindowEnd = new Date(todayMs + RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY).toISOString().slice(0, 10);
-
   // Projection is the superset of what step 4 and step 5b need, so step 5b
   // can reuse this result instead of re-issuing the identical query (same
   // user, same +/-3 day window). Nothing between the two steps writes to
   // `transactions`; the post-insert race check in step 6b deliberately stays
   // a fresh query.
-  const { data: existingTx } = await supabase
-    .from('transactions')
-    .select('id, vendor, amount, type, date, recur, source')
-    .eq('user_id', userId)
-    .gte('date', step4WindowStart)
-    .lte('date', step4WindowEnd);
+  const { data: existingTx } = await nearbyTransactions;
 
   if (existingTx && existingTx.length > 0) {
     // Single permissive pass: any same-vendor match in the window is a
@@ -1554,13 +1630,8 @@ async function processNotificationWithAIImpl(
       // a rule existed. The list is small data — a few hundred short rows —
       // and this runs a few times a day, so fetching all of it costs nothing
       // that matters.
-      const { data } = await supabase
-        .from('overrides')
-        .select('category_id, proper_name, match_key, match_type, updated_at')
-        .eq('user_id', userId)
-        .not('match_key', 'is', null)
-        .order('updated_at', { ascending: false })
-        .limit(MAX_VENDOR_RULES);
+      // Issued alongside the other two reads above; this is just collecting it.
+      const { data } = await vendorRules;
       const allRows = data || [];
       // Filter in-memory by match_type semantics. Most-recent-wins is
       // already guaranteed by the ORDER BY + first-match in loop.
@@ -1843,7 +1914,7 @@ async function processNotificationWithAIImpl(
   };
   const recurringMatch =
     findRecurringScheduleMatch(recurringCandidate, existingTx || []) ??
-    findRecurringScheduleMatch(recurringCandidate, await fetchRecurringCharges(userId));
+    findRecurringScheduleMatch(recurringCandidate, await recurringCharges);
 
   if (recurringMatch) {
     log.debug(
