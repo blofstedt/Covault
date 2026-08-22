@@ -95,12 +95,45 @@ final class WidgetRenderer {
     private static final float ARC_GAP_DEGREES = 2f;
 
     /**
+     * What is left of a band too thin to carry a gap and two round caps: a
+     * bead the width of the ring, which is the smallest mark that still reads
+     * as belonging to a category.
+     */
+    private static final float ARC_BEAD_DEGREES = 0.1f;
+
+    /**
+     * The text's own clock, as fractions of a morph.
+     *
+     * Text does not travel with the ring, it swaps — the month's total for one
+     * category's, "left to spend" for that category's name, the legend for its
+     * purchases. So the outgoing text is gone by the first of these and the
+     * incoming one starts arriving at the second, leaving the middle of the
+     * morph with nothing legible on it: the ring has the widget to itself
+     * exactly while it is moving fastest and being drawn smallest.
+     *
+     * Deliberately on the morph's linear clock rather than the ring's easing.
+     * The easing is most of the way done a third of the way through, and a
+     * fade tied to it would be over before the ring had visibly moved.
+     */
+    private static final float TEXT_FADE_OUT_BY = 0.22f;
+    private static final float TEXT_FADE_IN_FROM = 0.66f;
+
+    /**
      * @param dp pixels per dp in the bitmap being drawn into. Everything is
      *           sized from this rather than from the bitmap's own dimensions —
      *           see the note on `render` below.
+     * @param renderScale how much smaller than the widget this bitmap is being
+     *           drawn, 1 for a settled one. A handful of sizes below are floors
+     *           and ceilings in raw pixels rather than in dp, and those are the
+     *           only things here that do not shrink with the bitmap on their
+     *           own. Left alone they made a mid-morph frame — which is scaled
+     *           back up to fill the widget — come out with a ring a tenth
+     *           thicker and a caption half again too big, so the ring visibly
+     *           swelled and the text jumped size the moment an animation
+     *           started and again when it stopped. That was the wobble.
      */
     static Bitmap render(Context context, JSONObject snapshot, int widthPx, int heightPx,
-                         boolean systemDark, float dp) {
+                         boolean systemDark, float dp, float renderScale) {
         Palette p = resolvePalette(snapshot, systemDark);
 
         // Cleared up front, not where each is filled. Several paths below
@@ -173,7 +206,7 @@ final class WidgetRenderer {
             diameter = Math.min(availW, availH);
         }
 
-        float ringStroke = clamp(diameter * 0.17f, 8f, 34f);
+        float ringStroke = clamp(diameter * 0.17f, 8f * renderScale, 34f * renderScale);
         float chipRadius = Math.min(ringStroke * 0.62f, diameter * 0.085f);
         float outerInset = chipRadius; // chips overhang the ring by up to this
 
@@ -221,7 +254,40 @@ final class WidgetRenderer {
             ? 0f
             : clamp((float) snapshot.optDouble("focusProgress", 1.0), 0f, 1f);
 
+        // How far through the swap the words are — see TEXT_FADE_OUT_BY.
+        //
+        // `focusFade` is the morph's linear clock, absent on a settled widget.
+        // `focusOpening` says which end the run finishes on, which is the one
+        // thing the ring's own position cannot tell us: a half-open category is
+        // the same picture whether it is on its way in or out.
+        float fadeClock = (float) snapshot.optDouble("focusFade", -1.0);
+        boolean morphing = fadeClock >= 0f;
+        boolean opening = snapshot.optBoolean("focusOpening", true);
+        boolean endsFocused = morphing ? opening : focused != null;
+        boolean startsFocused = morphing ? !opening : focused != null;
+        float leaving = morphing
+            ? 1f - clamp(fadeClock / TEXT_FADE_OUT_BY, 0f, 1f)
+            : 0f;
+        float arriving = morphing
+            ? clamp((fadeClock - TEXT_FADE_IN_FROM) / (1f - TEXT_FADE_IN_FROM), 0f, 1f)
+            : 1f;
+        // Settled, one of these is 1 and the other 0, which is the same code
+        // drawing a widget nobody is touching.
+        float focusedText = (endsFocused ? arriving : 0f) + (startsFocused ? leaving : 0f);
+        float monthText = (endsFocused ? 0f : arriving) + (startsFocused ? 0f : leaving);
+
         if (total > 0) {
+            // Rounded ends on the coloured bands, because a square corner at
+            // every boundary reads as four hard edges per slice and the app's
+            // own bars are rounded.
+            //
+            // A round cap draws half a stroke width PAST each end of the arc,
+            // so every band has to give that length back or neighbours grow
+            // into the gap between them and meet. In degrees at this radius,
+            // that is capDegrees.
+            arc.setStrokeCap(Paint.Cap.ROUND);
+            float capDegrees = (float) Math.toDegrees((ringStroke / 2f) / radius);
+
             float start = -90f; // 12 o'clock
             // No gaps once a single category owns the ring — a notch in a solid
             // ring has nothing to separate.
@@ -230,17 +296,36 @@ final class WidgetRenderer {
                 float share = (float) (s.amount / total) * 360f;
                 float target = focused == null ? share : (s == focused ? 360f : 0f);
                 float sweep = share + ((target - share) * t);
-                // Only take the gap out of a slice wide enough to spare it.
-                // Subtracting a fixed 2 degrees from a 1-degree sliver used to
-                // draw it *wider* than its share, bleeding over its neighbour —
-                // and a single-category month came out as a full ring with an
-                // unexplained notch at 12 o'clock.
-                float drawSweep = gapped && sweep > ARC_GAP_DEGREES * 2f
-                    ? sweep - ARC_GAP_DEGREES
-                    : sweep;
                 if (sweep > 0.05f) {
+                    // Taken off both ends rather than one, so a band sits in
+                    // the middle of its own share. Off one end it drifted by
+                    // half a gap, which nothing showed up against a square
+                    // edge and a round one does.
+                    float inset = gapped ? (ARC_GAP_DEGREES / 2f) + capDegrees : 0f;
+                    float drawSweep = sweep - (inset * 2f);
+                    // A band too narrow to survive the trim becomes the bead
+                    // its two caps make on their own — and that bead is drawn
+                    // NARROWER than the ring so it still fits inside the share
+                    // it stands for. At this stroke width a full-width bead is
+                    // twenty-odd degrees across, which for a category worth
+                    // three percent of the month would be a blob sitting on top
+                    // of its neighbours claiming several times its size.
+                    //
+                    // What it looks like instead is the ring's small categories
+                    // trailing off into dots that shrink with their share, and
+                    // it is also how a band leaves during a morph: it thins as
+                    // it narrows rather than turning into a sliver.
+                    if (drawSweep < ARC_BEAD_DEGREES) {
+                        float room = (float) Math.toRadians(
+                            Math.max(0f, sweep - ARC_GAP_DEGREES)) * radius;
+                        arc.setStrokeWidth(Math.max(1f, Math.min(ringStroke, room)));
+                        drawSweep = ARC_BEAD_DEGREES;
+                        inset = Math.max(0f, (sweep - ARC_BEAD_DEGREES) / 2f);
+                    } else {
+                        arc.setStrokeWidth(ringStroke);
+                    }
                     arc.setColor(s.color);
-                    canvas.drawArc(ring, start, drawSweep, false, arc);
+                    canvas.drawArc(ring, start + inset, drawSweep, false, arc);
                 }
                 s.midAngle = start + (sweep / 2f);
                 s.sweep = sweep;
@@ -253,83 +338,108 @@ final class WidgetRenderer {
         centre.setTextAlign(Paint.Align.CENTER);
         centre.setColor(p.primary);
         centre.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-        double totalSpent = snapshot.optDouble("totalSpent", 0);
+
         // Opened on a category, the centre is that category's spend. Showing
         // the month's total inside a ring that is entirely one category would
-        // be two different questions answered in the same place. It counts
-        // across rather than cutting, on the same clock as the ring, so the
-        // figure and the arc that produced it arrive together.
-        if (focused != null) {
-            totalSpent = totalSpent + ((focused.amount - totalSpent) * t);
-        }
-        String spentLabel = money(totalSpent);
+        // be two different questions answered in the same place.
+        //
+        // The two figures cross-fade; they are not counted between. Counting
+        // one into the other put a slot machine in the middle of the widget,
+        // and because the figure is fitted to the hole it changed size as its
+        // digits did — a five-character month shrinking into a four-character
+        // category, one frame at a time.
+        double monthSpent = snapshot.optDouble("totalSpent", 0);
+        String monthValue = money(monthSpent);
+        String focusedValue = focused != null ? money(focused.amount) : monthValue;
+
         // Shrink to fit the hole rather than drawing over the ring. The review
         // pill has always measured itself; this did not, so a five-figure month
         // printed straight across the arcs.
+        //
+        // Fitted once, to whichever figure is widest, and every frame of an
+        // animation is drawn at that size — including a run that is genuinely
+        // counting, which hands in the value it is counting towards. A figure
+        // that re-fits itself per frame is a figure that changes size while you
+        // are reading it.
         float hole = (radius - (ringStroke / 2f)) * 2f * 0.88f;
-        float totalSize = clamp(radius * 0.42f, 13f, 40f);
-        centre.setTextSize(totalSize);
-        float measured = centre.measureText(spentLabel);
-        if (measured > hole && measured > 0) {
-            totalSize = Math.max(11f, totalSize * (hole / measured));
-            centre.setTextSize(totalSize);
+        String sizer = snapshot.optString("centreSizeLabel", "");
+        if (sizer.isEmpty()) {
+            sizer = centre.measureText(focusedValue) > centre.measureText(monthValue)
+                ? focusedValue
+                : monthValue;
         }
-        canvas.drawText(spentLabel, cx, cy + (totalSize * 0.34f), centre);
+        float totalSize = clamp(radius * 0.42f, 13f * renderScale, 40f * renderScale);
+        centre.setTextSize(totalSize);
+        float measured = centre.measureText(sizer);
+        if (measured > hole && measured > 0) {
+            totalSize = Math.max(11f * renderScale, totalSize * (hole / measured));
+            centre.setTextSize(totalSize);
+            measured = centre.measureText(sizer);
+        }
+
+        float centreBaseline = cy + (totalSize * 0.34f);
+        if (monthText > 0f) {
+            centre.setAlpha(alpha255(monthText));
+            canvas.drawText(monthValue, cx, centreBaseline, centre);
+        }
+        if (focused != null && focusedText > 0f) {
+            centre.setAlpha(alpha255(focusedText));
+            canvas.drawText(focusedValue, cx, centreBaseline, centre);
+        }
+        centre.setAlpha(255);
 
         Paint sub = new Paint(Paint.ANTI_ALIAS_FLAG);
         sub.setTextAlign(Paint.Align.CENTER);
-        sub.setColor(p.secondary);
-        sub.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        float subSize = clamp(totalSize * 0.36f, 9f, 14f);
+        float subSize = clamp(totalSize * 0.36f, 9f * renderScale, 14f * renderScale);
         sub.setTextSize(subSize);
-        float subY = cy + (totalSize * 0.34f) + subSize + (4f * dp);
+        float subY = centreBaseline + subSize + (4f * dp);
 
+        // The line under it swaps on the same clock: what is left of the month,
+        // or the name of the category that has taken the ring over.
+        //
         // "Nothing here yet" is about there being nothing at all, not about the
         // ring being empty. Branching on the slices alone meant a month with
         // more refunds than purchases printed a negative total directly above
         // the words "No spending yet".
-        if (focused != null) {
-            // The category's own name, because the ring no longer says which
-            // one it is — every arc is the same colour now. Faded in against
-            // whatever it replaces, so neither line pops.
-            if (t < 1f && legendWidth <= 0) {
-                double resting = snapshot.optDouble("remaining", 0);
-                sub.setColor(resting < 0 ? p.danger : p.secondary);
-                sub.setAlpha(alpha255(1f - t));
-                canvas.drawText(
-                    resting < 0 ? money(-resting) + " over" : money(resting) + " left",
-                    cx, subY, sub);
-            }
-            sub.setColor(focused.color);
-            sub.setAlpha(alpha255(t));
-            sub.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-            canvas.drawText(focused.name, cx, subY, sub);
-            sub.setAlpha(255);
-        } else if (total <= 0 && Math.abs(totalSpent) < 0.005) {
-            canvas.drawText("No spending yet", cx, subY, sub);
-        } else if (legendWidth <= 0) {
-            // Only when there is no legend. On a wide widget the same figure is
-            // now the first thing in the right-hand column, at a size that can
-            // actually be read — printing it here as well would be the same
-            // number twice, one of them as a footnote.
-            double remaining = snapshot.optDouble("remaining", 0);
-            // Negative remaining is real information — render it, don't clamp
-            // it. It also gets the app's rose and a bold weight: being over
-            // budget was previously distinguishable only by a minus sign.
-            if (remaining < 0) {
-                sub.setColor(p.danger);
-                sub.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-                canvas.drawText(money(-remaining) + " over", cx, subY, sub);
-            } else {
-                canvas.drawText(money(remaining) + " left", cx, subY, sub);
+        if (monthText > 0f) {
+            sub.setColor(p.secondary);
+            sub.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            sub.setAlpha(alpha255(monthText));
+            if (total <= 0 && Math.abs(monthSpent) < 0.005) {
+                canvas.drawText("No spending yet", cx, subY, sub);
+            } else if (legendWidth <= 0) {
+                // Only when there is no legend. On a wide widget the same
+                // figure is the first thing in the right-hand column, at a size
+                // that can actually be read — printing it here as well would be
+                // the same number twice, one of them as a footnote.
+                double remaining = snapshot.optDouble("remaining", 0);
+                // Negative remaining is real information — render it, don't
+                // clamp it. It also gets the app's rose and a bold weight:
+                // being over budget was previously distinguishable only by a
+                // minus sign.
+                if (remaining < 0) {
+                    sub.setColor(p.danger);
+                    sub.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+                    canvas.drawText(money(-remaining) + " over", cx, subY, sub);
+                } else {
+                    canvas.drawText(money(remaining) + " left", cx, subY, sub);
+                }
             }
         }
-
+        if (focused != null && focusedText > 0f) {
+            // The category's own name, because the ring no longer says which
+            // one it is — every band is the same colour now.
+            sub.setColor(focused.color);
+            sub.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+            sub.setAlpha(alpha255(focusedText));
+            canvas.drawText(focused.name, cx, subY, sub);
+        }
+        sub.setAlpha(255);
         // ── Icons on the arcs. These are the labels; there is no legend. ──
         // Icon chips are how the arcs are labelled. With one category filling
         // the ring there is nothing to tell apart, and a single chip adrift on
         // a solid ring reads as a stray dot.
-        if (t < 1f && total > 0 && chipRadius >= 6f) {
+        if (t < 1f && total > 0 && chipRadius >= 6f * renderScale) {
             int chipAlpha = alpha255(1f - t);
             for (Slice s : slices) {
                 if (s.sweep < MIN_ICON_ARC_DEGREES) continue;
@@ -354,7 +464,7 @@ final class WidgetRenderer {
                     // against its own category colour in either theme.
                     icon.setColorFilter(p.surface, PorterDuff.Mode.SRC_IN);
                     icon.setAlpha(chipAlpha);
-                    int glyph = (int) Math.max(6f, chipRadius * 1.15f);
+                    int glyph = (int) Math.max(6f * renderScale, chipRadius * 1.15f);
                     icon.setBounds(
                         (int) (ix - glyph / 2f), (int) (iy - glyph / 2f),
                         (int) (ix + glyph / 2f), (int) (iy + glyph / 2f));
@@ -367,13 +477,13 @@ final class WidgetRenderer {
         // arriving. Neither is a different widget; the column is saying a
         // different thing about the same month.
         if (legendWidth > 0) {
-            if (t < 1f) {
+            if (monthText > 0f) {
                 drawLegend(canvas, snapshot, slices, legendLeft, legendWidth,
-                    availTop, availH, dp, p, 1f - t);
+                    availTop, availH, dp, p, monthText);
             }
-            if (focused != null && t > 0f) {
+            if (focused != null && focusedText > 0f) {
                 drawRecent(canvas, snapshot, focused, legendLeft, legendWidth,
-                    availTop, availH, dp, p, t);
+                    availTop, availH, dp, p, focusedText);
             }
         }
 
@@ -634,9 +744,20 @@ final class WidgetRenderer {
         float rowH = 27f * dp;
         float legendTop = top + headH;
         float legendHeight = height - headH;
-        int rows = (int) Math.floor(legendHeight / rowH);
-        if (rows < 1) return;
-        rows = Math.min(rows, Math.min(4, slices.size()));
+        int fits = Math.min((int) Math.floor(legendHeight / rowH), 4);
+        if (fits < 1 || slices.isEmpty()) return;
+        // More categories than there are rows to put them in: the last row
+        // becomes the ones that did not fit, added up, and opens the app rather
+        // than a budget. They were otherwise reachable only by hitting their
+        // own band on the ring, which is not offered at all for a band too thin
+        // to carry a tap target — so the tail of the month had nowhere to be
+        // read from the home screen.
+        //
+        // Not when there is room for a single row: a lone "+5 more" says less
+        // than the largest category does.
+        boolean overflow = slices.size() > fits && fits >= 2;
+        int shown = overflow ? fits - 1 : Math.min(fits, slices.size());
+        int rows = shown + (overflow ? 1 : 0);
         // Centre what remains against the donut rather than hanging it off the
         // top — with the figure above, the block now sits under it.
         float y = legendTop + (legendHeight - (rows * rowH)) / 2f;
@@ -658,7 +779,7 @@ final class WidgetRenderer {
         amount.setTextSize(14.5f * dp);
         amount.setTextAlign(Paint.Align.RIGHT);
 
-        for (int i = 0; i < rows; i++) {
+        for (int i = 0; i < shown; i++) {
             Slice s = slices.get(i);
             float baseline = y + (rowH / 2f) + (4f * dp);
 
@@ -682,6 +803,37 @@ final class WidgetRenderer {
             }
 
             y += rowH;
+        }
+
+        if (overflow) {
+            double rest = 0;
+            for (int i = shown; i < slices.size(); i++) rest += slices.get(i).amount;
+            float baseline = y + (rowH / 2f) + (4f * dp);
+
+            // A hollow dot rather than a filled one: this row is not a category
+            // and must not look like it has a colour of its own.
+            Paint hollow = new Paint(Paint.ANTI_ALIAS_FLAG);
+            hollow.setStyle(Paint.Style.STROKE);
+            hollow.setStrokeWidth(Math.max(1f, 1.4f * dp));
+            hollow.setColor(p.secondary);
+            hollow.setAlpha(alpha255(alpha * 0.7f));
+            canvas.drawCircle(left + dot, y + (rowH / 2f), dot - (0.7f * dp), hollow);
+
+            name.setColor(p.secondary);
+            String label = "+" + (slices.size() - shown) + " more";
+            String value = money(rest);
+            float valueW = amount.measureText(value);
+            float nameLeft = left + (dot * 2f) + (7f * dp);
+            float nameRoom = width - (nameLeft - left) - valueW - (6f * dp);
+
+            canvas.drawText(ellipsise(label, name, nameRoom), nameLeft, baseline, name);
+            canvas.drawText(value, left + width, baseline, amount);
+
+            // The empty category name is the provider's cue to open the app
+            // rather than one budget — the same cue the month's total uses.
+            if (alpha >= 1f) {
+                LAST_LEGEND_HITS.add(new HitRect("", left, y, left + width, y + rowH));
+            }
         }
     }
 

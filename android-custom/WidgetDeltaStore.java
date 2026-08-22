@@ -130,6 +130,19 @@ final class WidgetDeltaStore {
      * specification for both.
      */
     static JSONObject mergeInto(Context context, JSONObject snapshot) {
+        return mergeInto(context, snapshot, -1);
+    }
+
+    /**
+     * The same, as the figures stood before the most recent capture — which is
+     * what the widget counts up FROM when one lands. Deltas are appended, so
+     * the newest is the last of them.
+     */
+    static JSONObject mergeIntoExcludingLatest(Context context, JSONObject snapshot) {
+        return mergeInto(context, snapshot, readDeltas(context).length() - 1);
+    }
+
+    private static JSONObject mergeInto(Context context, JSONObject snapshot, int skipIndex) {
         if (snapshot == null) return null;
         JSONArray deltas = readDeltas(context);
         if (deltas.length() == 0) return snapshot;
@@ -146,6 +159,7 @@ final class WidgetDeltaStore {
             int pendingAdded = 0;
 
             for (int i = 0; i < deltas.length(); i++) {
+                if (i == skipIndex) continue;
                 JSONObject d = deltas.optJSONObject(i);
                 if (d == null) continue;
                 long atMs = d.optLong("atMs", 0);

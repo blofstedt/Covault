@@ -732,7 +732,9 @@ public class NotificationListener extends NotificationListenerService {
         if (!fromScan && fromMonitored && amount != null) {
             try {
                 if (WidgetDeltaStore.recordDelta(this, amount, vendor, sbn.getPostTime())) {
-                    CovaultWidgetProvider.updateAll(this);
+                    // The redraw that counts up to the new figures rather than
+                    // cutting to them, when the screen is on to see it.
+                    CovaultWidgetProvider.updateAllForCapture(this);
                 }
             } catch (Throwable t) {
                 Log.w(TAG, "widget delta failed (capture is unaffected)", t);

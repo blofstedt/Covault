@@ -54,6 +54,7 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
 
     @Override
     public void onUpdate(Context context, AppWidgetManager manager, int[] appWidgetIds) {
+        renderGeneration++;
         for (int id : appWidgetIds) {
             renderOne(context, manager, id);
         }
@@ -65,6 +66,7 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
                                           int appWidgetId, Bundle newOptions) {
         // Resize: the bitmap is sized from the widget's own dp bounds, so it has
         // to be redrawn or it stretches.
+        renderGeneration++;
         renderOne(context, manager, appWidgetId);
     }
 
@@ -115,6 +117,10 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
             AppWidgetManager manager = AppWidgetManager.getInstance(context);
             int[] ids = manager.getAppWidgetIds(new ComponentName(context, CovaultWidgetProvider.class));
             if (ids == null || ids.length == 0) return;
+            // Whatever this is — the app writing a snapshot, midnight, boot —
+            // it knows the true figures, so it ends any run still counting
+            // towards them rather than being overwritten by its next frame.
+            renderGeneration++;
             for (int id : ids) {
                 renderOne(context, manager, id);
             }
@@ -134,39 +140,63 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
      */
     private static final long FOCUS_ANIM_MS = 320L;
     /**
-     * The cadence frames are aimed at, which works out to ten of them inside
-     * the 320ms. Not a promise: every frame is a full bitmap crossing a Binder
+     * The cadence its frames are aimed at, which is twelve of them inside the
+     * 320ms. Not a promise: every frame is a full bitmap crossing a Binder
      * transaction, and if one takes longer than this the run drops the slot it
-     * missed rather than posting it late. That is the whole point of driving
-     * this from the clock — the morph lands at 320ms on a busy phone as well
-     * as an idle one, just with fewer pictures in between.
+     * missed rather than posting it late. That is the point of driving this
+     * from the clock — the morph lands at 320ms on a busy phone as well as an
+     * idle one, just with fewer pictures in between.
      *
-     * It used to post all nine frames up front at fixed delays. Each one then
+     * It used to post nine frames up front at fixed delays, each of which
      * re-read the snapshot from storage and re-merged the pending captures
-     * before drawing, so on a phone doing anything else the renders ran long,
-     * queued behind each other, and the tail of the morph crawled — which is
-     * what "not smooth" looked like.
+     * before drawing. On a phone doing anything else the renders ran long,
+     * queued behind each other, and the tail of the morph crawled.
      */
-    private static final long FOCUS_FRAME_MS = 32L;
+    private static final long FOCUS_FRAME_MS = 26L;
     /**
-     * Mid-morph frames are drawn at this fraction of the widget's size and
-     * scaled back up by the ImageView, which is the difference between this
-     * animation costing 6MB of Binder traffic and costing 2.
+     * How large the frames of a morph are drawn, before the ImageView scales
+     * them back up. One value for every frame of the run, and full size only
+     * for the settled one at the end.
+     *
+     * Constant on purpose. Changing it part-way through resizes the bitmap
+     * everything is measured against, and while most of the renderer is in dp
+     * and rides that out, a handful of floors and ceilings are in raw pixels
+     * and do not — see WidgetRenderer.render's renderScale. Even with those
+     * fixed, a bitmap redrawn at a new size re-rasterises every glyph on it,
+     * which is visible as a shiver. So it changes exactly once, on the frame
+     * where the incoming text is arriving anyway and the change reads as the
+     * text sharpening into place.
      */
     private static final float FOCUS_ANIM_SCALE = 0.62f;
     /**
-     * Where the frames start being drawn at full size again.
+     * How long the run stays full size before dropping to that: one frame.
      *
-     * Going straight from the reduced size to full on the settled frame put a
-     * blur-to-sharp snap at the exact moment the ring stopped, which reads as
-     * the animation ending badly rather than arriving. Ramping back over the
-     * last quarter hides it, and costs a larger bitmap on only two frames.
+     * The frame right after the tap still has the outgoing text on it at most
+     * of its opacity, and going straight to the reduced size put a visible blur
+     * on the widget at the exact moment it was touched. One more full-size
+     * bitmap buys a start that looks like the widget moving rather than the
+     * widget degrading; by the next frame the text is faint enough that the
+     * change costs nothing.
      */
-    private static final float FOCUS_SHARPEN_FROM = 0.74f;
+    private static final float FOCUS_SHARP_UNTIL = 0.10f;
 
     /**
-     * Which morph is current. Bumped by every tap, and checked by each frame
-     * before it draws.
+     * The count-up when a purchase is captured.
+     *
+     * Longer and coarser than the morph, and drawn at full size throughout.
+     * The figure is changing digits rather than travelling, so what it needs is
+     * to be legible at every step, not to arrive at forty frames a second —
+     * and a resolution that changed under a number being read would be the one
+     * thing guaranteed to look wrong. Six full-size bitmaps is a real cost,
+     * which is why it is spent only on a capture, and only when someone is
+     * actually looking at the screen.
+     */
+    private static final long CAPTURE_ANIM_MS = 420L;
+    private static final long CAPTURE_FRAME_MS = 70L;
+
+    /**
+     * Which run owns the widget. Bumped by every tap, every capture and every
+     * ordinary redraw, and checked by each frame before it draws.
      *
      * Without it a second tap did not stop the first run: both sets of frames
      * kept arriving and the ring visibly fought itself, and because the
@@ -174,10 +204,15 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
      * rest showing a category that was no longer the one on record — the next
      * redraw, minutes later, would jump to the right one for no visible reason.
      *
+     * Bumping it on a plain redraw matters too: the frames of a count-up are
+     * deliberately short of the true figures, so anything that knows the truth
+     * — the app writing a snapshot, midnight, a resize — has to be able to end
+     * one rather than be overwritten by its next frame.
+     *
      * Only ever touched on the main thread, where broadcasts are delivered and
      * frames are posted.
      */
-    private static int focusGeneration = 0;
+    private static int renderGeneration = 0;
 
     /**
      * Run the ring between two states, then leave it settled.
@@ -203,7 +238,7 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
         final String subject = opening ? to : from;
 
         // Any frames still in flight belong to the previous tap.
-        final int generation = ++focusGeneration;
+        renderGeneration++;
 
         // Read once for the whole run. This is a file read, a JSON parse and a
         // merge of the pending captures, and doing it per frame was the most
@@ -211,45 +246,182 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
         JSONObject snapshot = currentSnapshot(context);
 
         if (subject.isEmpty() || animationsDisabled(context)) {
-            renderFrame(context, appWidgetId, snapshot, subject, opening ? 1f : 0f, 1f, true);
+            Frame f = new Frame();
+            f.snapshot = snapshot;
+            f.focus = to;
+            renderInto(context, AppWidgetManager.getInstance(context), appWidgetId, f);
             if (pending != null) pending.finish();
             return;
         }
 
-        new FocusRun(context, appWidgetId, subject, opening, snapshot, pending, generation)
-            .start();
+        new FocusRun(context, appWidgetId, snapshot, subject, to, opening, pending).start();
     }
 
     /**
-     * One morph, drawing itself frame by frame off the clock rather than off a
-     * queue of pre-scheduled frames.
+     * The redraw a capture asks for, with the figures counting up into it.
+     *
+     * The plain redraw when there is nothing to count from, when the phone's
+     * animations are off, or when nobody is looking — a count-up nobody sees is
+     * six bitmaps and a held wakelock spent on an empty room.
      */
-    private static final class FocusRun implements Runnable {
-        private final Context context;
-        private final int appWidgetId;
-        private final String subject;
-        private final boolean opening;
-        private final JSONObject snapshot;
+    static void updateAllForCapture(Context context) {
+        try {
+            AppWidgetManager manager = AppWidgetManager.getInstance(context);
+            int[] ids = manager.getAppWidgetIds(
+                new ComponentName(context, CovaultWidgetProvider.class));
+            if (ids == null || ids.length == 0) return;
+
+            JSONObject to = currentSnapshot(context);
+            JSONObject from = beforeLatestCapture(context);
+            boolean worthIt = from != null
+                && !animationsDisabled(context)
+                && someoneIsLooking(context)
+                && Math.abs(to.optDouble("totalSpent", 0) - from.optDouble("totalSpent", 0)) > 0.005;
+
+            renderGeneration++;
+            for (int id : ids) {
+                if (worthIt) {
+                    new CaptureRun(context, id, from, to, sizeLabelFor(context, id, to)).start();
+                } else {
+                    Frame f = new Frame();
+                    f.snapshot = to;
+                    renderInto(context, manager, id, f);
+                }
+            }
+            scheduleMidnightRedraw(context);
+        } catch (Exception e) {
+            Log.w(TAG, "capture redraw failed", e);
+            updateAll(context);
+        }
+    }
+
+    /**
+     * The figures as they stood before the capture that has just been recorded,
+     * which is the snapshot with every delta but the newest folded in.
+     *
+     * Null when there is nothing to count from — no snapshot, or a capture that
+     * is the first thing in the queue.
+     */
+    private static JSONObject beforeLatestCapture(Context context) {
+        try {
+            JSONObject snapshot = WidgetDeltaStore.readSnapshot(context);
+            if (snapshot == null) return null;
+            return staleMonthGuard(WidgetDeltaStore.mergeIntoExcludingLatest(context, snapshot));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Whether the screen is on and unlocked. Android tells a widget nothing
+     * about whether it is on the page being looked at, so this is as close as
+     * it gets — and it is enough to keep the count-up off a phone in a pocket.
+     */
+    private static boolean someoneIsLooking(Context context) {
+        try {
+            android.os.PowerManager power =
+                (android.os.PowerManager) context.getSystemService(Context.POWER_SERVICE);
+            if (power == null || !power.isInteractive()) return false;
+            android.app.KeyguardManager keyguard =
+                (android.app.KeyguardManager) context.getSystemService(Context.KEYGUARD_SERVICE);
+            return keyguard == null || !keyguard.isKeyguardLocked();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * The value the centre figure should be fitted to for a count-up: the one
+     * it finishes on, since it only ever counts upwards. Fitting each frame to
+     * its own digits is what made the figure change size as it counted.
+     */
+    private static String sizeLabelFor(Context context, int appWidgetId, JSONObject to) {
+        try {
+            String focus = readFocus(context, appWidgetId);
+            if (!focus.isEmpty()) {
+                org.json.JSONArray slices = to.optJSONArray("slices");
+                for (int i = 0; slices != null && i < slices.length(); i++) {
+                    JSONObject slice = slices.optJSONObject(i);
+                    if (slice != null && focus.equalsIgnoreCase(slice.optString("name", ""))) {
+                        return WidgetRenderer.money(slice.optDouble("amount", 0));
+                    }
+                }
+            }
+            return WidgetRenderer.money(to.optDouble("totalSpent", 0));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Part-way between two sets of figures, for a count-up. */
+    private static JSONObject blend(JSONObject from, JSONObject to, float b) {
+        try {
+            JSONObject out = new JSONObject(to.toString());
+            out.put("totalSpent",
+                lerp(from.optDouble("totalSpent", 0), to.optDouble("totalSpent", 0), b));
+            out.put("remaining",
+                lerp(from.optDouble("remaining", 0), to.optDouble("remaining", 0), b));
+            org.json.JSONArray slices = out.optJSONArray("slices");
+            for (int i = 0; slices != null && i < slices.length(); i++) {
+                JSONObject slice = slices.optJSONObject(i);
+                if (slice == null) continue;
+                String name = slice.optString("name", "");
+                // A category with nothing before it grows from zero, so a
+                // purchase in one the month has not seen yet unfurls its own
+                // band rather than appearing whole.
+                slice.put("amount",
+                    lerp(amountIn(from, name), slice.optDouble("amount", 0), b));
+            }
+            return out;
+        } catch (Exception e) {
+            return to;
+        }
+    }
+
+    private static double amountIn(JSONObject snapshot, String category) {
+        org.json.JSONArray slices = snapshot.optJSONArray("slices");
+        for (int i = 0; slices != null && i < slices.length(); i++) {
+            JSONObject slice = slices.optJSONObject(i);
+            if (slice != null && category.equalsIgnoreCase(slice.optString("name", ""))) {
+                return slice.optDouble("amount", 0);
+            }
+        }
+        return 0;
+    }
+
+    private static double lerp(double from, double to, float b) {
+        return from + ((to - from) * b);
+    }
+
+    /**
+     * A run of frames on the widget's own clock, rather than a queue of frames
+     * scheduled in advance.
+     */
+    private abstract static class TimedRun implements Runnable {
+        final Context context;
+        final int appWidgetId;
+        final android.view.animation.Interpolator easing =
+            new android.view.animation.PathInterpolator(0.32f, 0.72f, 0.24f, 1f);
+        private final int generation = renderGeneration;
+        private final long durationMs;
+        private final long cadenceMs;
         private final BroadcastReceiver.PendingResult pending;
-        private final int generation;
         private final android.os.Handler handler =
             new android.os.Handler(android.os.Looper.getMainLooper());
-        private final android.view.animation.Interpolator easing =
-            new android.view.animation.PathInterpolator(0.32f, 0.72f, 0.24f, 1f);
         private final long startedAt = android.os.SystemClock.uptimeMillis();
         private long nextFrameAt = startedAt;
 
-        FocusRun(Context context, int appWidgetId, String subject, boolean opening,
-                 JSONObject snapshot, BroadcastReceiver.PendingResult pending,
-                 int generation) {
+        TimedRun(Context context, int appWidgetId, long durationMs, long cadenceMs,
+                 BroadcastReceiver.PendingResult pending) {
             this.context = context;
             this.appWidgetId = appWidgetId;
-            this.subject = subject;
-            this.opening = opening;
-            this.snapshot = snapshot;
+            this.durationMs = durationMs;
+            this.cadenceMs = cadenceMs;
             this.pending = pending;
-            this.generation = generation;
         }
+
+        /** What to draw this far through. `last` is the settled frame. */
+        abstract Frame frameAt(float linear, boolean last);
 
         void start() {
             schedule();
@@ -257,26 +429,24 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
 
         @Override
         public void run() {
-            // A newer tap owns the widget now. Its own settled frame is coming,
+            // A newer run owns the widget now. Its own settled frame is coming,
             // so stop here rather than drawing over it.
-            if (generation != focusGeneration) {
+            if (generation != renderGeneration) {
                 finish();
                 return;
             }
 
             long elapsed = android.os.SystemClock.uptimeMillis() - startedAt;
-            float linear = elapsed >= FOCUS_ANIM_MS
+            float linear = elapsed >= durationMs
                 ? 1f
-                : Math.max(0f, elapsed / (float) FOCUS_ANIM_MS);
+                : Math.max(0f, elapsed / (float) durationMs);
             boolean last = linear >= 1f;
-            float eased = last ? 1f : easing.getInterpolation(linear);
 
             try {
-                renderFrame(context, appWidgetId, snapshot, subject,
-                    opening ? eased : 1f - eased,
-                    last ? 1f : frameScale(eased), last);
+                renderInto(context, AppWidgetManager.getInstance(context), appWidgetId,
+                    frameAt(linear, last));
             } catch (Exception e) {
-                Log.w(TAG, "focus frame failed", e);
+                Log.w(TAG, "frame failed", e);
             }
 
             if (last) {
@@ -289,12 +459,12 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
         /**
          * The next frame, on the cadence the run started on — skipping any slot
          * that has already gone by while this frame was being drawn, so a slow
-         * render costs a picture rather than pushing the whole morph late.
+         * render costs a picture rather than pushing the whole run late.
          */
         private void schedule() {
             long now = android.os.SystemClock.uptimeMillis();
             do {
-                nextFrameAt += FOCUS_FRAME_MS;
+                nextFrameAt += cadenceMs;
             } while (nextFrameAt <= now);
             handler.postAtTime(this, nextFrameAt);
         }
@@ -310,11 +480,64 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
         }
     }
 
-    /** How large a mid-morph frame is drawn, easing back to full at the end. */
-    private static float frameScale(float eased) {
-        if (eased <= FOCUS_SHARPEN_FROM) return FOCUS_ANIM_SCALE;
-        float k = (eased - FOCUS_SHARPEN_FROM) / (1f - FOCUS_SHARPEN_FROM);
-        return FOCUS_ANIM_SCALE + ((1f - FOCUS_ANIM_SCALE) * k);
+    /** Opening a category on the ring, or closing it again. */
+    private static final class FocusRun extends TimedRun {
+        private final JSONObject snapshot;
+        private final String subject;
+        private final String endFocus;
+        private final boolean opening;
+
+        FocusRun(Context context, int appWidgetId, JSONObject snapshot, String subject,
+                 String endFocus, boolean opening, BroadcastReceiver.PendingResult pending) {
+            super(context, appWidgetId, FOCUS_ANIM_MS, FOCUS_FRAME_MS, pending);
+            this.snapshot = snapshot;
+            this.subject = subject;
+            this.endFocus = endFocus;
+            this.opening = opening;
+        }
+
+        @Override
+        Frame frameAt(float linear, boolean last) {
+            Frame f = new Frame();
+            f.snapshot = snapshot;
+            // One name is on the ring for the whole run — but the settled frame
+            // has to say what is actually stored, or a closed widget would go
+            // on drawing the category it just closed.
+            f.focus = last ? endFocus : subject;
+            float eased = last ? 1f : easing.getInterpolation(linear);
+            f.progress = opening ? eased : 1f - eased;
+            f.fade = last ? -1f : linear;
+            f.opening = opening;
+            f.scale = (last || linear <= FOCUS_SHARP_UNTIL) ? 1f : FOCUS_ANIM_SCALE;
+            f.settled = last;
+            return f;
+        }
+    }
+
+    /** The figures counting up to a purchase that has just been captured. */
+    private static final class CaptureRun extends TimedRun {
+        private final JSONObject from;
+        private final JSONObject to;
+        private final String sizeLabel;
+
+        CaptureRun(Context context, int appWidgetId, JSONObject from, JSONObject to,
+                   String sizeLabel) {
+            super(context, appWidgetId, CAPTURE_ANIM_MS, CAPTURE_FRAME_MS, null);
+            this.from = from;
+            this.to = to;
+            this.sizeLabel = sizeLabel;
+        }
+
+        @Override
+        Frame frameAt(float linear, boolean last) {
+            Frame f = new Frame();
+            f.snapshot = last ? to : blend(from, to, easing.getInterpolation(linear));
+            f.sizeLabel = sizeLabel;
+            f.settled = last;
+            // Nothing about the focus changes: whatever this widget is opened
+            // on stays open, and only the figures underneath it move.
+            return f;
+        }
     }
 
     /**
@@ -322,7 +545,7 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
      *
      * The same switch that stops the rest of Android animating. Someone who has
      * asked for that should not get a widget that morphs — and skipping it also
-     * skips eight bitmaps they did not want drawn.
+     * skips a dozen bitmaps they did not want drawn.
      */
     private static boolean animationsDisabled(Context context) {
         try {
@@ -335,16 +558,32 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
         }
     }
 
-    /** One frame of the morph. `settled` is what earns the tap targets. */
-    private static void renderFrame(Context context, int appWidgetId, JSONObject snapshot,
-                                    String focus, float progress, float scale,
-                                    boolean settled) {
-        renderOne(context, AppWidgetManager.getInstance(context), appWidgetId,
-            snapshot, focus, progress, scale, settled);
+    private static void renderOne(Context context, AppWidgetManager manager, int appWidgetId) {
+        renderInto(context, manager, appWidgetId, new Frame());
     }
 
-    private static void renderOne(Context context, AppWidgetManager manager, int appWidgetId) {
-        renderOne(context, manager, appWidgetId, null, null, -1f, 1f, true);
+    /**
+     * One frame's worth of instructions for the renderer.
+     *
+     * A widget nobody is touching is `new Frame()`: read what is stored, draw
+     * it full size, hand it its tap targets. The animated runs fill in what is
+     * moving and how far through it is.
+     */
+    private static final class Frame {
+        /** The run's own copy, read once and handed to every frame. */
+        JSONObject snapshot;
+        /** Null means whatever category is stored for this widget. */
+        String focus;
+        /** Where the ring is, -1 when nothing is moving. */
+        float progress = -1f;
+        /** Where the words are on their own clock, -1 when nothing is moving. */
+        float fade = -1f;
+        /** Which end the morph finishes on — the ring's position cannot say. */
+        boolean opening = true;
+        /** What the centre figure is fitted to, when it must not resize. */
+        String sizeLabel;
+        float scale = 1f;
+        boolean settled = true;
     }
 
     /**
@@ -365,54 +604,65 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
         return snapshot;
     }
 
-    /**
-     * `prepared` is the morph's copy, read once and handed to every frame. Null
-     * everywhere else, which reads the current one.
-     */
-    private static void renderOne(Context context, AppWidgetManager manager, int appWidgetId,
-                                  JSONObject prepared, String focusOverride, float progress,
-                                  float scale, boolean settled) {
+    private static void renderInto(Context context, AppWidgetManager manager, int appWidgetId,
+                                   Frame f) {
         try {
             RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_covault);
 
-            JSONObject snapshot = prepared != null ? prepared : currentSnapshot(context);
+            JSONObject snapshot = f.snapshot != null ? f.snapshot : currentSnapshot(context);
 
             // A category is only ever open on the widget it was opened on, and
             // only while the figures it was opened against still stand. A fresh
             // snapshot clears it: the list behind it has changed, and leaving
             // it open would show yesterday's purchases under today's ring.
-            String focus = focusOverride != null ? focusOverride : readFocus(context, appWidgetId);
-            // Cleared first, not just overwritten: the morph hands the same
-            // object to every frame, and a "focus" left over from the previous
-            // one would keep a category open on the frame that closes it.
+            String focus = f.focus != null ? f.focus : readFocus(context, appWidgetId);
+            // Cleared first, not just overwritten: a run hands the same object
+            // to every frame, and a "focus" left over from the previous one
+            // would keep a category open on the frame that closes it.
             snapshot.remove("focus");
             snapshot.remove("focusProgress");
-            if (!focus.isEmpty()) {
-                try {
+            snapshot.remove("focusFade");
+            snapshot.remove("focusOpening");
+            snapshot.remove("centreSizeLabel");
+            try {
+                if (!focus.isEmpty()) {
                     snapshot.put("focus", focus);
-                    if (progress >= 0f) snapshot.put("focusProgress", progress);
-                } catch (Exception e) {
-                    Log.w(TAG, "could not apply focus", e);
+                    if (f.progress >= 0f) snapshot.put("focusProgress", f.progress);
                 }
+                // The words' clock is carried even when nothing is focused,
+                // because closing a category is a swap the same as opening one.
+                if (f.fade >= 0f) {
+                    snapshot.put("focusFade", f.fade);
+                    snapshot.put("focusOpening", f.opening);
+                }
+                if (f.sizeLabel != null) snapshot.put("centreSizeLabel", f.sizeLabel);
+            } catch (Exception e) {
+                Log.w(TAG, "could not apply focus", e);
             }
 
             float[] spec = bitmapSpec(context, manager, appWidgetId);
+            float scale = f.scale;
             if (scale < 1f) {
-                // Mid-morph frames are drawn smaller and scaled back up by the
-                // ImageView. Nothing on one is readable while the ring is
-                // moving, and it is the difference between this animation
-                // costing 6MB of Binder traffic and costing 2.
-                spec = new float[] {
-                    Math.max(120f, spec[0] * scale),
-                    Math.max(80f, spec[1] * scale),
-                    spec[2] * scale,
-                };
+                // Frames of a morph are drawn smaller and scaled back up by the
+                // ImageView. Nothing legible is on one while the ring travels
+                // — that is what the text fade buys — and it is the difference
+                // between the animation costing 6MB of Binder traffic and 2.
+                //
+                // The floors are raised into the scale rather than applied to
+                // the dimensions afterwards. Clamping width and height
+                // separately gave the bitmap an aspect ratio the widget does
+                // not have, which `fitCenter` answers by letterboxing it, and
+                // left the pixels-per-dp disagreeing with the size it had
+                // actually been given.
+                scale = Math.min(1f, Math.max(scale,
+                    Math.max(120f / Math.max(1f, spec[0]), 80f / Math.max(1f, spec[1]))));
+                spec = new float[] { spec[0] * scale, spec[1] * scale, spec[2] * scale };
             }
             boolean systemDark = (context.getResources().getConfiguration().uiMode
                 & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
 
             Bitmap bitmap = WidgetRenderer.render(
-                context, snapshot, (int) spec[0], (int) spec[1], systemDark, spec[2]);
+                context, snapshot, (int) spec[0], (int) spec[1], systemDark, spec[2], scale);
             views.setImageViewBitmap(R.id.widget_canvas, bitmap);
 
             // The card itself is deliberately not a button. It used to open
@@ -424,7 +674,7 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
             // Tap targets belong to a widget that has stopped moving. Placing
             // them on a mid-morph frame would put them where an arc was for a
             // fortieth of a second, which is a way to open the wrong category.
-            if (settled) {
+            if (f.settled) {
                 // Category rows open Covault at that budget, expanded.
                 placeLegendHits(context, views, spec);
                 // The donut's bands open a category on the widget itself, and
@@ -598,10 +848,15 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
             views.setViewLayoutWidth(id, widthDp, android.util.TypedValue.COMPLEX_UNIT_DIP);
             views.setViewLayoutHeight(id, heightDp, android.util.TypedValue.COMPLEX_UNIT_DIP);
             views.setViewVisibility(id, android.view.View.VISIBLE);
-            views.setOnClickPendingIntent(id, budgetIntent(context, hit.category, i));
+            // An empty name is the renderer's "+N more" row, which stands for
+            // the categories that did not fit and so has no one budget to open.
+            boolean isMore = hit.category.isEmpty();
+            views.setOnClickPendingIntent(id,
+                isMore ? openIntent(context) : budgetIntent(context, hit.category, i));
             // Every target here is an invisible box over a picture, so without
             // this a screen reader announces an unlabelled button.
-            views.setContentDescription(id, "Open " + hit.category);
+            views.setContentDescription(id,
+                isMore ? "Open Covault" : "Open " + hit.category);
         }
     }
 
