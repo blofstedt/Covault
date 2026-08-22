@@ -392,15 +392,34 @@ final class WidgetRenderer {
             }
         }
 
-        // The way back out: the hole in the middle, which is the one part of a
-        // focused donut that is not the category itself. A widget is never told
+        // The middle of the ring, which does one of two things depending on
+        // what is drawn there.
+        //
+        // Opened on a category it is the way back out: a widget is never told
         // about taps that land outside it, so tapping away cannot close this —
-        // this is the gesture that does.
-        LAST_CENTRE_HIT = (focused == null || t < 1f)
-            ? null
-            : new HitRect(focused.name,
+        // this is the gesture that does. It takes the whole hole, because
+        // nothing else in there competes for the tap.
+        //
+        // Otherwise it is the month's total, and tapping the figure you read
+        // opens the app. That target is deliberately small: it is sized to the
+        // number itself rather than the hole, so it cannot reach out over an
+        // arc's icon chip and swallow a tap meant for a category. The provider
+        // drops it anyway if it would overlap one.
+        //
+        // The empty category name is what tells the two apart.
+        if (focused != null && t >= 1f) {
+            LAST_CENTRE_HIT = new HitRect(focused.name,
                 cx - (radius * 0.6f), cy - (radius * 0.6f),
                 cx + (radius * 0.6f), cy + (radius * 0.6f));
+        } else if (focused == null || t <= 0f) {
+            float holeRadius = radius - (ringStroke / 2f);
+            float halfW = Math.min(Math.max(measured * 0.62f, 26f * dp), holeRadius * 0.9f);
+            float halfH = Math.min(Math.max(totalSize * 0.95f, 22f * dp), holeRadius * 0.55f);
+            LAST_CENTRE_HIT = new HitRect("",
+                cx - halfW, cy - halfH, cx + halfW, cy + halfH);
+        } else {
+            LAST_CENTRE_HIT = null;
+        }
 
         return bitmap;
     }
@@ -452,7 +471,11 @@ final class WidgetRenderer {
         return new ArrayList<>(LAST_ARC_HITS);
     }
 
-    /** The "close this category" target, or null when nothing is open. */
+    /**
+     * The target in the middle of the ring from the most recent render, or
+     * null mid-morph. An empty category name means it is the month's total
+     * ("open the app"); a name means it is an opened category ("close it").
+     */
     static HitRect lastCentreHit() {
         return LAST_CENTRE_HIT;
     }
