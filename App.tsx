@@ -19,8 +19,6 @@ import { useAppTheme } from './lib/hooks/useAppTheme';
 import { useAppUpdate } from './lib/hooks/useAppUpdate';
 import { useUserData } from './lib/hooks/useUserData';
 import { useFirstPaintCache } from './lib/hooks/useFirstPaintCache';
-import { executeRecurringTransactions } from './lib/recurringExecutor';
-import { sendRecurringCatchUpNotification } from './lib/appNotifications';
 import { preloadAIModel } from './lib/aiExtractor';
 import { setHapticsEnabled } from './lib/haptics';
 import { log } from './lib/log';
@@ -196,33 +194,17 @@ const App: React.FC = () => {
     });
   }, []);
 
-  // Auto-execute recurring transactions. The executor itself is
-  // idempotent and gated by a once-per-day localStorage flag, so it's
-  // safe to re-run on every transactions change. We do NOT use a
-  // `useRef` guard here anymore — a ref would prevent the executor
-  // from catching up when the user adds a new recurring template
-  // mid-session (the ref would stay `true` for the rest of the
-  // session, and the new template's first due instance would not
-  // spawn until tomorrow).
-  useEffect(() => {
-    const userId = appState.user?.id;
-    if (!userId || appState.transactions.length === 0) return;
-
-    executeRecurringTransactions(userId, appState.transactions).then((inserted) => {
-      if (inserted.length > 0) {
-        setAppState((prev) => ({
-          ...prev,
-          transactions: [...inserted, ...prev.transactions],
-        }));
-        // Surface a local notification so the user knows what just
-        // happened. Best-effort — if notifications aren't permitted,
-        // appNotifications swallows the error.
-        void sendRecurringCatchUpNotification(
-          inserted.map((t) => ({ vendor: t.vendor, amount: Number(t.amount), date: t.date }))
-        );
-      }
-    });
-  }, [appState.user?.id, appState.transactions]);
+  // Recurring charges are NOT written to the database.
+  //
+  // There used to be an executor here that inserted a real row for every due
+  // date it thought was missing. It double-counted every subscription: the
+  // dashboard already includes the current month's recurring occurrences via
+  // `lib/projectedTransactions.ts` (they are solidified to is_projected:false
+  // once their date has passed), so the executor's row was a second copy of a
+  // charge already in the total. Its rows also landed in the review queue as
+  // label 'Automatic', so the user deleted them by hand each day — and once
+  // deleted they were no longer in the DB, so the next day's run inserted them
+  // all over again. Projection is the single source of truth for recurring.
 
   const handleAutoAcceptedTransaction = useCallback((tx: Transaction) => {
     setAppState(prev => {

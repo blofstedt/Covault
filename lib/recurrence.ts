@@ -1,8 +1,9 @@
 // lib/recurrence.ts
 //
-// Shared recurrence primitives used by both the display-only projection
-// (projectedTransactions.ts) and the DB-writing catch-up (recurringExecutor.ts).
-// Previously each file carried its own identical copy of the date stepping.
+// Shared recurrence primitives. The display-only projection
+// (projectedTransactions.ts) is the only consumer that generates occurrences;
+// recurringSchedule.ts uses them to recognise a captured charge as one.
+// Nothing writes recurring rows to the database — see the note in App.tsx.
 
 import type { Transaction } from '../types';
 

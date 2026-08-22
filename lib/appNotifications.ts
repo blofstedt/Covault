@@ -194,25 +194,6 @@ export async function sendPartnerActivityNotification(
   );
 }
 
-/**
- * Send a local notification when the recurring executor auto-inserts
- * one or more due instances. Helps the user notice missed recurrences
- * got caught up without having to dig through their transaction list.
- */
-export async function sendRecurringCatchUpNotification(
-  inserted: Array<{ vendor: string; amount: number; date: string }>,
-) {
-  if (!Capacitor.isNativePlatform()) return;
-  if (!inserted || inserted.length === 0) return;
-
-  const total = inserted.reduce((acc, t) => acc + Math.abs(t.amount), 0);
-  const summary =
-    inserted.length === 1
-      ? `Added ${inserted[0].vendor} ($${Math.abs(inserted[0].amount).toFixed(2)}) for ${inserted[0].date}.`
-      : `Added ${inserted.length} recurring transactions totaling $${total.toFixed(2)}.`;
-
-  await sendNotification('Recurring transactions caught up', summary);
-}
 
 /**
  * Send a local notification when Covault AI auto-captures an expense

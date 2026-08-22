@@ -207,10 +207,14 @@ drift accumulated in the first place.
   pairs it to an expense (same vendor, same |amount|, same budget, ≤30 days),
   hides the refund from every list, strikes through the matched expense, and
   lets the negative amount reduce the budget total.
-- **Recurring** — two systems. `lib/recurringExecutor.ts` inserts missing due
-  rows (idempotent, backs up 2 months). `lib/projectedTransactions.ts` is
-  display-only, projecting 3 months ahead; past occurrences in the current month
-  are solidified to `is_projected: false` so dashboard maths matches the DB.
+- **Recurring** — display-only, never written to the database.
+  `lib/projectedTransactions.ts` projects 3 months ahead; occurrences earlier in
+  the current month are solidified to `is_projected: false` so they count in the
+  dashboard total. There used to be a second system (`lib/recurringExecutor.ts`)
+  that inserted a real row per due date; it double-counted every subscription
+  against the projection and filled the review queue daily, and was removed.
+  Rows already in the DB carrying `source: 'executor'` are still skipped as
+  projection sources so history keeps rendering correctly.
 - **`transaction.budget_id`** is the app's UUID; the DB column
   `transactions.budget` is the enum name. `transactionMappers.ts` translates.
 - Refunds, income and projected rows are excluded from CSV export.

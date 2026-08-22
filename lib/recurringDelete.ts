@@ -3,9 +3,9 @@
 // Works out what "delete this recurring transaction" actually means.
 //
 // A recurring charge is not one row. It is one or more real rows in the DB
-// (the original the user entered, plus every occurrence the executor has
-// spawned since) and a tail of display-only projections generated from the
-// earliest of those. Deleting the row the user tapped is therefore never the
+// (the original the user entered, plus any occurrence captured from the bank,
+// plus rows the removed executor spawned before it was taken out) and a tail
+// of display-only projections generated from the earliest of those. Deleting the row the user tapped is therefore never the
 // whole job, and when they tapped a *projection* there is no row to delete at
 // all — its id is `projected-<source id>-<date>`, which the database rejects
 // outright as an id. That rejection is the error this module removes.
@@ -13,8 +13,8 @@
 // The rule: deleting an occurrence removes that occurrence and every later
 // one, and leaves everything that already elapsed alone. Occurrences before
 // the cut keep their money but stop recurring — they are flipped to One-time,
-// which is what stops both the projections and the executor from bringing the
-// series back on the next app open.
+// which is what stops the projections from bringing the series back on the
+// next app open.
 
 import type { Transaction } from '../types';
 import { Recurrence } from '../types';

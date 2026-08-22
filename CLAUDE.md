@@ -103,6 +103,7 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | "the gas amount is wrong" / "it says placeholder" | `lib/fuelHold.ts` — hold detection, applied at step 6 of the processor and re-derived per row in `AIEnteredRow` |
 | "I have two rows for one tank of gas" | `lib/fuelHoldReconcile.ts` — pairs a settled charge with the hold it replaces |
 | "I got a duplicate" | `lib/notificationProcessor.ts` — dedup is steps 1, 2, 5 and the post-insert race recovery |
+| "recurring charges are duplicating / I keep deleting them" | `lib/projectedTransactions.ts` — recurring is display-only. Nothing writes recurring rows. See Invariants |
 | "a subscription got captured / notified about anyway" | `lib/recurringSchedule.ts` — matches the capture against the recurring *schedule*, not just nearby rows; applied at step 5b. The notification is suppressed in `NotificationListener.java` (`RECURRING_CHARGES_KEY`) and withdrawn by `useNotificationListener.ts` when it slipped through |
 | "the budget pills keep rearranging" | `lib/budgetOrder.ts` — the `budgets` table has no sort column, so the order is fixed in code. See Invariants |
 | "it picked the wrong category" | `lib/hooks/useVendorMatcher.ts`, `lib/vendorMatchConfidence.ts`, step 5a of the processor |
@@ -191,6 +192,18 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
 - **A settings toggle that "works" may not be saving.** The UI applies changes
   optimistically and `saveSettingToDb` only logs failures, so a missing column
   is indistinguishable from success. Check the column exists.
+- **Recurring charges are never written to the database.**
+  `lib/projectedTransactions.ts` already includes the current month's
+  occurrences in the dashboard total — an occurrence whose date has passed is
+  emitted with `is_projected: false`, so it counts exactly like a real row. A
+  `lib/recurringExecutor.ts` used to also insert a real row per due date; every
+  subscription was therefore counted twice, and because those rows carried
+  label `Automatic` they queued up in Review, where the user deleted them by
+  hand — which put them back in scope for the next day's run, so they returned
+  every morning. Do not re-add a DB-writing catch-up. Rows already in the DB
+  with `source: 'executor'` are left alone and are still skipped as projection
+  sources.
+
 - **The budget order comes from `lib/budgetOrder.ts`, not from the database.**
   `budgets` has no primary key and no sort column, and `loadUserBudgets` reads
   it with a plain `select=*`, so PostgREST returns Postgres's heap order — which
