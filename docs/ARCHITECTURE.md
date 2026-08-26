@@ -123,7 +123,10 @@ cannot fetch.
 - The app pushes a pre-computed snapshot to SharedPreferences whenever the
   figures change (`lib/widgetSnapshot.ts`, pushed from `Dashboard.tsx`).
 - The native listener appends optimistic **deltas** for captures made with the
-  app closed, so a purchase moves the donut within seconds.
+  app closed, so a purchase moves the donut within seconds. Only for a capture
+  it also announced: a quiet one (price alert, user skip rule, known recurring)
+  is one the pipeline will produce no row for, so a delta for it is a number
+  from nowhere that sticks until the next app open.
 - Render = snapshot + deltas newer than it and inside its month. A fresh
   snapshot prunes them, so an optimistic guess the pipeline later rejects
   self-corrects on next app open.

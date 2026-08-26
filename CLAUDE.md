@@ -204,6 +204,17 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   with `source: 'executor'` are left alone and are still skipped as projection
   sources.
 
+- **A quiet capture writes no widget delta.** The listener stays silent about
+  three kinds of alert — a price alert or promo, one matching a user skip rule,
+  and a charge already on the books as recurring — and each of them means the
+  JS pipeline will produce no row (the recurring one is already counted by the
+  projection). The optimistic widget delta used to be recorded anyway, so a
+  "BTC is trading at $112,013.15" alert put six figures of spending and a
+  phantom review item on the home screen, where they stayed until the app was
+  next opened: only a fresh snapshot discards a delta. The delta is gated on
+  the same `captureQuietly` flag as the notification; `widgetQuietCaptures.test.ts`
+  holds the two together.
+
 - **The budget order comes from `lib/budgetOrder.ts`, not from the database.**
   `budgets` has no primary key and no sort column, and `loadUserBudgets` reads
   it with a plain `select=*`, so PostgREST returns Postgres's heap order — which

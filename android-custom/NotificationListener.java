@@ -703,12 +703,19 @@ public class NotificationListener extends NotificationListenerService {
             Log.i(TAG, "Reads as a price alert or promo rather than a purchase; capturing quietly: " + packageName);
         }
 
+        // The three verdicts above differ in their reason and agree in their
+        // consequence: Covault says nothing about this alert, because nothing
+        // the user has to act on came of it. Held in one flag because the
+        // notification is not the only thing that must respect it — see the
+        // widget block at the end of this method.
+        boolean captureQuietly = ignoredByUser || knownRecurring || notAPurchase;
+
         // Broadcast to the local TypeScript pipeline which will classify
         // as transaction or non-transaction — non-transactions will appear in
         // the rejected card so the user can see what was processed.
         CaptureResult result = broadcastTransaction(
             packageName, amount, vendor, fullText, sbn.getPostTime(), fromScan, alreadySecured,
-            ignoredByUser || knownRecurring || notAPurchase);
+            captureQuietly);
         boolean secured = result.secured();
 
         // Recorded BEFORE the dismissal below, never after. The record is what
@@ -729,7 +736,24 @@ public class NotificationListener extends NotificationListenerService {
         // load-bearing path, and none of it may be affected by widget code. A
         // widget that misses a redraw is cosmetic; a capture pipeline that
         // misses a purchase is not.
-        if (!fromScan && fromMonitored && amount != null) {
+        //
+        // Nothing quiet is nudged. A delta is a guess that the ledger is about
+        // to gain this amount, and each of the three quiet verdicts is a
+        // statement that it is not: a price alert or promo becomes no row at
+        // all, a skip rule the web pipeline honours becomes no row at all, and
+        // a known recurring charge is already counted by the projection the
+        // snapshot was built from. The widget was believing the amount anyway,
+        // which is how "BTC is trading at $112,013.15" arrived on the home
+        // screen as six figures of spending plus an item waiting in Review —
+        // and stayed there, because a delta is only ever discarded by the next
+        // snapshot, i.e. by opening the app.
+        //
+        // Withholding one costs nothing the app cannot recover: the widget is
+        // then merely as stale as it was before this store existed, and the
+        // next snapshot brings it back into agreement either way. Believing a
+        // wrong one costs the user a broken widget until they next open the
+        // app, which is exactly the window the widget exists to cover.
+        if (!fromScan && fromMonitored && amount != null && !captureQuietly) {
             try {
                 if (WidgetDeltaStore.recordDelta(this, amount, vendor, sbn.getPostTime())) {
                     // The redraw that counts up to the new figures rather than

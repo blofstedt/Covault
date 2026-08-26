@@ -152,12 +152,15 @@ describe('the native listener', () => {
     expect(LISTENER_JAVA).toMatch(/boolean ignoredByUser = matchesSkipRule\(this, fullText\);/);
     // A rule match is one of several reasons to capture without announcing —
     // a subscription already on the books and a price alert are the others —
-    // so what reaches the post is the combined flag. See the call itself for
-    // the assertion that a rule match still feeds it.
+    // so what reaches the post is the combined flag, which a rule match must
+    // still feed. That flag also gates the widget delta; see
+    // widgetQuietCaptures.test.ts.
     expect(LISTENER_JAVA).toMatch(
       /if \(!captureQuietly && \(!fromScan \|\| !alreadySecured\)\) \{\s*\n\s*notified = notifyCaptured/,
     );
-    expect(LISTENER_JAVA).toMatch(/ignoredByUser \|\| knownRecurring \|\| notAPurchase\);/);
+    expect(LISTENER_JAVA).toMatch(
+      /boolean captureQuietly = ignoredByUser \|\| knownRecurring \|\| notAPurchase;/,
+    );
   });
 
   it('still captures it, so a bad rule can only cost a notification', () => {
