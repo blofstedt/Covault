@@ -106,6 +106,7 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | "recurring charges are duplicating / I keep deleting them" | `lib/projectedTransactions.ts` — recurring is display-only. Nothing writes recurring rows. See Invariants |
 | "a subscription got captured / notified about anyway" | `lib/recurringSchedule.ts` — matches the capture against the recurring *schedule*, not just nearby rows; applied at step 5b. The notification is suppressed in `NotificationListener.java` (`RECURRING_CHARGES_KEY`) and withdrawn by `useNotificationListener.ts` when it slipped through |
 | "the budget pills keep rearranging" | `lib/budgetOrder.ts` — the `budgets` table has no sort column, so the order is fixed in code. See Invariants |
+| "my budget limits / hidden categories are back to the defaults" | `loadUserBudgets` in `lib/hooks/useDataLoading.ts` → `lib/budgetFallback.ts`. Check the Supabase edge logs for a non-200 on `/rest/v1/budgets` before assuming the data is gone — it usually isn't |
 | "it picked the wrong category" | `lib/hooks/useVendorMatcher.ts`, `lib/vendorMatchConfidence.ts`, step 5a of the processor |
 | "a new restaurant landed in Other" | `lib/merchantCategorySignals.ts` — the offline descriptor/POS-prefix guess, applied in step 5c |
 | "the review list / badge is wrong" | `lib/reviewQueue.ts` — the single definition of "waiting"; the list, badge and widget all read it |
@@ -203,6 +204,22 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   every morning. Do not re-add a DB-writing catch-up. Rows already in the DB
   with `source: 'executor'` are left alone and are still skipped as projection
   sources.
+
+- **A failed budgets read may not replace the budgets on screen.** The limits
+  and the hidden-category list are the only things the `budgets` table holds,
+  and `loadUserBudgets` used to answer any failed read by putting
+  `SYSTEM_CATEGORIES` into app state — reading "I could not ask" as "you have
+  not set any". It happened: four requests go out together at the start of a
+  load, the access token rotated in that instant, and the budgets read alone
+  came back 401 while settings, transactions and overrides succeeded. The user
+  found every limit back at 500 and their hidden categories showing. Worse than
+  a wrong screen — the limits shown are what the settings screen writes back, so
+  the starter figures sat one tap from being saved over the real ones. The rule
+  is the one `fetchTransactionsFor` already follows: an empty answer is an
+  answer, a failed request is not. See `lib/budgetFallback.ts`, which also holds
+  why the `user_uuid`/`user_id` fallback fires only on 400/404 — answering a 401
+  by asking for a column the schema lacks turned a recoverable failure into a
+  certain one. `budgetsSurviveFailedRead.test.ts` pins all of it.
 
 - **A quiet capture writes no widget delta.** The listener stays silent about
   three kinds of alert — a price alert or promo, one matching a user skip rule,

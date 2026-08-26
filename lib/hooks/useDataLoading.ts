@@ -3,8 +3,19 @@ import { log } from '../log';
 import { useCallback, useRef, useState } from 'react';
 import { SYSTEM_CATEGORIES } from '../../constants';
 import { sortBudgets } from '../budgetOrder';
+import {
+  budgetsAfterFailedRead,
+  looksLikeWrongColumn,
+  worthRetryingWithFreshToken,
+} from '../budgetFallback';
 import type { BudgetCategory, Transaction, PendingTransaction } from '../../types';
-import { REST_BASE, getAuthHeaders, restFetch, DEFAULT_MONTHLY_INCOME } from '../apiHelpers';
+import {
+  REST_BASE,
+  getAuthHeaders,
+  restFetch,
+  clearCachedAccessToken,
+  DEFAULT_MONTHLY_INCOME,
+} from '../apiHelpers';
 import { useFromSupabaseTransaction } from './transactionMappers';
 import { deduplicatePendingTransactions } from '../notificationProcessor';
 import { readFirstPaintCache } from '../firstPaintCache';
@@ -132,6 +143,32 @@ export const useDataLoading = ({
     [],
   );
 
+  /**
+   * The starter set of budgets — but only into a dashboard that has none.
+   *
+   * This used to run on every failed read, and that is how a moment's bad luck
+   * erased the user's own budgets from the screen: their limits reverted to the
+   * starter 500s and the categories they had hidden came back. Nothing was
+   * wrong in the database; the app simply could not read it that second and
+   * treated "I could not ask" as "you have not set any".
+   *
+   * The rule is the one fetchTransactionsFor already follows: an empty answer
+   * is an answer, a failed request is not. So defaults are seeded only when
+   * there is genuinely nothing to show — a first-ever load — and a failure
+   * leaves whatever is already on screen (the previous load, or the first-paint
+   * cache) exactly where it is until a read succeeds.
+   *
+   * This matters beyond the display. The limits on screen are what the settings
+   * screen edits and writes back, so showing the starter 500s over the user's
+   * real figures put the app one tap away from saving them.
+   */
+  const seedDefaultBudgetsIfEmpty = useCallback(() => {
+    setAppState(prev => {
+      const next = budgetsAfterFailedRead(prev.budgets, SYSTEM_CATEGORIES);
+      return next === prev.budgets ? prev : { ...prev, budgets: next as BudgetCategory[] };
+    });
+  }, [setAppState]);
+
   // Load user budgets from budgets table (this is now the single source of truth for categories)
   const loadUserBudgets = useCallback(
     async (userId: string) => {
@@ -142,7 +179,36 @@ export const useDataLoading = ({
           { headers },
         );
 
-        if (!res.ok) {
+        // A 401 here is a token, not a schema.
+        //
+        // loadUserData fires this read alongside settings, transactions and
+        // pending — four requests that resolve their auth header at the same
+        // instant. When the session's access token is rotated in that instant,
+        // one of the four can go out holding the token that rotation just
+        // retired, and the server refuses it. Which one loses is luck; on the
+        // occasion that prompted this, it was the budgets read, and the other
+        // three came back fine a millisecond apart.
+        //
+        // So the token is dropped and re-read from the session, which returns
+        // the current one, and the request goes again. Safe to repeat: it is a
+        // GET, and a 401 means the first attempt never reached the data.
+        if (worthRetryingWithFreshToken(res.status)) {
+          log.warn('[loadUserBudgets] 401 — retrying once with a fresh token');
+          clearCachedAccessToken();
+          res = await fetch(
+            `${REST_BASE}/budgets?select=*&user_uuid=eq.${userId}`,
+            { headers: await getAuthHeaders() },
+          );
+        }
+
+        // The user_uuid/user_id fallback, narrowed to the failure it is for.
+        //
+        // It exists because the column is named differently on different
+        // installs, and PostgREST answers an unknown column with 400. It used
+        // to run on ANY non-ok response, which meant a 401 was answered by
+        // asking a second time for a column this schema does not have — a
+        // guaranteed 400, turning one recoverable failure into a certain one.
+        if (!res.ok && looksLikeWrongColumn(res.status)) {
           res = await fetch(
             `${REST_BASE}/budgets?select=*&user_id=eq.${userId}`,
             { headers },
@@ -153,12 +219,12 @@ export const useDataLoading = ({
         if (!res.ok) {
           if (res.status === 404 && body.includes('Could not find the table')) {
             log.debug('[loadUserBudgets] budgets table not found - using defaults');
-            setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
+            seedDefaultBudgetsIfEmpty();
             setCategoriesLoaded(true);
             return;
           }
-          log.error('[loadUserBudgets] failed:', body.slice(0, 200));
-          setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
+          log.error('[loadUserBudgets] failed:', res.status, body.slice(0, 200));
+          seedDefaultBudgetsIfEmpty();
           setCategoriesLoaded(true);
           return;
         }
@@ -233,11 +299,11 @@ export const useDataLoading = ({
         setCategoriesLoaded(true);
       } catch (err: any) {
         log.error('[loadUserBudgets] exception:', err?.message || err);
-        setAppState(prev => ({ ...prev, budgets: SYSTEM_CATEGORIES }));
+        seedDefaultBudgetsIfEmpty();
         setCategoriesLoaded(true);
       }
     },
-    [setAppState, ensureDefaultBudgets],
+    [setAppState, ensureDefaultBudgets, seedDefaultBudgetsIfEmpty],
   );
 
   // Load user settings from Supabase (monthly_income, etc.)
