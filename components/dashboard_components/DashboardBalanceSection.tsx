@@ -1,5 +1,6 @@
 import React from 'react';
 import { useAnimatedNumber } from '../../lib/hooks/useAnimatedNumber';
+import { splitCurrency } from '../../lib/formatCurrency';
 
 interface DashboardBalanceSectionProps {
   isSharedAccount: boolean;
@@ -30,7 +31,14 @@ const DashboardBalanceSection: React.FC<DashboardBalanceSectionProps> = ({
   // Count toward the new balance rather than snapping to it. This is the
   // number that moves when a transaction lands, so it's the one place a tween
   // does the most work. Snaps on first render and under reduced motion.
-  const animatedRemaining = useAnimatedNumber(remainingMoney, { minDelta: 0.5 });
+  //
+  // The 50c floor this used to pass is gone with the rounding it existed for:
+  // while only whole dollars showed, a 30c change moved nothing on screen and
+  // tweening it was 600ms of work for no visible result. Now that the cents are
+  // printed, the same 30c is two digits changing, so the default one-cent floor
+  // is the right one — anything that shows, counts.
+  const animatedRemaining = useAnimatedNumber(remainingMoney);
+  const balance = splitCurrency(animatedRemaining);
 
   if (!isIncomeLoaded) {
     return (
@@ -67,7 +75,12 @@ const DashboardBalanceSection: React.FC<DashboardBalanceSectionProps> = ({
         <div className="text-center z-10 animate-nest">
           <div className="flex items-baseline justify-center space-x-1 transition-colors duration-700">
             <span className="text-xl font-bold leading-none text-slate-300 dark:text-slate-600">$</span>
-            <span className="text-3xl font-extrabold font-mono tracking-tighter leading-none text-slate-300 dark:text-slate-600">---</span>
+            {/* Same two-part shape as the real figure, so the row does not
+                change width or alignment the moment income arrives. */}
+            <span className="flex items-baseline text-slate-300 dark:text-slate-600">
+              <span className="text-3xl font-extrabold font-mono tracking-tighter leading-none">---</span>
+              <span className="text-xl font-extrabold font-mono tracking-tighter leading-none">.--</span>
+            </span>
           </div>
         </div>
       </div>
@@ -133,14 +146,33 @@ const DashboardBalanceSection: React.FC<DashboardBalanceSectionProps> = ({
           >
             $
           </span>
+          {/*
+            Dollars and cents sit in their own baseline row with no gap between
+            them: the `space-x-1` above is the breathing room the `$` needs, and
+            the cents must butt against the figure they belong to.
+
+            They are printed at the size the dollar sign already uses here.
+            Full size would give ".48" the same weight as the number it trails
+            and stretch the numeral by a third; this way the eye still lands on
+            the dollars and the cents are simply present — which is the point,
+            since the widget has always printed them and the two disagreeing is
+            what prompted this. font-mono on both halves keeps the digits on one
+            grid, so nothing shifts sideways while the tween counts.
+          */}
           <span
-            className={`text-3xl font-extrabold font-mono tracking-tighter leading-none ${
+            className={`flex items-baseline ${
               isNegative
                 ? 'text-rose-500 dark:text-rose-400'
                 : 'text-emerald-500 dark:text-emerald-400'
             }`}
           >
-            {Math.round(animatedRemaining).toLocaleString()}
+            <span className="text-3xl font-extrabold font-mono tracking-tighter leading-none">
+              {balance.sign}
+              {balance.dollars}
+            </span>
+            <span className="text-xl font-extrabold font-mono tracking-tighter leading-none">
+              .{balance.cents}
+            </span>
           </span>
         </div>
       </div>

@@ -420,9 +420,9 @@ final class WidgetRenderer {
                 if (remaining < 0) {
                     sub.setColor(p.danger);
                     sub.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-                    canvas.drawText(money(-remaining) + " over", cx, subY, sub);
+                    canvas.drawText(balanceMoney(-remaining) + " over", cx, subY, sub);
                 } else {
-                    canvas.drawText(money(remaining) + " left", cx, subY, sub);
+                    canvas.drawText(balanceMoney(remaining) + " left", cx, subY, sub);
                 }
             }
         }
@@ -719,7 +719,7 @@ final class WidgetRenderer {
             float size = 30f * dp;
             remainingPaint.setTextSize(size);
 
-            String value = remaining < 0 ? money(-remaining) : money(remaining);
+            String value = balanceMoney(remaining < 0 ? -remaining : remaining);
             // Shrink rather than run under the donut. A five-figure month at a
             // narrow widget width would otherwise print straight off the left
             // edge of its own column.
@@ -968,6 +968,26 @@ final class WidgetRenderer {
             return null;
         }
     }
+
+    /**
+     * The remaining balance, which always carries its cents.
+     *
+     * money() drops them past $1000 to keep a long figure inside a category
+     * row. The balance has no such excuse — it is the one number the widget and
+     * the app both print, and rounding it here while the app printed cents (or
+     * the other way about) is the two of them disagreeing about the same
+     * figure, which is exactly what a user notices. Its own formatter rather
+     * than a flag on money(), so the space rule the rows depend on is not
+     * changed by a decision about the balance.
+     *
+     * Pinned against DashboardBalanceSection by balanceCentsAgreement.test.ts.
+     */
+    // BALANCE_MONEY_BEGIN
+    static String balanceMoney(double n) {
+        String sign = n < 0 ? "-" : "";
+        return String.format(Locale.US, "%s$%,.2f", sign, Math.abs(n));
+    }
+    // BALANCE_MONEY_END
 
     /** Matches lib/formatCurrency.ts, minus the cents when the number is large. */
     /** Package-private: the provider formats the same figures for TalkBack. */

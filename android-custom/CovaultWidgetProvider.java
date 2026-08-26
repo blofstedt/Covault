@@ -1083,11 +1083,14 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
         out.append(snapshot.optString("monthLabel", "This month")).append(". ");
         out.append(WidgetRenderer.money(snapshot.optDouble("totalSpent", 0))).append(" spent");
 
+        // Spoken with its cents, like the drawn one: a screen reader saying
+        // "6,432 dollars left" over a widget reading $6,432.48 is the same
+        // disagreement, just heard instead of seen.
         double remaining = snapshot.optDouble("remaining", 0);
         if (remaining < 0) {
-            out.append(", ").append(WidgetRenderer.money(-remaining)).append(" over budget");
+            out.append(", ").append(WidgetRenderer.balanceMoney(-remaining)).append(" over budget");
         } else {
-            out.append(", ").append(WidgetRenderer.money(remaining)).append(" left");
+            out.append(", ").append(WidgetRenderer.balanceMoney(remaining)).append(" left");
         }
 
         int pending = snapshot.optInt("pendingReview", 0);
