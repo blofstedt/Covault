@@ -113,6 +113,7 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | "a new restaurant landed in Other" | `lib/merchantCategorySignals.ts` — the offline descriptor/POS-prefix guess, applied in step 5c |
 | "the review list / badge is wrong" | `lib/reviewQueue.ts` — the single definition of "waiting"; the list, badge and widget all read it |
 | "the widget is stale or wrong" | `lib/widgetSnapshot.ts` → `android-custom/WidgetDeltaStore.java` → `android-custom/WidgetRenderer.java` |
+| "the 'add widget' button in settings doesn't work" | `android-custom/CovaultWidgetPlugin.java` (`isSupported` / `requestPinAppWidget`) → `components/dashboard_components/settings_modal_components/HomeScreenWidgetSection.tsx` — the button is one of two routes and only ever shown once `isSupported` says the launcher can honour it; the other route is the written steps, unconditional and always correct |
 | "notifications look wrong / didn't arrive" | `lib/appNotifications.ts` (JS-posted) and `android-custom/NotificationListener.java` (native, fires with app closed) |
 | "bank alerts aren't being hidden any more" | `canPostCaptureNotifications` in `android-custom/NotificationListener.java` **first** — suppression needs Covault's own notification to post, and `POST_NOTIFICATIONS` is a separate permission a reinstall resets. Only then the gates in `maybeHideBankNotification` |
 | "tapping a notification goes to the wrong place" | `lib/hooks/useNotificationRoute.ts`, `android-custom/MainActivity.java` |

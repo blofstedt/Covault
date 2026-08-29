@@ -8,6 +8,7 @@ import VaultSharingSection from './settings_modal_components/VaultSharingSection
 import SupportFeedbackSection from './settings_modal_components/SupportFeedbackSection';
 import SignOutSection from './settings_modal_components/SignOutSection';
 import NotificationSettingsSection from './settings_modal_components/NotificationSettingsSection';
+import HomeScreenWidgetSection from './settings_modal_components/HomeScreenWidgetSection';
 import BudgetLimitsSection from './settings_modal_components/BudgetLimitsSection';
 import ExportTransactionsSection from './settings_modal_components/ExportTransactionsSection';
 import ImportTransactionsSection from './settings_modal_components/ImportTransactionsSection';
@@ -164,6 +165,9 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
               }
             />
           </PremiumGate>
+
+          {/* Home screen widget */}
+          <HomeScreenWidgetSection />
 
           {/* Budget rollover */}
           <RolloverSection
