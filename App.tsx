@@ -18,6 +18,7 @@ import { loadBankingAppsFromDB } from './lib/bankingApps';
 import { useAppTheme } from './lib/hooks/useAppTheme';
 import { useAppUpdate } from './lib/hooks/useAppUpdate';
 import { useUserData } from './lib/hooks/useUserData';
+import { markOnboarded } from './lib/onboardingState';
 import { useFirstPaintCache } from './lib/hooks/useFirstPaintCache';
 import { preloadAIModel } from './lib/aiExtractor';
 import { setHapticsEnabled } from './lib/haptics';
@@ -317,12 +318,24 @@ const App: React.FC = () => {
     (isSolo: boolean, budgets: BudgetCategory[], partnerEmail?: string) => {
       setAppState(prev => ({
         ...prev,
-        budgets,
+        // Only where nothing has loaded yet. These are the starter categories,
+        // and this used to assign them unconditionally — so an existing account
+        // that reached the intro a second time had its real limits and its
+        // hidden categories replaced on screen by the defaults, one settings
+        // tap away from being written back over them. An empty list is the only
+        // state they are an answer to.
+        budgets: prev.budgets.length > 0 ? prev.budgets : budgets,
         user: prev.user ? { ...prev.user, budgetingSolo: isSolo, partnerEmail } : null,
       }));
+      // Solo or not is a real preference the user just expressed, and it lived
+      // in memory only — so it was gone by the next launch and the intro was
+      // the only thing that ever asked. Failures are logged and swallowed by
+      // saveSettingToDb, which is right here: the intro must end either way.
+      void saveSettingToDb('budgeting_solo', isSolo);
+      markOnboarded(appState.user?.id);
       setAuthState('authenticated');
     },
-    [],
+    [appState.user?.id, saveSettingToDb],
   );
 
   const handleSignOut = useCallback(async () => {
@@ -391,7 +404,9 @@ const App: React.FC = () => {
         </div>
       )}
       {authState === 'unauthenticated' && <Auth onSignIn={() => setAuthState('authenticated')} />}
-      {authState === 'onboarding' && <Onboarding onComplete={handleOnboardingComplete} />}
+      {authState === 'onboarding' && (
+        <Onboarding onComplete={handleOnboardingComplete} onLinkPartner={handleLinkPartner} />
+      )}
       {authState === 'authenticated' && (
         <Dashboard
           state={appState}

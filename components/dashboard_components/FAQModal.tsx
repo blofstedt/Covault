@@ -62,7 +62,7 @@ const FAQ_ITEMS: FAQItem[] = [
   },
   {
     question: "How do I set up bank notification parsing?",
-    answer: "In Vault Settings, enable the 'Bank Notification Listener.' On Android, Covault can read your banking app notifications and automatically log transactions. You can then review and approve them on the Review tab (the inbox icon on the bottom bar)."
+    answer: "In Vault Settings, open the 'Bank Notification Listener.' It walks you through the three screens Android needs, one button each, ticking them off as you come back. The first switch is expected to refuse — that refusal is what unlocks the next step. Once it is on, captured purchases appear on the Review tab (the inbox icon on the bottom bar)."
   },
   {
     question: "What is Budget Rollover?",
@@ -85,8 +85,68 @@ const FAQ_ITEMS: FAQItem[] = [
     answer: "In Vault Settings, scroll to 'Import Transactions' and tap 'Choose CSV File.' Your CSV needs these columns: Date, Vendor, Amount, Category, and Recurrence. Category names must match your existing budget categories exactly."
   },
   {
+    question: "What is the Review tab for?",
+    answer: "It is where captured purchases land before they count. The inbox icon on the bottom bar opens it; anything under 'Needs a look' is waiting for you to confirm the category, and the badge on the icon is how many. Accepting one files it into that budget; there is also 'Accept known vendors' to clear the easy ones in a single tap."
+  },
+  {
+    question: "What does 'Filed automatically' mean?",
+    answer: "A purchase Covault was confident enough about to file without asking. It only happens for a vendor you have already categorised before, and only when 'Auto-file known vendors' is switched on in Vault Settings. Filed entries are listed separately in the Review tab so you can still see what it did, and change any of them."
+  },
+  {
+    question: "How does Covault learn where a vendor belongs?",
+    answer: "When you set a category on a captured purchase, tick 'Always use this category' and it remembers the pairing. Every later charge from that vendor goes the same way. The pairs it has learned are listed under 'Existing rules' in the Review tab, and you can remove any of them."
+  },
+  {
+    question: "Something that isn't a purchase keeps getting captured. How do I stop it?",
+    answer: "Open the entry in the Review tab and choose 'Not a transaction.' Covault deletes it and remembers the wording, so alerts like it are captured quietly from then on — no notification, and nothing added to the widget. Money coming in, declined or failed charges, balance alerts and statement reminders are already ignored without you having to say so."
+  },
+  {
+    question: "Why does the same purchase appear twice?",
+    answer: "Some banks send more than one alert for one charge, and a card that was declined and then retried produces two as well. Covault marks the pair as a 'Possible duplicate' and lets you keep both or delete the older one. If it happens with a vendor repeatedly, it is worth reporting — the matching rules can be tightened."
+  },
+  {
+    question: "The gas station charged a different amount than Covault shows.",
+    answer: "Pumps authorise a round placeholder amount first and only send the real total later. Covault marks those entries as a hold and asks for the amount actually paid, and when the settled charge arrives it pairs the two rather than leaving you with a hold and a duplicate."
+  },
+  {
+    question: "How are refunds handled?",
+    answer: "A refund alert is captured as a negative entry and matched against the original purchase where Covault can find it, so the category it came out of gets the money back rather than the total simply going down."
+  },
+  {
+    question: "Why don't my subscriptions show up as entries?",
+    answer: "Recurring charges are projected, not recorded. Covault already counts the current month's occurrences in your total and draws them as the dotted extension on a budget card, so writing a row as well would count them twice. That is also why a captured subscription charge does not appear in Review — it was already accounted for."
+  },
+  {
+    question: "How do I add the home-screen widget?",
+    answer: "Long-press an empty spot on your Android home screen, choose Widgets, find Covault and drag it out. It shows the month's spending as a ring, what is left, the biggest categories, and how many entries are waiting to be reviewed. Tapping a part of it opens the matching part of the app."
+  },
+  {
+    question: "The widget looks out of date.",
+    answer: "It refreshes when a purchase is captured and again whenever you open the app. If a figure looks wrong, opening Covault always brings it back in step — the app is the source of truth and the widget catches up from it."
+  },
+  {
+    question: "Can Covault hide my bank's own notification?",
+    answer: "Yes. Turn on 'Hide bank alerts after capture' under the Bank Notification Listener. Covault only clears a bank alert once it has saved the purchase and posted its own notification in its place, so it can never take away the only notice of a charge. The recent-alerts list in that section says what happened to each one and why any were kept."
+  },
+  {
+    question: "My bank isn't being captured.",
+    answer: "Open the Bank Notification Listener in Vault Settings and look at 'Banking Apps.' Covault only reads alerts from apps on that list, and it offers any installed app that looks financial for you to approve. Adding yours there is all it takes — no update needed."
+  },
+  {
+    question: "Does Covault capture money coming in?",
+    answer: "No, deliberately. Covault tracks spending, so deposits, e-Transfers you receive and payroll credits are ignored, and so is anything where no money moved — a declined or failed charge, a balance alert, a statement or minimum-payment reminder. Your bank's own notification for those is left alone, since it is the only notice you get."
+  },
+  {
+    question: "What is the Reading Model?",
+    answer: "A small language model that runs on your phone to read notifications the pattern matching can't. It is downloaded once and used offline after that; you can see its state, and re-download it, under the Reading Model section in Vault Settings. Captures still work without it — that path just falls back to the patterns."
+  },
+  {
+    question: "How does the app update itself?",
+    answer: "Covault checks for a new build when it starts. Most updates apply themselves quietly and are there the next time you open the app. Anything that changes the Android side — the notification listener, the widget — needs the full install instead, and the app will offer it to you rather than doing it silently."
+  },
+  {
     question: "How do I link to a partner?",
-    answer: "Open Vault Settings via the gear icon and scroll to 'Vault Sharing.' Tap 'Generate Code' to create a link code and share it with your partner, or enter a code they've shared with you."
+    answer: "Open Vault Settings via the gear icon and scroll to 'Vault Sharing.' Tap 'Generate Code' to create a link code and share it with your partner, or enter a code they've shared with you. They need a Covault account of their own first. Once linked you each see the other's entries and budgets; each of you still edits only your own."
   },
   {
     question: "How do I disconnect from a partner?",

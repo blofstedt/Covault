@@ -1,6 +1,26 @@
 import { log } from './log';
 import { restFetch } from './apiHelpers';
 // Known banking app package names (must match NotificationListener.java)
+/*
+ * A package name here only does something if it is exactly right. There is no
+ * partial match and no error: a typo means that bank is never captured, in
+ * silence, and the user has no way to tell that apart from the feature being
+ * broken. Some of this list was assembled by pattern rather than by looking,
+ * and several entries turned out to be plausible-looking guesses — Tangerine's
+ * was one character short of the real one.
+ *
+ * Entries marked "verified" were checked against the app's actual Play Store
+ * listing. Unmarked ones have not been, and should be treated as unproven
+ * rather than trusted. Where a check found a different package the correct one
+ * is ADDED rather than swapped in: an unused package name matches nothing and
+ * costs nothing, while removing one that turns out to be a legacy or regional
+ * build would take a working capture away from somebody.
+ *
+ * The user-facing answer to a bank that is missing or wrong is the same either
+ * way, and does not need a release: notification settings offers every
+ * installed app that looks financial, and approving one there reaches the
+ * native listener as well as this list.
+ */
 export const KNOWN_BANKING_APPS: Record<string, string> = {
   // ── Canadian Banks ──────────────────────────────────────────────────
   'com.bmo.mobile': 'BMO',
@@ -8,15 +28,18 @@ export const KNOWN_BANKING_APPS: Record<string, string> = {
   'com.td': 'TD Canada',
   'com.cibc.android.mobi': 'CIBC',
   'com.scotiabank.mobile': 'Scotiabank',
+  'com.scotiabank.banking': 'Scotiabank', // verified
   'com.bns.mobile': 'Scotiabank',
   'ca.bnc.android': 'National Bank',
   'com.desjardins.mobile': 'Desjardins',
   'com.atb.atbmobile': 'ATB Financial',
   'ca.tangerine.clients.banking': 'Tangerine',
+  'ca.tangerine.clients.banking.app': 'Tangerine', // verified
   'com.simplicite.app': 'Simplii',
   'ca.hsbc.hsbccanada': 'HSBC Canada',
   'com.laurentianbank.mobile': 'Laurentian Bank',
   'com.eq.mobile': 'EQ Bank',
+  'com.eqbank.eqbank': 'EQ Bank', // verified
   'com.manulife.mobile': 'Manulife',
   'com.coastcapitalsavings.dcu': 'Coast Capital',
   'com.meridiancu.banking': 'Meridian Credit Union',
@@ -28,7 +51,7 @@ export const KNOWN_BANKING_APPS: Record<string, string> = {
   'com.libro.mobile': 'Libro Credit Union',
   'com.servus.mobile': 'Servus Credit Union',
   'com.duca.mobile': 'DUCA Credit Union',
-  'com.pcfinancial.mobile': 'PC Financial',
+  'com.pcfinancial.mobile': 'Simplii Financial', // verified — Simplii kept PC Financial's package
   'com.canadianwestern.mobile': 'Canadian Western Bank',
   'com.motusbank.mobile': 'Motus Bank',
   'com.bridgewater.mobile': 'Bridgewater Bank',
@@ -46,7 +69,9 @@ export const KNOWN_BANKING_APPS: Record<string, string> = {
   'com.wealthsimple': 'Wealthsimple',
   'com.wealthsimple.trade': 'Wealthsimple Trade',
   'com.neofinancial.android': 'Neo Financial',
+  'com.neofinancial.neo': 'Neo Financial', // verified
   'com.koho.android': 'KOHO',
+  'ca.koho': 'KOHO', // verified
   'com.mogo.mobile': 'Mogo',
   'ca.payments.interac': 'Interac',
   'com.stack.app': 'Stack',
@@ -61,6 +86,7 @@ export const KNOWN_BANKING_APPS: Record<string, string> = {
   'com.pnc.ecommerce.mobile': 'PNC',
   'com.tdbank': 'TD Bank',
   'com.capitalone.mobile': 'Capital One',
+  'com.konylabs.capitalone': 'Capital One', // verified
   'com.key.android': 'KeyBank',
   'com.regions.mobbanking': 'Regions',
   'com.huntington.m': 'Huntington',

@@ -70,7 +70,7 @@ interface Props {
   saveTheme: (theme: 'light' | 'dark') => Promise<void>;
   saveBudgetVisibility: (categoryId: string, visible: boolean) => Promise<void>;
   saveSettingToDb: (dbKey: string, value: boolean | string | number) => Promise<void>;
-  onLinkPartner: (partnerEmail: string) => Promise<void>;
+  onLinkPartner: (partnerEmail: string) => Promise<{ ok: boolean; message?: string }>;
   onUnlinkPartner: () => Promise<void>;
   onRefreshNotifications?: () => Promise<void>;
   onReloadTransactions?: (userId: string) => Promise<void>;

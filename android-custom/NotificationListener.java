@@ -116,16 +116,19 @@ public class NotificationListener extends NotificationListenerService {
         "com.rbc.mobile.android",          // RBC
         "com.td",                          // TD Canada
         "com.cibc.android.mobi",           // CIBC
-        "com.scotiabank.mobile",           // Scotiabank
+        "com.scotiabank.mobile",
+        "com.scotiabank.banking",           // Scotiabank (verified)           // Scotiabank
         "com.bns.mobile",                  // Scotiabank (alternate)
         "ca.bnc.android",                  // National Bank of Canada
         "com.desjardins.mobile",           // Desjardins
         "com.atb.atbmobile",              // ATB Financial
-        "ca.tangerine.clients.banking",    // Tangerine
+        "ca.tangerine.clients.banking",
+        "ca.tangerine.clients.banking.app", // Tangerine (verified)    // Tangerine
         "com.simplicite.app",              // Simplii Financial
         "ca.hsbc.hsbccanada",              // HSBC Canada
         "com.laurentianbank.mobile",       // Laurentian Bank
-        "com.eq.mobile",                   // EQ Bank
+        "com.eq.mobile",
+        "com.eqbank.eqbank",                // EQ Bank (verified)                   // EQ Bank
         "com.manulife.mobile",             // Manulife Bank
         "com.coastcapitalsavings.dcu",     // Coast Capital
         "com.meridiancu.banking",          // Meridian Credit Union
@@ -154,8 +157,10 @@ public class NotificationListener extends NotificationListenerService {
         // ── Canadian Fintech ────────────────────────────────────────
         "com.wealthsimple",               // Wealthsimple
         "com.wealthsimple.trade",          // Wealthsimple Trade
-        "com.neofinancial.android",        // Neo Financial
-        "com.koho.android",               // KOHO
+        "com.neofinancial.android",
+        "com.neofinancial.neo",             // Neo Financial (verified)        // Neo Financial
+        "com.koho.android",
+        "ca.koho",                          // KOHO (verified)               // KOHO
         "com.mogo.mobile",                // Mogo
         "ca.payments.interac",             // Interac e-Transfer
         "com.stack.app",                   // Stack
@@ -169,7 +174,8 @@ public class NotificationListener extends NotificationListenerService {
         "com.usbank.mobilebanking",         // US Bank
         "com.pnc.ecommerce.mobile",         // PNC
         "com.tdbank",                       // TD Bank
-        "com.capitalone.mobile",            // Capital One
+        "com.capitalone.mobile",
+        "com.konylabs.capitalone",          // Capital One (verified)            // Capital One
         "com.key.android",                  // KeyBank
         "com.regions.mobbanking",           // Regions
         "com.huntington.m",                 // Huntington

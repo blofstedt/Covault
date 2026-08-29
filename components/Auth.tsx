@@ -173,6 +173,19 @@ const Auth: React.FC<AuthProps> = () => {
           </button>
         )}
 
+        {/* There is no separate sign-up, and nothing on this screen said so.
+            Covault has one way in — Google — and the first time you use it,
+            it makes the account. Someone new looked for "register", found
+            nothing, and had no way to know the one button was for them too.
+            Only shown while the button is, so it doesn't sit under the
+            spinner mid-sign-in. */}
+        {!isLoggingIn && (
+          <p className="text-center text-[11px] text-slate-500 dark:text-slate-400 font-medium max-w-[260px] mx-auto -mt-2">
+            New here? Connecting with Google creates your account — there's
+            nothing else to sign up for.
+          </p>
+        )}
+
         <p className="text-center text-[10px] text-slate-400 dark:text-slate-600 font-medium tracking-wide max-w-[240px] mx-auto">
           Secured by Supabase · AES-256
         </p>

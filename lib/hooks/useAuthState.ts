@@ -6,6 +6,8 @@ import { clearCachedAccessToken, setCachedAccessToken } from '../apiHelpers';
 import { clearFirstPaintCache } from '../firstPaintCache';
 import type { AppState, User } from '../../types';
 
+import { hasOnboarded, markOnboarded } from '../onboardingState';
+
 export type AuthStatus = 'loading' | 'unauthenticated' | 'onboarding' | 'authenticated';
 
 const SESSION_EXPIRY_KEY = 'covault_session_start';
@@ -148,6 +150,11 @@ export const useAuthState = ({
         }
 
         mergeUser(mapUser(session.user));
+        // A session that was already here at launch belongs to someone who is
+        // long past the intro. Writing it down now is what keeps the very next
+        // sign-out and back in from replaying it for every user who predates
+        // this flag.
+        markOnboarded(session.user.id);
         setAuthState('authenticated');
         maybeLoadUserData(session.user.id, { forceReload: true });
       } else {
@@ -167,9 +174,22 @@ export const useAuthState = ({
         }
 
         mergeUser(mapUser(session.user));
-        setAuthState(prev =>
-          prev === 'unauthenticated' ? 'onboarding' : 'authenticated',
-        );
+        // The intro belongs to a first sign-in, not to every sign-in. This
+        // used to read the transition alone — signed out, now signed in — which
+        // is also what happens when the same person comes back after signing
+        // out, so they were asked to set the app up from scratch again and the
+        // starter budgets replaced their own. See lib/onboardingState.ts.
+        setAuthState(prev => {
+          // Already in the intro: stay in it. Every token refresh and user
+          // update lands here too, and the old expression answered
+          // 'authenticated' to all of them — so a refresh while someone was
+          // half way through setup closed it under them, with nothing recorded
+          // and no way back to it.
+          if (prev === 'onboarding') return 'onboarding';
+          return prev === 'unauthenticated' && !hasOnboarded(session.user.id)
+            ? 'onboarding'
+            : 'authenticated';
+        });
         maybeLoadUserData(session.user.id, {
           forceReload: event === 'SIGNED_IN',
         });

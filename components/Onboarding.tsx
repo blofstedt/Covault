@@ -4,6 +4,16 @@ import { SYSTEM_CATEGORIES } from '../constants';
 
 interface OnboardingProps {
   onComplete: (isSolo: boolean, budgets: BudgetCategory[], partnerEmail?: string) => void;
+  /**
+   * Links the two accounts, right now.
+   *
+   * This step used to say "Send Invite" and send nothing: the address was kept
+   * in memory, no email was ever composed, and the partner was never told
+   * anything. Whoever used it believed their household was shared and it was
+   * not. It now does exactly what Vault Sharing does — the same database
+   * handshake — so the promise on the button is the thing that happens.
+   */
+  onLinkPartner?: (partnerEmail: string) => Promise<{ ok: boolean; message?: string }>;
 }
 
 const STEPS = [
@@ -38,7 +48,20 @@ const STEPS = [
         <div className="absolute top-6 right-6 w-5 h-5 bg-emerald-500 rounded-full border-4 border-white dark:border-slate-950 shadow-sm"></div>
       </div>
     )
-  }
+  },
+  {
+    title: "One switch to set",
+    content: "Capture needs Android's permission to read your bank's alerts. There's a guided setup in Settings — three taps, and Covault does the rest with the app closed.",
+    icon: (
+      <div className="relative">
+        <div className="absolute inset-0 bg-amber-500/10 blur-3xl rounded-full animate-pulse"></div>
+        <svg className="w-32 h-32 text-emerald-600 dark:text-emerald-400 relative" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <rect x="2.5" y="7" width="19" height="10" rx="5" strokeWidth={1.5} />
+          <circle cx="16.5" cy="12" r="3" fill="currentColor" stroke="none" className="animate-bar" />
+        </svg>
+      </div>
+    )
+  },
 ];
 
 
@@ -51,9 +74,11 @@ const StepWrapper = ({ children, className = "" }: { children?: React.ReactNode,
   </div>
 );
 
-const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
+const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onLinkPartner }) => {
   const [step, setStep] = useState(0);
   const [partnerEmail, setPartnerEmail] = useState('');
+  const [linking, setLinking] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
 
   const handleNextIntro = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -64,8 +89,32 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
     onComplete(true, SYSTEM_CATEGORIES);
   };
 
-  const handleFinishCouples = () => {
-    onComplete(false, SYSTEM_CATEGORIES, partnerEmail || undefined);
+  const handleFinishCouples = async () => {
+    if (linking) return;
+    const email = partnerEmail.trim();
+    if (!email) return;
+
+    // No linker passed (the web build, or a test): finish rather than block.
+    // The intro is not the only route to this — Vault Sharing does the same
+    // thing — so a step that cannot link must never be a step that traps.
+    if (!onLinkPartner) {
+      onComplete(false, SYSTEM_CATEGORIES, email);
+      return;
+    }
+
+    setLinking(true);
+    setLinkError(null);
+    const result = await onLinkPartner(email);
+    setLinking(false);
+
+    if (!result.ok) {
+      // Stay on the step. The common failure is a partner who has not signed
+      // up yet, and the answer to that is to carry on alone and link later —
+      // which is what the button below now says.
+      setLinkError(result.message || 'Could not link that account.');
+      return;
+    }
+    onComplete(false, SYSTEM_CATEGORIES, email);
   };
 
   // STEP: WHO IS THIS FOR (after intro steps)
@@ -119,8 +168,10 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
     return (
       <StepWrapper className="justify-center text-center space-y-12">
         <div className="space-y-4 animate-nest">
-          <h2 className="text-4xl font-bold text-slate-600 dark:text-slate-100 tracking-tight">Invite Partner</h2>
-          <p className="text-slate-400 dark:text-slate-500 font-medium tracking-wide text-xs">Enter your partner's email to send an invite.</p>
+          <h2 className="text-4xl font-bold text-slate-600 dark:text-slate-100 tracking-tight">Link Partner</h2>
+          <p className="text-slate-400 dark:text-slate-500 font-medium tracking-wide text-xs">
+            Enter the email they use for Covault. They need an account already — this joins the two of you now.
+          </p>
         </div>
 
         <div className="space-y-8">
@@ -135,12 +186,18 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
             />
            </div>
 
+           {linkError && (
+             <p className="text-xs font-medium text-rose-500 leading-relaxed px-2">
+               {linkError}
+             </p>
+           )}
+
            <button
-              disabled={!partnerEmail.includes('@')}
+              disabled={!partnerEmail.includes('@') || linking}
               onClick={handleFinishCouples}
               className="w-full py-6 bg-emerald-600 text-white rounded-[2rem] font-semibold text-lg shadow-2xl shadow-emerald-500/20 active:scale-[0.97] disabled:opacity-30 transition-all duration-200 tracking-wide"
             >
-              Send Invite
+              {linking ? 'Linking…' : 'Link Partner'}
             </button>
         </div>
 
@@ -148,7 +205,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
           onClick={() => onComplete(false, SYSTEM_CATEGORIES, undefined)}
           className="text-slate-400 dark:text-slate-600 font-medium text-[10px] tracking-wide hover:text-emerald-500 transition-colors"
         >
-          Skip for now
+          Skip for now — you can link any time under Vault Sharing
         </button>
 
         <button

@@ -56,6 +56,20 @@ async function callRpc<T>(fn: string, args: Record<string, unknown>): Promise<Rp
   }
 }
 
+/**
+ * What the caller is told about a link attempt.
+ *
+ * The settings screen reports failures through the app-wide error toast and
+ * ignores this; the intro cannot — it is a full-screen step with its own place
+ * to put "no Covault account for that address", and a toast behind a modal is
+ * a message nobody reads.
+ */
+export interface LinkOutcome {
+  ok: boolean;
+  /** Present only when ok is false; already written for the user. */
+  message?: string;
+}
+
 /** Shape returned by link_partner_by_code / link_partner_by_email. */
 interface LinkedPartner {
   partner_id: string;
@@ -168,12 +182,12 @@ export const useHouseholdLinking = ({
 
   // Send a partner link request by email
   const handleLinkPartner = useCallback(
-    async (partnerEmail: string) => {
+    async (partnerEmail: string): Promise<LinkOutcome> => {
       try {
         const userId = appState.user?.id;
         if (!userId) {
           setDbError('User not logged in');
-          return;
+          return { ok: false, message: 'User not logged in' };
         }
 
         // Same reasoning as the code path: the lookup and the write both target
@@ -185,15 +199,15 @@ export const useHouseholdLinking = ({
 
         if (!result.ok) {
           setDbError(result.message);
-          return;
+          return { ok: false, message: result.message };
         }
 
         const linked = result.data?.[0];
         if (!linked) {
-          setDbError(
-            `No Covault account found for ${partnerEmail}. They need to sign up first.`,
-          );
-          return;
+          const message =
+            `No Covault account found for ${partnerEmail}. They need to sign up first.`;
+          setDbError(message);
+          return { ok: false, message };
         }
 
         await restFetch(`/settings?user_id=eq.${userId}`, {
@@ -215,8 +229,11 @@ export const useHouseholdLinking = ({
             : null,
         }));
         log.debug('[linkPartner] OK, linked with', partnerEmail);
+        return { ok: true };
       } catch (err: any) {
-        setDbError(`Link exception: ${err?.message || err}`);
+        const message = `Link exception: ${err?.message || err}`;
+        setDbError(message);
+        return { ok: false, message };
       }
     },
     [appState.user, setAppState, setDbError],
