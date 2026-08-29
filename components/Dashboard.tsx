@@ -5,12 +5,6 @@ import { AppState, Transaction } from '../types';
 import type { Toast } from '../types';
 
 import PageShell from './ui/PageShell';
-import FrameMeterOverlay from './dashboard_components/FrameMeterOverlay';
-import {
-  useFrameMeter,
-  isFrameMeterEnabled,
-  setFrameMeterEnabled,
-} from '../lib/hooks/useFrameMeter';
 
 // d3 is only needed for the chart, so it loads as its own chunk rather than
 // as part of the entry bundle.
@@ -136,11 +130,6 @@ const Dashboard: React.FC<Props> = ({
   useEffect(() => {
     budgetsRef.current = state.budgets;
   }, [state.budgets]);
-
-  // Animation diagnostics. Off unless the user turns it on; when off,
-  // useFrameMeter never schedules a rAF loop and the overlay never renders.
-  const [frameMeterOn, setFrameMeterOn] = useState<boolean>(() => isFrameMeterEnabled());
-  const [frameReading, armFrameMeter] = useFrameMeter(frameMeterOn);
 
   // A capture notification says "tap to review", so land the user there. Any
   // open modal is dismissed first, otherwise the Review page opens behind it
@@ -363,12 +352,8 @@ const Dashboard: React.FC<Props> = ({
   }, [normalizedTransactions, monthKey]);
 
   const toggleExpand = useCallback((id: string) => {
-    // Arm the frame meter on the same interaction that starts the animation,
-    // so it measures the expand and not idle time. Inert unless the user has
-    // switched the meter on in settings.
-    armFrameMeter();
     setExpandedBudgets(prev => (prev.has(id) ? new Set() : new Set([id])));
-  }, [armFrameMeter]);
+  }, []);
 
   const handleUpdateSettings = (key: string, value: any) => {
     setState(prev => ({
@@ -644,7 +629,6 @@ const Dashboard: React.FC<Props> = ({
           pendingCount={aiTransactionsCount}
         />
 
-        {frameMeterOn && <FrameMeterOverlay reading={frameReading} />}
       </PageShell>
 
       {showSettings && (
@@ -669,14 +653,6 @@ const Dashboard: React.FC<Props> = ({
           saveBudgetVisibility={saveBudgetVisibility}
           hasPremium={true}
           onSubscribe={() => {}}
-          frameMeterEnabled={frameMeterOn}
-          onToggleFrameMeter={(v: boolean) => {
-            // localStorage, deliberately NOT a settings column. Per CLAUDE.md a
-            // missing DB column fails silently and is indistinguishable from
-            // success — the last property a diagnostic should have.
-            setFrameMeterEnabled(v);
-            setFrameMeterOn(v);
-          }}
           onImportComplete={() => {
             if (state.user?.id && onReloadTransactions) {
               onReloadTransactions(state.user.id);
