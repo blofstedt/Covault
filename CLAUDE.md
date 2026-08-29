@@ -124,6 +124,7 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | "a modal/sheet looks broken or is cut off" | `components/ui/Portal.tsx` — overlays inside `<main>` need it; see Invariants |
 | "the animation is janky" | `index.css`, `components/BudgetSection.tsx`, `components/dashboard_components/BudgetFlowChart.tsx` |
 | "the app didn't offer me the update" / "it didn't update itself" | `lib/appUpdate.ts` (the check) → `lib/hooks/useAppUpdate.ts` (when, and which of the two routes) → `android-custom/CovaultUpdaterPlugin.java` (install, or unpack) |
+| "it still asked me to confirm the update" | the three conditions in the APK-route invariant below — `UPDATE_PACKAGES_WITHOUT_USER_ACTION` in `android-custom/AndroidManifest.xml`, Android 12+, and the install permission. A refusal is recorded per build in `CovaultUpdaterPlugin` and reported by `getStatus` as `quietInstallSupported` |
 | anything about the Android build | `scripts/sync-android.sh`, `.github/workflows/build-android.yml` |
 
 Deeper detail on any of these: `docs/ARCHITECTURE.md`. Human setup: `README.md`.
@@ -181,6 +182,25 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   that by dropping the fingerprint: the failure it prevents is web code calling
   into native code that isn't there. `webBundleWiring.test.ts` holds the five
   links together.
+
+- **The APK route arrives on its own too, but only Android decides whether it
+  is silent.** The download no longer waits for a tap — it happens when the
+  update is found, hidden from the notification shade — and the install is
+  attempted as the app goes to the *background*, because a self-update kills
+  the process and doing that in the foreground closes the app in the user's
+  hands. Three things have to hold for the confirmation to be skipped, and
+  losing any one of them fails silently back to the pill: the
+  `UPDATE_PACKAGES_WITHOUT_USER_ACTION` permission in the manifest (a normal
+  permission, and without it `USER_ACTION_NOT_REQUIRED` is ignored with no
+  error), Android 12 or newer, and the user's own "allow Covault to install
+  apps". A refusal comes back asynchronously as `STATUS_PENDING_USER_ACTION`,
+  where the session is abandoned — an app has a session limit, and one refused
+  every launch would eventually break its own quiet route — and recorded
+  against the running versionCode so it is attempted once per build rather than
+  once per launch. Never start the confirmation activity from that callback: it
+  arrives while the app is in the background, where Android blocks activity
+  starts and the user is in some other app. `apkArrivesByItself.test.ts` pins
+  the shape.
 - **`CovaultUpdaterPlugin.load()` runs before Capacitor reads the stored
   server path.** That ordering *is* the rollback: a staged web bundle that
   hasn't confirmed two launches gets thrown away before the WebView is pointed

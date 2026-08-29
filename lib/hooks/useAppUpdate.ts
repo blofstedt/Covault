@@ -26,9 +26,15 @@ import { log } from '../log';
  *    nothing interrupts. If it turns out not to start, the native side puts the
  *    previous version back after two launches.
  *
- *  - **Anything touching the Android code needs the APK**, and Android will not
- *    install one without showing its own confirmation — there is no API that
- *    skips it. So that route surfaces the pill and costs one tap.
+ *  - **Anything touching the Android code needs the APK.** That one is fetched
+ *    quietly too, the moment it is found, so nobody ever waits on a progress
+ *    bar — and then Covault asks Android to replace itself with it while the
+ *    app is in the background, where being killed and swapped costs nothing.
+ *    Android allows an app to update itself without a confirmation once it is
+ *    its own installer of record, which Covault becomes the first time it
+ *    installs itself. Until then, and on any phone or build where the OS
+ *    refuses, the pill appears and costs one tap — on an APK that is already
+ *    downloaded, so the tap is the whole of it.
  *
  * The two are told apart by a fingerprint of the native source baked into the
  * APK (scripts/native-hash.mjs). A web bundle is published under the
@@ -55,6 +61,15 @@ const CHECK_INTERVAL_MS = 15 * 60 * 1000;
 const LAUNCH_CHECK_FLOOR_MS = 60 * 1000;
 const LAST_CHECK_KEY = 'covault_update_last_check';
 const DISMISSED_KEY = 'covault_update_dismissed';
+/**
+ * The APK that has already been downloaded and is waiting to be installed.
+ *
+ * Written down rather than held in state because the whole point is that it
+ * outlives the session that fetched it: the download happens whenever the
+ * update is noticed, and the install happens the next time the app goes to the
+ * background, which may be days and several launches later.
+ */
+const APK_READY_KEY = 'covault_update_apk_ready';
 const POLL_INTERVAL_MS = 500;
 /** A stalled download should give up rather than spin the ring forever. */
 const DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000;
@@ -89,6 +104,14 @@ export interface AppUpdate {
   webUpdateReady: number | null;
   /** Reload onto that bundle now. Replaces the running app. */
   applyWebUpdate: () => void;
+  /**
+   * Version of an APK already downloaded and waiting, or null.
+   *
+   * Only ever affects what the pill says. Everything about the update works
+   * the same either way; this is the difference between "tap and then wait"
+   * and "tap and it's done".
+   */
+  apkReady: number | null;
 }
 
 function readNumber(key: string): number | null {
@@ -107,6 +130,36 @@ function writeNumber(key: string, value: number): void {
     localStorage.setItem(key, String(value));
   } catch {
     // A full or blocked localStorage costs us the throttle, not the feature.
+  }
+}
+
+/** A downloaded APK, remembered across launches. */
+export interface ReadyApk {
+  version: number;
+  /** DownloadManager id, as the string the plugin deals in. */
+  id: string;
+}
+
+function readReadyApk(): ReadyApk | null {
+  try {
+    const raw = localStorage.getItem(APK_READY_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<ReadyApk>;
+    if (typeof parsed?.version !== 'number' || typeof parsed?.id !== 'string') return null;
+    if (!Number.isFinite(parsed.version) || !parsed.id) return null;
+    return { version: parsed.version, id: parsed.id };
+  } catch {
+    return null;
+  }
+}
+
+function writeReadyApk(value: ReadyApk | null): void {
+  try {
+    if (value) localStorage.setItem(APK_READY_KEY, JSON.stringify(value));
+    else localStorage.removeItem(APK_READY_KEY);
+  } catch {
+    // Costs the head start, not the update: without the record the APK is
+    // simply downloaded again next time.
   }
 }
 
@@ -132,6 +185,8 @@ async function waitForDownload(plugin: CovaultUpdaterPlugin, id: string): Promis
 export function useAppUpdate(): AppUpdate {
   const [update, setUpdate] = useState<AvailableUpdate | null>(null);
   const [webUpdateReady, setWebUpdateReady] = useState<number | null>(null);
+  /** Version of a downloaded APK sitting on the phone, or null. */
+  const [apkReady, setApkReady] = useState<number | null>(readReadyApk()?.version ?? null);
   const [phase, setPhase] = useState<UpdatePhase>('idle');
   const [percent, setPercent] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -143,6 +198,12 @@ export function useAppUpdate(): AppUpdate {
   const mounted = useRef(true);
   /** A background web bundle is being fetched; don't start a second one. */
   const staging = useRef(false);
+  /** Same, for the APK. */
+  const fetchingApk = useRef(false);
+  /** The downloaded APK, if there is one. Mirrors APK_READY_KEY. */
+  const readyApk = useRef<ReadyApk | null>(readReadyApk());
+  /** Set once a quiet install has been attempted for this APK this session. */
+  const quietInstallTried = useRef(false);
 
   useEffect(() => {
     mounted.current = true;
@@ -177,6 +238,71 @@ export function useAppUpdate(): AppUpdate {
     }
   }, []);
 
+  /**
+   * Fetch the APK in the background, exactly as a web bundle is fetched.
+   *
+   * The download used to start on the tap, so the pill was a promise of a wait:
+   * tap, watch a progress bar for however long the connection took, then
+   * confirm. Doing it here means the tap — where a tap is still needed at all —
+   * lands on a file that is already on the phone.
+   *
+   * Silent throughout, including in the notification shade: this is not
+   * something the user asked for, so a progress bar and a "download complete"
+   * for it would be noise about a thing they never requested.
+   */
+  const fetchApkUpdate = useCallback(async (version: number, url: string) => {
+    if (!covaultUpdater || fetchingApk.current) return;
+    if (readyApk.current?.version === version) return;
+    fetchingApk.current = true;
+    try {
+      const { id } = await covaultUpdater.startDownload({ url, quiet: true });
+      if (!(await waitForDownload(covaultUpdater, id))) {
+        log.warn('[useAppUpdate] APK download did not finish');
+        return;
+      }
+      readyApk.current = { version, id };
+      quietInstallTried.current = false;
+      writeReadyApk(readyApk.current);
+      log.info(`[useAppUpdate] APK ${version} downloaded and waiting`);
+      if (mounted.current) setApkReady(version);
+    } catch (e) {
+      log.warn('[useAppUpdate] Could not fetch the APK:', e);
+    } finally {
+      fetchingApk.current = false;
+    }
+  }, []);
+
+  /**
+   * Ask Android to install the downloaded APK without asking the user.
+   *
+   * Only ever called as the app goes to the background. A self-update replaces
+   * the process, so doing this in the foreground would close the app in the
+   * user's hands mid-sentence; doing it here means the update has simply
+   * happened by the next time they open Covault, which is what an update should
+   * feel like.
+   *
+   * A refusal is not a failure and is not reported. Android answers
+   * `prompt-needed` whenever it wants the user asked — every phone below
+   * Android 12, and the first update on any phone, because Covault is not yet
+   * its own installer of record — and the pill is still there to handle it.
+   */
+  const installQuietly = useCallback(async () => {
+    const ready = readyApk.current;
+    if (!covaultUpdater || !ready || quietInstallTried.current) return;
+    quietInstallTried.current = true;
+    try {
+      const { canInstall, quietInstallSupported } = await covaultUpdater.getStatus();
+      if (!canInstall) return;
+      // An older plugin would read the flag as an ordinary install and open the
+      // system installer on top of whatever app the user has just switched to.
+      if (!quietInstallSupported) return;
+      const { mode } = await covaultUpdater.install({ id: ready.id, silent: true });
+      log.info(`[useAppUpdate] Quiet install: ${mode}`);
+    } catch (e) {
+      log.warn('[useAppUpdate] Quiet install could not be attempted:', e);
+    }
+  }, []);
+
   const check = useCallback(async (force: boolean) => {
     if (!Capacitor.isNativePlatform()) return;
     // Never interrupt a download in progress with a fresh answer.
@@ -208,6 +334,16 @@ export function useAppUpdate(): AppUpdate {
     // the same update again after every background update.
     const apkVersion = status?.apkVersion || (await getInstalledVersionCode()) || 0;
     const running = Math.max(apkVersion, status?.webVersion ?? 0);
+
+    // A downloaded APK that has since been installed — quietly or by hand — is
+    // no longer news. Cleared before anything is offered so the pill can't
+    // advertise an update the phone is already running.
+    if (readyApk.current && apkVersion >= readyApk.current.version) {
+      readyApk.current = null;
+      writeReadyApk(null);
+      if (mounted.current) setApkReady(null);
+    }
+
     const next = selectUpdate(latest, running || null);
     if (!mounted.current || !next) return;
 
@@ -218,11 +354,16 @@ export function useAppUpdate(): AppUpdate {
       return;
     }
 
+    // Fetch it whether or not the pill is going to be shown. Waving the pill
+    // away means "stop telling me", not "stay on the old build" — and the
+    // quiet install is what makes that distinction worth having.
+    void fetchApkUpdate(next.versionCode, next.apkUrl);
+
     // A version the user has already waved away stays away until the one after
     // it. Nagging on every resume is how a good prompt becomes a bad one.
     if (readNumber(DISMISSED_KEY) === next.versionCode) return;
     setUpdate(next);
-  }, [stageWebUpdate]);
+  }, [stageWebUpdate, fetchApkUpdate]);
 
   useEffect(() => {
     // Opening the app is someone asking, so it always asks — subject only to
@@ -230,9 +371,16 @@ export function useAppUpdate(): AppUpdate {
     void check(true);
 
     if (!Capacitor.isNativePlatform()) return;
-    const handle = CapApp.addListener('resume', () => { void check(false); });
-    return () => { void handle.then(h => h.remove()); };
-  }, [check]);
+    const resumed = CapApp.addListener('resume', () => { void check(false); });
+    // Leaving the app is the one moment a self-update costs nothing: the
+    // process is about to stop mattering, and by the next launch the new build
+    // is simply the one that starts.
+    const paused = CapApp.addListener('pause', () => { void installQuietly(); });
+    return () => {
+      void resumed.then(h => h.remove());
+      void paused.then(h => h.remove());
+    };
+  }, [check, installQuietly]);
 
   // A bundle can be staged and waiting from an earlier session, and the check
   // above may be inside its floor and never look. This costs no network.
@@ -302,6 +450,32 @@ export function useAppUpdate(): AppUpdate {
         }
       } catch (e) {
         log.warn('[useAppUpdate] Could not read install permission:', e);
+      }
+
+      // Already downloaded in the background: straight to the installer, with
+      // no progress bar in between. This is the common case now — the tap only
+      // exists because Android wants a confirmation.
+      const ready = readyApk.current;
+      if (ready && ready.version === target.versionCode) {
+        setPhase('installing');
+        phaseRef.current = 'installing';
+        setPercent(100);
+        try {
+          await covaultUpdater.install({ id: ready.id });
+          return;
+        } catch (e) {
+          log.warn('[useAppUpdate] Could not open the installer for the ready APK:', e);
+          // The record is the suspect part — a download row cleared out from
+          // under us looks exactly like this — so drop it and fetch again
+          // rather than sending the user to a browser over a stale id.
+          readyApk.current = null;
+          writeReadyApk(null);
+          if (mounted.current) {
+            setApkReady(null);
+            setPhase('idle');
+          }
+          phaseRef.current = 'idle';
+        }
       }
 
       let id: string;
@@ -400,7 +574,9 @@ export function useAppUpdate(): AppUpdate {
     setError(null);
   }, [update]);
 
-  return { update, phase, percent, error, install, dismiss, webUpdateReady, applyWebUpdate };
+  return {
+    update, phase, percent, error, install, dismiss, webUpdateReady, applyWebUpdate, apkReady,
+  };
 }
 
 export default useAppUpdate;

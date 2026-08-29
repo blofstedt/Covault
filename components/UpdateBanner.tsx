@@ -23,6 +23,7 @@ const UpdateBanner: React.FC<AppUpdate> = ({
   dismiss,
   webUpdateReady,
   applyWebUpdate,
+  apkReady,
 }) => {
   // Two things wear this pill. An APK update, which costs a download and
   // Android's own confirmation, and a web bundle that is already on the phone
@@ -33,6 +34,10 @@ const UpdateBanner: React.FC<AppUpdate> = ({
   if (!update && !waiting) return null;
 
   const busy = phase !== 'idle';
+  // The APK is already on the phone, so the tap is the whole of what is left:
+  // Android's confirmation and nothing else. Promising a download that has
+  // already happened is how a one-second action gets put off for a week.
+  const downloaded = !!update && apkReady === update.versionCode;
 
   const title = waiting
     ? `Covault 1.0.${webUpdateReady} is ready`
@@ -50,7 +55,9 @@ const UpdateBanner: React.FC<AppUpdate> = ({
         ? 'Confirm the update when Android asks'
         : phase === 'downloading'
           ? 'Keep Covault open until it finishes'
-          : update!.notes || 'Tap update to install the newest build');
+          : downloaded
+            ? 'Downloaded — one tap and Android takes it from here'
+            : update!.notes || 'Tap update to install the newest build');
 
   return (
     <div
@@ -106,7 +113,7 @@ const UpdateBanner: React.FC<AppUpdate> = ({
                 onClick={waiting ? applyWebUpdate : install}
                 className="shrink-0 px-3.5 py-2 rounded-full bg-emerald-600 dark:bg-emerald-500 hover:bg-emerald-700 dark:hover:bg-emerald-600 text-white text-xs font-semibold tracking-wide active:scale-[0.97] transition-all duration-200 shadow-lg shadow-emerald-500/20"
               >
-                {waiting ? 'Restart' : 'Update'}
+                {waiting ? 'Restart' : downloaded ? 'Install' : 'Update'}
               </button>
               <button
                 type="button"

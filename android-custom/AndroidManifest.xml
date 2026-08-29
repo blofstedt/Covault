@@ -31,9 +31,25 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!--
+        The other half of an APK update that arrives by itself, and useless
+        without it: since Android 12 an app may replace ITSELF without the
+        install confirmation, but only if it declares this alongside
+        REQUEST_INSTALL_PACKAGES. Without this line
+        setRequireUserAction(USER_ACTION_NOT_REQUIRED) is ignored in silence and
+        every update falls back to the confirmation screen — which still works,
+        which is exactly why the omission would be so easy to miss.
+
+        It grants nothing on its own: it is a normal permission with no prompt,
+        it applies only to updates of packages this app installed or is itself,
+        and the user's one-time "allow Covault to install apps" is still what
+        gates the whole thing.
+    -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
+
+    <!--
         Background web updates fetch a small bundle with no one watching, so
-        they must not put a progress bar in the notification shade. Only the
-        user-initiated APK download shows one.
+        they must not put a progress bar in the notification shade. The APK
+        download is now equally quiet — nobody asked for it either.
     -->
     <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
 

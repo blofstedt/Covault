@@ -26,20 +26,50 @@ export interface UpdaterStatus {
    * caller must read as "never apply a web bundle".
    */
   nativeHash: string;
+  /**
+   * Whether this build can be asked to install without a confirmation.
+   *
+   * Absent on an older plugin, which is the point: `install({silent:true})`
+   * there would be read as an ordinary install and open the system installer,
+   * and the only caller of the silent form runs while the app is in the
+   * background, where that would surface on top of whatever the user is
+   * actually doing.
+   */
+  quietInstallSupported?: boolean;
 }
 
 export interface CovaultUpdaterPlugin {
   getStatus(): Promise<UpdaterStatus>;
   /** Send the user to the Settings page where install permission is granted. */
   openInstallSettings(): Promise<void>;
-  /** Queue the download; the id comes back as a string. */
-  startDownload(options: { url: string; fileName?: string }): Promise<{ id: string }>;
+  /**
+   * Queue the download; the id comes back as a string.
+   *
+   * `quiet` keeps it out of the notification shade, for a download nobody
+   * asked for and nobody is waiting on.
+   */
+  startDownload(options: {
+    url: string;
+    fileName?: string;
+    quiet?: boolean;
+  }): Promise<{ id: string }>;
   pollDownload(options: { id: string }): Promise<{
     status: 'pending' | 'running' | 'done' | 'failed';
     percent: number;
   }>;
-  /** Hand the finished download to Android's installer. */
-  install(options: { id: string }): Promise<void>;
+  /**
+   * Install the finished download.
+   *
+   * `silent` asks Android to replace the app without a confirmation, which it
+   * allows for an app updating itself once that app is its own installer of
+   * record. Only for use when nobody is looking: the answer is `quiet` when the
+   * request was accepted and `prompt-needed` when Android wants the user asked,
+   * and the second is not a failure — the APK stays on disk and the ordinary
+   * route still works.
+   */
+  install(options: { id: string; silent?: boolean }): Promise<{
+    mode?: 'quiet' | 'prompt-needed' | 'prompt';
+  }>;
   /**
    * Unpack a downloaded web bundle and serve it from the next launch onwards.
    * Nothing changes in the running app.

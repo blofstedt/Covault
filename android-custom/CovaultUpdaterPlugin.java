@@ -1,10 +1,14 @@
 package com.covault.app;
 
 import android.app.DownloadManager;
+import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
+import android.content.pm.PackageInstaller;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
@@ -21,6 +25,7 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -28,10 +33,22 @@ import java.util.zip.ZipInputStream;
 /**
  * The two ways Covault replaces itself.
  *
- * <p><b>A new APK</b>, when the Android code changed: downloaded here and handed
- * to the system installer, which always asks the user first. There is no API
- * that skips that confirmation, so this route costs one tap and cannot be made
- * silent.
+ * <p><b>A new APK</b>, when the Android code changed. Downloaded in the
+ * background like a web bundle, then installed by one of two routes. The first
+ * is a PackageInstaller session that asks Android not to require a
+ * confirmation: on Android 12 and up an app is allowed to replace ITSELF
+ * without one, provided it is the installer of record for its own package —
+ * which Covault becomes the first time it installs itself this way. The second
+ * is the system installer's own confirmation screen, which is what the first
+ * install goes through, what every phone below Android 12 goes through, and
+ * what any refusal falls back to.
+ *
+ * <p>Whether the quiet route is honoured is Android's decision and not this
+ * app's: the OS answers a committed session with STATUS_PENDING_USER_ACTION
+ * when it wants the user asked anyway, and nothing here can overrule that. What
+ * is guaranteed either way is that the download has already happened, so the
+ * worst case is one tap with no waiting rather than a tap, a progress bar and a
+ * tap.
  *
  * <p><b>A new web bundle</b>, when only the React side changed: downloaded,
  * unpacked into private storage, and pointed at for the next launch. Capacitor
@@ -70,6 +87,15 @@ public class CovaultUpdaterPlugin extends Plugin {
     private static final String KEY_BOOT_ATTEMPTS = "web_boot_attempts";
     /** Which APK the staged bundle belongs to. */
     private static final String KEY_APK_BUILD = "web_apk_build";
+    /**
+     * The build whose quiet install Android refused.
+     *
+     * Held against a versionCode rather than as a plain flag so the answer
+     * expires the moment a new APK is running: whatever the refusal was about
+     * is worth testing again on a build that might have been installed a
+     * different way, or on a phone that has since been upgraded.
+     */
+    private static final String KEY_QUIET_REFUSED_BUILD = "quiet_install_refused_build";
 
     /**
      * How many launches a staged bundle gets to confirm itself before it is
@@ -173,6 +199,20 @@ public class CovaultUpdaterPlugin extends Plugin {
         result.put("stagedWebVersion", prefs().getInt(KEY_WEB_VERSION, 0));
         result.put("runningWebVersion", runningWebVersion);
         result.put("nativeHash", nativeHash());
+        // Whether this build understands install({silent:true}) at all, and can
+        // usefully be asked. False on an older plugin, where the flag would be
+        // ignored and the ordinary installer screen opened instead — which is
+        // fine on a tap and wrong in the background, where it would land on
+        // someone who is using a different app. The web bundle's fingerprint
+        // already stops new JavaScript reaching an old APK; this is the second
+        // lock on the one door where being wrong is visible to the user.
+        int build = currentVersionCode();
+        result.put(
+            "quietInstallSupported",
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                // Asked once per build, not once per launch. See
+                // KEY_QUIET_REFUSED_BUILD.
+                && !(build != 0 && prefs().getInt(KEY_QUIET_REFUSED_BUILD, 0) == build));
         call.resolve(result);
     }
 
@@ -234,14 +274,18 @@ public class CovaultUpdaterPlugin extends Plugin {
             request.setDescription("Downloading the new version");
             if (isApk) request.setMimeType(APK_MIME);
             request.setDestinationInExternalFilesDir(context, null, fileName);
-            // The APK download is something the user asked for and is waiting
-            // on, so it gets a notification. A web bundle is meant to arrive
-            // without anyone noticing; a progress bar in the shade for an
-            // update nobody requested is just noise.
+            // A download the user asked for and is waiting on gets a
+            // notification; one that is happening on its own does not. That
+            // used to be decided by whether it was an APK, on the reasoning
+            // that an APK is only ever fetched on a tap — which stopped being
+            // true when the APK started arriving in the background like the web
+            // bundle. A progress bar in the shade for an update nobody
+            // requested is just noise, so the caller says which it is.
+            boolean quiet = Boolean.TRUE.equals(call.getBoolean("quiet", !isApk));
             request.setNotificationVisibility(
-                isApk
-                    ? DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
-                    : DownloadManager.Request.VISIBILITY_HIDDEN);
+                quiet
+                    ? DownloadManager.Request.VISIBILITY_HIDDEN
+                    : DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
 
             long id = manager.enqueue(request);
             JSObject result = new JSObject();
@@ -311,11 +355,150 @@ public class CovaultUpdaterPlugin extends Plugin {
     }
 
     /**
-     * Hand the finished download to the system installer.
+     * Where the result of a committed install session comes back.
      *
-     * This is as automatic as a non-system app is allowed to be: Android always
-     * shows its own "update this app?" confirmation, and there is no API that
-     * skips it. What it does avoid is the download-find-the-file-tap dance.
+     * Registered on demand rather than in load(): the ordering in there is what
+     * makes the web-bundle rollback work, and nothing new belongs in front of
+     * it.
+     */
+    private static final String INSTALL_RESULT_ACTION = "com.covault.app.INSTALL_RESULT";
+    private BroadcastReceiver installResultReceiver;
+
+    /** Drop a session Android has finished with, ignoring every way that can fail. */
+    private void abandonSession(int sessionId) {
+        if (sessionId < 0) return;
+        try {
+            getContext().getPackageManager().getPackageInstaller().abandonSession(sessionId);
+        } catch (Throwable ignored) {
+            // Already gone, or never ours. Nothing to do either way.
+        }
+    }
+
+    private synchronized void ensureInstallResultReceiver() {
+        if (installResultReceiver != null) return;
+        installResultReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                int status = intent.getIntExtra(
+                    PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE);
+                if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+                    // Android wants the user asked after all. Deliberately not
+                    // acted on here: this arrives while the app is in the
+                    // background, where starting an activity is blocked, and a
+                    // confirmation dialog thrown at someone who is using a
+                    // different app would be worse than waiting. The pill is
+                    // still there next time Covault is opened, and its tap
+                    // route lands on this same screen legitimately.
+                    Log.i(TAG, "Install needs a confirmation; leaving it to the pill");
+                    // Two pieces of tidying, both of which matter over months
+                    // rather than minutes. The session is left open by a
+                    // refusal, and an app is allowed only so many before
+                    // createSession starts throwing — so an update refused
+                    // every launch would eventually break its own quiet route.
+                    // And the refusal is written down against this build, so it
+                    // is attempted once per version rather than once per
+                    // launch: whatever made Android say no (the OS version, an
+                    // OEM policy) will still be true this evening, and copying
+                    // an APK into a session to be told so again is waste.
+                    abandonSession(intent.getIntExtra(PackageInstaller.EXTRA_SESSION_ID, -1));
+                    prefs().edit().putInt(KEY_QUIET_REFUSED_BUILD, currentVersionCode()).apply();
+                    return;
+                }
+                if (status == PackageInstaller.STATUS_SUCCESS) {
+                    // Rarely reached: a successful self-update replaces the
+                    // process that would have logged it.
+                    Log.i(TAG, "Update installed");
+                    return;
+                }
+                Log.w(TAG, "Install session failed (" + status + "): "
+                    + intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE));
+            }
+        };
+        IntentFilter filter = new IntentFilter(INSTALL_RESULT_ACTION);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getContext().registerReceiver(
+                installResultReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            getContext().registerReceiver(installResultReceiver, filter);
+        }
+    }
+
+    /**
+     * Try to replace this app with the downloaded APK, without a confirmation.
+     *
+     * Returns true only when a session was committed — which is a statement
+     * about the request having been accepted, not about the install having
+     * happened. Android decides afterwards whether to ask the user, and says so
+     * through the receiver above.
+     *
+     * Everything about the failure path matters more than the success path
+     * here, because this runs unattended: any refusal has to leave the phone
+     * exactly as it was, with the downloaded APK still on disk and the ordinary
+     * tap-to-install route still working. Hence a boolean rather than an
+     * exception, and hence the caller never treating false as an error.
+     */
+    private boolean installWithoutPrompt(File apk) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false;
+        if (apk == null || !apk.exists() || apk.length() <= 0) return false;
+
+        PackageInstaller installer = null;
+        int sessionId = -1;
+        try {
+            ensureInstallResultReceiver();
+            installer = getContext().getPackageManager().getPackageInstaller();
+
+            PackageInstaller.SessionParams params =
+                new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+            params.setAppPackageName(getContext().getPackageName());
+            // The whole point. Android honours it for an app updating itself
+            // once that app is its own installer of record, and ignores it
+            // otherwise — in which case the receiver hears PENDING_USER_ACTION
+            // and this update waits for the pill.
+            params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED);
+
+            sessionId = installer.createSession(params);
+
+            try (PackageInstaller.Session session = installer.openSession(sessionId)) {
+                try (InputStream in = new FileInputStream(apk);
+                     OutputStream out = session.openWrite("covault", 0, apk.length())) {
+                    byte[] buffer = new byte[65536];
+                    int read;
+                    while ((read = in.read(buffer)) > 0) out.write(buffer, 0, read);
+                    session.fsync(out);
+                }
+
+                Intent callback = new Intent(INSTALL_RESULT_ACTION)
+                    .setPackage(getContext().getPackageName());
+                PendingIntent pending = PendingIntent.getBroadcast(
+                    getContext(), sessionId, callback,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
+                session.commit(pending.getIntentSender());
+            }
+            return true;
+        } catch (Throwable t) {
+            // Storage full, a truncated download, an OEM that refuses sessions
+            // from a sideloaded app. None of it is worth reporting to the user:
+            // the update simply stays offered.
+            Log.w(TAG, "Quiet install could not be committed", t);
+            if (installer != null && sessionId >= 0) {
+                try { installer.abandonSession(sessionId); } catch (Throwable ignored) { }
+            }
+            return false;
+        }
+    }
+
+    /**
+     * Install the finished download.
+     *
+     * With `silent`, the quiet route above is tried first and this answers
+     * `mode: "quiet"` when the session was accepted — which is not a promise
+     * that it went through, only that Android was asked without a dialog. The
+     * caller uses this when nobody is watching, so a refusal has to cost
+     * nothing: it answers `mode: "prompt-needed"` and leaves the APK on disk
+     * rather than throwing an installer screen at someone who is in another app.
+     *
+     * Without it, the system installer's own confirmation is opened. That is
+     * the proven route and is unchanged.
      */
     @PluginMethod
     public void install(PluginCall call) {
@@ -324,6 +507,13 @@ public class CovaultUpdaterPlugin extends Plugin {
 
         if (!canRequestInstalls()) {
             call.reject("Covault is not allowed to install apps");
+            return;
+        }
+
+        if (Boolean.TRUE.equals(call.getBoolean("silent", false))) {
+            JSObject quiet = new JSObject();
+            quiet.put("mode", installWithoutPrompt(downloadedFile(id)) ? "quiet" : "prompt-needed");
+            call.resolve(quiet);
             return;
         }
 
@@ -346,7 +536,9 @@ public class CovaultUpdaterPlugin extends Plugin {
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             getContext().startActivity(intent);
-            call.resolve();
+            JSObject prompted = new JSObject();
+            prompted.put("mode", "prompt");
+            call.resolve(prompted);
         } catch (Exception e) {
             Log.w(TAG, "Could not open the installer", e);
             call.reject("Could not open the installer");
