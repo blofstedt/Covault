@@ -39,26 +39,35 @@ interface NotificationAccessGuideProps {
 /**
  * What each step says. Kept beside the copy it belongs to, not in the logic.
  *
- * `blockedBody` is the second thing the notification-access step says: the
- * switch was tried and Android refused it. That refusal is not a failure to
- * apologise for — it is the event that makes the unlock below it possible — so
- * the copy says so rather than asking the user to try harder.
+ * The first step has two versions of itself and the difference matters more
+ * than the words do. Where Android's restricted-settings block applies — a
+ * sideloaded install on Android 13 or newer, which is every Covault install —
+ * the switch is GOING to refuse, and the user needs to be told that before they
+ * tap it rather than left to read a refusal as a failure. Where the block does
+ * not apply, the same tap simply works, and promising a refusal that never
+ * comes would be its own small lie.
  */
 const STEP_COPY: Record<
   SetupStepId,
-  { title: string; body: string; action: string; blockedBody?: string }
+  { title: string; body: string; action: string }
 > = {
   listener: {
-    title: 'Turn on notification access',
+    title: 'Tap the switch — it will refuse',
     body:
-      "Opens Covault's own permission page. Switch it on and confirm — this is what lets Covault read your bank's alerts. If the switch won't move, come back here: Android has one more thing to unlock and it only appears once you've tried.",
+      "Opens Covault's own notification-access page. Tap the switch there. Android will not let it move, and that is exactly what should happen: being refused once is what makes the unlock in step 2 exist. Then come straight back here.",
     action: 'Open notification access',
   },
   restricted: {
-    title: 'Unlock it in App info',
+    title: 'Allow restricted settings',
     body:
-      'On the page that opens: tap the ⋮ menu at the top right, choose Allow restricted settings, and confirm with your fingerprint. That menu item only exists because you just tried the switch above.',
+      'On the page that opens: tap the ⋮ at the top right, choose Allow restricted settings, and confirm with your fingerprint. That menu item is there only because the switch just refused you.',
     action: 'Open App info',
+  },
+  confirm: {
+    title: 'Now turn the switch on',
+    body:
+      'Back to the same page as step 1. The switch will move this time — turn it on and confirm. Covault ticks this off by itself the moment it sees access.',
+    action: 'Open notification access',
   },
   post: {
     title: 'Let Covault notify you',
@@ -66,6 +75,19 @@ const STEP_COPY: Record<
       'So a purchase caught while the app is closed tells you about itself, and the bank alert can be replaced rather than doubled.',
     action: 'Allow notifications',
   },
+};
+
+/**
+ * The first step where nothing is blocking it: one tap, and it works.
+ *
+ * Same step, same button — only the promise changes, because on this install
+ * the switch is not going to refuse anything.
+ */
+const UNBLOCKED_LISTENER_COPY = {
+  title: 'Turn on notification access',
+  body:
+    "Opens Covault's own permission page. Switch it on and confirm — this is what lets Covault read your bank's alerts. If the switch won't move, come back here: Android has one more thing to unlock and it only appears once you've tried.",
+  action: 'Open notification access',
 };
 
 /**
@@ -77,12 +99,54 @@ const STEP_COPY: Record<
  * without touching anything looks identical from here, and telling someone
  * their phone refused them when it didn't is how a guide loses their trust.
  */
-const BLOCKED_HEADLINE = "Wouldn't the switch move?";
+const BLOCKED_HEADLINE = "The switch wouldn't move — good";
 const BLOCKED_BODY =
-  "Covault didn't come from the Play Store, so Android holds notification access behind an unlock — and it only offers that unlock after an app has been refused once, which has now happened. The step below opens the right page.";
+  "That is the refusal these steps were waiting for. Covault didn't come from the Play Store, so Android holds notification access behind an unlock, and it only offers that unlock after an app has been refused once. Step 2 opens the page where it now lives.";
 
 /** One clock for everything that moves in this card. */
 const CLOCK = 'motion-safe:transition-all motion-safe:duration-[320ms] ease-[cubic-bezier(0.32,0.72,0.24,1)]';
+
+/**
+ * Where the ⋮ is on the App info page.
+ *
+ * The two notification-access steps land on the exact toggle they are talking
+ * about, so they need no picture. This step cannot: "Allow restricted settings"
+ * lives inside Android's own overflow menu, and no intent, extra or flag opens
+ * a menu or points at an item inside one — the platform simply does not expose
+ * it. A drawing of where to tap is the whole of what any app can do here, which
+ * is why every app that asks for this permission draws one.
+ *
+ * Deliberately a sketch and not a screenshot: it has to be right on a phone
+ * whose Settings look nothing like the one this was written on, and a wrong
+ * screenshot is more confusing than an obviously schematic one.
+ */
+const AppInfoSketch: React.FC = () => (
+  <div
+    aria-hidden="true"
+    className="mt-2 rounded-xl border border-amber-200/80 dark:border-amber-800/50 bg-white/70 dark:bg-slate-900/40 p-2"
+  >
+    <div className="flex items-center justify-between">
+      <span className="text-[9px] font-semibold text-slate-400 dark:text-slate-500 tracking-wide">
+        App info
+      </span>
+      <span className="relative flex items-center justify-center w-5 h-5">
+        {/* The same pulse the app uses elsewhere to say "here", on the app's
+            own clock rather than a faster one of its own. */}
+        <span className="absolute inset-0 rounded-full bg-amber-400/40 motion-safe:animate-ping" />
+        <span className="relative flex flex-col items-center justify-center gap-[2px] w-5 h-5 rounded-full bg-amber-100 dark:bg-amber-900/50 ring-1 ring-amber-400 dark:ring-amber-600">
+          <span className="w-[2px] h-[2px] rounded-full bg-amber-700 dark:bg-amber-300" />
+          <span className="w-[2px] h-[2px] rounded-full bg-amber-700 dark:bg-amber-300" />
+          <span className="w-[2px] h-[2px] rounded-full bg-amber-700 dark:bg-amber-300" />
+        </span>
+      </span>
+    </div>
+    <div className="mt-1.5 ml-auto w-[70%] rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200/70 dark:border-amber-800/40 px-2 py-1">
+      <span className="text-[9px] font-semibold text-amber-800 dark:text-amber-200">
+        Allow restricted settings
+      </span>
+    </div>
+  </div>
+);
 
 const CheckMark: React.FC = () => (
   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
@@ -118,17 +182,6 @@ const StepMarker: React.FC<{ status: SetupStepStatus; number: number }> = ({ sta
   }
   if (status === 'active') {
     return <span className={`${base} bg-amber-500 text-white`}>{number}</span>;
-  }
-  if (status === 'blocked') {
-    // Attempted and refused. Held in the amber of an unfinished step rather
-    // than a red one: nothing has gone wrong, and the way on is right below.
-    return (
-      <span
-        className={`${base} bg-amber-100 dark:bg-amber-900/40 border border-amber-300 dark:border-amber-700/60 text-amber-700 dark:text-amber-300`}
-      >
-        {number}
-      </span>
-    );
   }
   return (
     <span className={`${base} bg-slate-200 dark:bg-slate-700/60 text-slate-400 dark:text-slate-500`}>
@@ -231,7 +284,7 @@ const NotificationAccessGuide: React.FC<NotificationAccessGuideProps> = ({
         markRestrictedSettingsVisited();
         setState((s) => ({ ...s, restrictedVisited: true }));
         await openAppInfo(plugin);
-      } else if (id === 'listener') {
+      } else if (id === 'listener' || id === 'confirm') {
         // Recorded before the trip for the same reason, and because the
         // attempt itself is what makes Android offer the unlock at all — so
         // this is also what reveals the step below.
@@ -258,7 +311,11 @@ const NotificationAccessGuide: React.FC<NotificationAccessGuideProps> = ({
 
   const steps = buildSetupSteps(state);
   const complete = isSetupComplete(state);
-  const blocked = steps.some((step) => step.status === 'blocked');
+  // The unlock is the step in hand, which can only happen after the switch has
+  // refused. Once it is behind the user the headline goes back to the ordinary
+  // one — the flow has a next step again, and dwelling on the refusal reads as
+  // if it were still the problem.
+  const blocked = steps.some((step) => step.id === 'restricted' && step.status === 'active');
 
   if (complete) {
     return (
@@ -301,7 +358,14 @@ const NotificationAccessGuide: React.FC<NotificationAccessGuideProps> = ({
 
       <ol className="mt-3 space-y-3">
         {steps.map((step: SetupStep, index) => {
-          const copy = STEP_COPY[step.id];
+          // The first step reads differently where nothing is going to block
+          // it — see UNBLOCKED_LISTENER_COPY. Keyed off the same flag that
+          // decides whether the unlock step exists at all, so the promise and
+          // the list can never disagree.
+          const copy =
+            step.id === 'listener' && !state.restrictedApplies
+              ? UNBLOCKED_LISTENER_COPY
+              : STEP_COPY[step.id];
           const settled = step.status === 'done' || step.status === 'assumed';
           // Numbered by position, because the list changes shape: the unlock
           // step appears only once Android has refused, and a fixed number per
@@ -315,7 +379,7 @@ const NotificationAccessGuide: React.FC<NotificationAccessGuideProps> = ({
                   className={`block text-[11px] font-semibold ${CLOCK} ${
                     settled
                       ? 'text-emerald-700/80 dark:text-emerald-400/80'
-                      : step.status === 'active' || step.status === 'blocked'
+                      : step.status === 'active'
                         ? 'text-amber-900 dark:text-amber-200'
                         : 'text-slate-400 dark:text-slate-500'
                   }`}
@@ -331,6 +395,7 @@ const NotificationAccessGuide: React.FC<NotificationAccessGuideProps> = ({
                     <p className="mt-1 text-[10px] leading-relaxed text-amber-900/80 dark:text-amber-200/80">
                       {copy.body}
                     </p>
+                    {step.id === 'restricted' && <AppInfoSketch />}
                     <button
                       type="button"
                       onClick={() => runStep(step.id)}
@@ -344,26 +409,23 @@ const NotificationAccessGuide: React.FC<NotificationAccessGuideProps> = ({
                   </>
                 )}
 
-                {/* Tried, and access didn't come back with the user. The unlock
-                    below is the likely way on, so it gets the prominent
-                    button — but this is an inference, and someone who simply
-                    backed out of the page needs the plain retry as well. */}
-                {step.status === 'blocked' && (
-                  <>
-                    <p className="mt-1 text-[10px] leading-relaxed text-amber-900/80 dark:text-amber-200/80">
-                      Not granted yet. Unlock it below, then come back to this.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => runStep(step.id)}
-                      disabled={busy !== null}
-                      className={`mt-1 text-[10px] font-medium text-amber-700/80 dark:text-amber-300/70 underline underline-offset-2 text-left ${CLOCK} ${
-                        busy !== null ? 'opacity-50' : 'active:scale-[0.97]'
-                      }`}
-                    >
-                      Didn't get that far? Open notification access again
-                    </button>
-                  </>
+                {/* The first visit, behind the user. It ticks off by being
+                    made, because Android reports nothing about it and the
+                    refusal it was expected to end in is not a failure to
+                    report. The way back stays visible for the one case this
+                    cannot tell apart: someone who backed out without tapping
+                    anything. */}
+                {step.id === 'listener' && step.status === 'assumed' && (
+                  <button
+                    type="button"
+                    onClick={() => runStep(step.id)}
+                    disabled={busy !== null}
+                    className={`mt-1 text-[10px] font-medium text-amber-700/80 dark:text-amber-300/70 underline underline-offset-2 text-left ${CLOCK} ${
+                      busy !== null ? 'opacity-50' : 'active:scale-[0.97]'
+                    }`}
+                  >
+                    Didn't get as far as the switch? Open it again
+                  </button>
                 )}
 
                 {/* The one step Android will not report back on. Saying so is
@@ -378,7 +440,7 @@ const NotificationAccessGuide: React.FC<NotificationAccessGuideProps> = ({
                       busy !== null ? 'opacity-50' : 'active:scale-[0.97]'
                     }`}
                   >
-                    Switch above still greyed out? Open App info again
+                    Switch still greyed out? Open App info again
                   </button>
                 )}
               </div>

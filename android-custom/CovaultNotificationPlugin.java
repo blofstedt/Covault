@@ -9,6 +9,7 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Bundle;
 import android.provider.Settings;
 import android.util.Log;
 
@@ -153,6 +154,18 @@ public class CovaultNotificationPlugin extends Plugin {
     }
 
     /**
+     * The extras Android's Settings app reads to scroll to and flash one row.
+     *
+     * String literals because there is no public constant: `EXTRA_FRAGMENT_ARG_KEY`
+     * is @hide, and its value has been stable across every release that
+     * supports it. Passed on the fallback route only — the per-app deep link
+     * below lands on a page with a single toggle, where there is nothing to
+     * pick out.
+     */
+    private static final String SETTINGS_FRAGMENT_ARG_KEY = ":settings:fragment_args_key";
+    private static final String SETTINGS_SHOW_FRAGMENT_ARGS = ":settings:show_fragment_args";
+
+    /**
      * Send the user to the page where notification access is granted.
      *
      * Two routes. Android 11 added a deep link to one app's own notification
@@ -185,6 +198,24 @@ public class CovaultNotificationPlugin extends Plugin {
         if (!opened) {
             try {
                 Intent intent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
+                // Highlight Covault's own row in the device-wide list.
+                //
+                // The list is every installed app, in an order nobody can
+                // predict, and the user has been sent there to find one row in
+                // it. Settings looks for these two extras and scrolls to the
+                // named preference with a brief flash behind it — the same
+                // mechanism the system's own "find this setting" deep links
+                // use. Undocumented and honoured only by some builds, which is
+                // why it is decoration on a route that already works without
+                // it: an OEM that ignores the extras shows the plain list, as
+                // before.
+                ComponentName listener =
+                    new ComponentName(getContext(), NotificationListener.class);
+                String key = listener.flattenToString();
+                intent.putExtra(SETTINGS_FRAGMENT_ARG_KEY, key);
+                Bundle args = new Bundle();
+                args.putString(SETTINGS_FRAGMENT_ARG_KEY, key);
+                intent.putExtra(SETTINGS_SHOW_FRAGMENT_ARGS, args);
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 getContext().startActivity(intent);
             } catch (Exception e) {

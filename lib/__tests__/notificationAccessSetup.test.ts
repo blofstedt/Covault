@@ -65,13 +65,25 @@ describe('buildSetupSteps', () => {
     expect(statusOf(state(), 'post')).toBe('waiting');
   });
 
-  it('reveals the unlock once the switch has been tried and refused', () => {
+  it('reveals the unlock, and the second visit behind it, once the switch has been tried', () => {
     const s = state({ listenerAttempted: true });
-    expect(ids(s)).toEqual(['listener', 'restricted', 'post']);
+    expect(ids(s)).toEqual(['listener', 'restricted', 'confirm', 'post']);
     expect(statusOf(s, 'restricted')).toBe('active');
-    // And the refused step stops asking to be pressed again — the same dead
-    // switch is not the way forward.
-    expect(statusOf(s, 'listener')).toBe('blocked');
+    // The first visit is behind the user: its job was to be refused, and it
+    // stops asking to be pressed again — the same dead switch is not the way
+    // forward, the unlock below it is.
+    expect(statusOf(s, 'listener')).toBe('assumed');
+    // And the way on from the unlock is a step of its own, waiting its turn
+    // rather than offering a second thing to press right now.
+    expect(statusOf(s, 'confirm')).toBe('waiting');
+  });
+
+  it('numbers the same three screens in the order they are visited', () => {
+    // The list must not renumber under the user mid-flow: the step they are
+    // reading has to keep the number it had when they left for Settings.
+    const tried = state({ listenerAttempted: true });
+    const unlocked = state({ listenerAttempted: true, restrictedVisited: true });
+    expect(ids(tried)).toEqual(ids(unlocked));
   });
 
   it('never shows the unlock where the block does not apply', () => {
@@ -85,7 +97,23 @@ describe('buildSetupSteps', () => {
   it('hands the user back to the switch after the unlock', () => {
     const s = state({ listenerAttempted: true, restrictedVisited: true });
     expect(statusOf(s, 'restricted')).toBe('assumed');
-    expect(statusOf(s, 'listener')).toBe('active');
+    // As its own step, with its own button — not as the first step quietly
+    // going amber again, which reads as the flow having lost its place.
+    expect(statusOf(s, 'confirm')).toBe('active');
+    expect(statusOf(s, 'listener')).toBe('assumed');
+  });
+
+  it('only ever offers one thing to press', () => {
+    for (const s of [
+      state(),
+      state({ listenerAttempted: true }),
+      state({ listenerAttempted: true, restrictedVisited: true }),
+      state({ listenerGranted: true, listenerAttempted: true, restrictedVisited: true }),
+      state({ listenerGranted: true, canPostNotifications: true }),
+    ]) {
+      expect(buildSetupSteps(s).filter((step) => step.status === 'active').length)
+        .toBeLessThanOrEqual(1);
+    }
   });
 
   it('never claims the unlock is confirmed on its own', () => {
@@ -95,10 +123,10 @@ describe('buildSetupSteps', () => {
     expect(statusOf(s, 'restricted')).not.toBe('done');
   });
 
-  it('drops the unlock once access is granted', () => {
+  it('drops the unlock and the second visit once access is granted', () => {
     // Nothing else could have let that switch move, so there is nothing left
-    // to say about it.
-    const s = state({ listenerGranted: true, listenerAttempted: true });
+    // to say about either of them.
+    const s = state({ listenerGranted: true, listenerAttempted: true, restrictedVisited: true });
     expect(ids(s)).toEqual(['listener', 'post']);
     expect(statusOf(s, 'listener')).toBe('done');
     expect(statusOf(s, 'post')).toBe('active');
@@ -183,6 +211,14 @@ describe('the native half of the flow', () => {
 
   it('sends the restricted-settings step to App info, where the ⋮ menu lives', () => {
     expect(java).toContain('ACTION_APPLICATION_DETAILS_SETTINGS');
+  });
+
+  it('asks Settings to flash the right row when it has to use the list', () => {
+    // The fallback drops the user into every installed app. These are the
+    // extras Settings reads to scroll to one row and highlight it; honoured
+    // only by some builds, which is why the route still works without them.
+    expect(java).toContain(':settings:fragment_args_key');
+    expect(java).toContain(':settings:show_fragment_args');
   });
 });
 

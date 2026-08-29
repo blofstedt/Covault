@@ -23,19 +23,28 @@
 // without a device; the component is only responsible for rendering these
 // steps and for asking the native side the three questions they read.
 
-/** The three things Android needs from the user. */
-export type SetupStepId = 'listener' | 'restricted' | 'post';
+/**
+ * The steps the flow can show.
+ *
+ * Four ids for three grants, because the notification-access switch has to be
+ * visited twice on a sideloaded install and the two visits are not the same
+ * instruction. The first one is expected to fail — being refused is what makes
+ * Android offer the unlock at all — and telling someone to "try again" after a
+ * refusal reads as the app not knowing what happened. So the first visit is a
+ * step that completes by being attempted, and `confirm` is the one that
+ * completes by the switch actually moving.
+ */
+export type SetupStepId = 'listener' | 'restricted' | 'confirm' | 'post';
 
 /**
  * `done` — verified just now against the OS.
  * `assumed` — the user has been sent to do it, but Android exposes no way to
- *   read the result. Only ever the restricted-settings step.
+ *   read the result: the restricted-settings unlock, and the first visit to the
+ *   notification-access switch, which is expected to be refused.
  * `active` — the one to do next.
- * `blocked` — tried, and Android refused. Only ever the notification-access
- *   step, and it means the unlock below it is now the thing to do.
  * `waiting` — behind an earlier step.
  */
-export type SetupStepStatus = 'done' | 'assumed' | 'active' | 'blocked' | 'waiting';
+export type SetupStepStatus = 'done' | 'assumed' | 'active' | 'waiting';
 
 export interface SetupStep {
   id: SetupStepId;
@@ -85,15 +94,26 @@ export function buildSetupSteps(state: AccessState): SetupStep[] {
     id: 'listener',
     status: state.listenerGranted
       ? 'done'
-      : // Refused, and the unlock hasn't been done yet: the step below is the
-        // way forward, not another go at this one.
-        showRestricted && !state.restrictedVisited
-        ? 'blocked'
+      : showRestricted
+        ? // Tried, and refused — which is this step's whole job on a sideloaded
+          // install. Marked as behind the user rather than failed, because the
+          // way on is the unlock below and not another go at the same switch.
+          // `assumed` and not `done`: all that is known is that the user was
+          // sent there, never that they touched anything.
+          'assumed'
         : 'active',
   });
 
   if (showRestricted) {
     steps.push({ id: 'restricted', status: state.restrictedVisited ? 'assumed' : 'active' });
+    // The second visit to the same switch, and a step in its own right: after
+    // the unlock it is the one thing left to do, and it is the only step here
+    // that Android will confirm. Held back until the unlock has been visited so
+    // the list never offers two ways forward at once.
+    steps.push({
+      id: 'confirm',
+      status: state.restrictedVisited ? 'active' : 'waiting',
+    });
   }
 
   steps.push({
