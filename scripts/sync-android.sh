@@ -146,15 +146,31 @@ else
 fi
 
 # --- JAVA FILES ---
+#
+# Every .java in android-custom/, not a hand-kept list. The list was the
+# problem: a new file (CovaultWidgetPlugin) was added and registered in
+# MainActivity but never added here, so the class simply was not in the
+# project and the Gradle build failed with "cannot find symbol" — after the
+# whole web build had already passed. Copying the directory means adding a
+# native class is one step, not two, and the loop below fails loudly if the
+# copy did not land.
 mkdir -p "$JAVA_DIR"
-cp -v "$CUSTOM_DIR/MainActivity.java" "$JAVA_DIR/"
-cp -v "$CUSTOM_DIR/CovaultNotificationPlugin.java" "$JAVA_DIR/"
-cp -v "$CUSTOM_DIR/CovaultUpdaterPlugin.java" "$JAVA_DIR/"
-cp -v "$CUSTOM_DIR/NotificationListener.java" "$JAVA_DIR/"
-cp -v "$CUSTOM_DIR/BootReceiver.java" "$JAVA_DIR/"
-cp -v "$CUSTOM_DIR/CovaultWidgetProvider.java" "$JAVA_DIR/"
-cp -v "$CUSTOM_DIR/WidgetRenderer.java" "$JAVA_DIR/"
-cp -v "$CUSTOM_DIR/WidgetDeltaStore.java" "$JAVA_DIR/"
+JAVA_COUNT=0
+for f in "$CUSTOM_DIR"/*.java; do
+  [ -f "$f" ] || continue
+  cp -v "$f" "$JAVA_DIR/"
+  if [ ! -f "$JAVA_DIR/$(basename "$f")" ]; then
+    echo "  ERROR: failed to copy $(basename "$f") into the Android project."
+    exit 1
+  fi
+  JAVA_COUNT=$((JAVA_COUNT + 1))
+done
+if [ "$JAVA_COUNT" -eq 0 ]; then
+  echo "  ERROR: no Java sources found in $CUSTOM_DIR."
+  echo "         The app cannot build without MainActivity and its plugins."
+  exit 1
+fi
+echo "  OK: $JAVA_COUNT custom Java sources synced"
 
 # --- MANIFEST ---
 cp -v "$CUSTOM_DIR/AndroidManifest.xml" "$MAIN_DIR/AndroidManifest.xml"
