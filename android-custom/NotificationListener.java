@@ -586,10 +586,13 @@ public class NotificationListener extends NotificationListenerService {
     // INCOME_PHRASES_BEGIN
     private static final String[] INCOME_PHRASES = {
         "e-transfer received", "etransfer received", "transfer received",
-        "you got an interac", "you got a interac", "you received",
-        "sent you", "money received", "deposit received",
-        "deposited the funds", "direct deposit",
-        "payroll", "salary",
+        "incoming e-transfer", "incoming etransfer", "incoming transfer",
+        "you got an interac", "you got a interac", "received an interac",
+        "you received", "you have received", "you've received", "youve received",
+        "sent you", "has sent you", "money received", "funds received",
+        "deposit received", "deposited the funds", "direct deposit",
+        "has been deposited", "have been deposited", "automatically deposited",
+        "auto-deposit", "autodeposit", "payroll", "salary",
     };
     // INCOME_PHRASES_END
 
@@ -601,11 +604,148 @@ public class NotificationListener extends NotificationListenerService {
      */
     static boolean looksLikeIncome(String text) {
         if (text == null || text.isEmpty()) return false;
-        String lower = text.toLowerCase(java.util.Locale.US);
+        String lower = normalizeForPhrases(text.toLowerCase(java.util.Locale.US));
         for (String phrase : INCOME_PHRASES) {
             if (lower.contains(phrase)) return true;
         }
         return false;
+    }
+
+    /**
+     * Lower-cased text with runs of whitespace collapsed, as the parser reads it.
+     *
+     * A notification arrives with the title and the body joined, and either
+     * half can end in a newline or a run of spaces — so "available\n balance"
+     * is one phrase to a reader and two to a substring test. The parser
+     * collapses before matching (collapseWhitespace); everything here does the
+     * same, or the two sides disagree about alerts that look identical on
+     * screen.
+     */
+    static String normalizeForPhrases(String lower) {
+        return lower.replaceAll("\\s+", " ").trim();
+    }
+
+    /**
+     * Wording that means the money never actually left the account.
+     *
+     * A declined card, a failed payment, a charge the bank cancelled. The alert
+     * names a merchant and a dollar amount exactly like a purchase does — and
+     * usually contains a spending word too, because it is describing a purchase
+     * that was attempted. "Your purchase of $37.67 at NEWSHOSTING.COM was
+     * declined" announced itself as a captured $37.67 and put $37.67 of
+     * spending on the widget, for a charge that never happened; the retry that
+     * succeeded then arrived as its own alert, so the user was shown the same
+     * purchase twice with one of them imaginary.
+     *
+     * These are the exact phrases lib/deviceTransactionParser.ts now rejects on
+     * (FAILED_CHARGE_PHRASES), so anything silenced here is something the
+     * pipeline was always going to throw away. Kept in step by
+     * quietNonSpendingAlerts.test.ts.
+     */
+    // FAILED_CHARGE_PHRASES_BEGIN
+    private static final String[] FAILED_CHARGE_PHRASES = {
+        "declined", "not approved", "rejected", "failed", "unsuccessful",
+        "insufficient funds", "could not be processed", "could not be completed",
+        "did not go through", "unable to process", "do not honour", "do not honor",
+        "was cancelled", "was canceled", "has been cancelled", "has been canceled",
+        "payment returned", "returned unpaid",
+    };
+    // FAILED_CHARGE_PHRASES_END
+
+    /** True when the bank is reporting a charge that did not go through. */
+    static boolean looksLikeFailedCharge(String text) {
+        if (text == null || text.isEmpty()) return false;
+        String lower = normalizeForPhrases(text.toLowerCase(java.util.Locale.US));
+        for (String phrase : FAILED_CHARGE_PHRASES) {
+            if (lower.contains(phrase)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * The parser's own three-way test for "this alert is about money, but no
+     * money moved" — a balance, a statement, a payment due, a credit limit.
+     *
+     * The listener had no opinion on these at all: a dollar amount from a bank
+     * app was enough to announce a capture and nudge the widget, so "Your
+     * available balance is $2,481.55" arrived on the home screen as $2,481.55
+     * of spending and sat there until the app was next opened.
+     *
+     * The rule is copied from parseNotificationText, not invented here: a stop
+     * phrase, no spending word (strong or weak), and not a refund. The parser
+     * has always rejected exactly that combination, which is the guarantee that
+     * silencing it cannot cost a purchase — a real spend alert says "purchase",
+     * "spent", "paid", "charged" or one of the others, and any one of them
+     * keeps this quiet verdict off. The three lists are mirrored from the
+     * parser and pinned by quietNonSpendingAlerts.test.ts.
+     */
+    // STOP_PHRASES_BEGIN
+    private static final String[] STOP_PHRASES = {
+        "verification code", "security code", "otp", "passcode", "2fa", "password", "login", "signed in", "new device",
+        "statement", "e-statement", "payment due", "due date",
+        "account balance", "available balance", "current balance", "balance is",
+        "deposit", "payroll", "salary", "interest", "dividend", "e-transfer received", "etransfer received", "transfer received", "money received",
+        "available credit", "credit limit",
+    };
+    // STOP_PHRASES_END
+
+    // GO_PHRASES_BEGIN
+    private static final String[] GO_PHRASES = {
+        "spend", "spent", "purchase", "purchased", "debit", "debit purchase", "pos", "tap", "tapped", "charged", "charge",
+        "payment", "bill payment", "bill paid", "paid", "payment to",
+        "transfer to", "sent to", "e-transfer sent", "etransfer sent", "interac e-transfer sent",
+        "cost", "costs", "pre-authorized debit", "preauthorized debit",
+        "approved",
+        "withdrawal", "atm withdrawal",
+    };
+    // GO_PHRASES_END
+
+    // WEAK_GO_PHRASES_BEGIN
+    private static final String[] WEAK_GO_PHRASES = { "authorized" };
+    // WEAK_GO_PHRASES_END
+
+    // REFUND_PHRASES_BEGIN
+    private static final String[] REFUND_PHRASES = {
+        "refund", "reversal", "credited", "cashback",
+    };
+    // REFUND_PHRASES_END
+
+    /**
+     * Bill reminders — a statement, a due date, a minimum payment.
+     *
+     * Mirrored from the parser, where they are decisive on their own: they
+     * contain the word "payment", so the stop-phrase rule below never gets to
+     * reject them, and a statement reminder was captured as a purchase for the
+     * minimum payment.
+     */
+    // BILL_NOTICE_PHRASES_BEGIN
+    private static final String[] BILL_NOTICE_PHRASES = {
+        "payment due", "minimum payment", "due date", "past due", "overdue",
+        "statement is ready", "statement is available", "your statement",
+        "e-statement", "estatement", "payment reminder",
+    };
+    // BILL_NOTICE_PHRASES_END
+
+    private static boolean containsAny(String lower, String[] phrases) {
+        for (String phrase : phrases) {
+            if (lower.contains(phrase)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * True when the alert talks about money without any money having moved.
+     *
+     * Mirrors the first half of the parser's rejection test:
+     * `hasStop && !hasGo`, guarded by `!hasRefund` exactly as it is there.
+     */
+    static boolean looksInformationalOnly(String text) {
+        if (text == null || text.isEmpty()) return false;
+        String lower = normalizeForPhrases(text.toLowerCase(java.util.Locale.US));
+        if (containsAny(lower, BILL_NOTICE_PHRASES)) return true;
+        if (containsAny(lower, REFUND_PHRASES)) return false;
+        if (!containsAny(lower, STOP_PHRASES)) return false;
+        return !containsAny(lower, GO_PHRASES) && !containsAny(lower, WEAK_GO_PHRASES);
     }
 
     // Keywords that indicate a transaction notification (not just a promo)
@@ -765,12 +905,38 @@ public class NotificationListener extends NotificationListenerService {
             Log.i(TAG, "Reads as money coming in rather than a purchase; capturing quietly: " + packageName);
         }
 
-        // The four verdicts above differ in their reason and agree in their
+        // A charge the bank is telling us did NOT go through — declined,
+        // failed, cancelled. It reads like a purchase in every way that this
+        // service can see: a bank app, a merchant, a dollar amount, and usually
+        // the word "purchase" itself. Nothing was spent, so there is nothing to
+        // announce and nothing for the widget to count — and the retry that
+        // succeeds arrives as its own alert, which is the one that counts. See
+        // FAILED_CHARGE_PHRASES.
+        boolean chargeDidNotHappen = !ignoredByUser && !knownRecurring && !notAPurchase
+            && !moneyComingIn && looksLikeFailedCharge(fullText);
+        if (chargeDidNotHappen) {
+            Log.i(TAG, "Reads as a charge that did not go through; capturing quietly: " + packageName);
+        }
+
+        // An alert about money where no money moved: a balance, a statement, a
+        // payment due, a credit limit. The parser has always rejected these —
+        // a stop phrase with no spending word — but this service had no opinion
+        // on them at all, so a balance alert announced itself as a captured
+        // purchase and put the balance itself on the widget as spending. See
+        // looksInformationalOnly.
+        boolean nothingSpent = !ignoredByUser && !knownRecurring && !notAPurchase
+            && !moneyComingIn && !chargeDidNotHappen && looksInformationalOnly(fullText);
+        if (nothingSpent) {
+            Log.i(TAG, "Reads as an informational money alert rather than a purchase; capturing quietly: " + packageName);
+        }
+
+        // The six verdicts above differ in their reason and agree in their
         // consequence: Covault says nothing about this alert, because nothing
         // the user has to act on came of it. Held in one flag because the
         // notification is not the only thing that must respect it — see the
         // widget block at the end of this method.
-        boolean captureQuietly = ignoredByUser || knownRecurring || notAPurchase || moneyComingIn;
+        boolean captureQuietly = ignoredByUser || knownRecurring || notAPurchase || moneyComingIn
+            || chargeDidNotHappen || nothingSpent;
 
         // Broadcast to the local TypeScript pipeline which will classify
         // as transaction or non-transaction — non-transactions will appear in
@@ -788,7 +954,8 @@ public class NotificationListener extends NotificationListenerService {
 
         maybeHideBankNotification(
             sbn, securedKey, fromMonitored, amount, secured || alreadySecured, result,
-            ignoredByUser, knownRecurring, notAPurchase, moneyComingIn);
+            ignoredByUser, knownRecurring, notAPurchase, moneyComingIn,
+            chargeDidNotHappen, nothingSpent);
 
         // Home-screen widget: nudge the donut for a purchase captured while the
         // app is closed, so it doesn't sit stale until the next app launch.
@@ -892,7 +1059,9 @@ public class NotificationListener extends NotificationListenerService {
         boolean ignoredByUser,
         boolean knownRecurring,
         boolean notAPurchase,
-        boolean moneyComingIn
+        boolean moneyComingIn,
+        boolean chargeDidNotHappen,
+        boolean nothingSpent
     ) {
         if (!fromMonitored) return;           // (3)
         String app = sbn.getPackageName();
@@ -930,6 +1099,20 @@ public class NotificationListener extends NotificationListenerService {
         // said so.
         if (moneyComingIn) {
             recordOutcome(securedKey, app, amount, OUTCOME_INCOME);
+            return;
+        }
+        // And again: the bank is reporting a charge that did not go through.
+        // Covault posted nothing, so there is nothing to dismiss its alert in
+        // favour of — and that alert is the user's only notice that a payment
+        // of theirs failed, which is something they may well have to act on.
+        if (chargeDidNotHappen) {
+            recordOutcome(securedKey, app, amount, OUTCOME_FAILED_CHARGE);
+            return;
+        }
+        // And again: a balance, a statement, a payment due. Nothing was spent,
+        // so nothing was posted, so the bank keeps its alert.
+        if (nothingSpent) {
+            recordOutcome(securedKey, app, amount, OUTCOME_NOT_SPENDING);
             return;
         }
         if (!replaced) {                      // (2)
@@ -1354,6 +1537,8 @@ public class NotificationListener extends NotificationListenerService {
      * paid. An alert we have not replaced is one we must not remove.
      */
     static final String OUTCOME_INCOME = "income";
+    static final String OUTCOME_FAILED_CHARGE = "failed_charge";
+    static final String OUTCOME_NOT_SPENDING = "not_spending";
 
     private static final long DISMISS_VERIFY_DELAY_MS = 700L;
     private final android.os.Handler dismissHandler =

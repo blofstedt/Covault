@@ -20,7 +20,9 @@ export type CaptureOutcomeCode =
   | 'user_ignored'
   | 'known_recurring'
   | 'not_a_purchase'
-  | 'income';
+  | 'income'
+  | 'failed_charge'
+  | 'not_spending';
 
 const OUTCOME_CODES: readonly CaptureOutcomeCode[] = [
   'hidden',
@@ -34,6 +36,8 @@ const OUTCOME_CODES: readonly CaptureOutcomeCode[] = [
   'known_recurring',
   'not_a_purchase',
   'income',
+  'failed_charge',
+  'not_spending',
 ];
 
 export interface CaptureOutcome {
@@ -107,7 +111,9 @@ export function isCaptureProblem(outcome: CaptureOutcomeCode): boolean {
     outcome !== 'user_ignored' &&
     outcome !== 'known_recurring' &&
     outcome !== 'not_a_purchase' &&
-    outcome !== 'income'
+    outcome !== 'income' &&
+    outcome !== 'failed_charge' &&
+    outcome !== 'not_spending'
   );
 }
 
@@ -136,6 +142,10 @@ export function describeCaptureOutcome(outcome: CaptureOutcomeCode): string {
       return "Kept — this reads as a price alert or an ad, not a purchase";
     case 'income':
       return 'Kept — this reads as money coming in, and Covault tracks spending';
+    case 'failed_charge':
+      return "Kept — your bank said this charge didn't go through, so nothing was spent";
+    case 'not_spending':
+      return 'Kept — this reads as a balance or statement alert, not a purchase';
   }
 }
 

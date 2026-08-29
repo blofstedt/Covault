@@ -1,6 +1,7 @@
 import { log } from './log';
 import { formatVendorName } from './formatVendorName';
 
+// STOP_PHRASES_BEGIN
 const STOP_PHRASES = [
   'verification code', 'security code', 'otp', 'passcode', '2fa', 'password', 'login', 'signed in', 'new device',
   'statement', 'e-statement', 'payment due', 'due date',
@@ -8,11 +9,15 @@ const STOP_PHRASES = [
   'deposit', 'payroll', 'salary', 'interest', 'dividend', 'e-transfer received', 'etransfer received', 'transfer received', 'money received',
   'available credit', 'credit limit',
 ];
+// STOP_PHRASES_END
 
+// REFUND_PHRASES_BEGIN
 const REFUND_PHRASES = [
   'refund', 'reversal', 'credited', 'cashback',
 ];
+// REFUND_PHRASES_END
 
+// GO_PHRASES_BEGIN
 const GO_PHRASES = [
   'spend', 'spent', 'purchase', 'purchased', 'debit', 'debit purchase', 'pos', 'tap', 'tapped', 'charged', 'charge',
   'payment', 'bill payment', 'bill paid', 'paid', 'payment to',
@@ -23,6 +28,7 @@ const GO_PHRASES = [
   'approved',
   'withdrawal', 'atm withdrawal',
 ];
+// GO_PHRASES_END
 
 /**
  * Weak GO phrases — ambiguous words that lean pre-authorization.
@@ -33,7 +39,9 @@ const GO_PHRASES = [
  * transactions were simply lost. 'authorized' stays, because "Authorized $50 at
  * <gas station>" really is a pre-auth.
  */
+// WEAK_GO_PHRASES_BEGIN
 const WEAK_GO_PHRASES = ['authorized'];
+// WEAK_GO_PHRASES_END
 
 const PRE_AUTH_PHRASES = [
   'authorization hold', 'pre-authorization', 'preauthorization',
@@ -61,10 +69,13 @@ const SETTLEMENT_PHRASES = [
 // INCOME_PHRASES_BEGIN
 const INCOME_PHRASES = [
   'e-transfer received', 'etransfer received', 'transfer received',
-  'you got an interac', 'you got a interac', 'you received',
-  'sent you', 'money received', 'deposit received',
-  'deposited the funds', 'direct deposit',
-  'payroll', 'salary',
+  'incoming e-transfer', 'incoming etransfer', 'incoming transfer',
+  'you got an interac', 'you got a interac', 'received an interac',
+  'you received', 'you have received', "you've received", 'youve received',
+  'sent you', 'has sent you', 'money received', 'funds received',
+  'deposit received', 'deposited the funds', 'direct deposit',
+  'has been deposited', 'have been deposited', 'automatically deposited',
+  'auto-deposit', 'autodeposit', 'payroll', 'salary',
 ];
 // INCOME_PHRASES_END
 
@@ -97,6 +108,65 @@ const NON_FINANCIAL_PATTERNS: RegExp[] = [
 ];
 // NON_FINANCIAL_PATTERNS_END
 
+/**
+ * Wording that means the money never actually left the account.
+ *
+ * A declined card, a payment that failed, a charge the bank cancelled: the
+ * bank still sends an alert, that alert still names a merchant and a dollar
+ * amount, and every other rule here reads it as a purchase. It is the exact
+ * opposite of one — nothing was spent, and there is nothing for the user to
+ * review. Worse, a declined charge is usually retried a moment later, so the
+ * successful attempt arrives as a second alert and the user ends up with two
+ * rows for one purchase, one of which never happened.
+ *
+ * Checked before the go-phrases, because a declined purchase alert almost
+ * always contains one ("Your PURCHASE of $37.67 at NEWSHOSTING.COM was
+ * declined") and would otherwise be captured on the strength of it.
+ *
+ * Mirrored into FAILED_CHARGE_PHRASES in
+ * android-custom/NotificationListener.java for the same reason the income
+ * phrases are: the listener has to reach the same verdict the instant the
+ * alert lands, with the app closed, or the phone announces a captured
+ * purchase and adds it to the widget's spending hours before this runs. Kept
+ * in step by quietNonSpendingAlerts.test.ts.
+ */
+// FAILED_CHARGE_PHRASES_BEGIN
+const FAILED_CHARGE_PHRASES = [
+  'declined', 'not approved', 'rejected', 'failed', 'unsuccessful',
+  'insufficient funds', 'could not be processed', 'could not be completed',
+  'did not go through', 'unable to process', 'do not honour', 'do not honor',
+  'was cancelled', 'was canceled', 'has been cancelled', 'has been canceled',
+  'payment returned', 'returned unpaid',
+];
+// FAILED_CHARGE_PHRASES_END
+
+/**
+ * Bill reminders: a statement, a due date, a minimum payment.
+ *
+ * These say the word "payment" — which is a go-phrase — so the stop-phrase
+ * rule below never gets to reject them, and until now a credit-card statement
+ * reminder was captured as a purchase for the minimum payment. They are
+ * decisive on their own for that reason: no alert about a purchase that
+ * actually happened says "minimum payment" or "statement is ready".
+ *
+ * Deliberately narrower than the stop-phrase list next to it. "Available
+ * credit" and "available balance" also mean nothing was spent on their own,
+ * but some cards append them to a real purchase alert ("You spent $22.40 at
+ * LOBLAWS. Available credit: $4,120.00"), so those stay in STOP_PHRASES where
+ * a spending word in the same sentence can still overrule them.
+ *
+ * Mirrored into BILL_NOTICE_PHRASES in
+ * android-custom/NotificationListener.java; kept in step by
+ * quietNonSpendingAlerts.test.ts.
+ */
+// BILL_NOTICE_PHRASES_BEGIN
+const BILL_NOTICE_PHRASES = [
+  'payment due', 'minimum payment', 'due date', 'past due', 'overdue',
+  'statement is ready', 'statement is available', 'your statement',
+  'e-statement', 'estatement', 'payment reminder',
+];
+// BILL_NOTICE_PHRASES_END
+
 const amountRegex = /(?<!\w)(?:\$|cad\s*)\s*([0-9]{1,3}(?:,[0-9]{3})*|[0-9]+)(?:[.,]([0-9]{1,2}))?(?!\w)|(?<!\w)([0-9]{1,3}(?:,[0-9]{3})*|[0-9]+)(?:\.([0-9]{2}))(?!\w)/gi;
 
 export interface ParsedNotification {
@@ -126,6 +196,11 @@ export interface ParsedNotification {
   isPreAuth?: boolean;
   /** True when this is incoming money (e.g. Interac e-Transfer received) */
   isIncome?: boolean;
+  /**
+   * True when the bank said the charge did not go through — declined, failed,
+   * cancelled. Nothing was spent, so nothing is recorded.
+   */
+  isFailedCharge?: boolean;
   /**
    * Parser confidence in the extraction, 0..1.
    * 0.9+ : high — strong go-phrase, clear preposition-based vendor, clean amount
@@ -587,8 +662,39 @@ export function parseNotificationText(text: string): ParsedNotification {
   const hasPreAuth = PRE_AUTH_PHRASES.some(p => tLower.includes(p));
   const hasSettlement = SETTLEMENT_PHRASES.some(p => tLower.includes(p));
   const hasIncome = INCOME_PHRASES.some(p => tLower.includes(p));
+  const hasFailedCharge = FAILED_CHARGE_PHRASES.some(p => tLower.includes(p));
+  const hasBillNotice = BILL_NOTICE_PHRASES.some(p => tLower.includes(p));
   const amountCandidates = findAllAmounts(t);
   const hasDollarSign = /\$\d/.test(t);
+
+  // ── A reminder about a bill, not a purchase ──
+  // Checked here, ahead of everything else, because these carry the word
+  // "payment" and would otherwise sail past the stop-phrase rule below on the
+  // strength of it — which is how a statement reminder came to be recorded as
+  // a purchase for the minimum payment.
+  if (hasBillNotice) {
+    return {
+      isOutgoing: false,
+      recurrence: 'One-time',
+      rejectionReason: 'A bill or statement reminder \u2014 nothing was spent',
+    };
+  }
+
+  // ── The charge never happened ──
+  // A declined card, a failed payment, a cancelled charge. The alert names a
+  // merchant and an amount like any purchase does, and usually contains a
+  // go-phrase too ("your PURCHASE of $37.67 at NEWSHOSTING.COM was declined"),
+  // so it has to be caught before any of that is consulted. No money moved, so
+  // there is nothing to record and nothing for the user to review — and the
+  // retry that succeeds arrives as its own alert, which is the one that counts.
+  if (hasFailedCharge) {
+    return {
+      isOutgoing: false,
+      recurrence: 'One-time',
+      isFailedCharge: true,
+      rejectionReason: 'The charge did not go through \u2014 nothing was spent',
+    };
+  }
 
   // ── Income detection (Interac e-Transfers, deposits, payroll) ──
   // Per product spec: only EXPENSE transactions are captured. Income,

@@ -105,6 +105,7 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | "I got a duplicate" | `lib/notificationProcessor.ts` — dedup is steps 1, 2, 5 and the post-insert race recovery |
 | "recurring charges are duplicating / I keep deleting them" | `lib/projectedTransactions.ts` — recurring is display-only. Nothing writes recurring rows. See Invariants |
 | "a deposit / my pay showed up as spending" | `INCOME_PHRASES` in `lib/deviceTransactionParser.ts`, mirrored into `android-custom/NotificationListener.java` — the native listener has to know income on sight, or it announces the deposit and adds it to the widget hours before the parser rejects it |
+| "something that isn't spending got captured" (a deposit, a declined card, a statement reminder, a balance alert) | the four mirrored lists at the top of `lib/deviceTransactionParser.ts` — `INCOME_PHRASES`, `FAILED_CHARGE_PHRASES`, `BILL_NOTICE_PHRASES`, and `STOP_PHRASES` vs `GO_PHRASES` — each copied into `android-custom/NotificationListener.java`, because the listener has to reach the same verdict on sight or it announces the capture and adds it to the widget hours before the parser rejects it |
 | "a subscription got captured / notified about anyway" | `lib/recurringSchedule.ts` — matches the capture against the recurring *schedule*, not just nearby rows; applied at step 5b. The notification is suppressed in `NotificationListener.java` (`RECURRING_CHARGES_KEY`) and withdrawn by `useNotificationListener.ts` when it slipped through |
 | "the budget pills keep rearranging" | `lib/budgetOrder.ts` — the `budgets` table has no sort column, so the order is fixed in code. See Invariants |
 | "my budget limits / hidden categories are back to the defaults" | `loadUserBudgets` in `lib/hooks/useDataLoading.ts` → `lib/budgetFallback.ts`. Check the Supabase edge logs for a non-200 on `/rest/v1/budgets` before assuming the data is gone — it usually isn't |
@@ -223,20 +224,40 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   certain one. `budgetsSurviveFailedRead.test.ts` pins all of it.
 
 - **A quiet capture writes no widget delta.** The listener stays silent about
-  four kinds of alert — a price alert or promo, one matching a user skip rule,
-  a charge already on the books as recurring, and money coming in (a deposit,
-  an e-Transfer received, payroll) — and each of them means the
+  six kinds of alert — a price alert or promo, one matching a user skip rule,
+  a charge already on the books as recurring, money coming in (a deposit, an
+  e-Transfer received, payroll), a charge that did not go through (declined,
+  failed, cancelled), and an alert about money where no money moved (a balance,
+  a statement, a minimum payment due) — and each of them means the
   JS pipeline will produce no row (the recurring one is already counted by the
   projection; income is never recorded at all). The optimistic widget delta
   used to be recorded anyway, so a
   "BTC is trading at $112,013.15" alert put six figures of spending and a
-  phantom review item on the home screen, and a payday deposit landed as a
-  purchase that ate the month's remaining balance — where they stayed until the
+  phantom review item on the home screen, a payday deposit landed as a
+  purchase that ate the month's remaining balance, and a declined $37.67 landed
+  as a second copy of a charge that had already gone through for real the day
+  before — where they stayed until the
   app was next opened: only a fresh snapshot discards a delta. The delta is
   gated on the same `captureQuietly` flag as the notification;
-  `widgetQuietCaptures.test.ts` and `quietIncomeAlerts.test.ts` hold them
-  together, the latter also pinning the income phrases to the parser's own
-  list.
+  `widgetQuietCaptures.test.ts`, `quietIncomeAlerts.test.ts` and
+  `quietNonSpendingAlerts.test.ts` hold them together, the latter two also
+  pinning the listener's phrase lists to the parser's own.
+
+- **The listener may only go quiet where the parser would refuse the row.**
+  Every list mirrored into `NotificationListener.java` is a copy of one the
+  parser already rejects on, never a new opinion of the native side's own. That
+  is the whole safety argument for silencing anything at all: the worst a
+  faithful copy can cost is an announcement of something that was never going
+  to appear in Review, whereas an opinion held only on the phone can cost a
+  purchase outright — the listener runs with the app closed and nothing
+  downstream can recover a spend it decided to ignore. The mirror tests parse
+  both files and fail the build on drift, so a phrase added on one side only
+  breaks CI rather than shipping. The one asymmetry that is deliberate:
+  `BILL_NOTICE_PHRASES` beats a spending word ("minimum **payment** due"),
+  because a statement reminder was otherwise captured as a purchase for the
+  minimum payment, while `available balance` and `available credit` stay in
+  `STOP_PHRASES`, where a spending word in the same sentence still overrules
+  them — some cards append the balance to a real purchase alert.
 
 - **The budget order comes from `lib/budgetOrder.ts`, not from the database.**
   `budgets` has no primary key and no sort column, and `loadUserBudgets` reads
