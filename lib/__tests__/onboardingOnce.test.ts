@@ -11,7 +11,13 @@ class MemoryStorage {
 }
 vi.stubGlobal('localStorage', new MemoryStorage());
 
-import { hasOnboarded, markOnboarded } from '../onboardingState';
+import {
+  hasOnboarded,
+  markOnboarded,
+  isFirstSignIn,
+  isOnboardingRequired,
+  shouldShowOnboarding,
+} from '../onboardingState';
 
 /**
  * The intro was shown on every sign-in, not on the first one.
@@ -69,23 +75,69 @@ describe('the record that the intro has been seen', () => {
 });
 
 describe('who gets the intro', () => {
-  it('checks the record before sending anyone into it', () => {
-    // The whole bug in one line: the transition alone is not evidence of a new
-    // account.
-    const decision = /setAuthState\(prev =>[\s\S]*?\);/.exec(AUTH_STATE)?.[0] ?? '';
-    expect(decision).toContain("prev === 'unauthenticated'");
-    expect(decision).toContain('hasOnboarded');
+  beforeEach(() => localStorage.clear());
+
+  const NOW = Date.parse('2026-08-29T12:00:00Z');
+  const minutesAgo = (n: number) => new Date(NOW - n * 60_000).toISOString();
+
+  it('runs it for an account made moments ago', () => {
+    expect(shouldShowOnboarding({ id: 'new', created_at: minutesAgo(1) }, NOW)).toBe(true);
+  });
+
+  it('keeps running it until it is finished', () => {
+    // The requirement in one test: start to end, across however many launches
+    // that takes. An intro abandoned half way — the app killed, the phone
+    // restarted — resumes rather than being skipped, even once the account is
+    // no longer new enough to be recognised by its age.
+    expect(shouldShowOnboarding({ id: 'new', created_at: minutesAgo(1) }, NOW)).toBe(true);
+    expect(isOnboardingRequired('new')).toBe(true);
+
+    const muchLater = NOW + 3 * 24 * 60 * 60 * 1000;
+    expect(shouldShowOnboarding({ id: 'new', created_at: minutesAgo(1) }, muchLater)).toBe(true);
+
+    markOnboarded('new');
+    expect(shouldShowOnboarding({ id: 'new', created_at: minutesAgo(1) }, muchLater)).toBe(false);
+    expect(isOnboardingRequired('new')).toBe(false);
+  });
+
+  it('never runs it for an established account', () => {
+    // The bug this started as: a returning user sent back through setup, whose
+    // answers replaced their real budgets with the starter ones.
+    expect(shouldShowOnboarding({ id: 'old', created_at: minutesAgo(60 * 24 * 90) }, NOW))
+      .toBe(false);
+    // And settles it, so the account's age is never consulted again.
+    expect(hasOnboarded('old')).toBe(true);
+  });
+
+  it('allows for the round trip through Google and back', () => {
+    // Signing in leaves the app for a browser and returns through a deep link,
+    // and a phone under memory pressure kills the app in between. Seconds is
+    // not a wide enough window for that.
+    expect(isFirstSignIn(minutesAgo(3), NOW)).toBe(true);
+    expect(isFirstSignIn(minutesAgo(45), NOW)).toBe(false);
+  });
+
+  it('does not read a new account as an old one when the phone clock is off', () => {
+    // created_at is the server's time; Date.now() is the phone's.
+    expect(isFirstSignIn(new Date(NOW + 4 * 60_000).toISOString(), NOW)).toBe(true);
+  });
+
+  it('is asked on both routes into a signed-in app, not just the transition', () => {
+    // A first session frequently arrives at launch with no transition to see,
+    // because the OAuth round trip restarted the app. Asking only on the
+    // transition let a brand-new user reach the dashboard having never been
+    // shown the intro.
+    const cold = AUTH_STATE.slice(
+      AUTH_STATE.indexOf('supabase.auth.getSession()'),
+      AUTH_STATE.indexOf('onAuthStateChange'),
+    );
+    expect(cold).toContain('shouldShowOnboarding(');
+    const live = AUTH_STATE.slice(AUTH_STATE.indexOf('onAuthStateChange'));
+    expect(live).toContain('shouldShowOnboarding(');
   });
 
   it('writes the record down when the intro finishes', () => {
     expect(APP_TSX).toContain('markOnboarded(');
-  });
-
-  it('counts everyone who was already signed in as past it', () => {
-    // Otherwise every existing user gets the intro exactly once more, on the
-    // first sign-in after this shipped — which is the bug, one last time.
-    const cold = AUTH_STATE.slice(AUTH_STATE.indexOf('supabase.auth.getSession()'));
-    expect(cold.slice(0, cold.indexOf('onAuthStateChange'))).toContain('markOnboarded(');
   });
 
   it('does not close the intro under someone when the token refreshes', () => {

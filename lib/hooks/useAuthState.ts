@@ -6,7 +6,7 @@ import { clearCachedAccessToken, setCachedAccessToken } from '../apiHelpers';
 import { clearFirstPaintCache } from '../firstPaintCache';
 import type { AppState, User } from '../../types';
 
-import { hasOnboarded, markOnboarded } from '../onboardingState';
+import { shouldShowOnboarding } from '../onboardingState';
 
 export type AuthStatus = 'loading' | 'unauthenticated' | 'onboarding' | 'authenticated';
 
@@ -150,12 +150,13 @@ export const useAuthState = ({
         }
 
         mergeUser(mapUser(session.user));
-        // A session that was already here at launch belongs to someone who is
-        // long past the intro. Writing it down now is what keeps the very next
-        // sign-out and back in from replaying it for every user who predates
-        // this flag.
-        markOnboarded(session.user.id);
-        setAuthState('authenticated');
+        // Asked here too, and not only on the signed-out-to-signed-in
+        // transition below. Signing in with Google leaves the app for a browser
+        // and comes back through a deep link, and a phone under memory pressure
+        // will have killed the app in between — so a brand-new user's first
+        // session frequently arrives HERE, with no transition to observe, and
+        // they reached the dashboard having never seen the intro.
+        setAuthState(shouldShowOnboarding(session.user) ? 'onboarding' : 'authenticated');
         maybeLoadUserData(session.user.id, { forceReload: true });
       } else {
         setAuthState('unauthenticated');
@@ -186,9 +187,11 @@ export const useAuthState = ({
           // half way through setup closed it under them, with nothing recorded
           // and no way back to it.
           if (prev === 'onboarding') return 'onboarding';
-          return prev === 'unauthenticated' && !hasOnboarded(session.user.id)
-            ? 'onboarding'
-            : 'authenticated';
+          // Whether this person is new is a fact about the account, not about
+          // which event delivered the session — see shouldShowOnboarding. The
+          // old test was the transition alone, which is also what a returning
+          // user's sign-in looks like, so they were sent through setup again.
+          return shouldShowOnboarding(session.user) ? 'onboarding' : 'authenticated';
         });
         maybeLoadUserData(session.user.id, {
           forceReload: event === 'SIGNED_IN',
