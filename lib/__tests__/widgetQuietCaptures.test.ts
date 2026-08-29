@@ -17,8 +17,11 @@ import { buildWidgetSnapshot, mergeWidgetDeltas } from '../widgetSnapshot';
  * next opened, because a delta is only ever discarded by the next snapshot.
  *
  * The fix is to hold the widget to the same verdict as the notification: the
- * three quiet cases each mean "no row is coming", and a delta is precisely a
- * bet that one is. This file pins that they cannot drift apart again.
+ * quiet cases each mean "no row is coming", and a delta is precisely a bet
+ * that one is. This file pins that they cannot drift apart again.
+ *
+ * A payday deposit later joined them for the same reason — see
+ * quietIncomeAlerts.test.ts, which owns that case.
  *
  * What cannot be tested here is the phone. Nothing in CI draws the widget.
  */
@@ -36,13 +39,14 @@ function handler(): string {
 }
 
 describe('the quiet verdict', () => {
-  it('is one flag, covering all three reasons for silence', () => {
+  it('is one flag, covering every reason for silence', () => {
     const match = /boolean captureQuietly\s*=\s*([^;]+);/.exec(handler());
     expect(match, 'captureQuietly is not defined in handleNotificationPosted').not.toBeNull();
     const definition = match![1];
     expect(definition).toContain('ignoredByUser');
     expect(definition).toContain('knownRecurring');
     expect(definition).toContain('notAPurchase');
+    expect(definition).toContain('moneyComingIn');
   });
 
   it('is what decides whether a capture announces itself', () => {

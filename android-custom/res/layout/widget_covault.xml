@@ -29,6 +29,28 @@
         android:contentDescription="@string/widget_description" />
 
     <!--
+      The tap target for the "left to spend" figure at the top of the
+      right-hand column — the number the widget exists to answer, and until now
+      the largest thing on it that did nothing when tapped. It opens Covault
+      where it normally opens.
+
+      Declared BEFORE the review pill below, so that where the two boxes graze
+      each other — the pill's target is a generous 44dp tall and the figure
+      starts a few dp under it — the pill wins. It is the smaller, more
+      deliberate target of the two, and the figure has its own height to spare.
+
+      Positioned at runtime like the legend rows, and GONE until it has been:
+      the figure is only drawn on a widget wide enough for the column, and not
+      at all while a category is open on it.
+    -->
+    <FrameLayout
+        android:id="@+id/widget_remaining_hit"
+        android:layout_width="1dp"
+        android:layout_height="1dp"
+        android:layout_gravity="top|start"
+        android:visibility="gone" />
+
+    <!--
       The tap target for the "N to review" pill, which is painted into the
       bitmap and so cannot be clicked on its own. Sized and placed to cover
       where the pill is drawn: top-right, inset by the renderer's padding.

@@ -104,6 +104,7 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | "I have two rows for one tank of gas" | `lib/fuelHoldReconcile.ts` — pairs a settled charge with the hold it replaces |
 | "I got a duplicate" | `lib/notificationProcessor.ts` — dedup is steps 1, 2, 5 and the post-insert race recovery |
 | "recurring charges are duplicating / I keep deleting them" | `lib/projectedTransactions.ts` — recurring is display-only. Nothing writes recurring rows. See Invariants |
+| "a deposit / my pay showed up as spending" | `INCOME_PHRASES` in `lib/deviceTransactionParser.ts`, mirrored into `android-custom/NotificationListener.java` — the native listener has to know income on sight, or it announces the deposit and adds it to the widget hours before the parser rejects it |
 | "a subscription got captured / notified about anyway" | `lib/recurringSchedule.ts` — matches the capture against the recurring *schedule*, not just nearby rows; applied at step 5b. The notification is suppressed in `NotificationListener.java` (`RECURRING_CHARGES_KEY`) and withdrawn by `useNotificationListener.ts` when it slipped through |
 | "the budget pills keep rearranging" | `lib/budgetOrder.ts` — the `budgets` table has no sort column, so the order is fixed in code. See Invariants |
 | "my budget limits / hidden categories are back to the defaults" | `loadUserBudgets` in `lib/hooks/useDataLoading.ts` → `lib/budgetFallback.ts`. Check the Supabase edge logs for a non-200 on `/rest/v1/budgets` before assuming the data is gone — it usually isn't |
@@ -222,15 +223,20 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   certain one. `budgetsSurviveFailedRead.test.ts` pins all of it.
 
 - **A quiet capture writes no widget delta.** The listener stays silent about
-  three kinds of alert — a price alert or promo, one matching a user skip rule,
-  and a charge already on the books as recurring — and each of them means the
+  four kinds of alert — a price alert or promo, one matching a user skip rule,
+  a charge already on the books as recurring, and money coming in (a deposit,
+  an e-Transfer received, payroll) — and each of them means the
   JS pipeline will produce no row (the recurring one is already counted by the
-  projection). The optimistic widget delta used to be recorded anyway, so a
+  projection; income is never recorded at all). The optimistic widget delta
+  used to be recorded anyway, so a
   "BTC is trading at $112,013.15" alert put six figures of spending and a
-  phantom review item on the home screen, where they stayed until the app was
-  next opened: only a fresh snapshot discards a delta. The delta is gated on
-  the same `captureQuietly` flag as the notification; `widgetQuietCaptures.test.ts`
-  holds the two together.
+  phantom review item on the home screen, and a payday deposit landed as a
+  purchase that ate the month's remaining balance — where they stayed until the
+  app was next opened: only a fresh snapshot discards a delta. The delta is
+  gated on the same `captureQuietly` flag as the notification;
+  `widgetQuietCaptures.test.ts` and `quietIncomeAlerts.test.ts` hold them
+  together, the latter also pinning the income phrases to the parser's own
+  list.
 
 - **The budget order comes from `lib/budgetOrder.ts`, not from the database.**
   `budgets` has no primary key and no sort column, and `loadUserBudgets` reads

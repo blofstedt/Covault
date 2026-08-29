@@ -675,6 +675,8 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
             // them on a mid-morph frame would put them where an arc was for a
             // fortieth of a second, which is a way to open the wrong category.
             if (f.settled) {
+                // The month's remaining balance opens the app.
+                placeRemainingHit(context, views, spec);
                 // Category rows open Covault at that budget, expanded.
                 placeLegendHits(context, views, spec);
                 // The donut's bands open a category on the widget itself, and
@@ -927,8 +929,33 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
         }
     }
 
+    /**
+     * Lay a tap target on the "left to spend" figure, which opens the app.
+     *
+     * Only drawn on a widget wide enough for the right-hand column, and not at
+     * all while a category is open on it — the renderer says which by handing
+     * back null, and there is then simply nothing to place.
+     */
+    private static void placeRemainingHit(Context context, RemoteViews views, float[] spec) {
+        views.setViewVisibility(R.id.widget_remaining_hit, android.view.View.GONE);
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) return;
+
+        float pxPerDp = spec[2];
+        if (pxPerDp <= 0) return;
+
+        WidgetRenderer.HitRect hit = WidgetRenderer.lastRemainingHit();
+        if (hit == null) return;
+
+        place(views, R.id.widget_remaining_hit, hit, pxPerDp);
+        // No category of its own — the same plain launch the month's total and
+        // the "+N more" row use, so the app opens where it normally does.
+        views.setOnClickPendingIntent(R.id.widget_remaining_hit, openIntent(context));
+        views.setContentDescription(R.id.widget_remaining_hit, "Open Covault");
+    }
+
     /** Every tap target off, for a frame that is still moving. */
     private static void hideAllHits(RemoteViews views) {
+        views.setViewVisibility(R.id.widget_remaining_hit, android.view.View.GONE);
         for (int id : LEGEND_HIT_IDS) views.setViewVisibility(id, android.view.View.GONE);
         for (int id : ARC_HIT_IDS) views.setViewVisibility(id, android.view.View.GONE);
         views.setViewVisibility(R.id.widget_centre_hit, android.view.View.GONE);

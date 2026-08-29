@@ -19,7 +19,8 @@ export type CaptureOutcomeCode =
   | 'cancel_ignored'
   | 'user_ignored'
   | 'known_recurring'
-  | 'not_a_purchase';
+  | 'not_a_purchase'
+  | 'income';
 
 const OUTCOME_CODES: readonly CaptureOutcomeCode[] = [
   'hidden',
@@ -32,6 +33,7 @@ const OUTCOME_CODES: readonly CaptureOutcomeCode[] = [
   'user_ignored',
   'known_recurring',
   'not_a_purchase',
+  'income',
 ];
 
 export interface CaptureOutcome {
@@ -93,7 +95,9 @@ export function parseCaptureOutcomes(raw: unknown): CaptureOutcome[] {
  * `known_recurring` is Covault deliberately staying quiet about a subscription
  * already on the books, which leaves the bank's own alert as the only notice
  * of it — on purpose, not by failure. `not_a_purchase` is the same shape of
- * decision about a price alert or a promo. The rest are worth surfacing.
+ * decision about a price alert or a promo, and `income` about a deposit —
+ * money coming in, which this app does not record at all. The rest are worth
+ * surfacing.
  */
 export function isCaptureProblem(outcome: CaptureOutcomeCode): boolean {
   return (
@@ -102,7 +106,8 @@ export function isCaptureProblem(outcome: CaptureOutcomeCode): boolean {
     outcome !== 'no_amount' &&
     outcome !== 'user_ignored' &&
     outcome !== 'known_recurring' &&
-    outcome !== 'not_a_purchase'
+    outcome !== 'not_a_purchase' &&
+    outcome !== 'income'
   );
 }
 
@@ -129,6 +134,8 @@ export function describeCaptureOutcome(outcome: CaptureOutcomeCode): string {
       return 'Kept — already on your books as a recurring charge';
     case 'not_a_purchase':
       return "Kept — this reads as a price alert or an ad, not a purchase";
+    case 'income':
+      return 'Kept — this reads as money coming in, and Covault tracks spending';
   }
 }
 

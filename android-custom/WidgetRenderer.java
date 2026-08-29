@@ -143,6 +143,7 @@ final class WidgetRenderer {
         LAST_LEGEND_HITS.clear();
         LAST_ARC_HITS.clear();
         LAST_CENTRE_HIT = null;
+        LAST_REMAINING_HIT = null;
 
         Bitmap bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
@@ -577,6 +578,16 @@ final class WidgetRenderer {
     private static final List<HitRect> LAST_ARC_HITS = new ArrayList<>();
     private static HitRect LAST_CENTRE_HIT = null;
 
+    /**
+     * The "left to spend" figure at the top of the right-hand column, or null
+     * when it was not drawn — a widget too narrow for the column, or one opened
+     * on a category, where the column is that category's purchases instead.
+     *
+     * Nameless like the month's total, and for the same reason: it stands for
+     * no category, so the provider opens the app rather than a budget.
+     */
+    private static HitRect LAST_REMAINING_HIT = null;
+
     static List<HitRect> lastArcHits() {
         return new ArrayList<>(LAST_ARC_HITS);
     }
@@ -588,6 +599,14 @@ final class WidgetRenderer {
      */
     static HitRect lastCentreHit() {
         return LAST_CENTRE_HIT;
+    }
+
+    /**
+     * The "left to spend" figure's target from the most recent render, or null
+     * if the column that carries it was not drawn.
+     */
+    static HitRect lastRemainingHit() {
+        return LAST_REMAINING_HIT;
     }
 
     /** The category the widget is currently opened on, or "" for none. */
@@ -735,10 +754,31 @@ final class WidgetRenderer {
             caption.setAlpha(alpha255(alpha));
             caption.setTextSize(11.5f * dp);
 
+            String captionText = remaining < 0 ? "over budget" : "left to spend";
             canvas.drawText(value, left, top + size, remainingPaint);
-            canvas.drawText(remaining < 0 ? "over budget" : "left to spend",
-                left, top + size + (13f * dp), caption);
+            canvas.drawText(captionText, left, top + size + (13f * dp), caption);
             headH = size + (13f * dp) + (12f * dp);
+
+            // Where the provider lays the target that opens the app on this
+            // figure. It is the number the user actually reads — "can I spend
+            // this" — and it was the largest thing on the widget that did
+            // nothing when tapped.
+            //
+            // Sized to the figure and its caption rather than to the column,
+            // for the same reason the month's total in the ring is: a target
+            // as wide as the column would reach over the category rows
+            // beneath it and start swallowing taps meant for a budget. The
+            // width comes from the text that was actually measured and drawn,
+            // at the size it ended up after any shrink, so the box cannot
+            // drift from the words.
+            if (alpha >= 1f) {
+                float blockWidth = Math.min(width, Math.max(
+                    remainingPaint.measureText(value), caption.measureText(captionText)));
+                if (blockWidth > 0) {
+                    LAST_REMAINING_HIT = new HitRect("", left, top,
+                        left + blockWidth, top + size + (16f * dp));
+                }
+            }
         }
 
         float rowH = 27f * dp;

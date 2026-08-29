@@ -45,7 +45,20 @@ const SETTLEMENT_PHRASES = [
   'posted', 'settled', 'cleared', 'processed', 'completed',
 ];
 
-/** Phrases that indicate incoming money (income, not expense). */
+/**
+ * Phrases that indicate incoming money (income, not expense).
+ *
+ * Mirrored into INCOME_PHRASES in
+ * android-custom/NotificationListener.java, which consults the same list to
+ * decide whether to ANNOUNCE a capture and whether to nudge the home-screen
+ * widget. Both of those happen the instant the alert arrives, with the app
+ * closed, hours before anything here runs — so without the copy a payday
+ * deposit announced itself as a captured purchase and was added to the
+ * widget's spending, where it stayed until the app was next opened. The two
+ * are kept identical by quietIncomeAlerts.test.ts; anything added here must be
+ * added there.
+ */
+// INCOME_PHRASES_BEGIN
 const INCOME_PHRASES = [
   'e-transfer received', 'etransfer received', 'transfer received',
   'you got an interac', 'you got a interac', 'you received',
@@ -53,6 +66,7 @@ const INCOME_PHRASES = [
   'deposited the funds', 'direct deposit',
   'payroll', 'salary',
 ];
+// INCOME_PHRASES_END
 
 /**
  * Non-financial notification patterns that should be rejected before parsing.

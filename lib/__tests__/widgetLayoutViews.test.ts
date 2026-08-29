@@ -54,7 +54,7 @@ describe('the widget layout', () => {
   it('keeps the ids the provider addresses', () => {
     // setViewVisibility / setOnClickPendingIntent against a missing id is a
     // silent no-op, so the pill would simply stop being tappable.
-    for (const id of ['widget_root', 'widget_canvas', 'widget_review_hit']) {
+    for (const id of ['widget_root', 'widget_canvas', 'widget_review_hit', 'widget_remaining_hit']) {
       expect(source).toContain(`@+id/${id}`);
     }
   });

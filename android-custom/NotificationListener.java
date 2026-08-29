@@ -558,6 +558,56 @@ public class NotificationListener extends NotificationListenerService {
         return false;
     }
 
+    /**
+     * Wording that means money came IN, mirrored from the web parser.
+     *
+     * Covault records expenses only. The parser has always thrown a deposit,
+     * an e-Transfer received or a payroll credit away on sight — but it runs
+     * in the WebView, which may not run for hours, and by then this service
+     * has already announced "$2,480.00 captured" and told the widget that much
+     * more of the month had been spent. The widget is the worse half: a delta
+     * is only ever discarded by the next snapshot, so a payday deposit sat on
+     * the home screen as spending, with the remaining figure that much lower,
+     * until the app was next opened.
+     *
+     * These are the exact phrases lib/deviceTransactionParser.ts rejects on
+     * (INCOME_PHRASES). Copying them here adds no new opinion about what
+     * counts as an expense — it applies the app's existing one at the moment
+     * the alert lands rather than hours later. Because the lists are
+     * identical, anything silenced here is something the pipeline was always
+     * going to reject: no purchase can be lost to it.
+     *
+     * A match makes the capture QUIET, never dropped — still queued, still
+     * broadcast, still classified, still in the processed list.
+     *
+     * Kept in step by quietIncomeAlerts.test.ts, which parses both lists and
+     * fails the build if they drift.
+     */
+    // INCOME_PHRASES_BEGIN
+    private static final String[] INCOME_PHRASES = {
+        "e-transfer received", "etransfer received", "transfer received",
+        "you got an interac", "you got a interac", "you received",
+        "sent you", "money received", "deposit received",
+        "deposited the funds", "direct deposit",
+        "payroll", "salary",
+    };
+    // INCOME_PHRASES_END
+
+    /**
+     * True when the alert reads as money coming in rather than going out.
+     *
+     * Matched the same way the parser matches it: a plain lower-cased
+     * substring test over the whole notification text.
+     */
+    static boolean looksLikeIncome(String text) {
+        if (text == null || text.isEmpty()) return false;
+        String lower = text.toLowerCase(java.util.Locale.US);
+        for (String phrase : INCOME_PHRASES) {
+            if (lower.contains(phrase)) return true;
+        }
+        return false;
+    }
+
     // Keywords that indicate a transaction notification (not just a promo)
     private static final String[] TRANSACTION_KEYWORDS = {
         "purchase", "transaction", "charged", "spent", "paid", "payment",
@@ -703,12 +753,24 @@ public class NotificationListener extends NotificationListenerService {
             Log.i(TAG, "Reads as a price alert or promo rather than a purchase; capturing quietly: " + packageName);
         }
 
-        // The three verdicts above differ in their reason and agree in their
+        // Money coming in, not going out — a payday deposit, an e-Transfer
+        // received, a payroll credit. Covault records expenses only, so the web
+        // parser has always rejected these; the same rule applied here, at the
+        // moment the alert lands, is what stops the phone announcing a deposit
+        // as a captured purchase and the widget counting it as spending for the
+        // rest of the day. See INCOME_PHRASES.
+        boolean moneyComingIn = !ignoredByUser && !knownRecurring && !notAPurchase
+            && looksLikeIncome(fullText);
+        if (moneyComingIn) {
+            Log.i(TAG, "Reads as money coming in rather than a purchase; capturing quietly: " + packageName);
+        }
+
+        // The four verdicts above differ in their reason and agree in their
         // consequence: Covault says nothing about this alert, because nothing
         // the user has to act on came of it. Held in one flag because the
         // notification is not the only thing that must respect it — see the
         // widget block at the end of this method.
-        boolean captureQuietly = ignoredByUser || knownRecurring || notAPurchase;
+        boolean captureQuietly = ignoredByUser || knownRecurring || notAPurchase || moneyComingIn;
 
         // Broadcast to the local TypeScript pipeline which will classify
         // as transaction or non-transaction — non-transactions will appear in
@@ -726,7 +788,7 @@ public class NotificationListener extends NotificationListenerService {
 
         maybeHideBankNotification(
             sbn, securedKey, fromMonitored, amount, secured || alreadySecured, result,
-            ignoredByUser, knownRecurring, notAPurchase);
+            ignoredByUser, knownRecurring, notAPurchase, moneyComingIn);
 
         // Home-screen widget: nudge the donut for a purchase captured while the
         // app is closed, so it doesn't sit stale until the next app launch.
@@ -738,15 +800,17 @@ public class NotificationListener extends NotificationListenerService {
         // misses a purchase is not.
         //
         // Nothing quiet is nudged. A delta is a guess that the ledger is about
-        // to gain this amount, and each of the three quiet verdicts is a
+        // to gain this amount, and each of the four quiet verdicts is a
         // statement that it is not: a price alert or promo becomes no row at
-        // all, a skip rule the web pipeline honours becomes no row at all, and
-        // a known recurring charge is already counted by the projection the
-        // snapshot was built from. The widget was believing the amount anyway,
-        // which is how "BTC is trading at $112,013.15" arrived on the home
-        // screen as six figures of spending plus an item waiting in Review —
-        // and stayed there, because a delta is only ever discarded by the next
-        // snapshot, i.e. by opening the app.
+        // all, a skip rule the web pipeline honours becomes no row at all, a
+        // known recurring charge is already counted by the projection the
+        // snapshot was built from, and a deposit is income, which this app does
+        // not record at all. The widget was believing the amount anyway, which
+        // is how "BTC is trading at $112,013.15" arrived on the home screen as
+        // six figures of spending plus an item waiting in Review, and how a
+        // payday deposit arrived as a purchase that ate the month's remaining
+        // balance — and both stayed there, because a delta is only ever
+        // discarded by the next snapshot, i.e. by opening the app.
         //
         // Withholding one costs nothing the app cannot recover: the widget is
         // then merely as stale as it was before this store existed, and the
@@ -827,7 +891,8 @@ public class NotificationListener extends NotificationListenerService {
         CaptureResult result,
         boolean ignoredByUser,
         boolean knownRecurring,
-        boolean notAPurchase
+        boolean notAPurchase,
+        boolean moneyComingIn
     ) {
         if (!fromMonitored) return;           // (3)
         String app = sbn.getPackageName();
@@ -856,6 +921,15 @@ public class NotificationListener extends NotificationListenerService {
         // something it does not believe is a purchase.
         if (notAPurchase) {
             recordOutcome(securedKey, app, amount, OUTCOME_NOT_A_PURCHASE);
+            return;
+        }
+        // And again: this one reads as money arriving rather than leaving.
+        // Covault posted nothing, because it records expenses only — so the
+        // bank's own alert is the only notice the user will get that they have
+        // been paid, and removing it would be taking away the one thing that
+        // said so.
+        if (moneyComingIn) {
+            recordOutcome(securedKey, app, amount, OUTCOME_INCOME);
             return;
         }
         if (!replaced) {                      // (2)
@@ -1272,6 +1346,14 @@ public class NotificationListener extends NotificationListenerService {
      * replaced is one we must not remove.
      */
     static final String OUTCOME_NOT_A_PURCHASE = "not_a_purchase";
+
+    /**
+     * The alert read as money coming in — a deposit, an e-Transfer received, a
+     * payroll credit. Covault records expenses only, so it posted nothing, and
+     * the bank's own alert is the only notice the user has that they were
+     * paid. An alert we have not replaced is one we must not remove.
+     */
+    static final String OUTCOME_INCOME = "income";
 
     private static final long DISMISS_VERIFY_DELAY_MS = 700L;
     private final android.os.Handler dismissHandler =
