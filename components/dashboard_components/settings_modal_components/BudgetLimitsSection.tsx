@@ -3,6 +3,12 @@ import { BudgetCategory } from '../../../types';
 import SettingsCard from '../../ui/SettingsCard';
 import SectionHeader from '../../ui/SectionHeader';
 import { formatCurrency } from '../../../lib/formatCurrency';
+import {
+  allocationTotal,
+  allocationTotalWith,
+  isAllowedLimitChange,
+  remainingToAllocate,
+} from '../../../lib/budgetAllocation';
 
 interface BudgetLimitsSectionProps {
   budgets: BudgetCategory[];
@@ -22,6 +28,13 @@ const BudgetLimitsSection: React.FC<BudgetLimitsSectionProps> = ({
   const [editingBudgets, setEditingBudgets] = useState<Record<string, string>>({});
   const [overAllocatedMessage, setOverAllocatedMessage] = useState<string | null>(null);
 
+  // What is planned, and what is left — shown at all times rather than only
+  // after a save has been refused. See lib/budgetAllocation.ts for why a save
+  // is now refused far less often than it was.
+  const total = allocationTotal(budgets, hiddenCategories);
+  const remaining = remainingToAllocate(monthlyIncome ?? 0, total);
+  const hasIncome = (monthlyIncome ?? 0) > 0;
+
   const handleInputChange = (budgetId: string, value: string) => {
     setOverAllocatedMessage(null);
     setEditingBudgets(prev => ({ ...prev, [budgetId]: value }));
@@ -32,25 +45,22 @@ const BudgetLimitsSection: React.FC<BudgetLimitsSectionProps> = ({
     if (newValue !== undefined && newValue !== '') {
       const newLimit = parseFloat(newValue);
       if (!isNaN(newLimit) && newLimit > 0) {
-        // Check if total allocations would exceed monthly income
-        if (monthlyIncome !== undefined && monthlyIncome > 0) {
-          const totalOtherBudgets = budgets
-            .filter(b => b.id !== budget.id && !hiddenCategories.includes(b.id))
-            .reduce((sum, b) => sum + b.totalLimit, 0);
-          const newTotal = totalOtherBudgets + newLimit;
+        const nextTotal = allocationTotalWith(budgets, hiddenCategories, budget.id, newLimit);
 
-          if (newTotal > monthlyIncome) {
-            setOverAllocatedMessage(
-              `Budget total (${formatCurrency(newTotal)}) exceeds your income (${formatCurrency(monthlyIncome)}). To allocate more, increase your monthly income.`
-            );
-            // Revert input to the previous value
-            setEditingBudgets(prev => {
-              const updated = { ...prev };
-              delete updated[budget.id];
-              return updated;
-            });
-            return;
-          }
+        // Only a change that pushes FURTHER past the income is refused. One
+        // that reduces an already-over total is the user digging themselves
+        // out, and refusing it left them with no way to.
+        if (!isAllowedLimitChange({ previousTotal: total, nextTotal, income: monthlyIncome ?? 0 })) {
+          setOverAllocatedMessage(
+            `That would plan ${formatCurrency(nextTotal)} against an income of ${formatCurrency(monthlyIncome ?? 0)}. Lower another category, or raise your monthly income.`
+          );
+          // Revert input to the previous value
+          setEditingBudgets(prev => {
+            const updated = { ...prev };
+            delete updated[budget.id];
+            return updated;
+          });
+          return;
         }
 
         setOverAllocatedMessage(null);
@@ -77,6 +87,23 @@ const BudgetLimitsSection: React.FC<BudgetLimitsSectionProps> = ({
         title="Budget Limits"
         subtitle="Set your monthly budget limit for each category. Tap the eye icon to hide categories you don't use."
       />
+
+      {hasIncome && (
+        <div className="flex items-baseline justify-between px-1">
+          <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 tracking-wide">
+            {remaining < 0 ? 'Over your income by' : 'Left to allocate'}
+          </span>
+          <span
+            className={`text-sm font-black tracking-tight ${
+              remaining < 0
+                ? 'text-amber-600 dark:text-amber-400'
+                : 'text-slate-600 dark:text-slate-200'
+            }`}
+          >
+            {formatCurrency(Math.abs(remaining))}
+          </span>
+        </div>
+      )}
 
       {overAllocatedMessage && (
         <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 rounded-xl">

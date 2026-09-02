@@ -583,6 +583,57 @@ public class CovaultNotificationPlugin extends Plugin {
     }
 
     /**
+     * Send the user to ANOTHER app's notification settings — their bank's.
+     *
+     * The one repair Covault can offer for a bank whose own notifications are
+     * switched off. It cannot detect that state (Android exposes no per-package
+     * read to an ordinary app, see lib/bankHeartbeat.ts), so the app infers it
+     * from having heard nothing, and this is the button on that guess.
+     *
+     * A separate method rather than a parameter on openNotificationSettings
+     * above, deliberately: an APK built before this existed would ignore an
+     * unknown parameter and open COVAULT's notification page instead, which
+     * looks like the app misunderstood. A missing method throws, and the JS
+     * wrapper falls back to telling the user where to go by hand.
+     *
+     * Both intents address the Settings app, which can see every package, so
+     * this needs no package-visibility declaration of its own.
+     */
+    @PluginMethod
+    public void openAppNotificationSettings(PluginCall call) {
+        String packageName = call.getString("packageName");
+        if (packageName == null || packageName.trim().isEmpty()) {
+            call.reject("packageName is required");
+            return;
+        }
+        try {
+            Intent intent;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+                intent.putExtra(Settings.EXTRA_APP_PACKAGE, packageName);
+            } else {
+                intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                intent.setData(Uri.fromParts("package", packageName, null));
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+        } catch (Exception e) {
+            // Some launchers and skins refuse the per-app page. Fall back to
+            // the App info screen, which every build of Android has.
+            Log.w(TAG, "Could not open notification settings for " + packageName, e);
+            try {
+                Intent info = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                info.setData(Uri.fromParts("package", packageName, null));
+                info.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(info);
+            } catch (Exception inner) {
+                Log.w(TAG, "Could not open app info for " + packageName, inner);
+            }
+        }
+        call.resolve();
+    }
+
+    /**
      * Take the destination of a tapped notification, if there is one, and
      * clear it. MainActivity parks it; the web layer drains it on launch and
      * on resume.

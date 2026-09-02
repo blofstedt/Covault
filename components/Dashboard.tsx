@@ -72,6 +72,15 @@ interface Props {
   onToast?: (toast: Toast) => void;
 }
 
+/**
+ * The dashboard's "not capturing yet" line, dismissed for good.
+ *
+ * Device-local and not per-user: it is a nudge about this phone's Android
+ * permissions, and re-raising it for the second person on a shared handset
+ * would be nagging about something already done.
+ */
+const CAPTURE_NUDGE_KEY = 'covault_capture_nudge_dismissed_v1';
+
 const Dashboard: React.FC<Props> = ({
   state,
   setState,
@@ -92,6 +101,19 @@ const Dashboard: React.FC<Props> = ({
 }) => {
   const [showParsing, setShowParsing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  // Set when the settings modal is opened with one section in mind, so the user
+  // lands on it rather than at the top of a long modal.
+  const [settingsTarget, setSettingsTarget] = useState<string | undefined>(undefined);
+  // The "purchases aren't being captured yet" line, put away for good.
+  const [captureNudgeDismissed, setCaptureNudgeDismissed] = useState(() => {
+    try {
+      return localStorage.getItem(CAPTURE_NUDGE_KEY) === '1';
+    } catch {
+      // Storage blocked: show it. A line the user can dismiss is a smaller
+      // cost than a first user never finding capture at all.
+      return false;
+    }
+  });
 
   // The reading model, kept on this phone rather than fetched mid-capture.
   // Held here rather than in the settings modal so the one download it needs
@@ -119,6 +141,29 @@ const Dashboard: React.FC<Props> = ({
     setShowParsing(false);
     setReviewHighlightNonce(0);
   }, []);
+
+  /**
+   * The home button, from either screen.
+   *
+   * It used to be `closeParsing` alone, which on the home screen sets two
+   * pieces of state to the values they already hold — so React bailed out of
+   * both and the button did nothing at all. Pressed with a budget open, with a
+   * search half typed, or with a sheet up, it was dead.
+   *
+   * Home now means what it looks like it means: put the screen back to how it
+   * looks when you arrive. The vial collapses on the same 320ms clock a tap on
+   * its own header uses, so the gesture reads identically however it was
+   * started.
+   */
+  const goHome = useCallback(() => {
+    closeParsing();
+    setExpandedBudgets(new Set());
+    setSearchQuery('');
+    setIsSearchOpen(false);
+    setShowSettings(false);
+    setSelectedTx(null);
+    setShowTransactionForm(false);
+  }, [closeParsing]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -496,7 +541,7 @@ const Dashboard: React.FC<Props> = ({
             }))
           }
           onBack={closeParsing}
-          onGoHome={closeParsing}
+          onGoHome={goHome}
           onAddTransaction={() => setShowTransactionForm(true)}
           allTransactions={normalizedTransactions}
           onTransactionTap={setSelectedTx}
@@ -563,6 +608,44 @@ const Dashboard: React.FC<Props> = ({
           onOpenSettings={() => setShowSettings(true)}
         />
 
+        {/* Capture is the reason to use this app, and it starts off. A user
+            who skipped it in the intro, or who was already here before the
+            intro asked, had nothing anywhere telling them it existed — the
+            setup lives inside a settings modal nobody had a reason to open.
+            One line, dismissable for good, gone the moment capture is on. */}
+        {!state.settings.notificationsEnabled && !captureNudgeDismissed && !searchQuery.trim() && (
+          <div className="mx-4 lg:mx-6 mb-2 flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/40">
+            <button
+              type="button"
+              onClick={() => {
+                setSettingsTarget('settings-notifications-container');
+                setShowSettings(true);
+              }}
+              className="flex-1 text-left text-[11px] font-bold text-emerald-700 dark:text-emerald-300 tracking-wide"
+            >
+              Purchases aren't being captured yet — set it up
+            </button>
+            <button
+              type="button"
+              aria-label="Dismiss"
+              onClick={() => {
+                setCaptureNudgeDismissed(true);
+                try {
+                  localStorage.setItem(CAPTURE_NUDGE_KEY, '1');
+                } catch {
+                  /* Dismissed for this session at least. */
+                }
+              }}
+              className="shrink-0 p-1 text-emerald-600/50 dark:text-emerald-400/50 active:scale-[0.97] transition-all duration-200"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+        )}
+
         {searchQuery.trim() ? (
           <SearchResults
             searchQuery={searchQuery}
@@ -622,7 +705,7 @@ const Dashboard: React.FC<Props> = ({
         />
 
         <DashboardBottomBar
-          onGoHome={closeParsing}
+          onGoHome={goHome}
           onAddTransaction={() => setShowTransactionForm(true)}
           onOpenParsing={() => setShowParsing(true)}
           activeView="home"
@@ -642,7 +725,11 @@ const Dashboard: React.FC<Props> = ({
           budgets={state.budgets}
           transactions={normalizedTransactions}
           onChangePartnerLinkEmail={setPartnerLinkEmail}
-          onClose={() => setShowSettings(false)}
+          onClose={() => {
+            setShowSettings(false);
+            setSettingsTarget(undefined);
+          }}
+          scrollToSectionId={settingsTarget}
           onUpdateSettings={handleUpdateSettings}
           onUpdateUserIncome={(income) => saveUserIncome(income)}
           onConnectPartner={() => onLinkPartner(partnerLinkEmail)}

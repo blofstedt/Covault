@@ -14,8 +14,15 @@ import {
   setHideBankNotifications,
   canPostCaptureNotifications,
   openNotificationSettings,
+  openAppNotificationSettings,
   getCaptureDiagnostics,
 } from '../../../lib/covaultNotification';
+import {
+  BANK_SILENCE_DAYS,
+  captureOnSince,
+  readBankLastSeen,
+  silentBanks,
+} from '../../../lib/bankHeartbeat';
 import { requestPostNotifications } from '../../../lib/appNotifications';
 import {
   captureOutcomeAdvice,
@@ -301,6 +308,26 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
   const autoAddActive =
     enabled && permissionGranted && selectedApps.size > 0 && installedBankApps.length > 0;
 
+  // ── Banks we have never heard from ──
+  //
+  // Read once per render of an open settings screen; both reads are a single
+  // localStorage entry, so there is nothing to memoise and nothing that can go
+  // stale between the screen opening and the user acting on it.
+  //
+  // This is an inference, not a reading — Android will not tell an app whether
+  // another app's notifications are switched off — so the copy below says
+  // "most likely" and the app never acts on it by itself.
+  const silentPackages = autoAddActive
+    ? silentBanks({
+        packages: Array.from(selectedApps),
+        lastSeen: readBankLastSeen(),
+        onSince: captureOnSince(),
+      })
+    : [];
+  const silentApps = installedBankApps.filter((app) =>
+    silentPackages.includes(app.packageName),
+  );
+
   // Why alerts aren't being hidden, or null when nothing is wrong.
   //
   // The live permission check wins over the recorded history: it is the state
@@ -530,6 +557,39 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
             </div>
           </div>
 
+          {silentApps.length > 0 && (
+            <div
+              data-testid="silent-bank-warning"
+              className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-2xl space-y-2"
+            >
+              <p className="text-[11px] font-bold text-amber-700 dark:text-amber-300 leading-relaxed">
+                {silentApps.length === 1
+                  ? `Nothing has arrived from ${silentApps[0].name} since you turned capture on.`
+                  : `Nothing has arrived from ${silentApps.length} of your banks since you turned capture on.`}
+              </p>
+              <p className="text-[10px] font-medium text-amber-600/80 dark:text-amber-400/80 leading-relaxed">
+                Covault can't see another app's settings, so this is a guess — but the
+                usual reason is that the bank's own notifications are switched off in
+                Android. If you simply haven't spent anything there in{' '}
+                {BANK_SILENCE_DAYS} days, ignore this.
+              </p>
+              <div className="flex flex-wrap gap-2 pt-0.5">
+                {silentApps.map((app) => (
+                  <button
+                    key={app.packageName}
+                    type="button"
+                    onClick={() => {
+                      void openAppNotificationSettings(app.packageName, plugin);
+                    }}
+                    className="px-3 py-2 rounded-xl bg-amber-500 text-white text-[10px] font-bold tracking-wide active:scale-[0.97] transition-all duration-200"
+                  >
+                    Open {app.name}'s notifications
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {installedBankApps.length === 0 ? (
             loading ? (
               <p className="text-[11px] text-slate-400 text-center py-3">
@@ -544,6 +604,7 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
             <div className="grid grid-cols-2 gap-2">
               {installedBankApps.map((app) => {
                 const selected = selectedApps.has(app.packageName);
+                const silent = silentPackages.includes(app.packageName);
                 return (
                   <button
                     key={app.packageName}
@@ -584,6 +645,13 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
                     >
                       {app.name}
                     </span>
+                    {silent && (
+                      <span
+                        aria-label="Nothing heard from this app"
+                        title="Nothing heard from this app"
+                        className="ml-auto w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"
+                      />
+                    )}
                   </button>
                 );
               })}

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core'; // Added safety check
 import { App as CapApp } from '@capacitor/app';
 import Auth from './components/Auth';
@@ -19,6 +19,7 @@ import { useAppTheme } from './lib/hooks/useAppTheme';
 import { useAppUpdate } from './lib/hooks/useAppUpdate';
 import { useUserData } from './lib/hooks/useUserData';
 import { markOnboarded } from './lib/onboardingState';
+import { noteCaptureEnabled, noteCaptureDisabled } from './lib/bankHeartbeat';
 import { useFirstPaintCache } from './lib/hooks/useFirstPaintCache';
 import { preloadAIModel } from './lib/aiExtractor';
 import { setHapticsEnabled } from './lib/haptics';
@@ -141,6 +142,7 @@ const App: React.FC = () => {
   });
 
   const {
+    categoriesLoaded,
     loadUserData,
     loadTransactions,
     handleAddTransaction,
@@ -236,6 +238,19 @@ const App: React.FC = () => {
     enabled: appState.settings.notificationsEnabled,
     onEnable: handleSetupGranted,
   });
+
+  // When capture started listening — the clock the "we have heard nothing from
+  // this bank" warning is measured against. Kept here rather than on the
+  // settings toggle because capture can also be switched on from the intro and
+  // by useNotificationSetupCompletion after Android sends the user back, and a
+  // warning that depended on which route was taken would be wrong for the other
+  // two. Stamping it is idempotent; switching capture off clears it, so the
+  // grace period starts again rather than counting silence from a time nothing
+  // was listening. See lib/bankHeartbeat.ts.
+  useEffect(() => {
+    if (appState.settings.notificationsEnabled) noteCaptureEnabled();
+    else noteCaptureDisabled();
+  }, [appState.settings.notificationsEnabled]);
 
   useNotificationListener({
     user: appState.user,
@@ -338,6 +353,48 @@ const App: React.FC = () => {
     [appState.user?.id, saveSettingToDb],
   );
 
+  /**
+   * What the intro's setup steps write with.
+   *
+   * The budgets handed over are the user's real rows, never SYSTEM_CATEGORIES:
+   * the `budgets` table has no id column, so a loaded row is `budget:<name>`
+   * while the constants carry fixed UUIDs, and `hiddenCategories` stores
+   * whichever id was on screen when the eye was tapped. `budgetsReady` is what
+   * keeps the step from offering the wrong ones — `loadUserData` is already in
+   * flight when the intro opens, so it normally answers while the user is still
+   * on the opening slides.
+   */
+  const onboardingSetup = useMemo(
+    () => ({
+      userId: appState.user?.id,
+      budgets: appState.budgets,
+      hiddenCategories: appState.settings.hiddenCategories || [],
+      budgetsReady: categoriesLoaded,
+      monthlyIncome: appState.user?.monthlyIncome || 0,
+      captureEnabled: appState.settings.notificationsEnabled,
+      onSaveIncome: (income: number) => { void saveUserIncome(income); },
+      onSaveBudgetLimit: (categoryId: string, limit: number) => {
+        void saveBudgetLimit(categoryId, limit);
+      },
+      onToggleHideCategory: (categoryId: string, visible: boolean) => {
+        void saveBudgetVisibility(categoryId, visible);
+      },
+      onCaptureGranted: handleSetupGranted,
+    }),
+    [
+      appState.user?.id,
+      appState.user?.monthlyIncome,
+      appState.budgets,
+      appState.settings.hiddenCategories,
+      appState.settings.notificationsEnabled,
+      categoriesLoaded,
+      saveUserIncome,
+      saveBudgetLimit,
+      saveBudgetVisibility,
+      handleSetupGranted,
+    ],
+  );
+
   const handleSignOut = useCallback(async () => {
     await supabase.auth.signOut();
   }, []);
@@ -405,7 +462,11 @@ const App: React.FC = () => {
       )}
       {authState === 'unauthenticated' && <Auth onSignIn={() => setAuthState('authenticated')} />}
       {authState === 'onboarding' && (
-        <Onboarding onComplete={handleOnboardingComplete} onLinkPartner={handleLinkPartner} />
+        <Onboarding
+          onComplete={handleOnboardingComplete}
+          onLinkPartner={handleLinkPartner}
+          setup={onboardingSetup}
+        />
       )}
       {authState === 'authenticated' && (
         <Dashboard

@@ -117,6 +117,14 @@ export interface CovaultNotificationPlugin {
   getCaptureNotificationStatus(): Promise<{ canPost: boolean }>;
 
   /**
+   * Open ANOTHER app's Android notification settings — a bank's.
+   *
+   * Prefer the `openAppNotificationSettings` helper below, which tolerates an
+   * APK built before this method existed.
+   */
+  openAppNotificationSettings(options: { packageName: string }): Promise<void>;
+
+  /**
    * Take down the capture notification with this id. Used when the pipeline
    * concludes the alert it announced was not an expense.
    *
@@ -405,6 +413,29 @@ export async function openNotificationSettings(
     await plugin.openNotificationSettings();
   } catch (e) {
     log.warn('[covaultNotification] Could not open notification settings:', e);
+  }
+}
+
+/**
+ * Send the user to a BANK's notification settings page.
+ *
+ * The repair offered next to "we have heard nothing from this bank": if its
+ * notifications are switched off in Android, this is the screen that turns
+ * them back on. Returns false when the trip could not be made — an older APK
+ * without the native method, or the web build — so the caller can fall back to
+ * saying where to go by hand rather than leaving a button that does nothing.
+ */
+export async function openAppNotificationSettings(
+  packageName: string,
+  plugin: CovaultNotificationPlugin | null = covaultNotification,
+): Promise<boolean> {
+  if (!plugin || !packageName) return false;
+  try {
+    await plugin.openAppNotificationSettings({ packageName });
+    return true;
+  } catch (e) {
+    log.warn('[covaultNotification] Could not open notification settings for', packageName, e);
+    return false;
   }
 }
 

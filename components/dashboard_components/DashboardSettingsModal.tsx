@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import IncomeSection from './settings_modal_components/IncomeSection';
 import FAQModal from './FAQModal';
 import ThemeToggleSection from './settings_modal_components/ThemeToggleSection';
@@ -66,6 +66,8 @@ export interface DashboardSettingsModalProps {
   hasPremium: boolean;
   onSubscribe: () => void;
   onImportComplete?: () => void;
+  /** Scroll straight to this section's container id when the modal opens. */
+  scrollToSectionId?: string;
 }
 
 const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
@@ -90,9 +92,25 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
   hasPremium,
   onSubscribe,
   onImportComplete,
+  scrollToSectionId,
 }) => {
   const settingsScrollRef = useRef<HTMLDivElement>(null);
   const [showFAQ, setShowFAQ] = useState(false);
+
+  // Opened by something that had one section in mind — the dashboard's "not
+  // capturing yet" line. Landing at the top of a fifteen-section modal and
+  // being left to hunt for it is the friction that line exists to remove.
+  useEffect(() => {
+    if (!scrollToSectionId) return;
+    const target = document.getElementById(scrollToSectionId);
+    if (!target) return;
+    // After the modal's own entrance, so the scroll is not undone by it.
+    const timer = setTimeout(
+      () => target.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+      350,
+    );
+    return () => clearTimeout(timer);
+  }, [scrollToSectionId]);
 
   // Stand down while the FAQ sub-modal is open so Escape closes that first.
   useEscapeKey(onClose, !showFAQ);

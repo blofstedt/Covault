@@ -12,6 +12,7 @@ import { sendPartnerActivityNotification, sendExpenseCapturedNotification } from
 import type { NotificationSettingsShape } from '../appNotifications';
 import type { AIProcessingResult } from '../notificationProcessor';
 import { getBankingApps, isExcludedApp, isBankingApp } from '../bankingApps';
+import { noteBankAlertSeen } from '../bankHeartbeat';
 import { getLocalToday } from '../dateUtils';
 
 export interface UseNotificationListenerParams {
@@ -141,6 +142,13 @@ export const useNotificationListener = ({
               log.debug('[notification] Ignoring non-banking app:', bankAppId);
               return;
             }
+
+            // This bank's notifications reach us. Recorded before the dedup
+            // window below, and for every alert rather than only the ones that
+            // become purchases: a promo from the bank still proves Android is
+            // delivering its notifications, which is the only thing the
+            // settings screen uses this for. See lib/bankHeartbeat.ts.
+            noteBankAlertSeen(bankAppId);
             // Reuse the processor's key builder rather than re-implementing it,
             // so the two dedup layers cannot drift apart.
             const dedupKey = buildInMemoryDedupKey(bankAppId || '', rawNotification || '');

@@ -78,6 +78,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
   const isAITransaction = initialTransaction?.label === 'Automatic';
   const amountInputRef = useRef<HTMLInputElement>(null);
+  const vendorInputRef = useRef<HTMLInputElement>(null);
 
   // Matches the `duration-300` on the overlay and card below, so the form is
   // unmounted exactly as the fade finishes rather than part-way through it or
@@ -217,6 +218,30 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const isFormValid = amount > 0 && selectedId !== null && vendor.trim() !== '';
   const canSubmit = isFormValid && !isSaving;
 
+  // ── Which part of the form is still waiting ──
+  //
+  // Three things are required — an amount, a vendor and a vault — and the form
+  // used to be silent about all of it: every section was live at once, the
+  // Confirm button sat greyed out, and nothing said which of the three was
+  // missing. The vendor field was the worst of it, because "Where was this
+  // spent?" was only a placeholder, so once anything was typed there was no
+  // label left to say what the field had been asking for.
+  //
+  // So the form asks for one thing at a time. Exactly one section carries the
+  // ring, in the order they are read; the vault grid stays inert until there is
+  // a vendor to file. `isFormValid` above remains the only thing the Confirm
+  // button consults, so what the form asks for and what it accepts cannot drift
+  // apart.
+  const hasAmount = amount > 0;
+  const hasVendor = vendor.trim() !== '';
+  const hasVault = selectedId !== null;
+  const awaiting: 'amount' | 'vendor' | 'vault' | null =
+    !hasAmount ? 'amount' : !hasVendor ? 'vendor' : !hasVault ? 'vault' : null;
+
+  /** The ring, on whichever section is being asked for. */
+  const attention = (section: 'amount' | 'vendor' | 'vault') =>
+    awaiting === section ? 'motion-safe:animate-attention-pulse' : '';
+
   // Closing is the same 300ms as opening, in reverse.
   //
   // A 250ms duration used to be asked for below, which is not a value
@@ -249,7 +274,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-3">
-            <div id="tutorial-amount-field" className="flex flex-col items-center justify-center py-5 bg-slate-50/50 dark:bg-slate-800/20 rounded-3xl border border-slate-100/50 dark:border-slate-800/30">
+            <div id="tutorial-amount-field" className={`flex flex-col items-center justify-center py-5 bg-slate-50/50 dark:bg-slate-800/20 rounded-3xl border border-slate-100/50 dark:border-slate-800/30 ${attention('amount')}`}>
               <div className="flex items-center justify-center space-x-1">
                 <span className={`text-xl font-black select-none ${isRefund ? 'text-emerald-400 dark:text-emerald-500' : 'text-slate-300 dark:text-slate-700'}`}>$</span>
                 <input
@@ -292,10 +317,22 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             </div>
 
             {/* Vendor input with autocomplete */}
-            <div id="tutorial-vendor-field" className="relative">
+            <div className="flex items-center justify-between px-2">
+              <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 tracking-wide">
+                Vendor
+              </span>
+            </div>
+
+            <div id="tutorial-vendor-field" className={`relative rounded-2xl ${attention('vendor')}`}>
               <input
+                ref={vendorInputRef}
                 type="text"
-                placeholder="Where was this spent?"
+                // The field is named by the label above now, so the placeholder
+                // is free to say what a vendor IS rather than asking where the
+                // money went — which is what it used to do, badly: it read as a
+                // location, and it vanished on the first keystroke, leaving the
+                // field with nothing naming it at all.
+                placeholder="Store, restaurant, website…"
                 value={vendor}
                 onChange={e => { setVendor(e.target.value); setShowSuggestions(true); setHighlightedSuggestion(-1); }}
                 onFocus={() => setShowSuggestions(true)}
@@ -343,9 +380,27 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
               <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 tracking-wide">
                 Target Vault
               </span>
+              {!hasVendor && (
+                <span className="text-[10px] font-medium text-slate-300 dark:text-slate-600 tracking-wide">
+                  Name the vendor first
+                </span>
+              )}
             </div>
 
-            <div id="tutorial-budget-grid" className="flex flex-col gap-1.5">
+            {/* Tapping the vaults before there is a vendor puts the cursor
+                where the form is actually waiting, rather than doing nothing —
+                a dimmed control that ignores a tap teaches the user the app is
+                broken. */}
+            <div
+              onClick={hasVendor ? undefined : () => vendorInputRef.current?.focus()}
+              className={`rounded-2xl ${attention('vault')}`}
+            >
+            <div
+              id="tutorial-budget-grid"
+              className={`flex flex-col gap-1.5 transition-opacity duration-200 ${
+                hasVendor ? 'opacity-100' : 'opacity-40 pointer-events-none'
+              }`}
+            >
               {[budgets.slice(0, 3), budgets.slice(3)].map((row, rowIdx) => (
                 <div key={rowIdx} className="flex justify-center gap-1.5">
                   {row.map(b => {
@@ -355,6 +410,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                       <button
                         key={b.id}
                         type="button"
+                        disabled={!hasVendor}
                         onClick={() => toggleCategory(b.id)}
                         className={`
                           relative flex items-center justify-center p-2 rounded-2xl transition-all duration-200 border w-[calc(25%-5px)] aspect-square active:scale-[0.97]
@@ -377,6 +433,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                   })}
                 </div>
               ))}
+            </div>
             </div>
           </div>
 

@@ -118,12 +118,15 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | "bank alerts aren't being hidden any more" | `canPostCaptureNotifications` in `android-custom/NotificationListener.java` **first** — suppression needs Covault's own notification to post, and `POST_NOTIFICATIONS` is a separate permission a reinstall resets. Only then the gates in `maybeHideBankNotification` |
 | "tapping a notification goes to the wrong place" | `lib/hooks/useNotificationRoute.ts`, `android-custom/MainActivity.java` |
 | "partner sharing / linking is broken" | `lib/hooks/useHouseholdLinking.ts` + the RPCs in `supabase/migrations/2026_08_01_sync_schema_to_app.sql` |
+| "it won't let me lower a budget" / "it says I'm over my income" | `lib/budgetAllocation.ts` — the rule is direction, not the line; see the invariant below |
+| "nothing is being captured from one of my banks" | the amber card in `NotificationSettingsSection.tsx`, fed by `lib/bankHeartbeat.ts`. The app cannot read another app's notification settings — this is an inference from silence |
 | "a setting doesn't stick" | `SETTING_DB_KEYS` in `components/Dashboard.tsx` → `lib/hooks/useUserSettings.ts` → `lib/hooks/useDataLoading.ts`. **Usually a missing DB column** — see Invariants |
 | "an edit didn't save" | `lib/hooks/useTransactionOps.ts`. If it's a **vendor rename**, also `lib/formatVendorName.ts` — it has previously overwritten the user's own capitalisation |
 | "the numbers are wrong" | `components/dashboard_components/useDashboardTotals.ts`, `lib/refundMatching.ts`, `lib/projectedTransactions.ts` |
 | "last month's entries are still listed" / "the list is in the wrong order" | `lib/transactionOrdering.ts` (one month, chronological) → `lib/hooks/useCurrentDay.ts` (the single clock) → `components/Dashboard.tsx` |
 | "a modal/sheet looks broken or is cut off" | `components/ui/Portal.tsx` — overlays inside `<main>` need it; see Invariants |
 | "the animation is janky" | `index.css`, `components/BudgetSection.tsx`, `components/dashboard_components/BudgetFlowChart.tsx` |
+| "the intro didn't set anything up" / "I got dropped on an empty dashboard" | `components/Onboarding.tsx` (the step router) → `components/onboarding/` (one file per setup step) → `lib/onboardingProgress.ts` (where it resumes from) |
 | "the app didn't offer me the update" / "it didn't update itself" | `lib/appUpdate.ts` (the check) → `lib/hooks/useAppUpdate.ts` (when, and which of the two routes) → `android-custom/CovaultUpdaterPlugin.java` (install, or unpack) |
 | "it still asked me to confirm the update" | the three conditions in the APK-route invariant below — `UPDATE_PACKAGES_WITHOUT_USER_ACTION` in `android-custom/AndroidManifest.xml`, Android 12+, and the install permission. A refusal is recorded per build in `CovaultUpdaterPlugin` and reported by `getStatus` as `quietInstallSupported` |
 | anything about the Android build | `scripts/sync-android.sh`, `.github/workflows/build-android.yml` |
@@ -300,6 +303,43 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   together filed a second copy of one charge straight to the dashboard with
   nothing in Review to say so. The insert still happens; only the filing is
   refused. `softDuplicateNotFiledSilently.test.ts` holds it.
+
+- **A budget limit change that REDUCES the total is always allowed, even while
+  the total is still over the income.** The limits screen used to refuse any
+  save whose result came out above the monthly income, and looked only at that
+  result — which trapped every new user whose income was under $3,500, because
+  the starter set is seven categories at $500 and they were over the line
+  before touching anything. Lowering a limit still left them over, so lowering
+  was refused too: the only escape the app offered was to claim a bigger
+  income. `lib/budgetAllocation.ts` holds the rule and
+  `budgetAllocation.test.ts` pins it. Do not "restore" the simpler check.
+
+- **The intro's setup steps write each answer as it is given, and never render
+  `SYSTEM_CATEGORIES`.** Two separate reasons, both easy to undo by accident.
+  The writing: the capture step leaves the app for Android's settings, where the
+  WebView is routinely destroyed, so a flow that collected answers and committed
+  them at the end would commit at a moment many users never reach —
+  `lib/onboardingProgress.ts` therefore only has to remember WHICH step, never
+  what was typed. The ids: `budgets` has no id column, so a loaded row is
+  `budget:<name>` while the starter constants carry fixed UUIDs, and
+  `hiddenCategories` stores whichever id was on screen when the eye was tapped
+  — rendering the constants would let a category be hidden under one id and
+  un-hidden under another the moment the real load landed. The step waits on
+  `categoriesLoaded` instead. `onboardingProgress.test.ts` pins both, along with
+  every step being skippable: the intro is now the only thing between a new user
+  and their app, and it must never be able to trap them.
+
+- **"We have heard nothing from this bank" is an inference, and the app says
+  so.** Android exposes no way for an ordinary app to read whether ANOTHER
+  app's notifications are enabled — `areNotificationsEnabled` and
+  `getNotificationChannels` are scoped to the caller, the per-package variants
+  are system APIs, and the listener's ranking data only describes notifications
+  that were actually posted, which is no help when the complaint is that none
+  are. So `lib/bankHeartbeat.ts` records the one observable thing — the last
+  time each bank reached us — and the warning is worded as a guess with a
+  button to the page that fixes it. Do not reword it into a statement of fact,
+  and do not shorten the silence window: the same silence is what a quiet week
+  on a rarely-used card looks like.
 
 - **The budget order comes from `lib/budgetOrder.ts`, not from the database.**
   `budgets` has no primary key and no sort column, and `loadUserBudgets` reads

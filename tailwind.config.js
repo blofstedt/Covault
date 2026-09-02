@@ -32,6 +32,15 @@ export default {
           '0%, 100%': { boxShadow: '0 0 0 0 rgba(245, 158, 11, 0.0)' },
           '50%': { boxShadow: '0 0 0 4px rgba(245, 158, 11, 0.18)' },
         },
+        // The one part of the entry form still waiting on the user. Same
+        // shape as the soft-duplicate ring above and deliberately so — it is
+        // the same idea, "look here" — but emerald, because in this app amber
+        // means "something may be wrong" and nothing is wrong about a field
+        // you have not filled in yet.
+        'attention-pulse': {
+          '0%, 100%': { boxShadow: '0 0 0 0 rgba(16, 185, 129, 0.0)' },
+          '50%': { boxShadow: '0 0 0 4px rgba(16, 185, 129, 0.18)' },
+        },
         // Count badge reacting to a new item. Deliberately asymmetric — a
         // quick overshoot out, a slower settle back.
         'badge-pop': {
@@ -42,6 +51,7 @@ export default {
       },
       animation: {
         'softdup-pulse': 'softdup-pulse 2.4s ease-in-out infinite',
+        'attention-pulse': 'attention-pulse 2.4s cubic-bezier(0.32, 0.72, 0.24, 1) infinite',
         'badge-pop': 'badge-pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1)',
       },
     },
