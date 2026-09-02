@@ -267,6 +267,21 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   `quietNonSpendingAlerts.test.ts` hold them together, the latter two also
   pinning the listener's phrase lists to the parser's own.
 
+- **The setup flow's instructions have to survive leaving the app.** Every step
+  hands the screen to Android's Settings, where none of Covault's text exists
+  any more — and the step that matters most is the one where the switch REFUSES
+  to move. Told in advance, a user carries on; arriving at a dead switch with
+  nothing on screen, they conclude the app is broken, which is what the first
+  one did. An app cannot draw over Settings (Android blocks overlays there —
+  that is how tapjacking is prevented), so a Toast posted on the way out is the
+  only surface left. `STEP_HINT` in `NotificationAccessGuide.tsx` holds the
+  words and the plugin's `showHint` posts whatever it is handed, from the UI
+  thread — the Java deliberately has no copy of its own to drift from.
+  `setupHintOutsideTheApp.test.ts` pins that, and pins that a Play Store install
+  is never promised a refusal that is not coming: `getRestrictedSettingsInfo`
+  reads the installing package, and a store install gets two steps rather than
+  four.
+
 - **The listener may only go quiet where the parser would refuse the row.**
   Every list mirrored into `NotificationListener.java` is a copy of one the
   parser already rejects on, never a new opinion of the native side's own. That

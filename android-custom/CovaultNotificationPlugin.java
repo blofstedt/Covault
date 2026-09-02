@@ -166,6 +166,49 @@ public class CovaultNotificationPlugin extends Plugin {
     private static final String SETTINGS_SHOW_FRAGMENT_ARGS = ":settings:show_fragment_args";
 
     /**
+     * A line of guidance the user can still read once they are inside Android's
+     * Settings — the only kind there is.
+     *
+     * The setup flow's instructions live in Covault, and the moment the user
+     * acts on them they are looking at a system screen where none of that text
+     * exists any more. The step they are on is the one where a switch refuses
+     * to move, or where the thing to tap is an unlabelled ⋮; forgetting which
+     * is which between one screen and the next is the whole reason the flow is
+     * hard. An app cannot draw over Settings — Android blocks overlays on it,
+     * and rightly, since that is how tapjacking works — so a Toast is the only
+     * surface left, and it is enough for one sentence.
+     *
+     * The sentence itself comes from the caller, in TypeScript, beside the rest
+     * of the flow's copy. Keeping it here as well would be a second set of
+     * words to keep in step with the first, and the mirrors that already exist
+     * in this project are each held together by a test for exactly that reason.
+     *
+     * Posted from the UI thread because a Toast needs a Looper, and a plugin
+     * method does not run on one. Best-effort throughout: a missing hint costs
+     * a line of help, never the trip itself, so nothing here may throw before
+     * the intent is started.
+     */
+    private void showHint(PluginCall call) {
+        try {
+            final String hint = call.getString("hint");
+            if (hint == null || hint.trim().isEmpty()) return;
+            final android.app.Activity activity = getActivity();
+            if (activity == null) return;
+            activity.runOnUiThread(() -> {
+                try {
+                    android.widget.Toast
+                        .makeText(getContext(), hint, android.widget.Toast.LENGTH_LONG)
+                        .show();
+                } catch (Exception e) {
+                    Log.w(TAG, "Could not show the setup hint", e);
+                }
+            });
+        } catch (Exception e) {
+            Log.w(TAG, "Could not read the setup hint", e);
+        }
+    }
+
+    /**
      * Send the user to the page where notification access is granted.
      *
      * Two routes. Android 11 added a deep link to one app's own notification
@@ -176,6 +219,10 @@ public class CovaultNotificationPlugin extends Plugin {
      */
     @PluginMethod
     public void requestAccess(PluginCall call) {
+        // Before the intent, so the Toast is already queued when Settings takes
+        // the screen — posting it afterwards races the transition and can land
+        // behind it.
+        showHint(call);
         boolean opened = false;
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -242,6 +289,7 @@ public class CovaultNotificationPlugin extends Plugin {
      */
     @PluginMethod
     public void openAppInfo(PluginCall call) {
+        showHint(call);
         try {
             Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
             intent.setData(Uri.fromParts("package", getContext().getPackageName(), null));
@@ -601,6 +649,7 @@ public class CovaultNotificationPlugin extends Plugin {
      */
     @PluginMethod
     public void openAppNotificationSettings(PluginCall call) {
+        showHint(call);
         String packageName = call.getString("packageName");
         if (packageName == null || packageName.trim().isEmpty()) {
             call.reject("packageName is required");

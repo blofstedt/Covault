@@ -78,6 +78,35 @@ const STEP_COPY: Record<
 };
 
 /**
+ * What the user is told once they are looking at Android's Settings.
+ *
+ * Everything above is on a screen that stops existing the moment the button is
+ * tapped. These are shown as a Toast on the way out — the only thing an app can
+ * put in front of someone inside Settings, since Android blocks drawing over it
+ * — and they carry the one sentence each step turns on:
+ *
+ *  - the switch is going to refuse, and being refused is the point;
+ *  - the thing to tap is an unlabelled ⋮ in the corner;
+ *  - this time the switch will move.
+ *
+ * Kept beside STEP_COPY rather than in the Java, so there is one set of words
+ * and not two to keep in step.
+ */
+const STEP_HINT: Record<SetupStepId, string> = {
+  listener: "The switch will refuse to move — that's expected. Come straight back.",
+  restricted: 'Tap the ⋮ at the top right → Allow restricted settings',
+  confirm: 'This time the switch will move — turn it on.',
+  post: 'Allow notifications so Covault can tell you what it caught.',
+};
+
+/**
+ * The same first step where nothing is blocking it — a Play Store install, or
+ * Android 12 and below. Promising a refusal that is not coming would be its own
+ * small lie, and the user would sit waiting for one.
+ */
+const UNBLOCKED_LISTENER_HINT = "Find Covault and turn its switch on.";
+
+/**
  * The first step where nothing is blocking it: one tap, and it works.
  *
  * Same step, same button — only the promise changes, because on this install
@@ -283,14 +312,19 @@ const NotificationAccessGuide: React.FC<NotificationAccessGuideProps> = ({
         // while the user is away, so anything written on return may never run.
         markRestrictedSettingsVisited();
         setState((s) => ({ ...s, restrictedVisited: true }));
-        await openAppInfo(plugin);
+        await openAppInfo(plugin, STEP_HINT.restricted);
       } else if (id === 'listener' || id === 'confirm') {
         // Recorded before the trip for the same reason, and because the
         // attempt itself is what makes Android offer the unlock at all — so
         // this is also what reveals the step below.
         markListenerAttempted();
         setState((s) => ({ ...s, listenerAttempted: true }));
-        await plugin?.requestAccess();
+        await plugin?.requestAccess({
+          hint:
+            id === 'listener' && !state.restrictedApplies
+              ? UNBLOCKED_LISTENER_HINT
+              : STEP_HINT[id],
+        });
       } else {
         // Two routes, because Android offers the prompt once ever: ask, and if
         // the answer is still no — already denied, or the channel rather than

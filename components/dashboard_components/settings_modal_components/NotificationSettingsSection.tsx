@@ -376,7 +376,22 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
               </span>
             )}
 
-            {!enabled && installedBankApps.length > 0 && (
+            {/* The user tapped this switch and it stayed off. That is correct
+                — Android grants the permission, not Covault, so the switch
+                cannot move until the steps below are done — but a control that
+                ignores a tap reads as a broken control, and the next thing
+                somebody does is tap it again. Say what happened. */}
+            {guideOpen && !enabled && !permissionGranted && (
+              <span className="inline-flex items-start px-2.5 py-1 rounded-2xl bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700">
+                <span className="w-2 h-2 rounded-full bg-amber-500 mr-2 mt-1 shrink-0" />
+                <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-300 leading-relaxed">
+                  This switch stays off until Android grants access — the steps
+                  below are what does that.
+                </span>
+              </span>
+            )}
+
+            {!enabled && !guideOpen && installedBankApps.length > 0 && (
               <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700">
                 <span className="w-2 h-2 rounded-full bg-blue-500 mr-2" />
                 <span className="text-[10px] font-semibold text-blue-700 dark:text-blue-300">

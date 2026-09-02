@@ -71,7 +71,15 @@ export interface TransactionDetectedEvent {
 
 export interface CovaultNotificationPlugin {
   // You already have methods like these in your other repo:
-  requestAccess(): Promise<void>;
+  /**
+   * Open the notification-access page.
+   *
+   * `hint`, when given, is shown as a Toast on the way out — the only text an
+   * app can put in front of someone who is about to be looking at Android's
+   * Settings rather than at Covault. Optional so an APK built before the hint
+   * existed still opens the page, silently.
+   */
+  requestAccess(options?: { hint?: string }): Promise<void>;
   isEnabled(): Promise<{ enabled: boolean }>;
   getInstalledApps(): Promise<{ apps: Array<{ packageName: string; name: string }> }>;
   saveMonitoredApps(options: { apps: any }): Promise<void>;
@@ -158,7 +166,8 @@ export interface CovaultNotificationPlugin {
    *
    * Prefer the `openAppInfo` helper below.
    */
-  openAppInfo(): Promise<void>;
+  /** Opens the App info page; `hint` is shown as a Toast on the way out. */
+  openAppInfo(options?: { hint?: string }): Promise<void>;
 
   /**
    * Whether Android's restricted-settings block applies to this install, and
@@ -449,10 +458,11 @@ export async function openAppNotificationSettings(
  */
 export async function openAppInfo(
   plugin: CovaultNotificationPlugin | null = covaultNotification,
+  hint?: string,
 ): Promise<void> {
   if (!plugin) return;
   try {
-    await plugin.openAppInfo();
+    await plugin.openAppInfo({ hint });
   } catch (e) {
     log.warn('[covaultNotification] Could not open app info:', e);
   }
