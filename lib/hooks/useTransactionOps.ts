@@ -28,17 +28,35 @@ export { getSourceTransactionIdFromProjectedId };
 /** PostgREST `in.(...)` list, quoted the way the other bulk calls here do. */
 const toIdList = (ids: string[]) => ids.map(id => `"${String(id).replace(/"/g, '')}"`).join(',');
 
+/**
+ * The row that is actually written when an edit is saved.
+ *
+ * Every field the edit form can change is carried across, and the date is one
+ * of them: moving an entry to another day — most often forward into next month
+ * — used to be dropped here, so the entry snapped back to its original date the
+ * moment it was saved, with no error to show for it.
+ *
+ * The one exception is an edit made on a PROJECTED occurrence. Those are not
+ * rows: they are drawn from a recurring row's schedule, and an edit to one is
+ * persisted onto that source row, which is a real charge in an earlier month.
+ * Writing the occurrence's date onto it would move that historic charge — and
+ * with it the whole series — so the source keeps its own date. Changing a
+ * projected occurrence's date therefore still does nothing; every other edit to
+ * one applies to the series, which is the existing behaviour.
+ */
 export const buildPersistedUpdateTransaction = (
   updatedTx: Transaction,
   sourceTx?: Transaction,
 ): Transaction => {
   if (!sourceTx) return updatedTx;
+  const isProjectedEdit = getSourceTransactionIdFromProjectedId(updatedTx.id) !== null;
   return {
     ...sourceTx,
     vendor: updatedTx.vendor,
     amount: updatedTx.amount,
     budget_id: updatedTx.budget_id,
     recurrence: updatedTx.recurrence,
+    date: isProjectedEdit ? sourceTx.date : updatedTx.date,
     label: updatedTx.label || sourceTx.label,
     userName: updatedTx.userName || sourceTx.userName,
     is_projected: false,

@@ -1,5 +1,6 @@
 import type { Transaction } from '../types';
 import { parseLocalDate } from './dateUtils';
+import { daysApart, isSameCharge, SAME_CHARGE_DAY_TOLERANCE } from './duplicateCharge';
 import { addMonths, normalizeRecurrence, stepForward } from './recurrence';
 
 /**
@@ -76,12 +77,22 @@ export function generateProjectedTransactions(
 
   const horizon = addMonths(today, 3);
   const currentMonthKey = toIsoDay(today).slice(0, 7);
-  const realKeys = new Set(
-    base.map((tx) => {
-      const isoDate = toIsoDay(tx.date);
-      return `${tx.vendor}|${tx.amount}|${isoDate}|${getTransactionBudgetId(tx) || ''}`;
-    }),
+
+  // The saved rows an occurrence could turn out to be. Anything already
+  // carrying a projected id is one of these, not a charge that happened.
+  const realRows = base.filter(
+    (tx) => !(tx.is_projected && String(tx.id || '').startsWith('projected-')),
   );
+  // Indexed by day, so the pairing below only ever looks at the handful of rows
+  // dated near an occurrence rather than at the whole ledger once per
+  // occurrence — this runs on every dashboard render.
+  const realRowsByDay = new Map<string, number[]>();
+  realRows.forEach((row, index) => {
+    const isoDate = toIsoDay(row.date);
+    const bucket = realRowsByDay.get(isoDate);
+    if (bucket) bucket.push(index);
+    else realRowsByDay.set(isoDate, [index]);
+  });
 
   // Find the earliest transaction per (vendor, amount, recurrence, day-of-month)
   // group. Only these are used as projection sources.
@@ -120,7 +131,10 @@ export function generateProjectedTransactions(
     }
   }
 
-  const projected: Transaction[] = [];
+  // Every occurrence the schedules produce, before asking which of them have
+  // already happened — that question is answered against all of them at once,
+  // in the pairing below.
+  const candidates: Array<{ source: Transaction; date: string; isFuture: boolean }> = [];
 
   for (const tx of earliestByKey.values()) {
     const recurrence = normalizeRecurrence(tx);
@@ -139,23 +153,86 @@ export function generateProjectedTransactions(
       if (current > horizon) break;
 
       const isoDate = toIsoDay(current);
-      const budgetId = getTransactionBudgetId(tx);
-      const key = `${tx.vendor}|${tx.amount}|${isoDate}|${budgetId || ''}`;
-
       const projectedMonthKey = isoDate.slice(0, 7);
       const isCurrentMonth = projectedMonthKey === currentMonthKey;
 
-      if ((current > today || isCurrentMonth) && !realKeys.has(key)) {
-        projected.push({
-          ...tx,
-          budget_id: budgetId,
-          id: `projected-${tx.id}-${isoDate}`,
-          date: isoDate,
-          is_projected: current > today,
-        });
+      if (current > today || isCurrentMonth) {
+        candidates.push({ source: tx, date: isoDate, isFuture: current > today });
       }
     }
   }
+
+  // ── Which occurrences already happened ──
+  //
+  // An occurrence is a guess that a charge is coming. Once that charge lands as
+  // a real row, showing the guess beside it counts the money twice.
+  //
+  // The test used to be exact: same vendor spelling, same amount to the cent,
+  // same day, same category. A real charge that missed on any one of those left
+  // the guess standing next to it and the month was over by the whole amount —
+  // which is how a monthly insurance premium came to sit on the dashboard
+  // twice, once on its due date at $477.45 and once as the captured charge a
+  // day later at $477.46. So an occurrence is now cancelled by a real row that
+  // merely looks like the same charge: the merchant fuzzily, the amount near
+  // enough, the date within a few days.
+  //
+  // Paired off one-to-one, closest first, because a real row may only cancel
+  // ONE occurrence. The household has two Fizz charges a month three days
+  // apart; without the pairing, whichever arrived first would cancel both and
+  // the other charge would drop out of the month until it too was captured.
+  const pairings: Array<{ candidate: number; row: number; gap: number }> = [];
+  candidates.forEach((candidate, candidateIndex) => {
+    const anchor = parseLocalDate(candidate.date);
+    if (Number.isNaN(anchor.getTime())) return;
+    const occurrence = {
+      vendor: candidate.source.vendor,
+      amount: candidate.source.amount,
+      date: candidate.date,
+    };
+    for (let offset = -SAME_CHARGE_DAY_TOLERANCE; offset <= SAME_CHARGE_DAY_TOLERANCE; offset++) {
+      const day = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() + offset);
+      for (const rowIndex of realRowsByDay.get(toIsoDay(day)) || []) {
+        const row = realRows[rowIndex];
+        const rowDate = toIsoDay(row.date);
+        if (!isSameCharge(occurrence, { vendor: row.vendor, amount: row.amount, date: rowDate })) {
+          continue;
+        }
+        pairings.push({
+          candidate: candidateIndex,
+          row: rowIndex,
+          gap: daysApart(candidate.date, rowDate) ?? SAME_CHARGE_DAY_TOLERANCE,
+        });
+      }
+    }
+  });
+
+  // Closest pair first, then the earliest occurrence, so the result does not
+  // depend on the order the ledger happened to arrive in.
+  pairings.sort(
+    (a, b) =>
+      a.gap - b.gap ||
+      candidates[a.candidate].date.localeCompare(candidates[b.candidate].date) ||
+      a.row - b.row,
+  );
+  const cancelled = new Set<number>();
+  const claimedRows = new Set<number>();
+  for (const pairing of pairings) {
+    if (cancelled.has(pairing.candidate) || claimedRows.has(pairing.row)) continue;
+    cancelled.add(pairing.candidate);
+    claimedRows.add(pairing.row);
+  }
+
+  const projected: Transaction[] = [];
+  candidates.forEach((candidate, index) => {
+    if (cancelled.has(index)) return;
+    projected.push({
+      ...candidate.source,
+      budget_id: getTransactionBudgetId(candidate.source),
+      id: `projected-${candidate.source.id}-${candidate.date}`,
+      date: candidate.date,
+      is_projected: candidate.isFuture,
+    });
+  });
 
   return projected;
 }

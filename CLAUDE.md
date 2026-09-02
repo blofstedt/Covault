@@ -280,6 +280,27 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   `STOP_PHRASES`, where a spending word in the same sentence still overrules
   them — some cards append the balance to a real purchase alert.
 
+- **A real charge cancels at most ONE projected occurrence, and it does so by
+  resemblance rather than by an exact match.** The projection is a guess that a
+  recurring charge is coming; once the charge lands, showing the guess too
+  counts the money twice. That test used to demand the same vendor spelling,
+  the same amount to the cent, the same day and the same category, so a
+  premium reported at $477.45 on its due date and captured at $477.46 the next
+  day sat on the dashboard twice. It is now "looks like the same charge"
+  (`lib/duplicateCharge.ts`) — but paired off one-to-one, closest first,
+  because the household has two Fizz charges a month three days apart and a
+  single unpaired sweep would let the first of them cancel both. Do not
+  simplify either half back: exactness put a phantom row on the dashboard,
+  and an unpaired sweep drops a real expected one.
+  `duplicateChargeDrift.test.ts` pins both.
+
+- **An auto-filed capture is never a soft duplicate.** Auto-filing is the one
+  path that records a purchase the user never sees, and the soft-duplicate rule
+  deliberately inserts a lookalike rather than risk losing a charge — the two
+  together filed a second copy of one charge straight to the dashboard with
+  nothing in Review to say so. The insert still happens; only the filing is
+  refused. `softDuplicateNotFiledSilently.test.ts` holds it.
+
 - **The budget order comes from `lib/budgetOrder.ts`, not from the database.**
   `budgets` has no primary key and no sort column, and `loadUserBudgets` reads
   it with a plain `select=*`, so PostgREST returns Postgres's heap order — which

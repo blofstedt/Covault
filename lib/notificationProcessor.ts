@@ -2118,7 +2118,15 @@ async function processNotificationWithAIImpl(
   // the name itself may be wrong — filing on the strength of a rule matched
   // against a misread merchant is how a charge ends up in the wrong budget
   // with nobody ever seeing it.
-  const autoAccepted = !fuelHold && !lowConfidenceExtraction && shouldAutoAccept({
+  //
+  // Nor can a capture that looks like one already on the books. The soft
+  // duplicate above deliberately does NOT skip the insert — the user would
+  // rather see both rows than lose a charge — but that bargain only works if
+  // they SEE both rows. Filed automatically, a second report of one charge
+  // landed straight on the dashboard and was never shown to anybody: a monthly
+  // insurance premium counted twice, a day apart, with nothing in Review to say
+  // so. The row is still written; it just has to be looked at.
+  const autoAccepted = !fuelHold && !lowConfidenceExtraction && !softDupMatch && shouldAutoAccept({
     enabled: input.autoAcceptKnownVendors === true,
     confidence: overrideMatchConfidence,
     hasCategory: !!categoryId,

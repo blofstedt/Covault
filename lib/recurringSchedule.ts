@@ -21,7 +21,7 @@
 //
 // Deliberately strict, because the consequence of a match is that a real bank
 // charge is NOT written down:
-//   - the amount must agree to the cent,
+//   - the amount must agree, near enough (see `amountsAgree`),
 //   - the vendor must match fuzzily (the same test the rest of the pipeline
 //     uses, so "Netflix.com" and "Netflix*" are one merchant),
 //   - and an occurrence of the schedule must fall within a few days of the
@@ -31,10 +31,7 @@
 
 import { fuzzyVendorMatch } from './formatVendorName';
 import { stepForward } from './recurrence';
-import { daysApart, SAME_CHARGE_DAY_TOLERANCE } from './duplicateCharge';
-
-/** Cents, matching lib/duplicateCharge.ts — the two answer the same question. */
-const AMOUNT_TOLERANCE = 0.005;
+import { amountsAgree, daysApart, SAME_CHARGE_DAY_TOLERANCE } from './duplicateCharge';
 
 /**
  * Ceiling on how many occurrences are stepped through before giving up.
@@ -160,10 +157,10 @@ export function findRecurringScheduleMatch<T extends RecurringChargeRow>(
     if (!isRecurringRow(row)) continue;
 
     const rowAmount = Number(row.amount);
-    if (!Number.isFinite(rowAmount)) continue;
-    if (Math.abs(rowAmount - candidate.amount) > AMOUNT_TOLERANCE) continue;
-    // A charge and its refund are not the same charge.
-    if (rowAmount * candidate.amount < 0) continue;
+    // Near enough, not to the cent — a premium that arrives a rounding cent
+    // apart from the one on the books is the same charge. `amountsAgree` also
+    // refuses a sign mismatch, so a refund never matches the charge it undoes.
+    if (!amountsAgree(rowAmount, candidate.amount)) continue;
 
     if (!names.some((name) => fuzzyVendorMatch(name, String(row.vendor || '')))) continue;
 

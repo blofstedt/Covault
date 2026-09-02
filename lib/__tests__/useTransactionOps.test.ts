@@ -64,4 +64,32 @@ describe('projected transaction update helpers', () => {
     expect(persisted.budget_id).toBe('services-budget-id');
     expect(persisted.is_projected).toBe(false);
   });
+
+  it('carries a new date onto a real row, so moving an entry into next month sticks', () => {
+    // Regression: every edited field was carried across except the date, so an
+    // entry pushed forward into next month was written back on its original
+    // day — silently, with nothing to show the save had ignored the change.
+    const sourceTx: any = {
+      id: '6d9c1a2b-0f43-4f01-9a51-2b6a0f2f1c77',
+      vendor: 'Intact Insurance',
+      amount: 477.45,
+      date: '2026-08-31T12:00:00.000Z',
+      budget_id: 'transport-budget-id',
+      recurrence: 'One-time',
+      label: 'Automatic',
+      user_id: 'user-1',
+      userName: 'me',
+      is_projected: false,
+      created_at: '2026-08-31T12:00:00.000Z',
+    };
+
+    const movedToNextMonth = { ...sourceTx, date: '2026-09-15T12:00:00.000Z' };
+
+    const persisted = buildPersistedUpdateTransaction(movedToNextMonth, sourceTx);
+
+    expect(persisted.id).toBe(sourceTx.id);
+    expect(persisted.date).toBe('2026-09-15T12:00:00.000Z');
+    // The edit is still filed as the same automatic capture it was.
+    expect(persisted.label).toBe('Automatic');
+  });
 });
