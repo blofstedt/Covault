@@ -99,8 +99,14 @@ describe('the path through the steps', () => {
     expect(nextStep('tour', { solo: true })).toBeNull();
   });
 
-  it('leaves the capture step before the tour, so a granted permission is the last hurdle', () => {
-    expect(nextStep('capture', { solo: true })).toBe('tour');
+  it('asks which apps to read straight after granting access, and both before the tour', () => {
+    // The picker is only answerable once Android has granted access, so it
+    // follows the capture step rather than preceding it — and the tour stays
+    // last, so a granted permission is still the final hurdle before the app.
+    expect(nextStep('capture', { solo: true })).toBe('sources');
+    expect(nextStep('sources', { solo: true })).toBe('tour');
+    expect(ONBOARDING_STEPS.indexOf('capture')).toBeLessThan(ONBOARDING_STEPS.indexOf('sources'));
+    expect(ONBOARDING_STEPS.indexOf('sources')).toBeLessThan(ONBOARDING_STEPS.indexOf('tour'));
   });
 });
 

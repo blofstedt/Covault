@@ -27,9 +27,21 @@ import { extractWithAI, type AIExtractionResult } from './aiExtractor';
 import { detectMerchantSignal, resolveSignalCategory } from './merchantCategorySignals';
 import type { PendingTransaction, Transaction } from '../types';
 import { scoreVendorMatch, shouldAutoAccept, toMatchKey } from './vendorMatchConfidence';
-import { daysApart } from './duplicateCharge';
+import { daysApart, isSameCharge } from './duplicateCharge';
 import { findRecurringScheduleMatch, type RecurringChargeRow } from './recurringSchedule';
-import { isBankingApp } from './bankingApps';
+import {
+  allowedSourceKind,
+  isCaptureSourceAllowed,
+  type CaptureSourceKind,
+} from './captureSources';
+import { parseEmailAlert } from './emailNotification';
+import {
+  hasPairedEmail,
+  isBankSourcedRow,
+  isEmailSourcedRow,
+  withCaptureMarker,
+  withEmailPairedMarker,
+} from './captureChannel';
 import { detectFuelHold, isFuelMerchant, isHoldAmount, pastFillAmounts, withFuelHoldMarker } from './fuelHold';
 
 // ─── Constants ───────────────────────────────────────────────────
@@ -304,6 +316,20 @@ export interface NotificationInput {
    * Step 6. Defaults to off, and any missing information means review.
    */
   autoAcceptKnownVendors?: boolean;
+  /**
+   * Which route the alert arrived by. Absent means 'bank', which is what every
+   * capture was before mail was a source — and the safe reading, because the
+   * email rules only ever add restrictions.
+   */
+  channel?: CaptureSourceKind;
+  /**
+   * Notification body, kept apart from the title.
+   *
+   * For a mail app the title is the SENDER and the body is subject-plus-snippet.
+   * The two have to arrive separately: the sender must be vetted before the body
+   * is read at all, and a concatenated string cannot be split back apart.
+   */
+  notificationBody?: string;
 }
 
 // ─── Step 1: Duplicate Detection Against Tables ─────────────────
@@ -950,20 +976,60 @@ export async function processNotificationWithAI(
     bankName: (input.bankName || '').toLowerCase(),
   };
 
-  // ── Step 0: Banks only ──
-  // The last line of defence for "a transaction comes from a bank". The native
-  // listener drops non-banks first and the hook drops them again, but this is
-  // the one place EVERY path into the ledger passes through, so it is the one
-  // that has to be right. Cheap: a set lookup on a string already in hand.
-  if (!isBankingApp(input.bankAppId)) {
-    log.debug(`[AI pipeline] Ignoring notification from non-banking app: ${input.bankAppId || '(none)'}`);
+  // ── Step 0: Sources the user picked, only ──
+  // The last line of defence for "a transaction comes from an app the user
+  // chose". The native listener drops everything else first and the hook drops
+  // it again, but this is the one place EVERY path into the ledger passes
+  // through, so it is the one that has to be right. Cheap: a set lookup on a
+  // string already in hand.
+  if (!isCaptureSourceAllowed(input.bankAppId)) {
+    log.debug(`[AI pipeline] Ignoring notification from an app that is not a capture source: ${input.bankAppId || '(none)'}`);
     return {
       processed: false,
       isTransaction: false,
       skipReason: 'not_bank_app',
-      rejectionReason: 'Notification did not come from a banking app',
+      rejectionReason: 'Notification did not come from a selected capture source',
       bankName: input.bankName,
     };
+  }
+
+  // ── Step 0a: Mail has to be from a bank ──
+  //
+  // The single rule that makes reading mail safe. A bank app essentially never
+  // says anything but "you were charged"; an inbox is full of receipts, order
+  // confirmations, invoices and newsletters that carry dollar amounts and would
+  // otherwise all read as purchases.
+  //
+  // The sender is vetted first, and only then is a SHORT reconstructed
+  // subject-and-snippet handed to the ordinary parser — which is not modified by
+  // any of this, so every existing protection (deposits, declined cards,
+  // statement notices, balance alerts) applies to mail unchanged, and no
+  // bank-app capture behaves differently than it did.
+  //
+  // The channel is decided here rather than taken from the phone: an older APK
+  // sends no channel at all, and a build that did could be wrong about an app
+  // the user has since re-classified.
+  const channel: CaptureSourceKind = allowedSourceKind(input.bankAppId) ?? 'bank';
+  input = { ...input, channel };
+  if (channel === 'email') {
+    const alert = parseEmailAlert({
+      title: input.notificationTitle,
+      body: input.notificationBody,
+      rawText: input.rawNotification,
+    });
+    if (!alert) {
+      log.debug('[AI pipeline] Email is not a bank alert, or stands for several messages; ignoring');
+      return {
+        processed: false,
+        isTransaction: false,
+        skipReason: 'not_bank_app',
+        rejectionReason: 'Email was not a single message from a bank',
+        bankName: input.bankName,
+      };
+    }
+    // Everything downstream — the dedup keys, the parser, the stored row — now
+    // works from the vetted text rather than the whole notification.
+    input = { ...input, rawNotification: alert.text };
   }
 
   const notifTimestamp = input.notificationTimestamp || Date.now();
@@ -1210,7 +1276,11 @@ async function processNotificationWithAIImpl(
   const nearbyTransactions = Promise.resolve(
     supabase
       .from('transactions')
-      .select('id, vendor, amount, type, date, recur, source')
+      // `raw_notification` rides along because it is where a row's capture
+      // channel is recorded (see lib/captureChannel.ts). Fetching it here means
+      // the email-versus-bank duplicate rule below costs no extra round trip —
+      // it reuses rows the pipeline was loading anyway.
+      .select('id, vendor, amount, type, date, recur, source, raw_notification')
       .eq('user_id', userId)
       .gte('date', step4WindowStart)
       .lte('date', step4WindowEnd),
@@ -1631,6 +1701,143 @@ async function processNotificationWithAIImpl(
         vendor: closest.vendor,
         amount: Number(closest.amount),
         date: closest.date,
+      };
+    }
+  }
+
+  // ── Step 4e: An email defers to the bank's own alert ──
+  //
+  // Most banks announce a purchase twice — a push from their app and an email —
+  // and the two are not remotely the same string, so none of the fingerprint
+  // dedup above can see that they are one purchase. Step 4's hard skip nearly
+  // catches it and then misses: it demands the same day and the same cent,
+  // while an email routinely lands the following morning and occasionally
+  // rounds differently.
+  //
+  // Four things make this safe rather than a way to lose purchases:
+  //
+  //   1. It only ever runs for a capture that came IN by email, so a bank
+  //      alert can never be dropped in favour of anything.
+  //   2. It only defers to a row that came from a bank app — including every
+  //      row captured before this feature existed, which could not have come
+  //      from anywhere else. An email is never dropped because of another
+  //      email; two mails about two real purchases both survive.
+  //   3. It uses the looser "looks like the same charge" test, the one written
+  //      for exactly this drift (a premium reported at $477.45 and captured at
+  //      $477.46 a day later).
+  //   4. ONE email cancels ONE bank row. The row is marked as it is used, so a
+  //      second genuine purchase at the same merchant for the same amount
+  //      inside the window cannot vanish into the same row — the trap two Fizz
+  //      charges three days apart already sprang once on the projection code.
+  //
+  // Closest first, so when several rows could match, the nearest in amount and
+  // then in time is the one consumed.
+  if (input.channel === 'email' && existingTx && existingTx.length > 0) {
+    const candidates = existingTx
+      .filter((tx) => isBankSourcedRow(tx) && !hasPairedEmail(tx.raw_notification))
+      .filter((tx) => isSameCharge({ vendor, amount, date: today }, {
+        vendor: tx.vendor,
+        amount: Number(tx.amount),
+        date: tx.date,
+      }))
+      .sort((a, b) => {
+        const byAmount =
+          Math.abs(Number(a.amount) - amount) - Math.abs(Number(b.amount) - amount);
+        if (byAmount !== 0) return byAmount;
+        return (daysApart(a.date, today) ?? 99) - (daysApart(b.date, today) ?? 99);
+      });
+
+    const claimed = candidates[0];
+    if (claimed) {
+      log.debug(
+        `[AI pipeline] Email repeats a bank capture: ${claimed.vendor} $${claimed.amount} on ${claimed.date}; dropping the email copy`,
+      );
+      // Spend the row so it cannot absorb a second email. Deliberately not
+      // awaited for its success: if this write fails the only cost is the old
+      // behaviour, where one row could swallow two emails, and that is not
+      // worth failing a capture over.
+      try {
+        await supabase
+          .from('transactions')
+          .update({ raw_notification: withEmailPairedMarker(claimed.raw_notification).slice(0, 4000) })
+          .eq('id', claimed.id);
+      } catch (e) {
+        log.warn('[AI pipeline] Could not mark the bank row as paired:', e);
+      }
+
+      recentlyProcessedCache.set(inMemoryKey, Date.now());
+      markNotificationProcessed(capturedKey);
+      return {
+        processed: true,
+        isTransaction: true,
+        vendor,
+        amount,
+        skipReason: 'duplicate_ai' as const,
+        rejectionReason: 'The bank app already reported this purchase',
+        bankName: input.bankName,
+      };
+    }
+  }
+
+  // ── Step 4f: The bank's alert upgrades an email that got here first ──
+  //
+  // The other order of arrival. Sometimes the email lands before the push, or
+  // the push is delayed by hours, or that particular card only pushes
+  // sometimes. By the time the bank's own alert arrives the email row is
+  // already saved — and left alone, step 4 would discard the bank's version and
+  // the dashboard would keep the weaker one: an email's merchant is dug out of
+  // a truncated snippet, a bank's comes from fixed wording, and the amounts can
+  // differ by a cent.
+  //
+  // So the bank's numbers are written over the email's row rather than beside
+  // it. Nothing is deleted and no row appears or disappears — the entry the user
+  // may already be looking at in Review simply becomes correct, and is marked as
+  // bank-sourced so a later email defers to it like any other.
+  //
+  // If the update fails the capture is still reported as a duplicate rather than
+  // retried as an insert: the money is already on the books with very nearly the
+  // right figure, and a second row would be worse than a slightly stale one.
+  if (input.channel !== 'email' && existingTx && existingTx.length > 0) {
+    const stale = existingTx
+      .filter((tx) => isEmailSourcedRow(tx))
+      .filter((tx) => isSameCharge({ vendor, amount, date: today }, {
+        vendor: tx.vendor,
+        amount: Number(tx.amount),
+        date: tx.date,
+      }))
+      .sort((a, b) =>
+        Math.abs(Number(a.amount) - amount) - Math.abs(Number(b.amount) - amount))[0];
+
+    if (stale) {
+      log.debug(
+        `[AI pipeline] Bank alert supersedes an email capture: ${stale.vendor} $${stale.amount} → ${vendor} $${amount.toFixed(2)}`,
+      );
+      try {
+        await supabase
+          .from('transactions')
+          .update({
+            vendor: vendor || stale.vendor,
+            amount,
+            raw_notification: withCaptureMarker(
+              (input.rawNotification || '').slice(0, 3900),
+              { channel: 'bank', packageName: input.bankAppId },
+            ),
+          })
+          .eq('id', stale.id);
+      } catch (e) {
+        log.warn('[AI pipeline] Could not upgrade the email row with the bank alert:', e);
+      }
+
+      recentlyProcessedCache.set(inMemoryKey, Date.now());
+      markNotificationProcessed(capturedKey);
+      return {
+        processed: true,
+        isTransaction: true,
+        vendor,
+        amount,
+        skipReason: 'duplicate_ai' as const,
+        rejectionReason: 'This purchase was already captured from the bank\'s email',
+        bankName: input.bankName,
       };
     }
   }
@@ -2126,7 +2333,16 @@ async function processNotificationWithAIImpl(
   // landed straight on the dashboard and was never shown to anybody: a monthly
   // insurance premium counted twice, a day apart, with nothing in Review to say
   // so. The row is still written; it just has to be looked at.
-  const autoAccepted = !fuelHold && !lowConfidenceExtraction && !softDupMatch && shouldAutoAccept({
+  //
+  // Nor can anything that came in by email, ever. Auto-filing is the one path
+  // that records a purchase the user never sees, and mail is the least reliable
+  // thing the app reads: the sender is vetted but the body is a truncated
+  // snippet a mail app chose, and the merchant has to be dug out of prose rather
+  // than a bank's fixed wording. A bank push that parses badly costs a row in
+  // Review; an email that parses badly and files itself costs a wrong number on
+  // the dashboard that nobody was shown. Email captures are always looked at.
+  const autoAccepted = input.channel !== 'email'
+    && !fuelHold && !lowConfidenceExtraction && !softDupMatch && shouldAutoAccept({
     enabled: input.autoAcceptKnownVendors === true,
     confidence: overrideMatchConfidence,
     hasCategory: !!categoryId,
@@ -2159,13 +2375,18 @@ async function processNotificationWithAIImpl(
     // can show "what did the parser see?" — and the user can correct
     // the vendor from the source. Truncate to 4KB to avoid hitting
     // any text column limits.
-    raw_notification: (
+    // Both markers ride here. The fuel one records a substituted amount; the
+    // capture one records which route the alert arrived by, which is what lets
+    // a later email recognise this row as the bank's own report of the same
+    // purchase. Neither needs a migration, and the slice leaves room for them.
+    raw_notification: withCaptureMarker(
       fuelHold
         // Record the substitution in the row itself. This is what lets the UI
         // recognise a placeholder later without a schema migration, and it
         // keeps the bank's original wording alongside what we stored instead.
-        ? withFuelHoldMarker((input.rawNotification || '').slice(0, 3900), fuelHold)
-        : (input.rawNotification || '').slice(0, 4000)
+        ? withFuelHoldMarker((input.rawNotification || '').slice(0, 3800), fuelHold)
+        : (input.rawNotification || '').slice(0, 3900),
+      { channel: input.channel ?? 'bank', packageName: input.bankAppId },
     ),
     confidence: captureConfidence,
     // Only set when filing on arrival, so it never enters the review queue.

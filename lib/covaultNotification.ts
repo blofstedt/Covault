@@ -2,6 +2,7 @@
 import { log } from './log';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { parseCaptureOutcomes, type CaptureOutcome } from './captureOutcome';
+import { getSelectedSources, hasChosenSources, setSelectedSources } from './captureSources';
 
 export interface TransactionDetectedEvent {
   /**
@@ -67,6 +68,26 @@ export interface TransactionDetectedEvent {
    * notification simply stays as it did before.
    */
   capture_notification_id?: number;
+
+  /**
+   * Which route this alert arrived by — a bank's own app, or an email.
+   *
+   * Absent on an APK built before email was a source, which is read as 'bank':
+   * that is what every capture was before this existed, and it is the safe
+   * reading, since the email-specific rules only ever ADD restrictions.
+   */
+  channel?: 'bank' | 'email';
+
+  /**
+   * Notification title and body, kept apart.
+   *
+   * For a mail app the title is the SENDER, which is the one thing the pipeline
+   * has to vet before reading anything else. The concatenated `raw_text` cannot
+   * be split back apart reliably, so the two halves are carried separately.
+   * Absent on an older APK.
+   */
+  title?: string;
+  body?: string;
 }
 
 export interface CovaultNotificationPlugin {
@@ -82,7 +103,15 @@ export interface CovaultNotificationPlugin {
   requestAccess(options?: { hint?: string }): Promise<void>;
   isEnabled(): Promise<{ enabled: boolean }>;
   getInstalledApps(): Promise<{ apps: Array<{ packageName: string; name: string }> }>;
-  saveMonitoredApps(options: { apps: any }): Promise<void>;
+  /**
+   * Replace the list of apps the listener may read.
+   *
+   * `chosen` marks the list as the user's own answer rather than a seeded
+   * default, which is what makes unticking an app stick. It defaults to true on
+   * the native side, so an older APK that has never heard of it behaves exactly
+   * as it always did. Pass false only when seeding.
+   */
+  saveMonitoredApps(options: { apps: any; chosen?: boolean }): Promise<void>;
   getMonitoredApps(): Promise<{ apps: string[] }>;
 
   /**
@@ -600,13 +629,24 @@ export async function pushWidgetSnapshot(
  * so the notification listener can monitor them immediately on fresh install,
  * without waiting for the user to open notification settings.
  *
- * Only runs on native platforms and only saves when no monitored apps
- * have been configured yet (preserves user customizations).
+ * SEEDING ONLY. This runs on every launch and is add-only, so before the guard
+ * below it would put back every bank the user had just switched off, every time
+ * they opened the app — deselection would appear to work and silently undo
+ * itself. Once the user has answered, their list is the answer, and this does
+ * nothing at all.
+ *
+ * The write passes `chosen: false` for the same reason: seeding a sensible
+ * default is not the user making a choice, and marking it as one would freeze
+ * the list before they had ever seen the picker.
  */
 export async function autoDetectAndSaveMonitoredApps(
   knownBankingApps: Record<string, string>,
 ): Promise<void> {
   if (!covaultNotification) return;
+  if (hasChosenSources()) {
+    log.debug('[autoDetect] The user has chosen their capture sources; leaving the list alone');
+    return;
+  }
 
   try {
     const { apps: saved } = await covaultNotification.getMonitoredApps();
@@ -632,12 +672,48 @@ export async function autoDetectAndSaveMonitoredApps(
     }
 
     if (changed) {
-      await covaultNotification.saveMonitoredApps({ apps: Array.from(savedSet) });
+      await covaultNotification.saveMonitoredApps({ apps: Array.from(savedSet), chosen: false });
       log.debug(
         `[autoDetect] Saved ${savedSet.size} monitored banking apps (${bankingPackages.length} installed)`,
       );
     }
   } catch (e) {
     log.warn('[autoDetect] Error during banking app auto-detection:', e);
+  }
+}
+
+/**
+ * Record the user's choice of capture sources — in BOTH places, together.
+ *
+ * There are two lists and they have to agree. The native `monitored_apps` list
+ * decides what is forwarded off the phone at all; the web-side selection decides
+ * what is accepted when it arrives. Writing only one produces a silent
+ * half-state that is very hard to diagnose from the outside: with only the
+ * native list, notifications are read and then thrown away, so nothing is ever
+ * saved and nothing says why; with only the web list, the app is willing to
+ * accept alerts that never reach it.
+ *
+ * That has happened before, which is why every caller now goes through this one
+ * function rather than remembering to make two calls.
+ *
+ * The web list is written FIRST and on every platform. It is the one that
+ * survives the app being reinstalled from a web bundle, and on a phone with an
+ * older APK — which has no idea about any of this — it is the only one there is.
+ */
+export async function applySourceSelection(packages: string[]): Promise<void> {
+  setSelectedSources(packages);
+  if (!covaultNotification) return;
+
+  try {
+    // Read back rather than passing `packages` through: getSelectedSources has
+    // already folded case and dropped excluded apps, and the two sides must be
+    // given byte-identical lists or they will disagree about a mixed-case
+    // package name.
+    await covaultNotification.saveMonitoredApps({
+      apps: getSelectedSources(),
+      chosen: true,
+    });
+  } catch (e) {
+    log.warn('[captureSources] Could not push the selection to the listener:', e);
   }
 }

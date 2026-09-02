@@ -1,4 +1,6 @@
 import { log } from '../lib/log';
+import { stripCaptureBookkeeping } from '../lib/captureChannel';
+import { stripFuelHoldMarker } from '../lib/fuelHold';
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import { Transaction, BudgetCategory } from '../types';
@@ -16,9 +18,7 @@ import LearnedRulesCard from './transaction_parsing/LearnedRulesCard';
 import { useNotificationRules } from './transaction_parsing/useNotificationRules';
 import type { NotATxRuleType } from './transaction_parsing/NotATransactionModal';
 
-import { covaultNotification } from '../lib/covaultNotification';
 import { restFetch } from '../lib/apiHelpers';
-import { loadBankingAppsFromDB } from '../lib/bankingApps';
 import { getNeedsReviewIdSet, getReviewQueueChangedEventName } from '../lib/localNotificationMemory';
 import { buildAutoFiledClearPayload, buildFilePayload, buildUndoPayload } from '../lib/caughtTransactionOps';
 import { selectAwaitingReview, countHiddenRefunds, selectRecentlyAutoFiled } from '../lib/reviewQueue';
@@ -158,34 +158,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   // ── Refresh spinner state ──
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // ── Monitored banking apps for ActiveBanksCard ──
-  const [monitoredBanks, setMonitoredBanks] = useState<Map<string, string>>(new Map());
-
-  const loadMonitoredBanks = useCallback(async () => {
-    if (!covaultNotification) return;
-    try {
-      const knownBankingApps = await loadBankingAppsFromDB();
-      const { apps: packageNames } = await covaultNotification.getMonitoredApps();
-      const bankMap = new Map<string, string>();
-      for (const pkg of packageNames) {
-        if (pkg in knownBankingApps) {
-          bankMap.set(pkg, knownBankingApps[pkg]);
-        }
-      }
-      setMonitoredBanks(bankMap);
-    } catch (e) {
-      log.warn('[TransactionParsing] Error loading monitored banks:', e);
-    }
-  }, []);
-
-  // Load monitored banks on mount and when notifications are enabled
-  useEffect(() => {
-    if (enabled) {
-      loadMonitoredBanks();
-    }
-  }, [enabled, loadMonitoredBanks]);
-
-
   // needsReviewIds is the live source of truth for the review queue; any
   // count is derived from it at the point of use.
   const [needsReviewIds, setNeedsReviewIds] = useState<Set<string>>(new Set());
@@ -289,10 +261,17 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   const handleMarkNotTransaction = useCallback(
     async (tx: Transaction, ruleType: NotATxRuleType) => {
       if (!userId) return;
-      if (tx.raw_notification && tx.raw_notification.trim()) {
+      // Covault's own bookkeeping is stripped before the text becomes a rule.
+      // The markers exist only on stored rows; an incoming notification never
+      // carries one, so a pattern that included them could never match anything
+      // again — the rule would be written, saved, and silently do nothing.
+      const rulePattern = stripCaptureBookkeeping(
+        stripFuelHoldMarker(tx.raw_notification),
+      ).trim();
+      if (rulePattern) {
         try {
           await createNotificationRule({
-            pattern: tx.raw_notification.trim(),
+            pattern: rulePattern,
             pattern_type: ruleType,
           });
         } catch (err) {
@@ -594,17 +573,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     };
   }, [enabled, onRefreshNotifications, onReloadTransactions, userId]);
 
-  // Refresh monitored banks on visibility change
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        loadMonitoredBanks();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [loadMonitoredBanks]);
-
   // ── Clear handlers ──
   //
   // Neither of these deletes anything. Both only flip the flag that decides
@@ -706,7 +674,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       }
     } finally {
       setIsRefreshing(false);
-      loadMonitoredBanks();
       // Slower AI extractions land after the scan resolves. Pick them up in the
       // background — the spinner is already gone, the list just fills in.
       if (onReloadTransactions && userId) {
@@ -716,7 +683,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         }, 2500);
       }
     }
-  }, [isRefreshing, onRefreshNotifications, onReloadTransactions, userId, loadMonitoredBanks]);
+  }, [isRefreshing, onRefreshNotifications, onReloadTransactions, userId]);
 
   return (
     <PageShell>
@@ -759,7 +726,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
           <>
             <div className="shrink-0 mb-4">
               <ActiveBanksCard
-                activeBanks={monitoredBanks}
                 isExpanded={expandedSections.activeBanks}
                 onToggleExpanded={() => toggleSection('activeBanks')}
               />

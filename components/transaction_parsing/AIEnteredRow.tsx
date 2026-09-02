@@ -13,6 +13,7 @@ import {
   markSettlementOfferDismissed,
 } from '../../lib/localNotificationMemory';
 import { detectFuelHoldPlaceholder, stripFuelHoldMarker } from '../../lib/fuelHold';
+import { stripCaptureBookkeeping } from '../../lib/captureChannel';
 import { findSettlementCandidate } from '../../lib/fuelHoldReconcile';
 import { FuelHoldPrompt, FuelSettlementOffer } from './FuelHoldPrompt';
 import SoftDuplicateBadge from './SoftDuplicateBadge';
@@ -569,7 +570,7 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
         {/* Shown for every row with source text, exact matches included. It used
             to be hidden on exact matches — which is precisely when you want it,
             because that's a rule of yours firing on something it shouldn't. */}
-        <RawNotificationExpander rawNotification={stripFuelHoldMarker(tx.raw_notification)} />
+        <RawNotificationExpander rawNotification={stripCaptureBookkeeping(stripFuelHoldMarker(tx.raw_notification))} />
       </div>
 
       {showActions && (

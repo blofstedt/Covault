@@ -89,6 +89,19 @@ public class CovaultNotificationPlugin extends Plugin {
      */
     private void autoDetectBankingApps() {
         try {
+            // Seeding only. This runs on every app launch and again on every
+            // rescan, and it is add-only, so left unguarded it would put back
+            // every bank the user had just switched off — every time they opened
+            // the app. Deselection would appear to work and silently undo
+            // itself, which is indistinguishable from the picker being broken.
+            //
+            // Once the user has answered, their list is the answer.
+            if (getContext().getSharedPreferences("covault_prefs", 0)
+                    .getBoolean("monitored_apps_chosen", false)) {
+                Log.i(TAG, "autoDetectBankingApps: the user has chosen their apps; leaving the list alone");
+                return;
+            }
+
             String stored = getContext().getSharedPreferences("covault_prefs", 0)
                 .getString("monitored_apps", "[]");
             org.json.JSONArray existing = new org.json.JSONArray(stored);
@@ -360,11 +373,18 @@ public class CovaultNotificationPlugin extends Plugin {
         List<ApplicationInfo> apps = pm.getInstalledApplications(PackageManager.GET_META_DATA);
         JSArray result = new JSArray();
         for (ApplicationInfo app : apps) {
-            // Include non-system apps and any known banking app (which may be
-            // pre-installed or flagged as a system app on some devices).
+            // Include non-system apps and any known banking or mail app (which
+            // may be pre-installed or flagged as a system app on some devices).
+            //
+            // The mail half is not optional: Gmail ships preinstalled on most
+            // Android phones and Samsung Email on every Samsung, so both carry
+            // FLAG_SYSTEM. Without naming them here the picker would simply not
+            // list the two mail apps most people actually use, and the whole
+            // feature would look broken on the devices it matters most on.
             boolean isUserApp = (app.flags & ApplicationInfo.FLAG_SYSTEM) == 0;
             boolean isKnownBank = NotificationListener.BANKING_APPS.contains(app.packageName);
-            if (isUserApp || isKnownBank) {
+            boolean isKnownMail = NotificationListener.EMAIL_APPS.contains(app.packageName);
+            if (isUserApp || isKnownBank || isKnownMail) {
                 JSObject obj = new JSObject();
                 obj.put("packageName", app.packageName);
                 obj.put("name", pm.getApplicationLabel(app).toString());
@@ -376,14 +396,50 @@ public class CovaultNotificationPlugin extends Plugin {
         call.resolve(ret);
     }
 
+    /**
+     * Record exactly which apps may be listened to.
+     *
+     * Two things happen here that the listener depends on:
+     *
+     *   1. Package names are folded to lower case, because the listener now
+     *      compares that way. The web side has always lowercased, and a
+     *      mixed-case package ("com.ally.MobileBanking") written through the old
+     *      path was stored verbatim and then never matched.
+     *   2. `monitored_apps_chosen` is set, and this is the ONLY place that
+     *      happens. It is what tells the listener the stored list is an answer
+     *      rather than an absence — which is what makes unticking a bank stick,
+     *      including unticking every one of them.
+     *
+     * Written with commit() rather than apply(): the very next notification may
+     * be gated on this, and the two values must never be visible apart — a list
+     * without its flag reads as "not chosen" and quietly restores the defaults.
+     */
     @PluginMethod
     public void saveMonitoredApps(PluginCall call) {
         JSArray apps = call.getArray("apps");
         if (apps != null) {
-            getContext().getSharedPreferences("covault_prefs", 0)
-                .edit()
-                .putString("monitored_apps", apps.toString())
-                .apply();
+            org.json.JSONArray normalized = new org.json.JSONArray();
+            try {
+                for (int i = 0; i < apps.length(); i++) {
+                    String pkg = apps.optString(i, "").trim().toLowerCase(java.util.Locale.ROOT);
+                    if (!pkg.isEmpty()) normalized.put(pkg);
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "saveMonitoredApps: could not normalise the list", e);
+            }
+            // `chosen` defaults to true, so every existing caller keeps meaning
+            // "the user picked this". Seeding passes false. The flag is only
+            // ever raised, never lowered: a seed write must not be able to
+            // demote a real choice back to "we have not asked", which would let
+            // auto-detect start overwriting the user's list again.
+            boolean markChosen = !Boolean.FALSE.equals(call.getBoolean("chosen", true));
+            android.content.SharedPreferences.Editor editor =
+                getContext().getSharedPreferences("covault_prefs", 0)
+                    .edit()
+                    .putString("monitored_apps", normalized.toString());
+            if (markChosen) editor.putBoolean("monitored_apps_chosen", true);
+            editor.commit();
+            Log.i(TAG, "saveMonitoredApps: " + normalized.length() + " app(s), chosen=" + markChosen);
         }
         call.resolve();
     }

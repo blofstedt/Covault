@@ -446,6 +446,97 @@ public class NotificationListener extends NotificationListenerService {
         "com.paysend.app"                  // Paysend
     ));
 
+    // Mail apps the user may select as a capture source.
+    //
+    // Being here does NOT mean this service reads the app. Every mail app is off
+    // until the user ticks it in the picker, and even then only mail whose
+    // SENDER is a bank is ever looked at — see looksLikeBankSender below.
+    //
+    // Must stay in sync with KNOWN_EMAIL_APPS in lib/captureSources.ts;
+    // lib/__tests__/captureSourcesConsistency.test.ts fails the build otherwise.
+    static final Set<String> EMAIL_APPS = new HashSet<>(Arrays.asList(
+        "com.google.android.gm",                    // Gmail
+        "com.google.android.gm.lite",               // Gmail Go
+        "com.microsoft.office.outlook",             // Outlook
+        "com.samsung.android.email.provider",       // Samsung Email
+        "com.yahoo.mobile.client.android.mail",     // Yahoo Mail
+        "ch.protonmail.android",                    // Proton Mail
+        "me.proton.android.mail",                   // Proton Mail
+        "com.readdle.spark",                        // Spark
+        "me.bluemail.mail",                         // BlueMail
+        "org.kman.AquaMail",                        // Aqua Mail
+        "com.fsck.k9",                              // K-9 Mail
+        "net.thunderbird.android",                  // Thunderbird
+        "com.fastmail.app",                         // Fastmail
+        "com.zoho.mail",                            // Zoho Mail
+        "com.easilydo.mail",                        // Edison Mail
+        "com.my.mail",                              // myMail
+        "ru.mail.mailapp",                          // Mail.ru
+        "com.gmx.mobile.android.mail",              // GMX Mail
+        "com.onemobile.android.mail",               // Mail.com
+        "com.gomail.android",                       // Newton Mail
+        "com.gmail.app"                             // Canary Mail
+    ));
+
+    // ── Email: is this a bank writing to you? ────────────────────────────
+    //
+    // The one rule that makes reading mail safe at all. An email that mentions a
+    // dollar amount is not a purchase — order confirmations, receipts,
+    // newsletters and invoices all carry amounts — so the SENDER is vetted
+    // before the body is looked at.
+    //
+    // Copies of the lists in lib/emailNotification.ts. This service has to reach
+    // the same verdict on sight: it decides whether the alert is forwarded at
+    // all, so a list that drifts here silently costs captures the web side would
+    // have accepted. lib/__tests__/emailSenderMirror.test.ts parses both files
+    // and fails the build on drift.
+
+    // EMAIL_BANK_SENDERS_BEGIN
+    private static final String[] EMAIL_BANK_SENDERS = {
+        // Canada
+        "rbc", "royal bank", "bmo", "bank of montreal", "cibc", "scotiabank", "scotia",
+        "td canada", "canada trust", "tangerine", "desjardins", "national bank",
+        "banque nationale", "atb", "simplii", "wealthsimple", "koho", "neo financial",
+        "eq bank", "motusbank", "vancity", "meridian", "servus", "coast capital",
+        "interac", "manulife", "sun life", "laurentian",
+        // United States
+        "chase", "wells fargo", "bank of america", "citibank", "citi card",
+        "capital one", "american express", "amex", "discover card", "us bank",
+        "usaa", "navy federal", "pnc bank", "truist", "suntrust", "keybank",
+        "huntington", "fifth third", "regions bank", "synchrony", "barclaycard",
+        "citizens bank", "comerica", "schwab", "fidelity", "sofi", "chime",
+        "varo bank", "venmo", "cash app", "paypal", "zelle",
+        // United Kingdom & Ireland
+        "barclays", "lloyds", "natwest", "halifax", "nationwide", "santander",
+        "starling", "monzo", "revolut", "hsbc", "tsb", "metro bank", "virgin money",
+        "bank of scotland", "aib", "bank of ireland", "permanent tsb",
+        // Europe
+        "deutsche bank", "commerzbank", "sparkasse", "volksbank", "postbank",
+        "comdirect", "ing", "abn amro", "rabobank", "bunq", "kbc", "belfius",
+        "bnp paribas", "societe generale", "credit agricole", "credit mutuel",
+        "caisse epargne", "caisse d epargne", "boursorama", "bbva", "caixabank", "sabadell", "bankinter",
+        "unicredit", "intesa", "fineco", "nordea", "danske bank", "swedbank",
+        "handelsbanken", "dnb", "sparebank", "erste bank", "raiffeisen", "postfinance",
+        "ubs", "mbank", "pko", "pekao", "wise", "klarna", "n26"
+    };
+    // EMAIL_BANK_SENDERS_END
+
+    // EMAIL_BANK_SENDER_WORDS_BEGIN
+    private static final String[] EMAIL_BANK_SENDER_WORDS = {
+        "bank", "banque", "banco", "credit union", "creditunion", "building society",
+        "cardmember", "card services", "card alert", "fraud alert", "kreditkarte",
+        "sparkasse", "caisse populaire", "federal credit"
+    };
+    // EMAIL_BANK_SENDER_WORDS_END
+
+    // EMAIL_SUMMARY_PHRASES_BEGIN
+    private static final String[] EMAIL_SUMMARY_PHRASES = {
+        "new messages", "new emails", "new e-mails", "unread messages", "unread emails",
+        "more messages", "other messages", "nouveaux messages", "nuevos mensajes",
+        "neue nachrichten"
+    };
+    // EMAIL_SUMMARY_PHRASES_END
+
     // Patterns to extract transaction amount
     private static final Pattern[] AMOUNT_PATTERNS = {
         Pattern.compile("\\$([\\d,]+(?:\\.\\d{1,2})?)"),                    // $123, $123.4, $123.45
@@ -763,6 +854,61 @@ public class NotificationListener extends NotificationListenerService {
     };
 
     /**
+     * The one way a package name is compared, anywhere in this service.
+     *
+     * A dozen entries in BANKING_APPS carry capital letters
+     * ("com.ally.MobileBanking", "co.uk.Nationwide.Mobile"), and Aqua Mail's
+     * does too, while the web side has always lowercased. A mixed-case package
+     * approved in settings was therefore written lowercased into monitored_apps
+     * and then never matched here: the app read nothing and said nothing about
+     * it. Both sides now fold case, and normalizePackageName is what that means.
+     * Mirrors normalizePackage in lib/captureSources.ts.
+     */
+    private static String normalizePackageName(String packageName) {
+        if (packageName == null) return "";
+        return packageName.trim().toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private static Set<String> lowercaseAll(Set<String> source) {
+        Set<String> out = new HashSet<>();
+        for (String pkg : source) out.add(normalizePackageName(pkg));
+        return out;
+    }
+
+    // Declared after the sets they fold, so static initialisation order fills
+    // them from populated sources rather than from nulls.
+    private static final Set<String> BANKING_APPS_LC = lowercaseAll(BANKING_APPS);
+    private static final Set<String> EMAIL_APPS_LC = lowercaseAll(EMAIL_APPS);
+    private static final Set<String> EXCLUDED_APPS_LC = lowercaseAll(EXCLUDED_APPS);
+
+    static boolean isExcludedPackage(String packageName) {
+        return EXCLUDED_APPS_LC.contains(normalizePackageName(packageName));
+    }
+
+    /**
+     * Has the user actually been given the choice of which apps to listen to?
+     *
+     * This flag is the difference between "the user turned this bank off" and
+     * "we have not asked yet", and without it the two are indistinguishable.
+     * Guessing wrong in one direction switches a bank the user disabled back on;
+     * guessing wrong in the other stops capturing everything, in silence, with
+     * nothing in any log to say why. So it is stored, and it is written by
+     * exactly one place — CovaultNotificationPlugin.saveMonitoredApps.
+     */
+    private boolean hasChosenMonitoredApps() {
+        try {
+            return getSharedPreferences("covault_prefs", 0)
+                .getBoolean("monitored_apps_chosen", false);
+        } catch (Exception e) {
+            // Unreadable preferences must not be read as "the user chose
+            // nothing" — that would silence every bank. Fall back to the
+            // pre-picker behaviour instead.
+            Log.w(TAG, "Error reading monitored_apps_chosen", e);
+            return false;
+        }
+    }
+
+    /**
      * Load user-configured monitored apps from SharedPreferences.
      */
     private Set<String> getUserMonitoredApps() {
@@ -772,7 +918,7 @@ public class NotificationListener extends NotificationListenerService {
             Set<String> apps = new HashSet<>();
             org.json.JSONArray arr = new org.json.JSONArray(stored);
             for (int i = 0; i < arr.length(); i++) {
-                String pkg = arr.optString(i, "").trim();
+                String pkg = normalizePackageName(arr.optString(i, ""));
                 if (!pkg.isEmpty()) {
                     apps.add(pkg);
                 }
@@ -785,11 +931,95 @@ public class NotificationListener extends NotificationListenerService {
     }
 
     /**
-     * Check if a package is a monitored app (hardcoded banking apps OR user-configured).
+     * May this app's notifications be read?
+     *
+     * The user's list is the answer once it exists — INCLUDING when it is empty,
+     * which is a real answer and not a reason to fall back. That is the whole
+     * point: this method used to check the hardcoded BANKING_APPS set first and
+     * only then the user's choices, so unticking a built-in bank in settings
+     * appeared to work and changed nothing at all.
+     *
+     * Before the user has chosen, the old behaviour stands exactly as it was, so
+     * an existing install upgrading to this build keeps capturing from its banks
+     * with no action from anyone.
      */
     private boolean isMonitoredApp(String packageName) {
-        if (BANKING_APPS.contains(packageName)) return true;
-        return getUserMonitoredApps().contains(packageName);
+        String pkg = normalizePackageName(packageName);
+        if (pkg.isEmpty()) return false;
+        if (isExcludedPackage(pkg)) return false;
+
+        if (hasChosenMonitoredApps()) {
+            return getUserMonitoredApps().contains(pkg);
+        }
+        return BANKING_APPS_LC.contains(pkg) || getUserMonitoredApps().contains(pkg);
+    }
+
+    /** True when this package is a mail app rather than a bank's own app. */
+    private boolean isEmailSource(String packageName) {
+        return EMAIL_APPS_LC.contains(normalizePackageName(packageName));
+    }
+
+    // ── The email sender gate, mirrored from lib/emailNotification.ts ────
+
+    /** Fold a sender so the mirrored lists can be matched against it. */
+    static String normalizeSender(String sender) {
+        if (sender == null) return "";
+        String folded = java.text.Normalizer.normalize(sender, java.text.Normalizer.Form.NFD)
+            .replaceAll("[\\u0300-\\u036f]", "")
+            .toLowerCase(java.util.Locale.ROOT)
+            .replaceAll("[^a-z0-9]+", " ")
+            .trim();
+        return folded;
+    }
+
+    /** True when `needle` appears in `haystack` as a whole word or word run. */
+    private static boolean containsPhrase(String haystack, String needle) {
+        if (needle == null || needle.isEmpty()) return false;
+        return (" " + haystack + " ").contains(" " + needle + " ");
+    }
+
+    /**
+     * The gate: true only when this email is from a bank.
+     *
+     * Everything about reading mail rests on this returning false for the post a
+     * person actually receives all day.
+     */
+    static boolean looksLikeBankSender(String sender) {
+        String normalized = normalizeSender(sender);
+        if (normalized.isEmpty()) return false;
+        for (String token : EMAIL_BANK_SENDERS) {
+            if (containsPhrase(normalized, token)) return true;
+        }
+        for (String word : EMAIL_BANK_SENDER_WORDS) {
+            if (containsPhrase(normalized, word)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * True when one notification stands for several messages.
+     *
+     * A rolled-up inbox cannot be attributed to a single purchase — the amount
+     * in it may not even belong to the bank's message — so these are refused
+     * rather than guessed at. Three independent signals, because mail apps
+     * disagree about which they use.
+     */
+    static boolean isBundledEmailNotification(Notification notification, Bundle extras,
+                                              String title, String body) {
+        if (notification != null
+            && (notification.flags & Notification.FLAG_GROUP_SUMMARY) != 0) {
+            return true;
+        }
+        if (extras != null) {
+            CharSequence[] lines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES);
+            if (lines != null && lines.length > 1) return true;
+        }
+        String haystack = ((title == null ? "" : title) + " " + (body == null ? "" : body))
+            .toLowerCase(java.util.Locale.ROOT);
+        for (String phrase : EMAIL_SUMMARY_PHRASES) {
+            if (haystack.contains(phrase)) return true;
+        }
+        return false;
     }
 
     @Override
@@ -854,6 +1084,37 @@ public class NotificationListener extends NotificationListenerService {
 
         if (!fromMonitored) {
             return;
+        }
+
+        // ── Mail apps are a different kind of source ────────────────────
+        //
+        // A bank app essentially never says anything but "you were charged".
+        // A mail app says everything, and plenty of it carries a dollar
+        // amount — receipts, order confirmations, invoices, newsletters. So a
+        // mail notification has to clear two extra bars before it is treated as
+        // an alert at all, and failing either means it is not forwarded: the
+        // web side would refuse it anyway, and forwarding it would announce a
+        // capture that is never going to appear in Review.
+        boolean fromEmail = isEmailSource(packageName);
+        if (fromEmail) {
+            // The sender has to be a bank. This is the whole safety argument
+            // for reading mail; without it every receipt in the inbox is a
+            // candidate purchase.
+            if (!looksLikeBankSender(title)) {
+                Log.i(TAG, "Email from a sender that is not a bank; ignoring: " + packageName);
+                return;
+            }
+            // One notification standing for several messages cannot be
+            // attributed to one purchase.
+            if (isBundledEmailNotification(notification, extras, title, body)) {
+                Log.i(TAG, "Bundled email notification; ignoring: " + packageName);
+                return;
+            }
+            // Drop the sender from the text handed on. Leaving the bank's name
+            // on the front gives the vendor extractor a plausible merchant to
+            // latch onto, and every capture would be filed against the bank
+            // instead of the shop that was actually paid.
+            fullText = body;
         }
 
         // Extract transaction data (best-effort; the local extraction
@@ -949,7 +1210,7 @@ public class NotificationListener extends NotificationListenerService {
         // the rejected card so the user can see what was processed.
         CaptureResult result = broadcastTransaction(
             packageName, amount, vendor, fullText, sbn.getPostTime(), fromScan, alreadySecured,
-            captureQuietly);
+            captureQuietly, fromEmail, title, body);
         boolean secured = result.secured();
 
         // Recorded BEFORE the dismissal below, never after. The record is what
@@ -958,10 +1219,17 @@ public class NotificationListener extends NotificationListenerService {
         // alert would be gone with nothing saying it had ever been replaced.
         if (secured) rememberSecured(securedKey);
 
-        maybeHideBankNotification(
-            sbn, securedKey, fromMonitored, amount, secured || alreadySecured, result,
-            ignoredByUser, knownRecurring, notAPurchase, moneyComingIn,
-            chargeDidNotHappen, nothingSpent);
+        // Tray suppression is for a BANK's own alert, which Covault replaces
+        // with its own. An email is the user's actual mail: deleting it from the
+        // shade would destroy something Covault does not own and cannot put
+        // back, and the message itself stays in their inbox saying a purchase
+        // was made that they now have no notification of. Never hide mail.
+        if (!fromEmail) {
+            maybeHideBankNotification(
+                sbn, securedKey, fromMonitored, amount, secured || alreadySecured, result,
+                ignoredByUser, knownRecurring, notAPurchase, moneyComingIn,
+                chargeDidNotHappen, nothingSpent);
+        }
 
         // Home-screen widget: nudge the donut for a purchase captured while the
         // app is closed, so it doesn't sit stale until the next app launch.
@@ -990,7 +1258,15 @@ public class NotificationListener extends NotificationListenerService {
         // next snapshot brings it back into agreement either way. Believing a
         // wrong one costs the user a broken widget until they next open the
         // app, which is exactly the window the widget exists to cover.
-        if (!fromScan && fromMonitored && amount != null && !captureQuietly) {
+        // Email is excluded for a reason of its own, on top of the quiet rules
+        // above. A delta is a bet that this capture will survive, and an email
+        // capture is the one kind that is routinely thrown away AFTER the phone
+        // has seen it: most banks announce a purchase twice, by push and by
+        // mail, and the web pipeline drops whichever copy arrives second. A
+        // delta written for a copy that is about to be discarded would show the
+        // purchase twice on the home screen until the app was next opened. The
+        // widget is merely slower for email captures; it is never wrong.
+        if (!fromScan && fromMonitored && !fromEmail && amount != null && !captureQuietly) {
             try {
                 if (WidgetDeltaStore.recordDelta(this, amount, vendor, sbn.getPostTime())) {
                     // The redraw that counts up to the new figures rather than
@@ -2198,7 +2474,7 @@ public class NotificationListener extends NotificationListenerService {
      *         Covault notification is showing for it — the two preconditions
      *         for dismissing the bank's own notification.
      */
-    private CaptureResult broadcastTransaction(String sourceApp, Double amount, String vendor, String rawText, long postTime, boolean fromScan, boolean alreadySecured, boolean captureQuietly) {
+    private CaptureResult broadcastTransaction(String sourceApp, Double amount, String vendor, String rawText, long postTime, boolean fromScan, boolean alreadySecured, boolean captureQuietly, boolean fromEmail, String title, String body) {
         try {
             JSONObject transaction = new JSONObject();
             transaction.put("source_app", sourceApp);
@@ -2207,6 +2483,14 @@ public class NotificationListener extends NotificationListenerService {
             }
             transaction.put("vendor", vendor != null ? vendor : "Unknown Merchant");
             transaction.put("raw_text", rawText);
+            // Which route this arrived by, and the title/body split the web side
+            // needs to vet a sender. The pipeline re-runs the same checks — this
+            // service's verdict is never taken on trust — so these have to be
+            // carried rather than re-derived from the concatenated text, which
+            // cannot be split back apart.
+            transaction.put("channel", fromEmail ? "email" : "bank");
+            transaction.put("title", title == null ? "" : title);
+            transaction.put("body", body == null ? "" : body);
             // Use the notification's original post time (stable across rescans)
             // instead of System.currentTimeMillis() which changes each time
             transaction.put("timestamp", postTime);

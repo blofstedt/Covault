@@ -11,7 +11,8 @@ import { processNotificationWithAI, buildInMemoryDedupKey } from '../notificatio
 import { sendPartnerActivityNotification, sendExpenseCapturedNotification } from '../appNotifications';
 import type { NotificationSettingsShape } from '../appNotifications';
 import type { AIProcessingResult } from '../notificationProcessor';
-import { getBankingApps, isExcludedApp, isBankingApp } from '../bankingApps';
+import { getBankingApps, isExcludedApp } from '../bankingApps';
+import { allowedSourceKind, isCaptureSourceAllowed, captureSourceName } from '../captureSources';
 import { noteBankAlertSeen } from '../bankHeartbeat';
 import { getLocalToday } from '../dateUtils';
 
@@ -132,14 +133,19 @@ export const useNotificationListener = ({
               return;
             }
 
-            // Banks only. The native listener no longer forwards anything else,
-            // but events also arrive from the offline queue and from rescans,
-            // and a phone can be running an older APK than its web bundle —
-            // which is exactly where a chat message quoting a dollar figure used
-            // to get in. Dropped before the dedup bookkeeping so a non-bank
-            // event does not consume a slot in the recent window.
-            if (!isBankingApp(bankAppId)) {
-              log.debug('[notification] Ignoring non-banking app:', bankAppId);
+            // The apps the user picked, only. The native listener no longer
+            // forwards anything else, but events also arrive from the offline
+            // queue and from rescans, and a phone can be running an older APK
+            // than its web bundle — which is exactly where a chat message
+            // quoting a dollar figure used to get in. Dropped before the dedup
+            // bookkeeping so a rejected event does not consume a slot in the
+            // recent window.
+            //
+            // This is also what makes unticking an app take effect immediately
+            // on a phone whose APK predates the picker: the native side may
+            // still be forwarding it, and this refuses it on arrival.
+            if (!isCaptureSourceAllowed(bankAppId)) {
+              log.debug('[notification] Ignoring an app that is not a selected capture source:', bankAppId);
               return;
             }
 
@@ -148,7 +154,11 @@ export const useNotificationListener = ({
             // become purchases: a promo from the bank still proves Android is
             // delivering its notifications, which is the only thing the
             // settings screen uses this for. See lib/bankHeartbeat.ts.
-            noteBankAlertSeen(bankAppId);
+            // Only a bank's own app proves a BANK is reaching us. A mail app
+            // being quiet says nothing about whether the bank is sending
+            // alerts, and counting it as a heartbeat would silence the "we have
+            // heard nothing from this bank" warning for the wrong reason.
+            if (allowedSourceKind(bankAppId) !== 'email') noteBankAlertSeen(bankAppId);
             // Reuse the processor's key builder rather than re-implementing it,
             // so the two dedup layers cannot drift apart.
             const dedupKey = buildInMemoryDedupKey(bankAppId || '', rawNotification || '');
@@ -177,6 +187,9 @@ export const useNotificationListener = ({
             const bankingApps = getBankingApps();
             const bankName = event.bankName
               || (bankAppId && bankingApps[bankAppId])
+              // Falls back through the mail apps too, so a capture from email
+              // reads as "Gmail" rather than "com.google.android.gm".
+              || captureSourceName(bankAppId)
               || event.source_app
               || bankAppId
               || 'Unknown Bank';
@@ -193,6 +206,12 @@ export const useNotificationListener = ({
                   fallbackVendor: event.vendor,
                   fallbackAmount: event.amount,
                   forceReprocess: event.from_scan === true || event.fromScan === true,
+                  // The sender and the body, kept apart, so an email can have
+                  // its sender vetted before anything else is read. Absent on
+                  // an older APK, which is why the pipeline decides the channel
+                  // from the package rather than trusting this.
+                  notificationTitle: event.title,
+                  notificationBody: event.body,
                   // Read through the ref so toggling it takes effect on the
                   // next capture without re-registering the native listener.
                   autoAcceptKnownVendors:

@@ -16,6 +16,32 @@
     -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!--
+        Seeing which apps are installed, so the user can pick which of them
+        Covault listens to.
+
+        From Android 11 onwards getInstalledApplications returns only apps that
+        are "visible" to the caller, and an app with no <queries> and no
+        QUERY_ALL_PACKAGES sees almost nothing. A picker that cannot see the
+        user's banking and mail apps has nothing to offer and reads as broken —
+        and the "we don't recognise this app, do you want it?" suggestion, which
+        is the only route for a bank Covault has never heard of, stops working
+        entirely.
+
+        The blunt permission rather than a <queries> list because the list would
+        have to name all ~350 known banks AND could still not surface an
+        unrecognised one, which is the case it exists for. Google restricts this
+        permission for Play Store distribution; Covault is installed from its own
+        GitHub releases and is never submitted to the Play Store, so that
+        restriction does not apply. If it is ever published there, this has to
+        become an explicit <queries> list and the unknown-app suggestions have to
+        go with it.
+
+        Nothing about an app is read here beyond its package name and its own
+        label. No notification from an unapproved app is ever examined.
+    -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
     <!-- Storage permissions for CSV file downloads (only needed for Android 9 and below) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />

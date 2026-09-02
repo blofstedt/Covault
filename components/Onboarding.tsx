@@ -12,6 +12,7 @@ import {
 import IncomeStep from './onboarding/IncomeStep';
 import BudgetLimitsStep from './onboarding/BudgetLimitsStep';
 import CaptureStep from './onboarding/CaptureStep';
+import SourcesStep from './onboarding/SourcesStep';
 import TourStep from './onboarding/TourStep';
 
 /**
@@ -111,7 +112,8 @@ const SETUP_STEP_NUMBERS: Partial<Record<OnboardingStepId, number>> = {
   income: 1,
   limits: 2,
   capture: 3,
-  tour: 4,
+  sources: 4,
+  tour: 5,
 };
 const SETUP_STEP_COUNT = Object.keys(SETUP_STEP_NUMBERS).length;
 
@@ -285,6 +287,18 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete, setup, onLinkPartne
           stepCount={SETUP_STEP_COUNT}
           captureEnabled={setup.captureEnabled}
           onGranted={setup.onCaptureGranted}
+          onNext={() => advance()}
+          onSkip={() => advance()}
+        />
+      );
+    }
+
+    if (step === 'sources') {
+      return (
+        <SourcesStep
+          stepNumber={numberOf('sources')}
+          stepCount={SETUP_STEP_COUNT}
+          captureEnabled={setup.captureEnabled}
           onNext={() => advance()}
           onSkip={() => advance()}
         />

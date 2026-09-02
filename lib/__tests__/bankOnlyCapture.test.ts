@@ -57,6 +57,12 @@ describe('only banking apps can produce a capture', () => {
   });
 
   it('rejects the apps that were producing false captures', () => {
+    // Outlook stays here on purpose even though mail apps can now be capture
+    // sources. It is not a BANK, and this is the bank question — a mail app is
+    // a different kind of source with its own, stricter rule (the sender has to
+    // be a bank; see lib/emailNotification.ts), and it is off until the user
+    // ticks it. Nothing about email support may quietly turn a mail app into a
+    // bank, which is what would happen if this assertion were relaxed.
     for (const pkg of [
       'com.microsoft.teams',
       'com.microsoft.office.outlook',
@@ -133,7 +139,12 @@ describe('the has-a-dollar-amount fallback is gone', () => {
   });
 
   it('the JS listener and the pipeline both check the source app', () => {
-    expect(readFileSync(HOOK_PATH, 'utf-8')).toMatch(/isBankingApp\(/);
-    expect(readFileSync(PROCESSOR_PATH, 'utf-8')).toMatch(/isBankingApp\(input\.bankAppId\)/);
+    // The gate moved from "is this a bank?" to "is this an app the user
+    // picked?" when mail apps became selectable — a strictly narrower question,
+    // since an app the user has not chosen is refused whatever kind it is. Both
+    // layers still have to ask it: events reach the pipeline from the offline
+    // queue and from rescans as well as from a live broadcast.
+    expect(readFileSync(HOOK_PATH, 'utf-8')).toMatch(/isCaptureSourceAllowed\(/);
+    expect(readFileSync(PROCESSOR_PATH, 'utf-8')).toMatch(/isCaptureSourceAllowed\(input\.bankAppId\)/);
   });
 });

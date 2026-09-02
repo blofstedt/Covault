@@ -41,6 +41,10 @@ export const ONBOARDING_STEPS = [
   'income',
   'limits',
   'capture',
+  // Straight after capture, because it is only answerable once Android has
+  // granted access — and it degrades to an explanation when it has not, rather
+  // than trapping someone who skipped the step before it.
+  'sources',
   'tour',
 ] as const;
 

@@ -3,6 +3,7 @@ import { log } from '../../../lib/log';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import SettingsCard from '../../ui/SettingsCard';
+import CaptureSourcePicker from '../../ui/CaptureSourcePicker';
 import SectionHeader from '../../ui/SectionHeader';
 import ToggleSwitch from '../../ui/ToggleSwitch';
 import NotificationAccessGuide from '../../NotificationAccessGuide';
@@ -203,36 +204,6 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
     setGuideOpen(true);
   };
 
-  const toggleApp = async (pkg: string) => {
-    const next = new Set(selectedApps);
-    if (next.has(pkg)) {
-      next.delete(pkg);
-    } else {
-      next.add(pkg);
-    }
-    setSelectedApps(next);
-
-    if (plugin) {
-      try {
-        await plugin.saveMonitoredApps({ apps: Array.from(next) });
-      } catch (e) {
-        log.warn('[NotificationSettingsSection] save error:', e);
-      }
-    }
-  };
-
-  const selectAll = async () => {
-    const all = new Set(installedBankApps.map((a) => a.packageName));
-    setSelectedApps(all);
-    if (plugin) {
-      try {
-        await plugin.saveMonitoredApps({ apps: Array.from(all) });
-      } catch {
-        // ignore
-      }
-    }
-  };
-
   // Deliberately not optimistic: the toggle only moves once the native side
   // confirms it stored the new value. A toggle that looks on while the
   // listener still thinks it's off is exactly the kind of disagreement that
@@ -261,17 +232,6 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
       if (!allowed) await openNotificationSettings(plugin);
     } finally {
       setFixingCaptureNotifs(false);
-    }
-  };
-
-  const selectNone = async () => {
-    setSelectedApps(new Set());
-    if (plugin) {
-      try {
-        await plugin.saveMonitoredApps({ apps: [] });
-      } catch {
-        // ignore
-      }
     }
   };
 
@@ -552,26 +512,6 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
       {/* Banking app picker */}
       {enabled && permissionGranted && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 tracking-wide">
-              Your Banking Apps ({installedBankApps.length} found)
-            </span>
-            <div className="flex space-x-2">
-              <button
-                onClick={selectAll}
-                className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400"
-              >
-                All
-              </button>
-              <button
-                onClick={selectNone}
-                className="text-[10px] font-semibold text-slate-400"
-              >
-                None
-              </button>
-            </div>
-          </div>
-
           {silentApps.length > 0 && (
             <div
               data-testid="silent-bank-warning"
@@ -605,77 +545,16 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
             </div>
           )}
 
-          {installedBankApps.length === 0 ? (
-            loading ? (
-              <p className="text-[11px] text-slate-400 text-center py-3">
-                Detecting installed banking apps…
-              </p>
-            ) : (
-              <p className="text-[11px] text-slate-400 text-center py-3">
-                No supported banking apps detected. If you have banking apps installed, they may not be in our supported list yet.
-              </p>
-            )
-          ) : (
-            <div className="grid grid-cols-2 gap-2">
-              {installedBankApps.map((app) => {
-                const selected = selectedApps.has(app.packageName);
-                const silent = silentPackages.includes(app.packageName);
-                return (
-                  <button
-                    key={app.packageName}
-                    onClick={() => toggleApp(app.packageName)}
-                    className={`flex items-center space-x-2 px-3 py-2.5 rounded-xl text-left transition-all duration-200 active:scale-[0.97] border ${
-                      selected
-                        ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-300 dark:border-emerald-700/50'
-                        : 'bg-slate-100 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/30'
-                    }`}
-                  >
-                    <span
-                      className={`w-4 h-4 rounded-md flex items-center justify-center flex-shrink-0 ${
-                        selected ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
-                      }`}
-                    >
-                      {selected && (
-                        <svg
-                          className="w-3 h-3 text-white"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                          strokeWidth={3}
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M4.5 12.75l6 6 9-13.5"
-                          />
-                        </svg>
-                      )}
-                    </span>
-                    <span
-                      className={`text-[11px] font-bold truncate ${
-                        selected
-                          ? 'text-emerald-700 dark:text-emerald-300'
-                          : 'text-slate-500 dark:text-slate-400'
-                      }`}
-                    >
-                      {app.name}
-                    </span>
-                    {silent && (
-                      <span
-                        aria-label="Nothing heard from this app"
-                        title="Nothing heard from this app"
-                        className="ml-auto w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"
-                      />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center leading-tight">
-            Covault reads notifications from selected apps to auto-log your transactions.
-          </p>
+          {/*
+            The one picker, shared with the setup step and the top of the Review
+            screen. It used to be a hand-rolled grid here and a second hand-rolled
+            grid there, which is how the "approve an unrecognised bank" feature
+            came to exist on one of those screens and not the other.
+          */}
+          <CaptureSourcePicker
+            plugin={plugin}
+            onSelectionChange={(sel) => setSelectedApps(new Set(sel))}
+          />
         </div>
       )}
     </SettingsCard>
