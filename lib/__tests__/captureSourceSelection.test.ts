@@ -30,7 +30,7 @@ import {
   setSelectedSources,
   setSourceSelected,
 } from '../captureSources';
-import { KNOWN_BANKING_APPS } from '../bankingApps';
+import { EXCLUDED_APPS, KNOWN_BANKING_APPS } from '../bankingApps';
 
 const JAVA_LISTENER = readFileSync(
   resolve(__dirname, '../../android-custom/NotificationListener.java'),
@@ -102,12 +102,25 @@ describe('the three states of the selection', () => {
     expect(allowedSourceKind('com.chase.sig.android')).toBeNull();
   });
 
-  it('never lets an excluded app in, however it is written or selected', () => {
+  it('lets the user turn a wallet on, which used to be impossible', () => {
+    // Google Wallet was refused at every layer, so a card that only ever
+    // notifies through it could not be captured and the user had no lever. It is
+    // now an ordinary source; its repeat of the bank's own alert is handled by
+    // the cross-app rule instead.
     setSelectedSources(['com.google.android.apps.walletnfcrel']);
-    expect(isCaptureSourceAllowed('com.google.android.apps.walletnfcrel')).toBe(false);
-    expect(getSelectedSources()).not.toContain('com.google.android.apps.walletnfcrel');
-    setSourceSelected('com.google.android.apps.wallet', true);
-    expect(isCaptureSourceAllowed('com.google.android.apps.wallet')).toBe(false);
+    expect(isCaptureSourceAllowed('com.google.android.apps.walletnfcrel')).toBe(true);
+    expect(allowedSourceKind('com.google.android.apps.walletnfcrel')).toBe('bank');
+  });
+
+  it('never lets an excluded app in, however it is written or selected', () => {
+    // Empty today; the loop is what makes this guard the moment it is not.
+    for (const pkg of Object.keys(EXCLUDED_APPS)) {
+      setSelectedSources([pkg]);
+      expect(isCaptureSourceAllowed(pkg), pkg).toBe(false);
+      expect(getSelectedSources(), pkg).not.toContain(pkg);
+      setSourceSelected(pkg, true);
+      expect(isCaptureSourceAllowed(pkg), pkg).toBe(false);
+    }
   });
 });
 
@@ -165,10 +178,15 @@ describe('what the picker offers', () => {
     expect(byPkg['com.example.mailbag']).toMatchObject({ kind: 'email', recognised: false });
   });
 
-  it('never offers an ordinary app, or an excluded one', () => {
+  it('never offers an ordinary app', () => {
     const packages = buildSourceOptions(installed).map((o) => o.packageName);
     expect(packages).not.toContain('com.example.notes');
-    expect(packages).not.toContain('com.google.android.apps.walletnfcrel');
+  });
+
+  it('offers a wallet as a bank', () => {
+    const byPkg = Object.fromEntries(buildSourceOptions(installed).map((o) => [o.packageName, o]));
+    expect(byPkg['com.google.android.apps.walletnfcrel'])
+      .toMatchObject({ kind: 'bank', recognised: true });
   });
 });
 
@@ -231,6 +249,6 @@ describe('kinds', () => {
     expect(captureSourceKind('com.bmo.mobile')).toBe('bank');
     expect(captureSourceKind('com.google.android.gm')).toBe('email');
     expect(captureSourceKind('com.example.notes')).toBeNull();
-    expect(captureSourceKind('com.google.android.apps.walletnfcrel')).toBeNull();
+    expect(captureSourceKind('com.google.android.apps.walletnfcrel')).toBe('bank');
   });
 });

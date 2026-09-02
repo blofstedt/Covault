@@ -106,6 +106,11 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | "recurring charges are duplicating / I keep deleting them" | `lib/projectedTransactions.ts` — recurring is display-only. Nothing writes recurring rows. See Invariants |
 | "a deposit / my pay showed up as spending" | `INCOME_PHRASES` in `lib/deviceTransactionParser.ts`, mirrored into `android-custom/NotificationListener.java` — the native listener has to know income on sight, or it announces the deposit and adds it to the widget hours before the parser rejects it |
 | "something that isn't spending got captured" (a deposit, a declined card, a statement reminder, a balance alert) | the four mirrored lists at the top of `lib/deviceTransactionParser.ts` — `INCOME_PHRASES`, `FAILED_CHARGE_PHRASES`, `BILL_NOTICE_PHRASES`, and `STOP_PHRASES` vs `GO_PHRASES` — each copied into `android-custom/NotificationListener.java`, because the listener has to reach the same verdict on sight or it announces the capture and adds it to the widget hours before the parser rejects it |
+| "my bank only emails me, nothing gets captured" | `lib/emailNotification.ts` — the sender has to be a bank before the body is read at all. A bank whose sender name is not in `EMAIL_BANK_SENDERS` is silently never captured; adding it there (and to the mirrored Java list) is the fix |
+| "an email that wasn't a purchase got captured" | `lib/emailNotification.ts` — the sender gate, then the four existing phrase lists in `deviceTransactionParser.ts`, which email inherits unchanged |
+| "I turned a bank off and it kept capturing" | `lib/captureSources.ts` (the user's list, and the three-state "never chosen" flag) → `isMonitoredApp` in `android-custom/NotificationListener.java` → `autoDetectBankingApps` in `CovaultNotificationPlugin.java`, which must only ever SEED |
+| "nothing is captured at all any more" | `lib/captureSources.ts` first — `isCaptureSourceAllowed` returning false for everything is the one silent, total failure this app has. Check `monitored_apps_chosen` before anything else |
+| "I got two rows for one tap-to-pay purchase" | `lib/captureChannel.ts` (`isOtherAppSameTap`) → step 4d of `lib/notificationProcessor.ts`. Matched on amount and timing, never on the merchant name |
 | "a subscription got captured / notified about anyway" | `lib/recurringSchedule.ts` — matches the capture against the recurring *schedule*, not just nearby rows; applied at step 5b. The notification is suppressed in `NotificationListener.java` (`RECURRING_CHARGES_KEY`) and withdrawn by `useNotificationListener.ts` when it slipped through |
 | "the budget pills keep rearranging" | `lib/budgetOrder.ts` — the `budgets` table has no sort column, so the order is fixed in code. See Invariants |
 | "my budget limits / hidden categories are back to the defaults" | `loadUserBudgets` in `lib/hooks/useDataLoading.ts` → `lib/budgetFallback.ts`. Check the Supabase edge logs for a non-200 on `/rest/v1/budgets` before assuming the data is gone — it usually isn't |
@@ -355,6 +360,41 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   button to the page that fixes it. Do not reword it into a statement of fact,
   and do not shorten the silence window: the same silence is what a quiet week
   on a rarely-used card looks like.
+
+- **The user's list of capture sources is authoritative, and "never asked" is a
+  third state.** `isMonitoredApp` used to check the hardcoded ~350-bank list
+  FIRST and only then the user's choices, so unticking a built-in bank appeared
+  to work and changed nothing — while `autoDetectBankingApps`, which is add-only
+  and runs on every launch, put back anything removed. The stored list now wins
+  once `monitored_apps_chosen` is set, INCLUDING when it is empty, which is a
+  real answer. Losing that flag reads as "we have not asked" and quietly
+  restores the defaults; setting it too early freezes a seed as though the user
+  had chosen it. Only `saveMonitoredApps` raises it, and it is never lowered.
+  Both lists — the phone's `monitored_apps` and the web selection — must be
+  written together, which is what `applySourceSelection` is for: writing one
+  alone gives you notifications that are read and then thrown away, in silence.
+  `captureSourceSelection.test.ts` pins all of it.
+
+- **Two apps reporting one tap are matched on AMOUNT AND TIME, never on the
+  merchant.** Google Wallet re-announces every tap-to-pay purchase the card's
+  own app announces. It was excluded outright for years because the first
+  attempt at collapsing the pair compared merchant names — and a wallet is
+  precisely the source that parses the merchant badly, so it failed exactly
+  when needed. Step 4d instead drops a capture whose amount matches one another
+  app reported within five minutes, and the first reporter keeps the row. Do not
+  widen that window to reach the bank-versus-email case: an email arrives hours
+  or a day later and is a separate rule (step 4e) with its own one-to-one
+  pairing, because at that range amount alone would eat real purchases. The
+  exclusion list still exists but is empty; it is the only thing that beats a
+  user's own choice.
+
+- **An email capture is never auto-filed, never hides the user's mail, and never
+  writes a widget delta.** Mail is the least reliable source the app has — a
+  truncated snippet the mail app chose, with the merchant buried in prose — so
+  it always goes to Review. Hiding it would delete something Covault does not
+  own and cannot put back. And most banks announce a purchase twice, so an email
+  capture is routinely discarded moments later; a delta written for one would
+  show the purchase twice on the home screen until the app was next opened.
 
 - **The budget order comes from `lib/budgetOrder.ts`, not from the database.**
   `budgets` has no primary key and no sort column, and `loadUserBudgets` reads

@@ -10,8 +10,11 @@ import {
   stripCaptureMarker,
   withCaptureMarker,
   withEmailPairedMarker,
+  captureNotifiedAt,
+  isOtherAppSameTap,
+  CROSS_APP_WINDOW_MS,
 } from '../captureChannel';
-import { isSameCharge } from '../duplicateCharge';
+import { amountsAgree, isSameCharge } from '../duplicateCharge';
 import { withFuelHoldMarker, readFuelHoldMarker, stripFuelHoldMarker } from '../fuelHold';
 
 const PROCESSOR = readFileSync(resolve(__dirname, '../notificationProcessor.ts'), 'utf-8');
@@ -174,5 +177,121 @@ describe('the rule is wired the way it has to be', () => {
 
   it('the email sender is vetted before anything else is read', () => {
     expect(PROCESSOR).toMatch(/parseEmailAlert\(\{/);
+  });
+});
+
+/**
+ * Two apps, one tap.
+ *
+ * A wallet and the card's own bank app announce the same tap-to-pay purchase
+ * within seconds, in completely different words. Google Wallet was refused
+ * outright for years because of it, and the reason the earlier fix failed is the
+ * thing this rule is built around: it compared MERCHANT NAMES, and a wallet is
+ * exactly the source that parses the merchant badly.
+ *
+ * So this looks at the amount and the clock, and never at the merchant.
+ */
+describe('the first app to report a tap wins', () => {
+  const TAP = 1_760_000_000_000;
+  const walletRow = (amount: number, at: number, vendor = 'GOOGLE WALLET') => ({
+    vendor,
+    amount,
+    raw_notification: withCaptureMarker('paid', {
+      channel: 'bank' as const,
+      packageName: 'com.google.android.apps.walletnfcrel',
+      notifiedAt: at,
+    }),
+  });
+  const fromBankApp = (amount: number, at: number) => ({
+    packageName: 'com.bmo.mobile',
+    amount,
+    notifiedAt: at,
+  });
+
+  it('drops the second report even when the merchants look nothing alike', () => {
+    // THE CASE THAT BEAT THE OLD APPROACH. One side says "GOOGLE WALLET", the
+    // other says "TIM HORTONS #422". No name-based check can pair these.
+    expect(isOtherAppSameTap(
+      walletRow(12.45, TAP),
+      fromBankApp(12.45, TAP + 4_000),
+      amountsAgree,
+    )).toBe(true);
+  });
+
+  it('allows the cent of drift the two sides sometimes disagree by', () => {
+    expect(isOtherAppSameTap(walletRow(42.10, TAP), fromBankApp(42.11, TAP + 2_000), amountsAgree))
+      .toBe(true);
+  });
+
+  it('keeps both when the amounts are genuinely different', () => {
+    expect(isOtherAppSameTap(walletRow(12.45, TAP), fromBankApp(19.99, TAP + 4_000), amountsAgree))
+      .toBe(false);
+  });
+
+  it('keeps both when the two purchases are far enough apart in time', () => {
+    // Two coffees for the same price later in the day are two purchases. This is
+    // why the window is minutes: widened, this rule starts eating real spending.
+    expect(isOtherAppSameTap(
+      walletRow(5.00, TAP),
+      fromBankApp(5.00, TAP + CROSS_APP_WINDOW_MS + 1_000),
+      amountsAgree,
+    )).toBe(false);
+  });
+
+  it('never claims a report from the SAME app', () => {
+    // Two identical charges from one bank in five minutes are the bank's
+    // business, not this rule's — and a re-broadcast is caught upstream.
+    const row = walletRow(5.00, TAP);
+    expect(isOtherAppSameTap(
+      row,
+      { packageName: 'com.google.android.apps.walletnfcrel', amount: 5.00, notifiedAt: TAP + 1_000 },
+      amountsAgree,
+    )).toBe(false);
+  });
+
+  it('never claims a row whose app is unknown', () => {
+    // Anything captured before this shipped has no package recorded. Guessing
+    // would let an ordinary re-broadcast swallow a real second purchase.
+    expect(isOtherAppSameTap(
+      { amount: 5.00, raw_notification: 'You spent $5.00', created_at: new Date(TAP).toISOString() },
+      fromBankApp(5.00, TAP + 1_000),
+      amountsAgree,
+    )).toBe(false);
+  });
+
+  it('dates a row by when the alert was posted, not when the row was written', () => {
+    // Both alerts sit in the native queue while the phone sleeps and are written
+    // milliseconds apart hours later. Insert time would call them simultaneous;
+    // post time says how far apart the announcements really were.
+    const marked = withCaptureMarker('paid', {
+      channel: 'bank', packageName: 'com.bmo.mobile', notifiedAt: TAP,
+    });
+    expect(captureNotifiedAt({ raw_notification: marked, created_at: new Date(TAP + 9_000_000).toISOString() }))
+      .toBe(TAP);
+    // Falls back to the write time when there is no marker to go on.
+    expect(captureNotifiedAt({ raw_notification: 'plain', created_at: new Date(TAP).toISOString() }))
+      .toBe(TAP);
+    expect(captureNotifiedAt({ raw_notification: 'plain', created_at: null })).toBeNull();
+  });
+
+  it('survives a marker round trip with the timestamp attached', () => {
+    const marked = withCaptureMarker('x', {
+      channel: 'bank', packageName: 'com.google.android.apps.walletnfcrel', notifiedAt: TAP,
+    });
+    expect(readCaptureMarker(marked)).toEqual({
+      channel: 'bank',
+      packageName: 'com.google.android.apps.walletnfcrel',
+      notifiedAt: TAP,
+    });
+    expect(stripCaptureBookkeeping(marked)).toBe('x');
+  });
+
+  it('is wired into the pipeline ahead of the email rules', () => {
+    // It is the tighter, more certain match, and it applies to every channel.
+    expect(PROCESSOR).toMatch(/isOtherAppSameTap\(/);
+    expect(PROCESSOR.indexOf('isOtherAppSameTap'))
+      .toBeLessThan(PROCESSOR.indexOf("input.channel === 'email' && existingTx"));
+    // And the row has to carry the post time, or nothing can be measured.
+    expect(PROCESSOR).toMatch(/notifiedAt: notifTimestamp/);
   });
 });

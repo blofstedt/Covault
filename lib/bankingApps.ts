@@ -350,6 +350,15 @@ export const KNOWN_BANKING_APPS: Record<string, string> = {
   'com.worldremit.android': 'WorldRemit',
   'com.remitly.android': 'Remitly',
 
+  // ── Wallets ─────────────────────────────────────────────────────────
+  //
+  // These re-announce a tap the card's own app usually announces too. That is
+  // handled by the cross-app duplicate rule (first reporter wins) rather than by
+  // refusing them, so a card that ONLY notifies through a wallet is still
+  // captured. See EXCLUDED_APPS below for why this changed.
+  'com.google.android.apps.walletnfcrel': 'Google Wallet',
+  'com.google.android.apps.wallet': 'Google Wallet (legacy)',
+
   // ── Buy-Now-Pay-Later / Payment Apps ──────────────────────────────
   'com.affirm.mobile': 'Affirm',
   'com.afterpay.mobile': 'Afterpay',
@@ -358,32 +367,40 @@ export const KNOWN_BANKING_APPS: Record<string, string> = {
 };
 
 /**
- * Packages whose notifications are NEVER captured, even though they talk about
- * money — checked before anything else, and it beats every other rule.
+ * Packages whose notifications are NEVER captured, whatever the user ticks —
+ * checked before anything else, and it beats every other rule.
  *
- * This exists because of a hole in `NotificationListener.java`. Forwarding is
- * Google Wallet is listed here rather than simply being left off the banking
- * list because it would otherwise be a plausible thing to add: it is a money
- * app, a user could reasonably approve it by hand, and this beats that.
+ * CURRENTLY EMPTY, and that is a deliberate reversal worth recording.
  *
- * Google Wallet announces the same tap-to-pay purchase the card's own bank app
- * already announced, in different wording. One purchase, two notifications, two
- * captured rows. Commit 0c0d0d7 tried to collapse those after the fact by
- * comparing vendor names; that only works when both sides parse to a similar
- * vendor, and it fails the moment either one parses badly. Not capturing the
- * duplicate in the first place is the reliable fix.
+ * Google Wallet used to be the only entry. It announces the same tap-to-pay
+ * purchase the card's own bank app already announced, in different wording:
+ * one purchase, two notifications, two captured rows. Commit 0c0d0d7 tried to
+ * collapse those after the fact by comparing vendor NAMES, which only works
+ * when both sides parse to a similar merchant and fails the moment either one
+ * parses badly — so the duplicate was refused at the door instead.
  *
- * Trade-off, accepted deliberately: a card that ONLY ever notifies through
- * Wallet — tap-to-pay with no issuer app installed — will stop being captured.
+ * Two things have changed since, and together they make the exclusion cost more
+ * than it saves. Duplicates are no longer matched on the vendor name: a capture
+ * that repeats one another app reported seconds earlier for the same amount is
+ * recognised by AMOUNT AND TIME (see the cross-app rule in
+ * notificationProcessor.ts), which is exactly the case that beat the old
+ * approach, because Wallet and the issuer fire within seconds of the same tap.
+ * And the user can now see and untick every capture source, so a wrong decision
+ * here is one tap to undo rather than a code change — which was the real reason
+ * an exclusion list had to exist at all.
+ *
+ * The trade-off that exclusion forced is also gone: a card that only ever
+ * notifies through Wallet — tap-to-pay with no issuer app installed — was
+ * silently uncapturable, with no way for the user to fix it.
+ *
+ * The mechanism stays because it is the only lever that beats a user's own
+ * choice, and something will eventually need it. Anything added here must be an
+ * app that can NEVER be right, not merely one that is usually wrong.
  *
  * Must stay in sync with EXCLUDED_APPS in NotificationListener.java;
  * lib/__tests__/bankingAppsConsistency.test.ts fails the build otherwise.
  */
-export const EXCLUDED_APPS: Record<string, string> = {
-  'com.google.android.apps.walletnfcrel': 'Google Wallet',
-  'com.google.android.apps.wallet': 'Google Wallet (legacy)',
-};
-
+export const EXCLUDED_APPS: Record<string, string> = {};
 /**
  * True if this package must never produce a capture.
  *

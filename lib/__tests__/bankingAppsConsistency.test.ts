@@ -82,12 +82,16 @@ describe('Banking apps consistency (Java ↔ TypeScript)', () => {
 });
 
 /**
- * The exclusion list is the only thing standing between the app and Google
- * Wallet's duplicate of every tap-to-pay purchase. It has to hold on BOTH
- * sides: Java is where the notification is actually dropped, TypeScript is the
- * backstop for queued events and rescans. If the two drift, one path silently
- * starts capturing again — exactly the failure mode this whole area keeps
- * hitting.
+ * The exclusion list is the one rule that beats a user's own choice, so it has
+ * to hold on BOTH sides: Java is where the notification is actually dropped,
+ * TypeScript is the backstop for queued events and rescans. If the two drift,
+ * one path silently starts capturing something the other refuses.
+ *
+ * It is currently EMPTY. Google Wallet used to be its only entry — it repeats
+ * every tap-to-pay purchase the card's own app already announced — and is now
+ * an ordinary selectable bank, with the duplicate handled by the cross-app rule
+ * (same amount, seconds apart, first reporter wins) instead. The mechanism is
+ * kept and still tested, because it is the only lever that overrides the user.
  */
 describe('Excluded apps consistency (Java ↔ TypeScript)', () => {
   const javaExcluded = parseJavaPackageSet('EXCLUDED_APPS');
@@ -97,9 +101,14 @@ describe('Excluded apps consistency (Java ↔ TypeScript)', () => {
     expect([...javaExcluded].sort()).toEqual([...tsExcluded].sort());
   });
 
-  it('excludes Google Wallet', () => {
-    expect(tsExcluded.has('com.google.android.apps.walletnfcrel')).toBe(true);
-    expect(javaExcluded.has('com.google.android.apps.walletnfcrel')).toBe(true);
+  it('treats Google Wallet as a bank now, not an exclusion', () => {
+    // The reversal, pinned so it cannot drift back by accident in one file
+    // only: a package must never be both a bank and excluded.
+    for (const pkg of ['com.google.android.apps.walletnfcrel', 'com.google.android.apps.wallet']) {
+      expect(tsExcluded.has(pkg), pkg).toBe(false);
+      expect(javaExcluded.has(pkg), pkg).toBe(false);
+      expect(pkg in KNOWN_BANKING_APPS, pkg).toBe(true);
+    }
   });
 
   it('never excludes an app that is also a known bank', () => {
@@ -111,8 +120,13 @@ describe('Excluded apps consistency (Java ↔ TypeScript)', () => {
   });
 
   it('isExcludedApp matches the list, and tolerates junk input', () => {
-    expect(isExcludedApp('com.google.android.apps.walletnfcrel')).toBe(true);
-    expect(isExcludedApp('  com.google.android.apps.wallet  ')).toBe(true);
+    // Nothing is excluded today, so everything real answers false. The trimming
+    // and the inherited-property guard below are what keep the mechanism honest
+    // for whatever gets added here next.
+    for (const pkg of Object.keys(EXCLUDED_APPS)) {
+      expect(isExcludedApp(pkg), pkg).toBe(true);
+      expect(isExcludedApp(`  ${pkg}  `), pkg).toBe(true);
+    }
     expect(isExcludedApp('com.bmo.mobile')).toBe(false);
     expect(isExcludedApp('')).toBe(false);
     expect(isExcludedApp(null)).toBe(false);

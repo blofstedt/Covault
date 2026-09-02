@@ -27,7 +27,7 @@ import { extractWithAI, type AIExtractionResult } from './aiExtractor';
 import { detectMerchantSignal, resolveSignalCategory } from './merchantCategorySignals';
 import type { PendingTransaction, Transaction } from '../types';
 import { scoreVendorMatch, shouldAutoAccept, toMatchKey } from './vendorMatchConfidence';
-import { daysApart, isSameCharge } from './duplicateCharge';
+import { amountsAgree, daysApart, isSameCharge } from './duplicateCharge';
 import { findRecurringScheduleMatch, type RecurringChargeRow } from './recurringSchedule';
 import {
   allowedSourceKind,
@@ -39,6 +39,7 @@ import {
   hasPairedEmail,
   isBankSourcedRow,
   isEmailSourcedRow,
+  isOtherAppSameTap,
   withCaptureMarker,
   withEmailPairedMarker,
 } from './captureChannel';
@@ -1280,7 +1281,7 @@ async function processNotificationWithAIImpl(
       // channel is recorded (see lib/captureChannel.ts). Fetching it here means
       // the email-versus-bank duplicate rule below costs no extra round trip —
       // it reuses rows the pipeline was loading anyway.
-      .select('id, vendor, amount, type, date, recur, source, raw_notification')
+      .select('id, vendor, amount, type, date, recur, source, raw_notification, created_at')
       .eq('user_id', userId)
       .gte('date', step4WindowStart)
       .lte('date', step4WindowEnd),
@@ -1705,6 +1706,48 @@ async function processNotificationWithAIImpl(
     }
   }
 
+  // ── Step 4d: Two apps, one tap — the first to report it wins ──
+  //
+  // A wallet and the card's own bank app both announce the same tap-to-pay
+  // purchase, seconds apart, in completely different words. Nothing above can
+  // see that they are one purchase: the fingerprints differ (different app,
+  // different text) and the near-duplicate check needs the merchants to match,
+  // which is exactly what fails here — a wallet often has only its own name or a
+  // terminal id where the merchant should be.
+  //
+  // So this matches on what both sides always get right: the amount, and how far
+  // apart the two announcements were. Whoever reported it first keeps the row;
+  // this one is dropped. Deliberately blind to the merchant, and deliberately
+  // narrow — five minutes, and only ever against a DIFFERENT app.
+  //
+  // This is what replaced refusing Google Wallet outright. The exclusion cost a
+  // real capability (a card that only notifies through a wallet could not be
+  // captured at all) and could only be undone in a release; this can be undone
+  // by unticking the app.
+  if (existingTx && existingTx.length > 0 && input.bankAppId) {
+    const sameTap = existingTx.find((tx) => isOtherAppSameTap(
+      tx,
+      { packageName: input.bankAppId, amount, notifiedAt: notifTimestamp },
+      amountsAgree,
+    ));
+    if (sameTap) {
+      log.debug(
+        `[AI pipeline] Another app already reported this tap: ${sameTap.vendor} $${sameTap.amount}; dropping the second report from ${input.bankAppId}`,
+      );
+      recentlyProcessedCache.set(inMemoryKey, Date.now());
+      markNotificationProcessed(capturedKey);
+      return {
+        processed: true,
+        isTransaction: true,
+        vendor,
+        amount,
+        skipReason: 'duplicate_ai' as const,
+        rejectionReason: 'Another app reported this purchase first',
+        bankName: input.bankName,
+      };
+    }
+  }
+
   // ── Step 4e: An email defers to the bank's own alert ──
   //
   // Most banks announce a purchase twice — a push from their app and an email —
@@ -1820,7 +1863,7 @@ async function processNotificationWithAIImpl(
             amount,
             raw_notification: withCaptureMarker(
               (input.rawNotification || '').slice(0, 3900),
-              { channel: 'bank', packageName: input.bankAppId },
+              { channel: 'bank', packageName: input.bankAppId, notifiedAt: notifTimestamp },
             ),
           })
           .eq('id', stale.id);
@@ -2386,7 +2429,7 @@ async function processNotificationWithAIImpl(
         // keeps the bank's original wording alongside what we stored instead.
         ? withFuelHoldMarker((input.rawNotification || '').slice(0, 3800), fuelHold)
         : (input.rawNotification || '').slice(0, 3900),
-      { channel: input.channel ?? 'bank', packageName: input.bankAppId },
+      { channel: input.channel ?? 'bank', packageName: input.bankAppId, notifiedAt: notifTimestamp },
     ),
     confidence: captureConfidence,
     // Only set when filing on arrival, so it never enters the review queue.

@@ -23,6 +23,7 @@ import {
   suggestUnknownBankApps,
   setCaptureSourceApproved,
   getApprovedCaptureSources,
+  EXCLUDED_APPS,
   KNOWN_BANKING_APPS,
 } from '../bankingApps';
 
@@ -75,8 +76,23 @@ describe('only banking apps can produce a capture', () => {
     }
   });
 
-  it('rejects excluded apps even though they are money apps', () => {
-    expect(isBankingApp('com.google.android.apps.walletnfcrel')).toBe(false);
+  it('accepts Google Wallet, which used to be refused outright', () => {
+    // The reversal. Wallet repeats every tap-to-pay purchase the card's own app
+    // announces, and was excluded because the old duplicate check compared
+    // MERCHANT NAMES — which is the one thing a wallet parses badly. The repeat
+    // is now caught on amount and timing instead, and the exclusion's real cost
+    // (a card that only notifies through a wallet could not be captured at all)
+    // is gone with it.
+    expect(isBankingApp('com.google.android.apps.walletnfcrel')).toBe(true);
+    expect(isBankingApp('com.google.android.apps.wallet')).toBe(true);
+  });
+
+  it('still refuses anything on the exclusion list', () => {
+    // Empty today. Written as a loop so it starts guarding the moment something
+    // is added, rather than needing to be remembered then.
+    for (const pkg of Object.keys(EXCLUDED_APPS)) {
+      expect(isBankingApp(pkg), pkg).toBe(false);
+    }
   });
 
   it('rejects empty or missing package names', () => {
@@ -111,6 +127,8 @@ describe('unknown bank suggestions', () => {
   it('never offers an app that is already a known bank, or an excluded one', () => {
     const packages = suggestUnknownBankApps(installed).map((s) => s.packageName);
     expect(packages).not.toContain('com.bmo.mobile');
+    // Wallet is a known bank now, so it is never a "we don't recognise this"
+    // suggestion either.
     expect(packages).not.toContain('com.google.android.apps.walletnfcrel');
   });
 
@@ -124,8 +142,13 @@ describe('unknown bank suggestions', () => {
   });
 
   it('refuses to approve an excluded app, whatever the user taps', () => {
-    setCaptureSourceApproved('com.google.android.apps.walletnfcrel', true);
-    expect(isBankingApp('com.google.android.apps.walletnfcrel')).toBe(false);
+    // The exclusion list is the one rule that beats the user's own choice, so
+    // the approval path has to honour it. Vacuous while the list is empty; the
+    // loop is what makes it guard automatically once it is not.
+    for (const pkg of Object.keys(EXCLUDED_APPS)) {
+      setCaptureSourceApproved(pkg, true);
+      expect(isBankingApp(pkg), pkg).toBe(false);
+    }
   });
 });
 

@@ -91,21 +91,34 @@ public class NotificationListener extends NotificationListenerService {
         }
     }
 
-    // Packages that must NEVER be captured, whatever else they look like.
-    // Checked first in handleNotificationPosted, before the "has a dollar
-    // amount" fallback that would otherwise let them through.
+    // Packages that must NEVER be captured, whatever else they look like —
+    // including when the user ticks them. Checked first in
+    // handleNotificationPosted, before anything else.
     //
-    // Google Wallet re-announces a tap-to-pay purchase that the card's own bank
-    // app has already announced, worded differently. One purchase, two
-    // notifications, two rows. Collapsing them afterwards by vendor similarity
-    // (commit 0c0d0d7) only works when both sides happen to parse to a similar
-    // vendor; not capturing the duplicate at all is what actually holds.
+    // CURRENTLY EMPTY, and that is a deliberate reversal.
+    //
+    // Google Wallet used to be the only entry: it re-announces a tap-to-pay
+    // purchase the card's own bank app has already announced, worded
+    // differently — one purchase, two notifications, two rows. Collapsing them
+    // afterwards by vendor similarity (commit 0c0d0d7) only works when both
+    // sides happen to parse to a similar merchant, so refusing the duplicate at
+    // the door was what actually held.
+    //
+    // Duplicates are no longer matched on the merchant name. A capture that
+    // repeats one another app reported seconds earlier for the same AMOUNT is
+    // recognised on amount and time (the cross-app rule in
+    // notificationProcessor.ts), which is precisely the case that beat the old
+    // approach — a wallet and the issuer fire within seconds of the same tap.
+    // And the user can now untick any source, so a wrong call here costs one tap
+    // instead of a release. The exclusion also had a real cost: a card that only
+    // ever notifies through a wallet could not be captured at all.
+    //
+    // The mechanism stays, because it is the only thing that beats a user's own
+    // choice. Anything added here must be an app that can NEVER be right.
     //
     // Must stay in sync with EXCLUDED_APPS in lib/bankingApps.ts —
     // lib/__tests__/bankingAppsConsistency.test.ts fails the build otherwise.
     static final Set<String> EXCLUDED_APPS = new HashSet<>(Arrays.asList(
-        "com.google.android.apps.walletnfcrel",  // Google Wallet
-        "com.google.android.apps.wallet"         // Google Wallet (legacy)
     ));
 
     // Banking app package names to listen for
@@ -438,6 +451,15 @@ public class NotificationListener extends NotificationListenerService {
         "com.numbrs.android.production",   // Numbrs
         "com.worldremit.android",          // WorldRemit
         "com.remitly.android",             // Remitly
+
+        // ── Wallets ─────────────────────────────────────────────────
+        //
+        // These re-announce a tap the card's own app usually announces too. The
+        // cross-app duplicate rule (first reporter wins) handles that, so a card
+        // that ONLY notifies through a wallet is still captured. See
+        // EXCLUDED_APPS above for why this is no longer refused outright.
+        "com.google.android.apps.walletnfcrel",  // Google Wallet
+        "com.google.android.apps.wallet",        // Google Wallet (legacy)
 
         // ── Buy-Now-Pay-Later / Payment Apps ────────────────────────
         "com.affirm.mobile",              // Affirm
