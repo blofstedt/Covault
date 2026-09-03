@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   ONBOARDING_STEPS,
@@ -135,19 +135,58 @@ describe('the setup steps themselves', () => {
     expect(read('components/onboarding/CaptureStep.tsx')).toContain('markSetupPending(');
   });
 
+  // Discovered from disk rather than listed by hand. The hand-written list this
+  // replaces had gone stale the moment a step was added: the new step was not
+  // checked for being skippable, which is the one property the intro must never
+  // lose. A list that has to be remembered is a list that gets forgotten.
+  const stepComponents = readdirSync(resolve(root, 'components/onboarding'))
+    .filter((f) => f.endsWith('.tsx') && f !== 'OnboardingStepShell.tsx')
+    .map((f) => f.replace(/\.tsx$/, ''));
+
+  it('finds every setup step on disk', () => {
+    expect(stepComponents.length).toBeGreaterThanOrEqual(4);
+  });
+
   it('all say where the setting lives afterwards', () => {
     expect(read('components/onboarding/OnboardingStepShell.tsx')).toContain(
       'You can always change this in Settings',
     );
-    for (const step of ['IncomeStep', 'BudgetLimitsStep', 'CaptureStep', 'TourStep']) {
-      expect(read(`components/onboarding/${step}.tsx`)).toContain('OnboardingStepShell');
+    for (const step of stepComponents) {
+      expect(read(`components/onboarding/${step}.tsx`), step).toContain('OnboardingStepShell');
     }
   });
 
   it('are all skippable, so the intro can never trap a new user', () => {
-    for (const step of ['IncomeStep', 'BudgetLimitsStep', 'CaptureStep', 'TourStep']) {
-      expect(read(`components/onboarding/${step}.tsx`)).toContain('onSkip');
+    for (const step of stepComponents) {
+      expect(read(`components/onboarding/${step}.tsx`), step).toContain('onSkip');
     }
+  });
+
+  it('every step in the path has a screen to render', () => {
+    // A step id with no branch in the router falls through to the opening
+    // slides — mid-setup, with no error and nothing on screen to say why. The
+    // user is dropped back at the start of the intro and cannot get past it,
+    // because the stored progress keeps sending them to the same dead id.
+    const router = read('components/Onboarding.tsx');
+    for (const step of ONBOARDING_STEPS) {
+      if (step === 'intro') continue; // the fallthrough, deliberately
+      expect(router, `no render branch for the '${step}' step`)
+        .toContain(`if (step === '${step}')`);
+    }
+  });
+
+  it('numbers the setup steps 1..N with no gaps or repeats', () => {
+    // The dots come from this map, and a step added without renumbering shows
+    // the wrong position — or, missing entirely, silently falls back to "1".
+    const router = read('components/Onboarding.tsx');
+    const block = router.slice(
+      router.indexOf('const SETUP_STEP_NUMBERS'),
+      router.indexOf('const SETUP_STEP_COUNT'),
+    );
+    const numbers = [...block.matchAll(/(\w+):\s*(\d+)/g)].map((m) => Number(m[2]));
+    expect(numbers.length).toBeGreaterThan(0);
+    expect([...numbers].sort((a, b) => a - b))
+      .toEqual(Array.from({ length: numbers.length }, (_, i) => i + 1));
   });
 
   it('forget the stored progress when the intro finishes', () => {
