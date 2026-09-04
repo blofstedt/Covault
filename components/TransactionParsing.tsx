@@ -105,14 +105,16 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   const [clearTargets, setClearTargets] = useState<Transaction[] | null>(null);
   const [clearAutoFiledTargets, setClearAutoFiledTargets] = useState<Transaction[] | null>(null);
   const [deleteTargets, setDeleteTargets] = useState<Transaction[] | null>(null);
-  // All sections always expanded per user request
-  // Only the review queue starts open. The other two are reference/settings
-  // content and previously pushed the actual task below the fold.
+  // The review queue and the rules start open; the capture-source picker does
+  // not. The rules are the page's other half — what Covault has already been
+  // told, beside what it is asking about — and a closed card asks the user to
+  // remember it is there. The picker stays shut because it is settings: a long
+  // grid of every app on the phone, wanted rarely and never urgently.
   const [expandedSections, setExpandedSections] = useState({
     activeBanks: false,
     caughtTransactions: true,
     autoFiled: true,
-    learnedRules: false,
+    learnedRules: true,
   });
 
   const toggleSection = useCallback((section: keyof typeof expandedSections) => {
