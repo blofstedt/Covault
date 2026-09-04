@@ -222,6 +222,12 @@ describe('what the pool is told, and what it can be asked', () => {
 
   it('cannot be recomputed on demand by a client', () => {
     expect(migration).toContain('REVOKE ALL ON FUNCTION public.refresh_community_rules() FROM PUBLIC');
+    // The line that actually does it. Supabase's default privileges grant
+    // EXECUTE on every new function to anon and authenticated, so revoking
+    // from PUBLIC alone left the tally callable by any signed-in client.
+    expect(migration).toContain(
+      'REVOKE EXECUTE ON FUNCTION public.refresh_community_rules() FROM anon, authenticated',
+    );
     expect(
       /GRANT EXECUTE ON FUNCTION public\.refresh_community_rules/.test(migration),
       'A client that could time a refresh against its own contribution could ' +

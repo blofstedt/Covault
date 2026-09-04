@@ -188,11 +188,17 @@ BEGIN
     AND votes::numeric / total_votes >= MIN_AGREEMENT;
 END $$;
 
+-- The tally is recomputed by a scheduled job running as the service role, and
+-- by nothing else. A client that could trigger a refresh could time it against
+-- its own contribution and learn something about the pool it was never shown.
+--
+-- BOTH lines are needed, and the second is the one that actually does the work:
+-- this schema carries default privileges granting EXECUTE on every new function
+-- to `anon` and `authenticated`, so REVOKE ... FROM PUBLIC alone left the
+-- function callable by any signed-in client. Verified after applying: the only
+-- grantees are postgres and service_role.
 REVOKE ALL ON FUNCTION public.refresh_community_rules() FROM PUBLIC;
--- Deliberately NOT granted to `authenticated`: the tally is recomputed by a
--- scheduled job running as the service role, never on demand by a client. A
--- client that could trigger a refresh could time it against its own
--- contribution and learn something about the size of the pool.
+REVOKE EXECUTE ON FUNCTION public.refresh_community_rules() FROM anon, authenticated;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 5. The two switches
@@ -216,22 +222,27 @@ CREATE INDEX IF NOT EXISTS idx_rule_contributions_match_key ON public.rule_contr
 -- 6. Running the tally
 -- ─────────────────────────────────────────────────────────────────────────────
 --
--- Nothing calls refresh_community_rules() on its own. Until something does, the
--- published table stays empty and every client simply gets no community answer
--- — which is the correct behaviour for an empty pool, and the reason the whole
--- layer is written to fail closed rather than to assume it has data.
+-- Without this the published table stays empty forever and every client simply
+-- gets no community answer — which is the correct behaviour for an empty pool,
+-- and the reason the whole layer is written to fail closed rather than to
+-- assume it has data.
 --
--- To start it, enable pg_cron on the project and schedule it daily. Deliberately
--- left commented out: enabling an extension is a decision about the project, not
--- something a feature migration should make on its owner's behalf.
+-- Once a day is generous: the pool moves in weeks, each phone refreshes its
+-- downloaded pack daily, and a tally that changed its mind hourly would be a
+-- tally worth ignoring. 04:17 UTC rather than on the hour, so it does not sit
+-- on top of every other scheduled job in the world.
 --
---   CREATE EXTENSION IF NOT EXISTS pg_cron;
---   SELECT cron.schedule(
---     'refresh-community-rules',
---     '17 4 * * *',
---     $$SELECT public.refresh_community_rules()$$
---   );
---
--- Once a day is generous: the pool moves in weeks, the pack on each phone is
--- refreshed daily, and a tally that changed its mind hourly would be a tally
--- worth ignoring.
+-- To stop it:  SELECT cron.unschedule('refresh-community-rules');
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'refresh-community-rules') THEN
+    PERFORM cron.unschedule('refresh-community-rules');
+  END IF;
+  PERFORM cron.schedule(
+    'refresh-community-rules',
+    '17 4 * * *',
+    $job$SELECT public.refresh_community_rules()$job$
+  );
+END $$;
