@@ -20,6 +20,8 @@ interface DashboardBudgetSectionsListProps {
   currentUserName?: string;
   isSharedAccount?: boolean;
   scrollContainerRef: React.RefObject<HTMLDivElement>;
+  /** False while the user is reading another month on the chart's rail. */
+  isCurrentMonth?: boolean;
   onToggleExpand?: (id: string) => void;
   onTransactionTap: (tx: Transaction) => void;
 }
@@ -42,6 +44,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
   currentUserName = '',
   isSharedAccount = false,
   scrollContainerRef,
+  isCurrentMonth = true,
   onToggleExpand,
   onTransactionTap,
 }) => {
@@ -217,6 +220,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
                 currentUserName={currentUserName}
                 isSharedView={isSharedAccount}
                 allBudgets={budgets}
+                isCurrentMonth={isCurrentMonth}
                 useCompactCollapsedStyles={shouldAutoFitClosedCards}
               />
               </div>

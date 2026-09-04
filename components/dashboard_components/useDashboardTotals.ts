@@ -56,6 +56,10 @@ export default function useDashboardTotals(
     currentMonthTransactions,
     projectedTransactions,
     remainingMoney,
+    // Handed back so a caller doing the same arithmetic for another month
+    // (the dashboard, when the user browses the rail) substitutes the starter
+    // income exactly the same way rather than keeping a second fallback.
+    effectiveIncome,
     isIncomeLoaded: monthlyIncome > 0,
   };
 }

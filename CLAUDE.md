@@ -128,6 +128,8 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | "a setting doesn't stick" | `SETTING_DB_KEYS` in `components/Dashboard.tsx` → `lib/hooks/useUserSettings.ts` → `lib/hooks/useDataLoading.ts`. **Usually a missing DB column** — see Invariants |
 | "an edit didn't save" | `lib/hooks/useTransactionOps.ts`. If it's a **vendor rename**, also `lib/formatVendorName.ts` — it has previously overwritten the user's own capitalisation |
 | "the numbers are wrong" | `components/dashboard_components/useDashboardTotals.ts`, `lib/refundMatching.ts`, `lib/projectedTransactions.ts` |
+| "the chart is showing the wrong months" / "I tapped a month and nothing changed" | `lib/monthWindow.ts` (the seven keys) → `lib/hooks/useMonthSelection.ts` (which one is on screen, and what puts it back) → `components/dashboard_components/BudgetFlowChart.tsx` (the rail) |
+| "it's showing me an old month" / "the balance at the top looks wrong" | `components/Dashboard.tsx` — `monthKey` is the month we are IN, `viewMonthKey` the one being READ. See the invariant below before moving anything onto the second |
 | "last month's entries are still listed" / "the list is in the wrong order" | `lib/transactionOrdering.ts` (one month, chronological) → `lib/hooks/useCurrentDay.ts` (the single clock) → `components/Dashboard.tsx` |
 | "a modal/sheet looks broken or is cut off" | `components/ui/Portal.tsx` — overlays inside `<main>` need it; see Invariants |
 | "the animation is janky" | `index.css`, `components/BudgetSection.tsx`, `components/dashboard_components/BudgetFlowChart.tsx` |
@@ -409,6 +411,23 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   own and cannot put back. And most banks announce a purchase twice, so an email
   capture is routinely discarded moments later; a delta written for one would
   show the purchase twice on the home screen until the app was next opened.
+
+- **The month the user is IN and the month they are READING are two different
+  things, and only one of them may leave the screen.** The chart's rail shows
+  seven months and any of them can be tapped, which puts the vials and the
+  headline balance on that month — so the dashboard now holds `monthKey` (now)
+  and `viewMonthKey` (what is on screen) side by side. Everything the user is
+  looking at follows the second; the home-screen widget and the over-budget
+  notifications must keep following the first. A widget drawn from a month the
+  user wandered to would go on showing March after the phone was put down, with
+  nothing on the home screen to say which month it is, and a "you are over
+  budget" notification about a month that ended is simply false. The selection
+  is also deliberately not durable — it is dropped on pause, on resume, on a tab
+  becoming hidden, when the calendar rolls over, on Home, and on a second tap of
+  the current month — because a dashboard that OPENS on a month four back is a
+  dashboard lying about the money. `monthBrowsing.test.ts` pins all of it,
+  including that the widget effect and the notification call never mention
+  `viewMonth`.
 
 - **The budget order comes from `lib/budgetOrder.ts`, not from the database.**
   `budgets` has no primary key and no sort column, and `loadUserBudgets` reads

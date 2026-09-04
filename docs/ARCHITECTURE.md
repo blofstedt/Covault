@@ -21,7 +21,7 @@ components/
   Dashboard.tsx                  Home. Owns SETTING_DB_KEYS and the widget-snapshot push
   TransactionParsing.tsx         The "Review" page (bottom-bar tab)
   BudgetSection.tsx              A budget "vial"
-  dashboard_components/          Balance card, BudgetFlowChart (d3), bottom bar, search
+  dashboard_components/          Balance card, BudgetFlowChart (d3, + the seven-month rail), bottom bar, search
     settings_modal_components/   One file per settings section
   transaction_parsing/           Review rows, action sheets, learned-rules card
   ui/                            Portal, ConfirmModal, ToggleSwitch, PageShell, ParsingCard

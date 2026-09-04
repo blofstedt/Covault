@@ -53,6 +53,13 @@ interface BudgetSectionProps {
   currentUserName: string;
   isSharedView: boolean;
   allBudgets?: BudgetCategory[];
+  /**
+   * False while this vial is showing a month other than the current one, where
+   * "Today" is not in the list at all — the button would either scroll to the
+   * bottom of a finished month or to the top of one that has not started, and
+   * then explain that nothing is dated today. Which is true, and useless.
+   */
+  isCurrentMonth?: boolean;
   useCompactCollapsedStyles?: boolean;
 }
 
@@ -65,6 +72,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
   currentUserName,
   isSharedView,
   allBudgets,
+  isCurrentMonth = true,
   useCompactCollapsedStyles = false,
 }) => {
   const { matchedExpenseIds: legacyMatchedIds } = useMemo(
@@ -478,7 +486,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
             {/* Jump to now. Wears the category's own colour, like the icon
                 chip in the header above it, so it reads as part of this vault
                 rather than as a generic control. */}
-            {visibleTransactions.length > 0 && (
+            {visibleTransactions.length > 0 && isCurrentMonth && (
               <button
                 type="button"
                 onClick={scrollToToday}

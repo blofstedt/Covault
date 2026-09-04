@@ -19,12 +19,15 @@ import DashboardBalanceSection from './dashboard_components/DashboardBalanceSect
 import DashboardBudgetSectionsList from './dashboard_components/DashboardBudgetSectionsList';
 import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import DashboardSettingsModal from './dashboard_components/DashboardSettingsModal';
+import MonthViewBanner from './dashboard_components/MonthViewBanner';
 import SearchResults from './dashboard_components/SearchResults';
 
 import useNormalizedTransactions from './dashboard_components/useNormalizedTransactions';
 import useDashboardTotals from './dashboard_components/useDashboardTotals';
 import { getLocalMonthKey } from '../lib/dateUtils';
 import { useCurrentDay } from '../lib/hooks/useCurrentDay';
+import { useMonthSelection } from '../lib/hooks/useMonthSelection';
+import { balanceLabelForMonth, remainingForMonth } from '../lib/monthWindow';
 import { isInMonth } from '../lib/transactionOrdering';
 import { checkAndTriggerAppNotifications } from '../lib/appNotifications';
 import { supabase } from '../lib/supabase';
@@ -142,6 +145,23 @@ const Dashboard: React.FC<Props> = ({
     setReviewHighlightNonce(0);
   }, []);
 
+  // Single source of truth for "now": ticks over at local midnight and on
+  // resume, so every month-scoped derivation below moves together.
+  const todayIso = useCurrentDay();
+  const monthKey = todayIso.slice(0, 7);
+
+  // Which of the seven months on the chart's rail is on screen. `monthKey` is
+  // always the month we are really in; `viewMonthKey` is the one being read.
+  // Everything the user looks at follows the second; everything that leaves
+  // this screen — the widget, the notifications — stays on the first.
+  const {
+    viewMonthKey,
+    isCurrentMonth: isViewingCurrentMonth,
+    relation: viewMonthRelation,
+    selectMonth,
+    resetToCurrentMonth,
+  } = useMonthSelection(monthKey);
+
   /**
    * The home button, from either screen.
    *
@@ -163,7 +183,10 @@ const Dashboard: React.FC<Props> = ({
     setShowSettings(false);
     setSelectedTx(null);
     setShowTransactionForm(false);
-  }, [closeParsing]);
+    // Including the month being browsed: home is "put the screen back to how
+    // it looks when you arrive", and it arrives on this month.
+    resetToCurrentMonth();
+  }, [closeParsing, resetToCurrentMonth]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -219,12 +242,13 @@ const Dashboard: React.FC<Props> = ({
     handleSetProperName,
   } = useVendorOverrides({ userId: state.user?.id, budgets: state.budgets });
 
-  // Single source of truth for "now": ticks over at local midnight and on
-  // resume, so every month-scoped derivation below moves together.
-  const todayIso = useCurrentDay();
-  const monthKey = todayIso.slice(0, 7);
-
-  const { currentMonthTransactions, projectedTransactions, remainingMoney, isIncomeLoaded } = useDashboardTotals(
+  const {
+    currentMonthTransactions,
+    projectedTransactions,
+    remainingMoney,
+    effectiveIncome,
+    isIncomeLoaded,
+  } = useDashboardTotals(
     normalizedTransactions,
     state.user?.monthlyIncome || 0,
     todayIso,
@@ -326,14 +350,51 @@ const Dashboard: React.FC<Props> = ({
     ];
   }, [currentMonthTransactions, projectedTransactions, monthKey]);
 
+  // The chart draws three months forward as well as three back, so it takes
+  // EVERY projected occurrence rather than only this month's — otherwise the
+  // right-hand half of the rail is a flat line at zero for months that already
+  // have known subscriptions in them. The projection stops three months out on
+  // its own, which is exactly the width of the rail.
   const chartTransactions = useMemo(() => {
     const existingIds = new Set(normalizedTransactions.map((t) => t.id));
-    const currentMonthProjected = projectedTransactions.filter(
-      (t) => typeof t.date === 'string' && getLocalMonthKey(t.date) === monthKey && !existingIds.has(t.id),
+    const projectedAhead = projectedTransactions.filter(
+      (t) => typeof t.date === 'string' && !existingIds.has(t.id),
     );
 
-    return [...normalizedTransactions, ...currentMonthProjected];
-  }, [normalizedTransactions, projectedTransactions, monthKey]);
+    return [...normalizedTransactions, ...projectedAhead];
+  }, [normalizedTransactions, projectedTransactions]);
+
+  // ── The month on screen ──
+  //
+  // The vials and the headline figure follow the rail; everything that leaves
+  // this screen does not. The widget effect above and the overrun
+  // notifications below deliberately keep reading `currentMonthTransactions`
+  // and `remainingMoney`: a home-screen widget showing March because the phone
+  // was left on March, or a "you are over budget" notification about a month
+  // that ended, would both be wrong in a way the user could not see from here.
+  const viewMonthBudgetTransactions = useMemo(() => {
+    if (isViewingCurrentMonth) return currentMonthBudgetTransactions;
+    const inViewMonth = (t: Transaction) => isInMonth(t, viewMonthKey);
+    return [
+      ...normalizedTransactions.filter(inViewMonth),
+      ...projectedTransactions.filter(inViewMonth),
+    ];
+  }, [
+    isViewingCurrentMonth,
+    currentMonthBudgetTransactions,
+    normalizedTransactions,
+    projectedTransactions,
+    viewMonthKey,
+  ]);
+
+  // Same arithmetic as the current month's, over the same list the vials are
+  // drawing, so the figure at the top can never disagree with the bars below.
+  const viewMonthRemaining = useMemo(
+    () => (isViewingCurrentMonth
+      ? remainingMoney
+      : remainingForMonth(viewMonthBudgetTransactions, effectiveIncome)),
+    [isViewingCurrentMonth, remainingMoney, viewMonthBudgetTransactions, effectiveIncome],
+  );
 
   // Stable key: changes only when a budget limit is added/removed/modified.
   // Prevents the notification effect from re-running on every array re-creation.
@@ -595,7 +656,12 @@ const Dashboard: React.FC<Props> = ({
         {/* Balance + settings cog + search: combined in one section */}
         <DashboardBalanceSection
           isSharedAccount={!state.user?.budgetingSolo}
-          remainingMoney={remainingMoney}
+          remainingMoney={viewMonthRemaining}
+          balanceLabel={balanceLabelForMonth(
+            viewMonthKey,
+            monthKey,
+            !state.user?.budgetingSolo,
+          )}
           monthlyIncome={state.user?.monthlyIncome || 0}
           isIncomeLoaded={isIncomeLoaded}
           searchQuery={searchQuery}
@@ -673,15 +739,31 @@ const Dashboard: React.FC<Props> = ({
                   monthlyIncome={state.user?.monthlyIncome || 0}
                   theme={state.settings.theme}
                   highlightedBudgetId={expandedBudgets.size > 0 ? Array.from(expandedBudgets)[0] : null}
+                  currentMonthKey={monthKey}
+                  selectedMonthKey={viewMonthKey}
+                  onSelectMonth={selectMonth}
                 />
                 </React.Suspense>
               </PremiumGate>
             </div>
 
+            {/* Which month these vials are, when it is not this one. In the
+                flow rather than floating over the list: it is the one thing on
+                screen that says the numbers below belong to another month, so
+                it must not be something a thumb can scroll past. */}
+            {!isViewingCurrentMonth && (
+              <MonthViewBanner
+                monthKey={viewMonthKey}
+                relation={viewMonthRelation}
+                onReturnToCurrentMonth={resetToCurrentMonth}
+              />
+            )}
+
             {/* Budget bars: vertical list on mobile, 2-col grid on desktop */}
             <DashboardBudgetSectionsList
               budgets={state.budgets}
-              transactions={currentMonthBudgetTransactions}
+              transactions={viewMonthBudgetTransactions}
+              isCurrentMonth={isViewingCurrentMonth}
               expandedBudgets={expandedBudgets}
               isFocusMode={false}
               focusedBudgetId={null}

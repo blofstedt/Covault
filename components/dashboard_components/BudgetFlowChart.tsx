@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import * as d3 from 'd3';
 import { BudgetCategory, Transaction } from '../../types';
 import { getBudgetGradient, getBudgetColor } from '../../lib/budgetColors';
+import { buildMonthWindow, shortMonthName, longMonthLabel } from '../../lib/monthWindow';
 
 interface BudgetFlowChartProps {
   budgets: BudgetCategory[];
@@ -10,6 +11,12 @@ interface BudgetFlowChartProps {
   monthlyIncome?: number;
   theme?: 'light' | 'dark';
   highlightedBudgetId?: string | null;
+  /** The month we are really in, from the dashboard's single clock. */
+  currentMonthKey: string;
+  /** The month being shown — the middle of the rail unless the user moved it. */
+  selectedMonthKey: string;
+  /** A tap on the rail. Passing the current month is how the user comes back. */
+  onSelectMonth: (monthKey: string) => void;
 }
 
 interface MonthlyBudgetData {
@@ -69,24 +76,16 @@ function formatMonthLabel(key: string): string {
   return `${MONTH_ABBR[parseInt(month, 10) - 1]} ${year}`;
 }
 
-function getWindowedMonthKeys(monthKeys: string[], currentMonthKey: string, maxMonths = 6): string[] {
-  if (monthKeys.length <= maxMonths) return monthKeys;
-
-  let currentIdx = monthKeys.indexOf(currentMonthKey);
-
-  if (currentIdx < 0) {
-    currentIdx = monthKeys.findIndex((key) => key > currentMonthKey);
-    if (currentIdx < 0) currentIdx = monthKeys.length - 1;
-  }
-
-  const halfWindow = Math.floor(maxMonths / 2);
-  let start = currentIdx - halfWindow;
-  start = Math.max(0, Math.min(start, monthKeys.length - maxMonths));
-
-  return monthKeys.slice(start, start + maxMonths);
-}
-
-const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions, monthlyIncome = 0, theme = 'light', highlightedBudgetId = null }) => {
+const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
+  budgets,
+  transactions,
+  monthlyIncome = 0,
+  theme = 'light',
+  highlightedBudgetId = null,
+  currentMonthKey,
+  selectedMonthKey,
+  onSelectMonth,
+}) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -137,10 +136,6 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     // Group spending by "YYYY-MM" and category name
     const monthMap = new Map<string, Map<string, number>>();
 
-    // Determine current month key
-    const now = new Date();
-    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-
     for (const tx of safeTransactions) {
       const rawDate = tx.date;
       if (!rawDate || rawDate.length < 7) continue;
@@ -162,15 +157,16 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       catMap.set(catName, (catMap.get(catName) || 0) + amount);
     }
 
-    // Sort month keys chronologically
-    const sortedMonths = Array.from(monthMap.keys()).sort();
-
-    // Keep at most 6 months and center current month when possible
-    const displayMonths = getWindowedMonthKeys(sortedMonths, currentMonthKey, 6);
+    // The seven months of the rail — three back, this one, three forward —
+    // built from the calendar rather than from whichever months happen to hold
+    // transactions. A month with no spending is a real answer and has to keep
+    // its place on the axis; drawing only the months with data moved every
+    // label sideways the first time a new month was spent in.
+    const displayMonths = buildMonthWindow(currentMonthKey);
 
     // Build the data array
     const data = displayMonths.map((monthKey) => {
-      const catMap = monthMap.get(monthKey)!;
+      const catMap = monthMap.get(monthKey);
       const entry: MonthlyBudgetData = {
         month: formatMonthLabel(monthKey),
         monthKey,
@@ -179,7 +175,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       };
 
       for (const name of categoryNames) {
-        const val = catMap.get(name) || 0;
+        const val = catMap?.get(name) || 0;
         entry[name] = val;
         entry.total += val;
       }
@@ -187,23 +183,8 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       return entry;
     });
 
-    // If no transaction months exist, create a synthetic current-month entry
-    // so the chart can still render its baseline.
-    if (data.length === 0) {
-      const entry: MonthlyBudgetData = {
-        month: formatMonthLabel(currentMonthKey),
-        monthKey: currentMonthKey,
-        total: 0,
-        budgetLimit: totalBudgetLimit,
-      };
-      for (const name of categoryNames) {
-        entry[name] = 0;
-      }
-      data.push(entry);
-    }
-
     return data;
-  }, [safeTransactions, categoryNames, budgetNameById, totalBudgetLimit]);
+  }, [safeTransactions, categoryNames, budgetNameById, totalBudgetLimit, currentMonthKey]);
 
   // Draw the D3 stacked area chart
   useEffect(() => {
@@ -216,7 +197,11 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     const height = isDesktop
       ? Math.min(Math.max(120, window.innerHeight * 0.18), 200)
       : Math.min(Math.max(120, window.innerHeight * 0.2), width * 0.4);
-    const margin = { top: 12, right: 0, bottom: 20, left: 0 };
+    // No bottom gutter for month labels any more: they are HTML buttons on the
+    // rail below the SVG, which is what makes them tappable (and lets the
+    // selected month wear a real pill that slides on the app's own 320ms
+    // clock, rather than a rectangle drawn into the chart).
+    const margin = { top: 12, right: 0, bottom: 6, left: 0 };
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
 
@@ -254,7 +239,11 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
 
     const stackedData = stack(chartData);
 
-    const x = d3.scalePoint().domain(chartData.map((d) => d.month)).range([0, innerWidth]).padding(0.25);
+    // padding 0.5 puts each month at the CENTRE of its own equal slice of the
+    // width — the same seven slices the rail's buttons occupy — so a label and
+    // the point it names line up exactly. Anything else and the pill sits
+    // beside its own data.
+    const x = d3.scalePoint().domain(chartData.map((d) => d.month)).range([0, innerWidth]).padding(0.5);
 
     const maxTotal = d3.max(chartData, (d) => d.total) || 1;
     const yMax = Math.max(maxTotal, thresholdValue) * 1.15;
@@ -469,23 +458,6 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .style('transition', soloFadeTransition())
       .text('INCOME');
 
-    // Month labels on the x-axis
-    chartData.forEach((d, idx) => {
-      const xPos = x(d.month) || 0;
-      const isFirst = idx === 0;
-      const isLast = idx === chartData.length - 1;
-      svg
-        .append('text')
-        .attr('x', isFirst ? xPos + 6 : isLast ? xPos - 6 : xPos)
-        .attr('y', innerHeight + 14)
-        .attr('text-anchor', 'middle')
-        .attr('font-size', '9px')
-        .attr('font-weight', '600')
-        .attr('letter-spacing', '0.04em')
-        .attr('fill', isDarkTheme ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.45)')
-        .text(d.month.split(' ')[0]);
-    });
-
     // Scrubber line
     const scrubber = svg
       .append('line')
@@ -501,6 +473,22 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       .attr('r', 3)
       .attr('fill', isDarkTheme ? '#ffffff' : '#334155')
       .style('opacity', 0);
+
+    /**
+     * Which month a finger at `mx` is over.
+     *
+     * One definition, used by the mouse and both touch handlers. They each
+     * carried their own `innerWidth / (domain.length - 1)`, which is the step
+     * of a scale with no outer padding — so every reading was off by half a
+     * slot and the scrubber snapped to the wrong month near the edges.
+     */
+    const monthIndexFromX = (mx: number): number => {
+      const domain = x.domain();
+      if (domain.length < 2) return 0;
+      const first = x(domain[0]) || 0;
+      const index = Math.round((mx - first) / x.step());
+      return Math.max(0, Math.min(chartData.length - 1, index));
+    };
 
     // Shared update function for month/category selection
     const updateSelection = (monthIdx: number, my: number) => {
@@ -585,8 +573,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       if (highlightedRef.current) return;
       const [mx, my] = d3.pointer(event, svg.node());
       setScreenCoords({ x: event.clientX, y: event.clientY });
-      const domain = x.domain();
-      if (domain.length < 2) {
+      if (x.domain().length < 2) {
         setHoveredMonthIdx(0);
         setActiveCategory(categoryNames[0] || null);
         const xPos = x(chartData[0].month) || 0;
@@ -594,11 +581,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
         return;
       }
 
-      const step = innerWidth / (domain.length - 1);
-      const index = Math.round(mx / step);
-      const monthIdx = Math.max(0, Math.min(chartData.length - 1, index));
-
-      updateSelection(monthIdx, my);
+      updateSelection(monthIndexFromX(mx), my);
     };
 
     // Touch event handlers for drag gestures
@@ -608,18 +591,14 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       const touch = event.touches[0] || event.changedTouches[0];
       setScreenCoords({ x: touch.clientX, y: touch.clientY });
       const [mx, my] = d3.pointer(touch, svg.node());
-      const domain = x.domain();
-      if (domain.length < 2) {
+      if (x.domain().length < 2) {
         setHoveredMonthIdx(0);
         setActiveCategory(categoryNames[0] || null);
         const xPos = x(chartData[0].month) || 0;
         scrubber.attr('x1', xPos).attr('x2', xPos).style('opacity', 0.3);
         return;
       }
-      const step = innerWidth / (domain.length - 1);
-      const index = Math.round(mx / step);
-      const monthIdx = Math.max(0, Math.min(chartData.length - 1, index));
-      updateSelection(monthIdx, my);
+      updateSelection(monthIndexFromX(mx), my);
     };
 
     const handleTouchMove = (event: any) => {
@@ -628,12 +607,8 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
       const touch = event.touches[0] || event.changedTouches[0];
       setScreenCoords({ x: touch.clientX, y: touch.clientY });
       const [mx, my] = d3.pointer(touch, svg.node());
-      const domain = x.domain();
-      if (domain.length < 2) return;
-      const step = innerWidth / (domain.length - 1);
-      const index = Math.round(mx / step);
-      const monthIdx = Math.max(0, Math.min(chartData.length - 1, index));
-      updateSelection(monthIdx, my);
+      if (x.domain().length < 2) return;
+      updateSelection(monthIndexFromX(mx), my);
     };
 
     const handleEnd = () => {
@@ -699,21 +674,21 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     highlightedRef.current = highlightedBudgetName;
   }, [highlightedBudgetName]);
 
-  // Compute current-month totals for the highlighted budget
+  // Totals for the highlighted budget, in the month on screen — not in this
+  // one. The pill above the chart sits beside vials that are already showing
+  // the selected month, and two different months in one glance is worse than
+  // either of them alone.
   const highlightedTotals = useMemo(() => {
     if (!highlightedBudgetId) return null;
     const budget = safeBudgets.find(b => b.id === highlightedBudgetId);
     if (!budget) return null;
-
-    const now = new Date();
-    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
     let spent = 0;
     let projected = 0;
     for (const tx of safeTransactions) {
       if (tx.budget_id !== highlightedBudgetId) continue;
       const rawDate = tx.date;
-      if (!rawDate || rawDate.slice(0, 7) !== currentMonthKey) continue;
+      if (!rawDate || rawDate.slice(0, 7) !== selectedMonthKey) continue;
       const amt = Number(tx.amount) || 0;
       if (tx.is_projected) {
         projected += amt;
@@ -723,7 +698,14 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
     }
 
     return { spent, projected, limit: budget.totalLimit };
-  }, [highlightedBudgetId, safeBudgets, safeTransactions]);
+  }, [highlightedBudgetId, safeBudgets, safeTransactions, selectedMonthKey]);
+
+  // The rail's own seven keys, from the same calendar the chart data uses.
+  // Kept separate from chartData so the rail does not depend on the SVG having
+  // been built, and so a month with nothing in it still gets its button.
+  const monthKeys = useMemo(() => buildMonthWindow(currentMonthKey), [currentMonthKey]);
+  const selectedMonthIndex = Math.max(0, monthKeys.indexOf(selectedMonthKey));
+  const isViewingCurrentMonth = selectedMonthKey === currentMonthKey;
 
   const highlightedCatIndex = highlightedBudgetName ? categoryNames.indexOf(highlightedBudgetName) : -1;
   const highlightedCatColor = highlightedBudgetName ? getBudgetColor(highlightedBudgetName, highlightedCatIndex) : null;
@@ -1046,6 +1028,72 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({ budgets, transactions
                 </div>
               )}
             </div>
+          </div>
+
+          {/* ── The month rail ──────────────────────────────────────────────
+              Seven months, three back and three forward, each one tappable.
+              HTML rather than SVG text, for three reasons: a button is the tap
+              target a finger expects (and announces itself to a screen reader
+              as one), the pill can be a real rounded-full element on the app's
+              own 320ms curve instead of a rectangle drawn into the chart, and
+              the labels stay out of the SVG that d3 tears down and rebuilds on
+              every data change.
+
+              The pill is ONE element that slides, rather than a background
+              that turns on and off per button: a transform is the only way to
+              move it that the compositor can take, and it makes the move read
+              as the same pill going somewhere rather than two pills blinking.
+          */}
+          <div className="relative mt-1 flex" role="group" aria-label="Choose a month">
+            <div
+              aria-hidden="true"
+              className="absolute inset-y-0 left-0 pointer-events-none motion-safe:transition-transform motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)]"
+              style={{
+                width: `${100 / monthKeys.length}%`,
+                transform: `translateX(${selectedMonthIndex * 100}%)`,
+              }}
+            >
+              <div
+                className={`mx-1 h-full rounded-full motion-safe:transition-colors motion-safe:duration-[320ms] ${
+                  isViewingCurrentMonth
+                    ? 'bg-emerald-500/15 dark:bg-emerald-400/15'
+                    : 'bg-slate-400/20 dark:bg-slate-400/20'
+                }`}
+              />
+            </div>
+
+            {monthKeys.map((key) => {
+              const isSelected = key === selectedMonthKey;
+              const isNow = key === currentMonthKey;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => onSelectMonth(key)}
+                  aria-pressed={isSelected}
+                  aria-label={longMonthLabel(key)}
+                  className={`relative flex-1 py-1.5 text-[10px] font-semibold tracking-[0.04em] active:scale-[0.97] motion-safe:transition-[color,transform] motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)] ${
+                    isSelected
+                      ? isNow
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-slate-700 dark:text-slate-100'
+                      : 'text-slate-400 dark:text-slate-500'
+                  }`}
+                >
+                  {shortMonthName(key)}
+                  {/* Where "now" is, while the pill is somewhere else. Without
+                      it the rail says which month is on screen but not which
+                      month it actually is, and every label looks equally like
+                      today. */}
+                  {isNow && !isSelected && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute left-1/2 -translate-x-1/2 bottom-0.5 w-1 h-1 rounded-full bg-emerald-500 dark:bg-emerald-400"
+                    />
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
