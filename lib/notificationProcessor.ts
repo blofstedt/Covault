@@ -25,6 +25,7 @@ import { candidatePatternsFor } from './notificationShape';
 import { getLocalToday, parseLocalDate, toLocalIsoDay } from './dateUtils';
 import { extractWithAI, type AIExtractionResult } from './aiExtractor';
 import { detectMerchantSignal, resolveSignalCategory } from './merchantCategorySignals';
+import { lookupCommunityRule } from './communityRules';
 import type { PendingTransaction, Transaction } from '../types';
 import { scoreVendorMatch, shouldAutoAccept, toMatchKey } from './vendorMatchConfidence';
 import { amountsAgree, daysApart, isSameCharge } from './duplicateCharge';
@@ -888,6 +889,79 @@ async function fetchRecurringCharges(userId: string): Promise<RecurringChargeRow
     return rows;
   } catch (e) {
     log.warn('[AI pipeline] Could not load recurring charges:', e);
+    return [];
+  }
+}
+
+/**
+ * The partner's rules — the household layer of the category lookup.
+ *
+ * Read only when the user's own rules have nothing to say about a merchant, and
+ * used ONLY to suggest: a partner match leaves `overrideMatchConfidence` at 0,
+ * so it can never clear the auto-accept threshold and file money the user has
+ * not seen. Accepting the suggestion once in Review copies the rule into their
+ * own list, and from then on it is theirs and behaves like any other.
+ *
+ * Two reads rather than one because the partner id lives on the settings row.
+ * Both are cached together for a few minutes, for the same reason the recurring
+ * templates are: a shade rescan runs every banking notification back to back,
+ * and this would otherwise be two identical queries per notification.
+ *
+ * Degrades to nothing at all. On a project where the partner-visible policy has
+ * not been applied the read simply returns no rows, which is exactly the
+ * behaviour the app had before this layer existed.
+ */
+interface VendorRuleRow {
+  category_id: string;
+  proper_name: string | null;
+  match_key: string | null;
+  match_type: string | null;
+  updated_at?: string | null;
+}
+
+const PARTNER_RULES_CACHE_TTL_MS = 5 * 60_000;
+let partnerRulesCache: { userId: string; rows: VendorRuleRow[]; at: number } | null = null;
+
+/** Exposed for testing: forget the cached partner rules. */
+export function _clearPartnerRulesCacheForTesting(): void {
+  partnerRulesCache = null;
+}
+
+async function fetchPartnerRules(userId: string): Promise<VendorRuleRow[]> {
+  const now = Date.now();
+  if (partnerRulesCache && partnerRulesCache.userId === userId && now - partnerRulesCache.at < PARTNER_RULES_CACHE_TTL_MS) {
+    return partnerRulesCache.rows;
+  }
+  try {
+    const { data: settingsRows } = await supabase
+      .from('settings')
+      .select('partner_id')
+      .eq('user_id', userId)
+      .limit(1);
+    const partnerId = (settingsRows || [])[0]?.partner_id as string | undefined;
+    if (!partnerId || partnerId === userId) {
+      partnerRulesCache = { userId, rows: [], at: now };
+      return [];
+    }
+
+    const { data, error } = await supabase
+      .from('overrides')
+      .select('category_id, proper_name, match_key, match_type, updated_at')
+      .eq('user_id', partnerId)
+      .not('match_key', 'is', null)
+      .order('updated_at', { ascending: false })
+      .limit(MAX_VENDOR_RULES);
+    if (error) {
+      log.warn('[AI pipeline] Could not load the partner rules:', error);
+      return [];
+    }
+    const rows = (data || []) as VendorRuleRow[];
+    // Only a successful read is cached, so one bad query cannot silence the
+    // household layer for the whole burst that follows it.
+    partnerRulesCache = { userId, rows, at: now };
+    return rows;
+  } catch (e) {
+    log.warn('[AI pipeline] Could not load the partner rules:', e);
     return [];
   }
 }
@@ -2043,6 +2117,81 @@ async function processNotificationWithAIImpl(
           ? 1
           : scoreVendorMatch(matchedKey, (row.match_key || '').toLowerCase(), row.match_type || 'exact');
         log.debug(`[AI pipeline] overrides match: ${vendor} → ${categoryName} (match_type=${row.match_type || 'exact'}, confidence=${overrideMatchConfidence.toFixed(2)})`);
+      }
+    }
+
+    // ── 5a-ii: the borrowed layers — the partner's rules, then the pool ──
+    //
+    // Reached only when the user's own rules said nothing. A conflict in their
+    // own rules deliberately does NOT fall through: the app has established
+    // that this household has not settled the merchant, and answering with
+    // somebody else's opinion would be worse than asking.
+    //
+    // Everything found here SUGGESTS and never files. `overrideMatchConfidence`
+    // stays 0 — the same treatment the model's guess and the offline descriptor
+    // hint already get — so nothing borrowed can clear the auto-accept
+    // threshold. The row goes to Review wearing a badge saying whose rule it
+    // was, and accepting it once makes it the user's own.
+    if (!categoryId && !overrideRuleConflict) {
+      const partnerRows = await fetchPartnerRules(userId);
+      let borrowed: { row: VendorRuleRow; from: 'partner' } | null = null;
+
+      if (partnerRows.length > 0) {
+        const partnerMatching = (key: string) => partnerRows.filter((row) => {
+          const mk = (row.match_key || '').toLowerCase();
+          if (!mk) return false;
+          const mt = row.match_type || 'exact';
+          if (mt === 'exact') return key === mk;
+          if (mt === 'prefix') return key.startsWith(mk);
+          if (mt === 'contains') return key.includes(mk);
+          return false;
+        });
+
+        let matching = partnerMatching(vendorKey);
+        for (const aliasKey of aliasKeys) {
+          if (matching.length > 0) break;
+          matching = partnerMatching(aliasKey);
+        }
+
+        // The same refusal to guess, one layer down: two people in a household
+        // can legitimately disagree about a merchant, and the app must ask
+        // rather than pick whichever of them edited a rule most recently.
+        const partnerCategories = new Set(
+          matching.map((row) => String(row.category_id || '').toLowerCase()),
+        );
+        if (partnerCategories.size > 1) {
+          log.debug(`[AI pipeline] partner rules disagree about ${vendor} — routing to review`);
+        } else if (matching.length > 0) {
+          borrowed = { row: matching[0], from: 'partner' };
+        }
+      }
+
+      const borrowedName = borrowed
+        ? String(borrowed.row.category_id || '')
+        // The pool is consulted last and matches on the whole normalised key
+        // only — never by prefix or "contains". A short key from a stranger
+        // matching by substring is precisely the case the confidence scoring
+        // exists to distrust, and here there is nobody around to notice.
+        : lookupCommunityRule(vendorKey)?.category || '';
+
+      if (borrowedName) {
+        const borrowedCat = availableCategories.find(
+          (c) => c.name.toLowerCase() === borrowedName.toLowerCase(),
+        );
+        if (borrowedCat) {
+          categoryId = borrowedCat.id;
+          categoryName = borrowedCat.name;
+          // A partner's polished name is worth taking — one household, one
+          // spelling. The pool's is not: it does not store one, and a
+          // stranger's wording should never rename a user's purchase.
+          if (borrowed?.row.proper_name) {
+            displayVendor = borrowed.row.proper_name;
+          }
+          log.debug(
+            `[AI pipeline] ${borrowed ? 'partner' : 'community'} rule suggests ` +
+            `${vendor} → ${categoryName} (suggestion only, never auto-filed)`,
+          );
+        }
       }
     }
   }

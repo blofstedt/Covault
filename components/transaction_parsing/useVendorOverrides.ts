@@ -3,6 +3,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { restFetch } from '../../lib/apiHelpers';
 import { BudgetCategory } from '../../types';
 import { toVendorKey } from '../../lib/deviceTransactionParser';
+import { contributeRule, withdrawRule } from '../../lib/communityRules';
 
 export type MatchType = 'exact' | 'prefix' | 'contains';
 
@@ -30,11 +31,40 @@ export interface VendorOverride {
 
 interface UseVendorOverridesOptions {
   userId?: string;
+  /** The other person in the vault, when there is one. Their rules are read, never written. */
+  partnerId?: string;
   budgets: BudgetCategory[];
 }
 
-export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOptions) {
+/**
+ * DB rows in the shape the app uses.
+ *
+ * `category_id` in the DB is a Budgets enum value, e.g. 'Groceries'; the app
+ * compares against 'budget:groceries', so the conversion happens here once for
+ * both the user's own rules and their partner's.
+ */
+function toVendorOverrides(rows: any[]): VendorOverride[] {
+  return (rows || []).map((row: any) => ({
+    id: row.id,
+    proper_name: row.proper_name,
+    match_key: row.match_key || undefined,
+    match_type: (row.match_type === 'prefix' || row.match_type === 'contains')
+      ? row.match_type
+      : 'exact',
+    updated_at: row.updated_at || undefined,
+    category_id: row.category_id ? `budget:${(row.category_id as string).toLowerCase()}` : '',
+    category_name: row.category_id || undefined,
+  }));
+}
+
+export function useVendorOverrides({ userId, partnerId, budgets }: UseVendorOverridesOptions) {
   const [vendorOverrides, setVendorOverrides] = useState<VendorOverride[]>([]);
+  // Kept in its own array rather than merged into the list above, deliberately.
+  // Everything downstream — the rules list, the emerald "you taught this"
+  // badge, the rules mirrored to the home-screen widget — means "the user's
+  // own", and blurring the two would quietly hand a partner's rule all the
+  // authority of one the user wrote themselves.
+  const [partnerOverrides, setPartnerOverrides] = useState<VendorOverride[]>([]);
   const [expandedVendorCategory, setExpandedVendorCategory] = useState<string | null>(null);
 
   // ── Load vendor overrides (default categories) from Supabase ──
@@ -51,21 +81,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
         return;
       }
       const data = await overridesRes.json();
-
-      // category_id in DB is a Budgets enum value e.g. 'Groceries'.
-      // Convert to app format 'budget:groceries' so it matches b.id comparisons elsewhere.
-      const overrides: VendorOverride[] = (data || []).map((row: any) => ({
-        id: row.id,
-        proper_name: row.proper_name,
-        match_key: row.match_key || undefined,
-        match_type: (row.match_type === 'prefix' || row.match_type === 'contains')
-          ? row.match_type
-          : 'exact',
-        updated_at: row.updated_at || undefined,
-        category_id: row.category_id ? `budget:${(row.category_id as string).toLowerCase()}` : '',
-        category_name: row.category_id || undefined,
-      }));
-      setVendorOverrides(overrides);
+      setVendorOverrides(toVendorOverrides(data));
     } catch (err: any) {
       log.error('[TransactionParsing] Exception loading vendor overrides:', err?.message || err);
     }
@@ -75,6 +91,43 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
   useEffect(() => {
     loadVendorOverrides();
   }, [loadVendorOverrides]);
+
+  // ── The partner's rules ──
+  //
+  // Read-only, and read at all only because the database says so: the
+  // partner-visible policy on `overrides` is what permits this, exactly as the
+  // partner policies on transactions and budgets permit the rest of the shared
+  // vault. On a project where that policy has not been applied the read simply
+  // returns nothing, and the household layer is silently absent rather than
+  // broken.
+  //
+  // Unlinking has to stop it dead, which is what the empty-on-no-partner branch
+  // is for: `partnerId` goes undefined the moment the household is unlinked,
+  // and their rules leave the matcher on that same render.
+  useEffect(() => {
+    if (!partnerId || partnerId === userId) {
+      setPartnerOverrides([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await restFetch(
+          `/overrides?select=*&user_id=eq.${partnerId}&order=proper_name`,
+          { cache: 'no-store' },
+        );
+        if (!res.ok) {
+          log.debug('[TransactionParsing] No partner rules available:', res.status);
+          return;
+        }
+        const rows = await res.json();
+        if (!cancelled) setPartnerOverrides(toVendorOverrides(rows));
+      } catch (err: any) {
+        log.warn('[TransactionParsing] Could not load partner rules:', err?.message || err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [partnerId, userId]);
 
   // ── Delete a vendor override ──
   const handleDeleteVendorOverride = useCallback(
@@ -135,6 +188,16 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
         }
 
         log.debug('[TransactionParsing] Vendor override deleted:', overrideId);
+
+        // Take the pool contribution back with it. A household that has just
+        // deleted what it taught about a merchant should not go on voting on
+        // it — and a withdrawal that only stopped FUTURE contributions would
+        // make the opt-in switch a lie. If another rule for the same merchant
+        // survives, the next capture the user files re-contributes it.
+        void withdrawRule(
+          userId,
+          deletedOverride?.match_key || toVendorKey(deletedOverride?.proper_name || ''),
+        );
       } catch (err: any) {
         log.error('[TransactionParsing] Exception deleting vendor override:', err?.message || err);
         if (deletedOverride) {
@@ -289,6 +352,13 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
         log.error('[TransactionParsing] Exception setting vendor category:', err?.message || err);
       }
 
+      // Volunteer the pair to the community pool — a no-op unless this
+      // household has deliberately opted in. Deliberately last, and never
+      // awaited into the user's path: contributing is a courtesy to other
+      // households and must never be able to fail the rule the user just
+      // taught.
+      void contributeRule(userId, vendorKey, categoryName);
+
       setExpandedVendorCategory(null);
     },
     [userId, vendorOverrides, budgets],
@@ -410,6 +480,7 @@ export function useVendorOverrides({ userId, budgets }: UseVendorOverridesOption
 
   return {
     vendorOverrides,
+    partnerOverrides,
     expandedVendorCategory,
     setExpandedVendorCategory,
     loadVendorOverrides,

@@ -54,6 +54,9 @@ const DEFAULT_SETTINGS = {
   // On by default: a light tap on a deliberate action is the kind of thing
   // people miss when it's absent and rarely think to go looking for.
   haptics_enabled: true,
+  // Receive the pool's suggestions; volunteer nothing until asked to.
+  community_rules_enabled: true,
+  community_rules_contribute: false,
 };
 
 // Fixed: Added check for 'window' so Vercel doesn't crash during build

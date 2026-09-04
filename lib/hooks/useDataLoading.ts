@@ -323,7 +323,9 @@ export const useDataLoading = ({
         // and the trial fields down with them on any project where the
         // migrations haven't been applied yet.
         // Same defensive shape as the user_uuid/user_id fallback below.
-        const LATER_COLUMNS = 'smart_notifications_enabled,auto_accept_known_vendors,haptics_enabled';
+        const LATER_COLUMNS =
+          'smart_notifications_enabled,auto_accept_known_vendors,haptics_enabled,' +
+          'community_rules_enabled,community_rules_contribute';
         let res = await restFetch(
           `/settings?select=${BASE_COLUMNS},${LATER_COLUMNS}&user_id=eq.${userId}`,
           { cache: 'no-store' }, // Prevent caching to always get fresh data
@@ -398,6 +400,10 @@ export const useDataLoading = ({
                 rows[0].auto_accept_known_vendors ?? prev.settings.auto_accept_known_vendors,
               haptics_enabled:
                 rows[0].haptics_enabled ?? prev.settings.haptics_enabled,
+              community_rules_enabled:
+                rows[0].community_rules_enabled ?? prev.settings.community_rules_enabled,
+              community_rules_contribute:
+                rows[0].community_rules_contribute ?? prev.settings.community_rules_contribute,
             },
           }));
 

@@ -154,6 +154,18 @@ export interface AppState {
     auto_accept_known_vendors: boolean;
     /** Light vibration on file/delete. Device-level; respects reduced motion. */
     haptics_enabled: boolean;
+    /**
+     * Use the community pool's suggestions. On by default: the pack is
+     * downloaded and matched on the device, so nothing about this household
+     * leaves in order to receive one.
+     */
+    community_rules_enabled: boolean;
+    /**
+     * Volunteer this household's own (merchant → category) pairs to the pool.
+     * Off until deliberately turned on, and turning it back off withdraws
+     * everything already contributed.
+     */
+    community_rules_contribute: boolean;
   };
 }
 

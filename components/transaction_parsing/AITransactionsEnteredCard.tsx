@@ -49,6 +49,10 @@ interface AITransactionsEnteredCardProps {
   isExpanded?: boolean;
   onToggleExpanded?: () => void;
   vendorOverrides?: VendorOverride[];
+  /** The partner's rules, matched after the user's own and never merged with them. */
+  partnerOverrides?: VendorOverride[];
+  /** Their name, so a borrowed suggestion can say whose rule it is. */
+  partnerName?: string;
   /** Accept the current mapping and file the row. */
   onAccept?: (tx: Transaction) => Promise<void> | void;
   /** File the row under a budget AND remember the pairing as a rule. */
@@ -90,6 +94,8 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
   isExpanded = true,
   onToggleExpanded,
   vendorOverrides = EMPTY_OVERRIDES,
+  partnerOverrides = EMPTY_OVERRIDES,
+  partnerName,
   onAccept,
   onChangeCategory,
   existingRulesFor,
@@ -99,7 +105,7 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
   allTransactions,
   onSettleFuelHold,
 }) => {
-  const { classifyAll } = useVendorMatcher(vendorOverrides);
+  const { classifyAll } = useVendorMatcher(vendorOverrides, partnerOverrides);
   const matchMap = useMemo(() => classifyAll(aiTransactions), [classifyAll, aiTransactions]);
 
   // Rows the user just filed — hidden immediately (after their completion
@@ -304,6 +310,7 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
                   onMarkNotTransaction={onMarkNotTransaction}
                   userId={userId}
                   matchResult={matched}
+                  partnerName={partnerName}
                   onAccept={onAccept}
                   onChangeCategory={onChangeCategory}
                   existingRules={existingRulesFor?.(tx.vendor)}

@@ -9,6 +9,7 @@ import SupportFeedbackSection from './settings_modal_components/SupportFeedbackS
 import SignOutSection from './settings_modal_components/SignOutSection';
 import NotificationSettingsSection from './settings_modal_components/NotificationSettingsSection';
 import HomeScreenWidgetSection from './settings_modal_components/HomeScreenWidgetSection';
+import SharedRulesSection from './settings_modal_components/SharedRulesSection';
 import BudgetLimitsSection from './settings_modal_components/BudgetLimitsSection';
 import ExportTransactionsSection from './settings_modal_components/ExportTransactionsSection';
 import ImportTransactionsSection from './settings_modal_components/ImportTransactionsSection';
@@ -29,6 +30,8 @@ export interface DashboardSettings {
   app_notifications_enabled?: boolean;
   smart_notifications_enabled?: boolean;
   auto_accept_known_vendors?: boolean;
+  community_rules_enabled?: boolean;
+  community_rules_contribute?: boolean;
   haptics_enabled?: boolean;
 
   [key: string]: any;
@@ -183,6 +186,18 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
               }
             />
           </PremiumGate>
+
+          {/* Shared vendor rules — the household's and everyone's */}
+          <SharedRulesSection
+            useCommunityRules={settings.community_rules_enabled !== false}
+            onToggleUseCommunityRules={() =>
+              onUpdateSettings('community_rules_enabled', settings.community_rules_enabled === false)
+            }
+            contributeCommunityRules={settings.community_rules_contribute === true}
+            onToggleContributeCommunityRules={() =>
+              onUpdateSettings('community_rules_contribute', !settings.community_rules_contribute)
+            }
+          />
 
           {/* Home screen widget */}
           <HomeScreenWidgetSection />

@@ -14,6 +14,7 @@ import TransactionActionModal from './TransactionActionModal';
 import TransactionForm from './TransactionForm';
 import PremiumGate from './PremiumGate';
 import { useVendorOverrides } from './transaction_parsing/useVendorOverrides';
+import { refreshCommunityPack, setCommunityFlags, withdrawAllContributions } from '../lib/communityRules';
 
 import DashboardBalanceSection from './dashboard_components/DashboardBalanceSection';
 import DashboardBudgetSectionsList from './dashboard_components/DashboardBudgetSectionsList';
@@ -48,6 +49,8 @@ const SETTING_DB_KEYS: Record<string, string> = {
   smart_notifications_enabled: 'smart_notifications_enabled',
   auto_accept_known_vendors: 'auto_accept_known_vendors',
   haptics_enabled: 'haptics_enabled',
+  community_rules_enabled: 'community_rules_enabled',
+  community_rules_contribute: 'community_rules_contribute',
 };
 
 interface VendorHistoryItem {
@@ -237,10 +240,15 @@ const Dashboard: React.FC<Props> = ({
   // ── Vendor overrides (for the <VendorCategoryRulesCard> + <LearnedRulesCard>) ──
   const {
     vendorOverrides,
+    partnerOverrides,
     handleDeleteVendorOverride,
     handleSetVendorCategory,
     handleSetProperName,
-  } = useVendorOverrides({ userId: state.user?.id, budgets: state.budgets });
+  } = useVendorOverrides({
+    userId: state.user?.id,
+    partnerId: state.user?.partnerId,
+    budgets: state.budgets,
+  });
 
   const {
     currentMonthTransactions,
@@ -275,6 +283,12 @@ const Dashboard: React.FC<Props> = ({
       // widget's pill can't disagree with either.
       pendingReview: countAwaitingReview(state.transactions),
     });
+    // The user's OWN rules, and deliberately nothing else. The native matcher
+    // (android-custom/WidgetDeltaStore.java) carries its own auto-file
+    // threshold and runs with the app closed — a borrowed rule pushed here
+    // would file money with nobody watching, which is the one thing the shared
+    // layers refuse to do. Borrowed rules become the user's own by being
+    // accepted once in Review, and they arrive here on that same load.
     const rules: WidgetVendorRule[] = vendorOverrides.map((vo) => ({
       matchKey: vo.match_key || vo.proper_name,
       matchType: vo.match_type || 'exact',
@@ -291,6 +305,39 @@ const Dashboard: React.FC<Props> = ({
     vendorOverrides,
     state.transactions,
     state.settings.auto_accept_known_vendors,
+  ]);
+
+  // ── The community pool: the two switches, mirrored where capture can see them ──
+  //
+  // The capture pipeline runs with the app closed and cannot read React state,
+  // so both answers are mirrored to device storage whenever the settings row
+  // loads or changes. A phone that has never seen the row falls back to the
+  // safe defaults — receive, do not send.
+  //
+  // Turning contribution OFF withdraws everything already contributed, not just
+  // future pairs. An opt-out that left the old contributions in the pool for
+  // good would make the switch a lie.
+  const contributedBefore = useRef<boolean | null>(null);
+  useEffect(() => {
+    const enabled = state.settings.community_rules_enabled !== false;
+    const contribute = state.settings.community_rules_contribute === true;
+    setCommunityFlags({ enabled, contribute });
+
+    const was = contributedBefore.current;
+    contributedBefore.current = contribute;
+    if (was === true && !contribute) {
+      void withdrawAllContributions(state.user?.id);
+    }
+
+    // Refresh the downloaded pack — at most daily, and never a per-purchase
+    // lookup: a query at capture time would tell the server where this
+    // household had just shopped, which is the one thing this layer must not
+    // do. See lib/communityRules.ts.
+    if (enabled) void refreshCommunityPack();
+  }, [
+    state.settings.community_rules_enabled,
+    state.settings.community_rules_contribute,
+    state.user?.id,
   ]);
 
   // ── Charges the listener should stay quiet about ──
@@ -614,6 +661,8 @@ const Dashboard: React.FC<Props> = ({
           onReloadTransactions={onReloadTransactions}
           onToast={onToast}
           vendorOverrides={vendorOverrides}
+          partnerOverrides={partnerOverrides}
+          partnerName={state.user?.partnerName}
           onDeleteVendorOverride={handleDeleteVendorOverride}
           onSetVendorCategory={handleSetVendorCategory}
           onSetProperName={handleSetProperName}

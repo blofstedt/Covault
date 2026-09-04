@@ -50,7 +50,8 @@ const PrivacyPolicy: React.FC = () => {
             <ul className="list-disc list-inside space-y-1 pl-2">
               <li><strong>Google (Authentication):</strong> For sign-in via OAuth.</li>
               <li><strong>Supabase:</strong> For data storage and authentication.</li>
-              <li><strong>Google Gemini:</strong> For AI-powered features such as transaction parsing.</li>
+              <li><strong>Hugging Face and jsDelivr:</strong> Covault reads your bank alerts using a small AI model that runs on your own phone. These two services host the model file and the code that runs it, which your phone downloads once. <strong>No transaction, notification, or other personal information is ever sent to them</strong> — the reading happens entirely on your device.</li>
+              <li><strong>GitHub:</strong> To check whether a newer version of the app is available.</li>
             </ul>
             <p className="mt-2">
               These services have their own privacy policies, and we encourage you to review them.
@@ -63,14 +64,27 @@ const PrivacyPolicy: React.FC = () => {
               We do not sell, trade, or rent your personal information to third parties. We may share data only in the following circumstances:
             </p>
             <ul className="list-disc list-inside space-y-1 pl-2">
-              <li>With your consent or at your direction (e.g., linking a partner account).</li>
+              <li>With your consent or at your direction (e.g., linking a partner account, or turning on shared rules — see below).</li>
               <li>To comply with legal obligations or respond to lawful requests.</li>
               <li>To protect our rights, privacy, safety, or property.</li>
             </ul>
           </div>
 
           <div>
-            <h2 className="text-lg font-semibold mb-2">7. Your Rights</h2>
+            <h2 className="text-lg font-semibold mb-2">7. Shared Rules</h2>
+            <p className="mb-2">
+              Covault can suggest a category for a shop based on what other households have chosen for the same shop. Receiving those suggestions sends nothing about you: the list is downloaded to your phone and matched there, so we are never told where or when you have shopped.
+            </p>
+            <p className="mb-2">
+              Contributing to that list is <strong>off unless you turn it on</strong>, in Settings. If you do turn it on, what is sent is the name of the shop and the category you filed it under — nothing else. We do not send amounts, dates, your bank, your own wording, or anything about how often you shop anywhere. What you send cannot be read by other users; only the combined result is published, and a shop appears in it only once several separate households have independently agreed on it, so a shop only you go to is never passed on.
+            </p>
+            <p>
+              Turning the setting off again removes everything you have already contributed. A suggestion from the shared list never files a purchase on its own — you accept it once in the app, and only then does it become a rule of yours.
+            </p>
+          </div>
+
+          <div>
+            <h2 className="text-lg font-semibold mb-2">8. Your Rights</h2>
             <p>Depending on your location, you may have the right to:</p>
             <ul className="list-disc list-inside space-y-1 pl-2">
               <li>Access the personal data we hold about you.</li>
@@ -84,28 +98,28 @@ const PrivacyPolicy: React.FC = () => {
           </div>
 
           <div>
-            <h2 className="text-lg font-semibold mb-2">8. Cookies and Local Storage</h2>
+            <h2 className="text-lg font-semibold mb-2">9. Cookies and Local Storage</h2>
             <p>
               We use browser local storage to save your preferences (such as theme settings). We do not use tracking cookies for advertising purposes.
             </p>
           </div>
 
           <div>
-            <h2 className="text-lg font-semibold mb-2">9. Children's Privacy</h2>
+            <h2 className="text-lg font-semibold mb-2">10. Children's Privacy</h2>
             <p>
               Covault is not intended for use by children under the age of 13. We do not knowingly collect personal information from children under 13.
             </p>
           </div>
 
           <div>
-            <h2 className="text-lg font-semibold mb-2">10. Changes to This Policy</h2>
+            <h2 className="text-lg font-semibold mb-2">11. Changes to This Policy</h2>
             <p>
               We may update this Privacy Policy from time to time. We will notify you of any changes by posting the new policy on this page and updating the "Last updated" date above.
             </p>
           </div>
 
           <div>
-            <h2 className="text-lg font-semibold mb-2">11. Contact Us</h2>
+            <h2 className="text-lg font-semibold mb-2">12. Contact Us</h2>
             <p>
               If you have any questions about this Privacy Policy, please contact us at{' '}
               <a href="mailto:support@covaultbudgeting.vercel.app" className="text-emerald-600 dark:text-emerald-400 underline">

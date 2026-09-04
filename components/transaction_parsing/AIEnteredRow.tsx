@@ -45,6 +45,8 @@ interface AIEnteredRowProps {
   userId?: string;
   /** Deterministic vendor-override match for this row (from useVendorMatcher). */
   matchResult?: VendorMatchResult;
+  /** The other person in the vault, so a borrowed rule can say whose it is by name. */
+  partnerName?: string;
   /** Accept the current mapping and file the row. */
   onAccept?: (tx: Transaction) => Promise<void> | void;
   /**
@@ -90,6 +92,7 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
   onMarkNotTransaction,
   userId,
   matchResult,
+  partnerName,
   onAccept,
   onChangeCategory,
   existingRules,
@@ -111,6 +114,7 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
     hasOverrideMatch: !!overrideMatch,
     confidence: tx.confidence,
     hasBudget: !!budgetName,
+    matchSource: matchResult?.source,
   });
 
   // ── Completion animation + file state ──
@@ -310,6 +314,27 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
   // classifyMatch; it just isn't shown, because nobody triages differently at
   // 80% than at 65%. The word "Guessed" carries the whole actionable meaning.
   const renderMatchBadge = () => {
+    // A rule somebody else wrote — the partner in this vault, or the pool.
+    // Deliberately NOT emerald: emerald is the app's word for "you decided
+    // this", and a suggestion the user has never agreed to has not earned it.
+    // Nor is it the grey "Guessed", because a human did teach this, just not
+    // this human. Its own colour, and it says whose rule it is.
+    if (matchKind === 'borrowed') {
+      const who = matchResult?.source === 'partner'
+        ? (partnerName ? `${partnerName} files this as` : 'Your partner files this as')
+        : 'Most people file this as';
+      return (
+        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-sky-700 dark:text-sky-300 bg-sky-100 dark:bg-sky-900/30 px-2 py-0.5 rounded-full">
+          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+          </svg>
+          <span className="opacity-70">{who}</span>
+          {budgetName && <span>{budgetName}</span>}
+        </span>
+      );
+    }
     if (matchKind === 'exact') {
       return (
         <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 rounded-full">

@@ -1,4 +1,5 @@
 import { log } from '../lib/log';
+import { useVendorMatcher } from '../lib/hooks/useVendorMatcher';
 import { stripCaptureBookkeeping } from '../lib/captureChannel';
 import { stripFuelHoldMarker } from '../lib/fuelHold';
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
@@ -65,6 +66,10 @@ interface TransactionParsingProps {
   onUpdateTransaction?: (tx: Transaction) => void | Promise<void>;
   /** Currently-loaded vendor overrides, used by the Learned Rules card. */
   vendorOverrides?: import('./transaction_parsing/useVendorOverrides').VendorOverride[];
+  /** The partner's rules. Read-only, never listed as the user's own. */
+  partnerOverrides?: import('./transaction_parsing/useVendorOverrides').VendorOverride[];
+  /** The partner's name, so a borrowed suggestion can say whose rule it is. */
+  partnerName?: string;
   /** Delete a vendor override. */
   onDeleteVendorOverride?: (overrideId: string) => void;
   /** Persist and update local state for a vendor category rule. */
@@ -92,6 +97,8 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   onDeleteTransaction,
   onUpdateTransaction,
   vendorOverrides = [],
+  partnerOverrides = [],
+  partnerName,
   onDeleteVendorOverride,
   onSetVendorCategory,
   onSetProperName,
@@ -336,10 +343,35 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     [budgets],
   );
 
+  // Which rows carry a suggestion the user did not write — the partner's rule
+  // or the pool's. The same matcher the review list badges with, so the two can
+  // never disagree about whether a row was borrowed.
+  const { classifyAll } = useVendorMatcher(vendorOverrides, partnerOverrides);
+
   // Accept: keep the current mapping, just file the row.
+  //
+  // Accepting a BORROWED suggestion also adopts it. That is the whole safety
+  // model of the shared layers in one line: a partner's or the pool's rule may
+  // only ever suggest, and the moment the user agrees with one it becomes an
+  // ordinary rule of their own — listed as theirs, mirrored to the widget as
+  // theirs, and from then on able to auto-file like any rule they wrote. So
+  // every borrowed rule is seen by a human exactly once before it can ever act
+  // unsupervised, and a later change of heart in the pool cannot move a rule
+  // the user has already agreed to.
   const handleAcceptCaught = useCallback(
     async (tx: Transaction) => {
       const previousBudget = budgetNameOf(tx);
+      const borrowed = classifyAll([tx]).get(tx.id);
+      if (borrowed?.source && borrowed.source !== 'own' && tx.budget_id) {
+        try {
+          await onSetVendorCategory(tx.vendor, tx.budget_id);
+        } catch (err) {
+          // Best effort, exactly as the change-category path treats it: the row
+          // leaving the queue is the user's actual intent, and a failed rule
+          // write must not strand it there.
+          log.warn('[TransactionParsing] adopting a borrowed rule failed:', err);
+        }
+      }
       await fileCaughtTransaction(tx.id);
       onToast?.({
         message: `Filed ${tx.vendor}`,
@@ -353,7 +385,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         },
       });
     },
-    [fileCaughtTransaction, budgetNameOf, onToast, restoreCaughtTransactions],
+    [fileCaughtTransaction, budgetNameOf, onToast, restoreCaughtTransactions, classifyAll, onSetVendorCategory],
   );
 
   // Bulk accept: same as above for every row the card offered, undone together.
@@ -755,6 +787,8 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               isExpanded={expandedSections.caughtTransactions}
               onToggleExpanded={() => toggleSection('caughtTransactions')}
               vendorOverrides={vendorOverrides}
+              partnerOverrides={partnerOverrides}
+              partnerName={partnerName}
               onAccept={handleAcceptCaught}
               onChangeCategory={handleChangeCaughtCategory}
               existingRulesFor={existingRulesFor}
