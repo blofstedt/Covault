@@ -82,7 +82,11 @@ const ParsingCard: React.FC<ParsingCardProps> = ({
     id={id}
     className={`bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] ${borderColors[colorScheme]} ${className}`}
   >
-    <div className="flex items-center gap-3 mb-4 shrink-0">
+    {/* The gap below the header belongs to the content. A collapsed card has
+        none, and keeping it there left the icon and its two lines sitting
+        16px above the middle of their own card — the one thing a row of
+        collapsed cards makes obvious. */}
+    <div className={`flex items-center gap-3 shrink-0 ${collapsible && !isExpanded ? '' : 'mb-4'}`}>
       <button
         type="button"
         onClick={collapsible ? onToggleExpanded : undefined}

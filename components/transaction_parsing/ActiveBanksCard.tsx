@@ -1,6 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import ParsingCard from '../ui/ParsingCard';
-import CaptureSourcePicker from '../ui/CaptureSourcePicker';
+import CaptureSourcePicker, {
+  captureSourceCountFor,
+  prefetchCaptureSources,
+} from '../ui/CaptureSourcePicker';
 import { covaultNotification } from '../../lib/covaultNotification';
 
 interface ActiveBanksCardProps {
@@ -23,6 +26,19 @@ const ActiveBanksCard: React.FC<ActiveBanksCardProps> = ({
   onToggleExpanded,
 }) => {
   const [count, setCount] = useState<number | undefined>(undefined);
+
+  // Read the installed apps while the card is still shut. The picker only
+  // exists once the card is open, so without this the wait for Android to list
+  // every installed package began on the tap that opened it — and the user got
+  // "Looking at what's installed…" instead of their banks, every time. It also
+  // gives the closed card its count, the way the rules card has one.
+  useEffect(() => {
+    let cancelled = false;
+    void prefetchCaptureSources(covaultNotification).then((options) => {
+      if (!cancelled) setCount(captureSourceCountFor(options));
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   return (
     <ParsingCard

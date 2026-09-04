@@ -55,17 +55,21 @@ const DashboardBottomBar: React.FC<DashboardBottomBarProps> = ({
             }`}
             aria-label="Go to home"
           >
+            {/* Selected is a HIGHLIGHT, never a fill: the same drawing, in the
+                accent colour, one weight heavier and a touch larger — exactly
+                what the review icon on the other side does. Filling one of the
+                two made them read as two different sets of icons. */}
             <svg
               className={`w-6 h-6 motion-safe:transition-transform motion-safe:duration-[350ms] motion-safe:ease-[cubic-bezier(0.34,1.56,0.64,1)] ${activeView === 'home' ? 'scale-110' : 'scale-100'}`}
               viewBox="0 0 24 24"
-              fill={activeView === 'home' ? 'currentColor' : 'none'}
+              fill="none"
               stroke="currentColor"
-              strokeWidth={activeView === 'home' ? 0 : 2}
+              strokeWidth={activeView === 'home' ? 2.5 : 2}
               strokeLinecap="round"
               strokeLinejoin="round"
             >
               <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-              {activeView !== 'home' && <polyline points="9 22 9 12 15 12 15 22" />}
+              <polyline points="9 22 9 12 15 12 15 22" />
             </svg>
           </button>
 

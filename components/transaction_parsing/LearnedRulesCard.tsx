@@ -177,7 +177,20 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
     <ParsingCard
       id="parsing-learned-rules"
       colorScheme="violet"
-      icon={<path d="M12 2a3 3 0 00-3 3v1H7a3 3 0 00-3 3v3a3 3 0 003 3h10a3 3 0 003-3V9a3 3 0 00-3-3h-2V5a3 3 0 00-3-3zm0 2a1 1 0 011 1v1h-2V5a1 1 0 011-1z" />}
+      // A checked list, not the old robot head: this card is a list of
+      // decisions the user has already signed off — "this vendor, that
+      // category" — and the head read as a cloud at 20px, filled shape drawn
+      // with a stroke-only pen.
+      icon={
+        <>
+          <polyline points="3 6 4.5 7.5 7.5 4.5" />
+          <polyline points="3 12 4.5 13.5 7.5 10.5" />
+          <polyline points="3 18 4.5 19.5 7.5 16.5" />
+          <line x1="11" y1="6" x2="21" y2="6" />
+          <line x1="11" y1="12" x2="21" y2="12" />
+          <line x1="11" y1="18" x2="21" y2="18" />
+        </>
+      }
       title="Existing Rules"
       subtitle="Vendor and category pairs, plus alerts it skips"
       count={totalRules}

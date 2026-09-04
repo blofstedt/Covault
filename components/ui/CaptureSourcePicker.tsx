@@ -25,6 +25,57 @@ import { log } from '../../lib/log';
  * and what is happening agree without a write having to happen first.
  */
 
+/**
+ * The installed-app list, remembered for as long as the app is running.
+ *
+ * Reading it means asking Android for every installed package and matching each
+ * one against the bank list — a second or so on a phone with a lot of apps, and
+ * this card is *collapsed* by default, so the whole cost used to land the moment
+ * the user tapped it open: a card that opened onto "Looking at what's
+ * installed…" every single time, including the second and third time in one
+ * sitting, when the answer had not changed.
+ *
+ * The list is cached here rather than in component state because the card
+ * unmounts its contents when it collapses. The refresh still runs — installing
+ * a bank happens outside Covault — but it now runs *behind* an already-drawn
+ * list instead of in front of an empty one.
+ */
+let cachedOptions: CaptureSourceOption[] | null = null;
+
+/** The ticks to show for a given set of options: the user's answer, or the seed. */
+function initialSelectionFor(options: CaptureSourceOption[]): string[] {
+  // Before the user has answered, show what the app is actually doing:
+  // every recognised bank on, every mail app off.
+  return hasChosenSources()
+    ? getSelectedSources()
+    : defaultSourcesFor(options.map((o) => o.packageName));
+}
+
+/**
+ * Read the installed apps now, so the picker has something to draw the instant
+ * it is opened. Safe to call repeatedly; the answer replaces the cache.
+ *
+ * Called by whatever is holding a collapsed picker — the card on the Review
+ * screen keeps this warm while the user is doing something else entirely.
+ */
+export async function prefetchCaptureSources(
+  plugin: CovaultNotificationPlugin | null,
+): Promise<CaptureSourceOption[]> {
+  if (!plugin) return cachedOptions || [];
+  try {
+    const { apps } = await plugin.getInstalledApps();
+    cachedOptions = buildSourceOptions(apps || []);
+  } catch (e) {
+    log.warn('[CaptureSourcePicker] Could not read the installed apps:', e);
+  }
+  return cachedOptions || [];
+}
+
+/** What the ticks would be right now, without mounting the picker. */
+export function captureSourceCountFor(options: CaptureSourceOption[]): number {
+  return initialSelectionFor(options).length;
+}
+
 interface CaptureSourcePickerProps {
   plugin: CovaultNotificationPlugin | null;
   /** False while notification access has not been granted; the picker explains itself instead. */
@@ -73,34 +124,36 @@ const CaptureSourcePicker: React.FC<CaptureSourcePickerProps> = ({
   ready = true,
   onSelectionChange,
 }) => {
-  const [options, setOptions] = useState<CaptureSourceOption[]>([]);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(true);
+  // Drawn from the cache on the very first render when there is one, so
+  // re-opening the card shows the same list it showed last time, immediately.
+  const [options, setOptions] = useState<CaptureSourceOption[]>(() => cachedOptions || []);
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(cachedOptions ? initialSelectionFor(cachedOptions) : []),
+  );
+  const [loading, setLoading] = useState(cachedOptions === null);
 
   useEffect(() => {
     let cancelled = false;
+    const apply = (built: CaptureSourceOption[]) => {
+      setOptions(built);
+      const initial = initialSelectionFor(built);
+      setSelected(new Set(initial));
+      onSelectionChange?.(initial);
+    };
     const load = async () => {
       if (!plugin || !ready) {
         if (!cancelled) setLoading(false);
         return;
       }
-      try {
-        const { apps } = await plugin.getInstalledApps();
-        if (cancelled) return;
-        const built = buildSourceOptions(apps || []);
-        setOptions(built);
-        // Before the user has answered, show what the app is actually doing:
-        // every recognised bank on, every mail app off.
-        const initial = hasChosenSources()
-          ? getSelectedSources()
-          : defaultSourcesFor(built.map((o) => o.packageName));
-        setSelected(new Set(initial));
-        onSelectionChange?.(initial);
-      } catch (e) {
-        log.warn('[CaptureSourcePicker] Could not read the installed apps:', e);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+      // The cached answer first — there is nothing to wait for — and then the
+      // fresh one, over the top. The selection is re-read from storage each
+      // time rather than carried, so a tick the user changed a moment ago
+      // survives the refresh landing.
+      if (cachedOptions) apply(cachedOptions);
+      const built = await prefetchCaptureSources(plugin);
+      if (cancelled) return;
+      apply(built);
+      setLoading(false);
     };
     void load();
 
