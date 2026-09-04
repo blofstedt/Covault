@@ -445,7 +445,7 @@ export const useTransactionOps = ({
         if (dupResult.isDuplicate) {
           // Mark as rejected with reason. This path covers both:
           //   1. One-time same-day exact match (vendor + amount + date)
-          //   2. Recurring match (Monthly/Biweekly) within the ±3 day window
+          //   2. Recurring match (Monthly/Biweekly/Yearly) within the ±3 day window
           // The system no longer auto-updates the existing row's date —
           // the user moves it manually if they want, per their "don't move
           // my data silently" preference.

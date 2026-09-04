@@ -190,7 +190,7 @@ export interface ParsedNotification {
    * matching — never as the name to display or store.
    */
   vendorAliases?: string[];
-  recurrence: 'One-time' | 'Biweekly' | 'Monthly';
+  recurrence: 'One-time' | 'Biweekly' | 'Monthly' | 'Yearly';
   rejectionReason?: string;
   isRefund?: boolean;
   isPreAuth?: boolean;
@@ -467,7 +467,10 @@ function cleanVendor(raw: string): string {
   vendor = vendor.replace(/\s*\([^)]*\)\s*$/, '');
   vendor = vendor.replace(/\s*(#\s*\d+|store\s*\d+|pos\s*\d+|terminal\s*\w+)\s*$/i, '');
   vendor = vendor.replace(/\s*ending\s*\d{2,4}\s*$/i, '');
-  vendor = vendor.replace(/\s+(monthly|biweekly|bi-weekly|weekly|subscription|recurring)\s*$/i, '');
+  vendor = vendor.replace(
+    /\s+(monthly|biweekly|bi-weekly|weekly|yearly|annual|annually|subscription|recurring)\s*$/i,
+    '',
+  );
   // Strip any trailing dash/separator that leaked from format patterns
   vendor = vendor.replace(/\s*[-–—]+\s*$/, '');
   vendor = collapseWhitespace(vendor);
@@ -778,6 +781,20 @@ export function parseNotificationText(text: string): ParsedNotification {
   let recurrence: ParsedNotification['recurrence'] = 'One-time';
   if (/biweekly|bi-weekly|every two weeks|every 2 weeks|fortnight/.test(tLower)) {
     recurrence = 'Biweekly';
+  } else if (
+    // Read before the monthly test, not after: an annual plan is routinely
+    // announced with its monthly equivalent in the same sentence ("$119.88/yr,
+    // billed annually — $9.99/mo"), and whichever cadence is matched first is
+    // the one the row recurs on.
+    //
+    // "Semi-annual" and "bi-annual" are excluded rather than read as yearly.
+    // Twice a year is a cadence the app does not have, and calling it yearly
+    // would leave the second charge of every pair unexpected — worse than
+    // leaving the row one-time, which at least says nothing it cannot back up.
+    /yearly|annually|annual|per year|per annum|\/yr|\/year/.test(tLower) &&
+    !/semi-?annual|bi-?annual|semi-?yearly/.test(tLower)
+  ) {
+    recurrence = 'Yearly';
   } else if (/monthly|every month|per month|\/mo|mo\./.test(tLower)) {
     recurrence = 'Monthly';
   } else if (/recurring|recur|subscription|autopay|auto-pay|preauthorized|pre-authorized|pad/.test(tLower)) {

@@ -455,7 +455,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             <div className="space-y-3">
               <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 tracking-wide px-2 text-center block">Recurrence</span>
               <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl">
-                {['One-time', 'Biweekly', 'Monthly'].map(r => (
+                {['One-time', 'Biweekly', 'Monthly', 'Yearly'].map(r => (
                   <button
                     key={r}
                     type="button"

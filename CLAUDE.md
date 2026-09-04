@@ -236,6 +236,20 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   with `source: 'executor'` are left alone and are still skipped as projection
   sources.
 
+- **A cadence the `Recurrence` enum does not know cannot be stored OR asked
+  about.** `transactions.recur` is a Postgres enum, not free text, so adding a
+  cadence is a migration first and app code second — and the failure is not
+  symmetrical. An insert of an unknown label is rejected loudly, but a SELECT
+  that *filters* on one fails the whole query, which is how the recurring-charge
+  lookup that stops a subscription being captured twice once returned a 400 for
+  months and saw no rows at all. `Yearly` was added by
+  `2026_add_yearly_recurrence.sql`; `yearlyRecurrence.test.ts` pins the app's
+  own list of cadences to the labels that query asks for. Yearly rows are
+  deliberately kept OUT of the list mirrored to the phone: the native matcher
+  compares vendor and amount and knows nothing about dates, which is honest for
+  a charge that bills every month and would otherwise silence a matching
+  purchase on any of an annual charge's other 364 days.
+
 - **A failed budgets read may not replace the budgets on screen.** The limits
   and the hidden-category list are the only things the `budgets` table holds,
   and `loadUserBudgets` used to answer any failed read by putting

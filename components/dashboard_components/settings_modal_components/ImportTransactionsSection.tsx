@@ -90,7 +90,7 @@ const ImportTransactionsSection: React.FC<ImportTransactionsSectionProps> = ({
       const recurrenceIdx = headers.indexOf('recurrence');
 
       const budgetMap = new Map<string, string>(budgets.map((b) => [b.name.toLowerCase(), b.name]));
-      const validRecurrences = ['one-time', 'biweekly', 'monthly'];
+      const validRecurrences = ['one-time', 'biweekly', 'monthly', 'yearly'];
 
       const rows: Array<{
         user_id: string;

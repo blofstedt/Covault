@@ -39,7 +39,8 @@ import { amountsAgree, daysApart, SAME_CHARGE_DAY_TOLERANCE } from './duplicateC
  * A runaway guard, not a horizon: the walk stops as soon as it passes the
  * target date, so a monthly template needs one step per month between it and
  * the capture. 600 covers a biweekly template left in the ledger for twenty
- * years, and stops a corrupt date from spinning forever.
+ * years (and a yearly one for six centuries), and stops a corrupt date from
+ * spinning forever.
  */
 const MAX_OCCURRENCE_STEPS = 600;
 
@@ -49,7 +50,7 @@ export interface RecurringChargeRow {
   vendor?: string | null;
   amount?: number | string | null;
   date?: string | null;
-  /** `Monthly` / `Biweekly` / `One-time`, in whatever casing the DB holds. */
+  /** `Monthly` / `Biweekly` / `Yearly` / `One-time`, in whatever casing the DB holds. */
   recur?: string | null;
   source?: string | null;
 }
@@ -64,7 +65,7 @@ export interface RecurringChargeRow {
  */
 export function isRecurringRow(row: RecurringChargeRow): boolean {
   const recur = String(row?.recur || '').trim().toLowerCase();
-  if (recur === 'monthly' || recur === 'biweekly') return true;
+  if (recur === 'monthly' || recur === 'biweekly' || recur === 'yearly') return true;
   return String(row?.source || '').trim().toLowerCase() === 'executor';
 }
 
@@ -107,7 +108,7 @@ export function scheduleLandsNear(
   if (firstGap <= dayTolerance) return true;
 
   const rec = String(recurrence || '').trim().toLowerCase();
-  if (rec !== 'monthly' && rec !== 'biweekly') return false;
+  if (rec !== 'monthly' && rec !== 'biweekly' && rec !== 'yearly') return false;
 
   // Only forward. A recurring row's date is where the series starts, so a
   // template dated after the capture has no earlier occurrences to offer —
@@ -184,6 +185,16 @@ export function findRecurringScheduleMatch<T extends RecurringChargeRow>(
  *
  * De-duplicated on vendor+amount: a monthly template and the occurrences the
  * executor spawned from it are the same subscription many times over.
+ *
+ * Yearly charges are deliberately LEFT OUT. The native matcher knows nothing
+ * about dates — vendor and amount are all it compares — which is honest for a
+ * cadence that bills every month or every fortnight, where a charge matching
+ * both is almost always the subscription itself. Applied to an annual charge it
+ * would silence a matching purchase at that merchant on any of the other 364
+ * days of the year, and a silenced capture also writes no widget delta. The
+ * annual occurrence is still recognised in the app, by the date-aware walk
+ * above; the only thing given up here is going quiet about it while the app is
+ * closed, once a year.
  */
 export function collectRecurringCharges(
   rows: readonly RecurringChargeRow[],
@@ -192,6 +203,7 @@ export function collectRecurringCharges(
   const out: Array<{ vendor: string; amount: number }> = [];
   for (const row of rows || []) {
     if (!isRecurringRow(row)) continue;
+    if (String(row.recur || '').trim().toLowerCase() === 'yearly') continue;
     const vendor = String(row.vendor || '').trim();
     const amount = Number(row.amount);
     if (!vendor || !Number.isFinite(amount) || amount <= 0) continue;

@@ -498,7 +498,7 @@ export async function aiDetectRecurring(
   vendor: string,
   history: { date: string; amount: number }[],
   newAmount: number,
-): Promise<'One-time' | 'Biweekly' | 'Monthly'> {
+): Promise<'One-time' | 'Biweekly' | 'Monthly' | 'Yearly'> {
   if (history.length < 2) return 'One-time';
 
   // Heuristic: if all amounts are identical, likely recurring
@@ -513,6 +513,9 @@ export async function aiDetectRecurring(
     const avgGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
     if (avgGap >= 12 && avgGap <= 35) return 'Monthly';
     if (avgGap >= 10 && avgGap <= 18) return 'Biweekly';
+    // Wide, because an annual charge is rarely billed on the same date twice —
+    // a renewal that slips a fortnight either way is still the same yearly one.
+    if (avgGap >= 350 && avgGap <= 380) return 'Yearly';
   }
 
   // AI fallback for ambiguous patterns
@@ -521,11 +524,12 @@ export async function aiDetectRecurring(
     `This user has transactions from ${vendor}:\n` +
     recent.map(h => `- ${h.date}: $${h.amount.toFixed(2)}`).join('\n') +
     `\nNew charge: $${newAmount.toFixed(2)}\n` +
-    `Is this likely: One-time, Biweekly, or Monthly? Answer with one word.`;
+    `Is this likely: One-time, Biweekly, Monthly, or Yearly? Answer with one word.`;
 
   try {
     const result = await aiGenerate(prompt, 8);
     const r = result.toLowerCase();
+    if (r.includes('year') || r.includes('annual')) return 'Yearly';
     if (r.includes('month')) return 'Monthly';
     if (r.includes('biweek') || r.includes('bi-week')) return 'Biweekly';
   } catch {

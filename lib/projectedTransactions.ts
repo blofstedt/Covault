@@ -44,7 +44,7 @@ function getTransactionBudgetId(tx: Transaction): string | undefined {
  * Generate projected recurring transactions from existing transactions.
  *
  * Rules:
- * - Monthly + Biweekly recurrences are projected.
+ * - Monthly, Biweekly and Yearly recurrences are projected.
  * - Current-month occurrences are included so on/before-today entries can solidify.
  * - Future occurrences stay projected until their date arrives.
  * - Project up to 3 months ahead as a rolling horizon.
@@ -94,8 +94,8 @@ export function generateProjectedTransactions(
     else realRowsByDay.set(isoDate, [index]);
   });
 
-  // Find the earliest transaction per (vendor, amount, recurrence, day-of-month)
-  // group. Only these are used as projection sources.
+  // Find the earliest transaction per (vendor, amount, recurrence, day) group.
+  // Only these are used as projection sources.
   //
   // Why include day-of-month in the key:
   //   The user has two Fizz charges per month ($26.20 on the 13th and the
@@ -107,6 +107,12 @@ export function generateProjectedTransactions(
   //   A Monthly $50 Netflix and a separate Biweekly $50 Netflix (e.g. monthly
   //   subscription + biweekly purchases) must also stay separate.
   //
+  // Why a yearly charge keys on the month as well as the day:
+  //   Two annual charges of the same amount at the same merchant, one in March
+  //   and one in September, are two series a year apart — keyed on the day
+  //   alone they would collapse into one and the second would stop being
+  //   expected at all.
+  //
   // Executor-spawned rows share the same (vendor, amount, recurrence, day)
   // as their template, so they're automatically collapsed into the same group.
   const earliestByKey = new Map<string, Transaction>();
@@ -117,8 +123,9 @@ export function generateProjectedTransactions(
     if ((tx as any).source === 'executor') continue;
     const recurrence = normalizeRecurrence(tx);
     if (recurrence === 'one-time') continue;
-    const dayOfMonth = String(toIsoDay(tx.date).slice(8, 10));
-    const key = `${tx.vendor.toLowerCase().trim()}|${Number(tx.amount).toFixed(2)}|${recurrence}|${dayOfMonth}`;
+    const isoDay = toIsoDay(tx.date);
+    const dayKey = recurrence === 'yearly' ? isoDay.slice(5, 10) : isoDay.slice(8, 10);
+    const key = `${tx.vendor.toLowerCase().trim()}|${Number(tx.amount).toFixed(2)}|${recurrence}|${dayKey}`;
     const existing = earliestByKey.get(key);
     if (!existing) {
       earliestByKey.set(key, tx);

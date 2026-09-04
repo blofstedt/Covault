@@ -152,7 +152,8 @@ partner sees your rows via `settings.partner_id`.
 
 Enums: `Budgets` (Housing/Groceries/Leisure/Utilities/Transport/Services/Other —
 matches `constants.ts` exactly), `Type` (Manual/Automatic), `Recurrence`
-(One-time/Biweekly/Monthly).
+(One-time/Biweekly/Monthly/Yearly — `Yearly` added by
+`2026_add_yearly_recurrence.sql`).
 
 ### Verified 2026-08-01
 

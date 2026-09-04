@@ -6,11 +6,13 @@ import { Recurrence } from '../../types';
 import { toLocalIsoDay } from '../dateUtils';
 import { SYSTEM_CATEGORIES } from '../../constants';
 
-// Valid recurrence values that must match the database CHECK constraint
+// Valid recurrence values. These must match the labels of the Postgres enum
+// public."Recurrence" exactly — a value it does not know is rejected outright.
 const VALID_RECURRENCES = [
   Recurrence.ONE_TIME,
   Recurrence.BIWEEKLY,
   Recurrence.MONTHLY,
+  Recurrence.YEARLY,
 ];
 
 const normalizeBudgetName = (value: string) => value.trim().toLowerCase();

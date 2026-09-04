@@ -46,6 +46,7 @@ export enum Recurrence {
   ONE_TIME = 'One-time',
   BIWEEKLY = 'Biweekly',
   MONTHLY = 'Monthly',
+  YEARLY = 'Yearly',
 }
 
 export enum TransactionLabel {
@@ -64,7 +65,7 @@ export interface Transaction {
   amount: number;
   date: string;
   budget_id: string | null;
-  recurrence?: Recurrence | 'One-time' | 'Biweekly' | 'Monthly';
+  recurrence?: Recurrence | 'One-time' | 'Biweekly' | 'Monthly' | 'Yearly';
   label?: 'Automatic' | 'Manual';
   is_projected: boolean;
   is_income?: boolean;

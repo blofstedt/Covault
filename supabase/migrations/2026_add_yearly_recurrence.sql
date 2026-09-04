@@ -1,0 +1,24 @@
+-- ============================================================
+-- Add "Yearly" to the Recurrence enum
+-- ============================================================
+-- `transactions.recur` is a Postgres ENUM (public."Recurrence"),
+-- not free text, so the app cannot store a cadence the type does
+-- not know about — an insert of 'Yearly' is rejected outright, and
+-- (as the note in notificationProcessor.fetchRecurringCharges
+-- records) a SELECT filtering on a label the enum lacks fails the
+-- whole query rather than matching nothing.
+--
+-- That makes this migration a prerequisite for the yearly
+-- recurrence in the app, not a companion to it: without it, the
+-- new option saves nothing and the recurring-charge lookup that
+-- stops a subscription being captured twice returns a 400.
+--
+-- Non-destructive and additive:
+--   - Adds one label. Existing rows, defaults and constraints are
+--     untouched; every current value stays valid.
+--   - IF NOT EXISTS, so re-running is a no-op.
+--
+-- Note: Postgres cannot remove an enum label, so this is one-way.
+-- ============================================================
+
+ALTER TYPE public."Recurrence" ADD VALUE IF NOT EXISTS 'Yearly';

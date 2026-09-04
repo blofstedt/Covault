@@ -47,6 +47,11 @@ function isoDay(value: string | Date | undefined): string {
  * different date every other month — so it keys on the 14-day phase instead,
  * which every occurrence of the same series shares and a genuinely different
  * fortnightly charge almost never does.
+ *
+ * Yearly keys on the month AND the day, for the same reason monthly keys on the
+ * day: an annual insurance premium in March and an annual membership at the
+ * same price in September are two series, and ending one must not end the
+ * other.
  */
 export function recurringSeriesKey(tx: Transaction): string | null {
   const recurrence = normalizeRecurrence(tx);
@@ -55,9 +60,14 @@ export function recurringSeriesKey(tx: Transaction): string | null {
   const day = isoDay(tx.date);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
 
-  const phase = recurrence === 'biweekly'
-    ? `p${((epochDay(day) % 14) + 14) % 14}`
-    : `d${day.slice(8, 10)}`;
+  let phase: string;
+  if (recurrence === 'biweekly') {
+    phase = `p${((epochDay(day) % 14) + 14) % 14}`;
+  } else if (recurrence === 'yearly') {
+    phase = `y${day.slice(5, 10)}`;
+  } else {
+    phase = `d${day.slice(8, 10)}`;
+  }
 
   return [
     (tx.vendor || '').trim().toLowerCase(),
