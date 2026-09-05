@@ -830,18 +830,23 @@ public class NotificationListener extends NotificationListenerService {
     // REFUND_PHRASES_END
 
     /**
-     * Bill reminders — a statement, a due date, a minimum payment.
+     * Alerts about a bill rather than a purchase — the reminder to pay one,
+     * and the confirmation that you did.
      *
      * Mirrored from the parser, where they are decisive on their own: they
      * contain the word "payment", so the stop-phrase rule below never gets to
      * reject them, and a statement reminder was captured as a purchase for the
-     * minimum payment.
+     * minimum payment — as was "We've received your payment of $1,095.00",
+     * which announced itself in the shade as a captured expense hours before
+     * the parser ever saw it.
      */
     // BILL_NOTICE_PHRASES_BEGIN
     private static final String[] BILL_NOTICE_PHRASES = {
         "payment due", "minimum payment", "due date", "past due", "overdue",
         "statement is ready", "statement is available", "your statement",
         "e-statement", "estatement", "payment reminder",
+        "received your payment", "payment received", "payment has been received",
+        "payment was received", "thank you for your payment",
     };
     // BILL_NOTICE_PHRASES_END
 

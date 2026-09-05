@@ -141,13 +141,29 @@ const FAILED_CHARGE_PHRASES = [
 // FAILED_CHARGE_PHRASES_END
 
 /**
- * Bill reminders: a statement, a due date, a minimum payment.
+ * Alerts about a bill rather than a purchase: the reminder to pay one, and the
+ * confirmation that you did.
  *
  * These say the word "payment" — which is a go-phrase — so the stop-phrase
  * rule below never gets to reject them, and until now a credit-card statement
  * reminder was captured as a purchase for the minimum payment. They are
  * decisive on their own for that reason: no alert about a purchase that
  * actually happened says "minimum payment" or "statement is ready".
+ *
+ * The second half is the card-payment confirmation — "We've received your
+ * payment of $1,095.00". It is the same trap one step later: the word
+ * "payment", an amount, and no purchase anywhere in it. Covault captured it as
+ * a $1,095.00 expense, and the vendor it managed to read out of the sentence
+ * was "ve received your payment of". Paying a credit card is not spending —
+ * it is money moving between the user's own accounts, and every purchase that
+ * built the balance has already been captured one by one, so recording the
+ * payment too counts the whole month twice.
+ *
+ * The wordings are the RECIPIENT confirming receipt, which is why they are
+ * safe to refuse: a bank saying "we have received your payment" is a bank
+ * being paid, not a merchant being paid. A bill paid THROUGH the bank still
+ * reads "You paid $85.00 to ENMAX" and is still captured, as it should be —
+ * that one really is an expense.
  *
  * Deliberately narrower than the stop-phrase list next to it. "Available
  * credit" and "available balance" also mean nothing was spent on their own,
@@ -164,6 +180,8 @@ const BILL_NOTICE_PHRASES = [
   'payment due', 'minimum payment', 'due date', 'past due', 'overdue',
   'statement is ready', 'statement is available', 'your statement',
   'e-statement', 'estatement', 'payment reminder',
+  'received your payment', 'payment received', 'payment has been received',
+  'payment was received', 'thank you for your payment',
 ];
 // BILL_NOTICE_PHRASES_END
 
@@ -670,16 +688,18 @@ export function parseNotificationText(text: string): ParsedNotification {
   const amountCandidates = findAllAmounts(t);
   const hasDollarSign = /\$\d/.test(t);
 
-  // ── A reminder about a bill, not a purchase ──
-  // Checked here, ahead of everything else, because these carry the word
-  // "payment" and would otherwise sail past the stop-phrase rule below on the
-  // strength of it — which is how a statement reminder came to be recorded as
-  // a purchase for the minimum payment.
+  // ── A bill, not a purchase ──
+  // The reminder to pay one, or the confirmation that you did. Checked here,
+  // ahead of everything else, because these carry the word "payment" and would
+  // otherwise sail past the stop-phrase rule below on the strength of it —
+  // which is how a statement reminder came to be recorded as a purchase for
+  // the minimum payment, and a "we've received your payment of $1,095.00" as a
+  // $1,095.00 expense.
   if (hasBillNotice) {
     return {
       isOutgoing: false,
       recurrence: 'One-time',
-      rejectionReason: 'A bill or statement reminder \u2014 nothing was spent',
+      rejectionReason: 'A bill notice, not a purchase \u2014 nothing was spent',
     };
   }
 

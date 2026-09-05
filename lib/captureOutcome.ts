@@ -145,7 +145,7 @@ export function describeCaptureOutcome(outcome: CaptureOutcomeCode): string {
     case 'failed_charge':
       return "Kept — your bank said this charge didn't go through, so nothing was spent";
     case 'not_spending':
-      return 'Kept — this reads as a balance or statement alert, not a purchase';
+      return 'Kept — this reads as a balance, statement or payment notice, not a purchase';
   }
 }
 

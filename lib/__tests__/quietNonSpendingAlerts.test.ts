@@ -101,6 +101,16 @@ const NOT_SPENDING = [
   'Your account balance is $1,204.19 as of today',
   'Your February statement is ready. Minimum payment due $35.00 by Mar 3',
   'Available credit: $4,120.00',
+  // The card-payment confirmation. It reached the shade as "$1095.00 at ve
+  // received your payment of — Captured, tap to review": the word "payment"
+  // carried it past every rule, and the vendor was a fragment of the sentence
+  // it was read out of. Paying a card is not spending — the purchases that
+  // built the balance were each captured already, so recording the payment on
+  // top of them counts the month twice.
+  "We've received your payment of $1095.00",
+  'We have received your payment of $1,095.00. Thank you.',
+  'Payment received: $1,095.00',
+  'Thank you for your payment of $75.00',
 ];
 
 /**
@@ -118,6 +128,11 @@ const REAL_PURCHASES = [
   // The one that matters most here: a purchase alert that also quotes the
   // balance. It holds a stop phrase AND a spending word, so it stays loud.
   'You spent $22.40 at LOBLAWS. Available balance: $1,204.19',
+  // The other side of the payment rule. These are the RECIPIENT being paid by
+  // the user, which is real spending and must survive: only the bank telling
+  // the user IT has been paid is refused.
+  'Your bill payment of $142.30 to TELUS was completed',
+  'Your recurring payment of $19.99 to SPOTIFY was processed',
 ];
 
 describe('the mirrored lists', () => {
@@ -185,6 +200,43 @@ describe('what still announces itself', () => {
     const refund = 'A refund of $30.00 from BEST BUY was credited to your account balance';
     expect(nativeSaysInformationalOnly(refund)).toBe(false);
     expect(parseNotificationText(refund).isOutgoing).toBe(true);
+  });
+
+  it('still captures a bill the user PAID, only refusing the one they were paid for', () => {
+    // The whole risk of the payment rule in one test. "We received your
+    // payment" is a bank confirming it was paid — a transfer between the
+    // user's own accounts, on top of purchases already captured one by one.
+    // "You paid X" is the user paying someone, which is an expense and has to
+    // keep working.
+    const cardPayment = "We've received your payment of $1095.00";
+    const billPaid = 'Your bill payment of $142.30 to TELUS was completed';
+
+    expect(parseNotificationText(cardPayment).isOutgoing).toBe(false);
+    expect(nativeWouldStayQuiet(cardPayment)).toBe(true);
+
+    expect(parseNotificationText(billPaid).isOutgoing).toBe(true);
+    expect(nativeWouldStayQuiet(billPaid)).toBe(false);
+  });
+
+  it('leaves money coming in reported as income, not as a bill notice', () => {
+    // The bill-notice list is consulted BEFORE the income one, so a phrase
+    // broad enough to catch "...has been received" would relabel every deposit
+    // and swallow refunds with it. Both are refused either way, but the app
+    // would stop being able to say WHY — which is what the settings screen
+    // shows the user. The list is kept narrow for that reason.
+    const deposit = 'INTERAC e-Transfer: You received $200.00 from Jane';
+    const refund = 'A refund of $30.00 from BEST BUY was credited to your account';
+
+    expect(parseNotificationText(deposit).isIncome).toBe(true);
+    expect(parseNotificationText(refund).isOutgoing).toBe(true);
+  });
+
+  it('does not read a payment confirmation into a merchant that merely contains one', () => {
+    // The list is matched as plain substrings, like every other list here, so
+    // a merchant name must not be able to trip it.
+    const purchase = 'You spent $18.00 at PAYMENT SOLUTIONS INC';
+    expect(parseNotificationText(purchase).isOutgoing).toBe(true);
+    expect(nativeWouldStayQuiet(purchase)).toBe(false);
   });
 
   it('does not read a declined charge into a merchant that merely sounds like one', () => {
@@ -266,6 +318,6 @@ describe('what the settings screen shows for them', () => {
     expect(isCaptureProblem('failed_charge')).toBe(false);
     expect(isCaptureProblem('not_spending')).toBe(false);
     expect(describeCaptureOutcome('failed_charge')).toMatch(/didn't go through/i);
-    expect(describeCaptureOutcome('not_spending')).toMatch(/balance or statement/i);
+    expect(describeCaptureOutcome('not_spending')).toMatch(/balance, statement or payment notice/i);
   });
 });
