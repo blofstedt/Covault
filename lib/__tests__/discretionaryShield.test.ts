@@ -14,6 +14,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
   computeShieldedOverflow,
+  computeShieldBreakdown,
   computeBudgetTotals,
   isLeisureBudget,
 } from '../discretionaryShield';
@@ -147,39 +148,43 @@ describe('the wiring between the toggle and the vial', () => {
   const read = (relative: string) =>
     readFileSync(join(__dirname, '..', '..', relative), 'utf8');
 
+  const dashboard = read('components/Dashboard.tsx');
+  const list = read('components/dashboard_components/DashboardBudgetSectionsList.tsx');
+
   it('passes a real figure down, not the literal 0 it shipped with', () => {
-    const dashboard = read('components/Dashboard.tsx');
-    expect(dashboard).toContain('computeShieldedOverflow');
+    expect(dashboard).toContain('computeShieldBreakdown');
     expect(dashboard).not.toContain('leisureAdjustments={0}');
+    expect(dashboard).not.toContain('leisureShield={0}');
   });
 
   it('computes nothing while the shield is switched off', () => {
-    const dashboard = read('components/Dashboard.tsx');
-    expect(dashboard).toMatch(/if \(!state\.settings\.useLeisureAsBuffer\) return 0;/);
+    expect(dashboard).toMatch(
+      /if \(!state\.settings\.useLeisureAsBuffer\) return NO_SHIELD;/,
+    );
   });
 
   it('reads the month on screen, so browsing back shields that month', () => {
     // `currentMonthBudgetTransactions` here would shield September's overspend
     // while the user was reading March.
-    const dashboard = read('components/Dashboard.tsx');
-    const call = dashboard.slice(
-      dashboard.indexOf('computeShieldedOverflow(state.budgets'),
-    ).slice(0, 200);
+    const call = dashboard
+      .slice(dashboard.indexOf('computeShieldBreakdown(state.budgets'))
+      .slice(0, 200);
     expect(call).toContain('viewMonthBudgetTransactions');
   });
 
   it('leaves the headline balance alone, so the overspend is not counted twice', () => {
-    const dashboard = read('components/Dashboard.tsx');
-    const remaining = dashboard.slice(
-      dashboard.indexOf('const viewMonthRemaining'),
-    ).slice(0, 400);
-    expect(remaining).not.toContain('leisureAdjustments');
+    const remaining = dashboard
+      .slice(dashboard.indexOf('const viewMonthRemaining'))
+      .slice(0, 400);
+    expect(remaining).not.toContain('leisureShield');
   });
 
   it('deducts from Leisure only, and only while the shield is on', () => {
-    const list = read('components/dashboard_components/DashboardBudgetSectionsList.tsx');
     expect(list).toMatch(
-      /isLeisure && safeSettings\.useLeisureAsBuffer[\s\S]{0,120}externalDeduction: leisureAdjustments/,
+      /const shielded = isLeisure && safeSettings\.useLeisureAsBuffer;/,
+    );
+    expect(list).toMatch(
+      /shielded[\s\S]{0,120}externalDeduction: leisureShield\.total/,
     );
   });
 
@@ -188,8 +193,102 @@ describe('the wiring between the toggle and the vial', () => {
     // overspent category a bigger limit or a smaller total, or that vial would
     // stop saying "Over by $80" the moment the shield was switched on — hiding
     // the one fact the user most needs from it.
-    const list = read('components/dashboard_components/DashboardBudgetSectionsList.tsx');
-    expect(list).not.toMatch(/totalLimit:\s*[^}]*leisureAdjustments/);
+    expect(list).not.toMatch(/totalLimit:\s*[^}]*leisureShield/);
     expect(list).not.toMatch(/externalDeduction:\s*-/);
+  });
+
+  it('hands the breakdown to the Leisure card and to no other', () => {
+    expect(list).toContain(
+      'shieldContributors={shielded ? leisureShield.contributors : undefined}',
+    );
+  });
+});
+
+describe('the shielded chunk on screen', () => {
+  const read = (relative: string) =>
+    readFileSync(join(__dirname, '..', '..', relative), 'utf8');
+
+  const vial = read('components/BudgetSection.tsx');
+
+  it('draws the borrowed money as its own band, not inside the spent fill', () => {
+    // The whole point: folded into the solid fill, the shielded money is
+    // indistinguishable from the user's own spending in this vault — the bar
+    // is just fuller, which is what "the shield isn't working" looks like.
+    expect(vial).toMatch(/const ownSpentWidth = asWidth\(spent\);/);
+    expect(vial).toMatch(/const shieldWidth = Math\.min\(100 - ownSpentWidth, asWidth\(external\)\);/);
+    // The solid gradient covers this vault's OWN spending only.
+    expect(vial).toMatch(/scaleX\(\$\{Math\.max\(0, Math\.min\(100, ownSpentWidth\)\) \/ 100\}\)/);
+  });
+
+  it('uses the hatch the chart already draws, at its own 6px pitch', () => {
+    // Same texture vocabulary as BudgetFlowChart's savings area and the vial's
+    // 6px dots — a third pattern from somewhere else would read as another app.
+    expect(vial).toContain('repeating-linear-gradient(45deg');
+    expect(vial).toContain('transparent 6px');
+    // Colour from the category, like the dots, so no light/dark branching.
+    expect(vial).toMatch(/\$\{budgetColor\}45/);
+  });
+
+  it('renders nothing extra when the shield is carrying nothing', () => {
+    // Every other vial, and Leisure on a month where nothing is over, must be
+    // the bar that was there before.
+    expect(vial).toMatch(/\{shieldWidth > 0 && \(/);
+    expect(vial).toMatch(/\{external > 0 && <ShieldMark/);
+  });
+
+  it('keeps the three segments inside the bar', () => {
+    // Each segment is clamped against what the ones before it already used, so
+    // they cannot sum past the vial's width however far over budget the user is.
+    expect(vial).toMatch(/const spentWidth = Math\.min\(100, ownSpentWidth \+ shieldWidth\);/);
+    expect(vial).toMatch(/const projectedWidth = Math\.min\(100 - spentWidth, asWidth\(projected\)\);/);
+  });
+
+  it('lets the caption be tapped without shutting the card', () => {
+    // The header underneath owns the tap and would collapse the very card the
+    // notice was raised from.
+    expect(vial).toMatch(/setShowShieldNotice\(true\)/);
+    expect(vial).toMatch(/e\.stopPropagation\(\);[\s\S]{0,60}setShowShieldNotice/);
+  });
+});
+
+describe('describeContributors, via the sentence the notice shows', () => {
+  it('joins two or more with commas and an "and"', () => {
+    const breakdown = computeShieldBreakdown(budgets(), [
+      tx(OTHER, 550),
+      tx(GROCERIES, 530),
+    ]);
+    expect(breakdown.contributors).toEqual([
+      { name: 'Other', amount: 50 },
+      { name: 'Groceries', amount: 30 },
+    ]);
+  });
+
+  it('puts the biggest borrower first, whatever order the budgets are in', () => {
+    const breakdown = computeShieldBreakdown(budgets(), [
+      tx(GROCERIES, 590),
+      tx(OTHER, 510),
+    ]);
+    expect(breakdown.contributors.map((c) => c.name)).toEqual(['Groceries', 'Other']);
+  });
+
+  it('agrees with the figure taken out of the vault, to the cent', () => {
+    const rows = [tx(OTHER, 580), tx(GROCERIES, 545)];
+    const breakdown = computeShieldBreakdown(budgets(), rows);
+    const summed = breakdown.contributors.reduce((a, c) => a + c.amount, 0);
+    expect(summed).toBe(breakdown.total);
+    expect(breakdown.total).toBe(computeShieldedOverflow(budgets(), rows));
+  });
+
+  it('names nobody when nothing is over', () => {
+    const breakdown = computeShieldBreakdown(budgets(), [tx(OTHER, 100)]);
+    expect(breakdown).toEqual({ total: 0, contributors: [] });
+  });
+
+  it('leaves Leisure and hidden categories out of the list too', () => {
+    const rows = [tx(LEISURE, 900), tx(OTHER, 580), tx(GROCERIES, 545)];
+    const breakdown = computeShieldBreakdown(budgets(), rows, {
+      hiddenCategories: [GROCERIES],
+    });
+    expect(breakdown.contributors).toEqual([{ name: 'Other', amount: 80 }]);
   });
 });

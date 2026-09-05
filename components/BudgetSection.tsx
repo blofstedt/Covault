@@ -7,12 +7,49 @@ import { EmptyState } from './shared';
 import { getBudgetColor } from '../lib/budgetColors';
 import { getLocalToday } from '../lib/dateUtils';
 import { compareByDateOccurred, findTodayIndex, transactionDay } from '../lib/transactionOrdering';
-import { computeBudgetTotals } from '../lib/discretionaryShield';
+import { computeBudgetTotals, type ShieldContributor } from '../lib/discretionaryShield';
 import { useSpinHighlight, idsForDay } from '../lib/hooks/useSpinHighlight';
 import NoticeModal from './ui/NoticeModal';
 
 interface ExtendedBudgetCategory extends BudgetCategory {
   externalDeduction?: number;
+}
+
+/**
+ * The shield mark, shown beside the name while this vault is covering another
+ * category's overspending.
+ *
+ * An inline SVG rather than an icon package because that is how every glyph in
+ * this app is drawn — see `getBudgetIcon`, which uses the same stroke weight
+ * and rounded caps. Sized under the text line so the row's height cannot move.
+ */
+const ShieldMark: React.FC<{ color: string; inDisc?: boolean }> = ({
+  color,
+  inDisc = false,
+}) => (
+  <svg
+    // Two sizes, one shape: the mark beside the name, and the same mark filling
+    // NoticeModal's icon disc, where it is drawn at the weight that modal's own
+    // default icon uses so it does not read as heavier than every other notice.
+    className={inDisc ? 'w-8 h-8' : 'w-3 h-3 shrink-0 opacity-70'}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke={color}
+    strokeWidth={inDisc ? 2 : 2.5}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M12 3l7 3v6c0 4.2-2.9 7.5-7 9-4.1-1.5-7-4.8-7-9V6l7-3z" />
+  </svg>
+);
+
+/** "$50 from Other, $30 from Groceries" — the sentence's second half. */
+function describeContributors(contributors: ShieldContributor[]): string {
+  const parts = contributors.map((c) => `$${c.amount.toFixed(0)} from ${c.name}`);
+  if (parts.length === 0) return '';
+  if (parts.length === 1) return parts[0];
+  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
 }
 
 /** Must match `.budget-row-anim`'s transition-duration in index.css. */
@@ -44,6 +81,12 @@ function prefersReducedMotion(): boolean {
 
 interface BudgetSectionProps {
   budget: ExtendedBudgetCategory;
+  /**
+   * Which categories `budget.externalDeduction` was borrowed for, largest
+   * first. Only the Leisure card is ever given this; every other vial leaves
+   * it undefined and is drawn exactly as before.
+   */
+  shieldContributors?: ShieldContributor[];
   transactions: Transaction[];
   isExpanded: boolean;
   /** Receives this section's budget id, so the parent can pass a single
@@ -65,6 +108,7 @@ interface BudgetSectionProps {
 
 const BudgetSection: React.FC<BudgetSectionProps> = ({
   budget,
+  shieldContributors,
   transactions,
   isExpanded,
   onToggle,
@@ -103,14 +147,30 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
   const total = spentWithExternal + projected;
   const isDanger = total > budget.totalLimit;
 
-  const spentWidth = Math.min(
-    100,
-    budget.totalLimit > 0 ? (Math.max(0, spentWithExternal) / budget.totalLimit) * 100 : 0,
-  );
-  const projectedWidth = Math.min(
-    100 - spentWidth,
-    budget.totalLimit > 0 ? (Math.max(0, projected) / budget.totalLimit) * 100 : 0,
-  );
+  // ── The bar, in three segments ──
+  //
+  // Solid gradient for what was spent in THIS vault, a hatched band for what
+  // the Discretionary Shield borrowed from it to cover another category, then
+  // the existing dotted band for charges still expected. Without the middle
+  // one the shielded money is indistinguishable from the user's own spending:
+  // the bar is simply fuller, which is what "the shield isn't working" looks
+  // like even when it is.
+  //
+  // `shieldWidth` is 0 for every vial except Leisure, and for Leisure whenever
+  // nothing is over — in which case `ownSpentWidth` is `spentWithExternal` and
+  // the bar is pixel-for-pixel the one that was here before.
+  const asWidth = (amount: number) =>
+    budget.totalLimit > 0
+      ? Math.min(100, (Math.max(0, amount) / budget.totalLimit) * 100)
+      : 0;
+
+  const ownSpentWidth = asWidth(spent);
+  const shieldWidth = Math.min(100 - ownSpentWidth, asWidth(external));
+
+  /** Where the money that is already committed ends — spent plus shielded. */
+  const spentWidth = Math.min(100, ownSpentWidth + shieldWidth);
+
+  const projectedWidth = Math.min(100 - spentWidth, asWidth(projected));
 
   const budgetColor = getBudgetColor(budget.name);
 
@@ -209,6 +269,9 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
     return () => { for (const animation of running) animation.cancel(); };
   }, [revealed]);
 
+  // Raised when the shielded caption is tapped, to name where the money went.
+  const [showShieldNotice, setShowShieldNotice] = useState(false);
+
   // Raised when "Today" is tapped on a day this budget has nothing on.
   const [showNoTodayNotice, setShowNoTodayNotice] = useState(false);
 
@@ -293,7 +356,9 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           scales exactly as it would have stretched.
 
           The projected bar keeps `width`: it carries a 6px dot pattern that
-          scaleX would visibly distort, and it's the quieter of the two.
+          scaleX would visibly distort, and it's the quietest of the three. The
+          shielded band below keeps `width` for the same reason — a sheared
+          diagonal hatch is worse than a stretched one.
 
           Everything runs on the same 320ms curve as `.budget-row-anim` in
           index.css. These used to be 500ms against the row's 320ms and the
@@ -302,7 +367,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
       <div className="absolute inset-0 z-0 pointer-events-none">
         <div
           style={{
-            transform: `scaleX(${Math.max(0, Math.min(100, spentWidth)) / 100})`,
+            transform: `scaleX(${Math.max(0, Math.min(100, ownSpentWidth)) / 100})`,
             background: `linear-gradient(90deg, ${budgetColor}55 0%, ${budgetColor}70 100%)`,
           }}
           // No permanent `will-change`: the browser promotes for the duration
@@ -311,6 +376,45 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           // same reasoning as the note on `.budget-row-anim` in index.css.
           className="absolute inset-0 origin-left motion-safe:transition-transform motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)]"
         />
+
+        {/* THE SHIELDED CHUNK
+            ---------------------------------------------------------
+            Only ever rendered on the Leisure vial, and only while the shield
+            is actually carrying something — so every other bar's DOM is what
+            it always was.
+
+            45-degree hatching on a 6px pitch is not a new idea here: it is the
+            texture BudgetFlowChart already fills its savings area with, and it
+            sits in the same family as the projected band's 6px dots. Read left
+            to right the bar now goes solid -> hatched -> dotted, each quieter
+            than the last: spent here, borrowed from here, still to come.
+
+            The tint steps between the two neighbours (the fill's 55-70, the
+            projected band's 12) so the three segments read as one object.
+            Colour comes from the category rather than the theme, exactly as
+            the dots do, so this needs no light/dark branching.
+
+            Like the projected band it animates `left`/`width` rather than
+            scaleX — the same trade for the same reason: scaling would shear
+            the diagonals just as it would distort the dots. One extra element,
+            on one card, only when there is something to show. */}
+        {shieldWidth > 0 && (
+          <div
+            style={{
+              left: `${ownSpentWidth}%`,
+              width: `${shieldWidth}%`,
+            }}
+            className="absolute top-0 h-full motion-safe:transition-[left,width] motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)]"
+          >
+            <div className="absolute inset-0" style={{ backgroundColor: `${budgetColor}22` }} />
+            <div
+              className="absolute inset-0"
+              style={{
+                backgroundImage: `repeating-linear-gradient(45deg, ${budgetColor}45 0px, ${budgetColor}45 1.5px, transparent 1.5px, transparent 6px)`,
+              }}
+            />
+          </div>
+        )}
 
         {spentWidth > 0 && spentWidth < 100 && (
           <div
@@ -373,9 +477,17 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           </div>
 
           <div className="flex flex-col text-left">
-            <h3 className={`font-bold tracking-tight leading-none motion-safe:transition-colors motion-safe:duration-[320ms] text-slate-600 dark:text-slate-100 ${useCompactCollapsedStyles && !isExpanded ? 'text-[12px]' : 'text-sm'}`}>
-              {budget.name}
-            </h3>
+            {/* The name and the shield mark share a row rather than the mark
+                sitting on its own line: the glyph is smaller than the text it
+                sits beside, so a vault that starts shielding does not push
+                anything down — which matters most at the compact collapsed
+                size, where the two lines are already tight. */}
+            <div className="flex items-center gap-1">
+              <h3 className={`font-bold tracking-tight leading-none motion-safe:transition-colors motion-safe:duration-[320ms] text-slate-600 dark:text-slate-100 ${useCompactCollapsedStyles && !isExpanded ? 'text-[12px]' : 'text-sm'}`}>
+                {budget.name}
+              </h3>
+              {external > 0 && <ShieldMark color={budgetColor} />}
+            </div>
 
             {!isExpanded && (
               <span
@@ -410,15 +522,30 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
               </div>
 
               {/* The shield takes a chunk out of this vault that none of the
-                  rows below it explain, so the open card says where it went.
-                  Only here: the collapsed card's two lines are already tight
-                  at the compact size, and a third would break the rhythm of
-                  every vial to caption one of them. */}
-              <span className="text-[11px] font-medium tracking-wide mt-0.5 motion-safe:transition-colors motion-safe:duration-[320ms] text-slate-400 dark:text-slate-500">
-                {external > 0
-                  ? `Vault Capacity · $${external.toFixed(0)} shielded`
-                  : 'Vault Capacity'}
-              </span>
+                  rows below it explain, so the open card says where it went —
+                  and tapping it names the categories. Only here: the collapsed
+                  card's two lines are already tight at the compact size, and a
+                  third would break the rhythm of every vial to caption one of
+                  them, while a 12px tap target on a phone is no target at all.
+
+                  `stopPropagation`, or the header underneath would take the tap
+                  and shut the card the notice was raised from. */}
+              {external > 0 ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowShieldNotice(true);
+                  }}
+                  className="text-[11px] font-medium tracking-wide mt-0.5 -mr-1 py-1 px-1 rounded-lg motion-safe:transition-colors motion-safe:duration-[320ms] text-slate-400 dark:text-slate-500 active:scale-[0.97]"
+                >
+                  {`Vault Capacity · $${external.toFixed(0)} shielded`}
+                </button>
+              ) : (
+                <span className="text-[11px] font-medium tracking-wide mt-0.5 motion-safe:transition-colors motion-safe:duration-[320ms] text-slate-400 dark:text-slate-500">
+                  Vault Capacity
+                </span>
+              )}
             </>
           ) : (
             <span
@@ -538,6 +665,20 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           </div>
         </div>
       </div>
+
+      {showShieldNotice && (
+        <NoticeModal
+          title="Discretionary Shield"
+          message={
+            shieldContributors && shieldContributors.length > 0
+              ? `${budget.name} is covering $${external.toFixed(0)} of overspending this month — ${describeContributors(shieldContributors)}.`
+              : `${budget.name} is covering $${external.toFixed(0)} of overspending from your other budgets this month.`
+          }
+          accentColor={budgetColor}
+          icon={<ShieldMark color={budgetColor} inDisc />}
+          onDismiss={() => setShowShieldNotice(false)}
+        />
+      )}
 
       {showNoTodayNotice && (
         <NoticeModal

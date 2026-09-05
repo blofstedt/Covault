@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { BudgetCategory, Transaction } from '../../types';
 import BudgetSection from '../BudgetSection';
 import { compareBudgets } from '../../lib/budgetOrder';
-import { isLeisureBudget } from '../../lib/discretionaryShield';
+import { isLeisureBudget, type ShieldBreakdown } from '../../lib/discretionaryShield';
 
 interface DashboardSettingsShape {
   useLeisureAsBuffer: boolean;
@@ -16,7 +16,9 @@ interface DashboardBudgetSectionsListProps {
   expandedBudgets?: Set<string>;
   isFocusMode?: boolean;
   focusedBudgetId?: string | null;
-  leisureAdjustments?: number;
+  /** What the shield is absorbing this month, and which categories it came
+   *  from. Only ever handed to the Leisure card. */
+  leisureShield?: ShieldBreakdown;
   settings?: DashboardSettingsShape;
   currentUserName?: string;
   isSharedAccount?: boolean;
@@ -33,6 +35,7 @@ interface DashboardBudgetSectionsListProps {
 const NO_TRANSACTIONS: Transaction[] = [];
 const EMPTY_EXPANDED = new Set<string>();
 const NOOP_TOGGLE = (_id: string) => {};
+const NO_SHIELD: ShieldBreakdown = { total: 0, contributors: [] };
 
 const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = ({
   budgets,
@@ -40,7 +43,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
   expandedBudgets = EMPTY_EXPANDED,
   isFocusMode = false,
   focusedBudgetId = null,
-  leisureAdjustments = 0,
+  leisureShield = NO_SHIELD,
   settings,
   currentUserName = '',
   isSharedAccount = false,
@@ -118,10 +121,16 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
           // code that works out how much it is absorbing.
           const isLeisure = isLeisureBudget(budget);
 
-          const displayBudget =
-            isLeisure && safeSettings.useLeisureAsBuffer
-              ? { ...budget, externalDeduction: leisureAdjustments }
-              : budget;
+          // The shield absorbs INTO Leisure and nowhere else. The overspent
+          // category is deliberately left reading "Over by $80": the shield is
+          // a way of reading the month, not a transfer, and a vial that stopped
+          // reporting its own overspend the moment the shield came on would
+          // hide the one fact the user most needs from it.
+          const shielded = isLeisure && safeSettings.useLeisureAsBuffer;
+
+          const displayBudget = shielded
+            ? { ...budget, externalDeduction: leisureShield.total }
+            : budget;
 
           const shouldAutoFitClosedCards = allCollapsed && !isFocusMode;
 
@@ -216,6 +225,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
               <div className="min-h-0 overflow-hidden flex flex-col">
               <BudgetSection
                 budget={displayBudget}
+                shieldContributors={shielded ? leisureShield.contributors : undefined}
                 transactions={budgetTxs}
                 isExpanded={isExpanded}
                 onToggle={onToggleExpand ?? NOOP_TOGGLE}

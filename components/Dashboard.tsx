@@ -37,11 +37,15 @@ import { useNotificationRoute } from '../lib/hooks/useNotificationRoute';
 import { buildWidgetSnapshot } from '../lib/widgetSnapshot';
 import { pushWidgetSnapshot, pushRecurringCharges, type WidgetVendorRule } from '../lib/covaultNotification';
 import { countAwaitingReview } from '../lib/reviewQueue';
-import { computeShieldedOverflow } from '../lib/discretionaryShield';
+import { computeShieldBreakdown, type ShieldBreakdown } from '../lib/discretionaryShield';
 import { collectRecurringCharges } from '../lib/recurringSchedule';
 import { useAIModelOnDevice } from '../lib/hooks/useAIModelOnDevice';
 
 // Map from app-state setting keys to DB column names.
+// Stable identity: a fresh `{ total: 0, contributors: [] }` every render would
+// defeat memo(BudgetSection) for the Leisure card on every keystroke elsewhere.
+const NO_SHIELD: ShieldBreakdown = { total: 0, contributors: [] };
+
 const SETTING_DB_KEYS: Record<string, string> = {
   rolloverEnabled: 'rollover_enabled',
   useLeisureAsBuffer: 'leisure_buffer_enabled',
@@ -447,9 +451,13 @@ const Dashboard: React.FC<Props> = ({
   // it landed in, so adding the shielded amount there would count the same
   // overspend twice. This used to be a literal `0`, which is why switching the
   // shield on did nothing at all.
-  const leisureAdjustments = useMemo(() => {
-    if (!state.settings.useLeisureAsBuffer) return 0;
-    return computeShieldedOverflow(state.budgets, viewMonthBudgetTransactions, {
+  //
+  // The contributors come back on the same pass as the figure, so the sentence
+  // the open Leisure card shows and the chunk taken out of its bar cannot
+  // disagree.
+  const leisureShield = useMemo(() => {
+    if (!state.settings.useLeisureAsBuffer) return NO_SHIELD;
+    return computeShieldBreakdown(state.budgets, viewMonthBudgetTransactions, {
       hiddenCategories: state.settings.hiddenCategories,
     });
   }, [
@@ -841,7 +849,7 @@ const Dashboard: React.FC<Props> = ({
               expandedBudgets={expandedBudgets}
               isFocusMode={false}
               focusedBudgetId={null}
-              leisureAdjustments={leisureAdjustments}
+              leisureShield={leisureShield}
               settings={state.settings}
               currentUserName={state.user?.name || ''}
               isSharedAccount={!state.user?.budgetingSolo}

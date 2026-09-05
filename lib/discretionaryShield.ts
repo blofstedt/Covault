@@ -90,12 +90,31 @@ export interface ShieldOptions {
   hiddenCategories?: readonly string[];
 }
 
+export interface ShieldContributor {
+  /** The category the money is being borrowed for, as the vial spells it. */
+  name: string;
+  /** How far over its limit that category is. */
+  amount: number;
+}
+
+export interface ShieldBreakdown {
+  /** The figure deducted from the Leisure vault. */
+  total: number;
+  /** Which categories make it up, largest first. Empty when total is 0. */
+  contributors: ShieldContributor[];
+}
+
 /**
- * How much of this month's overspending Leisure is absorbing.
+ * How much of this month's overspending Leisure is absorbing, and where it
+ * came from.
  *
  * Sums, over every other budget, the amount by which what the vial is showing
  * (spent plus this month's remaining recurring charges) exceeds that vial's
- * limit. Returns 0 when nothing is over.
+ * limit. Returns 0 and an empty list when nothing is over.
+ *
+ * The breakdown exists so the open Leisure card can say which categories took
+ * the chunk. It is the same pass as the total rather than a second one, so the
+ * sentence in the notice and the segment in the bar can never disagree.
  *
  * Hidden categories are deliberately excluded. Their overflow is real money,
  * but a hidden category has no vial on screen — counting it would take a chunk
@@ -107,12 +126,13 @@ export interface ShieldOptions {
  * @param transactions The month being read: real rows plus this month's
  *                     projected occurrences, exactly as handed to the vials.
  */
-export function computeShieldedOverflow(
+export function computeShieldBreakdown(
   budgets: readonly BudgetCategory[],
   transactions: readonly Transaction[],
   options: ShieldOptions = {},
-): number {
-  if (!budgets || budgets.length === 0) return 0;
+): ShieldBreakdown {
+  const empty: ShieldBreakdown = { total: 0, contributors: [] };
+  if (!budgets || budgets.length === 0) return empty;
 
   const hidden = new Set(options.hiddenCategories || []);
 
@@ -125,6 +145,7 @@ export function computeShieldedOverflow(
     else byBudgetId.set(tx.budget_id, [tx]);
   }
 
+  const contributors: ShieldContributor[] = [];
   let overflow = 0;
 
   for (const budget of budgets) {
@@ -137,10 +158,33 @@ export function computeShieldedOverflow(
     const { spent, projected } = computeBudgetTotals(budget.id, rows);
     const limit = Number(budget.totalLimit) || 0;
     const over = spent + projected - limit;
-    if (over > 0) overflow += over;
+    if (over > 0) {
+      overflow += over;
+      contributors.push({ name: budget.name, amount: round2(over) });
+    }
   }
+
+  // Largest first: the notice names them in the order that answers "where did
+  // it mostly go" without the user reading to the end of the sentence.
+  contributors.sort((a, b) => b.amount - a.amount);
 
   // Cents, not floating-point dust. Summing several budgets' overflow can
   // land on 84.99999999999999, and the vial renders whole dollars off it.
-  return Math.round(overflow * 100) / 100;
+  return { total: round2(overflow), contributors };
+}
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/**
+ * Just the figure. A thin wrapper so there is one piece of arithmetic rather
+ * than two that can drift.
+ */
+export function computeShieldedOverflow(
+  budgets: readonly BudgetCategory[],
+  transactions: readonly Transaction[],
+  options: ShieldOptions = {},
+): number {
+  return computeShieldBreakdown(budgets, transactions, options).total;
 }
