@@ -37,6 +37,7 @@ import { useNotificationRoute } from '../lib/hooks/useNotificationRoute';
 import { buildWidgetSnapshot } from '../lib/widgetSnapshot';
 import { pushWidgetSnapshot, pushRecurringCharges, type WidgetVendorRule } from '../lib/covaultNotification';
 import { countAwaitingReview } from '../lib/reviewQueue';
+import { computeShieldedOverflow } from '../lib/discretionaryShield';
 import { collectRecurringCharges } from '../lib/recurringSchedule';
 import { useAIModelOnDevice } from '../lib/hooks/useAIModelOnDevice';
 
@@ -434,6 +435,30 @@ const Dashboard: React.FC<Props> = ({
     viewMonthKey,
   ]);
 
+  // ── The Discretionary Shield ──
+  //
+  // How much of the month's overspending the Leisure vault is absorbing. Read
+  // off the SAME list the vials are drawing, so browsing back to March shields
+  // March's overspend and not this month's, and so the amount taken out of
+  // Leisure is always the amount another vial on screen is over by.
+  //
+  // Display-only, and deliberately not folded into `viewMonthRemaining`: the
+  // headline balance already counts every transaction once, whatever category
+  // it landed in, so adding the shielded amount there would count the same
+  // overspend twice. This used to be a literal `0`, which is why switching the
+  // shield on did nothing at all.
+  const leisureAdjustments = useMemo(() => {
+    if (!state.settings.useLeisureAsBuffer) return 0;
+    return computeShieldedOverflow(state.budgets, viewMonthBudgetTransactions, {
+      hiddenCategories: state.settings.hiddenCategories,
+    });
+  }, [
+    state.settings.useLeisureAsBuffer,
+    state.settings.hiddenCategories,
+    state.budgets,
+    viewMonthBudgetTransactions,
+  ]);
+
   // Same arithmetic as the current month's, over the same list the vials are
   // drawing, so the figure at the top can never disagree with the bars below.
   const viewMonthRemaining = useMemo(
@@ -816,7 +841,7 @@ const Dashboard: React.FC<Props> = ({
               expandedBudgets={expandedBudgets}
               isFocusMode={false}
               focusedBudgetId={null}
-              leisureAdjustments={0}
+              leisureAdjustments={leisureAdjustments}
               settings={state.settings}
               currentUserName={state.user?.name || ''}
               isSharedAccount={!state.user?.budgetingSolo}

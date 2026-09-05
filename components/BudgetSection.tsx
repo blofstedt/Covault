@@ -7,7 +7,7 @@ import { EmptyState } from './shared';
 import { getBudgetColor } from '../lib/budgetColors';
 import { getLocalToday } from '../lib/dateUtils';
 import { compareByDateOccurred, findTodayIndex, transactionDay } from '../lib/transactionOrdering';
-import { isRefund, matchRefundsToExpenses } from '../lib/refundMatching';
+import { computeBudgetTotals } from '../lib/discretionaryShield';
 import { useSpinHighlight, idsForDay } from '../lib/hooks/useSpinHighlight';
 import NoticeModal from './ui/NoticeModal';
 
@@ -75,42 +75,17 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
   isCurrentMonth = true,
   useCompactCollapsedStyles = false,
 }) => {
-  const { matchedExpenseIds: legacyMatchedIds } = useMemo(
-    () => matchRefundsToExpenses(transactions),
-    [transactions],
-  );
-
+  // The arithmetic itself lives in lib/discretionaryShield.ts, because the
+  // shield deducts one vial's overspend from another's and the two figures
+  // have to be the same number computed the same way.
   const { refundedExpenseIds, spent, projected, visibleTransactions } = useMemo(() => {
-    const ids = new Set<string>(legacyMatchedIds);
-    let calcSpent = 0;
-    let calcProjected = 0;
-    const visibleTx: Transaction[] = [];
-
-    for (let i = 0; i < transactions.length; i++) {
-      const tx = transactions[i];
-
-      if (tx.refunded) ids.add(tx.id);
-      if (!isRefund(tx)) visibleTx.push(tx);
-
-      if (tx.budget_id === budget.id) {
-        if (tx.is_projected) {
-          calcProjected += tx.amount;
-        } else if (!tx.refunded && !(ids.has(tx.id) && Number(tx.amount) > 0)) {
-          calcSpent += tx.amount;
-        }
-      }
-    }
+    const totals = computeBudgetTotals(budget.id, transactions);
 
     // Chronological, not insertion order — see lib/transactionOrdering.ts.
-    visibleTx.sort(compareByDateOccurred);
+    totals.visibleTransactions.sort(compareByDateOccurred);
 
-    return {
-      refundedExpenseIds: ids,
-      spent: calcSpent,
-      projected: calcProjected,
-      visibleTransactions: visibleTx,
-    };
-  }, [legacyMatchedIds, transactions, budget.id]);
+    return totals;
+  }, [transactions, budget.id]);
 
   // First row dated today or later — the boundary between what has already
   // happened this month and what is still to come. -1 when everything in the
@@ -434,8 +409,15 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                 </span>
               </div>
 
+              {/* The shield takes a chunk out of this vault that none of the
+                  rows below it explain, so the open card says where it went.
+                  Only here: the collapsed card's two lines are already tight
+                  at the compact size, and a third would break the rhythm of
+                  every vial to caption one of them. */}
               <span className="text-[11px] font-medium tracking-wide mt-0.5 motion-safe:transition-colors motion-safe:duration-[320ms] text-slate-400 dark:text-slate-500">
-                Vault Capacity
+                {external > 0
+                  ? `Vault Capacity · $${external.toFixed(0)} shielded`
+                  : 'Vault Capacity'}
               </span>
             </>
           ) : (

@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { BudgetCategory, Transaction } from '../../types';
 import BudgetSection from '../BudgetSection';
 import { compareBudgets } from '../../lib/budgetOrder';
+import { isLeisureBudget } from '../../lib/discretionaryShield';
 
 interface DashboardSettingsShape {
   useLeisureAsBuffer: boolean;
@@ -113,10 +114,12 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
           const budgetTxs = transactionsByBudgetId.get(budget.id) ?? NO_TRANSACTIONS;
 
           const isExpanded = expandedBudgets.has(budget.id);
-          const isLeisure = budget.name.toLowerCase().includes('leisure');
+          // One definition of "which vault is the shield", shared with the
+          // code that works out how much it is absorbing.
+          const isLeisure = isLeisureBudget(budget);
 
           const displayBudget =
-            isLeisure && settings.useLeisureAsBuffer
+            isLeisure && safeSettings.useLeisureAsBuffer
               ? { ...budget, externalDeduction: leisureAdjustments }
               : budget;
 
