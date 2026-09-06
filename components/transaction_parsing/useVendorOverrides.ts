@@ -4,6 +4,7 @@ import { restFetch } from '../../lib/apiHelpers';
 import { BudgetCategory } from '../../types';
 import { toVendorKey } from '../../lib/deviceTransactionParser';
 import { contributeRule, withdrawRule } from '../../lib/communityRules';
+import { onVendorOverrideWritten } from '../../lib/vendorOverrideWrite';
 
 export type MatchType = 'exact' | 'prefix' | 'contains';
 
@@ -91,6 +92,18 @@ export function useVendorOverrides({ userId, partnerId, budgets }: UseVendorOver
   useEffect(() => {
     loadVendorOverrides();
   }, [loadVendorOverrides]);
+
+  // ── Rules taught somewhere else in the app ──
+  //
+  // Renaming a caught transaction teaches a rule, and that write happens deep
+  // in the transaction update path (lib/vendorOverrideWrite.ts), not here.
+  // Without this the list was fetched exactly once per launch, so a rule the
+  // user had just taught was missing from the "rules you've taught" card
+  // underneath the row they renamed — the rule was in the database, but the
+  // only place that would have shown it had stopped asking. Re-reading rather
+  // than patching state locally is deliberate: the row comes back with its real
+  // id, which is what Undo and delete need.
+  useEffect(() => onVendorOverrideWritten(() => { void loadVendorOverrides(); }), [loadVendorOverrides]);
 
   // ── The partner's rules ──
   //

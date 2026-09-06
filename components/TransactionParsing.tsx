@@ -223,15 +223,24 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   // overrides table (with match_type='exact' for inline renames; the
   // user can later change match_type via the VendorCategoryRulesCard).
   const handleVendorRenamed = useCallback(
-    async (tx: Transaction, newVendor: string) => {
+    async (tx: Transaction, newVendor: string, categoryId?: string) => {
       if (!onUpdateTransaction) return;
-      const updated: Transaction = { ...tx, vendor: newVendor };
+      // Renaming a row to a name the user has already paired with a category
+      // moves the row to that category too. Checked against the loaded budgets
+      // first: a rule pointing at a category that no longer exists must leave
+      // the row where it is rather than blanking it.
+      const adopted = categoryId && budgets.some((b) => b.id === categoryId) ? categoryId : null;
+      const updated: Transaction = {
+        ...tx,
+        vendor: newVendor,
+        budget_id: adopted ?? tx.budget_id,
+      };
       // Awaited, so the row's saving state covers the write rather than just
       // the hand-off, and a failure reaches the caller instead of being
       // dropped on the floor.
       await onUpdateTransaction(updated);
     },
-    [onUpdateTransaction],
+    [onUpdateTransaction, budgets],
   );
 
   // ── Fuel-hold correction ──

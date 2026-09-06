@@ -30,11 +30,41 @@ export function pickNearMatchName(
   return match ? match.properName : null;
 }
 
+/**
+ * The rule the saved name belongs to, when the name identifies exactly one.
+ *
+ * Suggestions are shown as `Vendor · Category` because the pairing is the unit
+ * the user thinks in — so picking "Pizza Culture · Leisure" for a row the
+ * pipeline guessed as Other has to bring the category with it. It did not: the
+ * row kept its guessed category, and the rule the rename then taught paired the
+ * bank's name with THAT category, quietly contradicting the rule whose name had
+ * just been chosen. The next purchase came in renamed correctly and filed
+ * wrongly.
+ *
+ * Only ever one rule: a merchant may legitimately hold two categories (the
+ * groceries and the clothes bought at the same shop), and in that case the name
+ * alone does not say which was meant — so the name is applied and the category
+ * is left exactly as it was, for the user to pick.
+ */
+export function pickRuleToAdopt(
+  rules: ExistingRule[],
+  name: string,
+): ExistingRule | null {
+  const wanted = name.trim().toLowerCase();
+  if (!wanted) return null;
+  const named = rules.filter((rule) => rule.properName.trim().toLowerCase() === wanted);
+  return named.length === 1 ? named[0] : null;
+}
+
 interface InlineVendorEditProps {
   /** Current vendor display name. */
   value: string;
-  /** Persist the new value. Called on Enter or Save tap. */
-  onSave: (newValue: string) => void | Promise<void>;
+  /**
+   * Persist the new value. Called on Enter or Save tap. `matchedRule` is the
+   * single rule the saved name belongs to, when there is one — its category
+   * comes with the name.
+   */
+  onSave: (newValue: string, matchedRule?: ExistingRule | null) => void | Promise<void>;
   /**
    * Every rule the user has taught, used for typeahead and near-match
    * consolidation. Suggestions are rules (`Vendor · Category`), not bare
@@ -108,7 +138,7 @@ const InlineVendorEdit: React.FC<InlineVendorEditProps> = ({
 
   const commit = async (name: string) => {
     if (name && name !== value) {
-      await onSave(name);
+      await onSave(name, pickRuleToAdopt(knownRules, name));
     } else {
       onCancel();
     }

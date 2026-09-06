@@ -40,7 +40,12 @@ interface AIEnteredRowProps {
   isForReview: boolean;
   onTransactionTap?: (tx: Transaction) => void;
   onDeleteTransaction?: (id: string) => Promise<void> | void;
-  onVendorRenamed?: (tx: Transaction, newVendor: string) => Promise<void> | void;
+  /**
+   * Rename a caught row. `categoryId` is set when the chosen name belongs to
+   * exactly one rule the user has already taught — the category travels with
+   * the name it was paired with.
+   */
+  onVendorRenamed?: (tx: Transaction, newVendor: string, categoryId?: string) => Promise<void> | void;
   onMarkNotTransaction?: (tx: Transaction, ruleType: NotATxRuleType) => Promise<void> | void;
   userId?: string;
   /** Deterministic vendor-override match for this row (from useVendorMatcher). */
@@ -248,7 +253,7 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
   }, [onDeleteTransaction]);
 
   const handleSaveVendor = useCallback(
-    async (newName: string) => {
+    async (newName: string, matchedRule?: ExistingRule | null) => {
       if (!onVendorRenamed) {
         setIsEditingVendor(false);
         return;
@@ -256,7 +261,7 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
       const oldVendor = tx.vendor;
       setIsSavingVendor(true);
       try {
-        await onVendorRenamed(tx, newName);
+        await onVendorRenamed(tx, newName, matchedRule?.categoryId);
         setIsEditingVendor(false);
         if (userId) {
           const matchKey = toVendorKey(oldVendor);

@@ -43,7 +43,7 @@ interface AITransactionsEnteredCardProps {
    * reload later.
    */
   onDeleteAll?: (txs: Transaction[]) => void;
-  onVendorRenamed?: (tx: Transaction, newVendor: string) => Promise<void> | void;
+  onVendorRenamed?: (tx: Transaction, newVendor: string, categoryId?: string) => Promise<void> | void;
   onMarkNotTransaction?: (tx: Transaction, ruleType: NotATxRuleType) => Promise<void> | void;
   userId?: string;
   isExpanded?: boolean;
