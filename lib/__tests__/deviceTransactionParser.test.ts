@@ -309,4 +309,88 @@ describe('deviceTransactionParser', () => {
     expect(result.foreignCurrency).toBeUndefined();
   });
 
+  // ── The merchant name stops where the bank's next sentence starts ────────
+  //
+  // Every vendor pattern matches a character class containing both the full
+  // stop and the space, so a name ran straight on into whatever the alert said
+  // next: "at Walmart. Available balance $923.12" gave the vendor "Walmart.
+  // Available Balance". Nine of twelve realistic two-sentence alerts came out
+  // this way — it is the ordinary shape of a bank notification.
+  //
+  // The cost is not cosmetic. That string is the key every downstream match
+  // uses: a rule taught for "Walmart. Available Balance" never fires for a
+  // plain "Walmart", the recurring guard cannot see the same subscription
+  // twice, and refund matching compares vendors for equality, so a refund
+  // never finds its purchase. And because the trailing sentence differs from
+  // alert to alert, the same shop arrives under a new name every time.
+
+  it('stops the vendor at the end of the sentence', () => {
+    const result = parseNotificationText('You spent $12.34 at Walmart. Available balance $923.12');
+    expect(result.vendorDisplay).toBe('Walmart');
+    expect(result.amount).toBe(12.34);
+  });
+
+  it('reads the same shop the same way whatever the bank appends', () => {
+    // The whole point: these must all produce ONE vendor key, or a rule taught
+    // on Monday cannot fire on Tuesday.
+    const texts = [
+      'You spent $12.34 at Walmart',
+      'You spent $12.34 at Walmart. Available balance $923.12',
+      'You spent $12.34 at Walmart. Your balance is now $1,200.00',
+      'You spent $12.34 at Walmart. Thank you for banking with us.',
+    ];
+    const keys = texts.map((t) => parseNotificationText(t).vendorKey);
+    expect(new Set(keys).size).toBe(1);
+  });
+
+  it('trims the trailing clause on the other shapes banks use', () => {
+    const cases: Array<[string, string]> = [
+      ['You spent $22.40 at LOBLAWS. Available credit: $4,120.00', 'Loblaws'],
+      ['TD: $45.00 at COSTCO WHOLESALE. Your balance is now $1,200.00', 'Costco Wholesale'],
+      ['$32.10 at SHOPPERS DRUG MART. Ref: 0091827', 'Shoppers Drug Mart'],
+      ['You made a purchase of $60.00 at PETRO-CANADA. Transaction date: Sep 5, 2026', 'Petro-canada'],
+      ['$14.00 at UBER EATS. Not you? Call us right away.', 'Uber Eats'],
+      ['You spent $54.20 at SOBEYS. Thank you for banking with us.', 'Sobeys'],
+    ];
+    for (const [text, expected] of cases) {
+      expect(parseNotificationText(text).vendorDisplay, text).toBe(expected);
+    }
+  });
+
+  it('trims a run-on clause that has no full stop at all', () => {
+    const result = parseNotificationText('You spent $25.00 at IKEA your available balance is $800.00');
+    expect(result.vendorDisplay).toBe('Ikea');
+  });
+
+  // A full stop after a short word is an abbreviation and belongs to the name.
+  // This is the rule that keeps the trimming from eating real merchants.
+  it('keeps an abbreviation that is part of the name', () => {
+    expect(parseNotificationText('You spent $30.00 at ST. HUBERT').vendorDisplay).toBe('St. Hubert');
+    expect(parseNotificationText('You spent $12.00 at MR. SUB').vendorDisplay).toBe('Mr. Sub');
+  });
+
+  it('keeps an abbreviation even when a clause follows it', () => {
+    const result = parseNotificationText('You spent $15.00 at ST. HUBERT. Available balance $12.00');
+    expect(result.vendorDisplay).toBe('St. Hubert');
+  });
+
+  it('leaves a dot inside a name alone, because nothing follows the space', () => {
+    expect(parseNotificationText('You spent $9.99 at NETFLIX.COM. Balance is now $500.00').vendorDisplay)
+      .toBe('Netflix.com');
+    expect(parseNotificationText('Refund of $14.23 from AMAZON.CA').vendorDisplay).toBe('Amazon.ca');
+  });
+
+  // The tail phrases are phrases, not words, because a merchant name can
+  // contain any single word — NEW BALANCE and TOTAL WINE are shops. And they
+  // are anchored to a word boundary, or "ending in" cuts PENDING INVOICE down
+  // to the letter P.
+  it('does not cut a merchant whose name merely contains the letters of a clause', () => {
+    expect(parseNotificationText('You spent $40.00 at PENDING INVOICE CO').vendorDisplay)
+      .toBe('Pending Invoice Co');
+    expect(parseNotificationText('You spent $19.00 at THANK YOU CAFE').vendorDisplay)
+      .toBe('Thank You Cafe');
+    expect(parseNotificationText('You spent $23.00 at REFERENCE LIBRARY CAFE').vendorDisplay)
+      .toBe('Reference Library Cafe');
+  });
+
 });

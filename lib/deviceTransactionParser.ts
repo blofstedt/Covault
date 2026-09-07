@@ -372,6 +372,99 @@ function trimAtPreposition(vendor: string): string {
   return vendor.split(/\s+(?=(?:for|on|with|using|via|ending|was|is|has|and|from)\b)/i)[0].trim();
 }
 
+/**
+ * Cut the merchant name where the bank's next sentence begins.
+ *
+ * Every vendor pattern below matches a character class that includes both the
+ * full stop and the space, so a name runs straight on into whatever the alert
+ * says next: "You spent $12.34 at Walmart. Available balance $923.12" yielded
+ * the vendor "Walmart. Available Balance". Nine out of twelve realistic
+ * two-sentence alerts came out this way — it is the normal shape of a bank
+ * notification, not an edge case.
+ *
+ * The damage is not cosmetic, and it is not confined to the row you are
+ * looking at. That name is the key everything downstream matches on: a rule
+ * taught for "Walmart. Available Balance" can never fire for a plain
+ * "Walmart", the recurring-charge guard cannot recognise the same
+ * subscription twice, and refund matching compares vendor strings for
+ * equality — so a refund never finds the purchase it belongs to. Each visit
+ * to the same shop arrives looking new, forever.
+ *
+ * The rule is the length of the word before the stop. A full stop after a word
+ * of three letters or more ends a sentence; after one or two it is an
+ * abbreviation and belongs to the name — which is what keeps ST. HUBERT, MR.
+ * SUB and DR. PEPPER intact. A stop with no space after it is inside the name
+ * either way, so AMAZON.CA and NETFLIX.COM are never touched.
+ */
+function trimAtSentenceEnd(vendor: string): string {
+  const boundary = /\.\s+/g;
+  let match: RegExpExecArray | null;
+  while ((match = boundary.exec(vendor)) !== null) {
+    const before = vendor.slice(0, match.index);
+    const lastWord = (before.split(/\s+/).pop() || '').replace(/[^A-Za-z0-9]/g, '');
+    if (lastWord.length > 2) return before.trim();
+  }
+  return vendor.trim();
+}
+
+/**
+ * Clause starters that are never part of a merchant name.
+ *
+ * The sentence rule above catches the common case, where the bank starts a new
+ * sentence. This catches the same clauses when they are run on with a comma or
+ * nothing at all — "at IKEA your available balance is $800".
+ *
+ * Phrases rather than single words, deliberately. The obvious version of this
+ * list would hold 'balance', 'total' and 'new' — and NEW BALANCE is a shop, as
+ * are TOTAL WINE and NEW LOOK. A merchant name can contain any single word in
+ * the language; what it does not contain is "available balance" or "card
+ * ending". Most of these are already in STOP_PHRASES for the same reason: they
+ * are what a bank says when it is talking about money that has not moved.
+ */
+const VENDOR_TAIL_PHRASES = [
+  'available balance', 'available credit', 'account balance', 'current balance',
+  'remaining balance', 'balance is', 'balance now', 'credit limit',
+  'card ending', 'ending in', 'transaction date', 'posted to', 'reference',
+  'ref:', 'not you', 'thank you', 'your balance', 'your available',
+];
+
+function trimAtTailPhrase(vendor: string): string {
+  let cut = -1;
+  for (const phrase of VENDOR_TAIL_PHRASES) {
+    // Anchored to a word boundary, or "ending in" cuts PENDING INVOICE down to
+    // a single letter. Matched from index 1 and never 0: a shop really can be
+    // called "Reference" or "Thank You", and a name that IS the phrase should
+    // survive as itself.
+    const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Searched over the WHOLE string, not a slice of it. Slicing the first
+    // character off to skip position 0 also removes the letter that made the
+    // word boundary — "PENDING INVOICE" becomes "ENDING INVOICE", where
+    // "ending in" then matches at the very start and cuts the name down to
+    // "P". The match is found in place and the position checked afterwards.
+    const found = new RegExp(`\\b${escaped}`, 'i').exec(vendor);
+    if (found && found.index > 0 && (cut === -1 || found.index < cut)) {
+      cut = found.index;
+    }
+  }
+  return cut > 0 ? vendor.slice(0, cut).trim() : vendor;
+}
+
+/**
+ * Everything that marks the end of a merchant name, in one place.
+ *
+ * Applied at every return in `extractVendorRaw`. It only ever shortens what a
+ * pattern captured — it can never rename a merchant or invent one — so the
+ * worst a wrong cut can do is lose a trailing word, while the failure it
+ * prevents silently breaks every rule, refund and duplicate check tied to that
+ * shop.
+ */
+function trimVendorTail(vendor: string): string {
+  const trimmed = trimAtTailPhrase(trimAtSentenceEnd(trimAtPreposition(vendor)));
+  // A stop or comma left at the end is punctuation the sentence needed, not
+  // part of the name.
+  return trimmed.replace(/[\s.,;:]+$/, '').trim();
+}
+
 function extractVendorRaw(text: string, isRefund?: boolean): string {
   // Strip emoji/symbols so they don't break character-class patterns or act
   // as unexpected delimiters between merchant name and description text.
@@ -433,13 +526,13 @@ function extractVendorRaw(text: string, isRefund?: boolean): string {
     const refundFromMatch = cleaned.match(
       /\bfrom\s+([A-Za-z0-9&'./#\u00C0-\u00FF -]{2,60}?)(?:\s*[.,]?\s*$)/i,
     );
-    if (refundFromMatch) return refundFromMatch[1].trim();
+    if (refundFromMatch) return trimVendorTail(refundFromMatch[1].trim());
 
     // Pattern R2: "refunded by VENDOR" / "credited by VENDOR"
     const refundByMatch = cleaned.match(
       /\b(?:refunded|credited)\s+by\s+([A-Za-z0-9&'./#\u00C0-\u00FF -]{2,60})/i,
     );
-    if (refundByMatch) return refundByMatch[1].trim();
+    if (refundByMatch) return trimVendorTail(refundByMatch[1].trim());
   }
 
   // Vendor character class used across patterns:
@@ -449,23 +542,23 @@ function extractVendorRaw(text: string, isRefund?: boolean): string {
   // ── Pattern 1: "... at VENDOR ..." ────────────────────────────────────────
   // Used by TD, RBC, BMO, CIBC, Scotiabank, Desjardins, and many others.
   const atMatch = t.match(/\bat\s+([A-Za-z0-9&'./#\u00C0-\u00FF -]{2,60})/i);
-  if (atMatch) return trimAtPreposition(atMatch[1].trim());
+  if (atMatch) return trimVendorTail(atMatch[1].trim());
 
   // ── Pattern 2: "Merchant: VENDOR" / "Merchant - VENDOR" ───────────────────
   const merchantMatch = t.match(/\bmerchant\b[:\s-]+([A-Za-z0-9&'./#\u00C0-\u00FF -]{2,60})/i);
-  if (merchantMatch) return trimAtPreposition(merchantMatch[1].trim());
+  if (merchantMatch) return trimVendorTail(merchantMatch[1].trim());
 
   // ── Pattern 3: "payment to VENDOR" / "paid to VENDOR" ────────────────────
   const paidToMatch = t.match(
     /\b(?:payment|paid)\s+to\s+([A-Za-z0-9&'./#\u00C0-\u00FF -]{2,60}?)(?=\s+(?:for|on|using|via|ending)\b|[.,]|$)/i,
   );
-  if (paidToMatch) return paidToMatch[1].trim();
+  if (paidToMatch) return trimVendorTail(paidToMatch[1].trim());
 
   // ── Pattern 4: "e-transfer / transfer to VENDOR" ─────────────────────────
   const transferMatch = t.match(
     /\b(?:e-?transfer|interac\s+e-?transfer|transfer)\b.*?\bto\b\s+([A-Za-z0-9&'./#\u00C0-\u00FF -]{2,60}?)(?=\s+(?:for|on|using|via|ending)\b|[.,]|$)/i,
   );
-  if (transferMatch) return transferMatch[1].trim();
+  if (transferMatch) return trimVendorTail(transferMatch[1].trim());
 
   // ── Pattern 5: "VENDOR [dash] you spend/spent/charged/paid/purchased …" ───
   // Handles Wealthsimple and any bank that leads with the merchant name.
@@ -478,7 +571,9 @@ function extractVendorRaw(text: string, isRefund?: boolean): string {
   );
   if (beforeSpendingMatch) {
     // Strip any trailing dash that bled into the capture group
-    const candidate = beforeSpendingMatch[1].trim().replace(/\s*[-–—]+$/, '').trim();
+    const candidate = trimVendorTail(
+      beforeSpendingMatch[1].trim().replace(/\s*[-–—]+$/, '').trim(),
+    );
     if (candidate.length >= 2) return candidate;
   }
 
@@ -486,15 +581,18 @@ function extractVendorRaw(text: string, isRefund?: boolean): string {
   const afterAmountMatch = t.match(
     /\$[\d,.]+\s+(?:at|from|to|@)\s+([A-Za-z0-9&'./#\u00C0-\u00FF -]{2,60})/i,
   );
-  if (afterAmountMatch) return trimAtPreposition(afterAmountMatch[1].trim());
+  if (afterAmountMatch) return trimVendorTail(afterAmountMatch[1].trim());
 
   // ── Last resort: capitalized word sequence after an amount ────────────────
   // Reject matches that start with pronouns or prepositions — those indicate
   // we've landed in the description text rather than the merchant name.
   const nearDollar = t.match(/\$[\d,.]+[^A-Za-z]*([A-Z][A-Za-z0-9&'.\- ]{1,59})/);
   if (nearDollar) {
-    const candidate = nearDollar[1].trim();
-    if (!/^(?:with|from|on|using|via|by|through|for|and|the|a|an|your|my|our|you)\b/i.test(candidate)) {
+    const candidate = trimVendorTail(nearDollar[1].trim());
+    if (
+      candidate.length >= 2
+      && !/^(?:with|from|on|using|via|by|through|for|and|the|a|an|your|my|our|you)\b/i.test(candidate)
+    ) {
       return candidate;
     }
   }
@@ -506,7 +604,8 @@ function extractVendorRaw(text: string, isRefund?: boolean): string {
   const capsRegex = /\b([A-Z][A-Z0-9&'.# -]{1,59})\b/g;
   let capsMatch;
   while ((capsMatch = capsRegex.exec(t)) !== null) {
-    const tokens = capsMatch[1].trim().split(/\s+/).filter(w => !NON_VENDOR_WORDS.has(w) && w.length >= 2);
+    const run = trimVendorTail(capsMatch[1].trim());
+    const tokens = run.split(/\s+/).filter(w => !NON_VENDOR_WORDS.has(w) && w.length >= 2);
     if (tokens.length > 0) {
       capsRuns.push(tokens.join(' '));
     }
