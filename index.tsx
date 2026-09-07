@@ -3,11 +3,17 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import FullScreenLoader from './components/FullScreenLoader';
 import './index.css';
+import { initErrorReporting } from './lib/errorReporting';
 
 // Only one of the three routes ever renders. The two static pages are lazy
 // so they stay out of the entry chunk that the app itself loads from.
 const PrivacyPolicy = lazy(() => import('./components/PrivacyPolicy'));
 const Terms = lazy(() => import('./components/Terms'));
+
+// Before the first render, so an error thrown during mount is still reported.
+// Fire and forget: it loads the reporter in the background and a build with no
+// DSN does nothing at all here.
+initErrorReporting();
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

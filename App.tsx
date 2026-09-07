@@ -17,6 +17,8 @@ import { covaultNotification, autoDetectAndSaveMonitoredApps } from './lib/covau
 import { loadBankingAppsFromDB } from './lib/bankingApps';
 import { useAppTheme } from './lib/hooks/useAppTheme';
 import { useAppUpdate } from './lib/hooks/useAppUpdate';
+import { getInstalledVersionCode } from './lib/appUpdate';
+import { setReportingBuild, setReportingUser } from './lib/errorReporting';
 import { useUserData } from './lib/hooks/useUserData';
 import { markOnboarded } from './lib/onboardingState';
 import { noteCaptureEnabled, noteCaptureDisabled } from './lib/bankHeartbeat';
@@ -217,6 +219,24 @@ const App: React.FC = () => {
       if (prev.transactions.some(t => t.id === tx.id)) return prev;
       return { ...prev, transactions: [tx, ...prev.transactions] };
     });
+  }, []);
+
+  // Tell the reporter who this is — the account id and nothing else, never the
+  // name or the email that sit beside it on the same row. Without it, one user
+  // hitting the same crash fifty times and fifty users hitting it once look
+  // identical, and they need completely different responses.
+  useEffect(() => {
+    setReportingUser(appState.user?.id ?? null);
+  }, [appState.user?.id]);
+
+  // Which build this is, once the phone can say. Web builds have no
+  // versionCode and simply skip it.
+  useEffect(() => {
+    let cancelled = false;
+    getInstalledVersionCode().then((code) => {
+      if (!cancelled) setReportingBuild(code);
+    });
+    return () => { cancelled = true; };
   }, []);
 
   const handleAIProcessingResult = useCallback(async () => {

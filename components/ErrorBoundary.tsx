@@ -1,5 +1,6 @@
 import { log } from '../lib/log';
 import React from 'react';
+import { reportError } from '../lib/errorReporting';
 
 interface State {
   hasError: boolean;
@@ -20,6 +21,10 @@ class ErrorBoundary extends React.Component<Props, State> {
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     log.error('[ErrorBoundary] Caught:', error, info.componentStack);
+    // The one place the app knows it has broken badly enough to show an
+    // apology. Sentry catches what reaches the window on its own, but a React
+    // render error is caught here and never gets there.
+    reportError(error, { componentStack: info.componentStack });
   }
 
   render() {

@@ -62,7 +62,7 @@ const PrivacyPolicy: React.FC = () => {
               <li>To respond to your requests or questions.</li>
             </ul>
             <p className="mt-2">
-              We do not use your financial data or your alert content for advertising, and we do not sell it. It is not used to train any AI model — the model Covault uses is a fixed, pre-existing one that runs on your phone and learns nothing from you.
+              We also use error reports to find and fix crashes; what they contain, and what they deliberately leave out, is in section 8. We do not use your financial data or your alert content for advertising, and we do not sell it. It is not used to train any AI model — the model Covault uses is a fixed, pre-existing one that runs on your phone and learns nothing from you.
             </p>
           </div>
 
@@ -99,6 +99,7 @@ const PrivacyPolicy: React.FC = () => {
               <li><strong>Supabase:</strong> For data storage and authentication.</li>
               <li><strong>Hugging Face and jsDelivr:</strong> Covault reads your bank alerts using a small AI model that runs on your own phone. These two services host the model file and the code that runs it, which your phone downloads once and then keeps. <strong>No transaction, notification, or other personal information is ever sent to them</strong> — the reading happens entirely on your device.</li>
               <li><strong>GitHub:</strong> To check whether a newer version of the app is available, and to download it.</li>
+              <li><strong>Sentry (crash reporting):</strong> When the app hits an error, a report is sent so it can be fixed. It contains the error and where in the code it happened, which build you are running, and your account's id — never your name or email. It deliberately does <strong>not</strong> record your screen, does not attach the app's own log output, and strips the details out of any web address in the report, because on this app those details are your shops and your amounts. No transaction, budget, income figure or notification text is ever sent.</li>
             </ul>
             <p className="mt-2">
               These services have their own privacy policies, and we encourage you to review them.

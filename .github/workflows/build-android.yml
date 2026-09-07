@@ -50,6 +50,14 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_PUBLIC_SUPABASE_URL: ${{ secrets.VITE_PUBLIC_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          # Error reporting. Absent until the secret is added, and the app is
+          # built with reporting switched off rather than broken — see
+          # lib/errorReporting.ts.
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+          # The run number is already the versionCode and the release tag; this
+          # makes it the reporter's release identity too, so a crash can be
+          # traced to the build that introduced it.
+          VITE_BUILD_NUMBER: ${{ github.run_number }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
       - name: Setup Java
