@@ -11,6 +11,7 @@ import { hapticSuccess } from '../../lib/haptics';
 import { detectFuelHoldPlaceholder } from '../../lib/fuelHold';
 import { isFuelHoldResolved } from '../../lib/localNotificationMemory';
 import { useSpinHighlight } from '../../lib/hooks/useSpinHighlight';
+import { hasEverCaptured } from '../../lib/reviewQueue';
 
 interface AITransactionsEnteredCardProps {
   /**
@@ -67,6 +68,13 @@ interface AITransactionsEnteredCardProps {
   onAmountCorrected?: (tx: Transaction, amount: number) => Promise<void> | void;
   /** Every loaded transaction, for pairing a settled fuel charge with its hold. */
   allTransactions?: Transaction[];
+  /**
+   * Whether capture is switched on. An empty list means something different
+   * when it is off — nothing is coming, and saying "all caught up" to somebody
+   * whose bank alerts are not being read is the app agreeing that everything
+   * is fine while it does nothing at all.
+   */
+  captureEnabled?: boolean;
   /** Fold a settled fuel charge into the placeholder row it settles. */
   onSettleFuelHold?: (placeholder: Transaction, charge: Transaction) => Promise<void> | void;
 }
@@ -103,6 +111,7 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
   onAcceptMany,
   onAmountCorrected,
   allTransactions,
+  captureEnabled = true,
   onSettleFuelHold,
 }) => {
   const { classifyAll } = useVendorMatcher(vendorOverrides, partnerOverrides);
@@ -150,6 +159,14 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
   const nonRefunds = useMemo(
     () => aiTransactions.filter((tx) => !filedIds.has(tx.id)),
     [aiTransactions, filedIds],
+  );
+
+  // Whether capture has ever produced anything, which is what separates "you
+  // are up to date" from "this has never worked". Read from the whole ledger
+  // rather than from the waiting list, which is empty in both cases.
+  const everCaptured = useMemo(
+    () => hasEverCaptured(allTransactions || aiTransactions),
+    [allTransactions, aiTransactions],
   );
 
   // The light that says which rows the notification meant.
@@ -273,10 +290,30 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
             </button>
           )}
           {nonRefunds.length === 0 ? (
+            /* Three different empty lists, which used to be one.
+               ---------------------------------------------------------
+               "All caught up" is only true for somebody whose captures have
+               been arriving and who has dealt with them. Said to a new user it
+               is actively misleading: it reports success at the one moment
+               they most need to know that nothing has happened yet, and it was
+               said just as loudly when capture was switched off entirely.
+               So the message now depends on which of the three this is. */
             <EmptyState
               icon={<svg className="w-8 h-8 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
-              message="All caught up"
-              description="New transactions from your bank alerts will show up here."
+              message={
+                !captureEnabled
+                  ? 'Capture is off'
+                  : everCaptured
+                    ? 'All caught up'
+                    : 'Nothing caught yet'
+              }
+              description={
+                !captureEnabled
+                  ? 'Nothing will arrive here until you turn capture on in Settings.'
+                  : everCaptured
+                    ? 'New transactions from your bank alerts will show up here.'
+                    : "The next time your bank announces a purchase, Covault will read it and leave it here for you to check. Nothing counts against a vial until you accept it. Most banks announce a purchase within a minute or two — if a day goes by with nothing, it is usually the bank's own alerts that are switched off."
+              }
             />
           ) : (
             nonRefunds.map((tx) => {

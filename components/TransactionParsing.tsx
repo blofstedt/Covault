@@ -782,6 +782,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               highlightNonce={reviewHighlightNonce}
               aiTransactions={aiTransactions}
               budgets={budgets}
+              captureEnabled={enabled}
               onTransactionTap={onTransactionTap}
               onClear={(rows) => setClearTargets(rows)}
               onRefresh={handleRefresh}

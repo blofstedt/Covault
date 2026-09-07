@@ -16,6 +16,7 @@ import ImportTransactionsSection from './settings_modal_components/ImportTransac
 import SmartNotificationsSection from './settings_modal_components/SmartNotificationsSection';
 import OnDeviceAISection from './settings_modal_components/OnDeviceAISection';
 import ReportSection from './settings_modal_components/ReportSection';
+import AppTourSection from './settings_modal_components/AppTourSection';
 import { BudgetCategory, Transaction } from '../../types';
 import PremiumGate from '../PremiumGate';
 import { CloseButton } from '../shared';
@@ -71,6 +72,10 @@ export interface DashboardSettingsModalProps {
   onImportComplete?: () => void;
   /** Scroll straight to this section's container id when the modal opens. */
   scrollToSectionId?: string;
+  /** Reopen the walkthrough. Closes this modal on the way — the tour covers
+   *  the screen, and leaving settings open underneath it means coming back to
+   *  a modal the user has forgotten they opened. */
+  onReplayTour: () => void;
 }
 
 const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
@@ -96,6 +101,7 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
   onSubscribe,
   onImportComplete,
   scrollToSectionId,
+  onReplayTour,
 }) => {
   const settingsScrollRef = useRef<HTMLDivElement>(null);
   const [showFAQ, setShowFAQ] = useState(false);
@@ -143,6 +149,9 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           >
             Frequently Asked
           </button>
+
+          {/* The walkthrough, on demand */}
+          <AppTourSection onReplayTour={onReplayTour} />
 
           {/* Income */}
           <IncomeSection

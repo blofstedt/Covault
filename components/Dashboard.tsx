@@ -13,6 +13,9 @@ import TransactionParsing from './TransactionParsing';
 import TransactionActionModal from './TransactionActionModal';
 import TransactionForm from './TransactionForm';
 import PremiumGate from './PremiumGate';
+import GuidedTour from './tour/GuidedTour';
+import FirstCaptureModal from './FirstCaptureModal';
+import { hasSeenFirstCapture, markFirstCaptureSeen, shouldShowFirstCapture } from '../lib/firstCapture';
 import { useVendorOverrides } from './transaction_parsing/useVendorOverrides';
 import { refreshCommunityPack, setCommunityFlags, withdrawAllContributions } from '../lib/communityRules';
 
@@ -21,6 +24,7 @@ import DashboardBudgetSectionsList from './dashboard_components/DashboardBudgetS
 import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import DashboardSettingsModal from './dashboard_components/DashboardSettingsModal';
 import MonthViewBanner from './dashboard_components/MonthViewBanner';
+import EmptyMonthNote from './dashboard_components/EmptyMonthNote';
 import SearchResults from './dashboard_components/SearchResults';
 
 import useNormalizedTransactions from './dashboard_components/useNormalizedTransactions';
@@ -135,6 +139,10 @@ const Dashboard: React.FC<Props> = ({
   const [partnerLinkEmail, setPartnerLinkEmail] = useState('');
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [showTransactionForm, setShowTransactionForm] = useState(false);
+  /** The walkthrough, reopened from Settings. */
+  const [showTour, setShowTour] = useState(false);
+  /** The one-time note when the first captured purchase lands. */
+  const [showFirstCapture, setShowFirstCapture] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [remoteVendorHistory, setRemoteVendorHistory] = useState<VendorHistoryItem[]>([]);
@@ -523,6 +531,29 @@ const Dashboard: React.FC<Props> = ({
     [state.transactions],
   );
 
+  // The first capture, explained once.
+  //
+  // Evaluated from the badge count rather than from a capture event, because
+  // the alert usually arrives while the app is closed — there is no moment to
+  // observe, only a badge that is already at one when the user opens Covault.
+  // See lib/firstCapture.ts for why "exactly one" is the test.
+  //
+  // Marked as seen at the moment it is SHOWN, not when it is dismissed: an app
+  // killed while the note is on screen has still shown it, and re-showing it
+  // would be the app repeating itself about something that is no longer new.
+  useEffect(() => {
+    const userId = state.user?.id;
+    if (!userId || showFirstCapture) return;
+    const show = shouldShowFirstCapture({
+      userId,
+      waitingCount: aiTransactionsCount,
+      seen: hasSeenFirstCapture(userId),
+    });
+    if (!show) return;
+    markFirstCaptureSeen(userId);
+    setShowFirstCapture(true);
+  }, [state.user?.id, aiTransactionsCount, showFirstCapture]);
+
   // Single pass: the two filters below walked the whole list separately and
   // each called getLocalMonthKey (which allocates a Date) per transaction.
   const { pastTransactions, futureTransactions } = useMemo(() => {
@@ -841,6 +872,12 @@ const Dashboard: React.FC<Props> = ({
               />
             )}
 
+            {/* An empty current month explains itself rather than looking
+                broken. See EmptyMonthNote for why it is this narrow. */}
+            {isViewingCurrentMonth &&
+              state.settings.notificationsEnabled &&
+              viewMonthBudgetTransactions.length === 0 && <EmptyMonthNote />}
+
             {/* Budget bars: vertical list on mobile, 2-col grid on desktop */}
             <DashboardBudgetSectionsList
               budgets={state.budgets}
@@ -894,6 +931,11 @@ const Dashboard: React.FC<Props> = ({
             setSettingsTarget(undefined);
           }}
           scrollToSectionId={settingsTarget}
+          onReplayTour={() => {
+            setShowSettings(false);
+            setSettingsTarget(undefined);
+            setShowTour(true);
+          }}
           onUpdateSettings={handleUpdateSettings}
           onUpdateUserIncome={(income) => saveUserIncome(income)}
           onConnectPartner={() => onLinkPartner(partnerLinkEmail)}
@@ -937,6 +979,21 @@ const Dashboard: React.FC<Props> = ({
           userName={state.user?.name || ''}
           isSharedAccount={!state.user?.budgetingSolo}
           vendorHistory={vendorHistory}
+        />
+      )}
+
+      {/* The walkthrough, on its own full-screen layer. Rendered here rather
+          than inside the settings modal so it is not clipped by, or stacked
+          under, the modal that launched it. */}
+      {showTour && <GuidedTour onFinish={() => setShowTour(false)} />}
+
+      {showFirstCapture && (
+        <FirstCaptureModal
+          onShowMe={() => {
+            setShowFirstCapture(false);
+            setShowParsing(true);
+          }}
+          onDismiss={() => setShowFirstCapture(false)}
         />
       )}
     </>

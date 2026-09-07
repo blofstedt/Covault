@@ -139,8 +139,16 @@ describe('the setup steps themselves', () => {
   // replaces had gone stale the moment a step was added: the new step was not
   // checked for being skippable, which is the one property the intro must never
   // lose. A list that has to be remembered is a list that gets forgotten.
+  //
+  // TourStep is excluded because it is no longer a shelled step — it is a
+  // full-screen spotlight walkthrough, shown from Settings as well as from
+  // here, where a shell footer reading "you can change this in Settings" and
+  // an intro step counter would both be wrong. The property that matters, that
+  // it can be escaped, is checked below where it now lives.
   const stepComponents = readdirSync(resolve(root, 'components/onboarding'))
-    .filter((f) => f.endsWith('.tsx') && f !== 'OnboardingStepShell.tsx')
+    .filter(
+      (f) => f.endsWith('.tsx') && f !== 'OnboardingStepShell.tsx' && f !== 'TourStep.tsx',
+    )
     .map((f) => f.replace(/\.tsx$/, ''));
 
   it('finds every setup step on disk', () => {
@@ -160,6 +168,17 @@ describe('the setup steps themselves', () => {
     for (const step of stepComponents) {
       expect(read(`components/onboarding/${step}.tsx`), step).toContain('onSkip');
     }
+  });
+
+  it('the walkthrough is escapable too, by its own route out', () => {
+    // Same property as the test above, in the one place it is not enforced by
+    // the step shell. The tour is the last thing between a new user and their
+    // app: it must always be possible to leave it, from any step, and to
+    // finish it from the last one.
+    expect(read('components/onboarding/TourStep.tsx')).toContain('GuidedTour');
+    const tour = read('components/tour/GuidedTour.tsx');
+    expect(tour).toContain('Skip the tour');
+    expect(tour).toContain('onFinish');
   });
 
   it('every step in the path has a screen to render', () => {

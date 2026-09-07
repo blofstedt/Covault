@@ -38,6 +38,21 @@ export function countAwaitingReview(transactions: Transaction[]): number {
 }
 
 /**
+ * Whether capture has EVER produced a row for this vault.
+ *
+ * Deliberately not "is anything waiting". An empty Review page means two
+ * completely different things — "you are up to date" to somebody whose bank
+ * alerts have been landing for weeks, and "nothing has ever worked" to
+ * somebody who set this up an hour ago — and the page said the first to both
+ * of them. Filed, cleared and refunded captures all count here: the question
+ * is whether the machinery has ever run, not whether its output is still on
+ * screen.
+ */
+export function hasEverCaptured(transactions: Transaction[]): boolean {
+  return transactions.some((tx) => tx.label === 'Automatic');
+}
+
+/**
  * How far back the "Filed automatically" list looks.
  *
  * Long enough that a few days away from the app still shows what happened

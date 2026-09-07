@@ -113,7 +113,9 @@ const SETUP_STEP_NUMBERS: Partial<Record<OnboardingStepId, number>> = {
   limits: 2,
   capture: 3,
   sources: 4,
-  tour: 5,
+  // `tour` is deliberately absent. It is no longer a shelled step with dots —
+  // it is a full-screen walkthrough with its own progress — so counting it
+  // here would make every step before it say "of 5" and then stop at 4.
 };
 const SETUP_STEP_COUNT = Object.keys(SETUP_STEP_NUMBERS).length;
 
@@ -307,11 +309,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete, setup, onLinkPartne
 
     if (step === 'tour') {
       return (
-        <TourStep
-          stepNumber={numberOf('tour')}
-          stepCount={SETUP_STEP_COUNT}
-          onFinish={() => finish(solo, linkedEmail)}
-        />
+        <TourStep onFinish={() => finish(solo, linkedEmail)} />
       );
     }
   }
