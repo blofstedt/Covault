@@ -2534,8 +2534,17 @@ async function processNotificationWithAIImpl(
   // than a bank's fixed wording. A bank push that parses badly costs a row in
   // Review; an email that parses badly and files itself costs a wrong number on
   // the dashboard that nobody was shown. Email captures are always looked at.
+  //
+  // Nor can an amount that was quoted in another currency. "€9.90" is captured
+  // as the number 9.90 because that is what the bank printed and converting it
+  // would mean inventing a rate (see lib/foreignCurrency.ts) — so the one thing
+  // that must not happen is that figure landing on the dashboard as $9.90 with
+  // nobody ever having seen it. The row is written; it is always looked at.
+  const foreignCurrency = parsed.foreignCurrency || null;
+
   const autoAccepted = input.channel !== 'email'
-    && !fuelHold && !lowConfidenceExtraction && !softDupMatch && shouldAutoAccept({
+    && !fuelHold && !lowConfidenceExtraction && !softDupMatch && !foreignCurrency
+    && shouldAutoAccept({
     enabled: input.autoAcceptKnownVendors === true,
     confidence: overrideMatchConfidence,
     hasCategory: !!categoryId,

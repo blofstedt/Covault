@@ -234,4 +234,79 @@ describe('deviceTransactionParser', () => {
     expect(result.vendorDisplay).toBe('Public Mobile');
   });
 
+  // ── A refund said in a verb, or as "credit of" ───────────────────────────
+  //
+  // REFUND_PHRASES is matched as a plain substring, so 'reversal' never
+  // matched "was reversed" and 'credited' never matched "Credit of $5.99".
+  // Both were captured as ordinary spending, which costs double: the original
+  // charge stays in the month AND the money coming back is added to it, and
+  // the refund never cancels the charge it belongs to because
+  // lib/refundMatching.ts only ever looks at negative amounts.
+
+  it('reads "was reversed" as a refund, not a fresh purchase', () => {
+    const result = parseNotificationText('Your payment of $12.00 was reversed at SHELL');
+    expect(result.isRefund).toBe(true);
+    expect(result.amount).toBe(12.0);
+  });
+
+  it('reads "Credit of $X from VENDOR" as a refund', () => {
+    const result = parseNotificationText('Credit of $5.99 from Spotify');
+    expect(result.isRefund).toBe(true);
+    expect(result.amount).toBe(5.99);
+  });
+
+  it('still reads the noun forms it always did', () => {
+    expect(parseNotificationText('A refund of $5.99 from Spotify').isRefund).toBe(true);
+    expect(parseNotificationText('A reversal of $12.00 at SHELL').isRefund).toBe(true);
+    expect(
+      parseNotificationText('$12.00 was credited to your account from SHELL').isRefund,
+    ).toBe(true);
+  });
+
+  // The bare word 'credit' is deliberately NOT a refund phrase. It appears in
+  // the wording of perfectly ordinary purchases, and matching it there would
+  // turn real spending negative — worse than missing a refund, because the
+  // month would quietly read better than it is.
+  it('does not treat an ordinary credit-card purchase as a refund', () => {
+    const result = parseNotificationText(
+      'You spent $22.40 at LOBLAWS with your credit card. Available credit: $4,120.00',
+    );
+    expect(result.isRefund).toBeFalsy();
+    expect(result.amount).toBe(22.4);
+  });
+
+  // ── "Held $75.00" is a hold ──────────────────────────────────────────────
+  //
+  // Filed as a settled purchase, a hold becomes the first of two rows for one
+  // tank of gas: this one, and the real charge when it lands a day later.
+
+  it('treats the bare verb "held" as a pre-authorization', () => {
+    const result = parseNotificationText('Held $75.00 at Petro-Canada');
+    expect(result.isPreAuth).toBe(true);
+    expect(result.isOutgoing).toBe(false);
+  });
+
+  it('does not read "withheld" as a hold', () => {
+    // Substring matching is why 'held' could not simply be added to the
+    // phrase list: it also sits inside "withheld" and "upheld".
+    const result = parseNotificationText('You spent $40.00 at CRA. Tax withheld this period.');
+    expect(result.isPreAuth).toBeFalsy();
+    expect(result.isOutgoing).toBe(true);
+  });
+
+  // ── A price in another currency is captured, and flagged ─────────────────
+
+  it('captures a euro price but marks the currency it was quoted in', () => {
+    const result = parseNotificationText('You spent €9.90 at BOULANGERIE');
+    expect(result.isOutgoing).toBe(true);
+    // The number is what the bank printed. It is deliberately not converted.
+    expect(result.amount).toBe(9.9);
+    expect(result.foreignCurrency).toBe('€');
+  });
+
+  it('says nothing about currency for an ordinary dollar purchase', () => {
+    const result = parseNotificationText('You spent $9.90 at BOULANGERIE');
+    expect(result.foreignCurrency).toBeUndefined();
+  });
+
 });

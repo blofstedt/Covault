@@ -13,6 +13,7 @@ import {
   markSettlementOfferDismissed,
 } from '../../lib/localNotificationMemory';
 import { detectFuelHoldPlaceholder, stripFuelHoldMarker } from '../../lib/fuelHold';
+import { detectForeignCurrency } from '../../lib/foreignCurrency';
 import { stripCaptureBookkeeping } from '../../lib/captureChannel';
 import { findSettlementCandidate } from '../../lib/fuelHoldReconcile';
 import { FuelHoldPrompt, FuelSettlementOffer } from './FuelHoldPrompt';
@@ -170,6 +171,15 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
   // tell a placeholder from a real charge. `holdDismissed` covers what the row
   // cannot say for itself — that the user has already been asked and answered.
   const [holdDismissed, setHoldDismissed] = useState(() => isFuelHoldResolved(tx.id));
+  // Re-derived from the row's own alert text rather than stored on it, the same
+  // way the fuel-hold placeholder below is. The bank's words are already saved
+  // with every capture, so the badge costs nothing to keep and there is no
+  // second copy of the fact to fall out of step with the first.
+  const foreignCurrency = useMemo(
+    () => detectForeignCurrency(stripFuelHoldMarker(tx.raw_notification)),
+    [tx.raw_notification],
+  );
+
   const fuelHold = useMemo(
     () => (holdDismissed ? null : detectFuelHoldPlaceholder(tx)),
     [tx, holdDismissed],
@@ -540,6 +550,15 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
               {fuelHold && (
                 <p className="text-[11px] font-semibold tracking-wide text-amber-600 dark:text-amber-400 mt-0.5">
                   Placeholder
+                </p>
+              )}
+              {/* The figure above is the number the bank printed, not a
+                  conversion of it — so the row has to say which currency that
+                  number was in, right beside it. A capture like this is never
+                  filed automatically, so this is always seen. */}
+              {foreignCurrency && (
+                <p className="text-[11px] font-semibold tracking-wide text-amber-600 dark:text-amber-400 mt-0.5">
+                  Quoted in {foreignCurrency}
                 </p>
               )}
             </div>

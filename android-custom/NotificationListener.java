@@ -825,7 +825,7 @@ public class NotificationListener extends NotificationListenerService {
 
     // REFUND_PHRASES_BEGIN
     private static final String[] REFUND_PHRASES = {
-        "refund", "reversal", "credited", "cashback",
+        "refund", "reversal", "reversed", "credited", "credit of", "cashback",
     };
     // REFUND_PHRASES_END
 

@@ -1,4 +1,5 @@
 import { log } from './log';
+import { detectForeignCurrency } from './foreignCurrency';
 import { formatVendorName } from './formatVendorName';
 
 // STOP_PHRASES_BEGIN
@@ -11,9 +12,31 @@ const STOP_PHRASES = [
 ];
 // STOP_PHRASES_END
 
+/**
+ * Money coming BACK from a merchant.
+ *
+ * Getting one of these wrong costs double. A refund read as ordinary spending
+ * is added to the month while the original charge is still sitting in it, so a
+ * $12 reversal makes the month read $24 worse than it is — and the refund
+ * never cancels the charge it belongs to, because the matching in
+ * lib/refundMatching.ts only ever sees negative amounts.
+ *
+ * Every entry is matched as a plain substring, which is why the verb forms are
+ * listed separately from the nouns: 'reversal' does not match "was reversed",
+ * and 'credited' does not match "Credit of $5.99 from Spotify". Both of those
+ * were being booked as fresh purchases.
+ *
+ * 'credit of' rather than 'credit', deliberately. The bare word appears in
+ * "credit card purchase at ..." and in "available credit", where it means the
+ * opposite of a refund; matching it there would turn real spending negative,
+ * which is the one failure worse than missing a refund.
+ *
+ * Mirrored into REFUND_PHRASES in android-custom/NotificationListener.java,
+ * kept in step by quietNonSpendingAlerts.test.ts.
+ */
 // REFUND_PHRASES_BEGIN
 const REFUND_PHRASES = [
-  'refund', 'reversal', 'credited', 'cashback',
+  'refund', 'reversal', 'reversed', 'credited', 'credit of', 'cashback',
 ];
 // REFUND_PHRASES_END
 
@@ -47,6 +70,20 @@ const PRE_AUTH_PHRASES = [
   'authorization hold', 'pre-authorization', 'preauthorization',
   'temporary hold', 'hold placed', 'pending transaction',
   'authorization pending', 'pending charge', 'pending purchase',
+];
+
+/**
+ * Hold wording that cannot be matched as a substring.
+ *
+ * "Held $75.00 at Petro-Canada" was being filed as a settled $75 purchase,
+ * which is how one tank of gas becomes two rows: the hold is recorded as real,
+ * and the actual charge arrives a day later as a second one. Every other way a
+ * bank says this is already in the list above; the bare verb is not, and it
+ * cannot simply be added there — a substring 'held' also matches "withheld"
+ * and "upheld", which are not holds at all.
+ */
+const PRE_AUTH_PATTERNS = [
+  /\bheld\b/,
 ];
 
 const SETTLEMENT_PHRASES = [
@@ -212,6 +249,14 @@ export interface ParsedNotification {
   rejectionReason?: string;
   isRefund?: boolean;
   isPreAuth?: boolean;
+  /**
+   * The non-dollar currency this alert quoted, when it quoted one.
+   *
+   * The amount is still the number the bank printed — it is not converted, and
+   * see lib/foreignCurrency.ts for why. Its presence is what stops the capture
+   * being filed without the user seeing it.
+   */
+  foreignCurrency?: string;
   /** True when this is incoming money (e.g. Interac e-Transfer received) */
   isIncome?: boolean;
   /**
@@ -680,13 +725,18 @@ export function parseNotificationText(text: string): ParsedNotification {
   const hasWeakGo = WEAK_GO_PHRASES.some(p => tLower.includes(p));
   const hasGo = hasStrongGo || hasWeakGo;
   const hasRefund = REFUND_PHRASES.some(p => tLower.includes(p));
-  const hasPreAuth = PRE_AUTH_PHRASES.some(p => tLower.includes(p));
+  const hasPreAuth = PRE_AUTH_PHRASES.some(p => tLower.includes(p))
+    || PRE_AUTH_PATTERNS.some(p => p.test(tLower));
   const hasSettlement = SETTLEMENT_PHRASES.some(p => tLower.includes(p));
   const hasIncome = INCOME_PHRASES.some(p => tLower.includes(p));
   const hasFailedCharge = FAILED_CHARGE_PHRASES.some(p => tLower.includes(p));
   const hasBillNotice = BILL_NOTICE_PHRASES.some(p => tLower.includes(p));
   const amountCandidates = findAllAmounts(t);
   const hasDollarSign = /\$\d/.test(t);
+  // Read from the original text, not the lowercased copy: the symbols this
+  // looks for have no case, but the three-letter codes are matched
+  // case-insensitively anyway and the raw text is what the badge quotes back.
+  const foreignCurrency = detectForeignCurrency(t);
 
   // ── A bill, not a purchase ──
   // The reminder to pay one, or the confirmation that you did. Checked here,
@@ -874,6 +924,7 @@ export function parseNotificationText(text: string): ParsedNotification {
     vendorAliases: processorPrefixedNames(t, cleanedVendor),
     recurrence,
     isRefund: hasRefund,
+    ...(foreignCurrency ? { foreignCurrency } : {}),
     confidence,
     confidenceReasons,
   };
