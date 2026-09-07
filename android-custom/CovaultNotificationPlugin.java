@@ -9,6 +9,7 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.PowerManager;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.util.Log;
@@ -794,6 +795,133 @@ public class CovaultNotificationPlugin extends Plugin {
             CovaultWidgetProvider.updateAll(getContext());
         } catch (Exception e) {
             Log.w(TAG, "updateWidget failed", e);
+        }
+        call.resolve();
+    }
+
+    /**
+     * Whether Android is allowed to put Covault to sleep.
+     *
+     * The listener runs with the app closed, which is the whole point of it —
+     * and on a phone that has decided Covault is a battery drain, "closed"
+     * quietly becomes "stopped". Aggressive OEM power management is the most
+     * common reason capture works for two days and then silently does nothing,
+     * and it produces no error, no notification, and nothing in the app to see:
+     * purchases simply stop arriving.
+     *
+     * Unlike the restricted-settings unlock, this one CAN be read back, so the
+     * step that asks for it can be ticked off honestly rather than assumed.
+     *
+     * `canRequestDirectly` reports whether this build holds
+     * REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, which is what decides between the
+     * one-tap dialog and the device-wide list — and therefore which sentence
+     * the app shows on the way out. The permission is checked rather than
+     * assumed because it is the kind of line that gets removed from a manifest
+     * for a store submission, and the failure would otherwise be a dialog that
+     * never appears.
+     *
+     * `manufacturer` is passed back so the app can add the one extra place
+     * this particular skin hides its own kill switch. Covault does not try to
+     * open those screens: their intents are undocumented, vary by version, and
+     * throw when they are missing.
+     */
+    @PluginMethod
+    public void getBatteryOptimizationInfo(PluginCall call) {
+        boolean exempt = false;
+        boolean canRequestDirectly = false;
+
+        try {
+            PowerManager power = (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
+            if (power != null) {
+                exempt = power.isIgnoringBatteryOptimizations(getContext().getPackageName());
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "getBatteryOptimizationInfo: could not read the exemption", e);
+        }
+
+        try {
+            canRequestDirectly = getContext().checkSelfPermission(
+                android.Manifest.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+            ) == PackageManager.PERMISSION_GRANTED;
+        } catch (Exception e) {
+            Log.w(TAG, "getBatteryOptimizationInfo: could not read the permission", e);
+        }
+
+        JSObject ret = new JSObject();
+        ret.put("exempt", exempt);
+        ret.put("canRequestDirectly", canRequestDirectly);
+        ret.put("manufacturer", Build.MANUFACTURER == null ? "" : Build.MANUFACTURER);
+        Log.i(TAG, "getBatteryOptimizationInfo: exempt=" + exempt
+            + " canRequestDirectly=" + canRequestDirectly);
+        call.resolve(ret);
+    }
+
+    /**
+     * Ask Android to stop putting Covault to sleep.
+     *
+     * Three routes, best first, each falling through to the next so a skin that
+     * is missing one still leaves the user somewhere they can finish the job.
+     *
+     *   1. The system dialog: one tap on "Allow" and it is done. Only offered
+     *      where the permission is actually held — without it the action is
+     *      ignored, and an ignored intent looks exactly like a broken button.
+     *   2. The device-wide list, with the same extras used elsewhere in this
+     *      file to scroll to Covault's row and flash it. Honoured by some
+     *      builds only, which is why the hint still names what to look for.
+     *   3. App info, which every phone has, where battery sits one tap in.
+     *
+     * The hint is posted before any of them, for the reason showHint explains:
+     * queued afterwards it races the transition to Settings and can land
+     * behind it.
+     */
+    @PluginMethod
+    public void requestBatteryExemption(PluginCall call) {
+        showHint(call);
+        String pkg = getContext().getPackageName();
+
+        boolean canRequestDirectly = false;
+        try {
+            canRequestDirectly = getContext().checkSelfPermission(
+                android.Manifest.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+            ) == PackageManager.PERMISSION_GRANTED;
+        } catch (Exception e) {
+            Log.w(TAG, "requestBatteryExemption: could not read the permission", e);
+        }
+
+        if (canRequestDirectly) {
+            try {
+                Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                intent.setData(Uri.parse("package:" + pkg));
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(intent);
+                call.resolve();
+                return;
+            } catch (Exception e) {
+                Log.w(TAG, "requestBatteryExemption: the direct dialog was unavailable", e);
+            }
+        }
+
+        try {
+            Intent intent = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+            intent.putExtra(SETTINGS_FRAGMENT_ARG_KEY, pkg);
+            Bundle args = new Bundle();
+            args.putString(SETTINGS_FRAGMENT_ARG_KEY, pkg);
+            intent.putExtra(SETTINGS_SHOW_FRAGMENT_ARGS, args);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            call.resolve();
+            return;
+        } catch (Exception e) {
+            Log.w(TAG, "requestBatteryExemption: could not open the battery list", e);
+        }
+
+        try {
+            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            intent.setData(Uri.fromParts("package", pkg, null));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+        } catch (Exception e) {
+            Log.w(TAG, "requestBatteryExemption: could not open app info either", e);
         }
         call.resolve();
     }

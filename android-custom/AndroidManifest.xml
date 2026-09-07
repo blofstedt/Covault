@@ -42,6 +42,27 @@
     -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
+    <!--
+        Staying awake enough to hear a bank alert.
+
+        The listener runs with the app closed, and on a phone that has decided
+        Covault is a battery drain "closed" quietly becomes "stopped" — no
+        error, no notification, purchases simply stop arriving. This permission
+        does not grant the exemption; it only lets Covault show the one-tap
+        "Allow" dialog instead of dropping the user into a device-wide list of
+        every installed app to find its own row.
+
+        It is a normal permission with no prompt of its own, and the exemption
+        is still entirely the user's decision. Google restricts the DIALOG to
+        certain app categories for Play Store distribution; Covault is
+        installed from its own GitHub releases, the same footing as
+        QUERY_ALL_PACKAGES above. If it is ever published there, remove this
+        line and the flow falls back on its own to the settings list — that
+        route is already written and already tested, and the only thing lost is
+        a tap.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <!-- Storage permissions for CSV file downloads (only needed for Android 9 and below) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />

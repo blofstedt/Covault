@@ -1,6 +1,7 @@
 // lib/covaultNotification.ts
 import { log } from './log';
 import { Capacitor, registerPlugin } from '@capacitor/core';
+import { batteryHintFor, type BatteryOptimizationInfo } from './batteryOptimization';
 import { parseCaptureOutcomes, type CaptureOutcome } from './captureOutcome';
 import { getSelectedSources, hasChosenSources, setSelectedSources } from './captureSources';
 
@@ -205,6 +206,21 @@ export interface CovaultNotificationPlugin {
    * Prefer the `restrictedSettingsApply` helper below.
    */
   getRestrictedSettingsInfo(): Promise<{ applies: boolean; installer: string }>;
+
+  /**
+   * Whether Android is still allowed to put Covault to sleep, and which route
+   * exists for asking it not to.
+   *
+   * Prefer the `batteryOptimizationInfo` helper below.
+   */
+  getBatteryOptimizationInfo(): Promise<{
+    exempt: boolean;
+    canRequestDirectly: boolean;
+    manufacturer: string;
+  }>;
+
+  /** Opens the exemption dialog, or the battery list; `hint` shows as a Toast. */
+  requestBatteryExemption(options?: { hint?: string }): Promise<void>;
 
   /**
    * What happened to each of the last few bank alerts, as a JSON array string.
@@ -494,6 +510,57 @@ export async function openAppInfo(
     await plugin.openAppInfo({ hint });
   } catch (e) {
     log.warn('[covaultNotification] Could not open app info:', e);
+  }
+}
+
+/**
+ * What this phone is doing about putting Covault to sleep.
+ *
+ * The default when there is no answer says the phone is already leaving
+ * Covault alone. That is the opposite of the restricted-settings default above,
+ * and deliberately so: this one is read on every settings visit rather than
+ * inside a flow the user chose to start, so a build too old to answer would
+ * otherwise show a permanent warning about a setting it cannot see, with a
+ * button that does nothing. A missing answer is treated as nothing to say.
+ */
+export async function batteryOptimizationInfo(
+  plugin: CovaultNotificationPlugin | null = covaultNotification,
+): Promise<BatteryOptimizationInfo> {
+  const unknown: BatteryOptimizationInfo = {
+    exempt: true,
+    canRequestDirectly: false,
+    manufacturer: '',
+  };
+  if (!plugin) return unknown;
+  try {
+    const info = await plugin.getBatteryOptimizationInfo();
+    return {
+      exempt: info?.exempt === true,
+      canRequestDirectly: info?.canRequestDirectly === true,
+      manufacturer: typeof info?.manufacturer === 'string' ? info.manufacturer : '',
+    };
+  } catch (e) {
+    log.debug('[covaultNotification] getBatteryOptimizationInfo unavailable:', e);
+    return unknown;
+  }
+}
+
+/**
+ * Ask Android to stop sleeping Covault.
+ *
+ * The hint is chosen here rather than in the Java, from the same info the
+ * caller already has, because the two routes ask for two completely different
+ * things — one button to press, or a list of every installed app to search.
+ */
+export async function requestBatteryExemption(
+  plugin: CovaultNotificationPlugin | null = covaultNotification,
+  info: Pick<BatteryOptimizationInfo, 'canRequestDirectly'> = { canRequestDirectly: false },
+): Promise<void> {
+  if (!plugin) return;
+  try {
+    await plugin.requestBatteryExemption({ hint: batteryHintFor(info) });
+  } catch (e) {
+    log.warn('[covaultNotification] Could not open the battery exemption screen:', e);
   }
 }
 

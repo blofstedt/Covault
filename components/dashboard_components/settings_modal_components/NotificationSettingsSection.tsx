@@ -7,6 +7,7 @@ import CaptureSourcePicker from '../../ui/CaptureSourcePicker';
 import SectionHeader from '../../ui/SectionHeader';
 import ToggleSwitch from '../../ui/ToggleSwitch';
 import NotificationAccessGuide from '../../NotificationAccessGuide';
+import BatteryOptimizationCard from './BatteryOptimizationCard';
 import { clearSetupPending, markSetupPending } from '../../../lib/notificationAccessSetup';
 import { getBankingApps } from '../../../lib/bankingApps';
 import type { CovaultNotificationPlugin } from '../../../lib/covaultNotification';
@@ -378,6 +379,15 @@ const NotificationSettingsSection: React.FC<NotificationSettingsSectionProps> = 
           onGranted={handleGuideGranted}
           onComplete={handleGuideComplete}
         />
+      )}
+
+      {/* The same ask as the guide's last step, for capture that is already
+          running — including everybody who turned it on before that step
+          existed, and everybody who has reinstalled since, because the
+          exemption does not survive that. Hidden while the guide is open so
+          the one thing is never asked twice on one screen. */}
+      {!guideOpen && (
+        <BatteryOptimizationCard plugin={plugin} captureEnabled={enabled && permissionGranted} />
       )}
 
       {/* Auto-accept known vendors */}

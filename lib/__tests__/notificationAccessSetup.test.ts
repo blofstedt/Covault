@@ -24,6 +24,7 @@ import {
   hasAttemptedListener,
   markListenerAttempted,
   shouldEnableAfterGrant,
+  isSetupSettled,
   type AccessState,
   type SetupStepId,
 } from '../notificationAccessSetup';
@@ -47,6 +48,13 @@ function state(over: Partial<AccessState> = {}): AccessState {
     restrictedApplies: true,
     listenerAttempted: false,
     restrictedVisited: false,
+    // Exempt by default so the cases below describe the three permission
+    // screens and nothing else. It is also the app's own default when a phone
+    // cannot answer the question — see `batteryOptimizationInfo`, where a
+    // missing answer means "nothing to say" rather than a permanent warning
+    // about a setting the build cannot see.
+    batteryExempt: true,
+    batteryAsked: false,
     ...over,
   };
 }
@@ -250,5 +258,55 @@ describe('setup flags', () => {
     expect(hasAttemptedListener()).toBe(false);
     markListenerAttempted();
     expect(hasAttemptedListener()).toBe(true);
+  });
+});
+
+describe('the battery-optimization step', () => {
+  // The listener runs with the app closed, and a phone that has decided
+  // Covault is a battery drain simply stops it — no error, no notification,
+  // purchases stop arriving. It is the most likely reason capture works for
+  // two days and then does nothing, and it is invisible from inside the app.
+
+  it('is not mentioned at all when Android is already leaving Covault alone', () => {
+    expect(ids(state({ batteryExempt: true }))).not.toContain('battery');
+  });
+
+  it('comes last, after the permissions it exists to protect', () => {
+    const order = ids(state({ batteryExempt: false, listenerGranted: true, restrictedApplies: false }));
+    expect(order[order.length - 1]).toBe('battery');
+  });
+
+  it('waits until there is a listener worth protecting', () => {
+    // Asking a phone not to sleep a service that has not been granted yet is
+    // a step with nothing behind it.
+    expect(statusOf(state({ batteryExempt: false, listenerGranted: false }), 'battery')).toBe('waiting');
+  });
+
+  it('is the thing to do once access is granted', () => {
+    expect(statusOf(state({ batteryExempt: false, listenerGranted: true }), 'battery')).toBe('active');
+  });
+
+  it('stops asking once the user has been sent there, however they answered', () => {
+    // This one CAN be read back, so a user who went and deliberately left
+    // optimisation on has answered. Asking again every visit is how an app
+    // teaches people to ignore it.
+    expect(
+      statusOf(state({ batteryExempt: false, listenerGranted: true, batteryAsked: true }), 'battery'),
+    ).toBe('assumed');
+  });
+
+  it('never blocks setup from being complete', () => {
+    // Capture genuinely works without the exemption. Making it a condition
+    // would hold a new user at a screen they cannot finish if they decide
+    // against it, to protect them from a failure that may never come.
+    const s = state({ listenerGranted: true, canPostNotifications: true, batteryExempt: false });
+    expect(isSetupComplete(s)).toBe(true);
+  });
+
+  it('does keep the card open, so the step is not hidden behind a tick', () => {
+    const pending = state({ listenerGranted: true, canPostNotifications: true, batteryExempt: false });
+    expect(isSetupSettled(pending)).toBe(false);
+    expect(isSetupSettled({ ...pending, batteryExempt: true })).toBe(true);
+    expect(isSetupSettled({ ...pending, batteryAsked: true })).toBe(true);
   });
 });

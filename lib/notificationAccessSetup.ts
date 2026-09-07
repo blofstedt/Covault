@@ -34,7 +34,7 @@
  * step that completes by being attempted, and `confirm` is the one that
  * completes by the switch actually moving.
  */
-export type SetupStepId = 'listener' | 'restricted' | 'confirm' | 'post';
+export type SetupStepId = 'listener' | 'restricted' | 'confirm' | 'post' | 'battery';
 
 /**
  * `done` — verified just now against the OS.
@@ -70,6 +70,13 @@ export interface AccessState {
   listenerAttempted: boolean;
   /** The user has tapped through to the App info page at least once. */
   restrictedVisited: boolean;
+  /**
+   * Android is leaving Covault alone rather than sleeping it. Verified — this
+   * is the one of these the platform will actually report back.
+   */
+  batteryExempt: boolean;
+  /** The user has been sent to the battery screen at least once. */
+  batteryAsked: boolean;
 }
 
 /**
@@ -121,6 +128,25 @@ export function buildSetupSteps(state: AccessState): SetupStep[] {
     status: state.canPostNotifications ? 'done' : state.listenerGranted ? 'active' : 'waiting',
   });
 
+  // Last, and only while it is still worth saying.
+  //
+  // It is last because it protects something that has to exist first: there is
+  // no point asking a phone not to sleep a listener that has not been granted
+  // yet. It is dropped once the exemption is in place because, unlike every
+  // other step here, this one can be read back — a finished step that stays on
+  // the list is a list nobody finishes.
+  //
+  // `asked` resolves it to `assumed` rather than removing it. Somebody who was
+  // sent to that screen and chose to leave optimisation on has answered the
+  // question, and asking again on every visit is how an app teaches people to
+  // ignore it. The Settings card obeys the same rule.
+  if (!state.batteryExempt) {
+    steps.push({
+      id: 'battery',
+      status: state.batteryAsked ? 'assumed' : state.listenerGranted ? 'active' : 'waiting',
+    });
+  }
+
   return steps;
 }
 
@@ -134,6 +160,24 @@ export function buildSetupSteps(state: AccessState): SetupStep[] {
  */
 export function isSetupComplete(state: AccessState): boolean {
   return state.listenerGranted && state.canPostNotifications;
+}
+
+/**
+ * Whether the flow has nothing left to offer.
+ *
+ * Deliberately NOT the same question as `isSetupComplete`, which is what
+ * switches capture on and what the onboarding step waits for. Capture genuinely
+ * is set up without the battery exemption — it works today and may go on
+ * working for weeks — so making it a condition of "complete" would hold a new
+ * user at a screen they cannot finish if they decide against the exemption, to
+ * protect them from a failure that may never come.
+ *
+ * What it does control is whether the card collapses to its one-line finished
+ * state. A card that says "Capture is set up" while a step is still on the list
+ * would be hiding the step.
+ */
+export function isSetupSettled(state: AccessState): boolean {
+  return isSetupComplete(state) && (state.batteryExempt || state.batteryAsked);
 }
 
 /** Capture itself works — the part that survives without the extras. */

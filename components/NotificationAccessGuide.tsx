@@ -2,12 +2,20 @@
 import { log } from '../lib/log';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
+import {
+  BATTERY_STEP_COPY,
+  hasAskedBatteryExemption,
+  markBatteryExemptionAsked,
+  oemBatteryNote,
+} from '../lib/batteryOptimization';
 import type { CovaultNotificationPlugin } from '../lib/covaultNotification';
 import {
   canPostCaptureNotifications,
   openAppInfo,
   openNotificationSettings,
   restrictedSettingsApply,
+  batteryOptimizationInfo,
+  requestBatteryExemption,
 } from '../lib/covaultNotification';
 import { requestPostNotifications } from '../lib/appNotifications';
 import {
@@ -21,6 +29,7 @@ import {
   type SetupStep,
   type SetupStepId,
   type SetupStepStatus,
+  isSetupSettled,
 } from '../lib/notificationAccessSetup';
 
 interface NotificationAccessGuideProps {
@@ -75,6 +84,7 @@ const STEP_COPY: Record<
       'So a purchase caught while the app is closed tells you about itself, and the bank alert can be replaced rather than doubled.',
     action: 'Allow notifications',
   },
+  battery: BATTERY_STEP_COPY,
 };
 
 /**
@@ -97,6 +107,10 @@ const STEP_HINT: Record<SetupStepId, string> = {
   restricted: 'Tap the ⋮ at the top right → Allow restricted settings',
   confirm: 'This time the switch will move — turn it on.',
   post: 'Allow notifications so Covault can tell you what it caught.',
+  // Filled in at the call site: this step has two routes — a one-tap dialog or
+  // a list of every installed app — and they need different sentences. See
+  // `batteryHintFor` in lib/batteryOptimization.ts.
+  battery: '',
 };
 
 /**
@@ -242,7 +256,15 @@ const NotificationAccessGuide: React.FC<NotificationAccessGuideProps> = ({
     restrictedApplies: false,
     listenerAttempted: hasAttemptedListener(),
     restrictedVisited: hasVisitedRestrictedSettings(),
+    // Exempt until the phone says otherwise: a build too old to answer must
+    // not show a permanent warning about a setting it cannot see.
+    batteryExempt: true,
+    batteryAsked: hasAskedBatteryExemption(),
   });
+  // Which route the battery step will take, and whether this skin hides a
+  // second switch of its own. Read alongside the rest rather than at press
+  // time — the sentence shown on the way out depends on it.
+  const [batteryRoute, setBatteryRoute] = useState({ canRequestDirectly: false, manufacturer: '' });
   const [busy, setBusy] = useState<SetupStepId | null>(null);
   // Fired once. `onGranted` switches capture on, and re-firing it would undo a
   // user who has since turned capture off with the permission still granted.
@@ -252,17 +274,24 @@ const NotificationAccessGuide: React.FC<NotificationAccessGuideProps> = ({
   const refresh = useCallback(async () => {
     if (!plugin) return;
     try {
-      const [{ enabled: listenerGranted }, canPost, restrictedApplies] = await Promise.all([
+      const [{ enabled: listenerGranted }, canPost, restrictedApplies, battery] = await Promise.all([
         plugin.isEnabled(),
         canPostCaptureNotifications(plugin),
         restrictedSettingsApply(plugin),
+        batteryOptimizationInfo(plugin),
       ]);
+      setBatteryRoute({
+        canRequestDirectly: battery.canRequestDirectly,
+        manufacturer: battery.manufacturer,
+      });
       setState({
         listenerGranted,
         canPostNotifications: canPost,
         restrictedApplies,
         listenerAttempted: hasAttemptedListener(),
         restrictedVisited: hasVisitedRestrictedSettings(),
+        batteryExempt: battery.exempt,
+        batteryAsked: hasAskedBatteryExemption(),
       });
     } catch (e) {
       log.warn('[NotificationAccessGuide] refresh failed:', e);
@@ -325,6 +354,15 @@ const NotificationAccessGuide: React.FC<NotificationAccessGuideProps> = ({
               ? UNBLOCKED_LISTENER_HINT
               : STEP_HINT[id],
         });
+      } else if (id === 'battery') {
+        // Recorded before the trip, like every other step here: the WebView is
+        // routinely destroyed while the user is away in Settings, so anything
+        // written on the way back may never run. The exemption itself is read
+        // again on return, so a yes still ticks the step off properly — this
+        // flag only stops the app asking a second time after a no.
+        markBatteryExemptionAsked();
+        setState((s2) => ({ ...s2, batteryAsked: true }));
+        await requestBatteryExemption(plugin, batteryRoute);
       } else {
         // Two routes, because Android offers the prompt once ever: ask, and if
         // the answer is still no — already denied, or the channel rather than
@@ -344,12 +382,20 @@ const NotificationAccessGuide: React.FC<NotificationAccessGuideProps> = ({
   if (!isNative) return null;
 
   const steps = buildSetupSteps(state);
-  const complete = isSetupComplete(state);
+  // `isSetupSettled`, not `isSetupComplete`: capture is complete without the
+  // battery exemption, but collapsing to the one-line finished card while that
+  // step is still on the list would hide it. See notificationAccessSetup.ts.
+  const complete = isSetupSettled(state);
   // The unlock is the step in hand, which can only happen after the switch has
   // refused. Once it is behind the user the headline goes back to the ordinary
   // one — the flow has a next step again, and dwelling on the refusal reads as
   // if it were still the problem.
   const blocked = steps.some((step) => step.id === 'restricted' && step.status === 'active');
+  // Every permission is granted and the only thing outstanding is the phone's
+  // own power management. The headline says so rather than promising this step
+  // will make Covault able to notify you, which it already can.
+  const keepingItRunning =
+    isSetupComplete(state) && steps.some((step) => step.id === 'battery');
 
   if (complete) {
     return (
@@ -377,14 +423,18 @@ const NotificationAccessGuide: React.FC<NotificationAccessGuideProps> = ({
     >
       <span className="text-[11px] font-semibold text-amber-800 dark:text-amber-300">
         {state.listenerGranted
-          ? 'One thing left'
+          ? keepingItRunning
+            ? 'Keep it running'
+            : 'One thing left'
           : blocked
             ? BLOCKED_HEADLINE
             : 'Set up capture'}
       </span>
       <p className="mt-1 text-[10px] leading-relaxed text-amber-900/70 dark:text-amber-200/70">
         {state.listenerGranted
-          ? 'Capture is on. This last step is what lets Covault tell you about it.'
+          ? keepingItRunning
+            ? 'Capture is on and working. What is left is making sure Android does not quietly stop it.'
+            : 'Capture is on. This last step is what lets Covault tell you about it.'
           : blocked
             ? BLOCKED_BODY
             : 'Android asks for these one screen at a time. Each button opens exactly the right page — come back here after each one and it ticks itself off.'}
@@ -430,6 +480,16 @@ const NotificationAccessGuide: React.FC<NotificationAccessGuideProps> = ({
                       {copy.body}
                     </p>
                     {step.id === 'restricted' && <AppInfoSketch />}
+                    {/* The second place this particular skin hides the same
+                        switch. Words rather than a button: those screens are
+                        reached by undocumented intents that differ between
+                        versions and throw when absent, and a button that
+                        silently does nothing is worse than a sentence. */}
+                    {step.id === 'battery' && oemBatteryNote(batteryRoute.manufacturer) && (
+                      <p className="mt-1.5 text-[10px] leading-relaxed text-amber-900/70 dark:text-amber-200/70">
+                        {oemBatteryNote(batteryRoute.manufacturer)}
+                      </p>
+                    )}
                     <button
                       type="button"
                       onClick={() => runStep(step.id)}
@@ -459,6 +519,23 @@ const NotificationAccessGuide: React.FC<NotificationAccessGuideProps> = ({
                     }`}
                   >
                     Didn't get as far as the switch? Open it again
+                  </button>
+                )}
+
+                {/* Sent there, and Android is still sleeping the app — so
+                    either they said no, which is their decision, or they never
+                    reached the switch. The step stops asking either way; this
+                    is the way back for the second case. */}
+                {step.id === 'battery' && step.status === 'assumed' && (
+                  <button
+                    type="button"
+                    onClick={() => runStep(step.id)}
+                    disabled={busy !== null}
+                    className={`mt-1 text-[10px] font-medium text-amber-700/80 dark:text-amber-300/70 underline underline-offset-2 text-left ${CLOCK} ${
+                      busy !== null ? 'opacity-50' : 'active:scale-[0.97]'
+                    }`}
+                  >
+                    Android is still allowed to sleep Covault — open it again
                   </button>
                 )}
 

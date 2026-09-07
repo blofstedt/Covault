@@ -64,7 +64,7 @@ describe('the hint shown once the user is inside Settings', () => {
 
   it('never opens a page without saying why', () => {
     // openAppInfo and openAppNotificationSettings both leave the app too.
-    for (const method of ['openAppInfo', 'openAppNotificationSettings']) {
+    for (const method of ['openAppInfo', 'openAppNotificationSettings', 'requestBatteryExemption']) {
       const body = JAVA.slice(JAVA.indexOf(`public void ${method}(PluginCall call)`));
       expect(body.slice(0, 200)).toContain('showHint(call)');
     }
@@ -78,6 +78,11 @@ describe('a Play Store install', () => {
     restrictedApplies: false,
     listenerAttempted: true,
     restrictedVisited: false,
+    // Exempt, so this fixture describes the store install's permission steps
+    // and nothing else. The battery step has its own tests in
+    // notificationAccessSetup.test.ts.
+    batteryExempt: true,
+    batteryAsked: false,
   };
 
   it('is never sent after the restricted-settings unlock', () => {
