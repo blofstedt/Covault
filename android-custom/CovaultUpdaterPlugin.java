@@ -199,6 +199,14 @@ public class CovaultUpdaterPlugin extends Plugin {
         result.put("stagedWebVersion", prefs().getInt(KEY_WEB_VERSION, 0));
         result.put("runningWebVersion", runningWebVersion);
         result.put("nativeHash", nativeHash());
+        // Whether the Play Store put this APK here. If it did, the JS side
+        // must never fetch or install a GitHub-built APK over it: Play Store
+        // policy reserves executable-code updates for the Store itself, and
+        // even setting policy aside, a GitHub build isn't signed with the
+        // key Play App Signing re-signs a Store install with, so Android
+        // would simply refuse the install as a signature mismatch. The web
+        // bundle path is unaffected either way — it never touches the APK.
+        result.put("installedFromPlayStore", installedFromPlayStore());
         // Whether this build understands install({silent:true}) at all, and can
         // usefully be asked. False on an older plugin, where the flag would be
         // ignored and the ordinary installer screen opened instead — which is
@@ -836,6 +844,31 @@ public class CovaultUpdaterPlugin extends Plugin {
             return getContext().getPackageManager().canRequestPackageInstalls();
         } catch (Exception e) {
             Log.w(TAG, "Could not read install permission", e);
+            return false;
+        }
+    }
+
+    /**
+     * Whether the Play Store is the app on this phone that installed Covault.
+     *
+     * `getInstallerPackageName` is deprecated in favour of
+     * `getInstallSourceInfo` on API 30+, but it is not removed and still
+     * answers the same question on every API level this app supports — so
+     * one call covers all of them rather than branching on SDK_INT for a
+     * value that means the same thing either way.
+     *
+     * Defaults to false on any failure: the safe direction is "assume
+     * sideloaded", since that only means offering an update the phone would
+     * have gotten anyway, where the reverse — assuming Play Store on a
+     * sideloaded phone — means silently never offering one at all.
+     */
+    private boolean installedFromPlayStore() {
+        try {
+            String installer = getContext().getPackageManager()
+                .getInstallerPackageName(getContext().getPackageName());
+            return "com.android.vending".equals(installer);
+        } catch (Exception e) {
+            Log.w(TAG, "Could not read the installer package", e);
             return false;
         }
     }

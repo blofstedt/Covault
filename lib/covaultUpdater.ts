@@ -36,6 +36,17 @@ export interface UpdaterStatus {
    * actually doing.
    */
   quietInstallSupported?: boolean;
+  /**
+   * Whether the Play Store installed this copy of Covault.
+   *
+   * Absent on an older plugin, same reasoning as quietInstallSupported —
+   * and the caller must read "absent" the same way as "false": assume
+   * sideloaded, since fetching a GitHub-built APK on a phone that actually
+   * is Play-Store-installed would just fail as a signature mismatch, while
+   * the reverse (never offering a sideloaded phone its update) fails
+   * silently and is worse.
+   */
+  installedFromPlayStore?: boolean;
 }
 
 export interface CovaultUpdaterPlugin {

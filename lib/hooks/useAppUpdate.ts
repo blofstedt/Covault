@@ -349,10 +349,22 @@ export function useAppUpdate(): AppUpdate {
 
     const webUrl = selectWebBundle(next, status?.nativeHash ?? '');
     if (webUrl) {
-      // Web-only change: take it quietly and say nothing.
+      // Web-only change: take it quietly and say nothing. Applies the same
+      // way regardless of where this copy came from — it never touches the
+      // installed APK's identity, only the JS layer inside it.
       void stageWebUpdate(next.versionCode, webUrl);
       return;
     }
+
+    // A Play-Store-installed copy gets its APK updates from the Store, never
+    // from here: fetching and installing a GitHub-built APK over one would
+    // fail outright as a signature mismatch (Play App Signing re-signs the
+    // Store's copy with a key this build doesn't have), and even where it
+    // didn't fail, doing it ourselves is exactly what Play Store policy
+    // reserves for the Store itself. Nothing to do here but wait for the
+    // Store's own update, which the web-bundle path above still runs ahead
+    // of for anything JS-only.
+    if (status?.installedFromPlayStore) return;
 
     // Fetch it whether or not the pill is going to be shown. Waving the pill
     // away means "stop telling me", not "stay on the old build" — and the
