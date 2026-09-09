@@ -1,0 +1,197 @@
+name: Build Android App Bundle (Play Store)
+
+# Separate from build-android.yml on purpose. That workflow builds the
+# sideloaded APK the household actually runs, signed with the committed
+# debug key, published to GitHub Releases, and updated by the app's own
+# silent updater — none of that is safe to mix with a Play Store build,
+# which needs real release signing, WebView debugging off, and a .aab
+# instead of a .apk. Keeping them as separate files means this one simply
+# does not exist from main's point of view.
+on:
+  push:
+    branches:
+      - prod
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Type-check and run unit tests
+        run: |
+          npm run typecheck
+          npm run typecheck:unused
+          npm test
+
+      - name: Build web app
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_PUBLIC_SUPABASE_URL: ${{ secrets.VITE_PUBLIC_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+          VITE_BUILD_NUMBER: ${{ github.run_number }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      # NODE_ENV=production here, specifically on this command — not on the
+      # web build above. Capacitor's `cap sync` reads it fresh when it writes
+      # capacitor.config.json, independent of whatever `vite build` did in
+      # its own process, and capacitor.config.ts reads it to decide
+      # `android.webContentsDebuggingEnabled`. Leaving this unset here is
+      # exactly the mistake described in that file's comment: a Play Store
+      # build with chrome://inspect wide open on every installed copy.
+      - name: Setup Capacitor and Android
+        run: |
+          rm -rf android
+          npx cap add android
+          NODE_ENV=production npx cap sync android
+
+      - name: Sync custom Android files (icons, Java, manifest)
+        run: bash scripts/sync-android.sh
+
+      - name: Add biometric auth dependency to Android
+        run: |
+          cd android/app
+          sed -i '/dependencies {/a\    implementation "androidx.biometric:biometric:1.1.0"' build.gradle
+
+      # A versionCode Play Store has never seen before and never will again
+      # from the other pipeline: offset well clear of build-android.yml's
+      # own numbering (currently in the low thousands and climbing slowly)
+      # so the two can never collide even by accident, and so a versionCode
+      # this large is recognizable on sight as "the Play Store build", not
+      # the sideloaded one.
+      - name: Stamp the build number into the app bundle
+        run: |
+          VERSION_CODE=$((1000000 + ${{ github.run_number }}))
+          cd android/app
+          sed -i "s/versionCode .*/versionCode ${VERSION_CODE}/" build.gradle
+          sed -i "s/versionName \".*\"/versionName \"1.0.${{ github.run_number }}\"/" build.gradle
+          grep -E "versionCode|versionName" build.gradle
+          grep -q "versionCode ${VERSION_CODE}" build.gradle
+
+      # The upload key Play App Signing re-signs with the real app signing
+      # key it manages. Losing this is recoverable (Google has an official
+      # upload-key-reset process); leaking it is not something to shrug at,
+      # so it lives only as repository secrets, never in this file or in
+      # git history. This step fails loudly, on purpose, if those secrets
+      # are missing rather than silently falling back to an unsigned or
+      # debug-signed bundle — Play Console rejects an unsigned upload
+      # anyway, but failing here is a clearer message than a rejected
+      # upload three steps later.
+      - name: Configure release signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "One or more ANDROID_RELEASE_* secrets are not set."
+            echo "Add ANDROID_RELEASE_KEYSTORE_BASE64, ANDROID_RELEASE_KEYSTORE_PASSWORD,"
+            echo "ANDROID_RELEASE_KEY_ALIAS and ANDROID_RELEASE_KEY_PASSWORD under"
+            echo "Settings -> Secrets and variables -> Actions before this can build."
+            exit 1
+          fi
+
+          KEYSTORE="$RUNNER_TEMP/covault-release.keystore"
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$KEYSTORE"
+          echo "KEYSTORE_PATH=$KEYSTORE" >> $GITHUB_ENV
+
+          cat >> android/app/build.gradle <<GRADLE
+
+          // Appended by .github/workflows/build-android-release.yml.
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file("$KEYSTORE")
+                      storePassword "$KEYSTORE_PASSWORD"
+                      keyAlias "$KEY_ALIAS"
+                      keyPassword "$KEY_PASSWORD"
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                  }
+              }
+          }
+          GRADLE
+
+      - name: Build Android App Bundle (Release)
+        run: |
+          cd android
+          chmod +x ./gradlew
+          ./gradlew bundleRelease
+
+      # Confirms the bundle is actually signed with our key, not left
+      # unsigned or picked up some other default — the same category of
+      # "green build, wrong artifact" failure build-android.yml guards
+      # against for the APK, adapted for a .aab (a zip signed the jarsigner
+      # way, which apksigner does not speak but keytool -printcert does).
+      - name: Verify the bundle carries the release signature
+        run: |
+          AAB="android/app/build/outputs/bundle/release/app-release.aab"
+          EXPECTED="$(keytool -exportcert -keystore "$KEYSTORE_PATH" \
+            -alias "${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}" \
+            -storepass "${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}" 2>/dev/null \
+            | openssl dgst -sha256 | awk '{print $NF}')"
+          ACTUAL="$(keytool -printcert -jarfile "$AAB" 2>/dev/null \
+            | grep 'SHA256:' | awk '{print $NF}' | tr -d ':' | tr 'A-F' 'a-f')"
+
+          echo "expected $EXPECTED"
+          echo "actual   $ACTUAL"
+          if [ -z "$EXPECTED" ] || [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "This .aab is not signed with the release key. Play Console would"
+            echo "reject it (or worse, silently accept it under the wrong upload key)."
+            exit 1
+          fi
+          echo "Signature matches the release key."
+
+      - name: Rename bundle with timestamp
+        run: |
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          cp android/app/build/outputs/bundle/release/app-release.aab android/app/build/outputs/bundle/release/Covault-${TIMESTAMP}.aab
+          echo "AAB_NAME=Covault-${TIMESTAMP}.aab" >> $GITHUB_ENV
+
+      # Not auto-published anywhere — Play Console upload is a manual step
+      # (or a future addition using the Play Developer API, which needs its
+      # own service-account credentials this doesn't set up). Download this
+      # artifact and upload it by hand under Play Console -> Production (or
+      # whichever track) -> Create new release.
+      - name: Upload App Bundle as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.AAB_NAME }}
+          path: android/app/build/outputs/bundle/release/Covault-*.aab
+          retention-days: 14
+          compression-level: 0
