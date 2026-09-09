@@ -5,10 +5,11 @@ import FullScreenLoader from './components/FullScreenLoader';
 import './index.css';
 import { initErrorReporting } from './lib/errorReporting';
 
-// Only one of the three routes ever renders. The two static pages are lazy
-// so they stay out of the entry chunk that the app itself loads from.
+// Only one of the four routes ever renders. The static pages are lazy so
+// they stay out of the entry chunk that the app itself loads from.
 const PrivacyPolicy = lazy(() => import('./components/PrivacyPolicy'));
 const Terms = lazy(() => import('./components/Terms'));
+const DeleteAccountRequest = lazy(() => import('./components/DeleteAccountRequest'));
 
 // Before the first render, so an error thrown during mount is still reported.
 // Fire and forget: it loads the reporter in the background and a build with no
@@ -25,6 +26,7 @@ const getPageComponent = () => {
   const path = window.location.pathname;
   if (path === '/privacy') return <PrivacyPolicy />;
   if (path === '/terms') return <Terms />;
+  if (path === '/delete') return <DeleteAccountRequest />;
   return <App />;
 };
 
