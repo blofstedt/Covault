@@ -227,14 +227,35 @@ drift accumulated in the first place.
 
 ## 6. Subscriptions
 
-`lib/entitlement.ts` is the single source of truth: premium =
-`subscription_status === 'active'` OR now < `trial_ends_at`. 14-day trial,
-managed by the app, not by Google Play. `trial_consumed` means it never resets
-across logout, reinstall or device change.
+`lib/entitlement.ts`'s `getEntitlementStatus` is the single source of truth,
+read once in `App.tsx` and applied to the whole app — there is no per-feature
+gating (`PremiumGate`/`SubscribeModal` exist but are unused dead code left
+over from an earlier, abandoned per-feature design; do not wire them back up).
+Access is: `is_tester` OR `subscription_status === 'active'` OR now <
+`trial_ends_at`. Anything else is `SubscriptionRequired`, a full-screen lock —
+no dashboard, no data entry, nothing else reachable — with a "Sign out" escape
+hatch. $6.99/month, one-month trial, granted by `handle_new_user()` on signup
+and managed by the app, not by Google Play. `trial_consumed` means it never
+resets across logout, reinstall or device change.
 
-Google Play Billing is **not implemented** — no billing plugin is installed. The
-purchase flow, server-side receipt verification and RTDN handling are all still
-to be built.
+A third state, `'checking'`, exists deliberately: `useAuthState.ts`'s
+`mapUser()` sets `authState` to `'authenticated'` before the DB load that
+fills in `is_tester`/`subscription_status`/`trial_ends_at` has returned, so
+treating "not loaded yet" as "not entitled" would flash the lock screen at
+every sign-in. `getEntitlementStatus` reads all-three-fields-undefined as
+still loading and returns `'checking'`, which renders a plain loader instead.
+
+`is_tester` (`settings.is_tester`, added by
+`2026_09_trial_and_tester_flag.sql`) is a manual, permanent exemption with no
+admin UI — flipped by hand in the database for accounts that should never be
+asked to pay. Do not build a self-serve way to set it; it is deliberately a
+one-off DB write, not a feature.
+
+Google Play Billing is **not implemented** — no billing plugin is installed,
+`SubscriptionRequired`'s "Subscribe" button currently just says so rather than
+attempting a fake purchase. The purchase flow, server-side receipt
+verification and RTDN handling are all still to be built, and are blocked on
+Play Console: a real subscription product has to exist there first.
 
 ---
 

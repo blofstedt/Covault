@@ -5,6 +5,8 @@ import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
 import Onboarding from './components/Onboarding';
 import FullScreenLoader from './components/FullScreenLoader';
+import SubscriptionRequired from './components/SubscriptionRequired';
+import { getEntitlementStatus } from './lib/entitlement';
 import ErrorBoundary from './components/ErrorBoundary';
 import UpdateBanner from './components/UpdateBanner';
 import type { AppState, BudgetCategory, Transaction, Toast } from './types';
@@ -424,6 +426,13 @@ const App: React.FC = () => {
     await supabase.auth.signOut();
   }, []);
 
+  // No Play Billing purchase flow exists yet (see docs/ARCHITECTURE.md,
+  // section 6) — this is the honest placeholder until that's built, rather
+  // than a button that pretends to charge someone.
+  const handleSubscribe = useCallback(() => {
+    setToast({ tone: 'error', message: 'Subscriptions aren’t set up yet — check back soon.' });
+  }, [setToast]);
+
   const handleDeleteAccount = useCallback(async () => {
     const result = await callRpc<null>('delete_own_account', {});
     if (!result.ok) {
@@ -441,6 +450,8 @@ const App: React.FC = () => {
   if (authState === 'loading') {
     return <FullScreenLoader />;
   }
+
+  const entitlementStatus = getEntitlementStatus(appState.user);
 
   return (
     <ErrorBoundary>
@@ -506,7 +517,15 @@ const App: React.FC = () => {
           setup={onboardingSetup}
         />
       )}
-      {authState === 'authenticated' && (
+      {authState === 'authenticated' && entitlementStatus === 'checking' && <FullScreenLoader />}
+      {authState === 'authenticated' && entitlementStatus === 'locked' && (
+        <SubscriptionRequired
+          reason={appState.user?.subscription_status === 'expired' ? 'subscription_ended' : 'trial_ended'}
+          onSubscribe={handleSubscribe}
+          onSignOut={handleSignOut}
+        />
+      )}
+      {authState === 'authenticated' && entitlementStatus === 'active' && (
         <Dashboard
           state={appState}
           setState={setAppState}

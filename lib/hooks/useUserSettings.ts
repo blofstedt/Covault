@@ -237,9 +237,15 @@ export const useUserSettings = ({
           return;
         }
 
-        // No existing row \u2014 fall back to a full POST that includes all
-        // NOT NULL fields and an explicit subscription_status so the check
-        // constraint is satisfied.
+        // No existing row \u2014 fall back to a full POST. subscription_status
+        // is left unset deliberately: the column default is 'none' (see
+        // 2026_fix_subscription_status_default.sql), which now satisfies
+        // the check constraint on its own. An earlier version of this
+        // fallback set it to 'active' explicitly to work around that
+        // constraint before the default was fixed \u2014 which meant anyone
+        // whose very first settings write happened to hit this rare path
+        // (PATCH racing ahead of the signup trigger) was granted paid
+        // access by accident, permanently, with nothing to say so.
         if (!res.ok) {
           const body = await res.text();
           log.warn(`[saveUserIncome] PATCH failed (${res.status}): ${body.slice(0, 200)} \u2014 trying POST`);
@@ -257,7 +263,6 @@ export const useUserSettings = ({
               name: userName,
               email: userEmail,
               monthly_income: income,
-              subscription_status: 'active',
             }),
           },
         );

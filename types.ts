@@ -12,6 +12,8 @@ export interface User {
   trial_ends_at?: string | null;
   trial_consumed?: boolean;
   subscription_status?: 'none' | 'active' | 'expired';
+  /** Manually flipped in the database for accounts that never pay. */
+  is_tester?: boolean;
 }
 
 export interface BudgetCategory {

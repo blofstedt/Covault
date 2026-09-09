@@ -325,7 +325,7 @@ export const useDataLoading = ({
         // Same defensive shape as the user_uuid/user_id fallback below.
         const LATER_COLUMNS =
           'smart_notifications_enabled,auto_accept_known_vendors,haptics_enabled,' +
-          'community_rules_enabled,community_rules_contribute';
+          'community_rules_enabled,community_rules_contribute,is_tester';
         let res = await restFetch(
           `/settings?select=${BASE_COLUMNS},${LATER_COLUMNS}&user_id=eq.${userId}`,
           { cache: 'no-store' }, // Prevent caching to always get fresh data
@@ -367,6 +367,13 @@ export const useDataLoading = ({
           const trial_ends_at = rows[0].trial_ends_at || null;
           const trial_consumed = rows[0].trial_consumed ?? false;
           const subscription_status = rows[0].subscription_status || 'none';
+          // Falls back to `false`, not `undefined`, so a settings row loaded
+          // from a project where this column exists always resolves the
+          // entitlement check below rather than reading as still-loading.
+          // On a project where the migration hasn't run yet, LATER_COLUMNS
+          // as a whole drops out via the fallback select above and this
+          // stays `undefined` on purpose — see getEntitlementStatus.
+          const is_tester = rows[0].is_tester === undefined ? undefined : !!rows[0].is_tester;
 
           setAppState(prev => ({
             ...prev,
@@ -378,6 +385,7 @@ export const useDataLoading = ({
                   trial_ends_at,
                   trial_consumed,
                   subscription_status,
+                  ...(is_tester !== undefined ? { is_tester } : {}),
                   // Only use DB value if partner_id hasn't already set budgetingSolo=false
                   budgetingSolo: prev.user.budgetingSolo === false
                     ? false
