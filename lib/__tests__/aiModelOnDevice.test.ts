@@ -146,7 +146,10 @@ describe('the runtime', () => {
     await store.put(urls.mjs, { body: bytes(32), headers: [], at: Date.now() });
     const loaded = await loadStoredRuntime(store, PREFIX);
     expect(loaded?.wasmBinary.byteLength).toBe(64);
-    expect(loaded?.mjsUrl).toMatch(/^blob:/);
+    // No mjsUrl any more — the loader script is always fetched from its real
+    // CDN location, never re-served as a blob: URL. See loadStoredRuntime's
+    // own comment for why.
+    expect(loaded).not.toHaveProperty('mjsUrl');
   });
 
   it('asks for the file names the loader actually looks for', () => {

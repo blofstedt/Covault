@@ -120,16 +120,27 @@ function getGenerator(): Promise<Text2TextGenerationPipeline> {
       }
 
       // The runtime. The .wasm goes in as bytes, which the loader prefers over
-      // any path; the .mjs has to be a URL because it is imported as a module,
-      // so it is served from a blob over the stored copy. Only used when BOTH
-      // are present — see loadStoredRuntime.
+      // any path — that alone is the offline win, since it is the ~9MB half.
+      // wasmPaths stays pointed at the real CDN, on purpose, even when the
+      // .wasm bytes are already in hand.
+      //
+      // A stored .mjs used to be handed back as a blob: URL and put in
+      // wasmPaths.mjs instead, so the loader script itself would run from
+      // the blob too. That broke in production (Sentry: "Failed to
+      // construct 'URL': Invalid URL", thrown from inside the blob module,
+      // an unhandled rejection outside every try/catch here) — this build
+      // is the "jsep"/threaded variant, which spawns a Web Worker, and a
+      // worker spawned from a module loaded off a blob: URL has no real
+      // location to resolve its own sibling assets against. A script loaded
+      // from its real CDN URL doesn't have that problem, so the loader
+      // itself is left on the network path and only the big binary is
+      // served from what's on the phone.
       if (env.backends?.onnx?.wasm) {
         env.backends.onnx.wasm.wasmPaths = prefix;
         const stored = await loadStoredRuntime(modelStore, prefix);
         if (stored) {
           (env.backends.onnx.wasm as { wasmBinary?: ArrayBuffer }).wasmBinary = stored.wasmBinary;
-          env.backends.onnx.wasm.wasmPaths = { mjs: stored.mjsUrl };
-          log.debug('[aiExtractor] Using the AI runtime stored on this phone');
+          log.debug('[aiExtractor] Using the AI runtime\'s .wasm stored on this phone');
         }
       }
       return pipeline;

@@ -275,29 +275,36 @@ export async function storeRuntime(store: ModelFileStore, prefix: string): Promi
 }
 
 /**
- * The stored runtime, in the two forms the loader accepts.
+ * The stored .wasm, as raw bytes — the form the runtime prefers over any
+ * path, and the ~9MB half that made storing this worthwhile in the first
+ * place.
  *
- * The .wasm goes in as raw bytes (`wasmBinary`), which the runtime prefers
- * over any path. The .mjs has to be a URL because the loader imports it as a
- * module, so it is handed back as a blob URL over the stored bytes.
+ * The .mjs loader script is deliberately NOT handed back here any more. It
+ * used to be re-served as a blob: URL and set as wasmPaths.mjs, so the
+ * loader itself would run from the blob too — which broke in production
+ * (Sentry: "Failed to construct 'URL': Invalid URL", thrown from inside
+ * that blob module as an unhandled rejection). This build of the runtime
+ * spawns a Web Worker, and a worker spawned from a script with no real
+ * network location has nothing to resolve its own sibling assets against.
+ * The .mjs is left on its ordinary CDN URL by the caller instead — see
+ * aiExtractor.ts — which is a tiny, cheap fetch next to the .wasm.
  *
- * Returns null when either half is missing: half a stored runtime is not
- * usable offline, and mixing a stored .wasm with a fetched .mjs risks pairing
- * two different versions.
+ * Both halves are still checked before returning bytes: a stored .wasm
+ * with no matching stored .mjs record would mean a version mismatch is
+ * possible, even though the .mjs itself isn't used from here.
+ *
+ * Returns null when either half is missing, or the phone reported none of
+ * this ever having been stored.
  */
 export async function loadStoredRuntime(
   store: ModelFileStore,
   prefix: string,
-): Promise<{ wasmBinary: ArrayBuffer; mjsUrl: string } | null> {
+): Promise<{ wasmBinary: ArrayBuffer } | null> {
   try {
     const urls = runtimeUrls(prefix);
     const [wasm, mjs] = await Promise.all([store.get(urls.wasm), store.get(urls.mjs)]);
     if (!wasm || !mjs) return null;
-    if (typeof URL === 'undefined' || !URL.createObjectURL) return null;
-    const mjsUrl = URL.createObjectURL(
-      new Blob([mjs.body], { type: 'text/javascript' }),
-    );
-    return { wasmBinary: wasm.body, mjsUrl };
+    return { wasmBinary: wasm.body };
   } catch (e) {
     log.warn('[aiModel] Could not read the stored AI runtime:', e);
     return null;
