@@ -1,7 +1,7 @@
 // lib/hooks/useHouseholdLinking.ts
 import { log } from '../log';
 import { useCallback } from 'react';
-import { restFetch } from '../apiHelpers';
+import { restFetch, callRpc } from '../apiHelpers';
 import type { UseUserDataParams } from './types';
 
 /**
@@ -18,43 +18,10 @@ import type { UseUserDataParams } from './types';
  * would let any signed-in user read every account's name and email. The
  * handshake therefore lives in the database:
  * supabase/migrations/2026_08_01_sync_schema_to_app.sql.
+ *
+ * `callRpc` itself now lives in lib/apiHelpers.ts — account deletion needs the
+ * exact same PostgREST-error unwrapping this always did, for the same reason.
  */
-// A plain shape rather than a discriminated union: this project's tsconfig
-// doesn't enable `strict`, so narrowing on a `ok: true | false` discriminant
-// doesn't happen and every `result.message` read fails to compile.
-interface RpcResult<T> {
-  ok: boolean;
-  data?: T;
-  /** Present only when ok is false. */
-  message?: string;
-}
-
-async function callRpc<T>(fn: string, args: Record<string, unknown>): Promise<RpcResult<T>> {
-  try {
-    const res = await restFetch(`/rpc/${fn}`, {
-      method: 'POST',
-      body: JSON.stringify(args),
-    });
-    const body = await res.text();
-
-    if (!res.ok) {
-      // The functions RAISE EXCEPTION with messages written for the user
-      // ("Invalid or expired link code"), and PostgREST passes them through in
-      // `message`. Prefer that over anything invented here.
-      let message = '';
-      try {
-        message = (JSON.parse(body) as { message?: string })?.message || '';
-      } catch {
-        /* non-JSON error body */
-      }
-      return { ok: false, message: message || `Request failed (${res.status})` };
-    }
-
-    return { ok: true, data: (body ? JSON.parse(body) : null) as T };
-  } catch (err: any) {
-    return { ok: false, message: err?.message || 'Network error' };
-  }
-}
 
 /**
  * What the caller is told about a link attempt.

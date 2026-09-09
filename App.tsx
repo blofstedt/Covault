@@ -27,6 +27,8 @@ import { preloadAIModel } from './lib/aiExtractor';
 import { setHapticsEnabled } from './lib/haptics';
 import { log } from './lib/log';
 import { resolveToastMessage } from './lib/toastSubject';
+import { callRpc } from './lib/apiHelpers';
+import { deleteAccountErrorMessage } from './lib/accountDeletion';
 
 // `Toast` lives in types.ts because Dashboard and the Review page raise their
 // own (e.g. Undo after filing a captured transaction) and importing it from
@@ -422,6 +424,19 @@ const App: React.FC = () => {
     await supabase.auth.signOut();
   }, []);
 
+  const handleDeleteAccount = useCallback(async () => {
+    const result = await callRpc<null>('delete_own_account', {});
+    if (!result.ok) {
+      setToast({ tone: 'error', message: deleteAccountErrorMessage(result.message) });
+      return;
+    }
+    // The account and every row it owned are already gone at this point —
+    // delete_own_account() has committed. This just clears the client's own
+    // cached session, the same call handleSignOut makes, which is what sends
+    // the app back to the sign-in screen.
+    await supabase.auth.signOut();
+  }, [setToast]);
+
   // Render logic with extra safety
   if (authState === 'loading') {
     return <FullScreenLoader />;
@@ -496,6 +511,7 @@ const App: React.FC = () => {
           state={appState}
           setState={setAppState}
           onSignOut={handleSignOut}
+          onDeleteAccount={handleDeleteAccount}
           onAddTransaction={handleAddTransaction}
           onUpdateTransaction={handleUpdateTransaction}
           onDeleteTransaction={handleDeleteTransaction}

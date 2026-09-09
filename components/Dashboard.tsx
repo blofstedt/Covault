@@ -74,6 +74,7 @@ interface Props {
   onUpdateTransaction: (t: Transaction) => void | Promise<void>;
   onDeleteTransaction: (id: string) => void;
   onSignOut: () => Promise<void>;
+  onDeleteAccount: () => Promise<void>;
   saveBudgetLimit: (categoryId: string, newLimit: number) => Promise<void>;
   saveUserIncome: (income: number) => Promise<void>;
   saveTheme: (theme: 'light' | 'dark') => Promise<void>;
@@ -103,6 +104,7 @@ const Dashboard: React.FC<Props> = ({
   onUpdateTransaction,
   onDeleteTransaction,
   onSignOut,
+  onDeleteAccount,
   saveBudgetLimit,
   saveUserIncome,
   saveTheme,
@@ -942,6 +944,7 @@ const Dashboard: React.FC<Props> = ({
           onDisconnectPartner={onUnlinkPartner}
           onToggleLinkingPartner={setIsLinkingPartner}
           onSignOut={onSignOut}
+          onDeleteAccount={onDeleteAccount}
           onSaveBudgetLimit={saveBudgetLimit}
           saveBudgetVisibility={saveBudgetVisibility}
           hasPremium={true}

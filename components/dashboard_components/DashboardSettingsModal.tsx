@@ -7,6 +7,7 @@ import DiscretionaryShieldSection from './settings_modal_components/Discretionar
 import VaultSharingSection from './settings_modal_components/VaultSharingSection';
 import SupportFeedbackSection from './settings_modal_components/SupportFeedbackSection';
 import SignOutSection from './settings_modal_components/SignOutSection';
+import DeleteAccountSection from './settings_modal_components/DeleteAccountSection';
 import NotificationSettingsSection from './settings_modal_components/NotificationSettingsSection';
 import HomeScreenWidgetSection from './settings_modal_components/HomeScreenWidgetSection';
 import SharedRulesSection from './settings_modal_components/SharedRulesSection';
@@ -65,6 +66,7 @@ export interface DashboardSettingsModalProps {
   onDisconnectPartner: () => void;
   onToggleLinkingPartner: (value: boolean) => void;
   onSignOut: () => void;
+  onDeleteAccount: () => Promise<void>;
   onSaveBudgetLimit: (categoryId: string, newLimit: number) => void;
   saveBudgetVisibility: (categoryId: string, visible: boolean) => void;
   hasPremium: boolean;
@@ -95,6 +97,7 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
   onDisconnectPartner,
   onToggleLinkingPartner,
   onSignOut,
+  onDeleteAccount,
   onSaveBudgetLimit,
   saveBudgetVisibility,
   hasPremium,
@@ -268,10 +271,17 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           />
 
           {/* Support & Feedback — only feature requests are premium */}
-          <SupportFeedbackSection hasPremium={hasPremium} onSubscribe={onSubscribe} />
+          <SupportFeedbackSection
+            hasPremium={hasPremium}
+            onSubscribe={onSubscribe}
+            captureEnabled={!!settings.notificationsEnabled}
+          />
 
           {/* Sign out */}
           <SignOutSection onSignOut={onSignOut} />
+
+          {/* The one row below Sign Out with no undo. */}
+          <DeleteAccountSection onDeleteAccount={onDeleteAccount} />
 
           {/* Version */}
           <div className="text-center pt-4">
