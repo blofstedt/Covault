@@ -15,19 +15,6 @@ const Terms = lazy(() => import('./components/Terms'));
 // DSN does nothing at all here.
 initErrorReporting();
 
-// TEMPORARY — one-time verification that a real error actually reaches
-// Sentry through the deployed bundle, with the scrubbing rules in
-// lib/errorReporting.ts genuinely applied rather than inspected as source.
-// Fires only on ?sentry-test=1, waits for the dynamic Sentry import to
-// finish, then throws for real so Sentry's own global handler catches it —
-// not a call to reportError(), which would only prove our wrapper works.
-// Remove this block once confirmed. Safe: it is inert on every ordinary URL.
-if (typeof window !== 'undefined' && window.location.search.includes('sentry-test=1')) {
-  setTimeout(() => {
-    throw new Error('Covault Sentry verification test — safe to ignore, no user data');
-  }, 4000);
-}
-
 const rootElement = document.getElementById('root');
 if (!rootElement) {
   throw new Error("Could not find root element to mount to");
