@@ -532,6 +532,32 @@ public class CovaultNotificationPlugin extends Plugin {
     }
 
     /**
+     * Turn a posted capture notification into "Seen — already on your books,
+     * nothing needed", in place, rather than taking it down.
+     *
+     * The web pipeline's fallback for a subscription its native counterpart
+     * didn't recognise in advance (see NotificationListener.notifySeenRecurring
+     * for the common case, which needs no round trip to the app at all). By
+     * the time this is reached the ordinary "$X at Y — captured" notification
+     * is already up, so the id it was posted under is what has to be updated,
+     * not cancelled — cancelling here would go back to announcing nothing at
+     * all for a charge the user does need to know Covault saw.
+     */
+    @PluginMethod
+    public void acknowledgeCaptureNotification(PluginCall call) {
+        Integer id = call.getInt("id");
+        if (id == null) {
+            call.reject("Missing 'id'");
+            return;
+        }
+        Double amount = call.getDouble("amount");
+        String vendor = call.getString("vendor");
+        NotificationListener.acknowledgeCaptureNotification(getContext(), id, amount, vendor);
+        Log.i(TAG, "acknowledgeCaptureNotification: " + id);
+        call.resolve();
+    }
+
+    /**
      * Mirror the user's "not a transaction" rules into native storage.
      *
      * The rules live in the database and the web pipeline reads them from

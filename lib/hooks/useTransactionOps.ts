@@ -12,6 +12,7 @@ import { markReviewQueueStatus, upsertVendorMapEntry } from '../localNotificatio
 import { useToSupabaseTransaction, useFromSupabaseTransaction } from './transactionMappers';
 import { toLocalIsoDay } from '../dateUtils';
 import { getSourceTransactionIdFromProjectedId } from '../projectedTransactions';
+import { clearCaptureNotificationForRows } from '../covaultNotification';
 import {
   applyRecurringDeletePlan,
   planRecurringDelete,
@@ -383,6 +384,11 @@ export const useTransactionOps = ({
             restore();
             return null;
           }
+
+          // Whichever of the deleted rows still had their capture
+          // notification sitting in the tray — best-effort, and a no-op for
+          // every row that never carried the marker, which is most of them.
+          clearCaptureNotificationForRows(plan.remove);
         }
 
         // Everything before the cut keeps its money but stops recurring.

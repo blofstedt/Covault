@@ -45,6 +45,21 @@ import {
   withEmailPairedMarker,
 } from './captureChannel';
 import { detectFuelHold, isFuelMerchant, isHoldAmount, pastFillAmounts, withFuelHoldMarker } from './fuelHold';
+import { withCaptureNotificationMarker } from './captureNotificationMarker';
+import { mostFrequentCategory } from './categoryFrequency';
+
+/**
+ * Add the notif-id marker only when there is an id to add.
+ *
+ * Absent whenever the listener declined to post a notification at all — a
+ * skip rule, a known recurring charge, an APK built before the native side
+ * sent this — in which case there is nothing for a later "clear it" to find,
+ * and the row is left exactly as every insert before this feature wrote it.
+ */
+function withNotificationIdIfKnown(rawText: string, captureNotificationId: number | undefined): string {
+  if (captureNotificationId === undefined || !Number.isFinite(captureNotificationId)) return rawText;
+  return withCaptureNotificationMarker(rawText, captureNotificationId);
+}
 
 // ─── Constants ───────────────────────────────────────────────────
 
@@ -75,6 +90,18 @@ const MAX_VENDOR_RULES = 2000;
  * still in force.
  */
 const MAX_RECURRING_ROWS = 500;
+
+/**
+ * How far back the category-frequency lookup looks when a vendor matches more
+ * than one learned rule.
+ *
+ * Only ever queried on that rare path — most vendors match zero or one rule —
+ * so this can afford to be generous. Not filtered by vendor server-side (the
+ * matching is fuzzy, see `matchesCapturedVendor`), so this is the user's most
+ * recent transactions in the CONFLICTING CATEGORIES ONLY, which keeps the
+ * fetch small while still being enough rows to find this vendor's history in.
+ */
+const MAX_FREQUENCY_ROWS = 300;
 
 /**
  * Below this confidence, the regex parser is considered a guess and the
@@ -332,6 +359,20 @@ export interface NotificationInput {
    * is read at all, and a concatenated string cannot be split back apart.
    */
   notificationBody?: string;
+  /**
+   * Android id of the "$X at Y — captured" notification the native listener
+   * posted for this alert, if one was posted.
+   *
+   * Carried through to the insert in Step 6 and written onto the row as a
+   * marker (see lib/captureNotificationMarker.ts), so the notification can be
+   * found and cleared later — when the user accepts, edits, or deletes the
+   * row from inside the app — without anything having to remember it in the
+   * meantime. Absent when the listener declined to post at all (a skip rule,
+   * a known recurring charge) or on an APK built before the native side sent
+   * it, in which case the row simply carries no marker and there is nothing
+   * later to clear.
+   */
+  captureNotificationId?: number;
 }
 
 // ─── Step 1: Duplicate Detection Against Tables ─────────────────
@@ -2068,6 +2109,46 @@ async function processNotificationWithAIImpl(
           `[AI pipeline] ${vendor} matches ${distinctCategories.size} rules ` +
           `(${[...distinctCategories].join(', ')}) — routing to review instead of auto-filing`,
         );
+
+        // Still going to review either way — this only decides what the
+        // reviewer sees when they open it. `categoryId` is set to whichever
+        // of the conflicting categories this same vendor has actually been
+        // filed under most often, so the row reads as a real suggestion
+        // instead of defaulting to "Other". `overrideMatchConfidence` is
+        // deliberately left at 0: shouldAutoAccept requires both a category
+        // AND a confidence over the threshold, so setting a category here
+        // can never, by itself, let this row skip review — the one property
+        // the conflict check exists to guarantee.
+        const candidateNames = [...new Set(matching.map((row: any) => String(row.category_id || '')).filter(Boolean))];
+        try {
+          const { data: frequencyRows } = await supabase
+            .from('transactions')
+            .select('vendor, budget')
+            .eq('user_id', userId)
+            .in('budget', candidateNames)
+            .order('date', { ascending: false })
+            .limit(MAX_FREQUENCY_ROWS);
+          const sameVendorRows = (frequencyRows || []).filter((row: any) => matchesCapturedVendor(row.vendor));
+          const suggested = mostFrequentCategory(sameVendorRows, candidateNames);
+          if (suggested) {
+            const suggestedCat = availableCategories.find(
+              (c) => c.name.toLowerCase() === suggested.toLowerCase(),
+            );
+            if (suggestedCat) {
+              categoryId = suggestedCat.id;
+              categoryName = suggestedCat.name;
+              log.debug(
+                `[AI pipeline] Suggesting ${categoryName} for ${vendor} — the more common of the ` +
+                `${distinctCategories.size} rules in this household's own history, still routed to review`,
+              );
+            }
+          }
+        } catch (e) {
+          // A suggestion is a nicety on top of a decision (routing to
+          // review) that has already been made and does not depend on it —
+          // failing here must never fail the capture itself.
+          log.warn('[AI pipeline] Could not compute a category suggestion for the conflict:', e);
+        }
       }
     }
 
@@ -2577,18 +2658,23 @@ async function processNotificationWithAIImpl(
     // can show "what did the parser see?" — and the user can correct
     // the vendor from the source. Truncate to 4KB to avoid hitting
     // any text column limits.
-    // Both markers ride here. The fuel one records a substituted amount; the
-    // capture one records which route the alert arrived by, which is what lets
-    // a later email recognise this row as the bank's own report of the same
-    // purchase. Neither needs a migration, and the slice leaves room for them.
-    raw_notification: withCaptureMarker(
-      fuelHold
-        // Record the substitution in the row itself. This is what lets the UI
-        // recognise a placeholder later without a schema migration, and it
-        // keeps the bank's original wording alongside what we stored instead.
-        ? withFuelHoldMarker((input.rawNotification || '').slice(0, 3800), fuelHold)
-        : (input.rawNotification || '').slice(0, 3900),
-      { channel: input.channel ?? 'bank', packageName: input.bankAppId, notifiedAt: notifTimestamp },
+    // Three markers ride here now. The fuel one records a substituted amount;
+    // the capture one records which route the alert arrived by; the notif-id
+    // one records which Android notification announced this row, so it can be
+    // found and cleared once the user deals with the row in the app (see
+    // lib/captureNotificationMarker.ts). None needs a migration, and the
+    // slice leaves room for all three.
+    raw_notification: withNotificationIdIfKnown(
+      withCaptureMarker(
+        fuelHold
+          // Record the substitution in the row itself. This is what lets the UI
+          // recognise a placeholder later without a schema migration, and it
+          // keeps the bank's original wording alongside what we stored instead.
+          ? withFuelHoldMarker((input.rawNotification || '').slice(0, 3800), fuelHold)
+          : (input.rawNotification || '').slice(0, 3900),
+        { channel: input.channel ?? 'bank', packageName: input.bankAppId, notifiedAt: notifTimestamp },
+      ),
+      input.captureNotificationId,
     ),
     confidence: captureConfidence,
     // Only set when filing on arrival, so it never enters the review queue.

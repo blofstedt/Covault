@@ -25,6 +25,7 @@
 // unaffected. Both are stripped wherever the raw text is shown to the user.
 
 import type { CaptureSourceKind } from './captureSources';
+import { stripCaptureNotificationMarker } from './captureNotificationMarker';
 
 const MARKER_RE = /\n?<!--\s*covault:capture\s+channel=(bank|email)(?:\s+pkg=([A-Za-z0-9._-]+))?(?:\s+ts=(\d+))?\s*-->/;
 
@@ -139,7 +140,7 @@ export function stripEmailPairedMarker(rawText: string | null | undefined): stri
 
 /** Every piece of Covault bookkeeping removed, for showing the text to a user. */
 export function stripCaptureBookkeeping(rawText: string | null | undefined): string {
-  return stripEmailPairedMarker(stripCaptureMarker(rawText));
+  return stripCaptureNotificationMarker(stripEmailPairedMarker(stripCaptureMarker(rawText)));
 }
 
 // ── Two apps, one tap ────────────────────────────────────────────────────────

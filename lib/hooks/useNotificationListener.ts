@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import type { Transaction, User, BudgetCategory } from '../../types';
-import { covaultNotification, cancelCaptureNotification } from '../covaultNotification';
+import { covaultNotification, cancelCaptureNotification, acknowledgeCaptureNotification } from '../covaultNotification';
 import type { TransactionDetectedEvent } from '../covaultNotification';
 import { drainQueuedNotifications } from '../pendingCaptureQueue';
 import { processNotificationWithAI, buildInMemoryDedupKey } from '../notificationProcessor';
@@ -216,6 +216,11 @@ export const useNotificationListener = ({
                   // next capture without re-registering the native listener.
                   autoAcceptKnownVendors:
                     settingsRef.current?.auto_accept_known_vendors === true,
+                  // Written onto the row as a marker (see
+                  // lib/captureNotificationMarker.ts), so the notification can
+                  // be found and cleared later if the user deals with the row
+                  // from inside the app before ever seeing it in the tray.
+                  captureNotificationId: event.capture_notification_id,
                 }, availableCategories);
 
                 // Notify parsing UI about the result
@@ -226,21 +231,28 @@ export const useNotificationListener = ({
                 // the books (or already scheduled), so no row was created and
                 // nothing will appear in Review. The capture notification the
                 // native listener posted the instant the alert arrived is
-                // therefore announcing something that will never be there, and
-                // announcing money the user has already accounted for — so it
-                // comes back down.
+                // therefore announcing something that will never be there —
+                // but taking it down outright went back to announcing
+                // NOTHING for a charge Covault genuinely did see, which reads
+                // exactly like capture missing it. So it is replaced in place
+                // with a low-key "seen, nothing needed" notice instead of
+                // being withdrawn.
                 //
-                // The listener declines to post this one at all when it
-                // recognises the charge itself (see the recurring-charge list
-                // mirrored to native). This is the fallback for the cases it
-                // cannot: an unfamiliar wording of the merchant's name, or a
-                // phone still on an APK built before that list existed.
+                // The listener posts that notice itself, before this ever
+                // runs, when it recognises the charge in advance (see
+                // notifySeenRecurring, and the recurring-charge list mirrored
+                // to native). This is the fallback for the cases it cannot:
+                // an unfamiliar wording of the merchant's name, or a phone
+                // still on an APK built before that list existed.
                 if (result.skipReason === 'duplicate_recurring') {
                   log.debug(
-                    `[notification] Already a known recurring charge; withdrawing the capture notice: ` +
+                    `[notification] Already a known recurring charge; acknowledging rather than capturing: ` +
                     `${result.vendor} $${result.amount}`,
                   );
-                  void cancelCaptureNotification(event.capture_notification_id);
+                  void acknowledgeCaptureNotification(event.capture_notification_id, {
+                    amount: result.amount,
+                    vendor: result.vendor,
+                  });
                   return;
                 }
 

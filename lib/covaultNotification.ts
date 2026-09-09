@@ -4,6 +4,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 import { batteryHintFor, type BatteryOptimizationInfo } from './batteryOptimization';
 import { parseCaptureOutcomes, type CaptureOutcome } from './captureOutcome';
 import { getSelectedSources, hasChosenSources, setSelectedSources } from './captureSources';
+import { readCaptureNotificationMarker } from './captureNotificationMarker';
 
 export interface TransactionDetectedEvent {
   /**
@@ -169,6 +170,17 @@ export interface CovaultNotificationPlugin {
    * Prefer the `cancelCaptureNotification` helper below.
    */
   cancelCaptureNotification(options: { id: number }): Promise<void>;
+
+  /**
+   * Turn a posted capture notification into "Seen — already on your books,
+   * nothing needed", in place, rather than taking it down. Used when the
+   * pipeline concludes the alert was one already accounted for as a
+   * recurring charge — the fallback for a subscription the native listener's
+   * own (deliberately dumber) matcher didn't catch in advance.
+   *
+   * Prefer the `acknowledgeCaptureNotification` helper below.
+   */
+  acknowledgeCaptureNotification(options: { id: number; amount?: number; vendor?: string }): Promise<void>;
 
   /**
    * Mirror the user's "not a transaction" rules into native storage so the
@@ -359,6 +371,55 @@ export async function cancelCaptureNotification(
     await plugin.cancelCaptureNotification({ id });
   } catch (e) {
     log.debug('[covaultNotification] cancelCaptureNotification unavailable:', e);
+  }
+}
+
+/**
+ * Turn a posted capture notification into "Seen — already on your books,
+ * nothing needed", in place. Called instead of `cancelCaptureNotification`
+ * when the alert was a purchase Covault already knew about as a recurring
+ * charge — withdrawing the notification outright would go back to
+ * announcing nothing at all for it, which is indistinguishable from capture
+ * having missed it.
+ */
+export async function acknowledgeCaptureNotification(
+  id: number | null | undefined,
+  details: { amount?: number; vendor?: string } = {},
+  plugin: CovaultNotificationPlugin | null = covaultNotification,
+): Promise<void> {
+  if (!plugin) return;
+  if (typeof id !== 'number' || !Number.isFinite(id)) return;
+  try {
+    await plugin.acknowledgeCaptureNotification({ id, ...details });
+  } catch (e) {
+    log.debug('[covaultNotification] acknowledgeCaptureNotification unavailable:', e);
+  }
+}
+
+/**
+ * Take down the capture notifications for whichever of these rows still
+ * carry the marker, once the user has dealt with them from inside the app —
+ * accepted, filed, marked not a transaction, or deleted.
+ *
+ * Called from every place a captured row's fate is actually decided
+ * (lib/hooks/useTransactionOps.ts's delete, and the accept / mark-not-a-
+ * transaction handlers in components/TransactionParsing.tsx), so the tray
+ * stops claiming something needs a look the moment the app itself no longer
+ * thinks so — rather than leaving it to sit there until the user happens to
+ * open the notification and find nothing behind it.
+ *
+ * Best-effort and silent on every row that carries no marker, which is most
+ * rows most of the time: manual entries, imports, anything captured before
+ * this existed, and any capture whose notification was never posted in the
+ * first place (a skip rule, a known recurring charge).
+ */
+export function clearCaptureNotificationForRows(
+  rows: Array<{ raw_notification?: string | null }>,
+  plugin: CovaultNotificationPlugin | null = covaultNotification,
+): void {
+  for (const row of rows) {
+    const id = readCaptureNotificationMarker(row.raw_notification);
+    if (id !== null) void cancelCaptureNotification(id, plugin);
   }
 }
 

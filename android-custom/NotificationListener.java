@@ -1173,6 +1173,13 @@ public class NotificationListener extends NotificationListenerService {
         boolean knownRecurring = !ignoredByUser && matchesRecurringCharge(this, amount, fullText);
         if (knownRecurring) {
             Log.i(TAG, "Already a known recurring charge; capturing quietly: " + packageName);
+            // "Quietly" means no CAPTURE notification — see captureQuietly
+            // below — not no notification at all. Without this, a recognised
+            // subscription looked identical to one Covault never saw, which is
+            // the thing this exists to stop being confused with. See
+            // notifySeenRecurring for why it is deliberately not the same
+            // notification, and does not affect tray suppression.
+            notifySeenRecurring(amount, vendor);
         }
 
         // Wording the web parser rejects on sight — a crypto price alert, a
@@ -2397,6 +2404,81 @@ public class NotificationListener extends NotificationListenerService {
     }
 
     /**
+     * "Seen — you already have this one." Posted instead of the ordinary
+     * capture notification for a charge already on the books as recurring.
+     *
+     * Before this existed, a recognised subscription posted nothing at all —
+     * captureQuietly (see broadcastTransaction) is correct to hold notified
+     * false for it, because the bank's own alert has to stay in the shade
+     * with nothing suppressing it. But nothing meant nothing: the user saw no
+     * sign Covault had even read the alert, which is indistinguishable from
+     * capture being broken. This says the one true thing without implying the
+     * other two things a real capture notification would: it does NOT offer
+     * "tap to review" — there is nothing to review — and it must NOT be
+     * treated as `notified` for tray-suppression purposes, because the native
+     * matcher here is deliberately dumber than the web pipeline's (a plain
+     * substring check — see matchesRecurringCharge) and a false match must
+     * never cost the user their one remaining confirmation that the charge
+     * happened, which is the bank's own alert still sitting in the tray.
+     *
+     * Deliberately outside the recentCaptureNotifications dedup map a real
+     * capture uses: that map exists so two different purchases at the same
+     * price don't collide under one id, which matters when losing the second
+     * one loses a real expense. Losing a duplicate "seen" notice loses
+     * nothing — worst case is a second harmless notice for one subscription
+     * reported twice, by a bank app and a wallet within the same minute.
+     *
+     * The id is salted so the SAME subscription's monthly notice replaces
+     * last month's rather than piling up in the tray, while still keying
+     * separately from the real capture-notification id space above.
+     */
+    private void notifySeenRecurring(Double amount, String vendor) {
+        if (amount == null) return;
+        try {
+            android.app.NotificationManager nm =
+                (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (nm == null) return;
+            ensureCaptureChannel(nm);
+            if (!canPostCaptureNotifications(nm)) return;
+
+            boolean haveVendor = vendor != null && !vendor.isEmpty();
+            String merchant = haveVendor ? vendor : "a subscription";
+            int id = ("recurring-seen:" + captureDedupKey(amount, vendor, null)).hashCode();
+
+            Intent open = getPackageManager().getLaunchIntentForPackage(getPackageName());
+            android.app.PendingIntent contentIntent = null;
+            if (open != null) {
+                // Home, deliberately not ROUTE_REVIEW: there is nothing there
+                // for this alert to review.
+                open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                contentIntent = android.app.PendingIntent.getActivity(
+                    this, 0, open,
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE
+                );
+            }
+
+            int smallIcon = getResources().getIdentifier("ic_stat_dollar", "drawable", getPackageName());
+            if (smallIcon == 0) smallIcon = android.R.drawable.ic_menu_info_details;
+
+            androidx.core.app.NotificationCompat.Builder b =
+                new androidx.core.app.NotificationCompat.Builder(this, CAPTURE_CHANNEL_ID)
+                    .setSmallIcon(smallIcon)
+                    .setContentTitle(String.format(java.util.Locale.US, "$%.2f at %s", amount, merchant))
+                    .setContentText("Seen — already on your books, nothing needed")
+                    .setAutoCancel(true)
+                    // Silent on purpose: this confirms something the user
+                    // already expected, not a reason to pull their phone out.
+                    .setSilent(true)
+                    .setPriority(androidx.core.app.NotificationCompat.PRIORITY_LOW);
+            if (contentIntent != null) b.setContentIntent(contentIntent);
+
+            nm.notify(id, b.build());
+        } catch (Exception e) {
+            Log.w(TAG, "Could not post the already-recurring notice", e);
+        }
+    }
+
+    /**
      * Take a capture notification back down.
      *
      * The notification is posted from here, before anything has decided whether
@@ -2421,6 +2503,75 @@ public class NotificationListener extends NotificationListenerService {
         } catch (Exception e) {
             Log.w(TAG, "Could not cancel capture notification " + id, e);
         }
+        NotificationListener live = getInstance();
+        if (live == null) return;
+        try {
+            synchronized (live.recentCaptureNotifications) {
+                java.util.Iterator<java.util.Map.Entry<String, Long>> it =
+                    live.recentCaptureNotifications.entrySet().iterator();
+                while (it.hasNext()) {
+                    if (it.next().getKey().hashCode() == id) it.remove();
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Could not clear the dedup entry for " + id, e);
+        }
+    }
+
+    /**
+     * Turn a posted "$X at Y — captured" notification into "Seen — already on
+     * your books, nothing needed", in place.
+     *
+     * The fallback for the case notifySeenRecurring exists to cover in
+     * advance but sometimes cannot: an unfamiliar wording of the merchant's
+     * name, or a phone on an APK built before the recurring-charge list
+     * existed. By the time the web pipeline reaches this conclusion the
+     * ordinary capture notification is already up, so the fix is not to post
+     * a second one — it is to replace this one, using the SAME notification
+     * id the original was posted under, exactly as cancelCaptureNotification
+     * above does for a withdrawal. `nm.notify` with an id already in the
+     * shade replaces it rather than adding beside it.
+     *
+     * Deliberately reuses CAPTURE_CHANNEL_ID rather than posting a fresh,
+     * separate notification: the whole point is that the user's phone shows
+     * one thing for this alert, updated, not two.
+     */
+    static void acknowledgeCaptureNotification(Context context, int id, Double amount, String vendor) {
+        try {
+            android.app.NotificationManager nm = (android.app.NotificationManager)
+                context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm == null) return;
+            ensureCaptureChannel(nm);
+            if (!canPostCaptureNotifications(context, nm)) return;
+
+            boolean haveVendor = vendor != null && !vendor.isEmpty();
+            String merchant = haveVendor ? vendor : "a subscription";
+            String title = amount != null
+                ? String.format(java.util.Locale.US, "$%.2f at %s", amount, merchant)
+                : merchant;
+
+            androidx.core.app.NotificationCompat.Builder b =
+                new androidx.core.app.NotificationCompat.Builder(context, CAPTURE_CHANNEL_ID)
+                    .setSmallIcon(android.R.drawable.ic_menu_info_details)
+                    .setContentTitle(title)
+                    .setContentText("Seen — already on your books, nothing needed")
+                    .setAutoCancel(true)
+                    .setSilent(true)
+                    .setPriority(androidx.core.app.NotificationCompat.PRIORITY_LOW);
+
+            int smallIcon = context.getResources().getIdentifier(
+                "ic_stat_dollar", "drawable", context.getPackageName());
+            if (smallIcon != 0) b.setSmallIcon(smallIcon);
+
+            nm.notify(id, b.build());
+        } catch (Exception e) {
+            Log.w(TAG, "Could not update capture notification " + id, e);
+        }
+
+        // Same reasoning as cancelCaptureNotification: the dedup entry that
+        // made this id was for a real, since-superseded capture, and leaving
+        // it behind risks silencing the next genuine purchase at the same
+        // merchant for the same amount.
         NotificationListener live = getInstance();
         if (live == null) return;
         try {

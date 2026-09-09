@@ -2,6 +2,7 @@ import { log } from '../lib/log';
 import { useVendorMatcher } from '../lib/hooks/useVendorMatcher';
 import { stripCaptureBookkeeping } from '../lib/captureChannel';
 import { stripFuelHoldMarker } from '../lib/fuelHold';
+import { clearCaptureNotificationForRows } from '../lib/covaultNotification';
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import DashboardBottomBar from './dashboard_components/DashboardBottomBar';
 import { Transaction, BudgetCategory } from '../types';
@@ -279,6 +280,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   const handleMarkNotTransaction = useCallback(
     async (tx: Transaction, ruleType: NotATxRuleType) => {
       if (!userId) return;
+      clearCaptureNotificationForRows([tx]);
       // Covault's own bookkeeping is stripped before the text becomes a rule.
       // The markers exist only on stored rows; an incoming notification never
       // carries one, so a pattern that included them could never match anything
@@ -382,6 +384,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         }
       }
       await fileCaughtTransaction(tx.id);
+      clearCaptureNotificationForRows([tx]);
       onToast?.({
         message: `Filed ${tx.vendor}`,
         tone: 'info',
@@ -413,6 +416,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       } catch (err) {
         log.warn('[TransactionParsing] bulk accept failed:', err);
       }
+      clearCaptureNotificationForRows(txs);
       if (userId) await onReloadTransactions?.(userId);
       onToast?.({
         message: `Filed ${txs.length} transactions`,
@@ -639,6 +643,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       log.error('[TransactionParsing] Error clearing entered:', err);
       return;
     }
+    clearCaptureNotificationForRows(rows);
     onClearEntered?.();
     await onReloadTransactions?.(userId);
   }, [userId, onClearEntered, onReloadTransactions]);
