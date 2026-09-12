@@ -4,6 +4,7 @@ import { Transaction, BudgetCategory, Recurrence, TransactionLabel } from '../ty
 import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
 import { cleanVendorInput } from '../lib/formatVendorName';
 import { parseLocalDate } from '../lib/dateUtils';
+import { selectableBudgets } from '../lib/budgetVisibility';
 import { log } from '../lib/log';
 import CalendarPicker from './CalendarPicker';
 import { CloseButton } from './shared';
@@ -18,6 +19,12 @@ interface TransactionFormProps {
   onClose: () => void;
   onSave: (t: Transaction) => void;
   budgets: BudgetCategory[];
+  /**
+   * The categories the user has turned off in settings (the eye in Budget
+   * Limits). They are not offered as a vault here — only the categories the
+   * user actually uses are. See lib/budgetVisibility.ts.
+   */
+  hiddenCategories?: string[];
   userId: string;
   userName: string;
   initialTransaction?: Transaction;
@@ -60,6 +67,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   onClose,
   onSave,
   budgets,
+  hiddenCategories = [],
   userId,
   userName,
   initialTransaction,
@@ -190,6 +198,14 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const toggleCategory = (id: string) => {
     setSelectedId(prev => (prev === id ? null : id));
   };
+
+  // The vaults on offer: the categories the user has enabled, plus whichever
+  // one this entry is already filed under so the form opens showing where the
+  // money is. See lib/budgetVisibility.ts.
+  const vaults = useMemo(
+    () => selectableBudgets(budgets, hiddenCategories, [selectedId]),
+    [budgets, hiddenCategories, selectedId],
+  );
 
   const amount = parseFloat(amountStr) || 0;
 
@@ -421,45 +437,54 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
               onClick={hasVendor ? undefined : () => vendorInputRef.current?.focus()}
               className={`rounded-2xl ${attention('vault')}`}
             >
+            {/* Equal thirds, whatever the count.
+                //
+                // This was two hand-cut rows — the first three categories, then
+                // every one after that in a single row — with each tile sized
+                // `calc(25% - 5px)`. That only works for exactly seven
+                // categories, and only by accident: the second row came out
+                // edge-to-edge and the first floated inset, so the squares did
+                // not line up. Past seven the extra tiles were squeezed onto one
+                // line — the user with ten categories (the app ships ten, three
+                // of them off by default) got three big squares above a row of
+                // seven slivers pressed against the card's edges. A grid gives
+                // every tile the same footprint and wraps the last row on its
+                // own; three across keeps the names under the icons legible. */}
             <div
               id="tutorial-budget-grid"
               data-tour="form-budget"
-              className={`flex flex-col gap-1.5 transition-opacity duration-200 ${
+              className={`grid grid-cols-3 gap-1.5 transition-opacity duration-200 ${
                 hasVendor ? 'opacity-100' : 'opacity-40 pointer-events-none'
               }`}
             >
-              {[budgets.slice(0, 3), budgets.slice(3)].map((row, rowIdx) => (
-                <div key={rowIdx} className="flex justify-center gap-1.5">
-                  {row.map(b => {
-                    const isSelected = selectedId === b.id;
+              {vaults.map(b => {
+                const isSelected = selectedId === b.id;
 
-                    return (
-                      <button
-                        key={b.id}
-                        type="button"
-                        disabled={!hasVendor}
-                        onClick={() => toggleCategory(b.id)}
-                        className={`
-                          relative flex items-center justify-center p-2 rounded-2xl transition-all duration-200 border w-[calc(25%-5px)] aspect-square active:scale-[0.97]
-                          ${isSelected
-                            ? 'border-emerald-500/50 bg-emerald-50/60 dark:bg-emerald-900/20 shadow-lg shadow-emerald-500/10'
-                            : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-400'
-                          }
-                        `}
-                      >
-                        <div className="flex flex-col items-center justify-center">
-                          <div className={`flex items-center justify-center w-5 h-5 ${isSelected ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>
-                            {getBudgetIcon(b.name)}
-                          </div>
-                          <span className={`text-[9px] font-bold tracking-tight mt-1.5 leading-none text-center ${isSelected ? 'text-emerald-700 dark:text-emerald-300' : ''}`}>
-                            {b.name}
-                          </span>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              ))}
+                return (
+                  <button
+                    key={b.id}
+                    type="button"
+                    disabled={!hasVendor}
+                    onClick={() => toggleCategory(b.id)}
+                    className={`
+                      relative flex items-center justify-center p-2 rounded-2xl transition-all duration-200 border w-full aspect-square active:scale-[0.97]
+                      ${isSelected
+                        ? 'border-emerald-500/50 bg-emerald-50/60 dark:bg-emerald-900/20 shadow-lg shadow-emerald-500/10'
+                        : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-400'
+                      }
+                    `}
+                  >
+                    <div className="flex flex-col items-center justify-center">
+                      <div className={`flex items-center justify-center w-5 h-5 ${isSelected ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>
+                        {getBudgetIcon(b.name)}
+                      </div>
+                      <span className={`text-[9px] font-bold tracking-tight mt-1.5 leading-none text-center ${isSelected ? 'text-emerald-700 dark:text-emerald-300' : ''}`}>
+                        {b.name}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
             </div>
           </div>

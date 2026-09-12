@@ -6,6 +6,7 @@ import { toVendorKey } from '../../lib/deviceTransactionParser';
 import { formatCurrency } from '../../lib/formatCurrency';
 import { findStaleOtherRules, findChainMergeGroups, StaleOtherGroup, ChainMergeGroup } from '../../lib/ruleCleanup';
 import { BudgetCategory, Toast, Transaction } from '../../types';
+import { selectableBudgets } from '../../lib/budgetVisibility';
 
 // --- Static Definitions Moved Outside Component to Prevent Re-allocation ---
 const matchTypeStyles: Record<MatchType, string> = {
@@ -52,6 +53,13 @@ interface LearnedRulesCardProps {
   onRemoveRule?: (ruleId: string) => Promise<boolean>;
   categoryNameById?: Map<string, string>;
   budgets?: BudgetCategory[];
+  /**
+   * The categories the user has turned off in settings. The "Change Category"
+   * menu files a vendor into one, so it offers only the enabled ones — plus
+   * whichever category the rule already sits in, so the menu still shows where
+   * the rule currently points. See lib/budgetVisibility.ts.
+   */
+  hiddenCategories?: string[];
   allTransactions?: Transaction[];
   onDeleteVendorOverride: (overrideId: string) => void;
   onSetVendorCategory?: (vendorName: string, categoryId: string) => void;
@@ -77,6 +85,7 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
   onRemoveRule,
   categoryNameById = EMPTY_CATEGORY_NAMES,
   budgets = EMPTY_BUDGETS,
+  hiddenCategories = [],
   allTransactions = EMPTY_TRANSACTIONS,
   onDeleteVendorOverride,
   onSetVendorCategory,
@@ -494,7 +503,7 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                               Change Category
                             </button>
                             <div className="absolute bottom-full left-0 mb-1 hidden group-hover:grid grid-cols-2 gap-1 p-2 bg-white dark:bg-slate-800 rounded-xl border border-violet-200 dark:border-violet-800/40 shadow-lg z-20 min-w-[180px]">
-                              {budgets.map((b) => (
+                              {selectableBudgets(budgets, hiddenCategories, [rule.categoryId]).map((b) => (
                                 <button
                                   key={b.id}
                                   onClick={() => {

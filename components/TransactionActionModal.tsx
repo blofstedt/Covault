@@ -13,6 +13,8 @@ interface VendorHistoryItem {
 interface TransactionActionModalProps {
   transaction: Transaction;
   budgets: BudgetCategory[];
+  /** Categories the user has turned off — not offered as a vault. See lib/budgetVisibility.ts. */
+  hiddenCategories?: string[];
   currentUserName: string;
   isSharedAccount: boolean;
   vendorHistory?: VendorHistoryItem[];
@@ -25,6 +27,7 @@ interface TransactionActionModalProps {
 const TransactionActionModal: React.FC<TransactionActionModalProps> = ({
   transaction,
   budgets,
+  hiddenCategories = [],
   currentUserName,
   isSharedAccount,
   vendorHistory = [],
@@ -65,6 +68,7 @@ const TransactionActionModal: React.FC<TransactionActionModalProps> = ({
       onClose={onClose}
       onSave={(updatedTx) => onEdit(updatedTx)}
       budgets={budgets}
+      hiddenCategories={hiddenCategories}
       userId={transaction.user_id}
       userName={currentUserName}
       initialTransaction={transaction}
