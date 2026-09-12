@@ -120,6 +120,8 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | "I switched a category on and nothing files there" / "three new vials appeared" | `OPT_IN_CATEGORIES` in `constants.ts` → `ensureDefaultBudgets` in `lib/hooks/useDataLoading.ts`. A later addition is seeded hidden into an existing vault. See Invariants |
 | "the vials only show one line now" | `lib/vialDensity.ts` — past seven visible vials the collapsed row drops its "$288 left" line. Measured, not guessed. See Invariants |
 | "it keeps getting ONE merchant wrong" / "the picker offered me the same budget twice" | `lib/vendorRuleScope.ts` — a chain writes one rule per branch; this is what makes them read as one merchant. See Invariants |
+| "it filed as Other and now keeps filing as Other" | `lib/vendorOverrideWrite.ts` / `useVendorOverrides.ts` refuse to teach a rule for Other in the first place; `notificationProcessor.ts` step 5a-i-b ignores an existing Other rule when the rest of the merchant agrees on something real. See Invariants |
+| "it taught the same restaurant chain twice" / "I want one lesson to cover every branch" | `lib/chainVendorKeys.ts` — a short, hand-curated list of single-category chains get a `prefix` rule instead of a branch-specific `exact` one. See Invariants |
 | "the merchant name has a dot / a store number / a branch on it" | `stripVendorNoise` in `lib/deviceTransactionParser.ts` — the display name IS the merchant's identity, so every stray spelling costs a rule. See Invariants |
 | "it used a different shop's name / budget" / "a purchase went missing" | `fuzzyVendorMatch` in `lib/formatVendorName.ts` — the one "are these the same merchant?" answer, asked by the duplicate skip, the soft-dup warning, the local vendor memory and the recurring lookup. See Invariants |
 | "the review list / badge is wrong" | `lib/reviewQueue.ts` — the single definition of "waiting"; the list, badge and widget all read it |
@@ -566,6 +568,70 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   WHETHER to ask — the rule actually applied is still one whose slug matched,
   so a merchant whose rules agree behaves exactly as before.
   `vendorRuleScope.test.ts` pins it.
+
+- **"Other" is never taught as a rule, and an existing Other rule is never
+  trusted over a real one on the same merchant.** A household's own Costco,
+  Walmart, Wendy's, Starbucks, Safeway, No Frills and Superstore rules were
+  each split between a real category and Other — not because the household
+  disagreed with itself, but because one branch, or one review-tap, had
+  landed on Other while everything else agreed on something real. Other is
+  the app's own shrug, written back through the same "every categorisation
+  teaches a rule" mechanism as a real decision, and a stale shrug then went on
+  filing that one branch's charges under Other indefinitely, with nothing on
+  screen to say the rest of the merchant disagreed. Two halves fix it.
+  Nothing writes an Other rule any more — `persistVendorOverride` in
+  `lib/vendorOverrideWrite.ts` and `handleSetVendorCategory` in
+  `useVendorOverrides.ts` both refuse before the network call, though the
+  transaction itself is still filed as Other; only the "remember this" side
+  effect is skipped, and the review-row toast says "Filed as Other" rather
+  than "Learned", with an Undo that puts the row back in review rather than
+  one that would try to delete a rule that was never written. And the
+  pipeline's own conflict check (step 5a) computes `realCategories` by
+  filtering Other out of the merchant-wide category list BEFORE deciding
+  whether there is a disagreement, so an Other-only branch can no longer
+  outvote — or count as "disagreeing with" — a single real answer elsewhere
+  on the same merchant; when the narrow rule that matched THIS capture's own
+  slug turns out to be that stale Other row, the merchant's one real category
+  is used instead, at confidence 0 (the same treatment as a borrowed partner
+  rule), so it still lands in Review rather than auto-filing. Two or more
+  REAL categories are untouched by any of this and still route to review
+  exactly as before — this only ever resolves the case that has exactly one
+  honest answer. `otherRuleIsNotADecision.test.ts` pins all of it, including
+  an end-to-end pass through the real pipeline.
+
+- **A rule is taught for the CHAIN, not the branch, but only for chains named
+  in `lib/chainVendorKeys.ts` — and that list is short on purpose.** A
+  learned rule's `match_key` has to be what the bank literally sends, because
+  that is the string that recurs; a chain announces every location under its
+  own name, so a household that had corrected three Wendy's branches had
+  three separate rules, each teaching nothing about the other two. The fix is
+  not new matching logic — `match_type: 'prefix'` already exists and is
+  already understood everywhere the overrides table is read — it is choosing
+  to WRITE a `prefix` rule keyed to the chain's own name instead of the
+  branch-specific one, for chains on this list and nowhere else. The list is
+  restaurants, cafes, and a modest set of single-purpose retail, personal-care,
+  hotel and airline brands — picked by hand, not derived from a pattern — and
+  it deliberately EXCLUDES every grocery, pharmacy and big-box chain
+  (`CHAIN_NAME_WINS_RE`'s own members: Costco, Walmart, Loblaws, Sobeys,
+  Safeway, No Frills, Superstore, Metro, Shoppers Drug Mart, Canadian Tire,
+  Target, Whole Foods, Trader Joe's, Kroger, Publix, Aldi, Lidl, Wegmans,
+  IKEA), because those chains genuinely sell across categories at some
+  branches — Costco's gas bar is the proof: a household's own Costco rules
+  are a real, correct split between Groceries and Transport, and a blanket
+  "costco" rule would have silently forced the gas charge into whatever the
+  warehouse run was taught. A wrong guess in `merchantCategorySignals.ts`
+  costs one tap in Review; a wrong entry here can reach the auto-accept
+  threshold and file money without a human ever looking, so the bar for
+  belonging on this list is stricter: every branch must mean the same
+  spending, no exceptions. The PATCH that finds and updates an existing
+  `prefix` rule is additionally scoped to the SAME category, so a sibling
+  branch that genuinely disagrees creates a second rule instead of silently
+  overwriting the first — two rows sharing one `match_key` with different
+  categories is exactly the shape the read-side conflict check already knows
+  how to catch. An ordinary, non-chain vendor's `exact` rule is NOT scoped
+  this way, because correcting your own past categorisation of the same
+  vendor is supposed to update in place. `chainVendorKeys.test.ts` and
+  `vendorOverrideWrite.test.ts` pin both halves.
 
 - **The budget order comes from `lib/budgetOrder.ts`, not from the database.**
   `budgets` has no primary key and no sort column, and `loadUserBudgets` reads

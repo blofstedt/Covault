@@ -5,6 +5,7 @@ import { BudgetCategory } from '../../types';
 import { toVendorKey } from '../../lib/deviceTransactionParser';
 import { contributeRule, withdrawRule } from '../../lib/communityRules';
 import { onVendorOverrideWritten } from '../../lib/vendorOverrideWrite';
+import { chainAwareMatchKey } from '../../lib/chainVendorKeys';
 
 export type MatchType = 'exact' | 'prefix' | 'contains';
 
@@ -236,6 +237,16 @@ export function useVendorOverrides({ userId, partnerId, budgets }: UseVendorOver
       // DB expects the Budgets enum value (e.g. 'Groceries'), not the app-format id
       const dbCategoryId = categoryName;
 
+      // Other is the app's own shrug, not a decision the user made about this
+      // vendor — see the matching note in lib/vendorOverrideWrite.ts. The row
+      // is still filed as Other by the caller; only the "remember this" rule
+      // is skipped, so a stale placeholder can never outlive the purchase it
+      // was never really about.
+      if (categoryName.trim().toLowerCase() === 'other') {
+        log.debug(`[TransactionParsing] not teaching a rule for "${vendorName}" → Other`);
+        return;
+      }
+
       const vendorKey = toVendorKey(vendorName);
 
       // A rule is identified by vendor AND category, not vendor alone.
@@ -302,6 +313,11 @@ export function useVendorOverrides({ userId, partnerId, budgets }: UseVendorOver
             );
           }
         } else {
+          // Teach the CHAIN, not the branch, when this is a known chain with
+          // something appended after its name — see lib/chainVendorKeys.ts.
+          // Everything else keeps its own exact key, unchanged.
+          const { matchKey: effectiveMatchKey, matchType } = chainAwareMatchKey(vendorKey);
+
           const tempId = `temp-${crypto.randomUUID()}`;
           const newOverride: VendorOverride = {
             id: tempId,
@@ -314,7 +330,13 @@ export function useVendorOverrides({ userId, partnerId, budgets }: UseVendorOver
           const insertRes = await restFetch(`/overrides`, {
             method: 'POST',
             headers: { Prefer: 'return=representation' },
-            body: JSON.stringify({ user_id: userId, proper_name: vendorName, match_key: vendorKey, category_id: dbCategoryId }),
+            body: JSON.stringify({
+              user_id: userId,
+              proper_name: vendorName,
+              match_key: effectiveMatchKey,
+              match_type: matchType,
+              category_id: dbCategoryId,
+            }),
           });
 
           if (insertRes.ok) {

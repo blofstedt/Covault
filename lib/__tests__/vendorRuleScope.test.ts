@@ -120,7 +120,12 @@ describe('the capture pipeline uses the merchant scope', () => {
   it('decides the conflict on the merchant, not on the slug that matched', () => {
     expect(source).toContain('const merchantRules = merchantRuleScope(matching, allRows)');
     expect(source).toContain('const conflictingCategories = distinctCategories(merchantRules)');
-    expect(source).toContain('overrideRuleConflict = conflictingCategories.length > 1');
+    // Other is excluded before the conflict decision — see
+    // optInCategoryOtherRules.test.ts for why a branch taught Other must
+    // never outvote, or count as disagreeing with, a real answer elsewhere
+    // on the same merchant.
+    expect(source).toContain("realCategories = conflictingCategories.filter((c) => c !== 'other')");
+    expect(source).toContain('overrideRuleConflict = realCategories.length > 1');
   });
 
   it('still applies only a rule that actually matched this capture', () => {
@@ -132,8 +137,9 @@ describe('the capture pipeline uses the merchant scope', () => {
 
   it('offers every conflicting category as a suggestion candidate', () => {
     expect(source).toContain(
-      'const candidateNames = [...new Set(merchantRules.map',
+      'const candidateNames = [...new Set(',
     );
+    expect(source).toContain('merchantRules');
   });
 
   it("applies the same scope to the partner's rules", () => {

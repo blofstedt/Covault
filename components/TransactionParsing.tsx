@@ -504,6 +504,27 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     async (tx: Transaction, budgetId: string) => {
       const name = budgets.find((b) => b.id === budgetId)?.name;
 
+      // Other is never taught as a rule (see lib/vendorOverrideWrite.ts and
+      // useVendorOverrides' own guard) — it is the app's shrug, not something
+      // the user decided about this vendor. So it gets a different toast:
+      // no "Learned", and an Undo that puts the row BACK in review rather
+      // than one that tries to delete a rule that was never written — which
+      // would otherwise sit on the toast doing nothing when tapped.
+      if ((name || '').toLowerCase() === 'other') {
+        const previousBudget = budgetNameOf(tx);
+        await fileCaughtTransaction(tx.id, { budget: 'Other' });
+        onToast?.({
+          message: `Filed ${tx.vendor} as Other`,
+          tone: 'info',
+          subject: { transactionId: tx.id, vendor: tx.vendor },
+          action: {
+            label: 'Undo',
+            run: () => { void restoreCaughtTransactions([{ id: tx.id, budget: previousBudget }]); },
+          },
+        });
+        return;
+      }
+
       // Was this pairing already known? If so nothing is being learned, and
       // offering "Undo" would be a lie — it would delete a rule the user set
       // up earlier and had every reason to keep.
@@ -553,6 +574,8 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       existingRulesFor,
       onToast,
       onDeleteVendorOverride,
+      budgetNameOf,
+      restoreCaughtTransactions,
     ],
   );
 

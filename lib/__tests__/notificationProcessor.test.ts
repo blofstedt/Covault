@@ -1355,6 +1355,100 @@ describe('Rule lookup across a large rule set', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════
+// AN OTHER RULE IS NOT A REAL OPINION
+// ═══════════════════════════════════════════════════════════════════
+//
+// A real household's Wendy's rules: two branches taught Leisure, one branch
+// taught Other. This is the end-to-end version of otherRuleIsNotADecision.test.ts
+// — that file pins the source, this one drives an actual capture through the
+// pipeline and checks what gets inserted.
+
+describe('a branch taught Other does not outvote the rest of the chain', () => {
+  const WENDYS_CATEGORIES = [
+    { id: 'cat-leisure', name: 'Leisure' },
+    { id: 'cat-other', name: 'Other' },
+  ];
+
+  function alwaysChain(rows: any[]) {
+    const chain: any = {};
+    for (const m of [
+      'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'ilike', 'is', 'in', 'not',
+      'or', 'match', 'filter', 'order', 'limit', 'single', 'maybeSingle',
+    ]) {
+      chain[m] = vi.fn().mockReturnThis();
+    }
+    chain.then = (resolve: any) => resolve({ data: rows, error: null });
+    return chain;
+  }
+
+  function emptyChain() {
+    return alwaysChain([]);
+  }
+
+  const WENDYS_RULES = [
+    { category_id: 'Leisure', proper_name: "Wendy's", match_key: 'wendysolympic', match_type: 'exact', updated_at: new Date().toISOString() },
+    { category_id: 'Other', proper_name: "Wendy's", match_key: 'wendyscrowfoot', match_type: 'exact', updated_at: new Date().toISOString() },
+    { category_id: 'Leisure', proper_name: "Wendy's", match_key: 'wendyscochrane', match_type: 'exact', updated_at: new Date().toISOString() },
+  ];
+
+  it('files the Crowfoot branch as Leisure, not Other, and never at full confidence', async () => {
+    getChain('overrides').select = vi.fn(() => alwaysChain(WENDYS_RULES));
+    const txChain = getChain('transactions');
+    txChain.select = vi.fn(() => emptyChain());
+    txChain.insert = vi.fn().mockResolvedValue({ error: null });
+    getChain('pending_transactions').select = vi.fn(() => emptyChain());
+
+    const result = await processNotificationWithAI(
+      'user-1',
+      makeInput({
+        rawNotification: "WENDY'S CROWFOOT You spent $11.75 with your credit card.",
+        notificationTimestamp: Date.now(),
+      }),
+      WENDYS_CATEGORIES,
+    );
+
+    expect(result.categoryName).toBe('Leisure');
+    const row = txChain.insert.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+    expect(row?.budget).toBe('Leisure');
+    // Never full confidence: this came from a sibling branch's rule, not the
+    // one that matched THIS capture's own slug, so it must still land in
+    // Review rather than auto-file.
+    expect((row?.confidence as number) ?? 0).toBeLessThan(1);
+  });
+
+  it('still routes to review when two REAL categories genuinely disagree', async () => {
+    const costcoCategories = [
+      { id: 'cat-groceries', name: 'Groceries' },
+      { id: 'cat-transport', name: 'Transport' },
+    ];
+    const costcoRules = [
+      { category_id: 'Groceries', proper_name: 'Costco', match_key: 'costcowholesale', match_type: 'exact', updated_at: new Date().toISOString() },
+      { category_id: 'Transport', proper_name: 'Costco', match_key: 'costcogas', match_type: 'exact', updated_at: new Date().toISOString() },
+    ];
+    getChain('overrides').select = vi.fn(() => alwaysChain(costcoRules));
+    const txChain = getChain('transactions');
+    txChain.select = vi.fn(() => emptyChain());
+    txChain.insert = vi.fn().mockResolvedValue({ error: null });
+    getChain('pending_transactions').select = vi.fn(() => emptyChain());
+
+    const result = await processNotificationWithAI(
+      'user-1',
+      makeInput({
+        rawNotification: 'Purchase of $65.20 at COSTCO GAS #123',
+        notificationTimestamp: Date.now(),
+      }),
+      costcoCategories,
+    );
+
+    // A genuine two-real-category conflict is unaffected by the Other fix —
+    // it still asks, exactly as vendorRuleScope.test.ts already pins.
+    const row = txChain.insert.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+    expect((row?.confidence as number) ?? 0).toBeLessThan(1);
+    expect(result.categoryName).not.toBeNull();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
 // A SUBSCRIPTION ALREADY ON THE BOOKS IS NOT CAPTURED AGAIN
 // ═══════════════════════════════════════════════════════════════════
 //

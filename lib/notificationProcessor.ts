@@ -2032,6 +2032,13 @@ async function processNotificationWithAIImpl(
   // categories. The capture must then go to review for the user to pick, and
   // must never be auto-accepted. See the note in step 5a.
   let overrideRuleConflict = false;
+  // The merchant's real (non-Other) categories, widened across every branch —
+  // set inside the match_key lookup below, read afterward to decide whether a
+  // narrow match that happened to be an Other rule should be overridden by the
+  // one real answer the rest of the merchant agrees on. See the note beside
+  // `realCategories` in step 5a: an Other rule is not a second opinion, it is
+  // the absence of one.
+  let realCategories: string[] = [];
 
   // 5a: Check server-side overrides table.
   // Schema: overrides(id, user_id, proper_name, match_key, match_type, category_id, updated_at).
@@ -2123,17 +2130,29 @@ async function processNotificationWithAIImpl(
       // in conflict with itself: one branch's stale rule filed silently while
       // every other branch of the same restaurant said something else.
       const merchantRules = merchantRuleScope(matching, allRows);
+      // "Other" is not a second opinion — it is the app's own shrug, written
+      // back as though it were one. A branch taught Other because nobody ever
+      // told it anything else must not outvote every other branch of the same
+      // chain that DID get a real answer, and it must not count as the
+      // "disagreement" that sends the capture to review either: there is
+      // nothing to disagree about when only one of the two sides is a real
+      // decision. So the conflict check — and the category actually used —
+      // are both computed on the REAL categories only. `distinctCategories`
+      // already lowercases, so the comparison is exact.
       const conflictingCategories = distinctCategories(merchantRules);
-      overrideRuleConflict = conflictingCategories.length > 1;
+      realCategories = conflictingCategories.filter((c) => c !== 'other');
+      overrideRuleConflict = realCategories.length > 1;
       // Still chosen from the rules that actually matched this capture's slug:
       // widening above decides only WHETHER to ask, never which rule applies
-      // when there is nothing to ask about.
+      // when there is nothing to ask about. If that narrow match turns out to
+      // be an Other rule, the check just below this block replaces it with
+      // the merchant's one real category, when there is exactly one.
       overrideRows = overrideRuleConflict ? [] : matching.slice(0, 1);
 
       if (overrideRuleConflict) {
         log.debug(
-          `[AI pipeline] ${vendor} matches ${conflictingCategories.length} rules ` +
-          `(${conflictingCategories.join(', ')}) — routing to review instead of auto-filing`,
+          `[AI pipeline] ${vendor} matches ${realCategories.length} real rules ` +
+          `(${realCategories.join(', ')}) — routing to review instead of auto-filing`,
         );
 
         // Still going to review either way — this only decides what the
@@ -2145,7 +2164,16 @@ async function processNotificationWithAIImpl(
         // AND a confidence over the threshold, so setting a category here
         // can never, by itself, let this row skip review — the one property
         // the conflict check exists to guarantee.
-        const candidateNames = [...new Set(merchantRules.map((row: any) => String(row.category_id || '')).filter(Boolean))];
+        //
+        // Other is excluded from the candidates here too — it is never one of
+        // the "conflicting" answers any more (see realCategories above), and
+        // suggesting it back as the frequency winner would undo the point of
+        // this whole change.
+        const candidateNames = [...new Set(
+          merchantRules
+            .map((row: any) => String(row.category_id || ''))
+            .filter((name) => name && name.toLowerCase() !== 'other'),
+        )];
         try {
           const { data: frequencyRows } = await supabase
             .from('transactions')
@@ -2224,6 +2252,46 @@ async function processNotificationWithAIImpl(
           ? 1
           : scoreVendorMatch(matchedKey, (row.match_key || '').toLowerCase(), row.match_type || 'exact');
         log.debug(`[AI pipeline] overrides match: ${vendor} → ${categoryName} (match_type=${row.match_type || 'exact'}, confidence=${overrideMatchConfidence.toFixed(2)})`);
+      }
+    }
+
+    // ── 5a-i-b: an Other answer is not a real answer ──
+    //
+    // The row just resolved above matched on THIS capture's own slug — which,
+    // for a chain, can be the one branch that was taught Other while every
+    // other branch of the same merchant was taught something real. That
+    // branch's rule is not wrong to have matched; it is just not worth
+    // trusting, for the same reason `realCategories` excludes Other from the
+    // conflict count above: Other is what the app writes when nobody has
+    // decided anything, not a decision of its own.
+    //
+    // So when the narrow match came back Other and the rest of the merchant
+    // agrees on exactly one real category, that real category wins instead —
+    // at confidence 0, same treatment as a borrowed partner or pool rule,
+    // because this answer did not come from a rule that matched the incoming
+    // slug and must still earn a human's glance before it can auto-file.
+    // Two or more real categories elsewhere already routed this to review
+    // above (`overrideRuleConflict`), so this only ever fires on the case
+    // that truly has one honest answer.
+    if (
+      !overrideRuleConflict &&
+      (categoryName || '').toLowerCase() === 'other' &&
+      realCategories.length === 1
+    ) {
+      const realCat = availableCategories.find(
+        (c) => c.name.toLowerCase() === realCategories[0],
+      );
+      if (realCat) {
+        // displayVendor is untouched: the row already matched shares the same
+        // proper_name as every other branch, by construction of
+        // merchantRuleScope, so whatever it set stays correct.
+        categoryId = realCat.id;
+        categoryName = realCat.name;
+        overrideMatchConfidence = 0;
+        log.debug(
+          `[AI pipeline] ${vendor} matched an Other rule for this branch, but the rest of the ` +
+          `chain agrees on ${categoryName} — using that instead, still routed to review`,
+        );
       }
     }
 
