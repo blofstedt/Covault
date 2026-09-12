@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { BudgetCategory, Transaction } from '../../types';
 import BudgetSection from '../BudgetSection';
 import { compareBudgets } from '../../lib/budgetOrder';
+import { shouldUseDenseRows } from '../../lib/vialDensity';
 import { isLeisureBudget, type ShieldBreakdown } from '../../lib/discretionaryShield';
 
 interface DashboardSettingsShape {
@@ -133,6 +134,12 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
             : budget;
 
           const shouldAutoFitClosedCards = allCollapsed && !isFocusMode;
+          // Past seven visible vials the two-line row has run out of column
+          // to be itself in, so it drops to one line. Driven by the COUNT
+          // rather than a measurement so it cannot flip mid-expand — see
+          // lib/vialDensity.ts.
+          const shouldUseDenseClosedCards =
+            shouldAutoFitClosedCards && shouldUseDenseRows(visibleBudgets.length);
 
           // When a vial is the currently-expanded one it must take the
           // full available height of the list (i.e. everything between
@@ -235,6 +242,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
                 allBudgets={budgets}
                 isCurrentMonth={isCurrentMonth}
                 useCompactCollapsedStyles={shouldAutoFitClosedCards}
+                useDenseCollapsedStyles={shouldUseDenseClosedCards}
               />
               </div>
             </div>

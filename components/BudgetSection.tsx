@@ -104,6 +104,16 @@ interface BudgetSectionProps {
    */
   isCurrentMonth?: boolean;
   useCompactCollapsedStyles?: boolean;
+  /**
+   * One line instead of two while collapsed: the name and the limit, without
+   * the "$288 left" line between them.
+   *
+   * Switched on past seven visible vials, where the two-line row has run out
+   * of column to be itself in — see lib/vialDensity.ts for the measurements.
+   * Implies the compact styles; an EXPANDED card ignores this entirely, since
+   * it has the whole column and is drawn at full size.
+   */
+  useDenseCollapsedStyles?: boolean;
 }
 
 const BudgetSection: React.FC<BudgetSectionProps> = ({
@@ -118,6 +128,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
   allBudgets,
   isCurrentMonth = true,
   useCompactCollapsedStyles = false,
+  useDenseCollapsedStyles = false,
 }) => {
   // The arithmetic itself lives in lib/discretionaryShield.ts, because the
   // shield deducts one vial's overspend from another's and the two figures
@@ -171,6 +182,10 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
   const spentWidth = Math.min(100, ownSpentWidth + shieldWidth);
 
   const projectedWidth = Math.min(100 - spentWidth, asWidth(projected));
+
+  // One line instead of two, and only while collapsed. An expanded card has
+  // the whole column to itself, so it is always drawn at full size.
+  const isDense = useDenseCollapsedStyles && !isExpanded;
 
   const budgetColor = getBudgetColor(budget.name);
 
@@ -451,9 +466,11 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
         className={`relative z-10 flex items-center justify-between cursor-pointer active:scale-[0.99] motion-safe:transition-[transform,padding] motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)] ${
           isExpanded
             ? 'flex-none py-6 px-8'
-            : useCompactCollapsedStyles
-              ? 'flex-1 py-1.5 px-3'
-              : 'flex-1 py-2 px-4'
+            : isDense
+              ? 'flex-1 py-0.5 px-3'
+              : useCompactCollapsedStyles
+                ? 'flex-1 py-1.5 px-3'
+                : 'flex-1 py-2 px-4'
         }`}
       >
         <div className={`flex items-center ${useCompactCollapsedStyles && !isExpanded ? 'space-x-2' : 'space-x-3'}`}>
@@ -465,9 +482,11 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
             className={`rounded-2xl flex items-center justify-center shrink-0 motion-safe:transition-[padding,background-color] motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)] ${
               isExpanded
                 ? 'text-white shadow-lg p-3.5'
-                : useCompactCollapsedStyles
-                  ? 'p-1'
-                  : 'p-1.5'
+                : isDense
+                  ? 'p-0.5'
+                  : useCompactCollapsedStyles
+                    ? 'p-1'
+                    : 'p-1.5'
             }`}
             style={{
               ...(isExpanded ? { backgroundColor: budgetColor } : { color: budgetColor }),
@@ -489,7 +508,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
               {external > 0 && <ShieldMark color={budgetColor} />}
             </div>
 
-            {!isExpanded && (
+            {!isExpanded && !isDense && (
               <span
                 className={`tracking-wide mt-1 motion-safe:transition-colors motion-safe:duration-[320ms] ${
                   isOver

@@ -1,0 +1,43 @@
+-- ============================================================
+-- Add "Shopping", "Personal" and "Travel" to the Budgets enum
+-- ============================================================
+-- `transactions.budget`, `overrides.category_id` and `budgets.budget`
+-- are all the same Postgres ENUM (public."Budgets"), not free text.
+-- So the app cannot file a purchase under a category the type does
+-- not know about, and — the asymmetry that matters — a SELECT which
+-- FILTERS on an unknown label fails the whole query rather than
+-- matching nothing. That is how the recurring-charge lookup once
+-- returned a 400 for months and saw no rows at all (see the
+-- Recurrence note in 2026_add_yearly_recurrence.sql).
+--
+-- This migration is therefore a prerequisite for the three new
+-- categories in the app, not a companion to it. Without it:
+--   - seeding a Shopping/Personal/Travel budget row is rejected,
+--   - the category-frequency lookup in the capture pipeline, which
+--     filters `budget=in.(...)` over the user's own categories,
+--     400s and stops suggesting anything at all.
+--
+-- Why these three: a household's "Other" pile was a third of all
+-- spending, and reading it showed three distinct groups with no
+-- home — Dollarama/Winners/HomeSense/JD Sports (shopping), a lash
+-- bar, nail salon and two barbers (personal), and Delta/Expedia
+-- (travel). "Other" stays what it is: the bucket a person chooses
+-- deliberately, not the app's shrug.
+--
+-- Non-destructive and additive:
+--   - Adds three labels. Existing rows, defaults and constraints
+--     are untouched; every current value stays valid.
+--   - IF NOT EXISTS, so re-running is a no-op.
+--
+-- The three arrive switched OFF in any vault that already has
+-- budget rows, so no existing dashboard changes on its own — see
+-- OPT_IN_CATEGORIES in constants.ts and ensureDefaultBudgets in
+-- lib/hooks/useDataLoading.ts. A brand-new vault gets all ten
+-- offered in the intro, where any of them can be switched off.
+--
+-- Note: Postgres cannot remove an enum label, so this is one-way.
+-- ============================================================
+
+ALTER TYPE public."Budgets" ADD VALUE IF NOT EXISTS 'Shopping';
+ALTER TYPE public."Budgets" ADD VALUE IF NOT EXISTS 'Personal';
+ALTER TYPE public."Budgets" ADD VALUE IF NOT EXISTS 'Travel';

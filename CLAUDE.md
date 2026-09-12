@@ -116,6 +116,9 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | "my budget limits / hidden categories are back to the defaults" | `loadUserBudgets` in `lib/hooks/useDataLoading.ts` → `lib/budgetFallback.ts`. Check the Supabase edge logs for a non-200 on `/rest/v1/budgets` before assuming the data is gone — it usually isn't |
 | "it picked the wrong category" | `lib/hooks/useVendorMatcher.ts`, `lib/vendorMatchConfidence.ts`, step 5a of the processor |
 | "a new restaurant landed in Other" | `lib/merchantCategorySignals.ts` — the offline descriptor/POS-prefix guess plus the named-chain list, applied in step 5c |
+| "a haircut / a flight / a shop landed in Other" | `lib/merchantCategorySignals.ts` — same detector, four kinds now (dining, personal, travel, shopping). Only dining has a fallback; the rest resolve to a category of that name or nothing. See Invariants |
+| "I switched a category on and nothing files there" / "three new vials appeared" | `OPT_IN_CATEGORIES` in `constants.ts` → `ensureDefaultBudgets` in `lib/hooks/useDataLoading.ts`. A later addition is seeded hidden into an existing vault. See Invariants |
+| "the vials only show one line now" | `lib/vialDensity.ts` — past seven visible vials the collapsed row drops its "$288 left" line. Measured, not guessed. See Invariants |
 | "it keeps getting ONE merchant wrong" / "the picker offered me the same budget twice" | `lib/vendorRuleScope.ts` — a chain writes one rule per branch; this is what makes them read as one merchant. See Invariants |
 | "the merchant name has a dot / a store number / a branch on it" | `stripVendorNoise` in `lib/deviceTransactionParser.ts` — the display name IS the merchant's identity, so every stray spelling costs a rule. See Invariants |
 | "it used a different shop's name / budget" / "a purchase went missing" | `fuzzyVendorMatch` in `lib/formatVendorName.ts` — the one "are these the same merchant?" answer, asked by the duplicate skip, the soft-dup warning, the local vendor memory and the recurring lookup. See Invariants |
@@ -431,6 +434,66 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   dashboard lying about the money. `monthBrowsing.test.ts` pins all of it,
   including that the widget effect and the notification call never mention
   `viewMonth`.
+
+- **A category added after launch arrives switched OFF in a vault that
+  already exists, and ON in a new one.** `budgets` rows carry a `Visible`
+  column, `loadUserBudgets` turns `false` into `settings.hiddenCategories`,
+  and `ensureDefaultBudgets` inserts any `SYSTEM_CATEGORIES` row the vault is
+  missing — which means adding a name to that list would have put three new
+  vials on the dashboard of every household already using the app, on the one
+  screen they read every day, as a side effect of an update they never chose,
+  at a vial count the two-line row cannot hold. So `OPT_IN_CATEGORIES` in
+  `constants.ts` names the later additions and they are seeded `Visible:
+  false` whenever the vault already had rows. "Already had rows" is the honest
+  test, and it is only reachable on a SUCCESSFUL read: an empty answer is a
+  first-ever load, a failed one returns before seeding — the same rule
+  `budgetFallback.ts` enforces for the display. Both column spellings
+  (`Visible`/`budget` and `visible`/`category`) must carry the same flag, or
+  the outcome depends on which schema the vault happens to have; and the
+  "system category missing from the rows" fallback inside `loadUserBudgets`
+  needs it too, or the three appear on an established dashboard exactly when
+  something has already gone wrong. Three new vials are also three new hues in
+  `budgetColors.ts` AND in `WidgetRenderer.java` — the fallback palette
+  repeats, so a category missing from the map is drawn in another category's
+  identical colour, and `widgetPalette.test.ts` fails the build if the two
+  sides drift. `optInCategories.test.ts` pins all of it.
+
+- **Only dining gets a fallback category; the other three signal kinds resolve
+  or stay silent.** `merchantCategorySignals.ts` reads four kinds now — dining,
+  personal, travel, shopping. Dining falls back to Leisure because a
+  restaurant genuinely belongs there in the stock set (see
+  `DINING_FALLBACK_PATTERN`). There is no equivalent home for a haircut or a
+  flight, so when the household has no such category — or has switched it off
+  — the answer is null, the capture lands in Other, and the person decides.
+  Giving the new kinds a fallback would file every Dollarama run into Leisure
+  for everyone still on the original seven. The guess is also handed only the
+  categories the user can SEE (`hiddenCategoryIds` on `NotificationInput`,
+  applied at step 5c): filing into a hidden category puts a purchase where the
+  dashboard does not draw it and the allocation total does not count it, which
+  is worse than Other. That filter is deliberately on the GUESS alone — a rule
+  the user taught themselves still fires for a category they later hid,
+  because their own instruction outranks the app's inference, and nothing
+  already filed is ever moved.
+
+- **Past seven visible vials the collapsed row shows one line, not two.**
+  The collapsed vials share ONE fixed-height column and never scroll, so each
+  category switched on takes height off every other vial rather than adding
+  any. Measured at 393x852: seven vials get 53px each, which is the two-line
+  row's natural size; eight get 45px, nine 39px, ten 34px. Nothing is
+  literally truncated at any of those — checked against the browser's own
+  rendering rather than assumed — but from eight up the row is wearing its
+  padding as slack and by ten it runs edge to edge, which on this app is a
+  real problem rather than a cosmetic one. So `lib/vialDensity.ts` drops the
+  "$288 left" line past seven and keeps the name and the limit, whose natural
+  height is about 30px and therefore fits eight, nine and ten with room to
+  spare. It is driven by the COUNT, not by a measurement, because a measured
+  threshold would have to be re-read on resize and could flip mid-expand —
+  changing padding and font size on the very frame the 320ms expand starts,
+  which is the class of hitch the constant `overflow-hidden` in
+  `DashboardBudgetSectionsList` exists to prevent. It counts VISIBLE vials, so
+  switching a category off gives the others their second line back, and it is
+  gated on every card being collapsed, since an expanded card has the whole
+  column and is always drawn full size.
 
 - **The vendor DISPLAY name is the merchant's identity, so tidying it has to
   carry the old spelling forward.** Learned rules are keyed off the name the

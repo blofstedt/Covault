@@ -374,6 +374,22 @@ export interface NotificationInput {
    * later to clear.
    */
   captureNotificationId?: number;
+  /**
+   * Budget ids the user has switched OFF, which the offline merchant-signal
+   * guess in Step 5c must not aim at.
+   *
+   * A hidden category is not drawn on the dashboard and is left out of the
+   * allocation total, so filing a purchase into one puts it somewhere the
+   * user cannot see it — worse than Other, because Other is at least on
+   * screen. This list is what makes "I don't use that category" mean
+   * "stop guessing at it".
+   *
+   * Deliberately applied to the GUESS only. A rule the user taught themselves
+   * still fires even if they later hid its category: that is their own
+   * instruction, and it outranks the app's inference. Nothing already filed
+   * is ever moved.
+   */
+  hiddenCategoryIds?: string[];
 }
 
 // ─── Step 1: Duplicate Detection Against Tables ─────────────────
@@ -2378,7 +2394,14 @@ async function processNotificationWithAIImpl(
     // without review.
     if (!categoryId || (categoryName || '').toLowerCase() === 'other') {
       const signal = detectMerchantSignal(`${vendor || ''} ${input.rawNotification || ''}`);
-      const signalCat = signal ? resolveSignalCategory(signal, availableCategories) : null;
+      // Only the categories the user can actually see are candidates. A
+      // category they switched off is not a destination for a guess — see
+      // `hiddenCategoryIds` on NotificationInput.
+      const hidden = new Set((input.hiddenCategoryIds || []).map((id) => String(id)));
+      const visibleCategories = hidden.size
+        ? availableCategories.filter((c) => !hidden.has(String(c.id)))
+        : availableCategories;
+      const signalCat = signal ? resolveSignalCategory(signal, visibleCategories) : null;
       if (signal && signalCat) {
         categoryId = signalCat.id;
         categoryName = signalCat.name;

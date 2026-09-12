@@ -46,6 +46,9 @@ final class WidgetRenderer {
         { "Utilities", "#c49a4a" },
         { "Leisure",   "#9a7bbf" },
         { "Services",  "#5ea0ad" },
+        { "Shopping",  "#c0757f" },
+        { "Personal",  "#b478ad" },
+        { "Travel",    "#4a7f96" },
         { "Other",     "#8a95a3" },
     };
     // CATEGORY_COLORS_END

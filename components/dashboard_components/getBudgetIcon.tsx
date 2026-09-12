@@ -62,6 +62,33 @@ export const getBudgetIcon = (name: string) => {
     );
   }
 
+  if (lower.includes('shopping')) {
+    return (
+      <svg {...iconProps} viewBox="0 0 24 24">
+        <path d="M6 2 3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" />
+        <path d="M3 6h18" />
+        <path d="M16 10a4 4 0 01-8 0" />
+      </svg>
+    );
+  }
+
+  if (lower.includes('personal')) {
+    return (
+      <svg {...iconProps} viewBox="0 0 24 24">
+        <circle cx="12" cy="7" r="5" />
+        <path d="M4 22c0-4.4 3.6-8 8-8s8 3.6 8 8" />
+      </svg>
+    );
+  }
+
+  if (lower.includes('travel')) {
+    return (
+      <svg {...iconProps} viewBox="0 0 24 24">
+        <path d="M17.8 19.2 16 11l3.5-3.5a2.5 2.5 0 10-3.5-3.5L12.5 7.5 4.3 5.7a1 1 0 00-.9 1.7l6.1 4.3-2.6 2.6-3.4-.6a1 1 0 00-.8 1.7l2.6 2.1 2.1 2.6a1 1 0 001.7-.8l-.6-3.4 2.6-2.6 4.3 6.1a1 1 0 001.7-.9z" />
+      </svg>
+    );
+  }
+
   if (lower.includes('services')) {
     return (
       <svg {...iconProps} viewBox="0 0 24 24">

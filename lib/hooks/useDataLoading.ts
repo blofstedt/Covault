@@ -1,7 +1,7 @@
 // lib/hooks/useDataLoading.ts
 import { log } from '../log';
 import { useCallback, useRef, useState } from 'react';
-import { SYSTEM_CATEGORIES } from '../../constants';
+import { SYSTEM_CATEGORIES, isOptInCategory } from '../../constants';
 import { sortBudgets } from '../budgetOrder';
 import {
   budgetsAfterFailedRead,
@@ -94,6 +94,19 @@ export const useDataLoading = ({
   }, []);
 
   // Ensure all default budgets exist in the budgets table for this user
+  //
+  // A category added after the original seven is seeded switched OFF into a
+  // vault that already has rows, and ON into a brand-new one. Without that
+  // split, shipping three new categories would put three new vials on the
+  // dashboard of every household already using the app — a screen they read
+  // every day, rearranged by an update they never asked for, and at a vial
+  // count the two-line row does not fit. See OPT_IN_CATEGORIES in
+  // constants.ts.
+  //
+  // "Already has rows" is the honest test for "this vault exists": an empty
+  // read is an answer (a first-ever load), a FAILED read never reaches here —
+  // loadUserBudgets returns before calling this on a non-ok response, which
+  // is the same rule budgetFallback.ts enforces for the display.
   const ensureDefaultBudgets = useCallback(
     async (userId: string, existingCategories: Set<string>) => {
       try {
@@ -101,11 +114,14 @@ export const useDataLoading = ({
         const missing = SYSTEM_CATEGORIES.filter(sc => !existingCategories.has(sc.name));
         if (missing.length === 0) return;
 
+        const isNewVault = existingCategories.size === 0;
+        const seedVisible = (name: string) => isNewVault || !isOptInCategory(name);
+
         const newRows = missing.map(sc => ({
           user_uuid: userId,
           budget: sc.name,
           amount: sc.totalLimit,
-          Visible: true,
+          Visible: seedVisible(sc.name),
         }));
 
         (headers as any)['Prefer'] = 'return=representation,resolution=ignore-duplicates';
@@ -121,7 +137,7 @@ export const useDataLoading = ({
             user_id: userId,
             category: sc.name,
             limit_amount: sc.totalLimit,
-            visible: true,
+            visible: seedVisible(sc.name),
           }));
           res = await fetch(`${REST_BASE}/budgets?on_conflict=user_id,category`, {
             method: 'POST',
@@ -269,10 +285,21 @@ export const useDataLoading = ({
         });
 
         // Ensure all system categories are present (fallback for newly seeded ones)
+        //
+        // A later addition reached this way is still hidden in a vault that
+        // already existed. This path runs when the seed insert or its refetch
+        // did not come back, and without the same rule the three new
+        // categories would appear on an established dashboard precisely when
+        // something had gone wrong — the one moment the app should be at its
+        // least surprising.
         const loadedNames = new Set(budgets.map(b => b.name));
+        const wasNewVault = existingCategories.size === 0;
         for (const sysCat of SYSTEM_CATEGORIES) {
           if (!loadedNames.has(sysCat.name)) {
             budgets.push({ ...sysCat });
+            if (!wasNewVault && isOptInCategory(sysCat.name)) {
+              hiddenCategoryIds.push(sysCat.id);
+            }
           }
         }
 

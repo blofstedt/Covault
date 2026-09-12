@@ -29,6 +29,17 @@ function dining(text: string): MerchantSignal {
   return signal!;
 }
 
+/**
+ * The detector reads three more kinds than dining now (personal, travel,
+ * shopping — see optInCategories.test.ts). Several cases below exist to pin
+ * that something is NOT a restaurant, which is still exactly what they should
+ * pin; they simply must not also require the answer to be "nothing at all".
+ */
+function notDining(text: string): void {
+  const signal = detectMerchantSignal(text);
+  expect(signal?.kind ?? null, `"${text}" must not read as dining`).not.toBe('dining');
+}
+
 describe('detectMerchantSignal — processor prefixes', () => {
   it('reads TST* as dining regardless of the name after it', () => {
     // The whole point: "Sunrise Kwan" is a name nothing has ever seen before,
@@ -48,8 +59,13 @@ describe('detectMerchantSignal — processor prefixes', () => {
 
   it('does NOT treat SQ* as dining', () => {
     // Square is used by barbers, market stalls and contractors too. "Small
-    // business" is not a category.
-    expect(detectMerchantSignal('SQ *BRIGHTON BARBERS')).toBeNull();
+    // business" is not a category — so the prefix itself still decides
+    // nothing. This one reads as personal care, and on the word BARBERS
+    // rather than on the prefix, which is the distinction being pinned.
+    notDining('SQ *BRIGHTON BARBERS');
+    expect(detectMerchantSignal('SQ *BRIGHTON BARBERS')?.kind).toBe('personal');
+    // With nothing descriptive after it, the prefix alone still says nothing.
+    expect(detectMerchantSignal('SQ *ALMALATINAEVENTS')).toBeNull();
   });
 
   it('does NOT treat PayPal or Google prefixes as dining', () => {
@@ -116,10 +132,13 @@ describe('detectMerchantSignal — descriptor tokens', () => {
       'PETRO-CANADA',
       'NETFLIX.COM',
       'HYDRO ONE',
-      'SPORT CHEK',
     ]) {
       expect(detectMerchantSignal(name), name).toBeNull();
     }
+    // Sport Chek is now read — as shopping, which is right, and still never
+    // as dining.
+    notDining('SPORT CHEK');
+    expect(detectMerchantSignal('SPORT CHEK')?.kind).toBe('shopping');
   });
 
   it('is safe on empty and missing input', () => {
@@ -253,7 +272,9 @@ describe('detectMerchantSignal — named chains', () => {
   it('leaves names that are not chains alone', () => {
     expect(detectMerchantSignal('CANADA POST')).toBeNull();
     expect(detectMerchantSignal('SHELL C33221')).toBeNull();
-    expect(detectMerchantSignal('BEST BUY 977')).toBeNull();
     expect(detectMerchantSignal('PETRO-CANADA 2211')).toBeNull();
+    // Best Buy is a known shopping chain now. Not a restaurant either way.
+    notDining('BEST BUY 977');
+    expect(detectMerchantSignal('BEST BUY 977')?.kind).toBe('shopping');
   });
 });

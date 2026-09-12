@@ -221,6 +221,10 @@ export const useNotificationListener = ({
                   // be found and cleared later if the user deals with the row
                   // from inside the app before ever seeing it in the tray.
                   captureNotificationId: event.capture_notification_id,
+                  // Categories the user switched off. Read through the ref so
+                  // hiding one takes effect on the very next capture rather
+                  // than at the next launch.
+                  hiddenCategoryIds: settingsRef.current?.hiddenCategories || [],
                 }, availableCategories);
 
                 // Notify parsing UI about the result

@@ -19,7 +19,7 @@
 // case where the descriptor is reliable. "SPORT", "AUTO" or "MEDICAL" tokens
 // are far more likely to appear in a name that means something else.
 
-export type MerchantSignalKind = 'dining';
+export type MerchantSignalKind = 'dining' | 'personal' | 'travel' | 'shopping';
 
 export interface MerchantSignal {
   kind: MerchantSignalKind;
@@ -138,6 +138,90 @@ const DINING_CHAINS = [
 const DINING_CHAIN_RE = new RegExp(`\\b(?:${DINING_CHAINS.join('|')})\\b`, 'i');
 
 /**
+ * Personal care: barbers, salons, nails, lashes, brows, spas, tattooists.
+ *
+ * The same descriptor logic as dining, and it works for the same reason —
+ * the proper noun changes every time ("Lola", "Moda", "N & K") but the word
+ * beside it does not. A household's Other pile held a lash bar, a nail salon
+ * and two barbers, none of which any learned rule had ever seen.
+ *
+ * "BROW" and "LASH" are safe on a word boundary: "BROWNS SHOES" is not a
+ * match for \bBROW\b. Bare "CUTS" is deliberately absent — a butcher and a
+ * steakhouse both use it — so "Moda Cuts" is left for a learned rule.
+ */
+const PERSONAL_TOKENS = [
+  'BARBERS?', 'BARBERSHOPS?', 'SALONS?', 'HAIRDRESSERS?', 'HAIRCUTS?',
+  'HAIRSTYLING', 'STYLISTS?', 'NAILS?', 'MANICURES?', 'PEDICURES?',
+  'LASH(?:ES)?', 'BROWS?', 'WAXING', 'THREADING', 'SPAS?', 'DAY\\s*SPA',
+  'AESTHETICS?', 'ESTHETICS?', 'SKIN\\s*CARE', 'SKINCARE', 'FACIALS?',
+  'MASSAGE', 'TATTOOS?', 'PIERCING', 'COSMETICS', 'BEAUTY', 'GROOMING',
+  'MED\\s*SPA',
+];
+
+const PERSONAL_CHAINS = [
+  'SEPHORA', 'ULTA', 'SALLY\\s*BEAUTY', 'MAC\\s*COSMETICS', 'LUSH\\s*COSMETICS',
+  'GREAT\\s*CLIPS', 'SUPERCUTS', 'FIRST\\s*CHOICE\\s*HAIRCUTTERS', 'CHATTERS',
+  "TOMMY\\s*GUN'?S?", 'REGIS\\s*SALON', 'EUROPEAN\\s*WAX',
+];
+
+/**
+ * Travel: the airline, the hotel, the booking site.
+ *
+ * "INN" and "LODGE" are left out on purpose — plenty of pubs are an Inn, and
+ * the dining detector should keep those. "DELTA" is included: as a merchant
+ * on a card statement it is the airline or the hotel, both of which are this
+ * category, whereas the tap in a kitchen was bought from a hardware store
+ * under the hardware store's name.
+ */
+const TRAVEL_TOKENS = [
+  'AIRLINES?', 'AIRWAYS', 'AIR\\s*LINES?', 'HOTELS?', 'MOTELS?', 'RESORTS?',
+  'HOSTELS?', 'CRUISES?', 'CRUISELINES?', 'TRAVEL', 'TOURS', 'VACATIONS?',
+  'FLIGHT\\s*CENTRE', 'FLIGHTS?',
+];
+
+const TRAVEL_CHAINS = [
+  'AIR\\s*CANADA', 'WESTJET', 'PORTER\\s*AIR', 'FLAIR\\s*AIR', 'LYNX\\s*AIR',
+  'SUNWING', 'AIR\\s*TRANSAT', 'DELTA', 'UNITED\\s*AIR', 'AMERICAN\\s*AIR',
+  'ALASKA\\s*AIR', 'SOUTHWEST\\s*AIR', 'JETBLUE', 'LUFTHANSA', 'KLM',
+  'BRITISH\\s*AIRWAYS', 'EXPEDIA', 'BOOKING\\.?COM', 'AIRBNB', 'VRBO',
+  'HOTELS\\.?COM', 'TRIVAGO', 'PRICELINE', 'FLIGHTHUB', 'MARRIOTT', 'HILTON',
+  'HYATT', 'SHERATON', 'WESTIN', 'FAIRMONT', 'BEST\\s*WESTERN',
+  'HOLIDAY\\s*INN', 'TRAVELODGE', 'SANDMAN', 'COAST\\s*HOTEL',
+  'VIA\\s*RAIL', 'AMTRAK',
+];
+
+/**
+ * Shopping: clothes, shoes, jewellery, homewares, electronics, general retail.
+ *
+ * The narrowest list of the four, because retail words are the most likely to
+ * appear in the name of something else. Absent on purpose: "SHOP" (a barber
+ * shop, a coffee shop), "MARKET" (groceries), "STORE" and "OUTLET" (anything
+ * at all), "SUPPLY" (trades). The big-box names stay in CHAIN_NAME_WINS_RE
+ * below, where they suppress every signal — Walmart and Costco genuinely sell
+ * all of these categories, and a learned rule is the honest answer there.
+ */
+const SHOPPING_TOKENS = [
+  'BOUTIQUES?', 'APPAREL', 'CLOTHING', 'CLOTHIERS?', 'OUTFITTERS?',
+  'FOOTWEAR', 'SHOES', 'JEWELLERS?', 'JEWELERS?', 'JEWELLERY', 'JEWELRY',
+  'DEPARTMENT\\s*STORES?', 'DEPT\\s*STORES?', 'THRIFT', 'CONSIGNMENT',
+  'HOMEWARES?', 'FURNISHINGS', 'FURNITURE', 'BOOKSTORES?', 'BOOKSELLERS?',
+  'STATIONERS?', 'ELECTRONICS',
+];
+
+const SHOPPING_CHAINS = [
+  'DOLLARAMA', 'DOLLAR\\s*TREE', 'WINNERS', 'HOMESENSE', 'HOME\\s*SENSE',
+  'MARSHALLS', 'TJ\\s*MAXX', 'HOMEGOODS', 'NORDSTROM', 'SIMONS',
+  "HUDSON'?S\\s*BAY", 'THE\\s*BAY', 'BEST\\s*BUY', 'THE\\s*SOURCE',
+  'STAPLES', 'INDIGO', 'CHAPTERS', 'SPORT\\s*CHEK', 'JD\\s*SPORTS',
+  'FOOT\\s*LOCKER', 'SPORTING\\s*LIFE', 'ZARA', 'H\\s?&\\s?M', 'UNIQLO',
+  'OLD\\s*NAVY', 'GAP', 'BANANA\\s*REPUBLIC', 'LULULEMON', 'ARITZIA',
+  'ROOTS\\s*CANADA', 'BROWNS\\s*SHOES', 'ALDO', 'SOFT\\s*MOC',
+  'PANDORA\\s*JEWEL', 'SWAROVSKI', 'MICHAEL\\s*HILL', 'PEOPLES\\s*JEWELL',
+  'WAYFAIR', 'STRUCTUBE', 'BOUCLAIR', 'TEMU', 'SHEIN', 'ETSY', 'EBAY',
+  'ALIEXPRESS', 'WISH\\.?COM',
+];
+
+/**
  * Chains big enough that their own name settles the category, so a food word
  * next to it is a department rather than the business.
  *
@@ -171,6 +255,29 @@ function deaccent(value: string): string {
  * cheap — callers run this on every capture that would otherwise land in
  * "Other".
  */
+const KIND_RULES: { kind: MerchantSignalKind; tokens: RegExp; chains: RegExp }[] = [
+  {
+    kind: 'dining',
+    tokens: DINING_TOKEN_RE,
+    chains: DINING_CHAIN_RE,
+  },
+  {
+    kind: 'personal',
+    tokens: new RegExp(`\\b(?:${PERSONAL_TOKENS.join('|')})\\b`, 'i'),
+    chains: new RegExp(`\\b(?:${PERSONAL_CHAINS.join('|')})\\b`, 'i'),
+  },
+  {
+    kind: 'travel',
+    tokens: new RegExp(`\\b(?:${TRAVEL_TOKENS.join('|')})\\b`, 'i'),
+    chains: new RegExp(`\\b(?:${TRAVEL_CHAINS.join('|')})\\b`, 'i'),
+  },
+  {
+    kind: 'shopping',
+    tokens: new RegExp(`\\b(?:${SHOPPING_TOKENS.join('|')})\\b`, 'i'),
+    chains: new RegExp(`\\b(?:${SHOPPING_CHAINS.join('|')})\\b`, 'i'),
+  },
+];
+
 export function detectMerchantSignal(text: string | null | undefined): MerchantSignal | null {
   const value = deaccent((text || '').trim());
   if (!value) return null;
@@ -185,17 +292,25 @@ export function detectMerchantSignal(text: string | null | undefined): MerchantS
     }
   }
 
-  const tokenMatch = value.match(DINING_TOKEN_RE);
-  if (tokenMatch) {
-    return { kind: 'dining', evidence: tokenMatch[0].toUpperCase() };
+  // Descriptors before chain names, across every kind, then chain names across
+  // every kind. Two orderings matter here:
+  //
+  //   - A descriptor IN the text is the stronger tell, so it is asked first
+  //     everywhere. A chain name buried in a longer merchant string
+  //     ("WENDY'S CROWFOOT") must not outrank a plain "BARBERSHOP".
+  //
+  //   - Dining is asked before the rest, because it is the kind with the most
+  //     evidence behind its list and the one a shared word most often belongs
+  //     to: an "AIRPORT CAFE" is a meal, a "HOTEL RESTAURANT" is a meal.
+  //     Shopping is asked last, because its words are the broadest.
+  for (const rule of KIND_RULES) {
+    const match = value.match(rule.tokens);
+    if (match) return { kind: rule.kind, evidence: match[0].toUpperCase() };
   }
 
-  // Named chains last: a descriptor in the text is the stronger tell, and a
-  // chain name inside a longer merchant string ("WENDY'S CROWFOOT") should not
-  // outrank one.
-  const chainMatch = value.match(DINING_CHAIN_RE);
-  if (chainMatch) {
-    return { kind: 'dining', evidence: chainMatch[0].toUpperCase() };
+  for (const rule of KIND_RULES) {
+    const match = value.match(rule.chains);
+    if (match) return { kind: rule.kind, evidence: match[0].toUpperCase() };
   }
 
   return null;
@@ -240,25 +355,74 @@ const DINING_CATEGORY_PATTERNS: RegExp[] = [
 const DINING_FALLBACK_PATTERN = /\b(?:leisure|entertainment|fun|lifestyle|discretionary)\b/i;
 
 /**
+ * Category-name patterns for the three later kinds, best first.
+ *
+ * Matched against the names the user actually has, exactly as dining is, so a
+ * category called "Clothes & Gifts" or "Self care" is found without the app
+ * needing to know those spellings in advance.
+ *
+ * None of them has a fallback, and that is the whole point. Dining falls back
+ * to Leisure because a restaurant genuinely belongs there in the stock set.
+ * There is no equivalent home for a haircut or a flight — so when the
+ * household has no such category, or has switched it off, the answer is "I do
+ * not know", the capture lands in Other, and the person decides. Inventing a
+ * destination from whatever is left is how a month of budget data quietly
+ * goes wrong.
+ */
+const KIND_CATEGORY_PATTERNS: Record<MerchantSignalKind, RegExp[]> = {
+  dining: DINING_CATEGORY_PATTERNS,
+  personal: [
+    /\b(?:personal(?:\s*care)?|grooming|self[\s-]?care)\b/i,
+    /\b(?:beauty|hair|salon|wellness)\b/i,
+  ],
+  travel: [
+    /\b(?:travel|trips?|vacations?|holidays?)\b/i,
+    /\b(?:flights?|hotels?)\b/i,
+  ],
+  shopping: [
+    /\b(?:shopping|shops?)\b/i,
+    /\b(?:clothes|clothing|apparel|retail|goods)\b/i,
+  ],
+};
+
+/** Only dining has a last resort. See KIND_CATEGORY_PATTERNS for why. */
+const KIND_FALLBACK_PATTERNS: Partial<Record<MerchantSignalKind, RegExp>> = {
+  dining: DINING_FALLBACK_PATTERN,
+};
+
+/**
  * Map a signal onto one of the user's own budget categories.
  *
- * A category named for dining wins outright. Failing that, Leisure — see
- * DINING_FALLBACK_PATTERN for why that is a decision rather than a shrug.
+ * A category named for the kind wins outright. Dining, and only dining, then
+ * falls back to Leisure — see DINING_FALLBACK_PATTERN for why that is a
+ * decision rather than a shrug.
  *
- * Still returns null when the vault has neither, because inventing a
+ * Returns null when the vault has nothing suitable, because inventing a
  * destination out of whatever is left is how a month of budget data quietly
  * goes wrong. "Other" and a review tap is the correct outcome then.
+ *
+ * IMPORTANT: pass only the categories the user can actually SEE. A category
+ * they have switched off is not a destination — filing into it would put the
+ * purchase somewhere the dashboard does not draw, which is the one outcome
+ * worse than Other. The capture pipeline filters the hidden ones out before
+ * calling this; see step 5c of lib/notificationProcessor.ts.
  */
 export function resolveSignalCategory<T extends { id: string; name: string }>(
   signal: MerchantSignal,
   availableCategories: T[],
 ): T | null {
-  if (signal.kind !== 'dining' || !availableCategories?.length) return null;
+  if (!signal?.kind || !availableCategories?.length) return null;
 
-  for (const pattern of DINING_CATEGORY_PATTERNS) {
+  const patterns = KIND_CATEGORY_PATTERNS[signal.kind];
+  if (!patterns) return null;
+
+  for (const pattern of patterns) {
     const hit = availableCategories.find((c) => c?.name && pattern.test(c.name));
     if (hit) return hit;
   }
 
-  return availableCategories.find((c) => c?.name && DINING_FALLBACK_PATTERN.test(c.name)) ?? null;
+  const fallback = KIND_FALLBACK_PATTERNS[signal.kind];
+  if (!fallback) return null;
+
+  return availableCategories.find((c) => c?.name && fallback.test(c.name)) ?? null;
 }

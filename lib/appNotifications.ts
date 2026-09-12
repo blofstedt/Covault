@@ -9,6 +9,12 @@ export interface NotificationSettingsShape {
   smart_notifications_enabled?: boolean;
   /** Read by the notification listener, not by this module. */
   auto_accept_known_vendors?: boolean;
+  /**
+   * Budget ids the user switched off. Read by the notification listener and
+   * handed to the capture pipeline, so the offline category guess never aims
+   * at a category the dashboard does not draw. Not used by this module.
+   */
+  hiddenCategories?: string[];
 }
 
 // LocalStorage keys to avoid spamming notifications

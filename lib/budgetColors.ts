@@ -1,6 +1,16 @@
 // Shared budget category color palette
 // Each category gets a distinct color used consistently across budget bars, icons, and charts
 
+// Every category gets its OWN hue. The fallback list below exists for names
+// this map does not know, and it repeats — so a category missing from here is
+// not merely "a bit similar" to another vial, it is drawn in the identical
+// colour. Shopping and Personal would have arrived as exact copies of
+// Housing's teal and Groceries' green.
+//
+// The three later additions sit in the hues the original seven leave free:
+// rose, orchid, and a marine dark enough to read apart from Services' cyan at
+// a glance. Ten is the comfortable limit of this family — an eleventh would
+// have to start repeating a hue at a different weight.
 export const BUDGET_CATEGORY_COLORS: Record<string, string> = {
   Housing:   '#5b9e97', // muted teal
   Groceries: '#6b9e6e', // muted green
@@ -8,6 +18,9 @@ export const BUDGET_CATEGORY_COLORS: Record<string, string> = {
   Utilities: '#c49a4a', // muted amber
   Leisure:   '#9a7bbf', // muted purple
   Services:  '#5ea0ad', // muted cyan
+  Shopping:  '#c0757f', // muted rose
+  Personal:  '#b478ad', // muted orchid
+  Travel:    '#4a7f96', // deep marine
   Other:     '#8a95a3', // muted slate
 };
 

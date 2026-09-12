@@ -15,10 +15,21 @@ const shuffled = (names: string[]) => names.map((name) => ({ name, id: name }));
 
 describe('sortBudgets', () => {
   it('puts the categories in the app\'s own order, whatever order they arrive in', () => {
+    // Every category the app offers, handed over backwards.
+    const out = sortBudgets(shuffled([...SYSTEM_CATEGORIES].reverse().map((c) => c.name)));
+    expect(out.map((b) => b.name)).toEqual(SYSTEM_CATEGORIES.map((c) => c.name));
+  });
+
+  it('leaves the original seven in the order they already had', () => {
+    // Shopping, Personal and Travel were inserted after Services rather than
+    // among the originals, so an established dashboard reads exactly as it
+    // did before those three existed.
     const out = sortBudgets(
       shuffled(['Other', 'Leisure', 'Housing', 'Services', 'Groceries', 'Utilities', 'Transport']),
     );
-    expect(out.map((b) => b.name)).toEqual(SYSTEM_CATEGORIES.map((c) => c.name));
+    expect(out.map((b) => b.name)).toEqual([
+      'Housing', 'Groceries', 'Transport', 'Utilities', 'Leisure', 'Services', 'Other',
+    ]);
   });
 
   it('gives the same answer however the rows are shuffled', () => {
