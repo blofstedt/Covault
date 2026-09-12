@@ -61,7 +61,7 @@ interface LearnedRulesCardProps {
     removeIds: string[];
     chainRoot: string;
     alreadyCanonical: boolean;
-  }) => void | Promise<void>;
+  }) => Promise<boolean>;
   onSetExpandedVendorCategory?: (vendorName: string | null) => void;
   expandedVendorCategory?: string | null;
   isExpanded?: boolean;
@@ -157,7 +157,12 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
   // (see lib/ruleCleanup.ts) — surfacing them changes nothing about what gets
   // categorised, it only offers to remove the leftover row.
   const staleOtherGroups = useMemo(() => findStaleOtherRules(vendorOverrides), [vendorOverrides]);
-  const chainMergeGroups = useMemo(() => findChainMergeGroups(vendorOverrides), [vendorOverrides]);
+  // Never offered without a handler to carry it out — a Combine button that
+  // quietly does nothing is worse than no button.
+  const chainMergeGroups = useMemo(
+    () => (onCombineChainRules ? findChainMergeGroups(vendorOverrides) : []),
+    [vendorOverrides, onCombineChainRules],
+  );
 
   const handleRemoveStaleGroup = useCallback(
     async (group: StaleOtherGroup) => {
@@ -183,6 +188,7 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
 
   const handleCombineChainGroup = useCallback(
     async (group: ChainMergeGroup) => {
+      if (!onCombineChainRules) return;
       const key = `${group.chainRoot}::${group.categoryName}`;
       setCombiningChainKey(key);
       try {
@@ -190,17 +196,27 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
         const removeIds = group.canonical
           ? group.branches.map((r) => r.id)
           : group.branches.slice(1).map((r) => r.id);
-        await onCombineChainRules?.({
+        const combined = await onCombineChainRules({
           keepId,
           removeIds,
           chainRoot: group.chainRoot,
           alreadyCanonical: Boolean(group.canonical),
         });
         const rowCount = group.branches.length + (group.canonical ? 1 : 0);
-        onToast?.({
-          message: `Combined ${rowCount} ${group.properName} rules into one`,
-          tone: 'info',
-        });
+        onToast?.(
+          combined
+            ? {
+                message: `Combined ${rowCount} ${group.properName} rules into one`,
+                tone: 'info',
+              }
+            : {
+                // Never confirm a combine that did not happen: the rules are
+                // exactly as they were, and saying otherwise would send the
+                // user looking for a change that isn't there.
+                message: `Could not combine the ${group.properName} rules — nothing was changed`,
+                tone: 'error',
+              },
+        );
       } finally {
         setCombiningChainKey(null);
       }

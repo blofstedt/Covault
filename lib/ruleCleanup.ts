@@ -39,6 +39,22 @@ function fold(value: string | undefined | null): string {
   return String(value || '').trim().toLowerCase();
 }
 
+/**
+ * A row that only exists in local state so far.
+ *
+ * `handleSetVendorCategory` in useVendorOverrides.ts inserts optimistically
+ * under a `temp-` id and swaps in the real one when the insert answers, so
+ * such a row has no id anything here can act on. Worse, the delete path falls
+ * back to deleting a temp row by (proper_name, category) — and every row in a
+ * chain merge group shares BOTH, so offering one for cleanup would have let
+ * "combine these" delete the rule it had just kept, taking the household's
+ * real rule for that merchant with it. An unsaved row is simply not a
+ * candidate for either pile; the next load lists it with a real id.
+ */
+function isUnsaved(rule: CleanupRule): boolean {
+  return String(rule?.id || '').startsWith('temp-');
+}
+
 export interface StaleOtherGroup {
   properName: string;
   /** The DB enum name every other rule for this merchant agrees on. */
@@ -58,6 +74,7 @@ export interface StaleOtherGroup {
 export function findStaleOtherRules(rules: readonly CleanupRule[]): StaleOtherGroup[] {
   const groups = new Map<string, CleanupRule[]>();
   for (const rule of rules) {
+    if (isUnsaved(rule)) continue;
     const key = fold(rule.proper_name);
     if (!key) continue;
     if (!groups.has(key)) groups.set(key, []);
@@ -113,6 +130,7 @@ export function findChainMergeGroups(rules: readonly CleanupRule[]): ChainMergeG
   const buckets = new Map<string, Bucket>();
 
   for (const rule of rules) {
+    if (isUnsaved(rule)) continue;
     if (!rule.category_name || fold(rule.category_name) === 'other') continue;
 
     const rawKey = toVendorKey(rule.match_key || rule.proper_name);

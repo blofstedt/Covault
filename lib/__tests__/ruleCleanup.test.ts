@@ -74,6 +74,49 @@ describe('findStaleOtherRules', () => {
   });
 });
 
+describe('an unsaved (temp-) row is never a cleanup candidate', () => {
+  // The one that would have cost a real rule. `handleSetVendorCategory`
+  // inserts optimistically under a `temp-` id, and the delete path falls back
+  // to deleting a temp row by (proper_name, category) — which every row in a
+  // chain merge group shares. Offering the temp row for combining meant
+  // "combine these" PATCHed one row and then deleted every Wendy's → Leisure
+  // row in the table, the kept one included.
+  it('leaves a chain group alone when the only sibling is an unsaved row', () => {
+    const rules = [
+      rule({ id: 'real', proper_name: "Wendy's", match_key: 'wendysolympic', category_name: 'Leisure' }),
+      rule({ id: 'temp-abc', proper_name: "Wendy's", match_key: undefined, category_name: 'Leisure' }),
+    ];
+    expect(findChainMergeGroups(rules)).toEqual([]);
+  });
+
+  it('omits an unsaved row from a chain group that stands on its own', () => {
+    const rules = [
+      rule({ id: 'a', proper_name: "Wendy's", match_key: 'wendysolympic', category_name: 'Leisure' }),
+      rule({ id: 'b', proper_name: "Wendy's", match_key: 'wendyscochrane', category_name: 'Leisure' }),
+      rule({ id: 'temp-abc', proper_name: "Wendy's", match_key: undefined, category_name: 'Leisure' }),
+    ];
+    const groups = findChainMergeGroups(rules);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].branches.map((r) => r.id).sort()).toEqual(['a', 'b']);
+  });
+
+  it('never offers an unsaved Other row for removal', () => {
+    const rules = [
+      rule({ id: 'real', proper_name: 'Walmart', match_key: 'walmart', category_name: 'Groceries' }),
+      rule({ id: 'temp-abc', proper_name: 'Walmart', match_key: undefined, category_name: 'Other' }),
+    ];
+    expect(findStaleOtherRules(rules)).toEqual([]);
+  });
+
+  it('does not let an unsaved row supply the one real category that makes an Other row stale', () => {
+    const rules = [
+      rule({ id: 'real', proper_name: 'Walmart', match_key: 'walmart', category_name: 'Other' }),
+      rule({ id: 'temp-abc', proper_name: 'Walmart', match_key: undefined, category_name: 'Groceries' }),
+    ];
+    expect(findStaleOtherRules(rules)).toEqual([]);
+  });
+});
+
 describe('findChainMergeGroups', () => {
   it('groups branches of a known chain that already agree on one category', () => {
     const rules = [

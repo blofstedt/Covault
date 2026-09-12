@@ -416,13 +416,18 @@ export function useVendorOverrides({ userId, partnerId, budgets }: UseVendorOver
   // through handleDeleteVendorOverride so the pool-withdrawal and local-state
   // bookkeeping stay in the one place that already does it correctly.
   const handleCombineChainRules = useCallback(
-    async (params: { keepId: string; removeIds: string[]; chainRoot: string; alreadyCanonical: boolean }) => {
+    async (params: {
+      keepId: string;
+      removeIds: string[];
+      chainRoot: string;
+      alreadyCanonical: boolean;
+    }): Promise<boolean> => {
       const { keepId, removeIds, chainRoot, alreadyCanonical } = params;
-      if (!userId || removeIds.length === 0) return;
+      if (!userId || removeIds.length === 0) return false;
 
       if (!alreadyCanonical) {
         const keeper = vendorOverrides.find((vo) => vo.id === keepId);
-        if (!keeper) return;
+        if (!keeper) return false;
 
         setVendorOverrides((prev) =>
           prev.map((vo) =>
@@ -436,8 +441,24 @@ export function useVendorOverrides({ userId, partnerId, budgets }: UseVendorOver
             headers: { Prefer: 'return=representation' },
             body: JSON.stringify({ match_key: chainRoot, match_type: 'prefix' }),
           });
-          if (!res.ok) {
-            log.error('[TransactionParsing] Error combining chain rule:', res.status, (await res.text()).slice(0, 200));
+          // A PATCH that matched nothing comes back 200 with an empty array —
+          // the row is gone (deleted on the other phone, say). Deleting the
+          // branches now would leave the merchant with no rule at all, so the
+          // whole combine is abandoned instead. Same rule as
+          // vendorOverrideWrite.ts: an empty answer is an answer.
+          const patchBody = res.ok ? await res.text() : '';
+          let patchedRows: unknown[] = [];
+          try {
+            patchedRows = patchBody ? JSON.parse(patchBody) : [];
+          } catch {
+            patchedRows = [];
+          }
+          if (!res.ok || !Array.isArray(patchedRows) || patchedRows.length === 0) {
+            log.error(
+              '[TransactionParsing] Error combining chain rule:',
+              res.status,
+              patchBody.slice(0, 200),
+            );
             setVendorOverrides((prev) =>
               prev.map((vo) =>
                 vo.id === keepId
@@ -445,7 +466,7 @@ export function useVendorOverrides({ userId, partnerId, budgets }: UseVendorOver
                   : vo,
               ),
             );
-            return;
+            return false;
           }
         } catch (err: any) {
           log.error('[TransactionParsing] Exception combining chain rule:', err?.message || err);
@@ -456,13 +477,14 @@ export function useVendorOverrides({ userId, partnerId, budgets }: UseVendorOver
                 : vo,
             ),
           );
-          return;
+          return false;
         }
       }
 
       for (const id of removeIds) {
         await handleDeleteVendorOverride(id);
       }
+      return true;
     },
     [userId, vendorOverrides, handleDeleteVendorOverride],
   );

@@ -78,13 +78,15 @@ interface TransactionParsingProps {
   onSetVendorCategory: (vendorName: string, categoryId: string) => void | Promise<void>;
   /** Persist and update local state for a vendor display name. */
   onSetProperName: (vendorName: string, properName: string) => void | Promise<void>;
-  /** Combine several of a chain's own rules into one — see chainVendorKeys.ts. */
+  /** Combine several of a chain's own rules into one — see chainVendorKeys.ts.
+   *  Resolves false when nothing was changed, so the card can say so rather
+   *  than confirm a combine that did not happen. */
   onCombineChainRules?: (params: {
     keepId: string;
     removeIds: string[];
     chainRoot: string;
     alreadyCanonical: boolean;
-  }) => void | Promise<void>;
+  }) => Promise<boolean>;
   /** Raise a transient toast — used for the Undo offered after filing a row. */
   onToast?: (toast: Toast) => void;
 }
