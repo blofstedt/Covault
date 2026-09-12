@@ -339,6 +339,9 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
   return (
     <div
+      // Only the OPEN card is a walkthrough target, and only one card is ever
+      // open, so the attribute is unique in the document whenever it exists.
+      data-tour={isExpanded ? 'budget-card' : undefined}
       // `box-shadow` is deliberately NOT in this transition list.
       //
       // It is a paint property: the browser cannot composite it, so a blurred
@@ -526,7 +529,10 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
           </div>
         </div>
 
-        <div className="text-right flex flex-col items-end justify-center">
+        <div
+          data-tour={isExpanded ? 'budget-total' : undefined}
+          className="text-right flex flex-col items-end justify-center"
+        >
           {isExpanded ? (
             <>
               <div className="flex items-baseline space-x-1">
@@ -580,6 +586,10 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
       {/* TRANSACTIONS LIST (Now stays mounted, styled to smoothly collapse) */}
       <div
         ref={listRef}
+        // Conditional because every budget's list stays mounted at all times
+        // (see the note on the style below): an unconditional attribute would
+        // put one on all ten cards at once.
+        data-tour={isExpanded ? 'budget-list' : undefined}
         className={`min-h-0 overflow-y-auto no-scrollbar relative z-10 transform origin-top ${
           isExpanded
             ? 'flex-1 px-6 pb-2'

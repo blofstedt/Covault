@@ -156,14 +156,24 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           {/* The walkthrough, on demand */}
           <AppTourSection onReplayTour={onReplayTour} />
 
-          {/* Income */}
-          <IncomeSection
-            isSharedAccount={isSharedAccount}
-            user={user}
-            onUpdateUserIncome={onUpdateUserIncome}
-          />
+          {/* Income.
+
+              The `data-tour` wrappers through this list are anchors for the
+              walkthrough, which scrolls this modal section by section. They
+              wrap rather than being passed into each section so the sections
+              themselves stay unaware of it — and a wrapper is spacing-neutral
+              here, because `space-y-4` above only cares how many children
+              there are. */}
+          <div data-tour="settings-income">
+            <IncomeSection
+              isSharedAccount={isSharedAccount}
+              user={user}
+              onUpdateUserIncome={onUpdateUserIncome}
+            />
+          </div>
 
           {/* Budget Limits */}
+          <div data-tour="settings-limits">
           <BudgetLimitsSection
             budgets={budgets}
             onSaveBudgetLimit={onSaveBudgetLimit}
@@ -176,14 +186,18 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
               saveBudgetVisibility(categoryId, isCurrentlyHidden);
             }}
           />
+          </div>
 
           {/* Theme toggle */}
-          <ThemeToggleSection
-            theme={settings.theme}
-            onUpdateSettings={onUpdateSettings}
-          />
+          <div data-tour="settings-theme">
+            <ThemeToggleSection
+              theme={settings.theme}
+              onUpdateSettings={onUpdateSettings}
+            />
+          </div>
 
           {/* Bank Notification Listener — Premium */}
+          <div data-tour="settings-capture">
           <PremiumGate hasPremium={hasPremium} onSubscribe={onSubscribe}>
             <NotificationSettingsSection
               enabled={!!settings.notificationsEnabled}
@@ -198,6 +212,7 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
               }
             />
           </PremiumGate>
+          </div>
 
           {/* Shared vendor rules — the household's and everyone's */}
           <SharedRulesSection
@@ -212,7 +227,9 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           />
 
           {/* Home screen widget */}
-          <HomeScreenWidgetSection />
+          <div data-tour="settings-widget">
+            <HomeScreenWidgetSection />
+          </div>
 
           {/* Budget rollover */}
           <RolloverSection
@@ -242,6 +259,7 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           </PremiumGate>
 
           {/* Vault sharing */}
+          <div data-tour="settings-sharing">
           <VaultSharingSection
             user={user}
             isLinkingPartner={isLinkingPartner}
@@ -251,7 +269,11 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
             onDisconnectPartner={onDisconnectPartner}
             onToggleLinkingPartner={onToggleLinkingPartner}
           />
+          </div>
 
+          {/* Export, import and the monthly report — one walkthrough stop,
+              because they are one idea: your data, in and out. */}
+          <div data-tour="settings-data" className="space-y-4">
           {/* Export Transactions */}
           <ExportTransactionsSection transactions={transactions} budgets={budgets} />
 
@@ -269,6 +291,7 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
             monthlyIncome={user?.monthlyIncome || 0}
             isSharedAccount={isSharedAccount}
           />
+          </div>
 
           {/* Support & Feedback — only feature requests are premium */}
           <SupportFeedbackSection

@@ -1,15 +1,17 @@
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import TourDemoScreen from './TourDemoScreen';
 import {
-  TOUR_STEPS,
-  captionSide,
+  stepsForSurface,
+  captionTop,
   spotlightRect,
+  unionRects,
   type TargetRect,
+  type TourStage,
 } from '../../lib/tourSteps';
 import { useEscapeKey } from '../../lib/hooks/useEscapeKey';
 
 /**
- * The walkthrough: a spotlight over the dashboard.
+ * The walkthrough: a spotlight over the app, driving the app as it goes.
  *
  * It points at the REAL screen. It used to draw its own likeness of a
  * dashboard and spotlight that instead, and the likeness drifted — a
@@ -19,26 +21,31 @@ import { useEscapeKey } from '../../lib/hooks/useEscapeKey';
  * at. A copy of a screen is a second screen to maintain, and the only thing
  * it can do is fall behind.
  *
- * So there are two surfaces and both are the actual dashboard:
+ * It also moves the app. Each step names a `stage`, and when the stage
+ * changes the host is asked to put the app there — open a vial, open the
+ * review page, open the settings menu — before the next hole is measured. So
+ * the expand animation the tour describes is the real expand, and the menu it
+ * walks through is the user's own, with their switches in the positions they
+ * left them.
  *
- *   - `surface="live"` (from Settings) dims the dashboard that is already
- *     mounted behind this overlay and cuts a hole in it. Nothing is drawn
- *     twice, and what the spotlight circles is the user's own money.
+ * Two surfaces, both the actual app:
+ *
+ *   - `surface="live"` (from Settings) dims what is already mounted behind
+ *     this overlay and cuts a hole in it, and drives it through `onStage`.
  *   - `surface="demo"` (the last step of the intro) renders
- *     `TourDemoScreen`, which is the same dashboard components fed example
- *     figures — because during the intro there is no dashboard mounted, and a
- *     brand-new one would be a row of zeroes anyway.
+ *     `TourDemoScreen` — the same dashboard components fed example figures,
+ *     because during the intro there is no app behind the tour yet. It shows
+ *     only the steps that screen can honestly stand in for; see `DEMO_STAGES`.
  *
  * Taps never reach the app underneath: this root is a full-screen element
  * with pointer events ON, so it swallows everything that is not one of its
  * own buttons. That is what stops a stray thumb writing a real transaction or
- * opening settings mid-sentence.
+ * flipping a real setting mid-sentence.
  *
  * The dim is one element with an enormous spread shadow rather than four
  * rectangles around the hole. Four elements have to be kept in agreement on
  * every step, and any disagreement shows as a seam of un-dimmed screen; one
- * element cannot disagree with itself. It moves on the app's own 320ms curve,
- * and only when the step changes.
+ * element cannot disagree with itself. It moves on the app's own 320ms curve.
  */
 
 interface GuidedTourProps {
@@ -47,11 +54,17 @@ interface GuidedTourProps {
   /** Label for the last step's button. The intro says "Let's go". */
   finishLabel?: string;
   /**
-   * What the spotlight is cut out of. "live" points at the dashboard already
-   * mounted behind this overlay; "demo" draws one from example figures,
-   * for the intro, where there is no dashboard yet.
+   * What the spotlight is cut out of. "live" points at the app already
+   * mounted behind this overlay; "demo" draws one from example figures, for
+   * the intro, where there is no app yet.
    */
   surface?: 'live' | 'demo';
+  /**
+   * Put the app into this stage. Live surface only — the demo screen is told
+   * directly. Called when the stage changes and on the first step, so the
+   * host does not have to guess where the tour starts.
+   */
+  onStage?: (stage: TourStage) => void;
 }
 
 /** Used until the caption has been measured. Roughly a three-line caption. */
@@ -61,19 +74,22 @@ const GAP = 16;
 /**
  * How long to keep re-measuring after a step changes.
  *
- * One measurement is not enough, and the reason is the dashboard itself: the
+ * One measurement is not enough, and the reason is the app itself: the
  * balance block arrives on `animate-nest`, the figure counts up to its value
- * (which changes its WIDTH as digits land), and the chart is a lazy chunk that
- * appears whenever it appears. Measuring once, on the frame the step changed,
- * pinned the hole to wherever the screen was mid-arrival — which is how the
- * first step ended up with its ring drawn through the middle of the number it
- * was pointing at.
+ * (which changes its WIDTH as digits land), the chart is a lazy chunk that
+ * appears whenever it appears, a vial takes 320ms to open, and the settings
+ * menu is a modal that zooms in over 500ms and then has to be scrolled to the
+ * section in question. Measuring once, on the frame the step changed, pinned
+ * the hole to wherever the screen happened to be mid-arrival — which is how
+ * the first step ended up with its ring drawn through the middle of the
+ * number it was pointing at.
  *
- * 900ms covers the longest of those (the count-up). The loop stops early once
- * the rectangle has held still, so on a settled screen — which is every replay
- * from Settings — it costs a handful of frames.
+ * The loop stops early once the rectangle has held still, so a step that
+ * changes nothing costs a handful of frames; `SETTLE_FLOOR_MS` keeps it from
+ * declaring victory during the pause before a smooth scroll starts moving.
  */
-const SETTLE_MS = 900;
+const SETTLE_MS = 2200;
+const SETTLE_FLOOR_MS = 900;
 const STABLE_FRAMES = 4;
 
 function sameRect(a: TargetRect | null, b: TargetRect | null): boolean {
@@ -85,98 +101,149 @@ const GuidedTour: React.FC<GuidedTourProps> = ({
   onFinish,
   finishLabel = 'Done',
   surface = 'demo',
+  onStage,
 }) => {
+  const steps = useMemo(() => stepsForSurface(surface), [surface]);
+
   const [index, setIndex] = useState(0);
   const [rect, setRect] = useState<TargetRect | null>(null);
   const [captionHeight, setCaptionHeight] = useState(CAPTION_HEIGHT_ESTIMATE);
 
   const rootRef = useRef<HTMLDivElement>(null);
   const captionRef = useRef<HTMLDivElement>(null);
+  /** Which step we have already scrolled for, so a smooth scroll is not
+   *  restarted on every frame of the settle loop. */
+  const scrolledFor = useRef(-1);
 
-  const step = TOUR_STEPS[index];
-  const isLast = index === TOUR_STEPS.length - 1;
+  const step = steps[index];
+  const isLast = index === steps.length - 1;
+  const stage: TourStage = step?.stage ?? 'home';
 
   useEscapeKey(onFinish);
 
-  const measure = useCallback(() => {
+  // Move the app to where this step is talking about. Before measuring, and
+  // only when the stage actually CHANGES — asking for "home" again on every
+  // home step would close a vial the user is being shown, and the host's
+  // callback is rebuilt whenever its own data reloads, which would otherwise
+  // reset the screen under the user mid-step.
+  const onStageRef = useRef(onStage);
+  onStageRef.current = onStage;
+  const appliedStage = useRef<TourStage | null>(null);
+  useEffect(() => {
+    if (surface !== 'live') return;
+    if (appliedStage.current === stage) return;
+    appliedStage.current = stage;
+    onStageRef.current?.(stage);
+  }, [surface, stage]);
+
+  const findTargets = useCallback((): HTMLElement[] => {
     const root = rootRef.current;
-    if (!root || !step) return;
-    // In live mode the target is the dashboard behind this overlay, which is
-    // a sibling rather than a child — so the search starts at the document.
-    // In demo mode it is inside this root, and scoping to the root is what
-    // stops a step matching the real dashboard by accident if both are ever
-    // mounted at once.
+    if (!root || !step) return [];
+    // In live mode the targets are in the app behind this overlay, which is a
+    // sibling rather than a child — so the search starts at the document. In
+    // demo mode they are inside this root, and scoping to the root is what
+    // stops a step matching the real dashboard by accident.
     const scope: ParentNode = surface === 'live' ? document : root;
-    const target = scope.querySelector<HTMLElement>(`[data-tour="${step.target}"]`);
-    if (!target) {
-      // A step pointing at nothing still has to read as something. Dropping
-      // the rect dims the whole screen and centres the caption, which says
-      // the words without claiming to point anywhere. `tourSteps.test.ts`
-      // exists so this is never reached in a shipped build.
-      setRect(null);
-      return;
-    }
-    const box = target.getBoundingClientRect();
-    const next = spotlightRect(
-      { top: box.top, left: box.left, width: box.width, height: box.height },
-      { width: window.innerWidth, height: window.innerHeight },
-      step.pad,
-    );
-    // Only commit a real change: the settle loop below measures every frame,
-    // and re-rendering on each of them would put the hole's own 320ms
-    // transition back to the start of its curve on every one.
-    setRect((previous) => (sameRect(previous, next) ? previous : next));
+    return Array.from(scope.querySelectorAll<HTMLElement>(`[data-tour="${step.target}"]`));
   }, [step, surface]);
+
+  const measure = useCallback(
+    (clearIfMissing: boolean) => {
+      if (!step) return;
+      const targets = findTargets();
+      if (targets.length === 0) {
+        // A step pointing at nothing still has to read as something. Dropping
+        // the rect dims the whole screen and centres the caption, which says
+        // the words without claiming to point anywhere.
+        //
+        // But not straight away: a stage change unmounts one screen and mounts
+        // another, and clearing on the frame in between makes the whole screen
+        // flash black between every section. The settle loop only allows the
+        // clear once it has given the new screen its full window to appear.
+        if (clearIfMissing) setRect(null);
+        return;
+      }
+
+      const union = unionRects(
+        targets.map((target) => {
+          const box = target.getBoundingClientRect();
+          return { top: box.top, left: box.left, width: box.width, height: box.height };
+        }),
+      );
+      if (!union) {
+        if (clearIfMissing) setRect(null);
+        return;
+      }
+
+      const next = spotlightRect(
+        union,
+        { width: window.innerWidth, height: window.innerHeight },
+        step.pad,
+      );
+      // Only commit a real change: the settle loop below measures every frame,
+      // and re-rendering on each of them would put the hole's own 320ms
+      // transition back to the start of its curve on every one.
+      setRect((previous) => (sameRect(previous, next) ? previous : next));
+    },
+    [findTargets, step],
+  );
 
   // After layout, not after paint: measuring in `useEffect` lets one frame
   // through with the hole in its previous place, which reads as the spotlight
   // lagging a step behind the words.
   useLayoutEffect(() => {
-    measure();
+    measure(false);
   }, [measure]);
 
-  // Then keep measuring until the screen underneath has stopped moving. See
-  // SETTLE_MS.
+  // Then keep measuring until the screen underneath has stopped moving, and
+  // bring the target into view if it is off screen — the settings menu is a
+  // long scroller and most of what the tour names there starts below the fold.
   useEffect(() => {
     let frame = 0;
     let stable = 0;
-    let last: DOMRect | null = null;
+    let last: TargetRect | null = null;
+    let scrolled = false;
     const started = performance.now();
 
     const tick = () => {
-      const root = rootRef.current;
-      const target = root && step
-        ? (surface === 'live' ? document : root).querySelector<HTMLElement>(
-            `[data-tour="${step.target}"]`,
-          )
-        : null;
-      const box = target?.getBoundingClientRect() ?? null;
+      const targets = findTargets();
+      const union = unionRects(
+        targets.map((target) => {
+          const box = target.getBoundingClientRect();
+          return { top: box.top, left: box.left, width: box.width, height: box.height };
+        }),
+      );
 
-      const held =
-        box !== null &&
-        last !== null &&
-        box.top === last.top &&
-        box.left === last.left &&
-        box.width === last.width &&
-        box.height === last.height;
-      stable = held ? stable + 1 : 0;
-      last = box;
-
-      measure();
-
-      if (stable < STABLE_FRAMES && performance.now() - started < SETTLE_MS) {
-        frame = requestAnimationFrame(tick);
+      if (union && !scrolled && scrolledFor.current !== index) {
+        const offScreen = union.top < GAP || union.top + union.height > window.innerHeight - GAP;
+        if (offScreen) {
+          targets[0]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        scrolled = true;
+        scrolledFor.current = index;
       }
+
+      const held = sameRect(union, last);
+      stable = held ? stable + 1 : 0;
+      last = union;
+
+      const elapsed = performance.now() - started;
+      const settled = stable >= STABLE_FRAMES && elapsed >= SETTLE_FLOOR_MS;
+      const expired = elapsed >= SETTLE_MS;
+
+      measure(settled || expired);
+
+      if (!settled && !expired) frame = requestAnimationFrame(tick);
     };
 
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [measure, step, surface]);
+  }, [measure, findTargets, index]);
 
   useEffect(() => {
     // A phone rotating, or the keyboard opening and closing, moves everything
     // this file has measured.
-    const onResize = () => measure();
+    const onResize = () => measure(true);
     window.addEventListener('resize', onResize);
     window.addEventListener('orientationchange', onResize);
     return () => {
@@ -196,13 +263,10 @@ const GuidedTour: React.FC<GuidedTourProps> = ({
   }, [index]);
 
   const viewportHeight = typeof window === 'undefined' ? 0 : window.innerHeight;
-  const side = rect ? captionSide(rect, viewportHeight, captionHeight, GAP) : 'below';
 
   const captionPosition: React.CSSProperties = !rect
     ? { top: '50%', transform: 'translateY(-50%)' }
-    : side === 'below'
-      ? { top: Math.round(rect.top + rect.height + GAP) }
-      : { bottom: Math.round(viewportHeight - rect.top + GAP) };
+    : { top: captionTop(rect, viewportHeight, captionHeight, GAP) };
 
   const advance = () => {
     if (isLast) onFinish();
@@ -221,7 +285,7 @@ const GuidedTour: React.FC<GuidedTourProps> = ({
         surface === 'live' ? '' : 'bg-slate-50 dark:bg-slate-950'
       }`}
     >
-      {surface === 'demo' && <TourDemoScreen />}
+      {surface === 'demo' && <TourDemoScreen stage={stage} />}
 
       {/* The dim, with the hole in it. */}
       {rect ? (
@@ -265,50 +329,65 @@ const GuidedTour: React.FC<GuidedTourProps> = ({
             {step.body}
           </p>
 
-          <div className="flex items-center justify-between pt-2">
-            <div className="flex space-x-2" aria-hidden="true">
-              {TOUR_STEPS.map((s, i) => (
+          {/* Progress on its own line, the controls under it.
+
+              "Skip the tour" used to float on the dim below the card. That
+              worked while every highlight was a button; once the walkthrough
+              started pointing at whole cards the caption had to be allowed to
+              overlap them, and a line of white-on-nothing text landed on top
+              of a lit-up row of purchases, where it could not be read at all.
+              Inside the card it is legible wherever the card goes. */}
+          <div className="pt-2 space-y-3">
+            {/* A bar rather than a dot per step. The walkthrough replayed from
+                Settings is twenty steps long — twenty dots do not fit beside
+                the buttons on a phone, and even if they did, nobody counts
+                dots. A bar says how far along you are at any length. */}
+            <div className="flex items-center gap-2" aria-hidden="true">
+              <div className="flex-1 h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
                 <div
-                  key={s.target}
-                  className={`h-1.5 rounded-full motion-safe:transition-all motion-safe:duration-[320ms] ${
-                    i === index ? 'w-6 bg-slate-300 dark:bg-slate-700' : 'w-1.5 bg-slate-200 dark:bg-slate-800'
-                  }`}
+                  className="h-full rounded-full bg-slate-300 dark:bg-slate-700 motion-safe:transition-[width] motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)]"
+                  style={{ width: `${((index + 1) / steps.length) * 100}%` }}
                 />
-              ))}
+              </div>
+              <span className="shrink-0 text-[10px] font-bold tracking-wide text-slate-300 dark:text-slate-600 tabular-nums">
+                {index + 1}/{steps.length}
+              </span>
             </div>
 
-            <div className="flex items-center gap-2">
-              {index > 0 && (
+            <div className="flex items-center justify-between gap-2">
+              {isLast ? (
+                <span />
+              ) : (
                 <button
                   type="button"
-                  onClick={() => setIndex((i) => Math.max(0, i - 1))}
-                  className="px-4 py-2.5 rounded-2xl text-[12px] font-semibold tracking-wide text-slate-400 dark:text-slate-500 active:scale-[0.97] transition-all duration-200"
+                  onClick={onFinish}
+                  className="px-1 py-2.5 text-[11px] font-medium tracking-wide text-slate-400 dark:text-slate-500 active:scale-[0.97] transition-all duration-200"
                 >
-                  Back
+                  Skip the tour
                 </button>
               )}
-              <button
-                type="button"
-                onClick={advance}
-                className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl text-[12px] font-semibold tracking-wide shadow-lg shadow-emerald-500/30 active:scale-[0.97] transition-all duration-200"
-              >
-                {isLast ? finishLabel : 'Next'}
-              </button>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {index > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setIndex((i) => Math.max(0, i - 1))}
+                    className="px-4 py-2.5 rounded-2xl text-[12px] font-semibold tracking-wide text-slate-400 dark:text-slate-500 active:scale-[0.97] transition-all duration-200"
+                  >
+                    Back
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={advance}
+                  className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl text-[12px] font-semibold tracking-wide shadow-lg shadow-emerald-500/30 active:scale-[0.97] transition-all duration-200"
+                >
+                  {isLast ? finishLabel : 'Next'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
-
-        {!isLast && (
-          <div className="text-center pt-3">
-            <button
-              type="button"
-              onClick={onFinish}
-              className="text-[11px] font-medium tracking-wide text-white/60 hover:text-white/90 transition-colors"
-            >
-              Skip the tour
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

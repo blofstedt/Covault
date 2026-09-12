@@ -815,7 +815,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       >
         {enabled ? (
           <>
-            <div className="shrink-0 mb-4">
+            <div data-tour="review-banks" className="shrink-0 mb-4">
               <ActiveBanksCard
                 isExpanded={expandedSections.activeBanks}
                 onToggleExpanded={() => toggleSection('activeBanks')}
@@ -825,7 +825,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
             {/* The wrapper is what the arrival scroll measures — the card is a
                 composed component with no ref of its own, and offsetTop has to
                 come from the element the scroller actually contains. */}
-            <div ref={reviewCardRef}>
+            <div ref={reviewCardRef} data-tour="review-caught">
             <AITransactionsEnteredCard
               highlightNonce={reviewHighlightNonce}
               aiTransactions={aiTransactions}
@@ -875,7 +875,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
             </div>
             )}
 
-            <div className="shrink-0 mt-4">
+            <div data-tour="review-rules" className="shrink-0 mt-4">
               <LearnedRulesCard
                 vendorOverrides={vendorOverrides}
                 categoryNameById={categoryNameById}

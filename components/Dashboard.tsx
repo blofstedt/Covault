@@ -14,6 +14,8 @@ import TransactionActionModal from './TransactionActionModal';
 import TransactionForm from './TransactionForm';
 import PremiumGate from './PremiumGate';
 import GuidedTour from './tour/GuidedTour';
+import type { TourStage } from '../lib/tourSteps';
+import { compareBudgets } from '../lib/budgetOrder';
 import FirstCaptureModal from './FirstCaptureModal';
 import { hasSeenFirstCapture, markFirstCaptureSeen, shouldShowFirstCapture } from '../lib/firstCapture';
 import { useVendorOverrides } from './transaction_parsing/useVendorOverrides';
@@ -575,6 +577,48 @@ const Dashboard: React.FC<Props> = ({
     setExpandedBudgets(prev => (prev.has(id) ? new Set() : new Set([id])));
   }, []);
 
+  /**
+   * Put the app where the walkthrough's next step is talking about.
+   *
+   * The tour describes four places, and it opens each of them for real rather
+   * than drawing an impression of it: the vial it explains is opened through
+   * the same `expandedBudgets` a tap sets, so the 320ms animation that plays
+   * is the one the user will see every day, and the review page and settings
+   * menu it walks through are theirs, with their banks and their switches in
+   * them.
+   *
+   * Only ever called when the stage CHANGES, so a run of steps on one screen
+   * does not keep reopening it — reasserting "home" on every home step would
+   * close the vial two steps after opening it.
+   */
+  const handleTourStage = useCallback((stage: TourStage) => {
+    setSelectedTx(null);
+    setShowTransactionForm(false);
+
+    if (stage === 'review') {
+      setShowSettings(false);
+      setExpandedBudgets(new Set());
+      setShowParsing(true);
+      return;
+    }
+
+    setShowParsing(false);
+    setShowSettings(stage === 'settings');
+
+    if (stage === 'budget') {
+      // The first vial the dashboard actually draws, in the order it draws
+      // them — `compareBudgets` is the same sort the list applies, and the
+      // hidden ones are not on screen to be pointed at.
+      const hidden: string[] = state.settings.hiddenCategories || [];
+      const first = [...state.budgets]
+        .filter((budget) => !hidden.includes(budget.id))
+        .sort(compareBudgets)[0];
+      setExpandedBudgets(first ? new Set([first.id]) : new Set());
+    } else {
+      setExpandedBudgets(new Set());
+    }
+  }, [state.budgets, state.settings.hiddenCategories]);
+
   const handleUpdateSettings = (key: string, value: any) => {
     setState(prev => ({
       ...prev,
@@ -700,8 +744,12 @@ const Dashboard: React.FC<Props> = ({
   }, [isSearchOpen, searchQuery]);
 
 
-  if (showParsing) {
-    return (
+  // Both screens are built here rather than returned early, so the
+  // walkthrough below can sit outside the branch. It drives the app between
+  // the dashboard and Review, and an early return put it inside one of the
+  // two arms — which unmounted the tour, and its place in the story, the
+  // moment it opened the page it was about to describe.
+  const parsingScreen = !showParsing ? null : (
       <>
         <TransactionParsing
           reviewHighlightNonce={reviewHighlightNonce}
@@ -764,10 +812,9 @@ const Dashboard: React.FC<Props> = ({
           />
         )}
       </>
-    );
-  }
+  );
 
-  return (
+  const homeScreen = showParsing ? null : (
     <>
       <PageShell>
         {/* Balance + settings cog + search: combined in one section */}
@@ -993,17 +1040,6 @@ const Dashboard: React.FC<Props> = ({
         />
       )}
 
-      {/* The walkthrough, on its own full-screen layer. Rendered here rather
-          than inside the settings modal so it is not clipped by, or stacked
-          under, the modal that launched it.
-
-          `surface="live"` because the dashboard it describes is mounted right
-          behind this: the spotlight is cut out of the user's own screen, with
-          their own figures in it, rather than out of a drawing of one. The
-          overlay swallows every tap, so nothing underneath can be triggered
-          by accident. */}
-      {showTour && <GuidedTour surface="live" onFinish={() => setShowTour(false)} />}
-
       {showFirstCapture && (
         <FirstCaptureModal
           onShowMe={() => {
@@ -1011,6 +1047,40 @@ const Dashboard: React.FC<Props> = ({
             setShowParsing(true);
           }}
           onDismiss={() => setShowFirstCapture(false)}
+        />
+      )}
+    </>
+  );
+
+  return (
+    <>
+      {parsingScreen}
+      {homeScreen}
+
+      {/* The walkthrough, on its own full-screen layer, outside both screens.
+
+          Outside them because it moves between them: `onStage` opens a vial,
+          the review page and the settings menu as the story reaches each one,
+          and a tour mounted inside either screen would be torn down the
+          instant it navigated. Outside the settings modal for the older
+          reason too — it is not clipped by, or stacked under, the modal that
+          launched it.
+
+          `surface="live"` because the app it describes is mounted right
+          behind this: the spotlight is cut out of the user's own screen, with
+          their own figures in it, rather than out of a drawing of one. The
+          overlay swallows every tap, so nothing underneath can be triggered
+          by accident. */}
+      {showTour && (
+        <GuidedTour
+          surface="live"
+          onStage={handleTourStage}
+          onFinish={() => {
+            setShowTour(false);
+            // The tour left the app wherever its last step was — inside the
+            // settings menu, as it happens. Home is where it started.
+            goHome();
+          }}
         />
       )}
     </>

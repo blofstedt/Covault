@@ -111,7 +111,16 @@ const DashboardBalanceSection: React.FC<DashboardBalanceSectionProps> = ({
       {/* Balance label + settings cog on one row */}
       <div className="w-full flex items-center justify-between px-4 z-10 animate-nest mb-0.5 relative">
         <span className="absolute left-0 right-0 text-center text-[10px] font-semibold tracking-widest uppercase transition-colors duration-700 text-slate-400 dark:text-slate-500 pointer-events-none">
-          {balanceLabel ?? (isSharedAccount ? 'Our Remaining Balance' : 'Remaining Balance')}
+          {/* The inner span is what the walkthrough measures. The outer one is
+              stretched edge to edge so the text can centre on the screen while
+              the cog sits to its right, so measuring it would give a
+              full-width band; this one is the width of the words. The
+              highlight takes the union of everything marked `balance`, so the
+              label and the figure below it end up inside one rounded
+              rectangle. */}
+          <span data-tour="balance">
+            {balanceLabel ?? (isSharedAccount ? 'Our Remaining Balance' : 'Remaining Balance')}
+          </span>
         </span>
         <span></span>
         <button

@@ -47,6 +47,7 @@ const DashboardBottomBar: React.FC<DashboardBottomBarProps> = ({
         <div className="flex items-center justify-evenly gap-3 lg:gap-0 w-full">
           {/* Home Button */}
           <button
+            data-tour="home"
             onClick={onGoHome}
             className={`p-3 rounded-full transition-all duration-200 active:scale-[0.97] ${
               activeView === 'home'
