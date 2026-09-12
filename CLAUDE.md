@@ -117,6 +117,7 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | "it picked the wrong category" | `lib/hooks/useVendorMatcher.ts`, `lib/vendorMatchConfidence.ts`, step 5a of the processor |
 | "a new restaurant landed in Other" | `lib/merchantCategorySignals.ts` — the offline descriptor/POS-prefix guess plus the named-chain list, applied in step 5c |
 | "it keeps getting ONE merchant wrong" / "the picker offered me the same budget twice" | `lib/vendorRuleScope.ts` — a chain writes one rule per branch; this is what makes them read as one merchant. See Invariants |
+| "the merchant name has a dot / a store number / a branch on it" | `stripVendorNoise` in `lib/deviceTransactionParser.ts` — the display name IS the merchant's identity, so every stray spelling costs a rule. See Invariants |
 | "it used a different shop's name / budget" / "a purchase went missing" | `fuzzyVendorMatch` in `lib/formatVendorName.ts` — the one "are these the same merchant?" answer, asked by the duplicate skip, the soft-dup warning, the local vendor memory and the recurring lookup. See Invariants |
 | "the review list / badge is wrong" | `lib/reviewQueue.ts` — the single definition of "waiting"; the list, badge and widget all read it |
 | "the widget is stale or wrong" | `lib/widgetSnapshot.ts` → `android-custom/WidgetDeltaStore.java` → `android-custom/WidgetRenderer.java` |
@@ -430,6 +431,31 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   dashboard lying about the money. `monthBrowsing.test.ts` pins all of it,
   including that the widget effect and the notification call never mention
   `viewMonth`.
+
+- **The vendor DISPLAY name is the merchant's identity, so tidying it has to
+  carry the old spelling forward.** Learned rules are keyed off the name the
+  app shows, which means every spelling variation is a separate merchant with
+  its own rule to teach. RBC ends its alert with a full stop — "...was made
+  from RBC credit card 9141 at SECOND CUP." — and removing a store number from
+  the middle left that stop stranded as a word of its own, so one household
+  accumulated "Second Cup.", "Shoppers Drug Mart .", "Walmart Store ." and
+  "Lola Lash Bar - Crowfo." inside 185 rules covering 126 merchants.
+  `stripVendorNoise` now runs its rules to a fixed point, because removing one
+  piece of noise exposes the next. Two things about it are load-bearing. Each
+  rule must be safe on a name that is ALREADY clean, which is most of them —
+  hence a trailing "Store" is dropped only when punctuation left behind proves
+  something was cut away (the Apple Store and The Ups Store have nothing after
+  it), and the locale suffix is refused when it would leave a single trailing
+  letter (Toys R Us, not Toys R). And the untidy spelling is returned as a
+  vendor ALIAS: a cleaner name changes what future captures key on, so without
+  the alias every rule the household had already taught would silently stop
+  matching. Aliases are tried only after the tidy name finds nothing, so a
+  rule written against the name the app shows still wins.
+  `vendorNameTidying.test.ts` pins all of it, on real notifications.
+  Still unsolved and deliberately not guessed at: RBC truncates the merchant at
+  22 characters ("JD Sports Chinook Cent.", "LS Rosso Coffee Roaste."), and a
+  bare trailing "Store" with no punctuation after it is left alone because
+  "Walmart Store" and "Dollar Store" cannot be told apart offline.
 
 - **"Same kind of business" is not "same business", and `fuzzyVendorMatch` may
   never confuse the two.** One function answers "are these the same merchant?"

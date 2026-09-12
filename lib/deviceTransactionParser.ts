@@ -782,18 +782,81 @@ function titleCaseVendor(vendor: string): string {
  *
  * Normalizing the display name makes both sources produce the same thing, so
  * the duplicate check collapses them and the surviving name is the tidy one.
+ *
+ * It matters for more than looks: this name IS the merchant's identity. The
+ * capture pipeline keys its learned rules off it, so every spelling variation
+ * becomes a separate merchant with its own rule that has to be taught
+ * separately. A household running on RBC alerts had collected "Second Cup.",
+ * "Shoppers Drug Mart .", "Walmart Store ." and "Lola Lash Bar - Crowfo."
+ * among 185 rules covering 126 merchants — because RBC ends its sentence with
+ * a full stop ("...was made from RBC credit card 9141 at SECOND CUP."), and
+ * removing a store number from the middle left the stop stranded as a word of
+ * its own.
+ *
+ * Each rule below therefore has to be safe on a name that is ALREADY clean,
+ * because most are. The loop runs them to a fixed point: removing one piece of
+ * noise routinely exposes the next ("Walmart Store #3151." → "Walmart Store ."
+ * → "Walmart Store" → "Walmart").
  */
 export function stripVendorNoise(display: string): string {
-  let v = (display || '').trim();
-  // Store/terminal numbers anywhere: "Staples #462 Ca" -> "Staples Ca"
-  v = v.replace(/\s*#\s*\d+/g, ' ');
-  // Trailing currency-prefix artifacts left by "CA$12.34" / "US$12.34"
-  v = v.replace(/\s+(?:Ca|Us|Uk)\s*$/i, ' ');
-  // Trailing bare store numbers: "Homesense 028" -> "Homesense"
-  v = v.replace(/\s+\d{2,}\s*$/, ' ');
-  v = v.replace(/\s+/g, ' ').trim();
+  const original = (display || '').trim();
+  let v = original;
+
+  for (let pass = 0; pass < 4; pass++) {
+    const before = v;
+
+    // A store number with the word that introduces it: "Walmart Store #3151".
+    // Handled as one unit rather than stripping a trailing "Store" on its own,
+    // which would eat the name of The Ups Store and the Apple Store.
+    v = v.replace(/\s+(?:Store|Str|Loc|Location|Unit|Kiosk|Terminal|Tml)\s*#\s*\d+/gi, ' ');
+
+    // Store/terminal numbers anywhere: "Staples #462 Ca" -> "Staples Ca"
+    v = v.replace(/\s*#\s*\d+/g, ' ');
+
+    // The same word left stranded because the number was already removed
+    // upstream: RBC's "WALMART STORE #3151." reaches here as
+    // "Walmart Store .". The trailing punctuation is the tell that something
+    // was cut away, and is what keeps this off a name that really does end in
+    // the word — the Apple Store and The Ups Store have nothing after it.
+    v = v.replace(
+      /\s+(?:Store|Str|Loc|Location|Unit|Kiosk|Terminal|Tml)\s*[.,;:*]+\s*$/gi,
+      '',
+    );
+
+    // Trailing punctuation. Mostly the full stop that ends a bank's sentence,
+    // which is not part of anybody's name, and which RBC also uses to mark a
+    // merchant it truncated at 22 characters ("JD Sports Chinook Cent.").
+    v = v.replace(/[\s.,;:*/\\|\-–—]+$/, '');
+
+    // A branch tacked on after a dash: "Lola Lash Bar - Crowfo" is the Lola
+    // Lash Bar. Only when a real name of two or more words is left standing
+    // and the part being dropped is a single word, so a merchant whose name
+    // contains a dash keeps it.
+    v = v.replace(
+      /^(\S+(?:\s+\S+)+)\s*[-–—]\s*\S+$/,
+      (_whole, head: string) => head,
+    );
+
+    // Trailing currency-prefix artifacts left by "CA$12.34" / "US$12.34", and
+    // the locale suffix banks append ("Audible Ca", "Amzn Mktp Ca").
+    //
+    // Refused when it would leave a name ending in a single letter, because
+    // that is Toys R Us rather than a locale: dropping the "Us" there leaves
+    // "Toys R", which is not the name of anything.
+    v = v.replace(
+      /^(.*\S)\s+(?:Ca|Us|Usa|Uk)$/i,
+      (whole, head: string) => (/(?:^|\s)\S$/.test(head) ? whole : head),
+    );
+
+    // Trailing bare store numbers: "Homesense 028" -> "Homesense"
+    v = v.replace(/\s+\d{2,}\s*$/, ' ');
+
+    v = v.replace(/\s+/g, ' ').trim();
+    if (v === before) break;
+  }
+
   // Never strip the name down to nothing.
-  return v || (display || '').trim();
+  return v || original;
 }
 
 export const BANK_NAME_PREFIXES = [
@@ -925,7 +988,12 @@ export function parseNotificationText(text: string): ParsedNotification {
 
   const vendorRaw = extractVendorRaw(t, hasRefund);
   const cleanedVendor = cleanVendor(vendorRaw);
-  let vendorDisplay = stripVendorNoise(formatVendorName(titleCaseVendor(cleanedVendor)));
+  // The name before the tidy-up is kept as an alias below: a rule taught
+  // against the messy spelling ("Walmart Store", "Second Cup.") has to go on
+  // matching, or cleaning the name would silently orphan every rule the
+  // household had already taught.
+  const untidyDisplay = formatVendorName(titleCaseVendor(cleanedVendor));
+  let vendorDisplay = stripVendorNoise(untidyDisplay);
   let vendorKey = toVendorKey(cleanedVendor || 'unknown');
 
   // ── Final vendor sanity check ──
@@ -1020,7 +1088,15 @@ export function parseNotificationText(text: string): ParsedNotification {
     amount: pickedAmount,
     vendorDisplay: vendorDisplay || 'Unknown',
     vendorKey,
-    vendorAliases: processorPrefixedNames(t, cleanedVendor),
+    // Tried only after the tidy name has found nothing, so a rule written
+    // against the name the app SHOWS always wins over one written against a
+    // spelling it merely still recognises.
+    vendorAliases: [
+      ...processorPrefixedNames(t, cleanedVendor),
+      ...(toVendorKey(untidyDisplay) && toVendorKey(untidyDisplay) !== toVendorKey(vendorDisplay)
+        ? [untidyDisplay]
+        : []),
+    ],
     recurrence,
     isRefund: hasRefund,
     ...(foreignCurrency ? { foreignCurrency } : {}),
