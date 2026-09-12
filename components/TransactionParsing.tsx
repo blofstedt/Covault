@@ -55,6 +55,13 @@ interface TransactionParsingProps {
   allTransactions?: Transaction[];
   onTransactionTap?: (tx: Transaction) => void;
   budgets?: BudgetCategory[];
+  /**
+   * The categories the user has turned off in settings. Used by the pickers
+   * that file a caught row, so a hidden category is not offered there either.
+   * The full `budgets` list is still what names the rows — a row filed to a
+   * category that has since been hidden must keep saying where it went.
+   */
+  hiddenCategories?: string[];
   userId?: string;
   onRefreshNotifications?: () => Promise<void>;
   onReloadTransactions?: (userId: string) => Promise<void>;
@@ -101,6 +108,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   allTransactions = [],
   onTransactionTap,
   budgets = [],
+  hiddenCategories = [],
   userId,
   onRefreshNotifications,
   onReloadTransactions,
@@ -830,6 +838,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               highlightNonce={reviewHighlightNonce}
               aiTransactions={aiTransactions}
               budgets={budgets}
+              hiddenCategories={hiddenCategories}
               captureEnabled={enabled}
               onTransactionTap={onTransactionTap}
               onClear={(rows) => setClearTargets(rows)}
@@ -866,6 +875,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               <AutoFiledCard
                 transactions={autoFiled}
                 budgets={budgets}
+                hiddenCategories={hiddenCategories}
                 onChangeCategory={handleChangeCaughtCategory}
                 existingRulesFor={existingRulesFor}
                 onClear={(rows) => setClearAutoFiledTargets(rows)}
@@ -880,6 +890,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                 vendorOverrides={vendorOverrides}
                 categoryNameById={categoryNameById}
                 budgets={budgets}
+                hiddenCategories={hiddenCategories}
                 allTransactions={allTransactions}
                 rules={notificationRules}
                 onRemoveRule={removeNotificationRule}

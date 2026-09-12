@@ -1,6 +1,7 @@
 import React from 'react';
 import { BudgetCategory } from '../../types';
 import { getBudgetIcon } from '../dashboard_components/getBudgetIcon';
+import { selectableBudgets } from '../../lib/budgetVisibility';
 import { useEscapeKey } from '../../lib/hooks/useEscapeKey';
 import Portal from '../ui/Portal';
 
@@ -14,6 +15,18 @@ export interface ExistingRule {
 interface CategoryPickerSheetProps {
   vendor: string;
   budgets: BudgetCategory[];
+  /**
+   * The categories the user has turned off in settings. They are not offered
+   * for filing. The default keeps the raw list, so a caller that has not been
+   * taught about the user's choices behaves exactly as before.
+   */
+  hiddenCategories?: string[];
+  /**
+   * The category this row is currently filed under, if any. Kept on the list
+   * even when the user has hidden it, so the sheet still shows where the money
+   * currently is. See lib/budgetVisibility.ts.
+   */
+  currentBudgetId?: string | null;
   /**
    * Rules already known for this vendor. One is the normal case; two or more
    * means the capture pipeline refused to guess and sent it here to be picked.
@@ -36,6 +49,8 @@ const NO_RULES: ExistingRule[] = [];
 const CategoryPickerSheet: React.FC<CategoryPickerSheetProps> = ({
   vendor,
   budgets,
+  hiddenCategories = [],
+  currentBudgetId = null,
   existingRules = NO_RULES,
   onPick,
   onClose,
@@ -43,6 +58,8 @@ const CategoryPickerSheet: React.FC<CategoryPickerSheetProps> = ({
   useEscapeKey(onClose);
 
   const hasConflict = existingRules.length > 1;
+  // Only the categories the user has enabled, plus where this row already sits.
+  const choices = selectableBudgets(budgets, hiddenCategories, [currentBudgetId]);
 
   return (
     <Portal>
@@ -113,7 +130,7 @@ const CategoryPickerSheet: React.FC<CategoryPickerSheetProps> = ({
         )}
 
         <div className="grid grid-cols-2 gap-2">
-          {budgets.map((b) => (
+          {choices.map((b) => (
             <button
               key={b.id}
               type="button"

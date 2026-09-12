@@ -38,6 +38,8 @@ const SHORT_DATE_FMT = new Intl.DateTimeFormat(undefined, { month: 'short', day:
 interface AIEnteredRowProps {
   tx: Transaction;
   budgets: BudgetCategory[];
+  /** Categories the user has turned off — not offered when filing. See lib/budgetVisibility.ts. */
+  hiddenCategories?: string[];
   isForReview: boolean;
   onTransactionTap?: (tx: Transaction) => void;
   onDeleteTransaction?: (id: string) => Promise<void> | void;
@@ -91,6 +93,7 @@ interface AIEnteredRowProps {
 const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
   tx,
   budgets,
+  hiddenCategories = [],
   isForReview,
   onTransactionTap,
   onDeleteTransaction,
@@ -634,6 +637,8 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
         <CategoryPickerSheet
           vendor={tx.vendor}
           budgets={budgets}
+          hiddenCategories={hiddenCategories}
+          currentBudgetId={tx.budget_id}
           existingRules={existingRules}
           onClose={() => setShowCategoryPicker(false)}
           onPick={(budgetId) => {

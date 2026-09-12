@@ -16,6 +16,8 @@ interface AutoFiledCardProps {
   /** Auto-filed captures from the last few days (lib/reviewQueue). */
   transactions: Transaction[];
   budgets: BudgetCategory[];
+  /** Categories the user has turned off — not offered when moving a row. See lib/budgetVisibility.ts. */
+  hiddenCategories?: string[];
   /** Move one to another budget. Same handler the review list teaches with. */
   onChangeCategory?: (tx: Transaction, budgetId: string) => Promise<void> | void;
   /** Rules already taught for a vendor, offered first in the picker. */
@@ -51,6 +53,7 @@ interface AutoFiledCardProps {
 const AutoFiledCard: React.FC<AutoFiledCardProps> = ({
   transactions,
   budgets,
+  hiddenCategories = [],
   onChangeCategory,
   existingRulesFor,
   onClear,
@@ -175,6 +178,8 @@ const AutoFiledCard: React.FC<AutoFiledCardProps> = ({
         <CategoryPickerSheet
           vendor={movingTx.vendor}
           budgets={budgets}
+          hiddenCategories={hiddenCategories}
+          currentBudgetId={movingTx.budget_id}
           existingRules={existingRulesFor?.(movingTx.vendor)}
           onClose={() => setMovingTx(null)}
           onPick={handlePick}

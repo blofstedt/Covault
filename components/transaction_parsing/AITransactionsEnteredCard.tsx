@@ -22,6 +22,11 @@ interface AITransactionsEnteredCardProps {
   highlightNonce?: number;
   aiTransactions: Transaction[];
   budgets: BudgetCategory[];
+  /**
+   * The categories the user has turned off in settings. The picker that files a
+   * row does not offer them. See lib/budgetVisibility.ts.
+   */
+  hiddenCategories?: string[];
   onTransactionTap?: (tx: Transaction) => void;
   /**
    * File every row shown here. Handed the rows themselves, for the same reason
@@ -88,6 +93,7 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
   highlightNonce = 0,
   aiTransactions,
   budgets,
+  hiddenCategories = [],
   onTransactionTap,
   onClear,
   onRefresh,
@@ -340,6 +346,7 @@ const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
                 <AIEnteredRow
                   tx={tx}
                   budgets={budgets}
+                  hiddenCategories={hiddenCategories}
                   isForReview={needsReviewIds.has(tx.id)}
                   onTransactionTap={onTransactionTap}
                   onDeleteTransaction={onDeleteTransaction}

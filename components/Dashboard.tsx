@@ -769,6 +769,7 @@ const Dashboard: React.FC<Props> = ({
           allTransactions={normalizedTransactions}
           onTransactionTap={setSelectedTx}
           budgets={state.budgets}
+          hiddenCategories={state.settings.hiddenCategories}
           onDeleteTransaction={onDeleteTransaction}
           onUpdateTransaction={onUpdateTransaction}
           userId={state.user?.id}
@@ -788,6 +789,7 @@ const Dashboard: React.FC<Props> = ({
           <TransactionActionModal
             transaction={selectedTx}
             budgets={state.budgets}
+            hiddenCategories={state.settings.hiddenCategories}
             currentUserName={state.user?.name || ''}
             isSharedAccount={!state.user?.budgetingSolo}
             vendorHistory={vendorHistory}
@@ -805,6 +807,7 @@ const Dashboard: React.FC<Props> = ({
               setShowTransactionForm(false);
             }}
             budgets={state.budgets}
+            hiddenCategories={state.settings.hiddenCategories}
             userId={state.user.id}
             userName={state.user?.name || ''}
             isSharedAccount={!state.user?.budgetingSolo}
@@ -1016,6 +1019,7 @@ const Dashboard: React.FC<Props> = ({
         <TransactionActionModal
           transaction={selectedTx}
           budgets={state.budgets}
+          hiddenCategories={state.settings.hiddenCategories}
           currentUserName={state.user?.name || ''}
           isSharedAccount={!state.user?.budgetingSolo}
           vendorHistory={vendorHistory}
@@ -1033,6 +1037,7 @@ const Dashboard: React.FC<Props> = ({
             setShowTransactionForm(false);
           }}
           budgets={state.budgets}
+          hiddenCategories={state.settings.hiddenCategories}
           userId={state.user.id}
           userName={state.user?.name || ''}
           isSharedAccount={!state.user?.budgetingSolo}
