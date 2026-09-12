@@ -164,3 +164,18 @@ export function chainAwareMatchKey(vendorKey: string): ChainAwareMatchKey {
   }
   return { matchKey: key, matchType: 'exact' };
 }
+
+/**
+ * Whether `key` (already normalised, e.g. via `toVendorKey`) IS one of the
+ * chain roots above, rather than a branch of one.
+ *
+ * `chainAwareMatchKey` only generalises a key with something appended after
+ * the root — a rule already keyed to the bare root comes back `exact` from
+ * it, which is correct for deciding what to WRITE but wrong for recognising
+ * an already-combined chain rule as a chain rule at all (see
+ * lib/ruleCleanup.ts, which has to tell "already one rule for this chain"
+ * apart from "not a chain we know").
+ */
+export function isKnownChainRoot(key: string): boolean {
+  return CHAIN_ROOT_KEYS.includes(String(key || ''));
+}

@@ -259,6 +259,7 @@ const Dashboard: React.FC<Props> = ({
     handleDeleteVendorOverride,
     handleSetVendorCategory,
     handleSetProperName,
+    handleCombineChainRules,
   } = useVendorOverrides({
     userId: state.user?.id,
     partnerId: state.user?.partnerId,
@@ -732,6 +733,7 @@ const Dashboard: React.FC<Props> = ({
           onDeleteVendorOverride={handleDeleteVendorOverride}
           onSetVendorCategory={handleSetVendorCategory}
           onSetProperName={handleSetProperName}
+          onCombineChainRules={handleCombineChainRules}
         />
 
         {selectedTx && (

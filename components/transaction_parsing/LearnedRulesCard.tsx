@@ -4,7 +4,8 @@ import type { NotificationRule } from '../../lib/notificationRules';
 import type { VendorOverride, MatchType } from './useVendorOverrides';
 import { toVendorKey } from '../../lib/deviceTransactionParser';
 import { formatCurrency } from '../../lib/formatCurrency';
-import { BudgetCategory, Transaction } from '../../types';
+import { findStaleOtherRules, findChainMergeGroups, StaleOtherGroup, ChainMergeGroup } from '../../lib/ruleCleanup';
+import { BudgetCategory, Toast, Transaction } from '../../types';
 
 // --- Static Definitions Moved Outside Component to Prevent Re-allocation ---
 const matchTypeStyles: Record<MatchType, string> = {
@@ -55,10 +56,19 @@ interface LearnedRulesCardProps {
   onDeleteVendorOverride: (overrideId: string) => void;
   onSetVendorCategory?: (vendorName: string, categoryId: string) => void;
   onSetProperName?: (vendorName: string, properName: string) => void;
+  onCombineChainRules?: (params: {
+    keepId: string;
+    removeIds: string[];
+    chainRoot: string;
+    alreadyCanonical: boolean;
+  }) => void | Promise<void>;
   onSetExpandedVendorCategory?: (vendorName: string | null) => void;
   expandedVendorCategory?: string | null;
   isExpanded?: boolean;
   onToggleExpanded?: () => void;
+  /** Confirms a cleanup action. Shown with no Undo — same as this card's
+   *  existing Delete Rule / remove-pattern buttons, which have never had one. */
+  onToast?: (toast: Toast) => void;
 }
 
 const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
@@ -71,16 +81,20 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
   onDeleteVendorOverride,
   onSetVendorCategory,
   onSetProperName,
+  onCombineChainRules,
   onSetExpandedVendorCategory,
   expandedVendorCategory,
   isExpanded = true,
   onToggleExpanded,
+  onToast,
 }) => {
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [editingProperName, setEditingProperName] = useState<string | null>(null);
   const [properNameDraft, setProperNameDraft] = useState('');
   const [mergingRule, setMergingRule] = useState<string | null>(null);
   const [mergeTarget, setMergeTarget] = useState<string | null>(null);
+  const [removingStaleKey, setRemovingStaleKey] = useState<string | null>(null);
+  const [combiningChainKey, setCombiningChainKey] = useState<string | null>(null);
 
   // Group vendor overrides into learned rules by (proper_name, category_id)
   const learnedRules = useMemo((): LearnedRule[] => {
@@ -137,6 +151,62 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
   }, [vendorOverrides, allTransactions, categoryNameById]);
 
   const totalRules = learnedRules.length + rules.length;
+
+  // ── Needs attention: rules that are safe to tidy without re-deciding anything ──
+  // Both checks mirror a rule the capture pipeline already applies elsewhere
+  // (see lib/ruleCleanup.ts) — surfacing them changes nothing about what gets
+  // categorised, it only offers to remove the leftover row.
+  const staleOtherGroups = useMemo(() => findStaleOtherRules(vendorOverrides), [vendorOverrides]);
+  const chainMergeGroups = useMemo(() => findChainMergeGroups(vendorOverrides), [vendorOverrides]);
+
+  const handleRemoveStaleGroup = useCallback(
+    async (group: StaleOtherGroup) => {
+      const key = group.properName;
+      setRemovingStaleKey(key);
+      try {
+        for (const rule of group.staleRules) {
+          await onDeleteVendorOverride(rule.id);
+        }
+        onToast?.({
+          message:
+            group.staleRules.length > 1
+              ? `Removed ${group.staleRules.length} unused rules for ${group.properName}`
+              : `Removed the unused rule for ${group.properName}`,
+          tone: 'info',
+        });
+      } finally {
+        setRemovingStaleKey(null);
+      }
+    },
+    [onDeleteVendorOverride, onToast],
+  );
+
+  const handleCombineChainGroup = useCallback(
+    async (group: ChainMergeGroup) => {
+      const key = `${group.chainRoot}::${group.categoryName}`;
+      setCombiningChainKey(key);
+      try {
+        const keepId = group.canonical?.id ?? group.branches[0].id;
+        const removeIds = group.canonical
+          ? group.branches.map((r) => r.id)
+          : group.branches.slice(1).map((r) => r.id);
+        await onCombineChainRules?.({
+          keepId,
+          removeIds,
+          chainRoot: group.chainRoot,
+          alreadyCanonical: Boolean(group.canonical),
+        });
+        const rowCount = group.branches.length + (group.canonical ? 1 : 0);
+        onToast?.({
+          message: `Combined ${rowCount} ${group.properName} rules into one`,
+          tone: 'info',
+        });
+      } finally {
+        setCombiningChainKey(null);
+      }
+    },
+    [onCombineChainRules, onToast],
+  );
 
   const handleRemoveRule = useCallback(
     async (ruleId: string) => {
@@ -200,6 +270,113 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
     >
       {isExpanded && (
         <div className="space-y-3">
+          {/* Needs attention — safe, narrow cleanups, never a re-decision */}
+          {(staleOtherGroups.length > 0 || chainMergeGroups.length > 0) && (
+            <div className="space-y-2 pb-1">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-[11px] font-bold tracking-wide uppercase text-slate-400 dark:text-slate-500">
+                  Needs attention
+                </span>
+                <span className="text-[11px] font-extrabold bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full">
+                  {staleOtherGroups.reduce((n, g) => n + g.staleRules.length, 0) + chainMergeGroups.length}
+                </span>
+              </div>
+
+              {staleOtherGroups.length > 0 && (
+                <div className="bg-white/60 dark:bg-rose-900/10 backdrop-blur-sm rounded-2xl border border-rose-100 dark:border-rose-800/30 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] overflow-hidden">
+                  <div className="px-3 pt-3 pb-1.5">
+                    <p className="text-[11px] font-bold text-rose-700 dark:text-rose-300">
+                      No longer doing anything ({staleOtherGroups.length})
+                    </p>
+                    <p className="text-[10.5px] text-rose-600/70 dark:text-rose-400/60 mt-0.5">
+                      A branch was once filed as Other while the rest of that vendor already agrees on a
+                      real category — this row hasn't mattered since. Removing it does not change how
+                      anything has ever been filed.
+                    </p>
+                  </div>
+                  <div className="px-2 pb-2 space-y-1">
+                    {staleOtherGroups.map((group) => {
+                      const isRemoving = removingStaleKey === group.properName;
+                      return (
+                        <div
+                          key={group.properName}
+                          className="flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl bg-white/70 dark:bg-slate-900/30"
+                        >
+                          <div className="min-w-0">
+                            <span className="text-[12px] font-bold text-slate-600 dark:text-slate-300">
+                              {group.properName}
+                            </span>
+                            <div className="flex items-center gap-1 mt-0.5 text-[10.5px]">
+                              <span className="line-through text-slate-400 dark:text-slate-600">Other</span>
+                              <span className="text-slate-300 dark:text-slate-600">&middot;</span>
+                              <span className="font-bold text-slate-500 dark:text-slate-400">
+                                real answer: {group.realCategoryName}
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveStaleGroup(group)}
+                            disabled={isRemoving}
+                            aria-label={`Remove the unused Other rule for ${group.properName}`}
+                            className="shrink-0 text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800/40 text-rose-700 dark:text-rose-300 active:scale-95 transition-all disabled:opacity-50"
+                          >
+                            {isRemoving ? 'Removing…' : 'Remove'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {chainMergeGroups.length > 0 && (
+                <div className="bg-white/60 dark:bg-amber-900/10 backdrop-blur-sm rounded-2xl border border-amber-100 dark:border-amber-800/30 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] overflow-hidden">
+                  <div className="px-3 pt-3 pb-1.5">
+                    <p className="text-[11px] font-bold text-amber-700 dark:text-amber-300">
+                      One chain, several rules ({chainMergeGroups.length})
+                    </p>
+                    <p className="text-[10.5px] text-amber-600/70 dark:text-amber-400/60 mt-0.5">
+                      Every branch already agrees on the same category — combining them into one rule
+                      won't change how anything files, it just stops teaching the same lesson twice.
+                    </p>
+                  </div>
+                  <div className="px-2 pb-2 space-y-1">
+                    {chainMergeGroups.map((group) => {
+                      const key = `${group.chainRoot}::${group.categoryName}`;
+                      const isCombining = combiningChainKey === key;
+                      const rowCount = group.branches.length + (group.canonical ? 1 : 0);
+                      return (
+                        <div
+                          key={key}
+                          className="flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl bg-white/70 dark:bg-slate-900/30"
+                        >
+                          <div className="min-w-0">
+                            <span className="text-[12px] font-bold text-slate-600 dark:text-slate-300">
+                              {group.properName}
+                            </span>
+                            <div className="text-[10.5px] text-slate-400 dark:text-slate-500 mt-0.5">
+                              {rowCount} rules, all {group.categoryName}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleCombineChainGroup(group)}
+                            disabled={isCombining}
+                            aria-label={`Combine ${rowCount} ${group.properName} rules into one`}
+                            className="shrink-0 text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 text-amber-700 dark:text-amber-300 active:scale-95 transition-all disabled:opacity-50"
+                          >
+                            {isCombining ? 'Combining…' : 'Combine'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Learned Rules List */}
           {learnedRules.length === 0 ? (
             <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-4">

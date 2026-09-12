@@ -78,6 +78,13 @@ interface TransactionParsingProps {
   onSetVendorCategory: (vendorName: string, categoryId: string) => void | Promise<void>;
   /** Persist and update local state for a vendor display name. */
   onSetProperName: (vendorName: string, properName: string) => void | Promise<void>;
+  /** Combine several of a chain's own rules into one — see chainVendorKeys.ts. */
+  onCombineChainRules?: (params: {
+    keepId: string;
+    removeIds: string[];
+    chainRoot: string;
+    alreadyCanonical: boolean;
+  }) => void | Promise<void>;
   /** Raise a transient toast — used for the Undo offered after filing a row. */
   onToast?: (toast: Toast) => void;
 }
@@ -104,6 +111,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   onDeleteVendorOverride,
   onSetVendorCategory,
   onSetProperName,
+  onCombineChainRules,
   onToast,
 }) => {
   // ── Clear/delete modal state ──
@@ -876,6 +884,8 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                 onDeleteVendorOverride={handleDeleteVendorOverride}
                 onSetVendorCategory={handleSetVendorCategory}
                 onSetProperName={handleSetProperName}
+                onCombineChainRules={onCombineChainRules}
+                onToast={onToast}
                 onSetExpandedVendorCategory={setExpandedVendorCategory}
                 expandedVendorCategory={expandedVendorCategory}
                 isExpanded={expandedSections.learnedRules}

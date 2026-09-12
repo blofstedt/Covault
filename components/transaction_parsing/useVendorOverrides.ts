@@ -399,6 +399,74 @@ export function useVendorOverrides({ userId, partnerId, budgets }: UseVendorOver
     [userId, vendorOverrides, budgets],
   );
 
+  // ── Combine several of a chain's own rules into one ──
+  //
+  // Only ever called from the "Needs attention" section of LearnedRulesCard,
+  // on a group `findChainMergeGroups` (lib/ruleCleanup.ts) has already
+  // verified: two or more of the user's own rules for a chain on the safe
+  // list (chainVendorKeys.ts), already agreeing on one category. Nothing here
+  // re-checks that — it trusts the caller the same way handleDeleteVendorOverride
+  // trusts its caller with an id.
+  //
+  // `keepId` already carries the chain-wide key when the group has a
+  // `canonical` row (a previous combine, or a hand-written prefix rule); in
+  // that case this only deletes `removeIds`. Otherwise `keepId` is one of the
+  // branch rows, PATCHed to the chain's own key so it starts matching every
+  // branch instead of just its own. Either way, deleting the other rows goes
+  // through handleDeleteVendorOverride so the pool-withdrawal and local-state
+  // bookkeeping stay in the one place that already does it correctly.
+  const handleCombineChainRules = useCallback(
+    async (params: { keepId: string; removeIds: string[]; chainRoot: string; alreadyCanonical: boolean }) => {
+      const { keepId, removeIds, chainRoot, alreadyCanonical } = params;
+      if (!userId || removeIds.length === 0) return;
+
+      if (!alreadyCanonical) {
+        const keeper = vendorOverrides.find((vo) => vo.id === keepId);
+        if (!keeper) return;
+
+        setVendorOverrides((prev) =>
+          prev.map((vo) =>
+            vo.id === keepId ? { ...vo, match_key: chainRoot, match_type: 'prefix' } : vo,
+          ),
+        );
+
+        try {
+          const res = await restFetch(`/overrides?id=eq.${keepId}&user_id=eq.${userId}`, {
+            method: 'PATCH',
+            headers: { Prefer: 'return=representation' },
+            body: JSON.stringify({ match_key: chainRoot, match_type: 'prefix' }),
+          });
+          if (!res.ok) {
+            log.error('[TransactionParsing] Error combining chain rule:', res.status, (await res.text()).slice(0, 200));
+            setVendorOverrides((prev) =>
+              prev.map((vo) =>
+                vo.id === keepId
+                  ? { ...vo, match_key: keeper.match_key, match_type: keeper.match_type }
+                  : vo,
+              ),
+            );
+            return;
+          }
+        } catch (err: any) {
+          log.error('[TransactionParsing] Exception combining chain rule:', err?.message || err);
+          setVendorOverrides((prev) =>
+            prev.map((vo) =>
+              vo.id === keepId
+                ? { ...vo, match_key: keeper.match_key, match_type: keeper.match_type }
+                : vo,
+            ),
+          );
+          return;
+        }
+      }
+
+      for (const id of removeIds) {
+        await handleDeleteVendorOverride(id);
+      }
+    },
+    [userId, vendorOverrides, handleDeleteVendorOverride],
+  );
+
   // ── Set or update a vendor's proper (display) name ──
   const handleSetProperName = useCallback(
     async (vendorName: string, properName: string) => {
@@ -522,6 +590,7 @@ export function useVendorOverrides({ userId, partnerId, budgets }: UseVendorOver
     handleDeleteVendorOverride,
     handleSetVendorCategory,
     handleSetProperName,
+    handleCombineChainRules,
     upsertLocalVendorOverride,
   };
 }
