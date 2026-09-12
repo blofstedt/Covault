@@ -94,6 +94,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
   return (
     <div
       ref={scrollContainerRef}
+      data-tour="vials"
       // `overflow-hidden` is now constant instead of flipping to
       // `overflow-y-auto` when everything collapses. The old version tore down
       // and rebuilt this element's scrolling/compositing structure on the very

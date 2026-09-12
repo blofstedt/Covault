@@ -116,6 +116,7 @@ const DashboardBalanceSection: React.FC<DashboardBalanceSectionProps> = ({
         <span></span>
         <button
           id="settings-button"
+          data-tour="settings"
           onClick={onOpenSettings}
           className="p-2 transition-all duration-200 active:scale-[0.97] bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-xl text-slate-400 hover:text-emerald-600 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] shadow-sm"
         >
@@ -143,7 +144,7 @@ const DashboardBalanceSection: React.FC<DashboardBalanceSectionProps> = ({
         </button>
       )}
 
-      <div className="text-center z-10 animate-nest">
+      <div data-tour="balance" className="text-center z-10 animate-nest">
         <div className="flex items-baseline justify-center space-x-1">
           <span
             className={`text-xl font-bold leading-none ${

@@ -9,25 +9,36 @@ import {
 import { useEscapeKey } from '../../lib/hooks/useEscapeKey';
 
 /**
- * The walkthrough: a spotlight moving over a demo dashboard.
+ * The walkthrough: a spotlight over the dashboard.
  *
- * Two jobs, deliberately kept apart from the screen it points at. This file
- * measures a target, draws the hole, places the caption and moves between
- * steps; `TourDemoScreen` decides what is under the hole; `lib/tourSteps.ts`
- * holds the words and the geometry rules. None of the three knows anything
- * about the real dashboard, which is why the tour cannot break capture, write
- * a transaction, or go stale when the dashboard's internals change.
+ * It points at the REAL screen. It used to draw its own likeness of a
+ * dashboard and spotlight that instead, and the likeness drifted — a
+ * left-aligned balance where the real one is centred, a row of month names
+ * where the real one has a chart, no search field at all — so someone who
+ * knew the app was shown a worse copy of a screen they were already looking
+ * at. A copy of a screen is a second screen to maintain, and the only thing
+ * it can do is fall behind.
  *
- * It covers the whole screen rather than sitting over the live app. That is
- * what lets it be shown from two completely different places — the last step
- * of the intro, and a button in Settings — with no arrangement between them.
+ * So there are two surfaces and both are the actual dashboard:
+ *
+ *   - `surface="live"` (from Settings) dims the dashboard that is already
+ *     mounted behind this overlay and cuts a hole in it. Nothing is drawn
+ *     twice, and what the spotlight circles is the user's own money.
+ *   - `surface="demo"` (the last step of the intro) renders
+ *     `TourDemoScreen`, which is the same dashboard components fed example
+ *     figures — because during the intro there is no dashboard mounted, and a
+ *     brand-new one would be a row of zeroes anyway.
+ *
+ * Taps never reach the app underneath: this root is a full-screen element
+ * with pointer events ON, so it swallows everything that is not one of its
+ * own buttons. That is what stops a stray thumb writing a real transaction or
+ * opening settings mid-sentence.
  *
  * The dim is one element with an enormous spread shadow rather than four
  * rectangles around the hole. Four elements have to be kept in agreement on
  * every step, and any disagreement shows as a seam of un-dimmed screen; one
  * element cannot disagree with itself. It moves on the app's own 320ms curve,
- * and only when the step changes — the screen underneath it is completely
- * static, so nothing is being animated over.
+ * and only when the step changes.
  */
 
 interface GuidedTourProps {
@@ -35,13 +46,46 @@ interface GuidedTourProps {
   onFinish: () => void;
   /** Label for the last step's button. The intro says "Let's go". */
   finishLabel?: string;
+  /**
+   * What the spotlight is cut out of. "live" points at the dashboard already
+   * mounted behind this overlay; "demo" draws one from example figures,
+   * for the intro, where there is no dashboard yet.
+   */
+  surface?: 'live' | 'demo';
 }
 
 /** Used until the caption has been measured. Roughly a three-line caption. */
 const CAPTION_HEIGHT_ESTIMATE = 168;
 const GAP = 16;
 
-const GuidedTour: React.FC<GuidedTourProps> = ({ onFinish, finishLabel = 'Done' }) => {
+/**
+ * How long to keep re-measuring after a step changes.
+ *
+ * One measurement is not enough, and the reason is the dashboard itself: the
+ * balance block arrives on `animate-nest`, the figure counts up to its value
+ * (which changes its WIDTH as digits land), and the chart is a lazy chunk that
+ * appears whenever it appears. Measuring once, on the frame the step changed,
+ * pinned the hole to wherever the screen was mid-arrival — which is how the
+ * first step ended up with its ring drawn through the middle of the number it
+ * was pointing at.
+ *
+ * 900ms covers the longest of those (the count-up). The loop stops early once
+ * the rectangle has held still, so on a settled screen — which is every replay
+ * from Settings — it costs a handful of frames.
+ */
+const SETTLE_MS = 900;
+const STABLE_FRAMES = 4;
+
+function sameRect(a: TargetRect | null, b: TargetRect | null): boolean {
+  if (!a || !b) return a === b;
+  return a.top === b.top && a.left === b.left && a.width === b.width && a.height === b.height;
+}
+
+const GuidedTour: React.FC<GuidedTourProps> = ({
+  onFinish,
+  finishLabel = 'Done',
+  surface = 'demo',
+}) => {
   const [index, setIndex] = useState(0);
   const [rect, setRect] = useState<TargetRect | null>(null);
   const [captionHeight, setCaptionHeight] = useState(CAPTION_HEIGHT_ESTIMATE);
@@ -57,7 +101,13 @@ const GuidedTour: React.FC<GuidedTourProps> = ({ onFinish, finishLabel = 'Done' 
   const measure = useCallback(() => {
     const root = rootRef.current;
     if (!root || !step) return;
-    const target = root.querySelector<HTMLElement>(`[data-tour="${step.target}"]`);
+    // In live mode the target is the dashboard behind this overlay, which is
+    // a sibling rather than a child — so the search starts at the document.
+    // In demo mode it is inside this root, and scoping to the root is what
+    // stops a step matching the real dashboard by accident if both are ever
+    // mounted at once.
+    const scope: ParentNode = surface === 'live' ? document : root;
+    const target = scope.querySelector<HTMLElement>(`[data-tour="${step.target}"]`);
     if (!target) {
       // A step pointing at nothing still has to read as something. Dropping
       // the rect dims the whole screen and centres the caption, which says
@@ -67,13 +117,16 @@ const GuidedTour: React.FC<GuidedTourProps> = ({ onFinish, finishLabel = 'Done' 
       return;
     }
     const box = target.getBoundingClientRect();
-    setRect(
-      spotlightRect(
-        { top: box.top, left: box.left, width: box.width, height: box.height },
-        { width: window.innerWidth, height: window.innerHeight },
-      ),
+    const next = spotlightRect(
+      { top: box.top, left: box.left, width: box.width, height: box.height },
+      { width: window.innerWidth, height: window.innerHeight },
+      step.pad,
     );
-  }, [step]);
+    // Only commit a real change: the settle loop below measures every frame,
+    // and re-rendering on each of them would put the hole's own 320ms
+    // transition back to the start of its curve on every one.
+    setRect((previous) => (sameRect(previous, next) ? previous : next));
+  }, [step, surface]);
 
   // After layout, not after paint: measuring in `useEffect` lets one frame
   // through with the hole in its previous place, which reads as the spotlight
@@ -81,6 +134,44 @@ const GuidedTour: React.FC<GuidedTourProps> = ({ onFinish, finishLabel = 'Done' 
   useLayoutEffect(() => {
     measure();
   }, [measure]);
+
+  // Then keep measuring until the screen underneath has stopped moving. See
+  // SETTLE_MS.
+  useEffect(() => {
+    let frame = 0;
+    let stable = 0;
+    let last: DOMRect | null = null;
+    const started = performance.now();
+
+    const tick = () => {
+      const root = rootRef.current;
+      const target = root && step
+        ? (surface === 'live' ? document : root).querySelector<HTMLElement>(
+            `[data-tour="${step.target}"]`,
+          )
+        : null;
+      const box = target?.getBoundingClientRect() ?? null;
+
+      const held =
+        box !== null &&
+        last !== null &&
+        box.top === last.top &&
+        box.left === last.left &&
+        box.width === last.width &&
+        box.height === last.height;
+      stable = held ? stable + 1 : 0;
+      last = box;
+
+      measure();
+
+      if (stable < STABLE_FRAMES && performance.now() - started < SETTLE_MS) {
+        frame = requestAnimationFrame(tick);
+      }
+    };
+
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [measure, step, surface]);
 
   useEffect(() => {
     // A phone rotating, or the keyboard opening and closing, moves everything
@@ -126,9 +217,11 @@ const GuidedTour: React.FC<GuidedTourProps> = ({ onFinish, finishLabel = 'Done' 
       role="dialog"
       aria-modal="true"
       aria-label="How Covault works"
-      className="fixed inset-0 z-[300] overflow-hidden bg-slate-50 dark:bg-slate-950"
+      className={`fixed inset-0 z-[300] overflow-hidden ${
+        surface === 'live' ? '' : 'bg-slate-50 dark:bg-slate-950'
+      }`}
     >
-      <TourDemoScreen />
+      {surface === 'demo' && <TourDemoScreen />}
 
       {/* The dim, with the hole in it. */}
       {rect ? (
@@ -156,6 +249,15 @@ const GuidedTour: React.FC<GuidedTourProps> = ({ onFinish, finishLabel = 'Done' 
         className="absolute left-4 right-4 lg:left-1/2 lg:right-auto lg:w-[26rem] lg:-translate-x-1/2 motion-safe:transition-all motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)]"
       >
         <div className="rounded-[2rem] bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/60 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] shadow-2xl p-6 space-y-3">
+          {/* The demo screen's figures are invented, and something on screen
+              has to say so. It rides on the caption because every corner of
+              the dashboard it draws is already occupied. Absent in live mode,
+              where the numbers behind the hole are the user's own. */}
+          {surface === 'demo' && (
+            <span className="inline-block px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-[9px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+              Example figures
+            </span>
+          )}
           <h2 className="text-lg font-bold tracking-tight text-slate-700 dark:text-slate-100">
             {step.title}
           </h2>

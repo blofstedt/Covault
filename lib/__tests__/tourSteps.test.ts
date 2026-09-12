@@ -7,31 +7,80 @@
  * nowhere — and a caption that covers the thing it describes only does so at
  * certain screen heights, which is to say on somebody else's phone. Neither
  * would ever fail CI on its own, so they are pinned here.
+ *
+ * The targets live on the REAL dashboard components now, because the tour
+ * spotlights the real screen rather than a drawing of one. That is why this
+ * scans a list of files rather than a single demo screen — and why a target is
+ * allowed to appear in two of them: `TourDemoScreen` mounts the same
+ * components for the intro, where no dashboard exists yet, and reproduces the
+ * dashboard's own chart wrapper. Twice in ONE file is still a failure: only
+ * one of those two screens is ever mounted at a time, but two matches inside
+ * one of them means the spotlight could land on either.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { TOUR_STEPS, captionSide, spotlightRect } from '../tourSteps';
 
-const demoScreen = readFileSync(
-  resolve(__dirname, '../../components/tour/TourDemoScreen.tsx'),
-  'utf8',
-);
+/** Every file allowed to carry a `data-tour` anchor. */
+const TOUR_SURFACE_FILES = [
+  '../../components/Dashboard.tsx',
+  '../../components/dashboard_components/DashboardBalanceSection.tsx',
+  '../../components/dashboard_components/DashboardBudgetSectionsList.tsx',
+  '../../components/dashboard_components/DashboardBottomBar.tsx',
+  '../../components/tour/TourDemoScreen.tsx',
+];
+
+const sources = TOUR_SURFACE_FILES.map((relative) => ({
+  name: relative.replace('../../', ''),
+  text: readFileSync(resolve(__dirname, relative), 'utf8'),
+}));
+
+function countIn(text: string, target: string): number {
+  return text.split(`data-tour="${target}"`).length - 1;
+}
 
 describe('the tour points at real things', () => {
-  it('has a demo target for every step', () => {
+  it('has a real element for every step', () => {
     for (const step of TOUR_STEPS) {
+      const total = sources.reduce((sum, file) => sum + countIn(file.text, step.target), 0);
       expect(
-        demoScreen.includes(`data-tour="${step.target}"`),
-        `TOUR_STEPS names "${step.target}", which TourDemoScreen.tsx does not draw`,
-      ).toBe(true);
+        total,
+        `TOUR_STEPS names "${step.target}", which nothing in the app carries`,
+      ).toBeGreaterThan(0);
     }
   });
 
-  it('names each target once, so a step cannot highlight the wrong one of two', () => {
+  it('names each target at most once per screen, so a step cannot highlight the wrong one of two', () => {
     for (const step of TOUR_STEPS) {
-      const matches = demoScreen.split(`data-tour="${step.target}"`).length - 1;
-      expect(matches, `"${step.target}" appears ${matches} times`).toBe(1);
+      for (const file of sources) {
+        const matches = countIn(file.text, step.target);
+        expect(
+          matches,
+          `"${step.target}" appears ${matches} times in ${file.name}`,
+        ).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+
+  it('covers the demo screen the intro shows, which has no dashboard behind it', () => {
+    const demo = sources.find((file) => file.name.endsWith('TourDemoScreen.tsx'))!;
+    const dashboardOwned = sources.filter((file) => !file.name.endsWith('TourDemoScreen.tsx'));
+    for (const step of TOUR_STEPS) {
+      // Either the demo screen carries the anchor itself, or it mounts the
+      // component that does. Both are checked by hand here rather than
+      // inferred, because "it renders the real component" is exactly the
+      // property that would rot silently.
+      const inDemo = countIn(demo.text, step.target) > 0;
+      const owner = dashboardOwned.find((file) => countIn(file.text, step.target) > 0);
+      const mounted =
+        owner !== undefined &&
+        (owner.name.endsWith('Dashboard.tsx') ||
+          demo.text.includes(owner.name.split('/').pop()!.replace('.tsx', '')));
+      expect(
+        inDemo || mounted,
+        `the intro's demo screen has no way to show "${step.target}"`,
+      ).toBe(true);
     }
   });
 

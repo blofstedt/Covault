@@ -6,25 +6,26 @@ interface TourStepProps {
 }
 
 /**
- * The last step of the intro: a spotlight walkthrough over a demo dashboard.
+ * The last step of the intro: a spotlight walkthrough over an example
+ * dashboard.
  *
- * This used to be three drawn sketches inside the ordinary step shell, for a
- * reason that still holds and is worth restating: a spotlight over the LIVE
- * dashboard would be circling an empty screen, because a brand-new user has
- * no spending in it yet, and a tour that lets taps through to real controls
- * can write a real transaction by accident.
+ * The one place the tour does NOT point at the live screen. There is no
+ * dashboard mounted during the intro, and a brand-new one would be a row of
+ * zeroes anyway — a spotlight circling blanks, explaining what would have
+ * been there. Replayed later from Settings it points at the real thing; see
+ * `GuidedTour`'s `surface` prop.
  *
- * The demo screen answers both without giving up the spotlight — see
- * `components/tour/TourDemoScreen.tsx`. It is a likeness of a dashboard that
- * has been used for a month, marked as an example, and completely inert, so
- * the tour can point at the real shapes in their real places.
+ * `TourDemoScreen` is not a drawing of a dashboard. It is the dashboard's own
+ * components, laid out the way `Dashboard` lays them out, fed invented
+ * figures and marked as an example — so what a new user is shown here is what
+ * they are about to get.
  *
  * No step shell around it: the tour covers the screen, carries its own
  * progress dots and its own way out, and is shown from Settings as well as
  * from here, where an intro step counter would be a lie.
  */
 const TourStep: React.FC<TourStepProps> = ({ onFinish }) => (
-  <GuidedTour onFinish={onFinish} finishLabel="Let's go" />
+  <GuidedTour surface="demo" onFinish={onFinish} finishLabel="Let's go" />
 );
 
 export default TourStep;

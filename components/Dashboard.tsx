@@ -843,8 +843,14 @@ const Dashboard: React.FC<Props> = ({
           />
         ) : (
           <div className="flex-1 min-h-0 flex flex-col overflow-hidden lg:px-6">
-            {/* Chart: full width on desktop */}
+            {/* Chart: full width on desktop.
+
+                `data-tour` sits on this wrapper rather than on the chart
+                itself because BudgetFlowChart has two returns — the chart and
+                a "no spending data yet" card — and the walkthrough has to be
+                able to point at whichever one is on screen. */}
             <div
+              data-tour="months"
               className="transition-all duration-500 ease-in-out overflow-hidden shrink-0 max-h-[300px] opacity-100 translate-y-0 mb-2 lg:max-h-none lg:mb-3"
               aria-hidden={false}
             >
@@ -989,8 +995,14 @@ const Dashboard: React.FC<Props> = ({
 
       {/* The walkthrough, on its own full-screen layer. Rendered here rather
           than inside the settings modal so it is not clipped by, or stacked
-          under, the modal that launched it. */}
-      {showTour && <GuidedTour onFinish={() => setShowTour(false)} />}
+          under, the modal that launched it.
+
+          `surface="live"` because the dashboard it describes is mounted right
+          behind this: the spotlight is cut out of the user's own screen, with
+          their own figures in it, rather than out of a drawing of one. The
+          overlay swallows every tap, so nothing underneath can be triggered
+          by accident. */}
+      {showTour && <GuidedTour surface="live" onFinish={() => setShowTour(false)} />}
 
       {showFirstCapture && (
         <FirstCaptureModal

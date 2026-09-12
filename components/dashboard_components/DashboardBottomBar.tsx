@@ -79,6 +79,7 @@ const DashboardBottomBar: React.FC<DashboardBottomBarProps> = ({
           {/* Add Transaction Button */}
           <button
             id="add-transaction-button"
+            data-tour="add"
             onClick={onAddTransaction}
             className="p-3 mx-1 text-white rounded-full shadow-lg flex items-center justify-center active:scale-[0.97] transition-all duration-200 bg-emerald-600 dark:bg-emerald-500 hover:bg-emerald-700 dark:hover:bg-emerald-600 shadow-emerald-500/20"
             aria-label="Add transaction"
@@ -102,6 +103,7 @@ const DashboardBottomBar: React.FC<DashboardBottomBarProps> = ({
 
           {/* Parsing Button */}
           <button
+            data-tour="review"
             onClick={onOpenParsing}
             className={`relative p-3 rounded-full transition-all duration-200 active:scale-[0.97] ${
               activeView === 'parsing'
