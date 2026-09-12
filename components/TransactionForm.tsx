@@ -26,6 +26,23 @@ interface TransactionFormProps {
   onDelete?: () => void;
   /** Callback when an AI transaction's budget category is updated (vendor override) */
   onVendorOverrideUpdated?: (vendor: string, categoryName: string) => void;
+  /**
+   * Fill the fields in without putting the form into edit mode.
+   *
+   * `initialTransaction` cannot do this job: it means "you are editing a row
+   * that exists", and it changes the title to "Edit Entry", the button to
+   * "Update Transaction" and adds a Delete. The walkthrough needs the other
+   * thing — a NEW entry that already has something in it, because the vault
+   * grid and the confirm button are both disabled until there is an amount
+   * and a vendor, and a tour of a form explaining four controls cannot have
+   * three of them greyed out.
+   */
+  initialValues?: {
+    vendor?: string;
+    amount?: number;
+    budgetId?: string;
+    recurrence?: Recurrence;
+  };
 }
 
 const generateUUID = () => {
@@ -50,9 +67,16 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   vendorHistory = [],
   onDelete,
   onVendorOverrideUpdated,
+  initialValues,
 }) => {
-  const [vendor, setVendor] = useState(initialTransaction?.vendor || '');
-  const [amountStr, setAmountStr] = useState(initialTransaction ? Math.abs(initialTransaction.amount).toString() : '');
+  const [vendor, setVendor] = useState(initialTransaction?.vendor || initialValues?.vendor || '');
+  const [amountStr, setAmountStr] = useState(
+    initialTransaction
+      ? Math.abs(initialTransaction.amount).toString()
+      : initialValues?.amount !== undefined
+        ? initialValues.amount.toString()
+        : '',
+  );
   const [date, setDate] = useState(() => {
     if (initialTransaction?.date) {
       return initialTransaction.date.slice(0, 10);
@@ -67,7 +91,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   });
 
   const [recurrence, setRecurrence] = useState<Recurrence>(
-    (initialTransaction?.recurrence as Recurrence | undefined) || Recurrence.ONE_TIME,
+    (initialTransaction?.recurrence as Recurrence | undefined) ||
+      initialValues?.recurrence ||
+      Recurrence.ONE_TIME,
   );
   const [isRefund, setIsRefund] = useState(() => initialTransaction ? initialTransaction.amount < 0 : false);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -158,7 +184,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   });
 
   const [selectedId, setSelectedId] = useState<string | null>(
-    initialTransaction?.budget_id ?? null
+    initialTransaction?.budget_id ?? initialValues?.budgetId ?? null
   );
 
   const toggleCategory = (id: string) => {
@@ -274,7 +300,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-3">
-            <div id="tutorial-amount-field" className={`flex flex-col items-center justify-center py-5 bg-slate-50/50 dark:bg-slate-800/20 rounded-3xl border border-slate-100/50 dark:border-slate-800/30 ${attention('amount')}`}>
+            <div id="tutorial-amount-field" data-tour="form-amount" className={`flex flex-col items-center justify-center py-5 bg-slate-50/50 dark:bg-slate-800/20 rounded-3xl border border-slate-100/50 dark:border-slate-800/30 ${attention('amount')}`}>
               <div className="flex items-center justify-center space-x-1">
                 <span className={`text-xl font-black select-none ${isRefund ? 'text-emerald-400 dark:text-emerald-500' : 'text-slate-300 dark:text-slate-700'}`}>$</span>
                 <input
@@ -323,7 +349,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
               </span>
             </div>
 
-            <div id="tutorial-vendor-field" className={`relative rounded-2xl ${attention('vendor')}`}>
+            <div id="tutorial-vendor-field" data-tour="form-vendor" className={`relative rounded-2xl ${attention('vendor')}`}>
               <input
                 ref={vendorInputRef}
                 type="text"
@@ -397,6 +423,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             >
             <div
               id="tutorial-budget-grid"
+              data-tour="form-budget"
               className={`flex flex-col gap-1.5 transition-opacity duration-200 ${
                 hasVendor ? 'opacity-100' : 'opacity-40 pointer-events-none'
               }`}
@@ -452,7 +479,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
               </div>
             </div>
 
-            <div className="space-y-3">
+            <div data-tour="form-recurrence" className="space-y-3">
               <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 tracking-wide px-2 text-center block">Recurrence</span>
               <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl">
                 {['One-time', 'Biweekly', 'Monthly', 'Yearly'].map(r => (
@@ -471,6 +498,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
           <button
             type="submit"
+            data-tour="form-save"
             disabled={!canSubmit}
             aria-busy={isSaving}
             className={`w-full py-3 rounded-2xl font-semibold text-xs shadow-xl active:scale-[0.97] transition-all duration-200 tracking-wide mt-1 ${canSubmit ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 opacity-50 cursor-not-allowed'}`}

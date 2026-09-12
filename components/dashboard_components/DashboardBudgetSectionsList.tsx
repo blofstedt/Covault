@@ -117,6 +117,11 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
     >
       {visibleBudgets.map((budget, index) => {
           const budgetTxs = transactionsByBudgetId.get(budget.id) ?? NO_TRANSACTIONS;
+          // Where the walkthrough's simulated finger lands for "let's open
+          // one" — this is the card it then opens. Only while everything is
+          // collapsed, which is both when the tap happens and the only time
+          // the attribute could be unique.
+          const isTourFirstVial = index === 0 && allCollapsed;
 
           const isExpanded = expandedBudgets.has(budget.id);
           // One definition of "which vault is the shield", shared with the
@@ -164,6 +169,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
             <div
               key={budget.id}
               id={index === 0 ? 'first-budget-card' : undefined}
+              data-tour={isTourFirstVial ? 'vial-first' : undefined}
               // Layout strategy
               // ---------------
               // Outer container is `flex flex-col` (or a 2-col grid on

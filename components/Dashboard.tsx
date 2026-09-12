@@ -40,6 +40,13 @@ import { checkAndTriggerAppNotifications } from '../lib/appNotifications';
 import { supabase } from '../lib/supabase';
 import { resolveBudgetIdFromRow } from '../lib/hooks/transactionMappers';
 import { useNotificationRoute } from '../lib/hooks/useNotificationRoute';
+
+/**
+ * What the walkthrough puts in the add form, so its four controls can be
+ * explained with none of them greyed out. Never saved: the tour's own step
+ * says so, and its overlay swallows the tap on Confirm.
+ */
+const TOUR_EXAMPLE_ENTRY = { vendor: 'Second Cup', amount: 9.51 };
 import { buildWidgetSnapshot } from '../lib/widgetSnapshot';
 import { pushWidgetSnapshot, pushRecurringCharges, type WidgetVendorRule } from '../lib/covaultNotification';
 import { countAwaitingReview } from '../lib/reviewQueue';
@@ -593,7 +600,18 @@ const Dashboard: React.FC<Props> = ({
    */
   const handleTourStage = useCallback((stage: TourStage) => {
     setSelectedTx(null);
-    setShowTransactionForm(false);
+    setShowTransactionForm(stage === 'add');
+
+    if (stage === 'add') {
+      // The form sits over whatever is behind it, so the dashboard is left
+      // as it was rather than rearranged underneath a modal nobody can see
+      // past. Nothing here saves: the tour's own step says so, and the
+      // overlay swallows the tap on Confirm either way.
+      setShowSettings(false);
+      setShowParsing(false);
+      setExpandedBudgets(new Set());
+      return;
+    }
 
     if (stage === 'review') {
       setShowSettings(false);
@@ -617,6 +635,16 @@ const Dashboard: React.FC<Props> = ({
     } else {
       setExpandedBudgets(new Set());
     }
+  }, [state.budgets, state.settings.hiddenCategories]);
+
+  // Which vault the walkthrough's example entry is filed into. Leisure if the
+  // household kept it, otherwise whatever the first visible category is —
+  // never nothing, or the grid in the form would be explained with no
+  // selection in it.
+  const tourExampleBudgetId = useMemo(() => {
+    const hidden: string[] = state.settings.hiddenCategories || [];
+    const visible = state.budgets.filter((budget) => !hidden.includes(budget.id));
+    return (visible.find((budget) => budget.name === 'Leisure') ?? visible[0])?.id;
   }, [state.budgets, state.settings.hiddenCategories]);
 
   const handleUpdateSettings = (key: string, value: any) => {
@@ -752,6 +780,7 @@ const Dashboard: React.FC<Props> = ({
   const parsingScreen = !showParsing ? null : (
       <>
         <TransactionParsing
+          walkthrough={showTour}
           reviewHighlightNonce={reviewHighlightNonce}
           enabled={state.settings.notificationsEnabled}
           onToggle={(enabled) =>
@@ -1037,6 +1066,15 @@ const Dashboard: React.FC<Props> = ({
           userName={state.user?.name || ''}
           isSharedAccount={!state.user?.budgetingSolo}
           vendorHistory={vendorHistory}
+          // During the walkthrough the form arrives filled in: the vault grid
+          // and the confirm button are disabled until there is an amount and
+          // a vendor, and four controls cannot be explained with three of
+          // them greyed out. Nothing is saved — the tour swallows the tap.
+          initialValues={
+            showTour
+              ? { ...TOUR_EXAMPLE_ENTRY, budgetId: tourExampleBudgetId }
+              : undefined
+          }
         />
       )}
 

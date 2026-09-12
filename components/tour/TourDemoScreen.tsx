@@ -4,7 +4,11 @@ import PageShell from '../ui/PageShell';
 import DashboardBalanceSection from '../dashboard_components/DashboardBalanceSection';
 import DashboardBudgetSectionsList from '../dashboard_components/DashboardBudgetSectionsList';
 import DashboardBottomBar from '../dashboard_components/DashboardBottomBar';
+import TransactionForm from '../TransactionForm';
+import TransactionParsing from '../TransactionParsing';
+import DashboardSettingsModal from '../dashboard_components/DashboardSettingsModal';
 import { SYSTEM_CATEGORIES } from '../../constants';
+import { Recurrence } from '../../types';
 import { getLocalMonthKey, getLocalToday } from '../../lib/dateUtils';
 import { shiftMonthKey } from '../../lib/monthWindow';
 import type { TourStage } from '../../lib/tourSteps';
@@ -21,6 +25,17 @@ const BudgetFlowChart = React.lazy(() => import('../dashboard_components/BudgetF
  * then there is one to point at; during the intro there is not, and a
  * brand-new one is a row of zeroes — a spotlight circling blanks, explaining
  * what would have been there.
+ *
+ * It stands in for every screen the walkthrough visits, not just the
+ * dashboard: the add form, the review page and the settings menu are all
+ * mounted here too, as the real components, switched by `stage`. That is why
+ * the intro and the replay are now the same walkthrough rather than a short
+ * version and a long one.
+ *
+ * The settings menu shown here is handed example settings and no-op handlers
+ * rather than the real ones. During the intro the real ones barely exist yet,
+ * and a menu of switches wired to nothing is the honest version of a menu
+ * nobody is allowed to touch — the tour swallows every tap regardless.
  *
  * The important thing about this file is what it does NOT contain: a drawing
  * of a dashboard. It used to be one, hand-built from the same colours and
@@ -59,7 +74,7 @@ const BudgetFlowChart = React.lazy(() => import('../dashboard_components/BudgetF
  */
 
 interface TourDemoScreenProps {
-  /** Which stage the walkthrough is on. Only 'budget' changes anything here. */
+  /** Which screen the walkthrough is on. */
   stage?: TourStage;
 }
 
@@ -67,7 +82,7 @@ interface TourDemoScreenProps {
 const DEMO_BUDGET_NAMES = ['Housing', 'Groceries', 'Transport', 'Leisure', 'Utilities'] as const;
 
 const DEMO_LIMITS: Record<string, number> = {
-  Housing: 1400,
+  Housing: 1500,
   Groceries: 600,
   Transport: 250,
   Leisure: 300,
@@ -86,7 +101,11 @@ const DEMO_MONTHLY_INCOME = 4200;
  * what opening a vial is for.
  */
 const DEMO_THIS_MONTH: Record<string, { vendor: string; amount: number; day: number }[]> = {
-  Housing: [{ vendor: 'Rent', amount: 1400, day: 1 }],
+  Housing: [
+    { vendor: 'Rent', amount: 1300, day: 1 },
+    { vendor: 'Condo Fees', amount: 68, day: 2 },
+    { vendor: 'Home Insurance', amount: 32, day: 3 },
+  ],
   Groceries: [
     { vendor: 'Superstore', amount: 128.45, day: 2 },
     { vendor: 'Costco', amount: 96.2, day: 6 },
@@ -118,8 +137,37 @@ const DEMO_HISTORY: Record<string, [number, number, number]> = {
   Utilities: [203, 188, 211],
 };
 
+/** The example captures still waiting on the review page. Kept to three, and
+ *  matched by the bottom bar's badge below. */
+const DEMO_WAITING = ['Superstore', 'Petro-Canada', 'Second Cup'];
+
+/** The entry the walkthrough fills the add form in with. */
+const DEMO_ENTRY = { vendor: 'Second Cup', amount: 9.51, recurrence: Recurrence.ONE_TIME };
+
 const NOOP = () => {};
+const ASYNC_NOOP = async () => {};
 const NO_EXPANDED: Set<string> = new Set();
+
+/** Enough of the settings shape for the menu to draw itself. */
+const DEMO_SETTINGS = {
+  theme: 'dark',
+  rolloverEnabled: false,
+  useLeisureAsBuffer: true,
+  notificationsEnabled: true,
+  smart_notifications_enabled: true,
+  auto_accept_known_vendors: false,
+  community_rules_enabled: true,
+  community_rules_contribute: false,
+  haptics_enabled: true,
+  hiddenCategories: [] as string[],
+};
+
+const DEMO_AI_MODEL = {
+  report: null,
+  downloading: false,
+  downloadNow: ASYNC_NOOP,
+  refresh: ASYNC_NOOP,
+};
 
 const TourDemoScreen: React.FC<TourDemoScreenProps> = ({ stage = 'home' }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -151,6 +199,12 @@ const TourDemoScreen: React.FC<TourDemoScreenProps> = ({ stage = 'home' }) => {
           date: `${currentMonthKey}-${day}`,
           budget_id: budget.id,
           label: 'Automatic',
+          // Everything except the last few is already dealt with. The review
+          // page reads this list too, and a month of captures ALL still
+          // waiting would put thirteen rows on a page whose whole point is
+          // that it is a short queue — and would disagree with the badge on
+          // the bottom bar beside it.
+          caught_cleared: !DEMO_WAITING.includes(entry.vendor),
           is_projected: false,
           created_at: `${currentMonthKey}-${day}T12:00:00.000Z`,
         });
@@ -187,13 +241,14 @@ const TourDemoScreen: React.FC<TourDemoScreenProps> = ({ stage = 'home' }) => {
     [thisMonthTransactions],
   );
 
-  // The vial the walkthrough opens. Groceries: it has the most rows, so the
-  // list inside it has something to say. Driven through the dashboard's own
-  // prop, so the animation is the dashboard's own.
+  // The vial the walkthrough opens: the FIRST one, which is the one the
+  // simulated finger lands on and the same one the real dashboard opens.
+  // Driven through the dashboard's own prop, so the animation is the
+  // dashboard's own rather than an impression of it.
   const expandedBudgets = useMemo(() => {
     if (stage !== 'budget') return NO_EXPANDED;
-    const groceries = budgets.find((budget) => budget.name === 'Groceries') ?? budgets[0];
-    return groceries ? new Set([groceries.id]) : NO_EXPANDED;
+    const first = budgets[0];
+    return first ? new Set([first.id]) : NO_EXPANDED;
   }, [stage, budgets]);
 
   // The chart is told which theme it is in explicitly, because it draws into
@@ -204,12 +259,42 @@ const TourDemoScreen: React.FC<TourDemoScreenProps> = ({ stage = 'home' }) => {
       ? 'dark'
       : 'light';
 
+  // Second Cup is a coffee shop, so it files into Leisure. Picking a vault by
+  // position instead put a cafe in Utilities, which is exactly the kind of
+  // detail someone reads and stops trusting the rest of the screen over.
+  const demoEntryBudgetId = useMemo(
+    () => (budgets.find((budget) => budget.name === 'Leisure') ?? budgets[0])?.id,
+    [budgets],
+  );
+
+  const demoUser = useMemo(
+    () => ({ id: 'tour', name: 'You', monthlyIncome: DEMO_MONTHLY_INCOME }),
+    [],
+  );
+
   return (
     // `isolate` is load-bearing: the real bottom bar is `fixed ... z-40`, and
     // without a stacking context here that z-index would compete with the
     // tour's dim (which has none) and paint the nav bar over the top of it,
     // undimmed, on every step.
     <div aria-hidden="true" className="absolute inset-0 isolate pointer-events-none select-none">
+      {stage === 'review' ? (
+        <TransactionParsing
+          walkthrough
+          enabled
+          onToggle={NOOP}
+          onBack={NOOP}
+          onGoHome={NOOP}
+          onAddTransaction={NOOP}
+          allTransactions={thisMonthTransactions}
+          budgets={budgets}
+          userId="tour"
+          onSetVendorCategory={NOOP}
+          onSetProperName={NOOP}
+          vendorOverrides={[]}
+          partnerOverrides={[]}
+        />
+      ) : (
       <PageShell>
         <DashboardBalanceSection
           isSharedAccount={false}
@@ -270,9 +355,52 @@ const TourDemoScreen: React.FC<TourDemoScreenProps> = ({ stage = 'home' }) => {
           onAddTransaction={NOOP}
           onOpenParsing={NOOP}
           activeView="home"
-          pendingCount={3}
+          pendingCount={DEMO_WAITING.length}
         />
       </PageShell>
+      )}
+
+      {stage === 'add' && (
+        <TransactionForm
+          onClose={NOOP}
+          onSave={NOOP}
+          budgets={budgets}
+          userId="tour"
+          userName="You"
+          isSharedAccount={false}
+          // Filled in, because the vault grid and the confirm button are both
+          // disabled until there is an amount and a vendor — and a tour of a
+          // form cannot explain four controls with three of them greyed out.
+          initialValues={{ ...DEMO_ENTRY, budgetId: demoEntryBudgetId }}
+        />
+      )}
+
+      {stage === 'settings' && (
+        <DashboardSettingsModal
+          aiModel={DEMO_AI_MODEL}
+          isSharedAccount={false}
+          settings={DEMO_SETTINGS}
+          user={demoUser}
+          isLinkingPartner={false}
+          partnerLinkEmail=""
+          budgets={budgets}
+          transactions={thisMonthTransactions}
+          onChangePartnerLinkEmail={NOOP}
+          onClose={NOOP}
+          onUpdateSettings={NOOP}
+          onUpdateUserIncome={NOOP}
+          onConnectPartner={NOOP}
+          onDisconnectPartner={NOOP}
+          onToggleLinkingPartner={NOOP}
+          onSignOut={NOOP}
+          onDeleteAccount={ASYNC_NOOP}
+          onSaveBudgetLimit={NOOP}
+          saveBudgetVisibility={NOOP}
+          hasPremium
+          onSubscribe={NOOP}
+          onReplayTour={NOOP}
+        />
+      )}
     </div>
   );
 };

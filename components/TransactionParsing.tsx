@@ -81,6 +81,11 @@ interface TransactionParsingProps {
   /** Combine several of a chain's own rules into one — see chainVendorKeys.ts.
    *  Resolves false when nothing was changed, so the card can say so rather
    *  than confirm a combine that did not happen. */
+  /**
+   * The app walkthrough is on this page. Every card starts open, including
+   * the capture-source picker, which is otherwise shut on arrival.
+   */
+  walkthrough?: boolean;
   onCombineChainRules?: (params: {
     keepId: string;
     removeIds: string[];
@@ -92,6 +97,7 @@ interface TransactionParsingProps {
 }
 
 const TransactionParsing: React.FC<TransactionParsingProps> = ({
+  walkthrough = false,
   reviewHighlightNonce = 0,
   enabled,
   onToggle,
@@ -129,8 +135,12 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   // told, beside what it is asking about — and a closed card asks the user to
   // remember it is there. The picker stays shut because it is settings: a long
   // grid of every app on the phone, wanted rarely and never urgently.
+  //
+  // The walkthrough is the exception to the picker staying shut: it is about
+  // to explain what that card is for, and a collapsed card is a title with
+  // nothing under it to look at.
   const [expandedSections, setExpandedSections] = useState({
-    activeBanks: false,
+    activeBanks: !!walkthrough,
     caughtTransactions: true,
     autoFiled: true,
     learnedRules: true,

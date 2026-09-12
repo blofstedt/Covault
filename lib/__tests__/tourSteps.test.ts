@@ -19,8 +19,6 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   TOUR_STEPS,
-  DEMO_STAGES,
-  stepsForSurface,
   captionSide,
   captionTop,
   spotlightRect,
@@ -32,6 +30,7 @@ const TOUR_SURFACE_FILES = [
   '../../components/Dashboard.tsx',
   '../../components/BudgetSection.tsx',
   '../../components/TransactionParsing.tsx',
+  '../../components/TransactionForm.tsx',
   '../../components/dashboard_components/DashboardBalanceSection.tsx',
   '../../components/dashboard_components/DashboardBudgetSectionsList.tsx',
   '../../components/dashboard_components/DashboardBottomBar.tsx',
@@ -55,13 +54,65 @@ function anchorCount(text: string, target: string): number {
 }
 
 describe('the tour points at real things', () => {
-  it('has a real element for every step', () => {
+  it('has a real element for every step that points at one', () => {
     for (const step of TOUR_STEPS) {
+      if (!step.target) continue;
       expect(
         anchorCount(allSource, step.target),
         `TOUR_STEPS names "${step.target}", which nothing in the app carries`,
       ).toBeGreaterThan(0);
     }
+  });
+
+  it('has a real element for every place the finger lands', () => {
+    // A tap whose target is missing falls back to the middle of the
+    // highlight, silently — which is the very thing tapTarget exists to stop.
+    for (const step of TOUR_STEPS) {
+      if (!step.tapTarget) continue;
+      expect(
+        anchorCount(allSource, step.tapTarget),
+        `"${step.target}" taps "${step.tapTarget}", which nothing in the app carries`,
+      ).toBeGreaterThan(0);
+    }
+  });
+
+  it('ends on the note about privacy, which points at nothing', () => {
+    // A closing statement about what the business is paid for has no control
+    // to circle, and inventing one for it would be the wrong kind of tidy.
+    const last = TOUR_STEPS[TOUR_STEPS.length - 1];
+    expect(last.target).toBeUndefined();
+    expect(last.body.toLowerCase()).toContain('subscription');
+  });
+
+  it('taps exactly the controls a finger would have pressed', () => {
+    // Pinned by hand rather than derived. The rule is not "the step before a
+    // screen change" — the vial closing at the end of the budget section is a
+    // screen change nobody pressed anything for, and miming a tap there would
+    // be inventing a gesture. These six are the ones where the walkthrough
+    // says "let's open it" and something opens.
+    expect(TOUR_STEPS.filter((step) => step.tap).map((step) => step.target)).toEqual([
+      'vials',
+      'add',
+      'form-save',
+      'review',
+      'home',
+      'settings',
+    ]);
+  });
+
+  it('opens a screen only from the step showing the control that opens it', () => {
+    // The other half of the rule above: every stage the walkthrough enters
+    // has to be entered from a step that tapped, or the app appears to
+    // navigate on its own. Returning to the dashboard is exempt — nothing is
+    // pressed to collapse a vial or close a form.
+    TOUR_STEPS.forEach((step, i) => {
+      if (i === 0 || step.stage === TOUR_STEPS[i - 1].stage) return;
+      if (step.stage === 'home') return;
+      expect(
+        TOUR_STEPS[i - 1].tap,
+        `the ${step.stage} screen opens without "${TOUR_STEPS[i - 1].target}" being tapped`,
+      ).toBe(true);
+    });
   });
 
   it('says something at every step', () => {
@@ -108,31 +159,32 @@ describe('the tour points at real things', () => {
     expect(TOUR_STEPS[0].stage).toBe('home');
   });
 
-  it('shows the intro only what the example screen can stand in for', () => {
-    const demo = stepsForSurface('demo');
-    expect(demo.length).toBeGreaterThan(0);
-    expect(demo.length).toBeLessThan(TOUR_STEPS.length);
-    for (const step of demo) {
-      expect(DEMO_STAGES).toContain(step.stage);
-    }
-    // And the demo screen itself has to carry every target it is shown.
-    const demoSource = sources.find((file) => file.name.endsWith('TourDemoScreen.tsx'))!;
-    const mounted = [
-      demoSource.text,
-      ...sources
-        .filter((file) => /DashboardBalanceSection|DashboardBudgetSectionsList|DashboardBottomBar|BudgetSection/.test(file.name))
-        .map((file) => file.text),
-    ].join('\n');
-    for (const step of demo) {
+  it('can show every step on the example screen the intro uses', () => {
+    // The intro and the replay from Settings are the same walkthrough now, so
+    // `TourDemoScreen` has to be able to stand in for every screen it visits.
+    const demo = sources.find((file) => file.name.endsWith('TourDemoScreen.tsx'))!;
+    for (const stage of new Set(TOUR_STEPS.map((step) => step.stage))) {
+      if (stage === 'home' || stage === 'budget') continue;
       expect(
-        anchorCount(mounted, step.target),
-        `the intro's example screen has no way to show "${step.target}"`,
-      ).toBeGreaterThan(0);
+        demo.text.includes(`'${stage}'`),
+        `TourDemoScreen has no "${stage}" screen to show`,
+      ).toBe(true);
     }
   });
 
-  it('gives the live walkthrough every step', () => {
-    expect(stepsForSurface('live')).toEqual(TOUR_STEPS);
+  it('never promises a first-time viewer it has been here before', () => {
+    // The walkthrough points at its own button in the settings menu, on the
+    // very first run as well as every replay, so neither the caption nor the
+    // button may say "again".
+    const button = readFileSync(
+      resolve(__dirname, '../../components/dashboard_components/settings_modal_components/AppTourSection.tsx'),
+      'utf8',
+    );
+    const label = button.slice(button.indexOf('>', button.indexOf('<button')), button.indexOf('</button>'));
+    expect(label.toLowerCase()).not.toContain('again');
+    const step = TOUR_STEPS.find((s) => s.target === 'settings-walkthrough');
+    expect(step, 'no step points at the walkthrough button').toBeDefined();
+    expect(step!.body.toLowerCase()).not.toContain('again');
   });
 });
 

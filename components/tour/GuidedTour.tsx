@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import TourDemoScreen from './TourDemoScreen';
 import {
-  stepsForSurface,
+  TOUR_STEPS,
   captionTop,
   spotlightRect,
   unionRects,
@@ -88,6 +88,15 @@ const GAP = 16;
  * changes nothing costs a handful of frames; `SETTLE_FLOOR_MS` keeps it from
  * declaring victory during the pause before a smooth scroll starts moving.
  */
+/**
+ * How long the simulated tap is given before the screen changes.
+ *
+ * Matched to the `tour-tap` keyframe in index.css. Long enough to read as a
+ * press, short enough that six of them across the walkthrough do not feel
+ * like waiting.
+ */
+const TAP_MS = 420;
+
 const SETTLE_MS = 2200;
 const SETTLE_FLOOR_MS = 900;
 const STABLE_FRAMES = 4;
@@ -103,7 +112,7 @@ const GuidedTour: React.FC<GuidedTourProps> = ({
   surface = 'demo',
   onStage,
 }) => {
-  const steps = useMemo(() => stepsForSurface(surface), [surface]);
+  const steps = TOUR_STEPS;
 
   const [index, setIndex] = useState(0);
   const [rect, setRect] = useState<TargetRect | null>(null);
@@ -114,6 +123,12 @@ const GuidedTour: React.FC<GuidedTourProps> = ({
   /** Which step we have already scrolled for, so a smooth scroll is not
    *  restarted on every frame of the settle loop. */
   const scrolledFor = useRef(-1);
+  /** Where the simulated finger is, while a tap plays. */
+  const [tapAt, setTapAt] = useState<{ x: number; y: number } | null>(null);
+  const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (tapTimer.current) clearTimeout(tapTimer.current);
+  }, []);
 
   const step = steps[index];
   const isLast = index === steps.length - 1;
@@ -144,6 +159,9 @@ const GuidedTour: React.FC<GuidedTourProps> = ({
     // demo mode they are inside this root, and scoping to the root is what
     // stops a step matching the real dashboard by accident.
     const scope: ParentNode = surface === 'live' ? document : root;
+    // A step with no target is not pointing at anything on purpose — the
+    // closing note about privacy, for one. It dims the whole screen.
+    if (!step.target) return [];
     return Array.from(scope.querySelectorAll<HTMLElement>(`[data-tour="${step.target}"]`));
   }, [step, surface]);
 
@@ -152,6 +170,12 @@ const GuidedTour: React.FC<GuidedTourProps> = ({
       if (!step) return;
       const targets = findTargets();
       if (targets.length === 0) {
+        // A step that never had a target is not waiting for a screen to
+        // arrive, so it dims immediately rather than holding the last hole.
+        if (!step.target) {
+          setRect(null);
+          return;
+        }
         // A step pointing at nothing still has to read as something. Dropping
         // the rect dims the whole screen and centres the caption, which says
         // the words without claiming to point anywhere.
@@ -269,8 +293,36 @@ const GuidedTour: React.FC<GuidedTourProps> = ({
     : { top: captionTop(rect, viewportHeight, captionHeight, GAP) };
 
   const advance = () => {
-    if (isLast) onFinish();
-    else setIndex((i) => i + 1);
+    const go = () => {
+      if (isLast) onFinish();
+      else setIndex((i) => i + 1);
+    };
+
+    // A step that opens something presses the button first. The ripple is
+    // drawn at the middle of the highlight, which is where a finger would
+    // have landed, and the screen only changes once it has played — otherwise
+    // the app appears to navigate on its own.
+    if (!step.tap || !rect) {
+      go();
+      return;
+    }
+    // The middle of the highlight, unless the step names something narrower
+    // for the finger to land on.
+    let point = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    if (step.tapTarget) {
+      const scope: ParentNode = surface === 'live' ? document : (rootRef.current ?? document);
+      const el = scope.querySelector<HTMLElement>(`[data-tour="${step.tapTarget}"]`);
+      const box = el?.getBoundingClientRect();
+      if (box && box.width > 0 && box.height > 0) {
+        point = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+      }
+    }
+    setTapAt(point);
+    if (tapTimer.current) clearTimeout(tapTimer.current);
+    tapTimer.current = setTimeout(() => {
+      setTapAt(null);
+      go();
+    }, TAP_MS);
   };
 
   if (!step) return null;
@@ -304,6 +356,19 @@ const GuidedTour: React.FC<GuidedTourProps> = ({
         />
       ) : (
         <div className="absolute inset-0 pointer-events-none" style={{ backgroundColor: 'rgba(2, 6, 23, 0.78)' }} />
+      )}
+
+      {/* The simulated finger. Above the dim so it reads as landing ON the
+          lit-up control, and `pointer-events-none` because it is a picture of
+          a tap rather than one. */}
+      {tapAt && (
+        <div
+          aria-hidden="true"
+          className="absolute pointer-events-none"
+          style={{ top: tapAt.y, left: tapAt.x }}
+        >
+          <div className="tour-tap -ml-8 -mt-8 w-16 h-16 rounded-full border-2 border-emerald-400 bg-emerald-400/25" />
+        </div>
       )}
 
       {/* The caption. */}

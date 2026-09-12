@@ -26,20 +26,7 @@
  * them. Steps are grouped by stage below so the app is only moved when the
  * story actually moves.
  */
-export type TourStage = 'home' | 'budget' | 'review' | 'settings';
-
-/**
- * The stages the intro can show.
- *
- * During the intro there is no app behind the tour — `TourDemoScreen` stands
- * in for it, and it can do the dashboard and the budget expand because those
- * are the dashboard's own components with example figures in them. It cannot
- * do the review page or the settings menu: both are the user's real data and
- * real switches, and there is no honest way to invent either before the
- * account exists. So the intro stops at what it can truthfully show, and the
- * full walkthrough is the one replayed from Settings.
- */
-export const DEMO_STAGES: readonly TourStage[] = ['home', 'budget'];
+export type TourStage = 'home' | 'budget' | 'add' | 'review' | 'settings';
 
 export interface TourStepSpec {
   /**
@@ -47,8 +34,11 @@ export interface TourStepSpec {
    * into the highlight, so a caption that is about two elements — the balance
    * figure and the word above it, which live in two different rows — gets one
    * rectangle around both rather than a hole through the middle of it.
+   *
+   * Absent means "no highlight": the screen dims evenly and the caption sits
+   * in the middle of it. That is for a step that is not about a control.
    */
-  target: string;
+  target?: string;
   /** Which screen the host has to be showing before this step can be drawn. */
   stage: TourStage;
   title: string;
@@ -65,6 +55,24 @@ export interface TourStepSpec {
    * must not catch — the balance figure has the search field 8px under it.
    */
   pad?: SpotlightPad;
+  /**
+   * Play a tap on this step's own highlight before moving on.
+   *
+   * The steps that open something say "let's open it", and then the screen
+   * changes on its own — which reads as the app deciding to navigate rather
+   * than as the button being pressed. A ripple where the finger would have
+   * gone is the difference between watching a demonstration and watching a
+   * screen misbehave.
+   */
+  tap?: boolean;
+  /**
+   * Where the simulated finger lands, when that is not the middle of the
+   * highlight. "Let's open one" highlights the whole column of vials, and a
+   * ripple in the middle of it would land on a card that is not the one that
+   * opens — a small thing, and exactly the kind of small thing that makes a
+   * demonstration read as wrong.
+   */
+  tapTarget?: string;
 }
 
 /** Padding around a highlight: one number for all four sides, or per side. */
@@ -75,14 +83,17 @@ export type SpotlightPad =
 /**
  * The walkthrough, in the order someone would actually meet the app.
  *
- * Grouped by stage: the dashboard, then a budget opened, then the review
- * page, then the settings menu — with a step back on the dashboard each time
- * to point at the button that gets you there, because a screen that appears
- * without the user seeing what opened it teaches nothing.
+ * Grouped by stage — the dashboard, a budget opened, the add form, the review
+ * page, the settings menu — with a step back on the dashboard between each,
+ * because a screen that appears without the user seeing what opened it
+ * teaches nothing. The steps that open something end with a tap where the
+ * finger would have gone.
  *
- * It is long, and deliberately so: this is the version replayed from
- * Settings, by someone who has decided they want the whole thing. The intro
- * shows only the `DEMO_STAGES` prefix of it.
+ * One list, shown identically from the intro and from Settings. There used to
+ * be a shorter intro version, on the grounds that a brand-new account has no
+ * review page or settings worth showing — but the point of meeting the app is
+ * meeting the app, and `TourDemoScreen` stands in for every screen now rather
+ * than only the dashboard. It is long, and it is skippable at every step.
  */
 export const TOUR_STEPS: readonly TourStepSpec[] = [
   {
@@ -109,15 +120,17 @@ export const TOUR_STEPS: readonly TourStepSpec[] = [
     target: 'vials',
     stage: 'home',
     title: 'One vial per category',
-    body: "Each fills as you spend. The faint dotted end is money that hasn't gone yet — subscriptions and bills Covault knows are coming.",
+    body: "Each fills as you spend. The faint dotted end is money that hasn't gone yet — subscriptions and bills Covault knows are coming. Let's open one.",
     radius: 32,
+    tap: true,
+    tapTarget: 'vial-first',
   },
 
   {
     target: 'budget-card',
     stage: 'budget',
-    title: 'Tap a vial to open it',
-    body: 'That just happened to this one. The card grows into the space the others were using, and they shrink rather than scroll — everything on screen stays on screen.',
+    title: 'A vial, opened',
+    body: 'The card grows into the space the others were using, and they shrink rather than scroll — everything on screen stays on screen.',
     radius: 32,
   },
   {
@@ -138,30 +151,61 @@ export const TOUR_STEPS: readonly TourStepSpec[] = [
   {
     target: 'add',
     stage: 'home',
-    title: 'Add anything by hand',
-    body: 'Cash, or a purchase your bank never announced. Amount, who you paid, which vial.',
+    title: 'Adding something by hand',
+    body: "Cash, or a purchase your bank never announced. Let's add one.",
     radius: 999,
+    tap: true,
   },
   {
-    target: 'home',
-    stage: 'home',
-    title: 'The way back',
-    body: 'Home puts the screen back to how it looks when you arrive: any open vial closes, a search clears, and the dashboard returns to this month.',
-    radius: 999,
+    target: 'form-amount',
+    stage: 'add',
+    title: 'How much',
+    body: 'The amount, and whether it went out or came back — the second tab turns the entry into a refund, which gives money back to the category rather than taking more from it.',
+    radius: 24,
   },
+  {
+    target: 'form-vendor',
+    stage: 'add',
+    title: 'Who you paid',
+    body: 'Start typing and Covault offers merchants you have used before. Picking one also picks the category you filed it under last time.',
+    radius: 20,
+  },
+  {
+    target: 'form-budget',
+    stage: 'add',
+    title: 'Which vial it comes out of',
+    body: 'One tap. Only the categories you have switched on appear here, and the entry comes out of that vial the moment it is saved.',
+    radius: 20,
+  },
+  {
+    target: 'form-recurrence',
+    stage: 'add',
+    title: 'Does it come back?',
+    body: 'One-time is an ordinary purchase. The other three tell Covault the charge repeats, so it can show it coming before it arrives — the dotted end of the vial — and not mistake the real charge for a second one.',
+    radius: 20,
+  },
+  {
+    target: 'form-save',
+    stage: 'add',
+    title: 'And save it',
+    body: 'That is the whole form. This walkthrough will not actually save this one — nothing you have seen in here has been written down.',
+    radius: 20,
+    tap: true,
+  },
+
   {
     target: 'review',
     stage: 'home',
     title: 'Caught purchases wait here',
     body: "When your bank announces a purchase, Covault reads it and leaves it here. The number is how many you haven't looked at yet. Let's open it.",
     radius: 999,
+    tap: true,
   },
-
   {
     target: 'review-banks',
     stage: 'review',
-    title: 'Who Covault is hearing from',
-    body: 'The banks and cards whose alerts have reached the app, and when each was last heard from. If one goes quiet for a long time, this is where it says so.',
+    title: 'Where purchases come from',
+    body: 'The apps Covault is allowed to read alerts from, and when each was last heard from. Untick one and it stops being read; if a bank goes quiet for a long time, this is where it says so.',
     radius: 24,
   },
   {
@@ -178,13 +222,36 @@ export const TOUR_STEPS: readonly TourStepSpec[] = [
     body: 'Every merchant you have filed, and where it goes from now on. Correcting one here changes where its future purchases land; deleting one makes Covault ask again.',
     radius: 24,
   },
+  {
+    target: 'home',
+    stage: 'review',
+    title: 'Home, from anywhere',
+    body: 'Home puts the screen back to how it looks when you arrive: any open vial closes, a search clears, and the dashboard returns to this month.',
+    radius: 999,
+    tap: true,
+  },
 
   {
     target: 'settings',
     stage: 'home',
     title: 'Everything else is behind the cog',
-    body: "Here it is on the dashboard, top right. Let's open it.",
+    body: "Top right, on the dashboard. Let's open it.",
     radius: 999,
+    tap: true,
+  },
+  {
+    target: 'settings-faq',
+    stage: 'settings',
+    title: 'Frequently Asked',
+    body: 'The written answers — what happens if a purchase is captured twice, why a charge landed in Other, how a refund is matched. Worth a look before writing in.',
+    radius: 20,
+  },
+  {
+    target: 'settings-walkthrough',
+    stage: 'settings',
+    title: 'This walkthrough',
+    body: 'The button you are looking at is the way back to what you are watching now. It starts from the top, any time.',
+    radius: 20,
   },
   {
     target: 'settings-income',
@@ -204,14 +271,21 @@ export const TOUR_STEPS: readonly TourStepSpec[] = [
     target: 'settings-theme',
     stage: 'settings',
     title: 'Light or dark',
-    body: 'And further down are two switches that change how the numbers behave: rollover carries what you did not spend into next month, and the Discretionary Shield lets Leisure absorb an overspend somewhere else instead of showing you a category in the red.',
+    body: 'Which way the app is painted. It changes immediately, and it is remembered on this phone.',
     radius: 24,
   },
   {
     target: 'settings-capture',
     stage: 'settings',
     title: 'Capture — the reason for the app',
-    body: 'Which apps Covault is allowed to read alerts from, whether a merchant it already knows gets filed without asking, and whether a capture buzzes the phone.',
+    body: 'The main switch for reading bank alerts, plus whether a merchant Covault already knows gets filed without asking you, and whether a capture buzzes the phone.',
+    radius: 24,
+  },
+  {
+    target: 'settings-rules',
+    stage: 'settings',
+    title: 'Shared rules',
+    body: 'Whether to use what other households have already worked out about a merchant, and whether to contribute yours back. Category names only — no amounts, no dates, nothing about you.',
     radius: 24,
   },
   {
@@ -219,6 +293,34 @@ export const TOUR_STEPS: readonly TourStepSpec[] = [
     stage: 'settings',
     title: 'The home-screen widget',
     body: "What is left this month, on your home screen, without opening anything. This adds it — or tells you how, if your launcher won't let an app do it for you.",
+    radius: 24,
+  },
+  {
+    target: 'settings-rollover',
+    stage: 'settings',
+    title: 'Rollover',
+    body: 'On, and whatever a category did not spend this month is added to its limit next month. Off, and every category starts each month at the limit you set.',
+    radius: 24,
+  },
+  {
+    target: 'settings-ai',
+    stage: 'settings',
+    title: 'The reading model',
+    body: 'Most bank alerts are read by pattern, on the phone, instantly. This is the fallback for the ones worded strangely — a small model that lives on your device.',
+    radius: 24,
+  },
+  {
+    target: 'settings-smart',
+    stage: 'settings',
+    title: 'Smart notifications',
+    body: 'Whether Covault tells you things about your own spending — nearing a limit, going over one — rather than only about purchases it has caught.',
+    radius: 24,
+  },
+  {
+    target: 'settings-shield',
+    stage: 'settings',
+    title: 'The Discretionary Shield',
+    body: 'When one category goes over, Leisure covers the difference instead of showing you a vial in the red. The money left the month either way; this is about which vial wears it.',
     radius: 24,
   },
   {
@@ -231,19 +333,41 @@ export const TOUR_STEPS: readonly TourStepSpec[] = [
   {
     target: 'settings-data',
     stage: 'settings',
-    title: 'Your data, and the way out',
-    body: "Export everything as a spreadsheet, bring history in from another app, or read a month's report. Below these sit support, signing out, and deleting the account.",
+    title: 'Your history, in and out',
+    body: 'Export any date range as a spreadsheet, or bring history in from another app as one. Your data is yours, and it leaves in a format anything can open.',
     radius: 24,
   },
-];
+  {
+    target: 'settings-report',
+    stage: 'settings',
+    title: 'The monthly report',
+    body: 'A month, summarised — what each category took, what was left, and how it compares with the months around it.',
+    radius: 24,
+  },
+  {
+    target: 'settings-support',
+    stage: 'settings',
+    title: 'Support and feedback',
+    body: 'Report something that went wrong, or ask for something that is missing. A bank Covault is not reading properly is worth sending in — that is usually a fix rather than an answer.',
+    radius: 24,
+  },
+  {
+    target: 'settings-account',
+    stage: 'settings',
+    title: 'Signing out, and leaving',
+    body: 'Sign out keeps everything and asks for your password next time. The row under it deletes the account and everything in it, and there is no undo on that one.',
+    radius: 24,
+  },
 
-/**
- * The steps a given surface can honestly show. See `DEMO_STAGES`.
- */
-export function stepsForSurface(surface: 'live' | 'demo'): readonly TourStepSpec[] {
-  if (surface === 'live') return TOUR_STEPS;
-  return TOUR_STEPS.filter((step) => DEMO_STAGES.includes(step.stage));
-}
+  {
+    // No target. This is not about a control, and pointing at one would be a
+    // lie; the screen dims evenly and the words sit in the middle of it.
+    stage: 'home',
+    title: 'One last thing: you are not the product',
+    body: 'Covault is paid for by subscriptions. That is the whole business — we do not sell or share your information, we do not sell advertising against it, and no third party is handed what you spend. What the app knows about your money exists to show it back to you, and to the person you share a vault with if you choose to. Nowhere else.',
+    radius: 32,
+  },
+];
 
 /** A rectangle in viewport coordinates. Whatever `getBoundingClientRect` gives. */
 export interface TargetRect {

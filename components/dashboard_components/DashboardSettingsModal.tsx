@@ -147,6 +147,7 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           {/* Frequently Asked */}
           <button
             id="faq-button"
+            data-tour="settings-faq"
             onClick={() => setShowFAQ(true)}
             className="w-full py-5 bg-slate-50 dark:bg-slate-800/30 border-2 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 text-xs font-semibold rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-all duration-200 tracking-wide shadow-sm active:scale-[0.98]"
           >
@@ -154,7 +155,9 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           </button>
 
           {/* The walkthrough, on demand */}
-          <AppTourSection onReplayTour={onReplayTour} />
+          <div data-tour="settings-walkthrough">
+            <AppTourSection onReplayTour={onReplayTour} />
+          </div>
 
           {/* Income.
 
@@ -215,6 +218,7 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           </div>
 
           {/* Shared vendor rules — the household's and everyone's */}
+          <div data-tour="settings-rules">
           <SharedRulesSection
             useCommunityRules={settings.community_rules_enabled !== false}
             onToggleUseCommunityRules={() =>
@@ -225,6 +229,7 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
               onUpdateSettings('community_rules_contribute', !settings.community_rules_contribute)
             }
           />
+          </div>
 
           {/* Home screen widget */}
           <div data-tour="settings-widget">
@@ -232,31 +237,39 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           </div>
 
           {/* Budget rollover */}
-          <RolloverSection
-            rolloverEnabled={settings.rolloverEnabled}
-            onUpdateSettings={onUpdateSettings}
-          />
-
-          {/* Reading model — where the AI lives */}
-          <OnDeviceAISection
-            report={aiModel.report}
-            downloading={aiModel.downloading}
-            onDownload={() => { void aiModel.downloadNow(); }}
-          />
-
-          {/* Smart Notifications */}
-          <SmartNotificationsSection
-            smartNotificationsEnabled={settings.smart_notifications_enabled ?? true}
-            onToggleSmartNotifications={() => onUpdateSettings('smart_notifications_enabled', !settings.smart_notifications_enabled)}
-          />
-
-          {/* Discretionary Shield — Premium */}
-          <PremiumGate hasPremium={hasPremium} onSubscribe={onSubscribe}>
-            <DiscretionaryShieldSection
-              useLeisureAsBuffer={settings.useLeisureAsBuffer}
+          <div data-tour="settings-rollover">
+            <RolloverSection
+              rolloverEnabled={settings.rolloverEnabled}
               onUpdateSettings={onUpdateSettings}
             />
-          </PremiumGate>
+          </div>
+
+          {/* Reading model — where the AI lives */}
+          <div data-tour="settings-ai">
+            <OnDeviceAISection
+              report={aiModel.report}
+              downloading={aiModel.downloading}
+              onDownload={() => { void aiModel.downloadNow(); }}
+            />
+          </div>
+
+          {/* Smart Notifications */}
+          <div data-tour="settings-smart">
+            <SmartNotificationsSection
+              smartNotificationsEnabled={settings.smart_notifications_enabled ?? true}
+              onToggleSmartNotifications={() => onUpdateSettings('smart_notifications_enabled', !settings.smart_notifications_enabled)}
+            />
+          </div>
+
+          {/* Discretionary Shield — Premium */}
+          <div data-tour="settings-shield">
+            <PremiumGate hasPremium={hasPremium} onSubscribe={onSubscribe}>
+              <DiscretionaryShieldSection
+                useLeisureAsBuffer={settings.useLeisureAsBuffer}
+                onUpdateSettings={onUpdateSettings}
+              />
+            </PremiumGate>
+          </div>
 
           {/* Vault sharing */}
           <div data-tour="settings-sharing">
@@ -271,8 +284,8 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           />
           </div>
 
-          {/* Export, import and the monthly report — one walkthrough stop,
-              because they are one idea: your data, in and out. */}
+          {/* Export and import — one walkthrough stop, because they are one
+              idea: your history, in and out. */}
           <div data-tour="settings-data" className="space-y-4">
           {/* Export Transactions */}
           <ExportTransactionsSection transactions={transactions} budgets={budgets} />
@@ -283,8 +296,10 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
             userId={user?.id}
             onImportComplete={onImportComplete || (() => {})}
           />
+          </div>
 
           {/* Budget Report */}
+          <div data-tour="settings-report">
           <ReportSection
             budgets={budgets}
             transactions={transactions}
@@ -294,17 +309,24 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           </div>
 
           {/* Support & Feedback — only feature requests are premium */}
-          <SupportFeedbackSection
-            hasPremium={hasPremium}
-            onSubscribe={onSubscribe}
-            captureEnabled={!!settings.notificationsEnabled}
-          />
+          <div data-tour="settings-support">
+            <SupportFeedbackSection
+              hasPremium={hasPremium}
+              onSubscribe={onSubscribe}
+              captureEnabled={!!settings.notificationsEnabled}
+            />
+          </div>
 
+          {/* Leaving: the reversible way and the one below it with no undo.
+              One walkthrough stop, because a step of its own about deleting
+              everything is a strange note to end a menu on. */}
+          <div data-tour="settings-account" className="space-y-4">
           {/* Sign out */}
           <SignOutSection onSignOut={onSignOut} />
 
           {/* The one row below Sign Out with no undo. */}
           <DeleteAccountSection onDeleteAccount={onDeleteAccount} />
+          </div>
 
           {/* Version */}
           <div className="text-center pt-4">
