@@ -13,7 +13,6 @@ import AITransactionsEnteredCard from './transaction_parsing/AITransactionsEnter
 import AutoFiledCard from './transaction_parsing/AutoFiledCard';
 import SetupInfoCard from './transaction_parsing/SetupInfoCard';
 import ClearConfirmModal from './transaction_parsing/ClearConfirmModal';
-import ClearAutoFiledConfirmModal from './transaction_parsing/ClearAutoFiledConfirmModal';
 import DeleteAllConfirmModal from './transaction_parsing/DeleteAllConfirmModal';
 import PageShell from './ui/PageShell';
 import LearnedRulesCard from './transaction_parsing/LearnedRulesCard';
@@ -136,7 +135,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   // reload can change either list while a confirmation is open, and what the
   // user agreed to is what they were looking at when they tapped.
   const [clearTargets, setClearTargets] = useState<Transaction[] | null>(null);
-  const [clearAutoFiledTargets, setClearAutoFiledTargets] = useState<Transaction[] | null>(null);
   const [deleteTargets, setDeleteTargets] = useState<Transaction[] | null>(null);
   // The review queue and the rules start open; the capture-source picker does
   // not. The rules are the page's other half — what Covault has already been
@@ -709,14 +707,26 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     await onReloadTransactions?.(userId);
   }, [userId, onClearEntered, onReloadTransactions]);
 
-  // Clear the "Filed automatically" receipt.
+  // The "Filed automatically" receipt has been read.
   //
   // These rows are already filed and already counted; unsetting `auto_filed` is
-  // the whole change, and it only takes them off this card. No column-missing
+  // the whole change, and it only takes them off that card. No column-missing
   // fallback is needed the way the capture insert has one: a database without
-  // the column can never report `auto_filed === true`, so the card that carries
-  // this button would not be on screen at all.
-  const handleClearAutoFiled = useCallback(async (rows: Transaction[]) => {
+  // the column can never report `auto_filed === true`, so the card would not be
+  // on screen to be read in the first place.
+  //
+  // Deliberately does NOT reload afterwards, which is the one thing that makes
+  // a self-clearing receipt bearable. The rows are marked read while the user
+  // is still looking at them, and a reload here would drop them out of
+  // `allTransactions` and delete the card from under their eyes mid-sentence.
+  // They stay on screen for the rest of the visit (AutoFiledCard holds its own
+  // copy) and are gone the next time the page is opened, which is when the
+  // transactions are loaded again anyway.
+  //
+  // A failure is logged and otherwise ignored on purpose: nothing was marked,
+  // so the receipt is simply there again next time. That is the right way for
+  // this to fail.
+  const handleAutoFiledSeen = useCallback(async (rows: Transaction[]) => {
     if (!userId || rows.length === 0) return;
     try {
       const idList = rows.map((tx) => `"${String(tx.id).replace(/"/g, '')}"`).join(',');
@@ -726,15 +736,12 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         body: JSON.stringify(buildAutoFiledClearPayload()),
       });
       if (!res.ok) {
-        log.error('[TransactionParsing] Error clearing auto-filed:', res.status);
-        return;
+        log.error('[TransactionParsing] Error marking auto-filed as seen:', res.status);
       }
     } catch (err) {
-      log.error('[TransactionParsing] Error clearing auto-filed:', err);
-      return;
+      log.error('[TransactionParsing] Error marking auto-filed as seen:', err);
     }
-    await onReloadTransactions?.(userId);
-  }, [userId, onReloadTransactions]);
+  }, [userId]);
 
   // ── Delete every captured row, for real ──
   //
@@ -888,7 +895,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                 hiddenCategories={hiddenCategories}
                 onChangeCategory={handleChangeCaughtCategory}
                 existingRulesFor={existingRulesFor}
-                onClear={(rows) => setClearAutoFiledTargets(rows)}
+                onSeen={(rows) => { void handleAutoFiledSeen(rows); }}
                 isExpanded={expandedSections.autoFiled}
                 onToggleExpanded={() => toggleSection('autoFiled')}
               />
@@ -945,19 +952,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
             await handleClearEntered(rows);
           }}
           onCancel={() => setClearTargets(null)}
-        />
-      )}
-
-      {/* Clear confirmation for the "Filed automatically" receipt */}
-      {clearAutoFiledTargets && clearAutoFiledTargets.length > 0 && (
-        <ClearAutoFiledConfirmModal
-          count={clearAutoFiledTargets.length}
-          onConfirm={async () => {
-            const rows = clearAutoFiledTargets;
-            setClearAutoFiledTargets(null);
-            await handleClearAutoFiled(rows);
-          }}
-          onCancel={() => setClearAutoFiledTargets(null)}
         />
       )}
 
