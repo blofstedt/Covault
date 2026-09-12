@@ -117,6 +117,7 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | "it picked the wrong category" | `lib/hooks/useVendorMatcher.ts`, `lib/vendorMatchConfidence.ts`, step 5a of the processor |
 | "a new restaurant landed in Other" | `lib/merchantCategorySignals.ts` — the offline descriptor/POS-prefix guess plus the named-chain list, applied in step 5c |
 | "it keeps getting ONE merchant wrong" / "the picker offered me the same budget twice" | `lib/vendorRuleScope.ts` — a chain writes one rule per branch; this is what makes them read as one merchant. See Invariants |
+| "it used a different shop's name / budget" / "a purchase went missing" | `fuzzyVendorMatch` in `lib/formatVendorName.ts` — the one "are these the same merchant?" answer, asked by the duplicate skip, the soft-dup warning, the local vendor memory and the recurring lookup. See Invariants |
 | "the review list / badge is wrong" | `lib/reviewQueue.ts` — the single definition of "waiting"; the list, badge and widget all read it |
 | "the widget is stale or wrong" | `lib/widgetSnapshot.ts` → `android-custom/WidgetDeltaStore.java` → `android-custom/WidgetRenderer.java` |
 | "the 'add widget' button in settings doesn't work" | `android-custom/CovaultWidgetPlugin.java` (`isSupported` / `requestPinAppWidget`) → `components/dashboard_components/settings_modal_components/HomeScreenWidgetSection.tsx` — the button is one of two routes and only ever shown once `isSupported` says the launcher can honour it; the other route is the written steps, unconditional and always correct |
@@ -429,6 +430,32 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   dashboard lying about the money. `monthBrowsing.test.ts` pins all of it,
   including that the widget effect and the notification call never mention
   `viewMonth`.
+
+- **"Same kind of business" is not "same business", and `fuzzyVendorMatch` may
+  never confuse the two.** One function answers "are these the same merchant?"
+  for four callers at once — the same-day duplicate skip, the soft-duplicate
+  warning, the phone's local vendor memory, and the recurring-charge lookup —
+  and it used to answer yes whenever the two names shared any word of four
+  letters or more, anywhere in either. The word two merchants share is almost
+  always the word saying what KIND of business it is, which is the one word
+  that cannot say WHICH business it is: "Bloom Cafe" and "Hero Cafe" were one
+  merchant, so were "Kinton Ramen" and "Ramen Danbo", and — the one that gives
+  the game away — so were "Calgary Co-op" and "Calgary Public Library". It cost
+  two things: a capture that matched the wrong merchant in local memory arrived
+  in Review wearing a stranger's name and a stranger's budget, one tap from
+  being filed that way; and two different merchants charging the same amount on
+  the same day read as one purchase announced twice, so the second was dropped
+  outright. The bar is now "the same merchant spelled differently": identical,
+  or one name starting the other, or the same first word with every word of the
+  shorter name accounted for. A one-word name has to match that word exactly,
+  because it has nothing else to corroborate it — that is what stops "Pho"
+  swallowing "Phoenix Store". Abbreviations are read by squeezing the vowels
+  out ("AMZN" is Amazon), which reaches only an abbreviation that kept every
+  consonant, so "MKTP" and "CDN" are deliberately NOT reachable — they are the
+  alias machinery's job. Do not loosen any of this to catch one more case: the
+  matcher is allowed to miss that two named branches of a chain are the same
+  place, because a miss costs a duplicate hint nobody relied on while a false
+  match costs a purchase. `fuzzyVendorMatch.test.ts` pins both directions.
 
 - **A merchant's rules are grouped by the name the USER sees, not by the slug
   the bank sends.** A rule stores both: `proper_name` ("Wendy's") and
