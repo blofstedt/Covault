@@ -47,6 +47,7 @@ import {
 import { detectFuelHold, isFuelMerchant, isHoldAmount, pastFillAmounts, withFuelHoldMarker } from './fuelHold';
 import { withCaptureNotificationMarker } from './captureNotificationMarker';
 import { mostFrequentCategory } from './categoryFrequency';
+import { distinctCategories, merchantRuleScope } from './vendorRuleScope';
 
 /**
  * Add the notif-id marker only when there is an id to add.
@@ -2098,16 +2099,25 @@ async function processNotificationWithAIImpl(
       // Leaving `categoryId` unset routes the capture to review. The review UI
       // recomputes the candidate categories from the overrides it has already
       // loaded, so nothing extra needs persisting.
-      const distinctCategories = new Set(
-        matching.map((row: any) => String(row.category_id || '').toLowerCase()),
-      );
-      overrideRuleConflict = distinctCategories.size > 1;
+      //
+      // The disagreement is looked for across the whole MERCHANT, not just the
+      // rules whose slug fired — see lib/vendorRuleScope.ts. A chain announces
+      // each branch under its own slug ("wendyscrowfoot", "wendysolympic"), so
+      // comparing only the slug that matched meant a merchant could never be
+      // in conflict with itself: one branch's stale rule filed silently while
+      // every other branch of the same restaurant said something else.
+      const merchantRules = merchantRuleScope(matching, allRows);
+      const conflictingCategories = distinctCategories(merchantRules);
+      overrideRuleConflict = conflictingCategories.length > 1;
+      // Still chosen from the rules that actually matched this capture's slug:
+      // widening above decides only WHETHER to ask, never which rule applies
+      // when there is nothing to ask about.
       overrideRows = overrideRuleConflict ? [] : matching.slice(0, 1);
 
       if (overrideRuleConflict) {
         log.debug(
-          `[AI pipeline] ${vendor} matches ${distinctCategories.size} rules ` +
-          `(${[...distinctCategories].join(', ')}) — routing to review instead of auto-filing`,
+          `[AI pipeline] ${vendor} matches ${conflictingCategories.length} rules ` +
+          `(${conflictingCategories.join(', ')}) — routing to review instead of auto-filing`,
         );
 
         // Still going to review either way — this only decides what the
@@ -2119,7 +2129,7 @@ async function processNotificationWithAIImpl(
         // AND a confidence over the threshold, so setting a category here
         // can never, by itself, let this row skip review — the one property
         // the conflict check exists to guarantee.
-        const candidateNames = [...new Set(matching.map((row: any) => String(row.category_id || '')).filter(Boolean))];
+        const candidateNames = [...new Set(merchantRules.map((row: any) => String(row.category_id || '')).filter(Boolean))];
         try {
           const { data: frequencyRows } = await supabase
             .from('transactions')
@@ -2139,7 +2149,7 @@ async function processNotificationWithAIImpl(
               categoryName = suggestedCat.name;
               log.debug(
                 `[AI pipeline] Suggesting ${categoryName} for ${vendor} — the more common of the ` +
-                `${distinctCategories.size} rules in this household's own history, still routed to review`,
+                `${conflictingCategories.length} rules in this household's own history, still routed to review`,
               );
             }
           }
@@ -2237,10 +2247,11 @@ async function processNotificationWithAIImpl(
         // The same refusal to guess, one layer down: two people in a household
         // can legitimately disagree about a merchant, and the app must ask
         // rather than pick whichever of them edited a rule most recently.
-        const partnerCategories = new Set(
-          matching.map((row) => String(row.category_id || '').toLowerCase()),
-        );
-        if (partnerCategories.size > 1) {
+        // Scoped to the merchant for the same reason as the user's own rules
+        // above — a partner's per-branch rules disagreeing with each other is
+        // still a disagreement about where that restaurant goes.
+        const partnerCategories = distinctCategories(merchantRuleScope(matching, partnerRows));
+        if (partnerCategories.length > 1) {
           log.debug(`[AI pipeline] partner rules disagree about ${vendor} — routing to review`);
         } else if (matching.length > 0) {
           borrowed = { row: matching[0], from: 'partner' };

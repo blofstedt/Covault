@@ -192,3 +192,68 @@ describe('resolveSignalCategory', () => {
     expect(resolveSignalCategory(signal, [])).toBeNull();
   });
 });
+
+/**
+ * Named chains.
+ *
+ * The descriptor tokens above work because independents describe themselves.
+ * Chains do not — nothing in "WENDY'S CROWFOOT" or "MCDONALDS #4021" says
+ * food — so the household's most frequent restaurants were precisely the ones
+ * the detector could not see, and they landed in Other.
+ */
+describe('detectMerchantSignal — named chains', () => {
+  it('reads the chain the user actually complained about', () => {
+    const signal = dining("WENDY'S CROWFOOT");
+    expect(signal.evidence).toContain('WENDY');
+  });
+
+  it('reads it out of the raw bank alert, branch suffix and all', () => {
+    dining("WENDY'S CROWFOOT \u{1F374} You spent $11.75 with your credit card.");
+  });
+
+  it.each([
+    'MCDONALDS #4021',
+    "MC DONALD'S 2211",
+    'BURGER KING 1147',
+    'TIM HORTONS #20024',
+    'STARBUCKS STORE 6612',
+    'A&W STORE 3388',
+    'KFC / TACO BELL',
+    'SUBWAY 45512',
+    'DAIRY QUEEN GRILL',
+    'SWISS CHALET 0781',
+    'BOSTON PIZZA #219',
+    'THE KEG STEAKHOUSE',
+    'CHICK-FIL-A #01822',
+    'PANDA EXPRESS 2214',
+    'FIVE GUYS CALGARY',
+  ])('reads %s as dining', (name) => {
+    dining(name);
+  });
+
+  it('handles apostrophes the bank left out', () => {
+    dining('WENDYS OLYMPIC');
+    dining('DENNYS 8812');
+  });
+
+  it('still lets a grocery or big-box name win', () => {
+    // A food court inside a supermarket is a grocery run. The chain-name
+    // suppression is checked before any of this.
+    expect(detectMerchantSignal('REAL CDN SUPERSTORE STARBUCKS')).toBeNull();
+    expect(detectMerchantSignal('WALMART SUBWAY 3312')).toBeNull();
+  });
+
+  it('does not fire on words that merely start the same way', () => {
+    // The chain patterns are anchored at a word boundary, so a longer word
+    // that happens to begin with one must not match.
+    expect(detectMerchantSignal('KFCONSULTING')).toBeNull();
+    expect(detectMerchantSignal('SUBWAYFARE CONSULTING')).toBeNull();
+  });
+
+  it('leaves names that are not chains alone', () => {
+    expect(detectMerchantSignal('CANADA POST')).toBeNull();
+    expect(detectMerchantSignal('SHELL C33221')).toBeNull();
+    expect(detectMerchantSignal('BEST BUY 977')).toBeNull();
+    expect(detectMerchantSignal('PETRO-CANADA 2211')).toBeNull();
+  });
+});

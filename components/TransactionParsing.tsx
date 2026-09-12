@@ -26,6 +26,7 @@ import { buildAutoFiledClearPayload, buildFilePayload, buildUndoPayload } from '
 import { selectAwaitingReview, countHiddenRefunds, selectRecentlyAutoFiled } from '../lib/reviewQueue';
 import { useCurrentDay } from '../lib/hooks/useCurrentDay';
 import { toVendorKey } from '../lib/deviceTransactionParser';
+import { dedupeByCategory } from '../lib/vendorRuleScope';
 
 /** Delay (ms) after scanning to allow notification processing before reloading data */
 const SCAN_PROCESSING_DELAY_MS = 2000;
@@ -456,12 +457,20 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   // Usually one. Two or more means the capture pipeline found conflicting
   // rules, refused to guess, and routed the row here (see step 5a of
   // notificationProcessor) — the picker then offers exactly these.
+  //
+  // One entry per CATEGORY, not per stored row. A chain writes one rule per
+  // branch under the same display name, so a restaurant the household had
+  // filed under Leisure twice and Other once offered "Wendy's · Leisure",
+  // "Wendy's · Leisure" and "Wendy's · Other" — the same answer twice, with
+  // nothing on screen to tell the two apart. The question is which CATEGORY
+  // this purchase belongs to, and it has as many answers as there are
+  // categories.
   const existingRulesFor = useCallback(
     (vendor: string) => {
       if (!vendor) return [];
       const key = toVendorKey(vendor);
       const lower = vendor.toLowerCase();
-      return vendorOverrides
+      const matching = vendorOverrides
         .filter((vo) => {
           if (vo.proper_name.toLowerCase() === lower) return true;
           return (vo.match_key || toVendorKey(vo.proper_name)) === key;
@@ -471,6 +480,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
           categoryId: vo.category_id,
           categoryName: vo.category_name || '',
         }));
+      return dedupeByCategory(matching, (rule) => rule.categoryId);
     },
     [vendorOverrides],
   );

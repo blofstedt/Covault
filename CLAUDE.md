@@ -115,7 +115,8 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | "the budget pills keep rearranging" | `lib/budgetOrder.ts` — the `budgets` table has no sort column, so the order is fixed in code. See Invariants |
 | "my budget limits / hidden categories are back to the defaults" | `loadUserBudgets` in `lib/hooks/useDataLoading.ts` → `lib/budgetFallback.ts`. Check the Supabase edge logs for a non-200 on `/rest/v1/budgets` before assuming the data is gone — it usually isn't |
 | "it picked the wrong category" | `lib/hooks/useVendorMatcher.ts`, `lib/vendorMatchConfidence.ts`, step 5a of the processor |
-| "a new restaurant landed in Other" | `lib/merchantCategorySignals.ts` — the offline descriptor/POS-prefix guess, applied in step 5c |
+| "a new restaurant landed in Other" | `lib/merchantCategorySignals.ts` — the offline descriptor/POS-prefix guess plus the named-chain list, applied in step 5c |
+| "it keeps getting ONE merchant wrong" / "the picker offered me the same budget twice" | `lib/vendorRuleScope.ts` — a chain writes one rule per branch; this is what makes them read as one merchant. See Invariants |
 | "the review list / badge is wrong" | `lib/reviewQueue.ts` — the single definition of "waiting"; the list, badge and widget all read it |
 | "the widget is stale or wrong" | `lib/widgetSnapshot.ts` → `android-custom/WidgetDeltaStore.java` → `android-custom/WidgetRenderer.java` |
 | "the 'add widget' button in settings doesn't work" | `android-custom/CovaultWidgetPlugin.java` (`isSupported` / `requestPinAppWidget`) → `components/dashboard_components/settings_modal_components/HomeScreenWidgetSection.tsx` — the button is one of two routes and only ever shown once `isSupported` says the launcher can honour it; the other route is the written steps, unconditional and always correct |
@@ -428,6 +429,27 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   dashboard lying about the money. `monthBrowsing.test.ts` pins all of it,
   including that the widget effect and the notification call never mention
   `viewMonth`.
+
+- **A merchant's rules are grouped by the name the USER sees, not by the slug
+  the bank sends.** A rule stores both: `proper_name` ("Wendy's") and
+  `match_key`, the slug of what the bank actually announces
+  ("wendyscrowfoot"). Matching has to go through the slug, because that is the
+  string that recurs — but a chain announces every branch under its own slug,
+  so three visits to three branches wrote three separate rules, each able to
+  carry a different category and none able to see the others. The pipeline's
+  "these rules disagree, so ask rather than guess" check compared only the
+  rules matching the incoming slug, which meant a merchant could never be found
+  in conflict with itself: one branch's stale `Wendy's → Other` went on filing
+  a restaurant under Other for a month while every other Wendy's in the
+  household's history sat in Leisure, and nothing was ever shown to the user to
+  disagree with. The same split made the review picker offer "Wendy's ·
+  Leisure", "Wendy's · Leisure" and "Wendy's · Other" — the same answer twice,
+  with nothing on screen telling the two apart. `lib/vendorRuleScope.ts` holds
+  both halves: the conflict check widens to every rule sharing a display name,
+  and the picker collapses to one entry per category. The widening decides only
+  WHETHER to ask — the rule actually applied is still one whose slug matched,
+  so a merchant whose rules agree behaves exactly as before.
+  `vendorRuleScope.test.ts` pins it.
 
 - **The budget order comes from `lib/budgetOrder.ts`, not from the database.**
   `budgets` has no primary key and no sort column, and `loadUserBudgets` reads

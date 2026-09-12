@@ -81,6 +81,63 @@ const DINING_TOKENS = [
 const DINING_TOKEN_RE = new RegExp(`\\b(?:${DINING_TOKENS.join('|')})\\b`, 'i');
 
 /**
+ * Restaurant chains whose own name is the descriptor.
+ *
+ * The descriptor list above works because most independents describe
+ * themselves — "PIZZERIA", "TAQUERIA", "BISTRO". The chains do not: nothing in
+ * "WENDY'S CROWFOOT", "MCDONALDS #4021" or "A&W STORE 3388" says food, so the
+ * whole detector above ran and found nothing, and a household's most frequent
+ * restaurants were exactly the ones landing in Other.
+ *
+ * These are matched only after the grocery and big-box names above have had
+ * their say, so a food court inside a supermarket still reads as a grocery run.
+ *
+ * The bar for an entry is the same as for a descriptor token: could this word
+ * plausibly name something that is not a restaurant? Names that fail it are
+ * left out even when the chain is large — a bare "DQ" is two letters, and a
+ * surname like "EARLS" appears in businesses of every kind. Where the chain
+ * shares a word with another category ("SUBWAY") the merchant reading is the
+ * overwhelmingly more common one on a card statement, and the caller never
+ * auto-files a signal anyway, so the worst case stays one tap in review.
+ *
+ * Written without accents, and with the trailing apostrophe-s optional
+ * throughout, because banks are inconsistent about both. Every entry is
+ * bounded at each end, so "KFCONSULTING" and "SUBWAYFARE" stay untouched.
+ */
+const DINING_CHAINS = [
+  // Burgers and quick service
+  "WENDY'?S", "MC\\s?DONALD'?S?", "BURGER\\s*KING", "BK\\s*#", "HARVEY'?S",
+  "FIVE\\s*GUYS", "SHAKE\\s*SHACK", "IN[\\s-]?N[\\s-]?OUT", "WHATABURGER",
+  "JACK\\s*IN\\s*THE\\s*BOX", "CARL'?S\\s*JR", "HARDEE'?S", "WHITE\\s*CASTLE",
+  "STEAK\\s*'?N\\s*SHAKE", "CULVER'?S", "SONIC\\s*DRIVE", "A\\s?&\\s?W",
+  "DAIRY\\s*QUEEN",
+  // Chicken
+  'KFC', 'POPEYES', "CHICK[\\s-]?FIL[\\s-]?A", "MARY\\s*BROWN'?S",
+  "RAISING\\s*CANE'?S?", "ZAXBY'?S?", 'BOJANGLES', "SWISS\\s*CHALET", "NANDO'?S?",
+  "ST[\\s-]?HUBERT", 'WINGSTOP',
+  // Mexican and bowls
+  "TACO\\s*BELL", 'CHIPOTLE', 'QDOBA', 'MUCHO\\s*BURRITO', "PANDA\\s*EXPRESS",
+  // Sandwiches and subs
+  'SUBWAY', 'QUIZNOS', "JIMMY\\s*JOHN'?S?", "JERSEY\\s*MIKE'?S?", "FIREHOUSE\\s*SUBS",
+  "MR\\.?\\s*SUB", "PITA\\s*PIT", "EXTREME\\s*PITA", "OSMOW'?S?", 'FRESHII',
+  'PANERA',
+  // Coffee and doughnuts
+  'STARBUCKS', "TIM\\s*HORTONS", 'DUNKIN', "SECOND\\s*CUP", "PEET'?S",
+  "CARIBOU\\s*COFFEE", "COFFEE\\s*BEAN\\s*(?:&|AND)\\s*TEA", 'BLENZ',
+  "KRISPY\\s*KREME", "CINNABON",
+  // Pizza
+  "DOMINO'?S", "PAPA\\s*JOHN'?S?", "LITTLE\\s*CAESAR'?S?", "BOSTON\\s*PIZZA",
+  "PIZZA\\s*PIZZA", 'PIZZAVILLE',
+  // Sit-down
+  "THE\\s*KEG", "CACTUS\\s*CLUB", "MOXIE'?S", 'MILESTONES', "MONTANA'?S",
+  "KELSEY'?S", "JACK\\s*ASTOR'?S?", "RED\\s*LOBSTER", "OLIVE\\s*GARDEN",
+  "APPLEBEE'?S?", "CHILI'?S\\s*GRILL", "DENNY'?S", 'IHOP', "CRACKER\\s*BARREL",
+  "OUTBACK\\s*STEAK(?:HOUSE)?", "TGI\\s*FRIDAY'?S?", "BUFFALO\\s*WILD\\s*WINGS",
+];
+
+const DINING_CHAIN_RE = new RegExp(`\\b(?:${DINING_CHAINS.join('|')})\\b`, 'i');
+
+/**
  * Chains big enough that their own name settles the category, so a food word
  * next to it is a department rather than the business.
  *
@@ -131,6 +188,14 @@ export function detectMerchantSignal(text: string | null | undefined): MerchantS
   const tokenMatch = value.match(DINING_TOKEN_RE);
   if (tokenMatch) {
     return { kind: 'dining', evidence: tokenMatch[0].toUpperCase() };
+  }
+
+  // Named chains last: a descriptor in the text is the stronger tell, and a
+  // chain name inside a longer merchant string ("WENDY'S CROWFOOT") should not
+  // outrank one.
+  const chainMatch = value.match(DINING_CHAIN_RE);
+  if (chainMatch) {
+    return { kind: 'dining', evidence: chainMatch[0].toUpperCase() };
   }
 
   return null;
