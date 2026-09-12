@@ -363,3 +363,30 @@ html.theme-transitioning * {
 @media (prefers-reduced-motion: reduce) {
   .tour-tap { animation: none; }
 }
+
+/*
+  Money fields have no spinner.
+
+  Every `type="number"` in this app is an amount — the entry form, monthly
+  income, and each budget limit. Chromium draws a little up/down stepper inside
+  those, which in the Android WebView shows up as a pair of white arrows
+  floating beside the figure: it looks like a rendering fault rather than a
+  control, it is far too small to be a usable one on a phone, and nudging a
+  price by one dollar at a time is not something anybody wants.
+
+  `type="number"` is kept for what it is actually there for — it brings up the
+  numeric keypad, and it is what `inputMode="decimal"` pairs with. Only the
+  stepper goes. Both spellings are needed: WebKit/Blink draw the buttons as a
+  pseudo-element, Firefox as a property on the input itself.
+*/
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}

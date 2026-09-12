@@ -1,6 +1,9 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { fuzzyVendorMatch } from '../../lib/formatVendorName';
 import { toVendorKey } from '../../lib/deviceTransactionParser';
+import { pickVendorNameSuggestion } from '../../lib/vendorNameSuggestion';
+import { getBudgetIcon } from '../dashboard_components/getBudgetIcon';
+import { useEscapeKey } from '../../lib/hooks/useEscapeKey';
+import Portal from '../ui/Portal';
 import type { ExistingRule } from './CategoryPickerSheet';
 
 const NO_RULES: ExistingRule[] = [];
@@ -10,24 +13,17 @@ const MAX_SUGGESTIONS = 4;
  * The stored spelling worth offering instead of what was just typed, or null
  * when the typed name should simply be saved.
  *
- * Exported for its test. The rule carrying the name being renamed AWAY from is
- * never offered: it fuzzy-matches nearly anything typed over it ("Tst-pizza
- * Culture" contains "Pizza Culture"), so the prompt would ask whether to keep
- * the very name the user is trying to get rid of — and choosing it saved
- * nothing at all, which looks exactly like the rename failing.
+ * Kept as a named re-export because this is where the rename field's own
+ * behaviour is read from; the rule itself lives in
+ * `lib/vendorNameSuggestion.ts`, which explains at length why it is allowed to
+ * reach further than `fuzzyVendorMatch` does.
  */
 export function pickNearMatchName(
   rules: ExistingRule[],
   typed: string,
   currentValue: string,
 ): string | null {
-  const current = currentValue.trim().toLowerCase();
-  const match = rules.find(
-    (rule) =>
-      rule.properName.trim().toLowerCase() !== current &&
-      fuzzyVendorMatch(rule.properName, typed),
-  );
-  return match ? match.properName : null;
+  return pickVendorNameSuggestion(rules, typed, currentValue);
 }
 
 /**
@@ -81,15 +77,26 @@ interface InlineVendorEditProps {
 }
 
 /**
- * Compact inline vendor editor for a single transaction row. Renders
- * a small "rename" trigger when not editing; switches to a text
- * input on click. Save with Enter, cancel with Escape.
+ * Renaming a caught merchant: a small trigger on the row, and a sheet.
  *
- * Intentionally minimal — the user said "alter the vendor if need be
- * and that alteration would show an override for the AI/vendor parsing
- * going forward". The existing TransactionForm modal already does
- * the full edit; this is the lightweight in-line path for the common
- * case of "just rename it".
+ * The editing half used to happen IN the row — an 11px input squeezed into
+ * the slot the merchant name occupies, with an 11px Save beside it and a bare
+ * "✕" beside that, and the list of existing rules stacked underneath in a
+ * colour nothing else on the page uses. It was the smallest text and the
+ * smallest tap targets in the app, sitting inside a list of cards designed
+ * around neither, and it was where the user had to type the one string the
+ * whole learning mechanism is keyed on.
+ *
+ * It is a sheet now, built out of the same pieces as `CategoryPickerSheet`
+ * next door — the same backdrop, the same `rounded-[2rem]` card, the same
+ * 48px rows and the same violet treatment for "a rule you already taught".
+ * The two are opened from the same row within seconds of each other, so
+ * looking like one another is the whole point. The trigger on the row is
+ * unchanged; only what it opens is different.
+ *
+ * Everything about WHEN a rename commits is deliberately untouched — see
+ * `handleBlur`, which exists because of an Android keyboard behaviour that
+ * used to lose renames silently.
  */
 const InlineVendorEdit: React.FC<InlineVendorEditProps> = ({
   value,
@@ -114,6 +121,14 @@ const InlineVendorEdit: React.FC<InlineVendorEditProps> = ({
   // Set on the way down on Cancel, before the input blurs, so dismissing the
   // editor never commits what was typed.
   const cancelRef = useRef(false);
+
+  // Escape closes the sheet from anywhere inside it, not only from the field.
+  // Flagged as a cancel first, for the same reason the buttons do: it is a
+  // dismissal, and a dismissal must never commit what was typed.
+  useEscapeKey(() => {
+    cancelRef.current = true;
+    onCancel();
+  }, editing);
 
   useEffect(() => {
     if (editing) {
@@ -233,116 +248,191 @@ const InlineVendorEdit: React.FC<InlineVendorEditProps> = ({
     );
   }
 
-  // Near-match confirm. Both spellings are shown side by side and neither is
-  // preselected — the point is that the user can see exactly what they are
-  // choosing between before anything is stored.
-  if (nearMatch) {
-    return (
+  // The sheet. One shell, two things inside it: the ordinary rename, and the
+  // "you already have one of these" question.
+  return (
+    <Portal>
       <div
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
-        className="flex flex-col gap-1.5"
+        className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] sm:pb-4 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200"
+        // Down, not up, and for the same reason the Cancel button does it:
+        // this has to be recorded before the input blurs, or dismissing the
+        // sheet by tapping beside it would be read as leaving the field and
+        // would save what was typed.
+        onPointerDown={(e) => {
+          if (e.target === e.currentTarget) cancelRef.current = true;
+        }}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onCancel();
+        }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Rename merchant"
       >
-        <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-          Use the existing{' '}
-          <span className="font-bold text-slate-700 dark:text-slate-200">{nearMatch}</span>?
-        </p>
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => { setNearMatch(null); void commit(nearMatch); }}
-            disabled={isSaving}
-            className="px-2 py-1 text-[11px] font-bold rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95 transition-all disabled:opacity-40"
-          >
-            Use {nearMatch}
-          </button>
-          <button
-            type="button"
-            onClick={() => { setNearMatch(null); void commit(draft.trim()); }}
-            disabled={isSaving}
-            className="px-2 py-1 text-[11px] font-bold rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 active:scale-95 transition-all disabled:opacity-40"
-          >
-            Keep {draft.trim()}
-          </button>
+        <div
+          ref={editorRef}
+          onKeyDown={(e) => e.stopPropagation()}
+          className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-[2rem] p-5 shadow-2xl border border-slate-100 dark:border-slate-800/60 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-300"
+        >
+          {nearMatch ? (
+            /* Both spellings side by side, neither preselected — the point is
+               that the user can see exactly what they are choosing between
+               before anything is stored. */
+            <>
+              <h3 className="text-base font-bold text-slate-600 dark:text-slate-100 tracking-tight">
+                You already have this one
+              </h3>
+              <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500 mt-1 mb-4 leading-snug">
+                Using the spelling you already have keeps one merchant instead
+                of two, so everything Covault has learned about it stays
+                together.
+              </p>
+
+              <button
+                type="button"
+                onClick={() => { setNearMatch(null); void commit(nearMatch); }}
+                disabled={isSaving}
+                className="w-full min-h-[52px] flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-violet-50/70 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/40 hover:bg-violet-100 dark:hover:bg-violet-900/40 active:scale-[0.98] transition-all text-left disabled:opacity-40"
+              >
+                <span className="w-5 h-5 shrink-0 flex items-center justify-center text-violet-600 dark:text-violet-400">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[10px] font-bold uppercase tracking-wide text-violet-600 dark:text-violet-400">
+                    Use the one you have
+                  </span>
+                  <span className="block text-sm font-bold text-slate-600 dark:text-slate-100 truncate">
+                    {nearMatch}
+                  </span>
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setNearMatch(null); void commit(draft.trim()); }}
+                disabled={isSaving}
+                className="mt-2 w-full min-h-[52px] flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 hover:border-emerald-500/50 hover:bg-emerald-50/60 dark:hover:bg-emerald-900/20 active:scale-[0.98] transition-all text-left disabled:opacity-40"
+              >
+                <span className="w-5 h-5 shrink-0 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                    Keep what I typed
+                  </span>
+                  <span className="block text-sm font-bold text-slate-600 dark:text-slate-100 truncate">
+                    {draft.trim()}
+                  </span>
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onPointerDown={() => { cancelRef.current = true; }}
+                onClick={onCancel}
+                disabled={isSaving}
+                className="mt-4 w-full min-h-[48px] py-3 text-xs font-bold rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors active:scale-[0.98] disabled:opacity-40"
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <>
+              <h3 className="text-base font-bold text-slate-600 dark:text-slate-100 tracking-tight">
+                Rename this merchant
+              </h3>
+              <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500 mt-1 mb-4 leading-snug">
+                Covault will use this name for{' '}
+                <span className="font-bold text-slate-500 dark:text-slate-300">{value}</span>{' '}
+                from now on, here and on every purchase it catches from them.
+              </p>
+
+              <input
+                ref={inputRef}
+                type="text"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void handleSave();
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    cancelRef.current = true;
+                    onCancel();
+                  }
+                }}
+                onBlur={handleBlur}
+                disabled={isSaving}
+                // 16px, not the 11px this used to be. Anything smaller is a
+                // squint on a phone, and browsers zoom the page to reach a
+                // text field under 16px — which on Android leaves the sheet
+                // sitting off-centre for the rest of the edit.
+                className="w-full min-h-[52px] px-4 py-3 text-base font-bold rounded-2xl bg-slate-50 dark:bg-slate-800/50 border-2 border-slate-100 dark:border-slate-800 text-slate-700 dark:text-slate-100 placeholder-slate-300 dark:placeholder-slate-600 focus:outline-none focus:border-emerald-500/50 focus:bg-white dark:focus:bg-slate-900 transition-colors disabled:opacity-50"
+                placeholder="Store, restaurant, website…"
+                autoFocus
+                aria-label="Merchant name"
+              />
+
+              {/* Rules already taught, offered as they are offered next door in
+                  the category sheet. Picking one reuses that rule's stored
+                  spelling and creates nothing new. */}
+              {suggestions.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-2">
+                    {suggestions.length > 1 ? 'Names you already use' : 'A name you already use'}
+                  </p>
+                  <div className="space-y-2">
+                    {suggestions.map((rule) => (
+                      <button
+                        key={`${rule.properName}::${rule.categoryId}`}
+                        type="button"
+                        onClick={() => { setDraft(rule.properName); void commit(rule.properName); }}
+                        disabled={isSaving}
+                        className="w-full min-h-[48px] flex items-center gap-2.5 px-3 py-2.5 rounded-2xl bg-violet-50/70 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/40 hover:bg-violet-100 dark:hover:bg-violet-900/40 active:scale-[0.98] transition-all text-left disabled:opacity-40"
+                      >
+                        <span className="w-5 h-5 shrink-0 flex items-center justify-center text-violet-600 dark:text-violet-400">
+                          {getBudgetIcon(rule.categoryName)}
+                        </span>
+                        <span className="text-[12px] font-bold text-slate-600 dark:text-slate-200 truncate">
+                          {rule.properName}
+                          <span className="mx-1.5 opacity-40">·</span>
+                          {rule.categoryName}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => void handleSave()}
+                disabled={isSaving || !draft.trim() || draft.trim() === value}
+                className="mt-4 w-full min-h-[48px] py-3 text-xs font-bold rounded-2xl bg-emerald-600 text-white hover:bg-emerald-700 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {isSaving ? 'Saving…' : 'Save name'}
+              </button>
+              <button
+                type="button"
+                // Down, not up: this has to be recorded before the input
+                // blurs, so dismissing the sheet doesn't get read as leaving
+                // the field.
+                onPointerDown={() => { cancelRef.current = true; }}
+                onClick={onCancel}
+                disabled={isSaving}
+                className="mt-2 w-full min-h-[48px] py-3 text-xs font-bold rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors active:scale-[0.98] disabled:opacity-40"
+              >
+                Cancel
+              </button>
+            </>
+          )}
         </div>
       </div>
-    );
-  }
-
-  return (
-    <div
-      ref={editorRef}
-      onClick={(e) => e.stopPropagation()}
-      onKeyDown={(e) => e.stopPropagation()}
-      className="flex flex-col gap-1.5"
-    >
-    <div className="flex items-center gap-1.5">
-      <input
-        ref={inputRef}
-        type="text"
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            void handleSave();
-          } else if (e.key === 'Escape') {
-            e.preventDefault();
-            onCancel();
-          }
-        }}
-        onBlur={handleBlur}
-        disabled={isSaving}
-        className="flex-1 min-w-0 px-2 py-1 text-[11px] font-semibold rounded-lg border border-emerald-300 dark:border-emerald-700/60 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-400/40 disabled:opacity-50"
-        autoFocus
-        aria-label="Vendor name"
-      />
-      <button
-        type="button"
-        onClick={() => void handleSave()}
-        disabled={isSaving || !draft.trim() || draft.trim() === value}
-        className="px-2 py-1 text-[11px] font-bold rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95 transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
-        title="Save (Enter)"
-      >
-        {isSaving ? '…' : 'Save'}
-      </button>
-      <button
-        type="button"
-        // Down, not up: this has to be recorded before the input blurs, so
-        // dismissing the editor doesn't get read as leaving the field.
-        onPointerDown={() => { cancelRef.current = true; }}
-        onClick={onCancel}
-        disabled={isSaving}
-        className="px-2 py-1 text-[11px] font-bold rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 active:scale-95 transition-all duration-150 disabled:opacity-40"
-        title="Cancel (Esc)"
-      >
-        ✕
-      </button>
-    </div>
-
-    {/* Typeahead over rules already taught. Picking one reuses that rule's
-        stored spelling and creates nothing new. */}
-    {suggestions.length > 0 && (
-      <ul className="flex flex-col gap-1" role="listbox" aria-label="Existing rules">
-        {suggestions.map((rule) => (
-          <li key={`${rule.properName}::${rule.categoryId}`}>
-            <button
-              type="button"
-              role="option"
-              aria-selected={false}
-              onClick={() => { setDraft(rule.properName); void commit(rule.properName); }}
-              disabled={isSaving}
-              className="w-full text-left px-2 py-1 rounded-lg text-[11px] font-semibold bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/40 text-slate-600 dark:text-slate-300 hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-colors disabled:opacity-40"
-            >
-              {rule.properName}
-              <span className="mx-1.5 opacity-40">·</span>
-              <span className="text-violet-600 dark:text-violet-400">{rule.categoryName}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-    )}
-    </div>
+    </Portal>
   );
 };
 

@@ -507,7 +507,16 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
               )}
             </div>
             <div className="text-left min-w-0 flex-1">
-              {isEditingVendor ? (
+              {/* The name stays put while it is being renamed. The editor is
+                  a sheet on its own layer now rather than an input squeezed
+                  into this slot, so swapping the two would leave a hole in the
+                  row behind it — and the row is still half visible through the
+                  sheet's backdrop, which is how the user knows which purchase
+                  they are renaming. */}
+              <p className="text-[14px] font-bold text-slate-600 dark:text-slate-100 tracking-tight truncate">
+                {tx.vendor}
+              </p>
+              {isEditingVendor && (
                 <InlineVendorEdit
                   value={tx.vendor}
                   knownRules={knownRules}
@@ -517,10 +526,6 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
                   onCancel={() => setIsEditingVendor(false)}
                   onSave={handleSaveVendor}
                 />
-              ) : (
-                <p className="text-[14px] font-bold text-slate-600 dark:text-slate-100 tracking-tight truncate">
-                  {tx.vendor}
-                </p>
               )}
               {/* Exactly two items, never wrapping, so every row is the same
                   height. The soft-dup badge and "Needs a look" used to share
