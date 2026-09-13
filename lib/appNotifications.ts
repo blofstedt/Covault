@@ -235,9 +235,9 @@ export async function sendExpenseCapturedNotification(
    * as a fact.
    */
   fuelHold?: { holdAmount: number } | null,
-) {
-  if (!Capacitor.isNativePlatform()) return;
-  if (!settings?.app_notifications_enabled) return;
+): Promise<boolean> {
+  if (!Capacitor.isNativePlatform()) return false;
+  if (!settings?.app_notifications_enabled) return false;
 
   // Negative amounts are refunds/income — the user said they prefer
   // to be notified about "captured" expenses, which is the common
@@ -261,17 +261,7 @@ export async function sendExpenseCapturedNotification(
 
   try {
     await ensurePermission();
-    // Use a stable, deterministic ID derived from the transaction UUID.
-    // LocalNotifications ID is a 32-bit int, so we hash the UUID and
-    // mask to the positive int range. This means the same transaction
-    // always reuses the same system notification ID, preventing the
-    // same charge from generating multiple notifications if the
-    // pipeline runs twice (e.g. on app restart with a stale listener).
-    let id = 0;
-    for (let i = 0; i < transactionId.length; i++) {
-      id = ((id * 31) + transactionId.charCodeAt(i)) | 0;
-    }
-    id = Math.abs(id);
+    const id = captureNotificationId(transactionId);
 
     await LocalNotifications.schedule({
       notifications: [
@@ -289,8 +279,53 @@ export async function sendExpenseCapturedNotification(
         },
       ],
     });
+    return true;
   } catch (e) {
     log.error('[appNotifications] expense-captured schedule error', e);
+    return false;
+  }
+}
+
+/**
+ * The system notification id for a captured transaction.
+ *
+ * Derived from the transaction's UUID rather than stored, so the notification
+ * can be found again from nothing but the row — which is what lets the app
+ * take it down when the user deals with that purchase. A LocalNotifications id
+ * is a 32-bit int, so the UUID is hashed into the positive range. Reusing one
+ * id per transaction also means a pipeline that runs twice (an app restart
+ * with a stale listener) replaces its own notification rather than posting a
+ * second.
+ */
+export function captureNotificationId(transactionId: string): number {
+  let id = 0;
+  for (let i = 0; i < transactionId.length; i++) {
+    id = ((id * 31) + transactionId.charCodeAt(i)) | 0;
+  }
+  return Math.abs(id);
+}
+
+/**
+ * Take down the "Expense captured!" notice for a transaction.
+ *
+ * Called when the user has dealt with that purchase inside the app — filed it,
+ * renamed it, cleared it or deleted it. A notification whose whole message is
+ * "tap to review" has nothing left to say once the reviewing is done, and one
+ * that sits in the shade after the work is finished reads as an app that is
+ * not paying attention.
+ *
+ * Best-effort and silent: the notification may already be gone (the user
+ * swiped it, or tapped it, which dismisses it), and there is nothing to tell
+ * them about that.
+ */
+export async function dismissCaptureNotification(transactionId: string): Promise<void> {
+  if (!Capacitor.isNativePlatform() || !transactionId) return;
+  try {
+    await LocalNotifications.cancel({
+      notifications: [{ id: captureNotificationId(transactionId) }],
+    });
+  } catch (e) {
+    log.debug('[appNotifications] dismiss failed (already gone?)', e);
   }
 }
 

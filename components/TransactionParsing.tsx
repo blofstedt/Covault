@@ -26,6 +26,7 @@ import { selectAwaitingReview, countHiddenRefunds, selectRecentlyAutoFiled } fro
 import { useCurrentDay } from '../lib/hooks/useCurrentDay';
 import { toVendorKey } from '../lib/deviceTransactionParser';
 import { dedupeByCategory } from '../lib/vendorRuleScope';
+import { dismissCaptureNotification } from '../lib/appNotifications';
 
 /** Delay (ms) after scanning to allow notification processing before reloading data */
 const SCAN_PROCESSING_DELAY_MS = 2000;
@@ -348,6 +349,14 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       } catch (err) {
         log.warn('[TransactionParsing] file caught transaction failed:', err);
       }
+      // The notification for this purchase says "tap to review", and the
+      // reviewing has just happened. Leaving it in the shade afterwards reads
+      // as an app that has not noticed what the user did.
+      //
+      // Not re-posted by the Undo below. The row goes back into Review, where
+      // the list and the badge already say so; a notification that reappears
+      // after being dealt with is worse than one that does not.
+      void dismissCaptureNotification(txId);
       if (userId) await onReloadTransactions?.(userId);
     },
     [userId, onReloadTransactions],
@@ -696,6 +705,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         headers: { Prefer: 'return=representation' },
         body: JSON.stringify(buildFilePayload()),
       });
+      for (const tx of rows) void dismissCaptureNotification(String(tx.id));
       if (!res.ok) {
         log.error('[TransactionParsing] Error clearing entered:', res.status);
         return;
@@ -758,6 +768,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   const handleDeleteAllEntered = useCallback(async (rows: Transaction[]) => {
     if (!userId || rows.length === 0) return;
     const idList = rows.map((tx) => `"${String(tx.id).replace(/"/g, '')}"`).join(',');
+    for (const tx of rows) void dismissCaptureNotification(String(tx.id));
     try {
       const res = await restFetch(`/transactions?id=in.(${idList})`, { method: 'DELETE' });
       if (!res.ok) {

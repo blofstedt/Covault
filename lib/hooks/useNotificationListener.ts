@@ -333,7 +333,24 @@ export const useNotificationListener = ({
                   // app_notifications_enabled inside the helper. Skipped
                   // automatically if the insert was a race-loser (the
                   // pipeline doesn't return transactionId in that case).
-                  sendExpenseCapturedNotification(
+                  //
+                  // And then the listener's own notice comes DOWN, because the
+                  // two are about the same purchase. The listener has to post
+                  // the instant the alert arrives — that is what lets it
+                  // dismiss the bank's own alert, and it happens with the app
+                  // closed — but it knows only an amount and a merchant. This
+                  // one knows the category, whether the row was filed without
+                  // review, and whether the amount is a fuel placeholder. Two
+                  // notices for one purchase meant dealing with one left the
+                  // other sitting in the shade, which is what "it stays at the
+                  // top" was.
+                  //
+                  // Only once the replacement is actually up. If the user has
+                  // capture notifications switched off, nothing is posted here
+                  // — and taking the listener's notice down then would leave
+                  // them with no notice at all for a purchase whose bank alert
+                  // Covault has already suppressed.
+                  void sendExpenseCapturedNotification(
                     result.transactionId,
                     result.vendor || 'Unknown',
                     result.amount || 0,
@@ -341,7 +358,11 @@ export const useNotificationListener = ({
                     settingsRef.current || {},
                     result.autoAccepted === true,
                     result.fuelHold ?? null,
-                  );
+                  ).then((posted) => {
+                    if (posted && event.capture_notification_id) {
+                      void cancelCaptureNotification(event.capture_notification_id);
+                    }
+                  });
 
                   // If this transaction came from a partner's device (different
                   // user_id on the event) send a push alert to the current user.
