@@ -29,6 +29,8 @@ import { dedupeByCategory } from '../lib/vendorRuleScope';
 import { dismissCaptureNotification } from '../lib/appNotifications';
 import CaptureHealthCard from './transaction_parsing/CaptureHealthCard';
 import { useCaptureHealth } from '../lib/hooks/useCaptureHealth';
+import UnsettledHoldsCard from './transaction_parsing/UnsettledHoldsCard';
+import { holdsToAsk, forgetHold, pruneHolds, type PendingHold } from '../lib/pendingHold';
 import { openNotificationSettings, openAppInfo } from '../lib/covaultNotification';
 
 /** Delay (ms) after scanning to allow notification processing before reloading data */
@@ -54,6 +56,11 @@ interface TransactionParsingProps {
   onToggle: (enabled: boolean) => void;
   /** Opens settings on the capture-sources picker, for the health card. */
   onOpenCaptureSources?: () => void;
+  /**
+   * Record what a held charge actually came to, once the user says.
+   * The held figure is never passed — see lib/pendingHold.ts.
+   */
+  onRecordSettledHold?: (vendor: string, amount: number) => Promise<void> | void;
   onBack: () => void;
   onAddTransaction: () => void;
   onGoHome: () => void;
@@ -114,6 +121,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   enabled,
   onToggle,
   onOpenCaptureSources,
+  onRecordSettledHold,
   onBack,
   onAddTransaction,
   onGoHome,
@@ -157,6 +165,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     caughtTransactions: true,
     autoFiled: true,
     learnedRules: true,
+    unsettledHolds: true,
     // Collapsed. A diagnostic that shouts on a working install is one people
     // learn to scroll past, and then it is not there on the day it matters.
     captureHealth: false,
@@ -165,6 +174,15 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   // What the phone knows about whether capture is working. Read on demand —
   // see the hook.
   const captureHealth = useCaptureHealth(enabled);
+
+  // Holds the bank never followed with a real charge. Read once per visit:
+  // the list only changes when a week passes or the user answers one, and
+  // neither happens while this screen is open.
+  const [unsettledHolds, setUnsettledHolds] = useState<PendingHold[]>([]);
+  React.useEffect(() => {
+    pruneHolds();
+    setUnsettledHolds(holdsToAsk());
+  }, []);
 
   const toggleSection = useCallback((section: keyof typeof expandedSections) => {
     setExpandedSections((current) => ({
@@ -926,6 +944,29 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                 onToggleExpanded={() => toggleSection('autoFiled')}
               />
             </div>
+            )}
+
+            {/* A hold the bank never followed with a real charge. Above the
+                rules and the health card because it is the only one asking
+                the user a question. */}
+            {unsettledHolds.length > 0 && (
+              <div className="shrink-0 mt-4">
+                <UnsettledHoldsCard
+                  holds={unsettledHolds}
+                  isExpanded={expandedSections.unsettledHolds}
+                  onToggleExpanded={() => toggleSection('unsettledHolds')}
+                  onRecord={async (hold, amount) => {
+                    await onRecordSettledHold?.(hold.vendor, amount);
+                    forgetHold(hold.id);
+                    setUnsettledHolds(holdsToAsk());
+                    if (userId) await onReloadTransactions?.(userId);
+                  }}
+                  onDismiss={(hold) => {
+                    forgetHold(hold.id);
+                    setUnsettledHolds(holdsToAsk());
+                  }}
+                />
+              </div>
             )}
 
             {/* Why a purchase did or did not turn up. Last, because it is the

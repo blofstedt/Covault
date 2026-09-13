@@ -22,7 +22,8 @@ export type CaptureOutcomeCode =
   | 'not_a_purchase'
   | 'income'
   | 'failed_charge'
-  | 'not_spending';
+  | 'not_spending'
+  | 'only_held';
 
 const OUTCOME_CODES: readonly CaptureOutcomeCode[] = [
   'hidden',
@@ -38,6 +39,7 @@ const OUTCOME_CODES: readonly CaptureOutcomeCode[] = [
   'income',
   'failed_charge',
   'not_spending',
+  'only_held',
 ];
 
 export interface CaptureOutcome {
@@ -113,7 +115,8 @@ export function isCaptureProblem(outcome: CaptureOutcomeCode): boolean {
     outcome !== 'not_a_purchase' &&
     outcome !== 'income' &&
     outcome !== 'failed_charge' &&
-    outcome !== 'not_spending'
+    outcome !== 'not_spending' &&
+    outcome !== 'only_held'
   );
 }
 
@@ -146,6 +149,8 @@ export function describeCaptureOutcome(outcome: CaptureOutcomeCode): string {
       return "Kept — your bank said this charge didn't go through, so nothing was spent";
     case 'not_spending':
       return 'Kept — this reads as a balance, statement or payment notice, not a purchase';
+    case 'only_held':
+      return 'Kept — money held rather than spent, so there is no amount to record yet';
   }
 }
 

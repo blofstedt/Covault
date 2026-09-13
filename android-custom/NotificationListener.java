@@ -850,6 +850,75 @@ public class NotificationListener extends NotificationListenerService {
     };
     // BILL_NOTICE_PHRASES_END
 
+    /**
+     * Wording that means a charge has been HELD, not made.
+     *
+     * A hotel, a car rental or a pay-at-pump station puts a hold on the card
+     * for a figure it picked, and the real amount arrives days later — or, for
+     * fuel, often never. The parser rejects every one of these outright: the
+     * hold test runs before the vendor is even read, so no row is ever created
+     * from one, fuel included.
+     *
+     * That is the whole safety argument for copying it here. Staying quiet
+     * about an alert the parser will refuse costs an announcement of something
+     * that was never going to appear in Review. Announcing it costs a
+     * notification for a purchase that never lands and — worse — an optimistic
+     * widget delta, so a $340 hotel hold ate the month's remaining balance on
+     * the home screen until the app was next opened.
+     *
+     * Mirrored from PRE_AUTH_PHRASES in lib/deviceTransactionParser.ts;
+     * quietPreAuthHolds.test.ts parses both files and fails on drift.
+     */
+    // PRE_AUTH_PHRASES_BEGIN
+    private static final String[] PRE_AUTH_PHRASES = {
+        "authorization hold", "pre-authorization", "preauthorization",
+        "temporary hold", "hold placed", "pending transaction",
+        "authorization pending", "pending charge", "pending purchase",
+    };
+    // PRE_AUTH_PHRASES_END
+
+    /**
+     * The bare verb, which cannot be matched as a substring.
+     *
+     * "Held $75.00 at Petro-Canada" is a hold, but a substring 'held' also
+     * matches "withheld" and "upheld", which are not. Mirrors
+     * PRE_AUTH_PATTERNS in the parser.
+     */
+    private static final Pattern HELD_VERB = Pattern.compile("\\bheld\\b");
+
+    /**
+     * Words that say a charge actually completed, which beat a hold word.
+     *
+     * Mirrors SETTLEMENT_PHRASES in the parser: "Authorization hold posted"
+     * is a settled charge despite carrying hold wording.
+     */
+    // SETTLEMENT_PHRASES_BEGIN
+    private static final String[] SETTLEMENT_PHRASES = {
+        "posted", "settled", "cleared", "processed", "completed",
+    };
+    // SETTLEMENT_PHRASES_END
+
+    /**
+     * True when the alert reads as a hold rather than a completed charge.
+     *
+     * The same rule the parser applies, in the same order: a refund or a
+     * settlement word beats everything, then an explicit hold phrase, then the
+     * weak case — "authorized" on its own, with nothing stronger saying the
+     * money actually moved.
+     */
+    static boolean looksLikePreAuthHold(String text) {
+        if (text == null || text.isEmpty()) return false;
+        String lower = normalizeForPhrases(text.toLowerCase(java.util.Locale.US));
+        if (containsAny(lower, REFUND_PHRASES)) return false;
+        if (containsAny(lower, SETTLEMENT_PHRASES)) return false;
+        if (containsAny(lower, PRE_AUTH_PHRASES)) return true;
+        if (HELD_VERB.matcher(lower).find()) return true;
+        // A weak GO on its own. "Authorized $50 at <gas station>" is a hold;
+        // "A transaction of $18.75 was approved at MCDONALDS" is not, because
+        // 'approved' is an ordinary GO word here as it is in the parser.
+        return containsAny(lower, WEAK_GO_PHRASES) && !containsAny(lower, GO_PHRASES);
+    }
+
     private static boolean containsAny(String lower, String[] phrases) {
         for (String phrase : phrases) {
             if (lower.contains(phrase)) return true;
@@ -1231,13 +1300,27 @@ public class NotificationListener extends NotificationListenerService {
             Log.i(TAG, "Reads as an informational money alert rather than a purchase; capturing quietly: " + packageName);
         }
 
-        // The six verdicts above differ in their reason and agree in their
+        // Money held, not spent. A hotel, a car rental or a pay-at-pump
+        // station reserves a figure it chose; the real amount lands days
+        // later, or for fuel often never. The parser refuses every one of
+        // these before it even reads the vendor, so announcing one promises a
+        // purchase that will never appear in Review — and the widget delta
+        // that went with it put a $340 hold on the home screen as spending
+        // until the app was next opened.
+        boolean onlyHeld = !ignoredByUser && !knownRecurring && !notAPurchase
+            && !moneyComingIn && !chargeDidNotHappen && !nothingSpent
+            && looksLikePreAuthHold(fullText);
+        if (onlyHeld) {
+            Log.i(TAG, "Reads as a hold rather than a completed charge; capturing quietly: " + packageName);
+        }
+
+        // The seven verdicts above differ in their reason and agree in their
         // consequence: Covault says nothing about this alert, because nothing
         // the user has to act on came of it. Held in one flag because the
         // notification is not the only thing that must respect it — see the
         // widget block at the end of this method.
         boolean captureQuietly = ignoredByUser || knownRecurring || notAPurchase || moneyComingIn
-            || chargeDidNotHappen || nothingSpent;
+            || chargeDidNotHappen || nothingSpent || onlyHeld;
 
         // Broadcast to the local TypeScript pipeline which will classify
         // as transaction or non-transaction — non-transactions will appear in
@@ -1262,7 +1345,7 @@ public class NotificationListener extends NotificationListenerService {
             maybeHideBankNotification(
                 sbn, securedKey, fromMonitored, amount, secured || alreadySecured, result,
                 ignoredByUser, knownRecurring, notAPurchase, moneyComingIn,
-                chargeDidNotHappen, nothingSpent);
+                chargeDidNotHappen, nothingSpent, onlyHeld);
         }
 
         // Home-screen widget: nudge the donut for a purchase captured while the
@@ -1377,7 +1460,8 @@ public class NotificationListener extends NotificationListenerService {
         boolean notAPurchase,
         boolean moneyComingIn,
         boolean chargeDidNotHappen,
-        boolean nothingSpent
+        boolean nothingSpent,
+        boolean onlyHeld
     ) {
         if (!fromMonitored) return;           // (3)
         String app = sbn.getPackageName();
@@ -1429,6 +1513,14 @@ public class NotificationListener extends NotificationListenerService {
         // so nothing was posted, so the bank keeps its alert.
         if (nothingSpent) {
             recordOutcome(securedKey, app, amount, OUTCOME_NOT_SPENDING);
+            return;
+        }
+        // And again: money held rather than spent. Covault posted nothing, and
+        // the bank's alert is the user's only notice that a hold was placed —
+        // which for a hotel or a car rental is a figure they may want to see
+        // sitting against their card.
+        if (onlyHeld) {
+            recordOutcome(securedKey, app, amount, OUTCOME_ONLY_HELD);
             return;
         }
         if (!replaced) {                      // (2)
@@ -1866,6 +1958,7 @@ public class NotificationListener extends NotificationListenerService {
     static final String OUTCOME_INCOME = "income";
     static final String OUTCOME_FAILED_CHARGE = "failed_charge";
     static final String OUTCOME_NOT_SPENDING = "not_spending";
+    static final String OUTCOME_ONLY_HELD = "only_held";
 
     private static final long DISMISS_VERIFY_DELAY_MS = 700L;
     private final android.os.Handler dismissHandler =

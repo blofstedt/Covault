@@ -31,7 +31,7 @@ import SearchResults from './dashboard_components/SearchResults';
 
 import useNormalizedTransactions from './dashboard_components/useNormalizedTransactions';
 import useDashboardTotals from './dashboard_components/useDashboardTotals';
-import { getLocalMonthKey } from '../lib/dateUtils';
+import { getLocalMonthKey, getLocalToday } from '../lib/dateUtils';
 import { useCurrentDay } from '../lib/hooks/useCurrentDay';
 import { useMonthSelection } from '../lib/hooks/useMonthSelection';
 import { balanceLabelForMonth, remainingForMonth } from '../lib/monthWindow';
@@ -799,6 +799,26 @@ const Dashboard: React.FC<Props> = ({
           onOpenCaptureSources={() => {
             setSettingsTarget('settings-notifications-container');
             setShowSettings(true);
+          }}
+          onRecordSettledHold={(vendor, amount) => {
+            // Files under Other and lands in Review like any capture the app
+            // is unsure about: the user has told us the amount, not where it
+            // belongs, and guessing the category on their behalf would be the
+            // second wrong number in a row.
+            onAddTransaction({
+              id: crypto.randomUUID(),
+              user_id: state.user?.id || '',
+              vendor,
+              amount,
+              date: getLocalToday(),
+              budget_id: state.budgets.find((b) => b.name === 'Other')?.id
+                || state.budgets[0]?.id
+                || null,
+              is_projected: false,
+              label: 'Manual',
+              userName: state.user?.name || 'User',
+              created_at: new Date().toISOString(),
+            } as Transaction);
           }}
           onAddTransaction={() => setShowTransactionForm(true)}
           allTransactions={normalizedTransactions}

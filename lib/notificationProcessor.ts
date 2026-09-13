@@ -18,6 +18,7 @@ import { formatVendorName, fuzzyVendorMatch, normalizeVendorForDedup } from './f
 import { parseNotificationText } from './deviceTransactionParser';
 import { addToReviewQueue, getVendorMapEntry, getVendorMap, isNotificationProcessed, markNotificationProcessed, isNotificationRejected, markNotificationRejected, getCachedAIResult, setCachedAIResult, type CachedAIResult } from './localNotificationMemory';
 import { findMatchingExpense, REFUND_MATCH_WINDOW_DAYS } from './refundMatching';
+import { rememberHold, settleHold } from './pendingHold';
 import { aiFindRefundMatch, aiLooksLikeIgnoredAlert } from './aiExtractor';
 import type { LearnedVendorExample } from './aiExtractor';
 import { checkNotificationRules, bumpRuleUseCount, listIgnoredPatterns } from './notificationRules';
@@ -1014,6 +1015,30 @@ async function processNotificationWithAIImpl(
 
   if (!parsed.isOutgoing) {
     const reason = parsed.rejectionReason || 'Not an outgoing transaction notification';
+
+    // ── Money held, not spent ──
+    //
+    // The held figure is never recorded: it is the number the hotel or the
+    // pump picked, not the one that was spent, and writing it down puts a
+    // wrong amount in a budget where nobody will think to question it.
+    //
+    // But refusing in silence loses the other case. If the charge settles and
+    // the bank says nothing the second time, that purchase is simply gone and
+    // the month quietly fails to add up. So the hold is REMEMBERED — if a real
+    // charge from that merchant lands within the week it was the same money
+    // and this is forgotten; if nothing lands, Review asks one question. See
+    // lib/pendingHold.ts.
+    //
+    // The merchant comes from the listener's own reading when the parser has
+    // none: the hold test runs before the parser extracts a vendor, which is
+    // exactly why no row is ever created from one.
+    if (parsed.isPreAuth) {
+      rememberHold(
+        parsed.vendorDisplay || input.fallbackVendor || '',
+        parsed.amount ?? input.fallbackAmount ?? 0,
+      );
+    }
+
     recentlyProcessedCache.set(inMemoryKey, Date.now());
     markNotificationRejected(inMemoryKey);
     return {
@@ -2562,6 +2587,13 @@ async function processNotificationWithAIImpl(
 
   releasePurchase(purchaseKey);
   log.debug(`[AI pipeline] Transaction saved: ${finalVendorName} $${storedAmount} → ${categoryName}`);
+
+  // A real charge from this merchant settles any hold it was standing in for,
+  // so the question about that hold is never asked. Matched on the merchant
+  // and the week and never on the amount — a hold whose figure equalled the
+  // charge would be a coincidence, since the figure is the one the station
+  // picked rather than the one that was spent.
+  settleHold(finalVendorName);
   // An auto-accepted row is already filed, so flagging it "needs a look" would
   // be a contradiction — and the review-queue badge would count a row the list
   // never shows.
