@@ -497,7 +497,11 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
               matchKind === 'unmatched' ? 'bg-slate-100 dark:bg-slate-800/60' : 'bg-emerald-100 dark:bg-emerald-900/30'
             }`}>
               {budgetName ? (
-                <span className="text-emerald-600 dark:text-emerald-400 w-4 h-4">{getBudgetIcon(budgetName)}</span>
+                // `w-5 h-5`, matching `getBudgetIcon`'s own hardcoded size — a
+                // span claiming a smaller box than the SVG it wraps does not
+                // shrink the icon, it just gives the icon room to overflow
+                // toward one corner instead of sitting centred in the chip.
+                <span className="text-emerald-600 dark:text-emerald-400 w-5 h-5 shrink-0 flex items-center justify-center">{getBudgetIcon(budgetName)}</span>
               ) : (
                 <svg className={`w-4 h-4 ${matchKind === 'unmatched' ? 'text-slate-400' : 'text-emerald-600 dark:text-emerald-400'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                   {matchKind === 'unmatched'

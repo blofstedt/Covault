@@ -221,7 +221,13 @@ const AutoFiledCard: React.FC<AutoFiledCardProps> = ({
                     className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
                     style={{ backgroundColor: `${getBudgetColor(budgetName)}1f` }}
                   >
-                    <span className="w-3.5 h-3.5" style={{ color: getBudgetColor(budgetName) }}>
+                    {/* `w-5 h-5`, matching `getBudgetIcon`'s own hardcoded size —
+                        not the `w-3.5 h-3.5` this used to say. A `<span>` can't
+                        actually shrink an SVG that carries its own width/height
+                        classes; it only claims a box smaller than what renders
+                        inside it, so the icon overflowed that box toward one
+                        corner instead of sitting centred in the chip. */}
+                    <span className="w-5 h-5 shrink-0 flex items-center justify-center" style={{ color: getBudgetColor(budgetName) }}>
                       {getBudgetIcon(budgetName)}
                     </span>
                   </div>
