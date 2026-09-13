@@ -796,6 +796,10 @@ const Dashboard: React.FC<Props> = ({
           }
           onBack={closeParsing}
           onGoHome={goHome}
+          onOpenCaptureSources={() => {
+            setSettingsTarget('settings-notifications-container');
+            setShowSettings(true);
+          }}
           onAddTransaction={() => setShowTransactionForm(true)}
           allTransactions={normalizedTransactions}
           onTransactionTap={setSelectedTx}

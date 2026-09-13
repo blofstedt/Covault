@@ -27,6 +27,9 @@ import { useCurrentDay } from '../lib/hooks/useCurrentDay';
 import { toVendorKey } from '../lib/deviceTransactionParser';
 import { dedupeByCategory } from '../lib/vendorRuleScope';
 import { dismissCaptureNotification } from '../lib/appNotifications';
+import CaptureHealthCard from './transaction_parsing/CaptureHealthCard';
+import { useCaptureHealth } from '../lib/hooks/useCaptureHealth';
+import { openNotificationSettings, openAppInfo } from '../lib/covaultNotification';
 
 /** Delay (ms) after scanning to allow notification processing before reloading data */
 const SCAN_PROCESSING_DELAY_MS = 2000;
@@ -49,6 +52,8 @@ interface TransactionParsingProps {
   reviewHighlightNonce?: number;
   enabled: boolean;
   onToggle: (enabled: boolean) => void;
+  /** Opens settings on the capture-sources picker, for the health card. */
+  onOpenCaptureSources?: () => void;
   onBack: () => void;
   onAddTransaction: () => void;
   onGoHome: () => void;
@@ -108,6 +113,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   reviewHighlightNonce = 0,
   enabled,
   onToggle,
+  onOpenCaptureSources,
   onBack,
   onAddTransaction,
   onGoHome,
@@ -151,7 +157,14 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     caughtTransactions: true,
     autoFiled: true,
     learnedRules: true,
+    // Collapsed. A diagnostic that shouts on a working install is one people
+    // learn to scroll past, and then it is not there on the day it matters.
+    captureHealth: false,
   });
+
+  // What the phone knows about whether capture is working. Read on demand —
+  // see the hook.
+  const captureHealth = useCaptureHealth(enabled);
 
   const toggleSection = useCallback((section: keyof typeof expandedSections) => {
     setExpandedSections((current) => ({
@@ -914,6 +927,31 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               />
             </div>
             )}
+
+            {/* Why a purchase did or did not turn up. Last, because it is the
+                thing you go looking for rather than the thing you came for. */}
+            <div className="shrink-0 mt-4">
+              <CaptureHealthCard
+                {...captureHealth}
+                isExpanded={expandedSections.captureHealth}
+                onToggleExpanded={() => {
+                  toggleSection('captureHealth');
+                  // Permissions change in Android's settings, out of sight, so
+                  // the answers are re-read when the card is opened rather
+                  // than trusted from whenever the screen first mounted.
+                  if (!expandedSections.captureHealth) void captureHealth.refresh();
+                }}
+                onFixAccess={() => { void openNotificationSettings(); }}
+                onFixNotifications={() => {
+                  // Covault's OWN notification permission, which lives on its
+                  // App info page. Posting is what tray suppression waits on,
+                  // so without it captures happen in silence and the bank's
+                  // alert is never tidied away.
+                  void openAppInfo(undefined, 'Open Notifications and allow them for Covault');
+                }}
+                onFixSources={onOpenCaptureSources}
+              />
+            </div>
 
             <div data-tour="review-rules" className="shrink-0 mt-4">
               <LearnedRulesCard
