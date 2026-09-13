@@ -77,6 +77,14 @@ const MATCH_TYPE_COPY: Record<PatternType, { title: string; blurb: string }> = {
   },
 };
 
+/** A destructive action, held until the user confirms it. */
+interface PendingConfirm {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  run: () => void | Promise<void>;
+}
+
 /**
  * What deleting a skip pattern actually costs, in the user's terms.
  *
@@ -179,10 +187,16 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
   const [mergingRule, setMergingRule] = useState<string | null>(null);
   const [mergeTarget, setMergeTarget] = useState<string | null>(null);
   const [expandedSkipRule, setExpandedSkipRule] = useState<string | null>(null);
-  // The rule the delete button is asking about. A skip rule is the one thing
-  // on this screen that cannot be made again on demand — it is written from
-  // the text of an alert that has already been and gone — so the × asks first.
-  const [confirmDeleteRule, setConfirmDeleteRule] = useState<NotificationRule | null>(null);
+  /**
+   * The destructive action waiting to be confirmed, if any.
+   *
+   * One piece of state and one modal for every delete on this card, rather
+   * than a flag per button. Every one of them removes something the user
+   * taught the app, and none of them has an undo — so the rule is simply that
+   * nothing here is destroyed on a single tap, and a new delete button cannot
+   * be added without deciding what its confirmation says.
+   */
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const [retypingId, setRetypingId] = useState<string | null>(null);
   const [removingStaleKey, setRemovingStaleKey] = useState<string | null>(null);
   const [combiningChainKey, setCombiningChainKey] = useState<string | null>(null);
@@ -542,7 +556,12 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                           </div>
                           <button
                             type="button"
-                            onClick={() => handleRemoveStaleGroup(group)}
+                            onClick={() => setPendingConfirm({
+                              title: `Remove the unused ${group.properName} rule?`,
+                              message: `It files ${group.properName} under Other, which the rest of your ${group.properName} rules disagree with — they say ${group.realCategoryName}. Removing it changes nothing already filed, and the real rule takes over.`,
+                              confirmLabel: 'Remove it',
+                              run: () => handleRemoveStaleGroup(group),
+                            })}
                             disabled={isRemoving}
                             aria-label={`Remove the unused Other rule for ${group.properName}`}
                             className="shrink-0 text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800/40 text-rose-700 dark:text-rose-300 active:scale-95 transition-all disabled:opacity-50"
@@ -675,7 +694,12 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                                   {pattern.match_type || 'exact'}: {pattern.match_key || pattern.proper_name}
                                 </span>
                                 <button
-                                  onClick={() => onDeleteVendorOverride(pattern.id)}
+                                  onClick={() => setPendingConfirm({
+                                    title: 'Remove this match pattern?',
+                                    message: `Purchases announced as “${pattern.match_key || pattern.proper_name}” would stop filing themselves into ${rule.categoryName} and land in Review instead, until you categorise one and teach it again.`,
+                                    confirmLabel: 'Remove it',
+                                    run: () => onDeleteVendorOverride(pattern.id),
+                                  })}
                                   className="p-0.5 rounded text-slate-400 hover:text-rose-500 transition-colors"
                                   title="Remove pattern"
                                 >
@@ -820,11 +844,20 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
 
                           {/* Delete all patterns in this rule */}
                           <button
-                            onClick={() => {
-                              for (const p of rule.patterns) {
-                                onDeleteVendorOverride(p.id);
-                              }
-                            }}
+                            onClick={() => setPendingConfirm({
+                              title: `Delete the ${rule.properName} rule?`,
+                              message: rule.patterns.length === 1
+                                ? `${rule.properName} purchases would stop filing themselves into ${rule.categoryName} and land in Review instead, until you categorise one and teach it again. Nothing already filed moves.`
+                                : `All ${rule.patterns.length} of its match patterns go. ${rule.properName} purchases would stop filing themselves into ${rule.categoryName} and land in Review instead, until you categorise one and teach it again. Nothing already filed moves.`,
+                              confirmLabel: rule.patterns.length === 1
+                                ? 'Delete it'
+                                : `Delete all ${rule.patterns.length}`,
+                              run: () => {
+                                for (const p of rule.patterns) {
+                                  onDeleteVendorOverride(p.id);
+                                }
+                              },
+                            })}
                             className="px-2 py-1 text-[11px] font-bold rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800/40 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/40 transition-all"
                           >
                             Delete Rule
@@ -898,7 +931,12 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                         </span>
                       </div>
                       <button
-                        onClick={() => setConfirmDeleteRule(rule)}
+                        onClick={() => setPendingConfirm({
+                          title: 'Delete this skip pattern?',
+                          message: describeSkipRuleDeletion(rule),
+                          confirmLabel: 'Delete it',
+                          run: () => handleRemoveRule(rule.id),
+                        })}
                         disabled={removingId === rule.id}
                         className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 transition-all duration-200 active:scale-[0.97] disabled:opacity-50 shrink-0"
                         aria-label="Delete this skip pattern"
@@ -1048,24 +1086,28 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
         </div>
       )}
 
-      {/* ── Deleting a skip pattern ──
+      {/* ── Every destructive action on this card ──
+          One modal, whichever button asked. Each of them removes something the
+          user taught the app and none has an undo, so none of them happens on
+          a single tap.
+
           Portal'd, because this card sits inside the Review page's <main>,
           which is `relative z-10` and would cap the overlay below the nav bar
           however large its own z-index was. See components/ui/Portal.tsx. */}
-      {confirmDeleteRule && (
+      {pendingConfirm && (
         <Portal>
           <ConfirmModal
-            title="Delete this skip pattern?"
-            message={describeSkipRuleDeletion(confirmDeleteRule)}
-            confirmLabel="Delete it"
+            title={pendingConfirm.title}
+            message={pendingConfirm.message}
+            confirmLabel={pendingConfirm.confirmLabel}
             cancelLabel="Keep it"
             variant="danger"
             onConfirm={() => {
-              const target = confirmDeleteRule;
-              setConfirmDeleteRule(null);
-              void handleRemoveRule(target.id);
+              const action = pendingConfirm;
+              setPendingConfirm(null);
+              void action.run();
             }}
-            onCancel={() => setConfirmDeleteRule(null)}
+            onCancel={() => setPendingConfirm(null)}
           />
         </Portal>
       )}

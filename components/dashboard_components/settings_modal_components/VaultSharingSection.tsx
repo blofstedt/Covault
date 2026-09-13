@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { DashboardUser } from '../DashboardSettingsModal';
 import SettingsCard from '../../ui/SettingsCard';
 import SectionHeader from '../../ui/SectionHeader';
+import ConfirmModal from '../../ui/ConfirmModal';
 
 interface VaultSharingSectionProps {
   user: DashboardUser | null | undefined;
@@ -22,6 +23,15 @@ const VaultSharingSection: React.FC<VaultSharingSectionProps> = ({
   onDisconnectPartner,
   onToggleLinkingPartner,
 }) => {
+  // Disconnecting ran on a single tap. It is not a display preference: it
+  // clears the link in BOTH households, so the partner stops seeing the shared
+  // budget at the same moment, and putting it back means one of them sending a
+  // request and the other accepting it. Rendered inline rather than through a
+  // Portal, the way the account-deletion confirmation beside it is — the
+  // settings sheet is itself a z-[110] overlay, so an overlay inside it is
+  // already above everything that matters.
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+
   return (
     <SettingsCard id="settings-sharing-container" className="space-y-4">
       <SectionHeader
@@ -57,11 +67,26 @@ const VaultSharingSection: React.FC<VaultSharingSectionProps> = ({
             </div>
           </div>
           <button
-            onClick={onDisconnectPartner}
+            onClick={() => setConfirmDisconnect(true)}
             className="w-full py-4 bg-rose-50 dark:bg-rose-900/20 text-rose-500 text-xs font-semibold rounded-2xl hover:bg-rose-100 transition-all duration-200 tracking-wide"
           >
             Disconnect Partner
           </button>
+
+          {confirmDisconnect && (
+            <ConfirmModal
+              title="Disconnect your partner?"
+              message={`You and ${user.partnerEmail} would stop seeing each other's transactions and budgets straight away. Nothing is deleted — but reconnecting means sending a new request and having it accepted.`}
+              confirmLabel="Disconnect"
+              cancelLabel="Stay connected"
+              variant="danger"
+              onConfirm={() => {
+                setConfirmDisconnect(false);
+                onDisconnectPartner();
+              }}
+              onCancel={() => setConfirmDisconnect(false)}
+            />
+          )}
         </div>
       ) : (
         <div className="space-y-4">

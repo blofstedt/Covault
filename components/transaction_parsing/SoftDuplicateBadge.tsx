@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Transaction } from '../../types';
 import { formatCurrency } from '../../lib/formatCurrency';
+import Portal from '../ui/Portal';
+import ConfirmModal from '../ui/ConfirmModal';
 
 interface SoftDuplicateBadgeProps {
   /** The auto-entered transaction that has the soft-dup flag */
@@ -70,10 +72,16 @@ const SoftDuplicateBadge: React.FC<SoftDuplicateBadgeProps> = ({
     setOpen(false);
   };
 
+  // The popover explains the situation; it does not ask. "Delete the older
+  // one" is its red primary button, one tap from removing a real transaction
+  // and the money it accounts for, with no undo — and the app's own reading of
+  // "these look alike" is a guess the user is being asked to rule on. So the
+  // delete asks, like every other destructive action.
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
-    onDeleteSimilar(similar.id);
-    setOpen(false);
+    setConfirmDelete(true);
   };
 
 
@@ -144,6 +152,26 @@ const SoftDuplicateBadge: React.FC<SoftDuplicateBadgeProps> = ({
                 </>
               )}
             </button>
+            {confirmDelete && (
+              // Portal'd: this badge lives inside the Review page's <main>,
+              // which is `relative z-10`, so an overlay rendered here would be
+              // painted under the nav bar. See components/ui/Portal.tsx.
+              <Portal>
+                <ConfirmModal
+                  title="Delete the older one?"
+                  message={`${similar.vendor} ${formatCurrency(similar.amount)} on ${similar.date} leaves Covault for good — your history and the budget it counts against. If the two were separate purchases after all, that money stops being tracked.`}
+                  confirmLabel="Delete it"
+                  cancelLabel="Keep both"
+                  variant="danger"
+                  onConfirm={() => {
+                    setConfirmDelete(false);
+                    onDeleteSimilar(similar.id);
+                    setOpen(false);
+                  }}
+                  onCancel={() => setConfirmDelete(false)}
+                />
+              </Portal>
+            )}
             <button
               type="button"
               onClick={handleDismiss}
