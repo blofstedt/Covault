@@ -75,7 +75,15 @@ jobs:
           npx cap add android
           NODE_ENV=production npx cap sync android
 
+      # COVAULT_DISTRIBUTION=play is what makes this the Play artifact rather
+      # than the sideload one: it strips the five permissions Play will not
+      # accept (installing packages, seeing every installed package, and the
+      # battery-optimisation exemption) and replaces the blunt package-visibility
+      # permission with an explicit <queries> list. See scripts/play-manifest.mjs
+      # for what that costs. The APK workflow does not set it and is unaffected.
       - name: Sync custom Android files (icons, Java, manifest)
+        env:
+          COVAULT_DISTRIBUTION: play
         run: bash scripts/sync-android.sh
 
       - name: Add biometric auth dependency to Android

@@ -173,7 +173,17 @@ fi
 echo "  OK: $JAVA_COUNT custom Java sources synced"
 
 # --- MANIFEST ---
-cp -v "$CUSTOM_DIR/AndroidManifest.xml" "$MAIN_DIR/AndroidManifest.xml"
+# Two distributions want opposite things here. The sideloaded APK updates
+# itself and looks at which apps are installed; Google Play forbids both. The
+# default is the sideload manifest, unchanged — a Play build asks for the other
+# one explicitly, so nothing about the APK path can be altered by accident.
+if [ "${COVAULT_DISTRIBUTION:-sideload}" = "play" ]; then
+  echo "  Distribution: play (stripping the permissions Play will not accept)"
+  node "$SCRIPT_DIR/play-manifest.mjs" \
+    "$CUSTOM_DIR/AndroidManifest.xml" "$MAIN_DIR/AndroidManifest.xml"
+else
+  cp -v "$CUSTOM_DIR/AndroidManifest.xml" "$MAIN_DIR/AndroidManifest.xml"
+fi
 
 # --- NATIVE FINGERPRINT ---
 # Bake in the fingerprint of the native side, so the app can tell whether a
