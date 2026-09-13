@@ -58,7 +58,6 @@ jobs:
           # makes it the reporter's release identity too, so a crash can be
           # traced to the build that introduced it.
           VITE_BUILD_NUMBER: ${{ github.run_number }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
       - name: Setup Java
         uses: actions/setup-java@v4

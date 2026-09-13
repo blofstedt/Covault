@@ -45,7 +45,13 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'Budgets') THEN
     CREATE TYPE public."Budgets" AS ENUM (
       'Housing', 'Groceries', 'Leisure', 'Utilities',
-      'Transport', 'Services', 'Other'
+      'Transport', 'Services', 'Other',
+      -- The later additions. They are seeded hidden into a vault that already
+      -- has rows (OPT_IN_CATEGORIES in constants.ts) but they are ordinary
+      -- members of the enum, and a database created without them rejects any
+      -- transaction filed under one — silently, because the insert is the
+      -- thing that fails rather than anything the user can see.
+      'Shopping', 'Personal', 'Travel'
     );
   END IF;
 END $$;
@@ -58,7 +64,12 @@ END $$;
 
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'Recurrence') THEN
-    CREATE TYPE public."Recurrence" AS ENUM ('One-time', 'Biweekly', 'Monthly');
+    -- 'Yearly' was added by 2026_add_yearly_recurrence.sql. Leaving it out of
+    -- a fresh database is not a cosmetic omission: the recurring-charge lookup
+    -- FILTERS on the full list of cadences, and a filter naming a label the
+    -- enum does not have fails the whole query — which is how that lookup
+    -- returned 400 for months and saw no rows at all.
+    CREATE TYPE public."Recurrence" AS ENUM ('One-time', 'Biweekly', 'Monthly', 'Yearly');
   END IF;
 END $$;
 
@@ -97,6 +108,16 @@ CREATE TABLE IF NOT EXISTS public.settings (
   subscription_status text DEFAULT 'none'
     CHECK (subscription_status = ANY (ARRAY['none', 'active', 'expired'])),
   link_code text,
+  -- Added by 2026_08_01_sync_schema_to_app.sql. Off by default: auto-filing
+  -- records a purchase the user never sees, so it has to be chosen.
+  auto_accept_known_vendors boolean NOT NULL DEFAULT false,
+  haptics_enabled boolean NOT NULL DEFAULT true,
+  -- The shared vendor pool: take suggestions by default, volunteer nothing
+  -- until asked. See lib/communityRules.ts.
+  community_rules_enabled boolean NOT NULL DEFAULT true,
+  community_rules_contribute boolean NOT NULL DEFAULT false,
+  -- Closed-testing accounts, which skip the paywall.
+  is_tester boolean NOT NULL DEFAULT false,
   CONSTRAINT settings_pkey PRIMARY KEY (user_id),
   CONSTRAINT settings_email_key UNIQUE (email),
   CONSTRAINT settings_user_id_fkey FOREIGN KEY (user_id)
@@ -164,6 +185,10 @@ CREATE TABLE IF NOT EXISTS public.transactions (
   -- Added by 2026_learned_rules_and_refunded.sql. Powers the capture
   -- reviewer's "View original notification" expander.
   raw_notification text,
+  -- Filed by a learned rule without the user seeing it first. The reviewer
+  -- separates these from the rows waiting on a decision — see
+  -- lib/reviewQueue.ts, which is the single definition of "waiting".
+  auto_filed boolean NOT NULL DEFAULT false,
   CONSTRAINT transactions_pkey PRIMARY KEY (id),
   CONSTRAINT transactions_user_id_fkey FOREIGN KEY (user_id)
     REFERENCES auth.users(id)
@@ -367,6 +392,14 @@ CREATE TABLE IF NOT EXISTS public.notification_rules (
   use_count integer NOT NULL DEFAULT 0,
   last_used_at timestamp with time zone DEFAULT now(),
   created_at timestamp with time zone DEFAULT now(),
+  -- Added by 2026_09_skip_rule_recent_uses.sql. The last few alerts this rule
+  -- actually silenced, newest first, trimmed to five by the app. A skip rule
+  -- works by making things disappear, so this is the only evidence there is
+  -- about what one has been doing.
+  recent_uses jsonb NOT NULL DEFAULT '[]'::jsonb,
+  -- Added by 2026_09_skip_rule_source_text.sql. The whole alert the rule was
+  -- made from; `pattern` may be a span of a few words out of it.
+  source_text text,
   CONSTRAINT notification_rules_pkey PRIMARY KEY (id),
   CONSTRAINT notification_rules_user_id_fkey FOREIGN KEY (user_id)
     REFERENCES auth.users(id)
@@ -376,18 +409,108 @@ ALTER TABLE public.notification_rules ENABLE ROW LEVEL SECURITY;
 
 
 -- ============================================================
+-- 7. COMMUNITY_RULES  (the shared vendor pool, read side)
+-- ============================================================
+-- One row per merchant slug: where most households file it, and how much
+-- they agree. Every household may read the whole table — that is the point
+-- of it — and nobody may write it from the client; it is derived from
+-- rule_contributions below. See lib/communityRules.ts.
+CREATE TABLE IF NOT EXISTS public.community_rules (
+  match_key text NOT NULL,
+  category_id public."Budgets" NOT NULL,
+  household_count integer NOT NULL,
+  agreement numeric NOT NULL,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT community_rules_pkey PRIMARY KEY (match_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_community_rules_key
+  ON public.community_rules (match_key);
+
+ALTER TABLE public.community_rules ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE tablename = 'community_rules'
+                   AND policyname = 'Anyone can read community rules') THEN
+    CREATE POLICY "Anyone can read community rules" ON public.community_rules
+      FOR SELECT TO authenticated
+      USING (true);
+  END IF;
+END $$;
+
+
+-- ============================================================
+-- 8. RULE_CONTRIBUTIONS  (the shared vendor pool, write side)
+-- ============================================================
+-- What one household has volunteered about a merchant. Deliberately
+-- write-only from the client: there is INSERT, UPDATE and DELETE for your own
+-- rows and NO select policy at all, so no household can read what another has
+-- contributed. What comes back out is the aggregate in community_rules.
+--
+-- Losing that asymmetry would turn an anonymous pool into a way of asking
+-- "where does this person shop", so a SELECT policy must never be added here.
+CREATE TABLE IF NOT EXISTS public.rule_contributions (
+  user_id uuid NOT NULL,
+  match_key text NOT NULL,
+  category_id public."Budgets" NOT NULL,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT rule_contributions_pkey PRIMARY KEY (user_id, match_key),
+  CONSTRAINT rule_contributions_user_id_fkey FOREIGN KEY (user_id)
+    REFERENCES auth.users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_rule_contributions_match_key
+  ON public.rule_contributions (match_key);
+
+ALTER TABLE public.rule_contributions ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE tablename = 'rule_contributions'
+                   AND policyname = 'Households can contribute') THEN
+    CREATE POLICY "Households can contribute" ON public.rule_contributions
+      FOR INSERT TO authenticated
+      WITH CHECK (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE tablename = 'rule_contributions'
+                   AND policyname = 'Households can amend their contribution') THEN
+    CREATE POLICY "Households can amend their contribution" ON public.rule_contributions
+      FOR UPDATE TO authenticated
+      USING (auth.uid() = user_id)
+      WITH CHECK (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE tablename = 'rule_contributions'
+                   AND policyname = 'Households can withdraw') THEN
+    CREATE POLICY "Households can withdraw" ON public.rule_contributions
+      FOR DELETE TO authenticated
+      USING (auth.uid() = user_id);
+  END IF;
+END $$;
+
+
+-- ============================================================
 -- PENDING_TRANSACTIONS — DOES NOT EXIST IN THE LIVE DB
 -- ============================================================
--- Confirmed absent by the 2026-07-25 introspection. The capture pipeline
--- still references it:
---   lib/notificationProcessor.ts:233, :462, :924 (insert)
---   lib/hooks/useTransactionOps.ts:447 (PATCH to mark approved)
---   lib/hooks/useDataLoading.ts (loadPendingTransactions)
+-- Still absent, re-confirmed 2026-09-13 by listing the live schema: the
+-- tables are banks, budgets, community_rules, notification_rules, overrides,
+-- rule_contributions, settings and transactions. The app still references it:
+--   lib/hooks/useDataLoading.ts    (loadPendingTransactions — the read)
+--   lib/hooks/useTransactionOps.ts (approve / reject / clear-filtered)
 --
 -- Its absence is tolerated on the read path — loadPendingTransactions treats
 -- a 404 as an empty queue — so the app runs without it. In practice the
 -- separate review queue is inert and captured transactions land directly in
 -- `transactions`, which is what the review UI reads.
+--
+-- Worth being precise about what "dead" means here, because it is stronger
+-- than it looks: the read can never return a row, so appState.pendingTransactions
+-- is permanently empty, so the approve/reject/clear handlers built on it are
+-- unreachable rather than merely failing. Removing them is a deletion of a
+-- feature surface, not a tidy-up, which is why it is still a decision and not
+-- something to do in passing.
 --
 -- Decide one of:
 --   a) create the table, if the pending/approve flow is still wanted; or
