@@ -92,6 +92,35 @@ final class WidgetRenderer {
      * than stacking icons on top of each other. Slices arrive largest-first, so
      * whatever loses its icon is the least significant spend.
      */
+    /**
+     * Widths the right-hand column is laid out against, in dp.
+     *
+     * The donut used to take a full square of the available height and the
+     * legend got whatever was left over, which on a 4x2 widget at its usual
+     * size is about 104dp — enough for a colour dot, an amount, and four
+     * characters of the category name. Every row read "Ho…  $1,400". A legend
+     * whose names are two letters long is not a legend; it is a colour key for
+     * a ring that already has icon chips on it.
+     *
+     * So the donut gives way instead. It shrinks until the column has
+     * LEGEND_WANTED_WIDTH to work with, but never past MIN_DONUT_FRACTION of
+     * the height it would otherwise have had — below that the ring stops
+     * reading as the thing this widget is, and a legend is not worth that.
+     */
+    private static final float LEGEND_WANTED_WIDTH = 130f;
+    private static final float LEGEND_MAX_WIDTH = 190f;
+    private static final float MIN_DONUT_FRACTION = 0.62f;
+
+    /**
+     * Letter spacing for the big figures, in ems.
+     *
+     * The app's own numerals are `tracking-tighter`; this is the same idea at
+     * a gentler value, because Android's sans-serif is already a touch tighter
+     * than the web stack's Inter and matching -0.05em outright ran the digits
+     * together at widget sizes.
+     */
+    private static final float NUMERAL_TRACKING = -0.03f;
+
     private static final float MIN_ICON_ARC_DEGREES = 26f;
 
     /** Gap between arcs, in degrees, so slice boundaries read at a glance. */
@@ -161,6 +190,21 @@ final class WidgetRenderer {
         fill.setColor(p.surface);
         canvas.drawRoundRect(new RectF(0, 0, widthPx, heightPx), corner, corner, fill);
 
+        // A hairline edge, which every card in the app has and this one did
+        // not. A widget sits on the user's own wallpaper rather than on the
+        // app's background, so a flat fill with no edge has nothing to end
+        // against — a white card on a pale photograph simply dissolves into
+        // it. Translucent rather than a named slate, so it reads as an edge on
+        // whatever happens to be behind it.
+        Paint edge = new Paint(Paint.ANTI_ALIAS_FLAG);
+        edge.setStyle(Paint.Style.STROKE);
+        edge.setStrokeWidth(Math.max(1f, dp));
+        edge.setColor(p == DARK ? 0x22FFFFFF : 0x14000000);
+        float edgeInset = edge.getStrokeWidth() / 2f;
+        canvas.drawRoundRect(
+            new RectF(edgeInset, edgeInset, widthPx - edgeInset, heightPx - edgeInset),
+            corner, corner, edge);
+
         float pad = 14f * dp;
 
         // ── Header: the SNAPSHOT's month, not today's ──
@@ -203,8 +247,19 @@ final class WidgetRenderer {
         boolean wide = availW > availH * 1.5f && availW - availH > 96f * dp;
         float legendLeft = 0, legendWidth = 0;
         float diameter = availH;
-        if (wide && total > 0) {
-            legendWidth = Math.min(availW - availH - (12f * dp), 190f * dp);
+        // No `total > 0` here any more. A month with nothing in it used to fall
+        // to the donut-only layout, which put "$0.00 / No spending yet" in the
+        // middle of an otherwise empty card and said nothing about the one
+        // figure that is still perfectly well known on the first of the month:
+        // what there is to spend. The column carries it now, and the ring is
+        // simply the empty track it already draws.
+        if (wide) {
+            float gap = 12f * dp;
+            // The donut yields to the column rather than the other way round —
+            // see LEGEND_WANTED_WIDTH.
+            diameter = clamp(availW - (LEGEND_WANTED_WIDTH * dp) - gap,
+                availH * MIN_DONUT_FRACTION, availH);
+            legendWidth = Math.min(availW - diameter - gap, LEGEND_MAX_WIDTH * dp);
             legendLeft = widthPx - pad - legendWidth;
         } else {
             diameter = Math.min(availW, availH);
@@ -342,6 +397,13 @@ final class WidgetRenderer {
         centre.setTextAlign(Paint.Align.CENTER);
         centre.setColor(p.primary);
         centre.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        // The app sets `tracking-tighter` on every large figure it prints —
+        // the dashboard balance, the amount on a transaction row, the limit on
+        // a vial. This is the same figure in the same role and was the only
+        // place drawing it at default tracking. Set before anything is
+        // measured, because it changes what measureText returns and the fit
+        // below depends on that being the truth.
+        centre.setLetterSpacing(NUMERAL_TRACKING);
 
         // Opened on a category, the centre is that category's spend. Showing
         // the month's total inside a ring that is entirely one category would
@@ -396,6 +458,42 @@ final class WidgetRenderer {
         sub.setTextAlign(Paint.Align.CENTER);
         float subSize = clamp(totalSize * 0.36f, 9f * renderScale, 14f * renderScale);
         sub.setTextSize(subSize);
+
+        // What the line under the figure is going to say, worked out before it
+        // is drawn so it can be measured — the figure above has always been
+        // fitted to the hole and this never was, so on a narrow widget
+        // "$3,534.90 left" printed straight out across the ring and was cut
+        // off by the edge of the card. The rules for WHICH of these is drawn
+        // are unchanged; they are only decided earlier now.
+        boolean nothingAtAll = total <= 0 && Math.abs(monthSpent) < 0.005;
+        double remainingForSub = snapshot.optDouble("remaining", 0);
+        boolean overBudget = remainingForSub < 0;
+        String monthSubText = null;
+        if (nothingAtAll) {
+            monthSubText = "No spending yet";
+        } else if (legendWidth <= 0) {
+            // Only when there is no legend. On a wide widget the same figure
+            // is the first thing in the right-hand column, at a size that can
+            // actually be read — printing it here as well would be the same
+            // number twice, one of them as a footnote.
+            monthSubText = overBudget
+                ? balanceMoney(-remainingForSub) + " over"
+                : balanceMoney(remainingForSub) + " left";
+        }
+        String focusedSubText = focused != null ? focused.name : null;
+
+        // Fitted to whichever of the two is wider, for the same reason the
+        // figure above is: during a cross-fade the two lines must not be
+        // different sizes, or the words change size as they swap.
+        float subRoom = hole;
+        float widest = 0f;
+        if (monthSubText != null) widest = Math.max(widest, sub.measureText(monthSubText));
+        if (focusedSubText != null) widest = Math.max(widest, sub.measureText(focusedSubText));
+        if (widest > subRoom && widest > 0) {
+            subSize = Math.max(8f * renderScale, subSize * (subRoom / widest));
+            sub.setTextSize(subSize);
+        }
+
         float subY = centreBaseline + subSize + (4f * dp);
 
         // The line under it swaps on the same clock: what is left of the month,
@@ -405,38 +503,26 @@ final class WidgetRenderer {
         // ring being empty. Branching on the slices alone meant a month with
         // more refunds than purchases printed a negative total directly above
         // the words "No spending yet".
-        if (monthText > 0f) {
+        if (monthText > 0f && monthSubText != null) {
             sub.setColor(p.secondary);
             sub.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
             sub.setAlpha(alpha255(monthText));
-            if (total <= 0 && Math.abs(monthSpent) < 0.005) {
-                canvas.drawText("No spending yet", cx, subY, sub);
-            } else if (legendWidth <= 0) {
-                // Only when there is no legend. On a wide widget the same
-                // figure is the first thing in the right-hand column, at a size
-                // that can actually be read — printing it here as well would be
-                // the same number twice, one of them as a footnote.
-                double remaining = snapshot.optDouble("remaining", 0);
-                // Negative remaining is real information — render it, don't
-                // clamp it. It also gets the app's rose and a bold weight:
-                // being over budget was previously distinguishable only by a
-                // minus sign.
-                if (remaining < 0) {
-                    sub.setColor(p.danger);
-                    sub.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-                    canvas.drawText(balanceMoney(-remaining) + " over", cx, subY, sub);
-                } else {
-                    canvas.drawText(balanceMoney(remaining) + " left", cx, subY, sub);
-                }
+            // Negative remaining is real information — rendered, not clamped.
+            // It also gets the app's rose and a bold weight: being over budget
+            // was previously distinguishable only by a minus sign.
+            if (!nothingAtAll && overBudget) {
+                sub.setColor(p.danger);
+                sub.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
             }
+            canvas.drawText(monthSubText, cx, subY, sub);
         }
-        if (focused != null && focusedText > 0f) {
+        if (focusedSubText != null && focusedText > 0f) {
             // The category's own name, because the ring no longer says which
             // one it is — every band is the same colour now.
             sub.setColor(focused.color);
             sub.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
             sub.setAlpha(alpha255(focusedText));
-            canvas.drawText(focused.name, cx, subY, sub);
+            canvas.drawText(focusedSubText, cx, subY, sub);
         }
         sub.setAlpha(255);
         // ── Icons on the arcs. These are the labels; there is no legend. ──
@@ -733,12 +819,22 @@ final class WidgetRenderer {
         if (haveRemaining) {
             Paint remainingPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
             remainingPaint.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+            // Same tracking as the app gives this exact figure. Before the
+            // measure below, which the shrink-to-fit depends on.
+            remainingPaint.setLetterSpacing(NUMERAL_TRACKING);
             // The same green the app gives this figure, and the same rose when
             // it has gone negative. It was the ordinary text colour, which made
             // the one number on the widget you look for read as a label.
             remainingPaint.setColor(remaining < 0 ? p.danger : p.balance);
             remainingPaint.setAlpha(alpha255(alpha));
-            float size = 30f * dp;
+            // 28dp, down from 30. Not for its own sake: the column's height
+            // decides how many category rows fit under this block, and at the
+            // size a launcher actually gives a 4x2 widget the old figure left
+            // room for exactly one. One row is the worst number — "Housing
+            // $1,400" with nothing under it reads as though Housing is all
+            // there was, rather than as the largest of seven. Four dp buys the
+            // second row, which is the one that says "+6 more".
+            float size = 28f * dp;
             remainingPaint.setTextSize(size);
 
             String value = balanceMoney(remaining < 0 ? -remaining : remaining);
@@ -784,7 +880,11 @@ final class WidgetRenderer {
             }
         }
 
-        float rowH = 27f * dp;
+        // 24dp, down from 27, for the same reason the figure above shrank: at
+        // the widget's usual height this is the difference between one row and
+        // two. The rows are a name and an amount on one line; they were not
+        // using the height.
+        float rowH = 24f * dp;
         float legendTop = top + headH;
         float legendHeight = height - headH;
         int fits = Math.min((int) Math.floor(legendHeight / rowH), 4);
