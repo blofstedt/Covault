@@ -145,6 +145,8 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | "the app didn't offer me the update" / "it didn't update itself" | `lib/appUpdate.ts` (the check) → `lib/hooks/useAppUpdate.ts` (when, and which of the two routes) → `android-custom/CovaultUpdaterPlugin.java` (install, or unpack) |
 | "it still asked me to confirm the update" | the three conditions in the APK-route invariant below — `UPDATE_PACKAGES_WITHOUT_USER_ACTION` in `android-custom/AndroidManifest.xml`, Android 12+, and the install permission. A refusal is recorded per build in `CovaultUpdaterPlugin` and reported by `getStatus` as `quietInstallSupported` |
 | anything about the Android build | `scripts/sync-android.sh`, `.github/workflows/build-android.yml` |
+| "the Play build got rejected" / "why can't it see my bank on the Play version" | `scripts/play-manifest.mjs` — the AAB is built from a stripped manifest. See Invariants |
+| "my trial ran out early / never ran out" | `lib/serverClock.ts` → `lib/entitlement.ts`. The trial is judged on the DATABASE's clock, not the phone's |
 
 Deeper detail on any of these: `docs/ARCHITECTURE.md`. Human setup: `README.md`.
 
@@ -174,6 +176,36 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   what survives a closed app is the native SharedPreferences queue, which is
   what `commit()` and the tray-suppression ordering above are about. Do not
   re-add a database-side pending queue without deciding what it is for.
+- **There are two Android distributions and the manifest cannot serve both.**
+  The sideloaded APK updates itself and discovers banking apps by looking at
+  what is installed; Google Play forbids both — an app that installs packages,
+  and one that can see every package on the phone, are each a policy violation.
+  So the AAB workflow sets `COVAULT_DISTRIBUTION=play` and
+  `scripts/play-manifest.mjs` removes five permissions and replaces
+  `QUERY_ALL_PACKAGES` with a `<queries>` list generated from
+  `lib/bankingApps.ts`. Two things are load-bearing. It is OPT-IN: the APK
+  workflow does not set the variable, so the phone build is unchanged, and it
+  must stay that way — a sideload build without `REQUEST_INSTALL_PACKAGES`
+  cannot update itself. And a permission it means to remove but cannot find
+  THROWS: an upload carrying `REQUEST_INSTALL_PACKAGES` is rejected outright,
+  and one carrying `QUERY_ALL_PACKAGES` needs a declaration Covault cannot
+  honestly make, so failing the build is the cheap outcome. What the Play build
+  loses is real and deliberate: its capture-sources screen can only offer banks
+  already on the list, and unknown-bank suggestions cannot happen. Capture
+  itself is unaffected — a notification listener hears every app regardless.
+  `playManifest.test.ts` pins it.
+- **The trial is judged on the database's clock, not the phone's.** It is "you
+  have until this date", and it was being compared against `Date.now()` — the
+  clock belonging to the person being charged, so winding the phone back a
+  month extended the trial for ever. `lib/serverClock.ts` asks the database for
+  the time once per load and carries the difference as an offset; every
+  entitlement question passes `serverNow()`. It fails OPEN on purpose: no
+  network, or a database without `server_now()`, leaves the offset at zero and
+  behaves exactly as before, because a household locked out of its own budget
+  by a failed round trip is far worse than a trial running long. This fixes the
+  CLOCK only — whether someone has PAID is still a column the client reads, and
+  making that trustworthy needs Play Billing and a verified purchase record.
+  `serverClockTrial.test.ts` pins both directions.
 - **`tailwindcss-animate` must stay in `tailwind.config.js` plugins.** ~40 uses
   of `animate-in` / `zoom-in-*` / `slide-in-*` emit *no CSS at all* without it,
   silently. `lib/__tests__/tailwindAnimatePlugin.test.ts` guards this.
