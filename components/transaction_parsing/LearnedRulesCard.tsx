@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import ParsingCard from '../ui/ParsingCard';
-import { readRecentUses } from '../../lib/notificationRules';
+import { readRecentUses, ruleSourceText } from '../../lib/notificationRules';
+import SkipPhrasePicker from './SkipPhrasePicker';
 import type { NotificationRule, PatternType } from '../../lib/notificationRules';
 import type { VendorOverride, MatchType } from './useVendorOverrides';
 import { toVendorKey } from '../../lib/deviceTransactionParser';
@@ -70,7 +71,7 @@ const MATCH_TYPE_COPY: Record<PatternType, { title: string; blurb: string }> = {
   },
   contains: {
     title: 'Contains',
-    blurb: 'These words, in this order, anywhere inside a longer alert. Not some of the words, and not in any order.',
+    blurb: 'A phrase you pick out of the alert, matched anywhere inside a longer one — in that order, with nothing spliced in.',
   },
 };
 
@@ -95,6 +96,8 @@ interface LearnedRulesCardProps {
    *  shown but not offered as a choice — a switch that cannot move is worse
    *  than a label. */
   onSetRulePatternType?: (ruleId: string, patternType: PatternType) => Promise<boolean>;
+  /** Narrow a `contains` rule to a few words of the alert it came from. */
+  onSetRulePattern?: (ruleId: string, pattern: string) => Promise<boolean>;
   categoryNameById?: Map<string, string>;
   budgets?: BudgetCategory[];
   /**
@@ -128,6 +131,7 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
   rules = EMPTY_RULES,
   onRemoveRule,
   onSetRulePatternType,
+  onSetRulePattern,
   categoryNameById = EMPTY_CATEGORY_NAMES,
   budgets = EMPTY_BUDGETS,
   hiddenCategories = [],
@@ -337,6 +341,22 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
       }
     },
     [onSetRulePatternType, onToast],
+  );
+
+  const handleSetRulePattern = useCallback(
+    async (ruleId: string, pattern: string) => {
+      if (!onSetRulePattern) return;
+      setRetypingId(ruleId);
+      try {
+        const ok = await onSetRulePattern(ruleId, pattern);
+        onToast?.(ok
+          ? { message: 'Rule now matches those words', tone: 'info' }
+          : { message: 'Could not change that pattern', tone: 'error' });
+      } finally {
+        setRetypingId(null);
+      }
+    },
+    [onSetRulePattern, onToast],
   );
 
   const handleMerge = useCallback((ruleKey: string) => {
@@ -861,10 +881,12 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
 
                     {isSkipExpanded && (
                       <div className="px-3 pb-3 space-y-3 border-t border-violet-100 dark:border-violet-800/30 pt-2">
-                        {/* The alert this rule was made from, in full. */}
+                        {/* What this rule matches on. Under `exact` that is
+                            the whole alert; under `contains` it is whichever
+                            span of it the user picked. */}
                         <div>
                           <p className="text-[11px] font-bold tracking-wide text-slate-400 dark:text-slate-500 uppercase mb-1.5">
-                            Pattern
+                            Matches on
                           </p>
                           <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-snug break-words bg-violet-50/50 dark:bg-violet-900/20 rounded-lg px-2 py-1.5">
                             {rule.pattern}
@@ -916,6 +938,20 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                               with a different dollar figure still matches.
                             </p>
                           </div>
+                        )}
+
+                        {/* ── Which words ──
+                            Only under `contains`, because `exact` means the
+                            whole alert by definition — and switching back to
+                            exact restores it, so the choice is never lost. */}
+                        {onSetRulePattern && currentType === 'contains' && (
+                          <SkipPhrasePicker
+                            sourceText={ruleSourceText(rule)}
+                            pattern={rule.pattern}
+                            transactions={allTransactions}
+                            saving={retypingId === rule.id}
+                            onSave={(phrase) => { void handleSetRulePattern(rule.id, phrase); }}
+                          />
                         )}
 
                         {/* ── What it has actually done ──

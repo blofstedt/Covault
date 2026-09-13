@@ -61,6 +61,22 @@ export interface NotificationRule {
   /** The most recent alerts this rule silenced, newest first. Absent on a
    *  database that has not had the `recent_uses` migration run against it. */
   recent_uses?: RuleUse[];
+  /**
+   * The whole alert this rule was made from.
+   *
+   * `pattern` is what gets matched and may be a span of a few words out of
+   * this; this is the copy those words are chosen from, and the text a rule
+   * goes back to when it is set to `exact`. Null on a database without the
+   * column, and on nothing else — every rule written before it had `pattern`
+   * holding both jobs, which is what the migration backfilled from.
+   */
+  source_text?: string | null;
+}
+
+/** The alert a rule was made from, falling back to the pattern itself. */
+export function ruleSourceText(rule: NotificationRule): string {
+  const source = (rule.source_text || '').trim();
+  return source || rule.pattern;
 }
 
 /** The stored uses of a rule, defensively — the column is free-form jsonb. */
@@ -197,11 +213,27 @@ export async function listIgnoredPatterns(userId: string): Promise<string[]> {
 }
 
 export function matchesRule(rawNotification: string, rule: NotificationRule): boolean {
-  if (!rule.pattern) return false;
-  const text = rawNotification.trim();
-  const pattern = rule.pattern.trim();
+  return matchesPattern(rawNotification, rule.pattern, rule.pattern_type);
+}
+
+/**
+ * The one answer to "would this pattern silence this alert?".
+ *
+ * Split out from matchesRule so the screen that lets a user shorten a pattern
+ * can ask the same question of their own past purchases before saving it. A
+ * preview that decided this a second way would be a preview of something the
+ * app does not do.
+ */
+export function matchesPattern(
+  rawNotification: string,
+  rawPattern: string,
+  patternType: PatternType,
+): boolean {
+  if (!rawPattern) return false;
+  const text = (rawNotification || '').trim();
+  const pattern = rawPattern.trim();
   if (!text || !pattern) return false;
-  if (rule.pattern_type === 'contains') {
+  if (patternType === 'contains') {
     // A pattern with no words in it cannot say WHICH alert it means, and as a
     // `contains` rule it would silence every alert carrying that figure — a
     // rule made from an alert that is only "$42.10" would have swallowed every
@@ -226,7 +258,7 @@ export function matchesRule(rawNotification: string, rule: NotificationRule): bo
   // what the user meant. It only ever ADDS matches to the comparison above, so
   // nothing a rule used to catch stops being caught. See notificationShape.ts
   // for why this cannot quietly widen to a different merchant.
-  return shapeMatches(pattern, text, rule.pattern_type === 'contains' ? 'contains' : 'exact');
+  return shapeMatches(pattern, text, patternType === 'contains' ? 'contains' : 'exact');
 }
 
 /**
@@ -243,6 +275,14 @@ export function matchesRule(rawNotification: string, rule: NotificationRule): bo
  * after the migration is run picks it up.
  */
 let recentUsesColumn: boolean | null = null;
+
+/**
+ * Whether this database has the `source_text` column, learned the same way and
+ * for the same reason: a write naming a column that is not there is refused
+ * whole, and a skip rule the user just asked for matters more than remembering
+ * which alert it came from.
+ */
+let sourceTextColumn: boolean | null = null;
 
 /** One stored use, from an alert. */
 function useEntry(alertText: string): RuleUse {
@@ -336,16 +376,32 @@ export async function createNotificationRule(
 ): Promise<NotificationRule | null> {
   if (!userId || !input.pattern) return null;
   try {
-    const body = {
+    const body: Record<string, unknown> = {
       user_id: userId,
       pattern: input.pattern,
       pattern_type: input.pattern_type || 'exact',
     };
-    const res = await restFetch(`/notification_rules`, {
+    // The alert is written twice on purpose: once as what this rule matches,
+    // and once as the copy the user picks words out of later. They are the
+    // same text today and stop being the same the moment the pattern is
+    // shortened.
+    if (sourceTextColumn !== false) body.source_text = input.pattern;
+    let res = await restFetch(`/notification_rules`, {
       method: 'POST',
       headers: { Prefer: 'return=representation' },
       body: JSON.stringify(body),
     });
+    if (!res.ok && sourceTextColumn !== false && 'source_text' in body) {
+      // The migration has not been run here. A rule that cannot remember which
+      // alert it came from is still a working rule, so it is written without.
+      sourceTextColumn = false;
+      delete body.source_text;
+      res = await restFetch(`/notification_rules`, {
+        method: 'POST',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify(body),
+      });
+    }
     if (!res.ok) {
       log.error('[notificationRules] create failed:', res.status, await res.text());
       return null;
@@ -384,15 +440,57 @@ export async function updateNotificationRulePatternType(
   userId: string,
   ruleId: string,
   patternType: PatternType,
+  /** The alert the rule was made from, when the caller knows it. */
+  sourceText?: string,
 ): Promise<boolean> {
   if (!userId || !ruleId) return false;
+  const body: Record<string, unknown> = { pattern_type: patternType };
+  // Going back to `exact` restores the whole alert. A rule left holding three
+  // words out of the middle would be asking whether the bank ever sends an
+  // alert that is only those three words — never, in silence, while the rules
+  // list goes on showing it as a rule the app is following.
+  const full = (sourceText || '').trim();
+  if (patternType === 'exact' && full) body.pattern = full;
+  return patchRule(userId, ruleId, body);
+}
+
+/**
+ * Change which words of its alert a rule matches on.
+ *
+ * Only meaningful for a `contains` rule: `exact` means the whole alert, so a
+ * shortened pattern under it would be a rule asking whether a bank ever sends
+ * an alert consisting of three words and nothing else — which is to say a rule
+ * that never fires again, sitting in the list looking like one that does. That
+ * is why setting a rule back to `exact` restores its full text rather than
+ * keeping the span; see updateNotificationRulePatternType.
+ *
+ * Whether the phrase is fit to save is decided before this is called — see
+ * checkSkipPhrase in lib/skipPhrase.ts, which tests it against the alerts the
+ * household's own captured purchases arrived on.
+ */
+export async function updateNotificationRulePattern(
+  userId: string,
+  ruleId: string,
+  pattern: string,
+): Promise<boolean> {
+  const next = (pattern || '').trim();
+  if (!userId || !ruleId || !next) return false;
+  return patchRule(userId, ruleId, { pattern: next });
+}
+
+/** One PATCH against one rule, owner-scoped, with the cache and the phone told. */
+async function patchRule(
+  userId: string,
+  ruleId: string,
+  body: Record<string, unknown>,
+): Promise<boolean> {
   try {
     const res = await restFetch(
       `/notification_rules?id=eq.${ruleId}&user_id=eq.${userId}`,
       {
         method: 'PATCH',
         headers: { Prefer: 'return=minimal' },
-        body: JSON.stringify({ pattern_type: patternType }),
+        body: JSON.stringify(body),
       },
     );
     if (!res.ok) {

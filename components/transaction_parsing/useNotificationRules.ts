@@ -4,6 +4,8 @@ import {
   createNotificationRule,
   deleteNotificationRule,
   updateNotificationRulePatternType,
+  updateNotificationRulePattern,
+  ruleSourceText,
   type NotificationRule,
   type CreateNotificationRuleInput,
   type PatternType,
@@ -73,16 +75,25 @@ export function useNotificationRules({ userId }: UseNotificationRulesOptions) {
       // updater runs when React gets round to it, which is not guaranteed to
       // be before the network call below resolves — so the undo value has to
       // be taken from the list as it stands now.
-      const previous = rules.find((r) => r.id === ruleId)?.pattern_type;
-      if (!previous || previous === patternType) return true;
+      const rule = rules.find((r) => r.id === ruleId);
+      if (!rule || rule.pattern_type === patternType) return true;
+      const previous = rule;
+      const source = ruleSourceText(rule);
+      // `exact` means the whole alert, so it takes the pattern back to the
+      // full text — see updateNotificationRulePatternType.
+      const nextPattern = patternType === 'exact' && source ? source : rule.pattern;
 
       setRules((prev) =>
-        prev.map((r) => (r.id === ruleId ? { ...r, pattern_type: patternType } : r)),
+        prev.map((r) =>
+          r.id === ruleId ? { ...r, pattern_type: patternType, pattern: nextPattern } : r),
       );
-      const ok = await updateNotificationRulePatternType(userId, ruleId, patternType);
+      const ok = await updateNotificationRulePatternType(userId, ruleId, patternType, source);
       if (!ok) {
         setRules((prev) =>
-          prev.map((r) => (r.id === ruleId ? { ...r, pattern_type: previous } : r)),
+          prev.map((r) =>
+            r.id === ruleId
+              ? { ...r, pattern_type: previous.pattern_type, pattern: previous.pattern }
+              : r),
         );
       }
       return ok;
@@ -90,5 +101,28 @@ export function useNotificationRules({ userId }: UseNotificationRulesOptions) {
     [userId, rules],
   );
 
-  return { rules, loading, load, create, remove, setPatternType };
+  /**
+   * Narrow a rule to a few words of the alert it came from.
+   *
+   * Optimistic like the type switch above, and put back the same way: the
+   * pattern is what the user just chose on screen, so it has to appear as
+   * chosen rather than a second later.
+   */
+  const setPattern = useCallback(
+    async (ruleId: string, pattern: string): Promise<boolean> => {
+      if (!userId) return false;
+      const previous = rules.find((r) => r.id === ruleId)?.pattern;
+      if (previous === undefined || previous === pattern) return true;
+
+      setRules((prev) => prev.map((r) => (r.id === ruleId ? { ...r, pattern } : r)));
+      const ok = await updateNotificationRulePattern(userId, ruleId, pattern);
+      if (!ok) {
+        setRules((prev) => prev.map((r) => (r.id === ruleId ? { ...r, pattern: previous } : r)));
+      }
+      return ok;
+    },
+    [userId, rules],
+  );
+
+  return { rules, loading, load, create, remove, setPatternType, setPattern };
 }

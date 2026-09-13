@@ -103,6 +103,33 @@ describe('changing a skip pattern between exact and contains', () => {
     expect(pushed?.[0].pattern_type).toBe('contains');
   });
 
+  it('takes a shortened rule back to the whole alert when it is set to exact', async () => {
+    // A `contains` rule may be three words out of the middle of an alert.
+    // Under `exact` those three words would mean "an alert consisting of these
+    // three words and nothing else", which no bank sends — so the rule would
+    // stop firing, in silence, while the list went on showing it.
+    restFetchMock.mockResolvedValue(noContent);
+
+    await updateNotificationRulePatternType(
+      'u1', 'r1', 'exact', 'Rewards: Your points are calculated to be 12,340',
+    );
+
+    const body = JSON.parse((restFetchMock.mock.calls[0][1] as { body: string }).body);
+    expect(body.pattern_type).toBe('exact');
+    expect(body.pattern).toBe('Rewards: Your points are calculated to be 12,340');
+  });
+
+  it('leaves the pattern alone going the other way', async () => {
+    // Widening does not need to touch it: the whole alert is a valid
+    // `contains` pattern, and the words the user picks come next.
+    restFetchMock.mockResolvedValue(noContent);
+
+    await updateNotificationRulePatternType('u1', 'r1', 'contains', 'the whole alert');
+
+    const body = JSON.parse((restFetchMock.mock.calls[0][1] as { body: string }).body);
+    expect(body).not.toHaveProperty('pattern');
+  });
+
   it('leaves the rules alone when the write fails', async () => {
     restFetchMock.mockResolvedValue({ ok: false, status: 403, json: async () => null, text: async () => 'no' });
     expect(await updateNotificationRulePatternType('u1', 'r1', 'contains')).toBe(false);
