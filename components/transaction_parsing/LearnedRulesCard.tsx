@@ -2,6 +2,8 @@ import React, { useState, useCallback, useMemo } from 'react';
 import ParsingCard from '../ui/ParsingCard';
 import { readRecentUses, ruleSourceText } from '../../lib/notificationRules';
 import SkipPhrasePicker from './SkipPhrasePicker';
+import Portal from '../ui/Portal';
+import ConfirmModal from '../ui/ConfirmModal';
 import type { NotificationRule, PatternType } from '../../lib/notificationRules';
 import type { VendorOverride, MatchType } from './useVendorOverrides';
 import { toVendorKey } from '../../lib/deviceTransactionParser';
@@ -74,6 +76,30 @@ const MATCH_TYPE_COPY: Record<PatternType, { title: string; blurb: string }> = {
     blurb: 'A phrase you pick out of the alert, matched anywhere inside a longer one — in that order, with nothing spliced in.',
   },
 };
+
+/**
+ * What deleting a skip pattern actually costs, in the user's terms.
+ *
+ * Two things worth saying and one worth not overstating. The alerts it was
+ * hiding start arriving again — which is the reversible half. And the rule
+ * cannot be put back on demand: it is written from the text of one alert, so
+ * recreating it means waiting for another of those alerts to turn up and
+ * marking it again. The count is quoted when there is one, because a rule that
+ * has silenced twenty alerts is a different thing to lose than one that has
+ * never fired.
+ */
+function describeSkipRuleDeletion(rule: NotificationRule): string {
+  // The pattern comes first, and short. The modal covers the row that was
+  // tapped, so without it there is nothing on screen saying WHICH rule is
+  // about to go — which is the mistake this confirmation exists to catch.
+  const words = rule.pattern.trim();
+  const quoted = words.length > 52 ? `${words.slice(0, 52).trimEnd()}…` : words;
+  const uses = rule.use_count ?? 0;
+  const worked = uses > 0
+    ? `It has hidden ${uses} ${uses === 1 ? 'alert' : 'alerts'}, which would start arriving in Review again.`
+    : 'Alerts matching it would start arriving in Review again.';
+  return `“${quoted}” — ${worked} Covault cannot put it back: it was written from one alert, so you would have to wait for another like it and mark it again.`;
+}
 
 /**
  * How many rules there have to be before a search box is worth its space.
@@ -153,6 +179,10 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
   const [mergingRule, setMergingRule] = useState<string | null>(null);
   const [mergeTarget, setMergeTarget] = useState<string | null>(null);
   const [expandedSkipRule, setExpandedSkipRule] = useState<string | null>(null);
+  // The rule the delete button is asking about. A skip rule is the one thing
+  // on this screen that cannot be made again on demand — it is written from
+  // the text of an alert that has already been and gone — so the × asks first.
+  const [confirmDeleteRule, setConfirmDeleteRule] = useState<NotificationRule | null>(null);
   const [retypingId, setRetypingId] = useState<string | null>(null);
   const [removingStaleKey, setRemovingStaleKey] = useState<string | null>(null);
   const [combiningChainKey, setCombiningChainKey] = useState<string | null>(null);
@@ -868,10 +898,10 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                         </span>
                       </div>
                       <button
-                        onClick={() => handleRemoveRule(rule.id)}
+                        onClick={() => setConfirmDeleteRule(rule)}
                         disabled={removingId === rule.id}
                         className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 transition-all duration-200 active:scale-[0.97] disabled:opacity-50 shrink-0"
-                        aria-label="Remove rule"
+                        aria-label="Delete this skip pattern"
                       >
                         <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
                           <path d="M6 18L18 6M6 6l12 12" />
@@ -1016,6 +1046,28 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
             </div>
           )}
         </div>
+      )}
+
+      {/* ── Deleting a skip pattern ──
+          Portal'd, because this card sits inside the Review page's <main>,
+          which is `relative z-10` and would cap the overlay below the nav bar
+          however large its own z-index was. See components/ui/Portal.tsx. */}
+      {confirmDeleteRule && (
+        <Portal>
+          <ConfirmModal
+            title="Delete this skip pattern?"
+            message={describeSkipRuleDeletion(confirmDeleteRule)}
+            confirmLabel="Delete it"
+            cancelLabel="Keep it"
+            variant="danger"
+            onConfirm={() => {
+              const target = confirmDeleteRule;
+              setConfirmDeleteRule(null);
+              void handleRemoveRule(target.id);
+            }}
+            onCancel={() => setConfirmDeleteRule(null)}
+          />
+        </Portal>
       )}
     </ParsingCard>
   );
