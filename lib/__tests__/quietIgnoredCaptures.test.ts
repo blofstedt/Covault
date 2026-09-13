@@ -138,7 +138,19 @@ describe('the native and web rule matchers', () => {
     const r = rule({ pattern: 'Reward Points', pattern_type: 'contains' });
     expect(matchesRule('You earned reward points this month', r)).toBe(true);
 
-    expect(LISTENER_JAVA).toMatch(/lower\.contains\(pattern\.toLowerCase\(\)\)/);
+    expect(LISTENER_JAVA).toMatch(/String patternLower = pattern\.toLowerCase\(\);/);
+    expect(LISTENER_JAVA).toMatch(/lower\.contains\(patternLower\)/);
+  });
+
+  it('agree that a `contains` pattern with no words in it matches nothing', () => {
+    // A pattern that is only a figure cannot say WHICH alert it means, so as a
+    // `contains` rule it would silence every alert carrying that amount. The
+    // shape comparison has always refused it; the plain substring test on both
+    // sides did not, and a rule's width can now be changed after the fact.
+    const r = rule({ pattern: '$42.10', pattern_type: 'contains' });
+    expect(matchesRule('You spent $42.10 at Loblaws', r)).toBe(false);
+
+    expect(LISTENER_JAVA).toMatch(/if \(!HAS_LETTER\.matcher\(patternLower\)\.find\(\)\) continue;/);
   });
 
   it('agree that an empty pattern matches nothing', () => {

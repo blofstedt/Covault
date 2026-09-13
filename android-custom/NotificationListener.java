@@ -1617,7 +1617,18 @@ public class NotificationListener extends NotificationListenerService {
                 if (pattern.isEmpty()) continue;
                 boolean contains = "contains".equals(rule.optString("pattern_type", "exact"));
                 if (contains) {
-                    if (lower.contains(pattern.toLowerCase())) return true;
+                    // A pattern with no words in it cannot say WHICH alert it
+                    // means, and as a `contains` rule it would silence every
+                    // alert carrying that figure. Mirrors the same guard in
+                    // matchesRule in lib/notificationRules.ts; the shape test
+                    // below has always refused it and the substring test did
+                    // not.
+                    String patternLower = pattern.toLowerCase();
+                    // Lowercased first: HAS_LETTER is [a-z], and the shape it
+                    // is otherwise used on has already been folded. Handed the
+                    // raw pattern it would read "BTC IS TRADING" as wordless.
+                    if (!HAS_LETTER.matcher(patternLower).find()) continue;
+                    if (lower.contains(patternLower)) return true;
                 } else if (trimmed.equals(pattern)) {
                     return true;
                 }

@@ -21,6 +21,35 @@ import { shapeMatches } from './notificationShape';
 
 export type PatternType = 'exact' | 'contains';
 
+/**
+ * One alert this rule actually silenced.
+ *
+ * A skip rule works by making things disappear, so a counter is the weakest
+ * possible evidence about it: "skipped 6 alerts" says nothing about whether
+ * those six were the noise the user meant to silence or a purchase they will
+ * now never see. The wording is what answers that, and it is the only place
+ * it can be answered from — a skipped alert is dropped, never stored as a row.
+ */
+export interface RuleUse {
+  /** When it fired, ISO. */
+  at: string;
+  /** The alert's text, truncated — see MAX_USE_TEXT. */
+  text: string;
+}
+
+/** How many of the most recent uses a rule carries. */
+export const MAX_RECENT_USES = 5;
+
+/**
+ * How much of each alert is kept.
+ *
+ * Enough to recognise which alert it was at a glance, which is all the list
+ * is for. The whole text would make the rules table carry a copy of every
+ * silenced notification indefinitely, for a row that is read once in a while
+ * by one person.
+ */
+const MAX_USE_TEXT = 160;
+
 export interface NotificationRule {
   id: string;
   user_id: string;
@@ -29,6 +58,21 @@ export interface NotificationRule {
   use_count: number;
   last_used_at: string | null;
   created_at: string;
+  /** The most recent alerts this rule silenced, newest first. Absent on a
+   *  database that has not had the `recent_uses` migration run against it. */
+  recent_uses?: RuleUse[];
+}
+
+/** The stored uses of a rule, defensively — the column is free-form jsonb. */
+export function readRecentUses(rule: NotificationRule): RuleUse[] {
+  const raw = rule.recent_uses;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((row): row is RuleUse =>
+      !!row && typeof row === 'object'
+      && typeof (row as RuleUse).text === 'string'
+      && typeof (row as RuleUse).at === 'string')
+    .slice(0, MAX_RECENT_USES);
 }
 
 export interface CreateNotificationRuleInput {
@@ -158,6 +202,14 @@ export function matchesRule(rawNotification: string, rule: NotificationRule): bo
   const pattern = rule.pattern.trim();
   if (!text || !pattern) return false;
   if (rule.pattern_type === 'contains') {
+    // A pattern with no words in it cannot say WHICH alert it means, and as a
+    // `contains` rule it would silence every alert carrying that figure — a
+    // rule made from an alert that is only "$42.10" would have swallowed every
+    // $42.10 purchase the household ever made. The shape comparison below has
+    // refused this since it was written; the plain substring test did not, and
+    // now that a rule's width can be changed after the fact, the flick of a
+    // switch is all it would take to reach it.
+    if (!/[a-z]/i.test(pattern)) return false;
     if (text.toLowerCase().includes(pattern.toLowerCase())) return true;
   } else if (text === pattern) {
     return true;
@@ -178,32 +230,82 @@ export function matchesRule(rawNotification: string, rule: NotificationRule): bo
 }
 
 /**
- * Increment the use_count of a rule (best-effort; doesn't block the
- * caller if it fails). The parser calls this whenever a rule matches.
+ * Whether this database has the `recent_uses` column.
+ *
+ * Asked once, by watching whether a select naming it comes back. PostgREST
+ * 400s a whole select on one unknown column, so a database without the
+ * migration would otherwise cost two requests on every skipped alert — and,
+ * worse, a PATCH naming the column would fail outright and take the use COUNT
+ * down with it. The count is the older, load-bearing half: it is what the
+ * rules list has always shown.
+ *
+ * `null` means not yet known. Never cached as false permanently — a reload
+ * after the migration is run picks it up.
  */
-export async function bumpRuleUseCount(ruleId: string): Promise<void> {
+let recentUsesColumn: boolean | null = null;
+
+/** One stored use, from an alert. */
+function useEntry(alertText: string): RuleUse {
+  const text = alertText.replace(/\s+/g, ' ').trim().slice(0, MAX_USE_TEXT);
+  return { at: new Date().toISOString(), text };
+}
+
+/**
+ * Record that a rule fired: one on the count, and the alert itself on the
+ * short list of what it has silenced.
+ *
+ * Best-effort and never blocks the caller — the capture pipeline has already
+ * decided to drop this notification and must not wait on bookkeeping.
+ *
+ * Read-modify-write with optimistic concurrency rather than a Postgres
+ * expression, to keep this dependency-free: if the count moves under us the
+ * bump is skipped rather than clobbering whatever else wrote.
+ */
+export async function bumpRuleUseCount(ruleId: string, alertText?: string): Promise<void> {
   try {
-    // We use a Postgres expression via the RPC-shaped header if the
-    // project has it; otherwise we read-modify-write. To keep this
-    // dependency-free we do read-modify-write with optimistic
-    // concurrency: if the count moves under us, we just skip the bump.
-    const readRes = await restFetch(
-      `/notification_rules?id=eq.${ruleId}&select=use_count`,
+    const wantRecent = recentUsesColumn !== false;
+    const columns = wantRecent ? 'use_count,recent_uses' : 'use_count';
+    let readRes = await restFetch(
+      `/notification_rules?id=eq.${ruleId}&select=${columns}`,
       { cache: 'no-store' },
     );
+    if (!readRes.ok && wantRecent) {
+      // The migration has not been run here. Remembered, so the next skipped
+      // alert asks for the column that does exist and costs one request.
+      recentUsesColumn = false;
+      readRes = await restFetch(
+        `/notification_rules?id=eq.${ruleId}&select=use_count`,
+        { cache: 'no-store' },
+      );
+    }
     if (!readRes.ok) return;
-    const rows: Array<{ use_count: number }> = await readRes.json();
+
+    const rows: Array<{ use_count: number; recent_uses?: unknown }> = await readRes.json();
     if (!rows || rows.length === 0) return;
+    const haveColumn = recentUsesColumn !== false && 'recent_uses' in rows[0];
+    if (haveColumn) recentUsesColumn = true;
+
     const current = rows[0].use_count ?? 0;
+    const body: Record<string, unknown> = {
+      use_count: current + 1,
+      last_used_at: new Date().toISOString(),
+    };
+    if (haveColumn && alertText) {
+      const existing = Array.isArray(rows[0].recent_uses)
+        ? (rows[0].recent_uses as RuleUse[]).filter(
+            (row) => !!row && typeof row.text === 'string' && typeof row.at === 'string')
+        : [];
+      // Newest first, trimmed here rather than in the database: the column is
+      // the app's own list and nothing else writes it.
+      body.recent_uses = [useEntry(alertText), ...existing].slice(0, MAX_RECENT_USES);
+    }
+
     await restFetch(
       `/notification_rules?id=eq.${ruleId}&use_count=eq.${current}`,
       {
         method: 'PATCH',
         headers: { Prefer: 'return=minimal' },
-        body: JSON.stringify({
-          use_count: current + 1,
-          last_used_at: new Date().toISOString(),
-        }),
+        body: JSON.stringify(body),
       },
     );
   } catch (err) {

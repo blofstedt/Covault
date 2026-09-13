@@ -1302,8 +1302,10 @@ async function processNotificationWithAIImpl(
   const matchedRule = await checkNotificationRules(userId, input.rawNotification);
   if (matchedRule) {
     log.debug(`[AI pipeline] Skipped by user rule #${matchedRule.id} (${matchedRule.pattern_type}: "${matchedRule.pattern.slice(0, 50)}...")`);
-    // Best-effort: bump the count without blocking the result
-    void bumpRuleUseCount(matchedRule.id);
+    // Best-effort: record the use without blocking the result. The alert goes
+    // with it — this is the only place its wording is ever kept, since a
+    // skipped notification becomes no row and no log the user can read.
+    void bumpRuleUseCount(matchedRule.id, input.rawNotification);
     recentlyProcessedCache.set(inMemoryKey, Date.now());
     markNotificationRejected(inMemoryKey);
     return {

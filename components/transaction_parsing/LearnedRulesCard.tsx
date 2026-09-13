@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import ParsingCard from '../ui/ParsingCard';
+import { readRecentUses } from '../../lib/notificationRules';
 import type { NotificationRule, PatternType } from '../../lib/notificationRules';
 import type { VendorOverride, MatchType } from './useVendorOverrides';
 import { toVendorKey } from '../../lib/deviceTransactionParser';
@@ -48,6 +49,30 @@ const EMPTY_RULES: NotificationRule[] = [];
 const EMPTY_BUDGETS: BudgetCategory[] = [];
 const EMPTY_TRANSACTIONS: Transaction[] = [];
 const EMPTY_CATEGORY_NAMES = new Map<string, string>();
+
+/**
+ * What the two skip-pattern match types actually do, in words.
+ *
+ * Neither is obvious from its name, and getting them wrong is not symmetrical
+ * — "contains" silences alerts the user never sees, with the app closed — so
+ * the explanation belongs where the choice is made rather than in a help page
+ * nobody opens.
+ *
+ * Both ignore numbers and dates: a rule is created from the whole text of one
+ * alert, and that text carries that alert's own figure, so comparing the
+ * figures too would mean a rule made from a balance or a price alert could
+ * never fire again. See lib/notificationShape.ts.
+ */
+const MATCH_TYPE_COPY: Record<PatternType, { title: string; blurb: string }> = {
+  exact: {
+    title: 'Exact',
+    blurb: 'The whole alert, start to finish, same words in the same order — nothing before or after it.',
+  },
+  contains: {
+    title: 'Contains',
+    blurb: 'These words, in this order, anywhere inside a longer alert. Not some of the words, and not in any order.',
+  },
+};
 
 /**
  * How many rules there have to be before a search box is worth its space.
@@ -778,6 +803,7 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                 {visibleSkipRules.map((rule) => {
                   const isSkipExpanded = expandedSkipRule === rule.id;
                   const uses = rule.use_count ?? 0;
+                  const recentUses = readRecentUses(rule);
                   const currentType: PatternType =
                     rule.pattern_type === 'contains' ? 'contains' : 'exact';
                   return (
@@ -873,17 +899,22 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                                     } ${retypingId === rule.id ? 'opacity-50' : ''}`}
                                   >
                                     <span className="block text-[11px] font-bold uppercase tracking-wide">
-                                      {type}
+                                      {MATCH_TYPE_COPY[type].title}
                                     </span>
                                     <span className="block text-[10px] font-medium leading-snug mt-0.5 normal-case">
-                                      {type === 'exact'
-                                        ? 'Only this alert, word for word'
-                                        : 'Any alert containing this text'}
+                                      {MATCH_TYPE_COPY[type].blurb}
                                     </span>
                                   </button>
                                 );
                               })}
                             </div>
+                            {/* The half neither name hints at, and the half
+                                every user assumes wrongly in one direction or
+                                the other. */}
+                            <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-snug mt-1.5">
+                              Either way, amounts and dates are ignored — the same alert
+                              with a different dollar figure still matches.
+                            </p>
                           </div>
                         )}
 
@@ -894,17 +925,49 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                             whose next copy says a different number. */}
                         <div>
                           <p className="text-[11px] font-bold tracking-wide text-slate-400 dark:text-slate-500 uppercase mb-1.5">
-                            Uses
-                          </p>
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
                             {uses === 0
-                              ? 'Has not skipped anything yet'
-                              : `Skipped ${uses} ${uses === 1 ? 'alert' : 'alerts'}`}
-                            {uses > 0 && rule.last_used_at
-                              ? ` · last on ${new Date(rule.last_used_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
-                              : ''}
+                              ? 'Uses'
+                              : `Uses (${uses})`}
                           </p>
-                          <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-snug mt-1">
+                          {recentUses.length > 0 ? (
+                            <div className="space-y-1">
+                              {recentUses.map((use, i) => (
+                                <div
+                                  key={`${use.at}-${i}`}
+                                  className="px-2 py-1.5 rounded-lg bg-violet-50/50 dark:bg-violet-900/20"
+                                >
+                                  <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-snug break-words">
+                                    {use.text}
+                                  </p>
+                                  <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+                                    {new Date(use.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                    {' · '}
+                                    {new Date(use.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+                                  </p>
+                                </div>
+                              ))}
+                              {uses > recentUses.length && (
+                                <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-snug">
+                                  {`Showing the last ${recentUses.length} of ${uses}`}
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            // Either it has never fired, or it fired before the
+                            // app started keeping the wording. Both are honest
+                            // as "nothing to show", but a rule with a count has
+                            // to say why its alerts are not listed or the empty
+                            // list reads as a rule that has done nothing.
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
+                              {uses === 0
+                                ? 'Has not skipped anything yet'
+                                : `Skipped ${uses} ${uses === 1 ? 'alert' : 'alerts'} before Covault started keeping their wording`}
+                              {uses > 0 && rule.last_used_at
+                                ? ` · last on ${new Date(rule.last_used_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+                                : ''}
+                            </p>
+                          )}
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-snug mt-1.5">
                             Added {new Date(rule.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                           </p>
                         </div>
