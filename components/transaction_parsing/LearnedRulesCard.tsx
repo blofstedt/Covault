@@ -7,6 +7,12 @@ import { formatCurrency } from '../../lib/formatCurrency';
 import { findStaleOtherRules, findChainMergeGroups, StaleOtherGroup, ChainMergeGroup } from '../../lib/ruleCleanup';
 import { BudgetCategory, Toast, Transaction } from '../../types';
 import { selectableBudgets } from '../../lib/budgetVisibility';
+import {
+  searchTerms,
+  filterBySearch,
+  learnedRuleHaystack,
+  skipRuleHaystack,
+} from '../../lib/ruleSearch';
 
 // --- Static Definitions Moved Outside Component to Prevent Re-allocation ---
 const matchTypeStyles: Record<MatchType, string> = {
@@ -42,6 +48,15 @@ const EMPTY_RULES: NotificationRule[] = [];
 const EMPTY_BUDGETS: BudgetCategory[] = [];
 const EMPTY_TRANSACTIONS: Transaction[] = [];
 const EMPTY_CATEGORY_NAMES = new Map<string, string>();
+
+/**
+ * How many rules there have to be before a search box is worth its space.
+ *
+ * A household three weeks in has a handful and can see all of them at once; a
+ * search field above six rows is a control that answers a question nobody has
+ * yet. It appears when the list has genuinely got away from them.
+ */
+const MIN_RULES_FOR_SEARCH = 8;
 
 interface LearnedRulesCardProps {
   vendorOverrides: VendorOverride[];
@@ -97,6 +112,7 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
   onToggleExpanded,
   onToast,
 }) => {
+  const [query, setQuery] = useState('');
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [editingProperName, setEditingProperName] = useState<string | null>(null);
   const [properNameDraft, setProperNameDraft] = useState('');
@@ -160,6 +176,26 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
   }, [vendorOverrides, allTransactions, categoryNameById]);
 
   const totalRules = learnedRules.length + rules.length;
+
+  // ── Finding one rule among hundreds ──
+  // See lib/ruleSearch.ts for what a row is searched against and why it is a
+  // plain substring filter rather than anything cleverer.
+  const terms = useMemo(() => searchTerms(query), [query]);
+  const isSearching = terms.length > 0;
+  const showSearch = totalRules >= MIN_RULES_FOR_SEARCH;
+
+  // The type arguments are explicit because the haystack builders take the
+  // narrow "just the searchable bits" shapes, and inference would otherwise
+  // pick THOSE as the element type and lose the rest of the rule.
+  const visibleLearnedRules = useMemo(
+    () => filterBySearch<LearnedRule>(learnedRules, terms, learnedRuleHaystack),
+    [learnedRules, terms],
+  );
+  const visibleSkipRules = useMemo(
+    () => filterBySearch<NotificationRule>(rules, terms, skipRuleHaystack),
+    [rules, terms],
+  );
+  const matchCount = visibleLearnedRules.length + visibleSkipRules.length;
 
   // ── Needs attention: rules that are safe to tidy without re-deciding anything ──
   // Both checks mirror a rule the capture pipeline already applies elsewhere
@@ -295,8 +331,65 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
     >
       {isExpanded && (
         <div className="space-y-3">
+          {showSearch && (
+            <div className="relative">
+              <svg
+                className="w-3.5 h-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2.5}
+                strokeLinecap="round"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <path d="M21 21l-4.3-4.3" />
+              </svg>
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                // Escape clears rather than closing anything: this input sits
+                // inside a card on a page, not in a modal, so the nearest
+                // meaning of "get out of this" is an empty box.
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setQuery('');
+                  }
+                }}
+                placeholder="Search merchants or categories"
+                aria-label="Search rules"
+                // 16px. Anything smaller and the browser zooms the page to
+                // reach the field, which on Android leaves the card sitting
+                // off-centre for the rest of the search.
+                className="w-full min-h-[44px] pl-9 pr-9 py-2.5 text-base font-medium rounded-2xl bg-white/70 dark:bg-slate-900/50 border-2 border-violet-100 dark:border-violet-900/40 text-slate-700 dark:text-slate-200 placeholder:text-[13px] placeholder:font-medium placeholder-slate-400 dark:placeholder-slate-600 focus:outline-none focus:border-violet-400/60 transition-colors"
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => setQuery('')}
+                  aria-label="Clear search"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-[0.95] transition-all"
+                >
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                    <path d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Only when there ARE matches: the empty state below says it
+              better, and both at once is the same news twice. */}
+          {isSearching && matchCount > 0 && (
+            <p className="px-1 text-[11px] font-bold tracking-wide text-slate-400 dark:text-slate-500">
+              {matchCount} of {totalRules}
+            </p>
+          )}
+
           {/* Needs attention — safe, narrow cleanups, never a re-decision */}
-          {(staleOtherGroups.length > 0 || chainMergeGroups.length > 0) && (
+          {!isSearching && (staleOtherGroups.length > 0 || chainMergeGroups.length > 0) && (
             <div className="space-y-2 pb-1">
               <div className="flex items-center justify-between px-1">
                 <span className="text-[11px] font-bold tracking-wide uppercase text-slate-400 dark:text-slate-500">
@@ -407,9 +500,23 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
             <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-4">
               No rules yet. Every time you categorize a caught transaction, that vendor and category become a rule.
             </p>
+          ) : visibleLearnedRules.length === 0 && visibleSkipRules.length === 0 ? (
+            // Says what was looked at, because a search that comes up empty is
+            // otherwise indistinguishable from one that looked in the wrong
+            // place — and the bank's own spelling being searchable is the part
+            // nobody would guess.
+            <div className="text-center py-6 px-4">
+              <p className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                No rule matches “{query.trim()}”
+              </p>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 leading-snug">
+                Merchant names, categories and the names your bank sends are all
+                searchable.
+              </p>
+            </div>
           ) : (
             <div className="space-y-2">
-              {learnedRules.map((rule) => {
+              {visibleLearnedRules.map((rule) => {
                 const ruleKey = `${rule.properName}::${rule.categoryId}`;
                 const isExpanded = expandedVendorCategory === ruleKey;
                 const categoryColor = categoryColorMap[rule.categoryName] || 'text-violet-600 dark:text-violet-400';
@@ -624,18 +731,18 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
           )}
 
           {/* Skip Patterns (Notification Rules) */}
-          {rules.length > 0 && (
+          {visibleSkipRules.length > 0 && (
             <div className="pt-2 border-t border-violet-100 dark:border-violet-800/30">
               <div className="flex items-center gap-1.5 mb-1.5">
                 <p className="text-[11px] font-bold tracking-wide text-slate-400 dark:text-slate-500 uppercase">
                   Skip Patterns
                 </p>
                 <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800/60 px-1.5 py-0.5 rounded-full">
-                  {rules.length}
+                  {visibleSkipRules.length}
                 </span>
               </div>
               <div className="space-y-1.5">
-                {rules.map((rule) => (
+                {visibleSkipRules.map((rule) => (
                   <div
                     key={rule.id}
                     className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-white/60 dark:bg-violet-900/10 backdrop-blur-sm border border-violet-100 dark:border-violet-800/30"
