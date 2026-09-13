@@ -3,6 +3,7 @@ import { Transaction } from '../../types';
 import { generateProjectedTransactions } from '../../lib/projectedTransactions';
 import { getLocalMonthKey, getLocalToday } from '../../lib/dateUtils';
 import { DEFAULT_MONTHLY_INCOME } from '../../lib/apiHelpers';
+import { householdSpend, type PartnerSummary } from '../../lib/householdSharing';
 
 export default function useDashboardTotals(
   transactions: Transaction[],
@@ -10,6 +11,13 @@ export default function useDashboardTotals(
   /** Today as YYYY-MM-DD. Pass `useCurrentDay()` so the totals roll over at
    *  midnight; the default only covers callers that don't have it. */
   todayIso: string = getLocalToday(),
+  /** Who is signed in, so a partner's rows can be told from their own. */
+  myUserId: string = '',
+  /**
+   * What the partner spent when their rows are not readable. Null when there
+   * is no partner, or when they share their rows and the rows are the answer.
+   */
+  partnerSummary: PartnerSummary | null = null,
 ) {
   const currentMonth = getLocalMonthKey(todayIso);
 
@@ -35,10 +43,10 @@ export default function useDashboardTotals(
   const effectiveIncome = monthlyIncome > 0 ? monthlyIncome : DEFAULT_MONTHLY_INCOME;
 
   const remainingMoney = useMemo(() => {
-    const spent = currentMonthTransactions.reduce(
-      (sum, t) => sum + t.amount,
-      0
-    );
+    // A partner whose rows this phone is not allowed to read still spent the
+    // money. Summing only what is on screen would claim the household had more
+    // of it than it does — see householdSpend.
+    const spent = householdSpend(currentMonthTransactions, myUserId, partnerSummary);
 
     const projectedCurrentMonth = projectedTransactions
       .filter((t) => typeof t.date === 'string' && getLocalMonthKey(t.date) === currentMonth)
@@ -49,7 +57,9 @@ export default function useDashboardTotals(
     effectiveIncome,
     currentMonthTransactions,
     projectedTransactions,
-    currentMonth
+    currentMonth,
+    myUserId,
+    partnerSummary,
   ]);
 
   return {

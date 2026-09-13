@@ -32,6 +32,13 @@ import SearchResults from './dashboard_components/SearchResults';
 import useNormalizedTransactions from './dashboard_components/useNormalizedTransactions';
 import useDashboardTotals from './dashboard_components/useDashboardTotals';
 import { getLocalMonthKey, getLocalToday } from '../lib/dateUtils';
+import { callRpc } from '../lib/apiHelpers';
+import {
+  householdIncome,
+  householdBudgets,
+  spendingAgainstMyBudgets,
+  type PartnerSummary,
+} from '../lib/householdSharing';
 import { useCurrentDay } from '../lib/hooks/useCurrentDay';
 import { useMonthSelection } from '../lib/hooks/useMonthSelection';
 import { balanceLabelForMonth, remainingForMonth } from '../lib/monthWindow';
@@ -285,8 +292,21 @@ const Dashboard: React.FC<Props> = ({
     isIncomeLoaded,
   } = useDashboardTotals(
     normalizedTransactions,
-    state.user?.monthlyIncome || 0,
+    // The household's income, not the signed-in person's. Two phones using one
+    // salary each disagreed about the same pot by exactly the other's income.
+    householdIncome(state.user?.monthlyIncome || 0, state.partnerIncome),
     todayIso,
+    state.user?.id || '',
+    (state.partnerSummary as PartnerSummary | null) ?? null,
+  );
+
+  // Whose limits the vials draw, and whose spending fills them. Separate is
+  // the default and what most couples do: your own lines, drawn against the
+  // household income, with their spending visible but not eating yours.
+  const budgetMode = state.settings.budgetMode ?? 'separate';
+  const householdBudgetList = useMemo(
+    () => householdBudgets(state.budgets, state.partnerBudgets ?? null, budgetMode),
+    [state.budgets, state.partnerBudgets, budgetMode],
   );
 
   // ── Home-screen widget ──
@@ -447,18 +467,28 @@ const Dashboard: React.FC<Props> = ({
   // was left on March, or a "you are over budget" notification about a month
   // that ended, would both be wrong in a way the user could not see from here.
   const viewMonthBudgetTransactions = useMemo(() => {
-    if (isViewingCurrentMonth) return currentMonthBudgetTransactions;
-    const inViewMonth = (t: Transaction) => isInMonth(t, viewMonthKey);
-    return [
-      ...normalizedTransactions.filter(inViewMonth),
-      ...projectedTransactions.filter(inViewMonth),
-    ];
+    const forMonth = isViewingCurrentMonth
+      ? currentMonthBudgetTransactions
+      : (() => {
+          const inViewMonth = (t: Transaction) => isInMonth(t, viewMonthKey);
+          return [
+            ...normalizedTransactions.filter(inViewMonth),
+            ...projectedTransactions.filter(inViewMonth),
+          ];
+        })();
+    // Whose spending fills the vials. With separate budgets a partner's fuel
+    // does not eat yours — that is the whole point of keeping your own lines —
+    // so their rows are dropped here while staying in the balance above and in
+    // the transaction list below.
+    return spendingAgainstMyBudgets(forMonth, state.user?.id || '', budgetMode);
   }, [
     isViewingCurrentMonth,
     currentMonthBudgetTransactions,
     normalizedTransactions,
     projectedTransactions,
     viewMonthKey,
+    state.user?.id,
+    budgetMode,
   ]);
 
   // ── The Discretionary Shield ──
@@ -995,7 +1025,7 @@ const Dashboard: React.FC<Props> = ({
 
             {/* Budget bars: vertical list on mobile, 2-col grid on desktop */}
             <DashboardBudgetSectionsList
-              budgets={state.budgets}
+              budgets={householdBudgetList}
               transactions={viewMonthBudgetTransactions}
               isCurrentMonth={isViewingCurrentMonth}
               expandedBudgets={expandedBudgets}
@@ -1036,6 +1066,27 @@ const Dashboard: React.FC<Props> = ({
           isSharedAccount={!state.user?.budgetingSolo}
           settings={state.settings}
           user={state.user}
+          onChangeShareLevel={(level) => handleUpdateSettings('shareLevel', level)}
+          onChangeBudgetMode={(mode) => {
+            // Optimistic on this phone, and written to BOTH rows by the
+            // database: whose budgets the vials draw is a property of the
+            // household, and two people looking at differently-shaped
+            // dashboards for the same money is what this ends.
+            const previous = state.settings.budgetMode ?? 'separate';
+            setState((prev) => ({
+              ...prev,
+              settings: { ...prev.settings, budgetMode: mode },
+            }));
+            void callRpc('set_household_budget_mode', { p_mode: mode }).then((result) => {
+              if (!result.ok) {
+                log.error('[Dashboard] budget mode failed:', result.message);
+                setState((prev) => ({
+                  ...prev,
+                  settings: { ...prev.settings, budgetMode: previous },
+                }));
+              }
+            });
+          }}
           onGenerateLinkCode={onGenerateLinkCode}
           onJoinWithCode={onJoinWithCode}
           budgets={state.budgets}

@@ -156,7 +156,34 @@ export interface AppState {
      * everything already contributed.
      */
     community_rules_contribute: boolean;
+    /**
+     * How much of your spending a linked partner sees. Yours alone to set and
+     * deliberately not symmetric — it is your data. Enforced in the database,
+     * not by the screen: below 'transactions' your rows are refused to them
+     * outright. See lib/householdSharing.ts.
+     */
+    shareLevel: 'transactions' | 'categories' | 'totals';
+    /**
+     * Whose budget lines the vials draw. A property of the HOUSEHOLD, so
+     * changing it writes both rows — two people looking at differently-shaped
+     * dashboards for the same money is the confusion this ends.
+     */
+    budgetMode: 'separate' | 'combined';
   };
+  /**
+   * What a linked partner spent this month, when their rows are not readable.
+   * Null when there is no partner, or when they share their rows outright and
+   * the rows themselves are the answer.
+   */
+  partnerSummary?: {
+    level: 'transactions' | 'categories' | 'totals';
+    total: number;
+    byCategory: Record<string, number>;
+  } | null;
+  /** The partner's monthly income, for the household figure. Null if unknown. */
+  partnerIncome?: number | null;
+  /** The partner's budget limits, read only for the combined mode. */
+  partnerBudgets?: BudgetCategory[] | null;
 }
 
 

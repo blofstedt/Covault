@@ -64,6 +64,11 @@ const DEFAULT_SETTINGS = {
   // Receive the pool's suggestions; volunteer nothing until asked to.
   community_rules_enabled: true,
   community_rules_contribute: false,
+  // What linking used to assume, and what most couples actually do: share the
+  // purchases, keep your own budget lines. Both are changed together with the
+  // household, never inferred.
+  shareLevel: 'transactions' as const,
+  budgetMode: 'separate' as const,
 };
 
 // Fixed: Added check for 'window' so Vercel doesn't crash during build

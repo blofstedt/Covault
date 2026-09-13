@@ -68,7 +68,12 @@ describe('dashboard current-month scoping', () => {
   });
 
   it('passes today through to the totals and the projections', () => {
-    expect(/useDashboardTotals\([\s\S]*?todayIso,?\s*\)/.test(stripComments(dashboard))).toBe(true);
+    // `todayIso` has to reach the totals; the arguments after it (who is
+    // signed in, and the partner's summary for a partner whose rows this phone
+    // cannot read) are the household's business and may grow.
+    const call = stripComments(dashboard).match(/useDashboardTotals\(([\s\S]*?)\);/);
+    expect(call, 'Dashboard should call useDashboardTotals').not.toBeNull();
+    expect(call![1]).toContain('todayIso');
 
     const code = stripComments(totals);
     expect(/getLocalMonthKey\(todayIso\)/.test(code)).toBe(true);

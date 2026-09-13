@@ -387,6 +387,8 @@ const TourDemoScreen: React.FC<TourDemoScreenProps> = ({ stage = 'home' }) => {
           user={demoUser}
           onGenerateLinkCode={DEMO_LINK_CODE}
           onJoinWithCode={DEMO_JOIN}
+          onChangeShareLevel={NOOP}
+          onChangeBudgetMode={NOOP}
           budgets={budgets}
           transactions={thisMonthTransactions}
           onClose={NOOP}

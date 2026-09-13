@@ -33,8 +33,12 @@ describe('arriving at Review from a notification', () => {
 
     // Ordering is the whole point: hydrating after the round-trips would be a
     // no-op for the second the user is actually waiting.
-    const hydrate = src.indexOf('hydrateFromCache(userId)');
-    const fetches = src.indexOf('await Promise.all(');
+    // Scoped to loadUserData: other functions in this file now run their own
+    // parallel reads (the partner's income and summary), and an unscoped search
+    // finds whichever happens to appear first in the file.
+    const load = src.slice(src.indexOf('const loadUserData = useCallback('));
+    const hydrate = load.indexOf('hydrateFromCache(userId)');
+    const fetches = load.indexOf('await Promise.all(');
     expect(hydrate).toBeGreaterThan(-1);
     expect(fetches).toBeGreaterThan(-1);
     expect(hydrate).toBeLessThan(fetches);

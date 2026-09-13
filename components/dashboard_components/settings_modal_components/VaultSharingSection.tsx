@@ -3,6 +3,13 @@ import type { DashboardUser } from '../DashboardSettingsModal';
 import SettingsCard from '../../ui/SettingsCard';
 import SectionHeader from '../../ui/SectionHeader';
 import ConfirmModal from '../../ui/ConfirmModal';
+import {
+  SHARE_LEVELS,
+  SHARE_LEVEL_COPY,
+  BUDGET_MODE_COPY,
+  type ShareLevel,
+  type BudgetMode,
+} from '../../../lib/householdSharing';
 
 interface VaultSharingSectionProps {
   user: DashboardUser | null | undefined;
@@ -11,6 +18,12 @@ interface VaultSharingSectionProps {
   /** Claims the code the partner read out. */
   onJoinWithCode: (code: string) => Promise<{ ok: boolean; message?: string }>;
   onDisconnectPartner: () => void;
+  /** How much of your spending they see. Yours alone; see householdSharing. */
+  shareLevel: ShareLevel;
+  onChangeShareLevel: (level: ShareLevel) => void;
+  /** Whose budget lines the vials draw. Written to both rows. */
+  budgetMode: BudgetMode;
+  onChangeBudgetMode: (mode: BudgetMode) => void;
 }
 
 /**
@@ -30,6 +43,10 @@ const VaultSharingSection: React.FC<VaultSharingSectionProps> = ({
   onGenerateLinkCode,
   onJoinWithCode,
   onDisconnectPartner,
+  shareLevel,
+  onChangeShareLevel,
+  budgetMode,
+  onChangeBudgetMode,
 }) => {
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [myCode, setMyCode] = useState<string | null>(null);
@@ -99,6 +116,100 @@ const VaultSharingSection: React.FC<VaultSharingSectionProps> = ({
               </span>
             </div>
           </div>
+          {/* ── Whose budgets ──
+              A property of the household, so changing it moves both phones.
+              Two people looking at differently-shaped dashboards for the same
+              money is the confusion this ends. */}
+          <div className="space-y-2">
+            <p className="text-[11px] font-bold tracking-wide text-slate-400 dark:text-slate-500 uppercase">
+              Budgets
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {(['separate', 'combined'] as BudgetMode[]).map((mode) => {
+                const active = budgetMode === mode;
+                return (
+                  <button
+                    key={mode}
+                    onClick={() => onChangeBudgetMode(mode)}
+                    aria-pressed={active}
+                    className={`text-left p-3 rounded-2xl border transition-all duration-200 active:scale-[0.98] ${
+                      active
+                        ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-700/50'
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700/50'
+                    }`}
+                  >
+                    <span className={`block text-[11px] font-bold ${
+                      active ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-600 dark:text-slate-300'
+                    }`}>
+                      {BUDGET_MODE_COPY[mode].title}
+                    </span>
+                    <span className="block text-[10px] text-slate-400 dark:text-slate-500 leading-snug mt-1">
+                      {BUDGET_MODE_COPY[mode].blurb}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-snug">
+              Either way the balance at the top is the household's — both incomes,
+              both people's spending.
+            </p>
+          </div>
+
+          {/* ── How much they see ──
+              Yours alone and deliberately not symmetric: it is your data, and a
+              setting that only worked if both agreed would be a negotiation
+              rather than a choice. Enforced in the database — below "every
+              purchase" your rows are refused to them outright. */}
+          <div className="space-y-2">
+            <p className="text-[11px] font-bold tracking-wide text-slate-400 dark:text-slate-500 uppercase">
+              What {user.partnerName || 'they'} can see of your spending
+            </p>
+            <div className="space-y-1.5">
+              {SHARE_LEVELS.map((level, i) => {
+                const active = shareLevel === level;
+                return (
+                  <button
+                    key={level}
+                    onClick={() => onChangeShareLevel(level)}
+                    aria-pressed={active}
+                    className={`w-full text-left flex items-start gap-3 p-3 rounded-2xl border transition-all duration-200 active:scale-[0.99] ${
+                      active
+                        ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-700/50'
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700/50'
+                    }`}
+                  >
+                    {/* A rung on a ladder rather than a checkbox: these are
+                        degrees of one thing, and the order is what says so. */}
+                    <span className="flex flex-col items-center pt-0.5 shrink-0">
+                      <span className={`w-2.5 h-2.5 rounded-full ${
+                        active ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-700'
+                      }`} />
+                      {i < SHARE_LEVELS.length - 1 && (
+                        <span className="w-px flex-1 min-h-[16px] bg-slate-200 dark:bg-slate-700 mt-1" />
+                      )}
+                    </span>
+                    <span className="min-w-0">
+                      <span className={`block text-[11px] font-bold ${
+                        active ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-600 dark:text-slate-300'
+                      }`}>
+                        {SHARE_LEVEL_COPY[level].title}
+                      </span>
+                      <span className="block text-[10px] text-slate-400 dark:text-slate-500 leading-snug mt-0.5">
+                        {SHARE_LEVEL_COPY[level].blurb}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-snug">
+              Yours to set on your own — they choose separately what you see of
+              theirs. Your budget totals are always part of the household figure
+              whichever you pick.
+            </p>
+          </div>
+
           <button
             onClick={() => setConfirmDisconnect(true)}
             className="w-full py-4 bg-rose-50 dark:bg-rose-900/20 text-rose-500 text-xs font-semibold rounded-2xl hover:bg-rose-100 transition-all duration-200 tracking-wide"

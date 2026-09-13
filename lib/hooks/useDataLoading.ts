@@ -15,8 +15,11 @@ import {
   restFetch,
   clearCachedAccessToken,
   DEFAULT_MONTHLY_INCOME,
+  callRpc,
 } from '../apiHelpers';
 import { syncServerClock } from '../serverClock';
+import { getLocalToday } from '../dateUtils';
+import { readPartnerSummary, type ShareLevel, type BudgetMode } from '../householdSharing';
 import { useFromSupabaseTransaction } from './transactionMappers';
 import { readFirstPaintCache } from '../firstPaintCache';
 import { createReadGate, type ReadGate } from '../readGate';
@@ -352,7 +355,8 @@ export const useDataLoading = ({
         // Same defensive shape as the user_uuid/user_id fallback below.
         const LATER_COLUMNS =
           'smart_notifications_enabled,auto_accept_known_vendors,haptics_enabled,' +
-          'community_rules_enabled,community_rules_contribute,is_tester';
+          'community_rules_enabled,community_rules_contribute,is_tester,' +
+          'share_level,budget_mode';
         let res = await restFetch(
           `/settings?select=${BASE_COLUMNS},${LATER_COLUMNS}&user_id=eq.${userId}`,
           { cache: 'no-store' }, // Prevent caching to always get fresh data
@@ -422,6 +426,12 @@ export const useDataLoading = ({
             settings: {
               ...prev.settings,
               theme: theme as 'light' | 'dark',
+              // How much of your spending the partner sees, and whose budget
+              // lines the vials draw. Undefined on a database without the
+              // columns, where `??` keeps the defaults — which are the
+              // behaviour the app had before either existed.
+              shareLevel: (rows[0].share_level as ShareLevel) ?? prev.settings.shareLevel,
+              budgetMode: (rows[0].budget_mode as BudgetMode) ?? prev.settings.budgetMode,
               rolloverEnabled: rows[0].rollover_enabled ?? prev.settings.rolloverEnabled,
               useLeisureAsBuffer: rows[0].leisure_buffer_enabled ?? prev.settings.useLeisureAsBuffer,
               showSavingsInsight: rows[0].show_savings_insight ?? prev.settings.showSavingsInsight,
@@ -613,8 +623,56 @@ export const useDataLoading = ({
               : null,
           }));
 
-          // Load partner's transactions and merge with existing user transactions
+          // Load partner's transactions and merge with existing user transactions.
+          // At a sharing level below 'transactions' the database refuses these
+          // rows, so this comes back empty and the summary below is the only
+          // record of what they spent.
           await loadTransactions(partnerId, { merge: true });
+
+          // ── What the household is, beyond the rows ──
+          //
+          // Three answers the signed-in phone cannot work out for itself:
+          // their income (needed for the household figure — a balance that
+          // used only your own salary is how two phones disagreed about one
+          // pot), their month at whatever detail they allow, and their budget
+          // limits for the combined mode.
+          //
+          // Best-effort, each independently. A failure leaves that one answer
+          // unknown and the app falls back to what it did before any of this
+          // existed, rather than showing a household with no money in it.
+          const monthKey = getLocalToday().slice(0, 7);
+          const [income, summary, partnerBudgetRows] = await Promise.all([
+            callRpc<number>('partner_monthly_income', {}),
+            callRpc<unknown>('partner_month_summary', { p_month: monthKey }),
+            restFetch(`/budgets?select=*&user_uuid=eq.${partnerId}`).catch(() => null),
+          ]);
+
+          let partnerBudgets: BudgetCategory[] | null = null;
+          try {
+            if (partnerBudgetRows && partnerBudgetRows.ok) {
+              const rows = await partnerBudgetRows.json();
+              if (Array.isArray(rows) && rows.length > 0) {
+                partnerBudgets = rows.map((row: Record<string, unknown>) => ({
+                  id: `partner:${String(row.budget ?? row.category ?? '')}`,
+                  name: String(row.budget ?? row.category ?? ''),
+                  totalLimit: Number(row.amount ?? row.limit_amount ?? 0) || 0,
+                })) as BudgetCategory[];
+              }
+            }
+          } catch {
+            // A partner budget list we could not read is not a partner with no
+            // budgets — the combined mode simply falls back to your own.
+            partnerBudgets = null;
+          }
+
+          setAppState(prev => ({
+            ...prev,
+            partnerIncome: income.ok && Number.isFinite(Number(income.data))
+              ? Number(income.data)
+              : null,
+            partnerSummary: summary.ok ? readPartnerSummary(summary.data) : null,
+            partnerBudgets,
+          }));
         }
       } catch (err: any) {
         log.error('[loadHouseholdLink]', err?.message || err);
