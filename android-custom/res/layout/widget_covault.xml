@@ -35,7 +35,7 @@
       where it normally opens.
 
       Declared BEFORE the review pill below, so that where the two boxes graze
-      each other — the pill's target is a generous 44dp tall and the figure
+      each other — the pill sits at the end of the month's line and the figure
       starts a few dp under it — the pill wins. It is the smaller, more
       deliberate target of the two, and the figure has its own height to spare.
 
@@ -52,8 +52,13 @@
 
     <!--
       The tap target for the "N to review" pill, which is painted into the
-      bitmap and so cannot be clicked on its own. Sized and placed to cover
-      where the pill is drawn: top-right, inset by the renderer's padding.
+      bitmap and so cannot be clicked on its own.
+
+      Positioned at runtime like the legend rows, not pinned to a corner here.
+      The pill used to sit in the card's top-right corner, which a fixed box
+      could cover blind; it now sits at the end of the month's line inside the
+      right-hand column, which moves with how much that column has to say.
+
       GONE unless something is actually waiting, so the rest of the time the
       whole widget keeps its ordinary "open Covault" tap.
 
@@ -67,9 +72,9 @@
     -->
     <FrameLayout
         android:id="@+id/widget_review_hit"
-        android:layout_width="112dp"
-        android:layout_height="44dp"
-        android:layout_gravity="top|end"
+        android:layout_width="1dp"
+        android:layout_height="1dp"
+        android:layout_gravity="top|start"
         android:visibility="gone" />
 
     <!--

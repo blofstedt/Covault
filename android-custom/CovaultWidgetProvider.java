@@ -691,16 +691,12 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
             // spending by category and never a single figure.
             views.setContentDescription(R.id.widget_canvas, describe(snapshot));
 
-            // The pill looks like a badge you can act on, so make it one. It
-            // lands on Review, the same place a tapped capture notification
-            // goes. Hidden when there is nothing waiting, so the rest of the
+            // The "N to review" pill, over wherever it was actually drawn.
+            // Hidden when there is nothing waiting, so the rest of the time the
             // widget keeps its ordinary tap.
             int pending = snapshot.optInt("pendingReview", 0);
             if (pending > 0) {
-                views.setViewVisibility(R.id.widget_review_hit, android.view.View.VISIBLE);
-                views.setOnClickPendingIntent(R.id.widget_review_hit, reviewIntent(context));
-                views.setContentDescription(R.id.widget_review_hit,
-                    pending + (pending == 1 ? " transaction" : " transactions") + " to review");
+                placeReviewHit(context, views, spec, pending);
             } else {
                 views.setViewVisibility(R.id.widget_review_hit, android.view.View.GONE);
             }
@@ -951,6 +947,66 @@ public class CovaultWidgetProvider extends AppWidgetProvider {
         // the "+N more" row use, so the app opens where it normally does.
         views.setOnClickPendingIntent(R.id.widget_remaining_hit, openIntent(context));
         views.setContentDescription(R.id.widget_remaining_hit, "Open Covault");
+    }
+
+    /**
+     * Lay a tap target over the "N to review" pill.
+     *
+     * Placed from where the pill was actually drawn rather than pinned to the
+     * card's top-right corner in the layout file. The pill now sits at the end
+     * of the month's line inside the right-hand column, which moves with how
+     * much that column has to say, and a fixed corner target would cover empty
+     * card while the pill itself did nothing.
+     *
+     * Unlike the others this one is placed on a moving frame too: the pill is
+     * drawn at the same place every frame of a morph — only the column's
+     * wording swaps underneath it — so there is nothing travelling for the
+     * target to land on the wrong side of.
+     *
+     * Before Android 12 a RemoteViews child cannot be moved at runtime at all,
+     * so there is nothing to place and the target stays hidden — the same
+     * trade every other target on this widget already takes. The cost there is
+     * a pill that has to be reached by opening the app instead; the
+     * alternative is a box sitting over whatever happens to be in the corner,
+     * which opens Review when the user meant a category.
+     */
+    private static void placeReviewHit(Context context, RemoteViews views, float[] spec,
+                                       int pending) {
+        views.setViewVisibility(R.id.widget_review_hit, android.view.View.GONE);
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) return;
+
+        float pxPerDp = spec[2];
+        if (pxPerDp <= 0) return;
+
+        android.graphics.RectF pill = WidgetRenderer.lastReviewHit();
+        if (pill == null) return;
+
+        // Grown to a comfortable target around a pill that is about 22dp tall,
+        // then held inside the card so the box cannot hang off its edge.
+        float padDp = 6f;
+        float leftDp = Math.max(0f, (pill.left / pxPerDp) - padDp);
+        float topDp = Math.max(0f, (pill.top / pxPerDp) - padDp);
+        float rightDp = Math.min(spec[0] / pxPerDp, (pill.right / pxPerDp) + padDp);
+        float bottomDp = Math.min(spec[1] / pxPerDp, (pill.bottom / pxPerDp) + padDp);
+        float widthDp = rightDp - leftDp;
+        float heightDp = bottomDp - topDp;
+        if (widthDp <= 0 || heightDp <= 0) return;
+
+        views.setViewLayoutMargin(R.id.widget_review_hit, RemoteViews.MARGIN_START, leftDp,
+            android.util.TypedValue.COMPLEX_UNIT_DIP);
+        views.setViewLayoutMargin(R.id.widget_review_hit, RemoteViews.MARGIN_TOP, topDp,
+            android.util.TypedValue.COMPLEX_UNIT_DIP);
+        views.setViewLayoutWidth(R.id.widget_review_hit, widthDp,
+            android.util.TypedValue.COMPLEX_UNIT_DIP);
+        views.setViewLayoutHeight(R.id.widget_review_hit, heightDp,
+            android.util.TypedValue.COMPLEX_UNIT_DIP);
+
+        // It looks like a badge you can act on, so make it one. It lands on
+        // Review, the same place a tapped capture notification goes.
+        views.setOnClickPendingIntent(R.id.widget_review_hit, reviewIntent(context));
+        views.setContentDescription(R.id.widget_review_hit,
+            pending + (pending == 1 ? " transaction" : " transactions") + " to review");
+        views.setViewVisibility(R.id.widget_review_hit, android.view.View.VISIBLE);
     }
 
     /** Every tap target off, for a frame that is still moving. */

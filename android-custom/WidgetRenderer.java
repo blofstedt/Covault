@@ -106,8 +106,18 @@ final class WidgetRenderer {
      * LEGEND_WANTED_WIDTH to work with, but never past MIN_DONUT_FRACTION of
      * the height it would otherwise have had — below that the ring stops
      * reading as the thing this widget is, and a legend is not worth that.
+     *
+     * 148dp, up from 130. The figure was tuned while a title row sat across
+     * the top of the card, which left the donut short of height and handed the
+     * column the surplus — the legend was running about 147dp wide and its
+     * names fitted because of it, not because 130 was enough for them.
+     * Dropping the title row gave that height back to the ring, which would
+     * have taken it out of the column's width instead: "Groceries $541.32" at
+     * 130dp comes out as "Grocer…". A row whose name is cut off is the thing
+     * this width exists to prevent, so the number now says what the legend has
+     * actually needed all along, and the ring keeps the size it already had.
      */
-    private static final float LEGEND_WANTED_WIDTH = 130f;
+    private static final float LEGEND_WANTED_WIDTH = 148f;
     private static final float LEGEND_MAX_WIDTH = 190f;
     private static final float MIN_DONUT_FRACTION = 0.62f;
 
@@ -176,6 +186,7 @@ final class WidgetRenderer {
         LAST_ARC_HITS.clear();
         LAST_CENTRE_HIT = null;
         LAST_REMAINING_HIT = null;
+        LAST_REVIEW_HIT = null;
 
         Bitmap bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
@@ -207,34 +218,8 @@ final class WidgetRenderer {
 
         float pad = 14f * dp;
 
-        // ── Header: the SNAPSHOT's month, not today's ──
-        // If the month rolled over while the app sat unopened, this says "July"
-        // rather than quietly presenting July's numbers under August.
-        Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
-        text.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        text.setColor(p.secondary);
-        float headerSize = 15f * dp;
-        text.setTextSize(headerSize);
         String month = snapshot.optString("monthLabel", "");
-        canvas.drawText(month, pad, pad + headerSize, text);
-
-        // ── "N to review" pill ──
-        // Covault's capture notification is otherwise the only signal that
-        // something needs attention, and dismissing it by mistake loses that.
-        // Amber matches the "Needs a look" treatment in the app. Hidden
-        // entirely at zero — an always-present "0 to review" is noise.
         int pending = snapshot.optInt("pendingReview", 0);
-        if (pending > 0) {
-            // The header's OPTICAL centre, not half its point size. A text's
-            // glyphs do not straddle its baseline evenly — most of a capital
-            // sits above it and only the descenders fall below — so centring
-            // the pill on `pad + headerSize / 2` put it a couple of dp above
-            // the word it sits beside, which is the sort of gap that reads as
-            // "something is off" without being nameable.
-            Paint.FontMetrics hm = text.getFontMetrics();
-            float headerCentre = pad + headerSize + ((hm.ascent + hm.descent) / 2f);
-            drawReviewPill(canvas, pending, widthPx, pad, headerCentre, dp, p);
-        }
 
         // ── Composition ──
         // The widget's design size is 4x2 cells, i.e. more than twice as wide
@@ -244,15 +229,30 @@ final class WidgetRenderer {
         // legend the donut has never had — which also gives the small
         // categories a name, since an arc under MIN_ICON_ARC_DEGREES cannot
         // carry an icon.
-        float availTop = pad + headerSize + (6f * dp);
-        float availH = heightPx - availTop - pad;
         float availW = widthPx - (2 * pad);
 
         List<Slice> slices = readSlices(snapshot);
         double total = 0;
         for (Slice s : slices) total += s.amount;
 
-        boolean wide = availW > availH * 1.5f && availW - availH > 96f * dp;
+        // Decided against the card's WHOLE height, before any header row is
+        // taken out of it. A wide widget no longer draws one — the month sits
+        // in the column instead — so measuring the shape of the card against a
+        // row that may not exist would be deciding the layout from the layout.
+        float fullH = heightPx - (2 * pad);
+        boolean wide = availW > fullH * 1.5f && availW - fullH > 96f * dp;
+
+        // The month is a header of its own only where there is no column to
+        // put it in. It used to be one always, which cost the donut a row of
+        // height it did not get back: the ring was centred in what was left
+        // UNDER the title rather than in the card, so it sat low with a band
+        // of nothing above it. On a wide widget the month is now the label
+        // over the balance figure — which is where the app itself puts it —
+        // and the ring has the whole card to centre in.
+        float headerSize = 15f * dp;
+        float availTop = wide ? pad : pad + headerSize + (6f * dp);
+        float availH = heightPx - availTop - pad;
+
         float legendLeft = 0, legendWidth = 0;
         float diameter = availH;
         // No `total > 0` here any more. A month with nothing in it used to fall
@@ -271,6 +271,72 @@ final class WidgetRenderer {
             legendLeft = widthPx - pad - legendWidth;
         } else {
             diameter = Math.min(availW, availH);
+        }
+
+        // Where the right-hand column's lines land, worked out before any of
+        // them is drawn: the month's own line is also where the review pill
+        // has to sit, and the two are laid out by different pieces of code.
+        Column column = legendWidth > 0
+            ? measureColumn(snapshot, slices, month, legendWidth, availTop, availH, dp)
+            : null;
+
+        // ── Header: the SNAPSHOT's month, not today's ──
+        // If the month rolled over while the app sat unopened, this says "July"
+        // rather than quietly presenting July's numbers under August. On a
+        // narrow widget it is the card's own title; on a wide one the column
+        // draws it, over the figure it belongs to.
+        if (!wide && !month.isEmpty()) {
+            Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
+            text.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            text.setColor(p.secondary);
+            text.setTextSize(headerSize);
+            canvas.drawText(month, pad, pad + headerSize, text);
+        }
+
+        // ── "N to review" pill ──
+        // Covault's capture notification is otherwise the only signal that
+        // something needs attention, and dismissing it by mistake loses that.
+        // Amber matches the "Needs a look" treatment in the app. Hidden
+        // entirely at zero — an always-present "0 to review" is noise.
+        //
+        // It sits at the right-hand end of the month's line, whichever line
+        // that is. On a wide widget that is inside the column, beside the
+        // month and above the balance — not on a header row of its own, which
+        // is a row of card the rest of the widget then has to do without.
+        float monthRoom = legendWidth;
+        if (pending > 0) {
+            float centreY;
+            float pillRoom;
+            // No month label to sit beside — a snapshot without one — and the
+            // pill falls back to the corner it has always had rather than
+            // hanging off the top edge of a line that is not there.
+            boolean besideMonth = column != null && column.monthH > 0;
+            if (besideMonth) {
+                centreY = column.monthCentreY;
+                // The month is measured first and the pill takes what is left:
+                // the label says which month these figures are, which is the
+                // one thing on the widget that must never be abbreviated away.
+                // The pill has its own fallback to the bare number.
+                pillRoom = Math.max(0f, legendWidth - column.monthWidth - (8f * dp));
+            } else {
+                // The header's OPTICAL centre, not half its point size. A text's
+                // glyphs do not straddle its baseline evenly — most of a capital
+                // sits above it and only the descenders fall below — so centring
+                // the pill on `pad + headerSize / 2` put it a couple of dp above
+                // the word it sits beside, which is the sort of gap that reads as
+                // "something is off" without being nameable.
+                Paint metrics = new Paint(Paint.ANTI_ALIAS_FLAG);
+                metrics.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+                metrics.setTextSize(headerSize);
+                Paint.FontMetrics hm = metrics.getFontMetrics();
+                centreY = pad + headerSize + ((hm.ascent + hm.descent) / 2f);
+                pillRoom = (widthPx / 2f) - pad;
+            }
+            float pillLeft = drawReviewPill(canvas, pending, widthPx, pad, centreY,
+                pillRoom, dp, p);
+            if (besideMonth) {
+                monthRoom = Math.max(0f, pillLeft - legendLeft - (8f * dp));
+            }
         }
 
         float ringStroke = clamp(diameter * 0.17f, 8f * renderScale, 34f * renderScale);
@@ -574,14 +640,22 @@ final class WidgetRenderer {
         // Both columns are drawn while the ring is moving, one leaving and one
         // arriving. Neither is a different widget; the column is saying a
         // different thing about the same month.
-        if (legendWidth > 0) {
+        if (column != null) {
+            // The month's label does not swap with the rest of the column. It
+            // says WHICH month every figure on this card belongs to, and a
+            // widget that stops saying so the moment a category is opened on
+            // it is a widget showing a month's numbers with nothing to name
+            // the month.
+            drawMonthLabel(canvas, column, month, monthRoom, legendLeft, dp, p);
             if (monthText > 0f) {
-                drawLegend(context, canvas, snapshot, slices, legendLeft, legendWidth,
-                    availTop, availH, dp, p, monthText);
+                drawLegend(context, canvas, snapshot, slices, column,
+                    legendLeft, legendWidth, dp, p, monthText);
             }
             if (focused != null && focusedText > 0f) {
+                // The same box the categories occupy, so opening one swaps
+                // what the column says without moving where it says it.
                 drawRecent(canvas, snapshot, focused, legendLeft, legendWidth,
-                    availTop, availH, dp, p, focusedText);
+                    column.contentTop, column.contentHeight, dp, p, focusedText);
             }
         }
 
@@ -706,6 +780,25 @@ final class WidgetRenderer {
         return LAST_REMAINING_HIT;
     }
 
+    /**
+     * Where the "N to review" pill was drawn, or null when nothing is waiting.
+     *
+     * A plain rectangle rather than a HitRect: the pill belongs to no category
+     * and does not open the app either — it opens Review — so it has no place
+     * in the naming convention the other three targets share, where an empty
+     * name means "open Covault".
+     *
+     * It needs recording at all because the pill moved. It used to sit in the
+     * card's top-right corner, which the layout file could pin a target to
+     * blind; it now sits at the end of the month's line inside the column,
+     * which moves with how much that column has to say.
+     */
+    private static RectF LAST_REVIEW_HIT = null;
+
+    static RectF lastReviewHit() {
+        return LAST_REVIEW_HIT == null ? null : new RectF(LAST_REVIEW_HIT);
+    }
+
     /** The category the widget is currently opened on, or "" for none. */
     private static String focusName(JSONObject snapshot) {
         return snapshot.optString("focus", "");
@@ -741,18 +834,30 @@ final class WidgetRenderer {
         heading.setColor(p.secondary);
         heading.setAlpha(alpha255(alpha));
         heading.setTextSize(11.5f * dp);
-        canvas.drawText("Recent", left, top + (11.5f * dp), heading);
         float headH = (11.5f * dp) + (10f * dp);
+        float rowH = 24f * dp;
 
         JSONObject all = snapshot.optJSONObject("recent");
         JSONArray rows = all == null ? null : all.optJSONArray(focused.name);
+
+        // Centred in the box the categories occupy, the way that column is,
+        // rather than hung off its top edge. Opening a category swaps what the
+        // column says; it must not also shunt it upwards.
+        int max = (int) Math.floor((height - headH) / rowH);
+        int count = rows == null ? 0 : Math.min(rows.length(), Math.max(0, max));
+        // "Nothing yet" is one line where the rows would have been, and has to
+        // be counted or the block centres as though the column were empty.
+        float blockH = headH + (count > 0 ? count * rowH : 12.5f * dp);
+        float blockTop = top + Math.max(0f, (height - blockH) / 2f);
+        canvas.drawText("Recent", left, blockTop + (11.5f * dp), heading);
+
         if (rows == null || rows.length() == 0) {
             Paint empty = new Paint(Paint.ANTI_ALIAS_FLAG);
             empty.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
             empty.setColor(p.secondary);
             empty.setAlpha(alpha255(alpha));
             empty.setTextSize(12.5f * dp);
-            canvas.drawText("Nothing yet", left, top + headH + (12.5f * dp), empty);
+            canvas.drawText("Nothing yet", left, blockTop + headH + (12.5f * dp), empty);
             return;
         }
 
@@ -775,10 +880,7 @@ final class WidgetRenderer {
         when.setAlpha(alpha255(alpha));
         when.setTextSize(10f * dp);
 
-        float rowH = 24f * dp;
-        int max = (int) Math.floor((height - headH) / rowH);
-        int count = Math.min(rows.length(), Math.max(0, max));
-        float y = top + headH;
+        float y = blockTop + headH;
 
         for (int i = 0; i < count; i++) {
             JSONObject row = rows.optJSONObject(i);
@@ -802,6 +904,166 @@ final class WidgetRenderer {
     }
 
     /**
+     * The month, drawn the way the app labels this exact figure: small, upper
+     * case, widely tracked, in the secondary colour. See
+     * DashboardBalanceSection, which prints "Remaining Balance" over the same
+     * number in the same treatment.
+     *
+     * Deliberately not the 15dp sentence-case title it was as a header. Over a
+     * 28dp balance figure that size reads as a second heading competing with
+     * the number, rather than as the label saying which month the number is.
+     */
+    private static final float MONTH_LABEL_SIZE = 11f;
+    private static final float MONTH_LABEL_TRACKING = 0.09f;
+
+    private static Paint monthLabelPaint(float dp) {
+        Paint m = new Paint(Paint.ANTI_ALIAS_FLAG);
+        m.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        m.setTextSize(MONTH_LABEL_SIZE * dp);
+        // Set before anything is measured: tracking changes what measureText
+        // returns, and both the pill's room and the label's own fit depend on
+        // that being the truth.
+        m.setLetterSpacing(MONTH_LABEL_TRACKING);
+        return m;
+    }
+
+    private static String monthLabelText(String month) {
+        return month == null ? "" : month.toUpperCase(Locale.getDefault());
+    }
+
+    /** The balance figure's paint, at its unshrunk size. */
+    private static Paint balanceFigurePaint(float dp) {
+        Paint b = new Paint(Paint.ANTI_ALIAS_FLAG);
+        b.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        // Same tracking as the app gives this figure. Before any measure,
+        // which the shrink-to-fit depends on.
+        b.setLetterSpacing(NUMERAL_TRACKING);
+        // 28dp, down from 30. Not for its own sake: the column's height
+        // decides how many category rows fit under this block, and at the
+        // size a launcher actually gives a 4x2 widget the old figure left
+        // room for exactly one. One row is the worst number — "Housing
+        // $1,400" with nothing under it reads as though Housing is all
+        // there was, rather than as the largest of seven. Four dp buys the
+        // second row, which is the one that says "+6 more".
+        b.setTextSize(28f * dp);
+        return b;
+    }
+
+    /**
+     * Where every line of the right-hand column lands, worked out before one
+     * of them is drawn.
+     *
+     * Two callers need the same answer — drawLegend, which draws the column,
+     * and render, which has to put the review pill at the end of the month's
+     * own line — and a second hand-rolled copy of this arithmetic is exactly
+     * how a badge and the word it sits beside drift apart.
+     *
+     * The block is CENTRED in the column rather than hung off its top edge.
+     * The figure used to start hard against the top and the category rows were
+     * centred in whatever was left underneath, which left a broad band of
+     * empty card above the balance and almost none below the last row — the
+     * widget looked like it had been pushed upwards inside its own card.
+     */
+    private static final class Column {
+        float blockTop;
+        float monthSize;
+        float monthWidth;
+        float monthBaseline;
+        float monthCentreY;   // optical, for anything sitting beside it
+        float monthH;         // the label plus the gap under it, or 0
+        float balanceTop;
+        float balanceSize;
+        float headH;          // month, figure, caption, and the gap below them
+        float contentTop;     // everything under the month label
+        float contentHeight;
+        float rowsTop;
+        float rowH;
+        int shown;
+        boolean overflow;
+    }
+
+    private static Column measureColumn(JSONObject snapshot, List<Slice> slices,
+                                        String month, float width, float top,
+                                        float height, float dp) {
+        Column c = new Column();
+        // 24dp, down from 27, for the same reason the figure above shrank: at
+        // the widget's usual height this is the difference between one row and
+        // two. The rows are a name and an amount on one line; they were not
+        // using the height.
+        c.rowH = 24f * dp;
+
+        String label = monthLabelText(month);
+        if (!label.isEmpty()) {
+            Paint m = monthLabelPaint(dp);
+            c.monthSize = m.getTextSize();
+            c.monthWidth = m.measureText(label);
+            c.monthH = c.monthSize + (7f * dp);
+        }
+
+        if (snapshot.has("remaining")) {
+            Paint b = balanceFigurePaint(dp);
+            double remaining = snapshot.optDouble("remaining", 0);
+            String value = balanceMoney(remaining < 0 ? -remaining : remaining);
+            float size = b.getTextSize();
+            // Shrink rather than run under the donut. A five-figure month at a
+            // narrow widget width would otherwise print straight off the left
+            // edge of its own column.
+            float measured = b.measureText(value);
+            if (measured > width && measured > 0) {
+                size = Math.max(12f * dp, size * (width / measured));
+            }
+            c.balanceSize = size;
+            c.headH = c.monthH + size + (13f * dp) + (12f * dp);
+        } else {
+            c.headH = c.monthH;
+        }
+
+        float legendHeight = height - c.headH;
+        int fits = Math.min((int) Math.floor(legendHeight / c.rowH), 4);
+        if (fits >= 1 && !slices.isEmpty()) {
+            // More categories than there are rows to put them in: the last row
+            // becomes the ones that did not fit, added up, and opens the app
+            // rather than a budget. They were otherwise reachable only by
+            // hitting their own band on the ring, which is not offered at all
+            // for a band too thin to carry a tap target — so the tail of the
+            // month had nowhere to be read from the home screen.
+            //
+            // Not when there is room for a single row: a lone "+5 more" says
+            // less than the largest category does.
+            c.overflow = slices.size() > fits && fits >= 2;
+            c.shown = c.overflow ? fits - 1 : Math.min(fits, slices.size());
+        }
+
+        int rows = c.shown + (c.overflow ? 1 : 0);
+        float blockH = c.headH + (rows * c.rowH);
+        c.blockTop = top + Math.max(0f, (height - blockH) / 2f);
+        c.monthBaseline = c.blockTop + c.monthSize;
+        if (c.monthH > 0) {
+            Paint m = monthLabelPaint(dp);
+            Paint.FontMetrics fm = m.getFontMetrics();
+            c.monthCentreY = c.monthBaseline + ((fm.ascent + fm.descent) / 2f);
+        } else {
+            c.monthCentreY = c.blockTop;
+        }
+        c.balanceTop = c.blockTop + c.monthH;
+        c.rowsTop = c.blockTop + c.headH;
+        c.contentTop = c.balanceTop;
+        c.contentHeight = (c.headH - c.monthH) + (rows * c.rowH);
+        return c;
+    }
+
+    /** The month, over the figure it belongs to. Drawn at full strength even
+     *  while the rest of the column is swapping — see the call site. */
+    private static void drawMonthLabel(Canvas canvas, Column col, String month,
+                                       float room, float left, float dp, Palette p) {
+        if (col.monthH <= 0) return;
+        Paint m = monthLabelPaint(dp);
+        m.setColor(p.secondary);
+        canvas.drawText(ellipsise(monthLabelText(month), m, room),
+            left, col.monthBaseline, m);
+    }
+
+    /**
      * The biggest categories, named, down the right-hand side.
      *
      * Only drawn when the widget is wide enough that the donut cannot use the
@@ -810,11 +1072,10 @@ final class WidgetRenderer {
      * nothing is ever half-drawn at the bottom edge.
      */
     private static void drawLegend(Context context, Canvas canvas, JSONObject snapshot,
-                                   List<Slice> slices,
+                                   List<Slice> slices, Column col,
                                    float left, float width,
-                                   float top, float height, float dp, Palette p,
-                                   float alpha) {
-        // ── What's left, above the categories ──
+                                   float dp, Palette p, float alpha) {
+        // ── What's left, under the month ──
         //
         // The figure that answers "can I spend this" reads first, at the top of
         // the column, in the same weight and colour the app gives its own
@@ -822,39 +1083,20 @@ final class WidgetRenderer {
         // the size, where it was a footnote to the number nobody needs as
         // often. Over budget keeps the app's rose, because a minus sign at this
         // size is easy to miss.
-        float headH = 0;
         double remaining = snapshot.optDouble("remaining", 0);
-        boolean haveRemaining = snapshot.has("remaining");
-        if (haveRemaining) {
-            Paint remainingPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-            remainingPaint.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-            // Same tracking as the app gives this exact figure. Before the
-            // measure below, which the shrink-to-fit depends on.
-            remainingPaint.setLetterSpacing(NUMERAL_TRACKING);
+        if (snapshot.has("remaining")) {
+            Paint remainingPaint = balanceFigurePaint(dp);
             // The same green the app gives this figure, and the same rose when
             // it has gone negative. It was the ordinary text colour, which made
             // the one number on the widget you look for read as a label.
             remainingPaint.setColor(remaining < 0 ? p.danger : p.balance);
             remainingPaint.setAlpha(alpha255(alpha));
-            // 28dp, down from 30. Not for its own sake: the column's height
-            // decides how many category rows fit under this block, and at the
-            // size a launcher actually gives a 4x2 widget the old figure left
-            // room for exactly one. One row is the worst number — "Housing
-            // $1,400" with nothing under it reads as though Housing is all
-            // there was, rather than as the largest of seven. Four dp buys the
-            // second row, which is the one that says "+6 more".
-            float size = 28f * dp;
+            // Measured once, in measureColumn, because how tall this figure
+            // ends up decides how many category rows fit under it.
+            float size = col.balanceSize;
             remainingPaint.setTextSize(size);
 
             String value = balanceMoney(remaining < 0 ? -remaining : remaining);
-            // Shrink rather than run under the donut. A five-figure month at a
-            // narrow widget width would otherwise print straight off the left
-            // edge of its own column.
-            float measured = remainingPaint.measureText(value);
-            if (measured > width && measured > 0) {
-                size = Math.max(12f * dp, size * (width / measured));
-                remainingPaint.setTextSize(size);
-            }
 
             Paint caption = new Paint(Paint.ANTI_ALIAS_FLAG);
             caption.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
@@ -863,9 +1105,9 @@ final class WidgetRenderer {
             caption.setTextSize(11.5f * dp);
 
             String captionText = remaining < 0 ? "over budget" : "left to spend";
+            float top = col.balanceTop;
             canvas.drawText(value, left, top + size, remainingPaint);
             canvas.drawText(captionText, left, top + size + (13f * dp), caption);
-            headH = size + (13f * dp) + (12f * dp);
 
             // Where the provider lays the target that opens the app on this
             // figure. It is the number the user actually reads — "can I spend
@@ -889,30 +1131,9 @@ final class WidgetRenderer {
             }
         }
 
-        // 24dp, down from 27, for the same reason the figure above shrank: at
-        // the widget's usual height this is the difference between one row and
-        // two. The rows are a name and an amount on one line; they were not
-        // using the height.
-        float rowH = 24f * dp;
-        float legendTop = top + headH;
-        float legendHeight = height - headH;
-        int fits = Math.min((int) Math.floor(legendHeight / rowH), 4);
-        if (fits < 1 || slices.isEmpty()) return;
-        // More categories than there are rows to put them in: the last row
-        // becomes the ones that did not fit, added up, and opens the app rather
-        // than a budget. They were otherwise reachable only by hitting their
-        // own band on the ring, which is not offered at all for a band too thin
-        // to carry a tap target — so the tail of the month had nowhere to be
-        // read from the home screen.
-        //
-        // Not when there is room for a single row: a lone "+5 more" says less
-        // than the largest category does.
-        boolean overflow = slices.size() > fits && fits >= 2;
-        int shown = overflow ? fits - 1 : Math.min(fits, slices.size());
-        int rows = shown + (overflow ? 1 : 0);
-        // Centre what remains against the donut rather than hanging it off the
-        // top — with the figure above, the block now sits under it.
-        float y = legendTop + (legendHeight - (rows * rowH)) / 2f;
+        if (col.shown < 1 && !col.overflow) return;
+        float rowH = col.rowH;
+        float y = col.rowsTop;
 
         // The mark at the head of each row. It was a plain coloured dot, which
         // is a legend for a chart; the ring's own bands already carry the
@@ -939,7 +1160,7 @@ final class WidgetRenderer {
         amount.setTextSize(14.5f * dp);
         amount.setTextAlign(Paint.Align.RIGHT);
 
-        for (int i = 0; i < shown; i++) {
+        for (int i = 0; i < col.shown && i < slices.size(); i++) {
             Slice s = slices.get(i);
             float baseline = y + (rowH / 2f) + (4f * dp);
 
@@ -964,9 +1185,9 @@ final class WidgetRenderer {
             y += rowH;
         }
 
-        if (overflow) {
+        if (col.overflow) {
             double rest = 0;
-            for (int i = shown; i < slices.size(); i++) rest += slices.get(i).amount;
+            for (int i = col.shown; i < slices.size(); i++) rest += slices.get(i).amount;
             float baseline = y + (rowH / 2f) + (4f * dp);
 
             // A hollow dot rather than a filled one: this row is not a category
@@ -981,7 +1202,7 @@ final class WidgetRenderer {
             canvas.drawCircle(left + dot, y + (rowH / 2f), markRadius - (0.7f * dp), hollow);
 
             name.setColor(p.secondary);
-            String label = "+" + (slices.size() - shown) + " more";
+            String label = "+" + (slices.size() - col.shown) + " more";
             String value = money(rest);
             float valueW = amount.measureText(value);
             float nameLeft = left + (dot * 2f) + (7f * dp);
@@ -1015,9 +1236,14 @@ final class WidgetRenderer {
     private static final int PILL_FG = Color.parseColor("#92400E");
     private static final int PILL_FG_DARK = Color.parseColor("#FDE68A");
 
-    private static void drawReviewPill(
+    /**
+     * Returns the pill's left edge, so whatever shares its line knows how much
+     * room is left. It sits beside the month label now rather than on a header
+     * row of its own, and the two have to be laid out against each other.
+     */
+    private static float drawReviewPill(
         Canvas canvas, int pending, int widthPx, float pad,
-        float centreY, float dp, Palette p
+        float centreY, float room, float dp, Palette p
     ) {
         boolean dark = p == DARK;
         Paint pill = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -1034,8 +1260,7 @@ final class WidgetRenderer {
         String full = pending + " to review";
         String text = full;
         float textW = label.measureText(text);
-        float maxW = (widthPx / 2f) - pad;
-        if (textW + (16f * dp) > maxW) {
+        if (textW + (16f * dp) > room) {
             text = String.valueOf(pending);
             textW = label.measureText(text);
         }
@@ -1058,6 +1283,13 @@ final class WidgetRenderer {
         RectF box = new RectF(left, top, right, top + h);
         canvas.drawRoundRect(box, h / 2f, h / 2f, pill);
         canvas.drawText(text, left + padX, top + padY - lm.ascent, label);
+
+        // Where the provider lays the target that opens Review. The pill no
+        // longer sits in a fixed corner — it follows the month's line, which
+        // moves with how much the column has to say — so a target pinned to
+        // the top right in the layout file would miss it.
+        LAST_REVIEW_HIT = new RectF(box);
+        return left;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────
