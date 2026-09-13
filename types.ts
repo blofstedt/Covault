@@ -23,23 +23,12 @@ export interface BudgetCategory {
   externalDeduction?: number;
 }
 
-// New: Pending transaction awaiting approval
-export interface PendingTransaction {
-  id: string;
-  user_id: string;
-  app_package: string;
-  app_name: string;
-  notification_timestamp: number;
-  posted_at: string;
-  extracted_vendor: string;
-  extracted_amount: number;
-  extracted_timestamp: string;
-  confidence: number;
-  status: 'pending' | 'approved' | 'rejected';
-  rejection_reason?: string;
-  created_at: string;
-  reviewed_at?: string;
-}
+// (Removed: PendingTransaction and AppState.pendingTransactions.)
+//
+// They described a `pending_transactions` table that does not exist in the
+// database, so the read that filled the queue could never return a row and
+// everything built on it was unreachable rather than merely failing. Captured
+// purchases land in `transactions` and the review list reads them from there.
 
 
 // Ignored transaction rule type removed — table deleted from backend
@@ -141,7 +130,6 @@ export interface AppState {
   user: User | null;
   budgets: BudgetCategory[];
   transactions: Transaction[];
-  pendingTransactions?: PendingTransaction[]; // New: pending transactions awaiting approval
   settings: {
     rolloverEnabled: boolean;
     rolloverOverspend: boolean;

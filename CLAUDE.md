@@ -164,8 +164,16 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   unconditionally takes theme, income and trial fields down with them.
 - **Column-name fallbacks are load-bearing**: `user_uuid`/`user_id`,
   `Visible`/`visible`, `Budget`/`budget`, `recur`/`recurrence`.
-- **`pending_transactions` does not exist in the DB.** Reads treat a 404 as an
-  empty queue. Writes to it fail and are swallowed. Not a bug to fix casually.
+- **There is one queue, and it is the native one.** `pending_transactions` was
+  a second, database-side queue that the app read and wrote and the database
+  has never had. The read could not return a row, so the queue was permanently
+  empty and the approve/reject/clear handlers built on it were unreachable
+  rather than merely failing — and the read itself was a 404 that every capture
+  arriving with the app closed had to wait out. All of it is gone. Captured
+  purchases land in `transactions` and the review list reads them from there;
+  what survives a closed app is the native SharedPreferences queue, which is
+  what `commit()` and the tray-suppression ordering above are about. Do not
+  re-add a database-side pending queue without deciding what it is for.
 - **`tailwindcss-animate` must stay in `tailwind.config.js` plugins.** ~40 uses
   of `animate-in` / `zoom-in-*` / `slide-in-*` emit *no CSS at all* without it,
   silently. `lib/__tests__/tailwindAnimatePlugin.test.ts` guards this.

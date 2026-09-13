@@ -148,11 +148,13 @@ describe('how long a capture waits on the database', () => {
     expect(maxInFlight).toBeGreaterThanOrEqual(3);
   });
 
-  it('starts the duplicate check without waiting for the skip-rule check', async () => {
+  it('asks nothing of the table that is not there', async () => {
     await captureOnePurchase();
-    // The first two reads are the duplicate check's pair — the ledger and the
-    // pending queue — and they are issued together, before either answers.
-    expect(readOrder.slice(0, 2).sort()).toEqual(['pending_transactions', 'transactions']);
+    // The duplicate check used to read `pending_transactions` alongside the
+    // ledger. That table does not exist, so the read was a 404 a capture
+    // arriving with the app closed had to wait out before it could appear —
+    // first serially, then at least in parallel, and now not at all.
+    expect(readOrder).not.toContain('pending_transactions');
   });
 
   it('still reads every table the decisions are made from', async () => {
@@ -161,7 +163,6 @@ describe('how long a capture waits on the database', () => {
     // different question: is it a duplicate, is it near something else, does a
     // vendor rule apply, is it already a recurring charge.
     expect(readOrder).toContain('transactions');
-    expect(readOrder).toContain('pending_transactions');
     expect(readOrder).toContain('overrides');
     // Four reads of `transactions` and one of each other table on this path;
     // the point is that none of them went missing, not the exact count.

@@ -4,7 +4,7 @@
 //
 // Pipeline:
 //   1. In-memory dedup (fast, prevents re-processing during scans)
-//   2. Duplicate detection (check transactions + pending_transactions tables)
+//   2. Duplicate detection (against the transactions table)
 //   3. AI extraction: vendor, amount, transaction classification
 //   4. Non-transaction filtering (balance alerts, OTPs, etc.)
 //   5. Duplicate detection (same vendor + amount pair)
@@ -26,7 +26,7 @@ import { getLocalToday, parseLocalDate, toLocalIsoDay } from './dateUtils';
 import { extractWithAI, type AIExtractionResult } from './aiExtractor';
 import { detectMerchantSignal, resolveSignalCategory } from './merchantCategorySignals';
 import { lookupCommunityRule } from './communityRules';
-import type { PendingTransaction, Transaction } from '../types';
+import type { Transaction } from '../types';
 import { scoreVendorMatch, shouldAutoAccept, toMatchKey } from './vendorMatchConfidence';
 import { amountsAgree, daysApart, isSameCharge } from './duplicateCharge';
 import { findRecurringScheduleMatch, type RecurringChargeRow } from './recurringSchedule';
@@ -127,8 +127,6 @@ const LOW_CONFIDENCE_REVIEW_THRESHOLD = 0.75;
 
 /** Milliseconds per day */
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
-/** Milliseconds per minute — strict duplicate matching window */
-const MS_PER_MINUTE = 60 * 1000;
 
 /**
  * In-memory cache of recently processed notification keys.
@@ -394,28 +392,10 @@ export interface NotificationInput {
 
 // ─── Step 1: Duplicate Detection Against Tables ─────────────────
 
-/**
- * Generate a fingerprint hash from notification content.
- * Used for in-memory deduplication of pending transaction batches.
- * NOT used for Supabase lookups — see checkAlreadyProcessed() instead.
- */
-function generateFingerprintHash(
-  bankAppId: string,
-  detectedAmount: number | null,
-  vendor: string,
-  timestampMs: number,
-): string {
-  const amountStr = detectedAmount != null ? detectedAmount.toFixed(2) : '';
-  const normalizedVendor = vendor.toLowerCase().trim();
-  // Truncate to the second so minor sub-second jitter doesn't matter
-  const timestampSec = Math.floor(timestampMs / 1000);
-  const raw = `${bankAppId}|${amountStr}|${normalizedVendor}|${timestampSec}`;
-  return djb2Base36(raw);
-}
 
 /**
  * Check if a notification has already been processed by looking at
- * the transactions and pending_transactions tables directly.
+ * the transactions table directly.
  *
  * A notification is considered a duplicate if a record with the same
  * vendor + amount exists within a ±1 minute window of the notification
@@ -453,31 +433,19 @@ async function checkAlreadyProcessed(
   const startDateStr = windowStartDate.toISOString().slice(0, 10);
   const endDateStr = windowEndDate.toISOString().slice(0, 10);
 
-  // ── Check pending_transactions table ──
-  // Use the notification_timestamp column (bigint ms) for a tighter match.
-  const windowStartMs = notificationTimestamp - 5 * MS_PER_MINUTE;
-  const windowEndMs   = notificationTimestamp + 5 * MS_PER_MINUTE;
-
-  // Both reads are issued together and neither depends on the other's answer.
-  // They used to run one after the other, which cost two round trips on a
-  // phone waking its radio — and the second one is a table that does not exist
-  // here, so a capture arriving with the app closed waited out a 404 before it
-  // could appear. The order the ANSWERS are considered below is unchanged:
-  // transactions first, then the pending queue.
-  const [{ data: txRows }, { data: ptRows }] = await Promise.all([
-    supabase
-      .from('transactions')
-      .select('id, vendor, amount, date')
-      .eq('user_id', userId)
-      .gte('date', startDateStr)
-      .lte('date', endDateStr),
-    supabase
-      .from('pending_transactions')
-      .select('id, extracted_vendor, extracted_amount, notification_timestamp')
-      .eq('user_id', userId)
-      .gte('notification_timestamp', windowStartMs)
-      .lte('notification_timestamp', windowEndMs),
-  ]);
+  // One read, against the ledger.
+  //
+  // There used to be a second, against `pending_transactions` — a table that
+  // does not exist. It was moved alongside this one rather than after it,
+  // because a capture arriving with the app closed was waiting out its 404
+  // before it could appear. It is gone now, which is the same saving without
+  // the request: a table that is not there can hold no duplicate.
+  const { data: txRows } = await supabase
+    .from('transactions')
+    .select('id, vendor, amount, date')
+    .eq('user_id', userId)
+    .gte('date', startDateStr)
+    .lte('date', endDateStr);
 
   if (txRows && txRows.length > 0) {
     for (const tx of txRows) {
@@ -486,17 +454,6 @@ async function checkAlreadyProcessed(
         const fuzzyMatch = fuzzyVendorMatch(tx.vendor, vendor);
         if (exactMatch || fuzzyMatch) {
           log.debug(`[dedup] Duplicate found in transactions: ${tx.vendor} $${tx.amount} (fuzzy=${fuzzyMatch})`);
-          return true;
-        }
-      }
-    }
-  }
-
-  if (ptRows && ptRows.length > 0) {
-    for (const pt of ptRows) {
-      if (Math.abs(Number(pt.extracted_amount) - amount) < AMOUNT_TOLERANCE) {
-        if (normalizeVendorForDedup(pt.extracted_vendor) === normalizedVendor) {
-          log.debug(`[dedup] Duplicate found in pending_transactions: ${pt.extracted_vendor} $${pt.extracted_amount}`);
           return true;
         }
       }
@@ -539,332 +496,17 @@ export function vendorMatches(existingVendor: string | null, newVendor: string |
   return false;
 }
 
-// ─── Step 1b: Second-Phase Deduplication ────────────────────────
+// ─── Step 1b: (removed) pending-queue deduplication ─────────────
+//
+// This read the `pending_transactions` table, which does not exist. The read
+// could never return a row, so the queue was permanently empty and everything
+// built on it — the second-phase dedup that lived here, and the approve /
+// reject / clear-filtered handlers — was unreachable rather than merely
+// failing. The dedup that actually runs is steps 1, 2, 5 and the post-insert
+// race recovery below, against `transactions`.
 
-/**
- * Build a dedup key from the extracted fields: vendor (lowercased),
- * amount (2 decimal places), and extracted_timestamp truncated to the
- * nearest minute (60-second window).  Two records that share the same key
- * are considered duplicates per the issue requirements.
- */
-function extractedDedupKey(pt: PendingTransaction): string {
-  const vendor = (pt.extracted_vendor || '').toLowerCase().trim();
-  const amt = Number(pt.extracted_amount);
-  const amount = Number.isFinite(amt) ? amt.toFixed(2) : '0.00';
-  // Truncate extracted_timestamp to the minute (60s window) to catch near-duplicates
-  const tsMs = pt.extracted_timestamp ? new Date(pt.extracted_timestamp).getTime() : 0;
-  const tsMinute = Math.floor(tsMs / 60000);
-  return `${vendor}|${amount}|${tsMinute}`;
-}
 
-/**
- * Build a dedup key from extracted_amount and notification_timestamp.
- * Two records sharing the same extracted amount and notification
- * timestamp are considered duplicates.
- */
-function amountTimestampDedupKey(pt: PendingTransaction): string {
-  const amt = Number(pt.extracted_amount);
-  const amount = Number.isFinite(amt) ? amt.toFixed(2) : '0.00';
-  const ts = pt.notification_timestamp || 0;
-  return `${amount}|${ts}`;
-}
 
-/**
- * Deduplicate pending transactions that already exist in the database.
- *
- * Runs three dedup passes:
- *   1. Amount+timestamp-based (extracted_amount + notification_timestamp)
- *      — the primary dedup: if both match, it's a dupe.
- *   2. Fingerprint-based (app_package + amount + vendor +
- *      notification_timestamp) — the original approach.
- *   3. Extracted-field-based (extracted_vendor + extracted_amount +
- *      extracted_timestamp to the second) — catches duplicates where
- *      the exact same vendor, amount, and time appear more than once
- *      regardless of source app or notification metadata.
- *
- * In all passes the oldest entry (by created_at) is kept and the
- * rest are deleted from Supabase.
- *
- * Returns the deduplicated list of pending transactions.
- */
-export async function deduplicatePendingTransactions(
-  pendingTransactions: PendingTransaction[],
-): Promise<PendingTransaction[]> {
-  if (pendingTransactions.length <= 1) return pendingTransactions;
-
-  // Parse created_at once per row. The four grouping passes below each sort
-  // their groups by it, and `new Date(...).getTime()` inside a comparator
-  // re-parses both operands on every comparison.
-  const createdAtMs = new Map<string, number>();
-  for (const pt of pendingTransactions) {
-    createdAtMs.set(pt.id, new Date(pt.created_at).getTime());
-  }
-  const byCreatedAt = (a: PendingTransaction, b: PendingTransaction) =>
-    (createdAtMs.get(a.id) ?? 0) - (createdAtMs.get(b.id) ?? 0);
-
-  const idsToDelete: string[] = [];
-  const keepSet = new Set<string>();
-
-  // ── Pass 1: extracted_amount + notification_timestamp dedup ──
-  const notifGroups = new Map<string, PendingTransaction[]>();
-
-  for (const pt of pendingTransactions) {
-    const key = amountTimestampDedupKey(pt);
-    const group = notifGroups.get(key);
-    if (group) {
-      group.push(pt);
-    } else {
-      notifGroups.set(key, [pt]);
-    }
-  }
-
-  for (const group of notifGroups.values()) {
-    if (group.length <= 1) {
-      keepSet.add(group[0].id);
-      continue;
-    }
-    group.sort(byCreatedAt);
-    keepSet.add(group[0].id);
-    for (let i = 1; i < group.length; i++) {
-      idsToDelete.push(group[i].id);
-    }
-  }
-
-  // ── Pass 2: fingerprint-based dedup ──
-  let survivors = pendingTransactions.filter(pt => keepSet.has(pt.id));
-  const fpGroups = new Map<string, PendingTransaction[]>();
-
-  for (const pt of survivors) {
-    const hash = generateFingerprintHash(
-      pt.app_package,
-      pt.extracted_amount,
-      pt.extracted_vendor,
-      pt.notification_timestamp || 0,
-    );
-    const group = fpGroups.get(hash);
-    if (group) {
-      group.push(pt);
-    } else {
-      fpGroups.set(hash, [pt]);
-    }
-  }
-
-  for (const group of fpGroups.values()) {
-    if (group.length <= 1) continue;
-    group.sort(byCreatedAt);
-    for (let i = 1; i < group.length; i++) {
-      keepSet.delete(group[i].id);
-      idsToDelete.push(group[i].id);
-    }
-  }
-
-  // ── Pass 3: extracted-field dedup (vendor + amount + timestamp to the second) ──
-  survivors = pendingTransactions.filter(pt => keepSet.has(pt.id));
-  const extGroups = new Map<string, PendingTransaction[]>();
-
-  for (const pt of survivors) {
-    const key = extractedDedupKey(pt);
-    const group = extGroups.get(key);
-    if (group) {
-      group.push(pt);
-    } else {
-      extGroups.set(key, [pt]);
-    }
-  }
-
-  for (const group of extGroups.values()) {
-    if (group.length <= 1) continue;
-    group.sort(byCreatedAt);
-    // The oldest is already in keepSet; mark the rest for deletion
-    for (let i = 1; i < group.length; i++) {
-      keepSet.delete(group[i].id);
-      idsToDelete.push(group[i].id);
-    }
-  }
-
-  // ── Pass 4: Same amount from same app within ±5 minutes ──
-  // Catches duplicates where the bank re-broadcasts the same notification
-  // with slightly different vendor text (e.g., "PUB MOBILE" vs "PUBLIC MOBILE SELF").
-  survivors = pendingTransactions.filter(pt => keepSet.has(pt.id));
-  const appAmountGroups = new Map<string, PendingTransaction[]>();
-
-  for (const pt of survivors) {
-    const amt = Number(pt.extracted_amount);
-    const amount = Number.isFinite(amt) ? amt.toFixed(2) : '0.00';
-    // Group by app + amount + 5-minute window
-    const tsWindow = Math.floor((pt.notification_timestamp || 0) / (5 * MS_PER_MINUTE));
-    const key = `${pt.app_package}|${amount}|${tsWindow}`;
-    const group = appAmountGroups.get(key);
-    if (group) {
-      group.push(pt);
-    } else {
-      appAmountGroups.set(key, [pt]);
-    }
-  }
-
-  for (const group of appAmountGroups.values()) {
-    if (group.length <= 1) continue;
-    group.sort(byCreatedAt);
-    for (let i = 1; i < group.length; i++) {
-      keepSet.delete(group[i].id);
-      idsToDelete.push(group[i].id);
-    }
-  }
-
-  // Delete duplicates from the database
-  if (idsToDelete.length > 0) {
-    log.debug(`[dedup] Removing ${idsToDelete.length} duplicate pending transaction(s)`);
-    const { error } = await supabase
-      .from('pending_transactions')
-      .delete()
-      .in('id', idsToDelete);
-
-    if (error) {
-      log.error('[dedup] Error deleting duplicates:', error);
-      // Even on error, still return the deduplicated list for the UI
-    }
-  }
-
-  return pendingTransactions.filter(pt => keepSet.has(pt.id));
-}
-
-// ─── Duplicate Detection Against Existing Transactions ──────────
-
-interface DuplicateCheckResult {
-  /**
-   * Whether a duplicate was found that should block a new transaction.
-   * With the "never miss a charge" policy, this is only true when the
-   * existing row is the SAME notification being reprocessed (caught by
-   * the in-memory + localStorage caches upstream) or an obvious same-day
-   * same-amount same-vendor dup. The user said they'd rather see both
-   * rows and dedup manually for everything else.
-   */
-  isDuplicate: boolean;
-  /** Reason for rejection, if any */
-  reason?: string;
-  /** If a same-day hard match was found, this is its ID. The new transaction is skipped. */
-  skippedExistingId?: string;
-  /**
-   * If any match was found (same vendor after normalization, within the
-   * ±3 day window, same OR different amount), this is the closest one's
-   * ID. The new transaction is NOT skipped — the user gets a soft-dedup
-   * warning so they don't miss a charge that might be legitimate (e.g.
-   * Fizz's two $26.20 charges per month).
-   *
-   * The UI uses this to render a "possible duplicate" badge on the
-   * auto-entered card. The source field on the existing row tells the
-   * UI what kind of match it is:
-   *   - source: 'executor'    → executor-spawned recurring charge
-   *   - source: 'notification' → another notification (might be re-broadcast)
-   *   - source: 'manual'      → user already entered it
-   *   - source: 'import'      → bulk-imported
-   */
-  softDuplicateOfId?: string;
-  /** Vendor of the soft-dup match (for the warning message) */
-  softDuplicateVendor?: string;
-  /** Amount of the soft-dup match */
-  softDuplicateAmount?: number;
-  /** Date of the soft-dup match */
-  softDuplicateDate?: string;
-  /** Source of the soft-dup match (drives the warning text) */
-  softDuplicateSource?: 'executor' | 'notification' | 'manual' | 'import';
-}
-
-/**
- * Check if a pending transaction duplicates an existing transaction.
- *
- * With the "never miss a charge" policy, this is much more permissive
- * than before. The only HARD skip is a same-day same-vendor same-amount
- * match — which is almost certainly the same notification being
- * reprocessed. Everything else returns a soft-dup warning and lets the
- * caller insert anyway.
- *
- * This is what fixes the Fizz case: the two $26.20 charges (3 days
- * apart) are NOT hard-skipped. The second one is inserted and the user
- * sees a "possible duplicate" badge they can dismiss.
- */
-export async function checkDuplicateTransaction(
-  userId: string,
-  pending: PendingTransaction,
-): Promise<DuplicateCheckResult> {
-  const vendor = formatVendorName(pending.extracted_vendor);
-  const amount = Number(pending.extracted_amount);
-  const today = getLocalToday();
-  const todayMs = parseLocalDate(today).getTime();
-  const toleranceMs = RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY;
-
-  // Query transactions within ±3 days (broader than just exact vendor match)
-  const windowStart = new Date(todayMs - toleranceMs).toISOString().slice(0, 10);
-  const windowEnd = new Date(todayMs + toleranceMs).toISOString().slice(0, 10);
-
-  const { data: existing, error } = await supabase
-    .from('transactions')
-    .select('id, vendor, amount, date, recur, source, created_at')
-    .eq('user_id', userId)
-    .gte('date', windowStart)
-    .lte('date', windowEnd);
-
-  if (error) {
-    log.error('[checkDuplicate] Error fetching transactions:', error);
-    return { isDuplicate: false };
-  }
-
-  if (!existing || existing.length === 0) {
-    return { isDuplicate: false };
-  }
-
-  // Use the strong normalizer (strips "(Tx. Incl.)", location codes, etc.)
-  // so "Fizz (Tx. Incl.)" and "Fizz" compare equal.
-  const normalizedIncoming = normalizeVendorForDedup(vendor);
-
-  // Single pass: find ALL matches (same vendor + within window), regardless
-  // of amount. The only hard-skip is a same-day exact match — which is
-  // almost certainly a re-broadcast of the same notification.
-  const allMatches = existing.filter((tx) => {
-    const normalizedExisting = normalizeVendorForDedup(tx.vendor);
-    if (normalizedExisting !== normalizedIncoming) return false;
-    return true;
-  });
-
-  if (allMatches.length === 0) {
-    return { isDuplicate: false };
-  }
-
-  // Hard-skip only: same day, same amount (within tolerance), same vendor.
-  // This is the "I just reprocessed the same notification" case. For
-  // everything else, we soft-warn.
-  const exactSameDay = allMatches.find((tx) => {
-    if (tx.date !== today) return false;
-    return Math.abs(Number(tx.amount) - amount) < AMOUNT_TOLERANCE;
-  });
-
-  if (exactSameDay) {
-    log.debug(`[checkDuplicate] Hard skip: same-day same-amount match ${exactSameDay.vendor} $${exactSameDay.amount} (${exactSameDay.date})`);
-    return {
-      isDuplicate: true,
-      reason: 'Same notification reprocessed on the same day',
-      skippedExistingId: exactSameDay.id,
-    };
-  }
-
-  // Soft-warn: pick the closest match (by amount) to surface to the UI.
-  // We prefer same-amount over different-amount for the "this is almost
-  // certainly a dup" message, but any match is worth flagging.
-  const sameAmount = allMatches.find((tx) => Math.abs(Number(tx.amount) - amount) < AMOUNT_TOLERANCE);
-  const closest = sameAmount || allMatches.sort((a, b) => {
-    return Math.abs(Number(a.amount) - amount) - Math.abs(Number(b.amount) - amount);
-  })[0];
-
-  log.debug(`[checkDuplicate] Soft-dup: similar ${closest.vendor} $${closest.amount} (${closest.date}, source=${closest.source || 'unknown'}) but new charge is $${amount}`);
-  return {
-    isDuplicate: false,
-    softDuplicateOfId: closest.id,
-    softDuplicateVendor: closest.vendor,
-    softDuplicateAmount: Number(closest.amount),
-    softDuplicateDate: closest.date,
-    softDuplicateSource: closest.source || undefined,
-  };
-}
 
 /**
  * The user's past settled fills at a station, for sizing a hold placeholder.

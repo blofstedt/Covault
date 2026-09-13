@@ -19,15 +19,12 @@ export const useUserData = ({
   setAppState,
   setDbError,
 }: UseUserDataParams) => {
-  const { categoriesLoaded, loadUserData, loadPendingTransactions, loadTransactions } = useDataLoading({ setAppState, setDbError });
+  const { categoriesLoaded, loadUserData, loadTransactions } = useDataLoading({ setAppState, setDbError });
 
   const {
     handleAddTransaction,
     handleUpdateTransaction,
     handleDeleteTransaction,
-    handleApprovePendingTransaction,
-    handleRejectPendingTransaction,
-    handleClearFilteredNotifications,
     handleClearApprovedTransactions,
   } = useTransactionOps({ appState, setAppState, setDbError, categoriesLoaded });
 
@@ -49,7 +46,6 @@ export const useUserData = ({
   return {
     categoriesLoaded,
     loadUserData,
-    loadPendingTransactions,
     loadTransactions,
     handleAddTransaction,
     handleUpdateTransaction,
@@ -58,9 +54,6 @@ export const useUserData = ({
     handleUnlinkPartner,
     handleGenerateLinkCode,
     handleJoinWithCode,
-    handleApprovePendingTransaction,
-    handleRejectPendingTransaction,
-    handleClearFilteredNotifications,
     handleClearApprovedTransactions,
     saveBudgetLimit,
     saveUserIncome,

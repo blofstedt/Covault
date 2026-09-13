@@ -8,7 +8,7 @@ import {
   looksLikeWrongColumn,
   worthRetryingWithFreshToken,
 } from '../budgetFallback';
-import type { BudgetCategory, Transaction, PendingTransaction } from '../../types';
+import type { BudgetCategory, Transaction } from '../../types';
 import {
   REST_BASE,
   getAuthHeaders,
@@ -17,7 +17,6 @@ import {
   DEFAULT_MONTHLY_INCOME,
 } from '../apiHelpers';
 import { useFromSupabaseTransaction } from './transactionMappers';
-import { deduplicatePendingTransactions } from '../notificationProcessor';
 import { readFirstPaintCache } from '../firstPaintCache';
 import { createReadGate, type ReadGate } from '../readGate';
 import type { UseUserDataParams } from './types';
@@ -572,42 +571,6 @@ export const useDataLoading = ({
     [fetchTransactionsFor, transactionReads, setAppState, setDbError],
   );
 
-  // Load pending transactions awaiting approval
-  const loadPendingTransactions = useCallback(
-    async (userId: string) => {
-      try {
-        const res = await restFetch(
-          `/pending_transactions?select=*&user_id=eq.${userId}&status=eq.pending&order=created_at.desc`,
-        );
-
-        if (!res.ok) {
-          // Check if table doesn't exist (expected during initial setup)
-          const body = await res.text();
-          if (res.status === 404 && body.includes('Could not find the table')) {
-            log.debug('[loadPendingTransactions] table not found - using defaults (run schema.sql to create tables)');
-            setAppState(prev => ({ ...prev, pendingTransactions: [] }));
-            return;
-          }
-          log.debug('[loadPendingTransactions] failed or no pending transactions');
-          return;
-        }
-
-        const data: PendingTransaction[] = JSON.parse(await res.text());
-        if (data && data.length > 0) {
-          // Second-phase dedup: remove any duplicates that slipped through
-          const deduped = await deduplicatePendingTransactions(data);
-          log.debug('[loadPendingTransactions] OK, count:', deduped.length);
-          setAppState(prev => ({ ...prev, pendingTransactions: deduped }));
-        } else {
-          log.debug('[loadPendingTransactions] no pending transactions');
-          setAppState(prev => ({ ...prev, pendingTransactions: [] }));
-        }
-      } catch (err: any) {
-        log.error('[loadPendingTransactions]', err?.message || err);
-      }
-    },
-    [setAppState],
-  );
 
   // Load household link status from settings table (partner_id field)
   const loadHouseholdLink = useCallback(
@@ -714,7 +677,6 @@ export const useDataLoading = ({
         loadUserBudgets(userId), // user-specific budget limits
         loadUserSettings(userId), // monthly_income, theme, trial flags
         loadTransactions(userId),
-        loadPendingTransactions(userId), // awaiting approval
       ]);
 
       // Must stay after loadTransactions: it merges the partner's rows onto
@@ -724,13 +686,12 @@ export const useDataLoading = ({
       await loadHouseholdLink(userId);
       log.debug('loadUserData completed');
     },
-    [hydrateFromCache, loadCategories, loadHouseholdLink, loadPendingTransactions, loadTransactions, loadUserBudgets, loadUserSettings],
+    [hydrateFromCache, loadCategories, loadHouseholdLink, loadTransactions, loadUserBudgets, loadUserSettings],
   );
 
   return {
     categoriesLoaded,
     loadUserData,
-    loadPendingTransactions,
     loadTransactions,
   };
 };

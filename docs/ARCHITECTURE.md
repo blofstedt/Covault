@@ -71,7 +71,7 @@ Android bank notification
       then     → widget delta (guarded; may never affect the above)
   → JS: processNotificationWithAI()
       1. in-memory dedup
-      2. duplicate check vs transactions + pending_transactions
+      2. duplicate check vs transactions
       3. AI extraction when regex confidence is low
       4. filter non-transactions (balance alerts, OTPs)
       5. duplicate check by vendor + amount
@@ -181,11 +181,16 @@ per-user display preference and each side owns its own row for it.
 
 ### Known, deliberate, or unresolved
 
-- **`pending_transactions` does not exist.** Reads treat 404 as empty; writes
-  fail silently. Either create it or remove the references — don't half-fix it.
-- **`ensureDefaultBudgets`' retry is dead.** Its fallback posts
-  `user_id`/`category`/`limit_amount`/`visible`, none of which exist. Harmless,
-  but it is not the safety net it appears to be.
+- **`pending_transactions` is gone** (2026-09). It described a table the
+  database never had, so the read could not return a row, the queue was
+  permanently empty, and the approve/reject/clear handlers built on it were
+  unreachable. The references, the type and the second-phase dedup that only
+  ran over that queue have all been removed. The queue that survives a closed
+  app is the native SharedPreferences one.
+- **`ensureDefaultBudgets`' retry looks dead and is not.** Its fallback posts
+  `user_id`/`category`/`limit_amount`/`visible`, which this database does not
+  have — but the column-name fallbacks are load-bearing across vaults with the
+  other spelling. See the invariant in CLAUDE.md before removing it.
 - **Theme default disagrees.** `settings.theme_selected` defaults to `'dark'`;
   the app's in-memory default is `'light'`. A new user renders light, then flips.
 - **`budgets` unique index** is `unique_user_budget`, a bare `CREATE UNIQUE
