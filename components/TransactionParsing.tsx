@@ -243,6 +243,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
     rules: notificationRules,
     create: createNotificationRule,
     remove: removeNotificationRule,
+    setPatternType: setNotificationRuleType,
   } = useNotificationRules({ userId });
 
   // ── Inline vendor rename ──
@@ -911,6 +912,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
                 allTransactions={allTransactions}
                 rules={notificationRules}
                 onRemoveRule={removeNotificationRule}
+                onSetRulePatternType={setNotificationRuleType}
                 onDeleteVendorOverride={handleDeleteVendorOverride}
                 onSetVendorCategory={handleSetVendorCategory}
                 onSetProperName={handleSetProperName}

@@ -258,6 +258,54 @@ export async function createNotificationRule(
   }
 }
 
+/**
+ * Change a rule's match type between "exact" and "contains".
+ *
+ * The one thing about a skip rule the user can change without deleting it and
+ * starting again. The pattern itself is the text of the alert they marked, so
+ * it is not editable — what they actually get wrong is how WIDE it should be:
+ * a rule made from one promo push is written `exact` and then never fires
+ * again because the next promo is worded slightly differently.
+ *
+ * Widening is the direction that can cost a purchase — a `contains` rule on a
+ * short, common phrase silences everything carrying it, and a silenced alert
+ * with the app closed is a spend nothing downstream can recover. That is what
+ * the use count next to the control is for: it is the only evidence the user
+ * has about what a rule has actually been doing.
+ *
+ * Both copies have to move together. The web pipeline decides whether a row
+ * reaches the ledger, but the "captured" notification is posted by a service
+ * running with the WebView dead, so a type known only here silences the row
+ * and leaves the notification — see mirrorRulesToNative.
+ */
+export async function updateNotificationRulePatternType(
+  userId: string,
+  ruleId: string,
+  patternType: PatternType,
+): Promise<boolean> {
+  if (!userId || !ruleId) return false;
+  try {
+    const res = await restFetch(
+      `/notification_rules?id=eq.${ruleId}&user_id=eq.${userId}`,
+      {
+        method: 'PATCH',
+        headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify({ pattern_type: patternType }),
+      },
+    );
+    if (!res.ok) {
+      log.error('[notificationRules] update failed:', res.status, await res.text());
+      return false;
+    }
+    invalidateNotificationRulesCache();
+    refreshNativeSkipRules(userId);
+    return true;
+  } catch (err) {
+    log.error('[notificationRules] update exception:', err);
+    return false;
+  }
+}
+
 export async function deleteNotificationRule(userId: string, ruleId: string): Promise<boolean> {
   if (!userId || !ruleId) return false;
   try {

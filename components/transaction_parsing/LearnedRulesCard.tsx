@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import ParsingCard from '../ui/ParsingCard';
-import type { NotificationRule } from '../../lib/notificationRules';
+import type { NotificationRule, PatternType } from '../../lib/notificationRules';
 import type { VendorOverride, MatchType } from './useVendorOverrides';
 import { toVendorKey } from '../../lib/deviceTransactionParser';
 import { formatCurrency } from '../../lib/formatCurrency';
@@ -66,6 +66,10 @@ interface LearnedRulesCardProps {
    *  "not a transaction" flow never appeared in this list. */
   rules?: NotificationRule[];
   onRemoveRule?: (ruleId: string) => Promise<boolean>;
+  /** Widen or narrow a skip pattern in place. Without it the match type is
+   *  shown but not offered as a choice — a switch that cannot move is worse
+   *  than a label. */
+  onSetRulePatternType?: (ruleId: string, patternType: PatternType) => Promise<boolean>;
   categoryNameById?: Map<string, string>;
   budgets?: BudgetCategory[];
   /**
@@ -98,6 +102,7 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
   vendorOverrides,
   rules = EMPTY_RULES,
   onRemoveRule,
+  onSetRulePatternType,
   categoryNameById = EMPTY_CATEGORY_NAMES,
   budgets = EMPTY_BUDGETS,
   hiddenCategories = [],
@@ -118,6 +123,8 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
   const [properNameDraft, setProperNameDraft] = useState('');
   const [mergingRule, setMergingRule] = useState<string | null>(null);
   const [mergeTarget, setMergeTarget] = useState<string | null>(null);
+  const [expandedSkipRule, setExpandedSkipRule] = useState<string | null>(null);
+  const [retypingId, setRetypingId] = useState<string | null>(null);
   const [removingStaleKey, setRemovingStaleKey] = useState<string | null>(null);
   const [combiningChainKey, setCombiningChainKey] = useState<string | null>(null);
 
@@ -279,6 +286,32 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
       }
     },
     [onRemoveRule],
+  );
+
+  /**
+   * Flip one skip pattern between "exact" and "contains".
+   *
+   * The rule keeps its use count either way — it is the same rule, told to
+   * look more or less widely — so nothing about what it has already caught is
+   * thrown away by changing its mind.
+   */
+  const handleSetRuleType = useCallback(
+    async (ruleId: string, patternType: PatternType) => {
+      if (!onSetRulePatternType) return;
+      setRetypingId(ruleId);
+      try {
+        const ok = await onSetRulePatternType(ruleId, patternType);
+        if (!ok) {
+          onToast?.({
+            message: 'Could not change that pattern',
+            tone: 'error',
+          });
+        }
+      } finally {
+        setRetypingId(null);
+      }
+    },
+    [onSetRulePatternType, onToast],
   );
 
   const handleMerge = useCallback((ruleKey: string) => {
@@ -742,36 +775,144 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                 </span>
               </div>
               <div className="space-y-1.5">
-                {visibleSkipRules.map((rule) => (
+                {visibleSkipRules.map((rule) => {
+                  const isSkipExpanded = expandedSkipRule === rule.id;
+                  const uses = rule.use_count ?? 0;
+                  const currentType: PatternType =
+                    rule.pattern_type === 'contains' ? 'contains' : 'exact';
+                  return (
                   <div
                     key={rule.id}
-                    className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-white/60 dark:bg-violet-900/10 backdrop-blur-sm border border-violet-100 dark:border-violet-800/30"
+                    className="rounded-xl bg-white/60 dark:bg-violet-900/10 backdrop-blur-sm border border-violet-100 dark:border-violet-800/30 overflow-hidden"
                   >
-                    <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                      <p className="text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate">
-                        {rule.pattern}
-                      </p>
-                      <span className={`text-[11px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border shrink-0 ${matchTypeStyles[rule.pattern_type as MatchType] || matchTypeStyles.exact}`}>
-                        {rule.pattern_type}
-                      </span>
-                      {rule.use_count !== undefined && (
-                        <span className="text-[11px] font-semibold text-violet-500 dark:text-violet-400">
-                          {rule.use_count} uses
+                    <div className="flex items-center justify-between gap-2 px-3 py-2">
+                      {/* The row opens, the same way a vendor rule's does. The
+                          pattern is the whole text of the alert the user
+                          marked, so a truncated line is often every word of it
+                          that matters cut off. */}
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setExpandedSkipRule(isSkipExpanded ? null : rule.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setExpandedSkipRule(isSkipExpanded ? null : rule.id);
+                          }
+                        }}
+                        className="flex items-center gap-1.5 min-w-0 flex-1 cursor-pointer transition-all duration-200 active:scale-[0.99]"
+                      >
+                        <svg
+                          className={`w-3 h-3 shrink-0 text-slate-300 dark:text-slate-600 transition-transform ${isSkipExpanded ? 'rotate-90' : ''}`}
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth={2}
+                        >
+                          <polyline points="9 18 15 12 9 6" />
+                        </svg>
+                        <p className="text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate">
+                          {rule.pattern}
+                        </p>
+                        <span className={`text-[11px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border shrink-0 ${matchTypeStyles[currentType]}`}>
+                          {currentType}
                         </span>
-                      )}
+                        <span className="text-[11px] font-semibold text-violet-500 dark:text-violet-400 shrink-0">
+                          {uses} {uses === 1 ? 'use' : 'uses'}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveRule(rule.id)}
+                        disabled={removingId === rule.id}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 transition-all duration-200 active:scale-[0.97] disabled:opacity-50 shrink-0"
+                        aria-label="Remove rule"
+                      >
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                          <path d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
                     </div>
-                    <button
-                      onClick={() => handleRemoveRule(rule.id)}
-                      disabled={removingId === rule.id}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 transition-all duration-200 active:scale-[0.97] disabled:opacity-50"
-                      aria-label="Remove rule"
-                    >
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-                        <path d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
+
+                    {isSkipExpanded && (
+                      <div className="px-3 pb-3 space-y-3 border-t border-violet-100 dark:border-violet-800/30 pt-2">
+                        {/* The alert this rule was made from, in full. */}
+                        <div>
+                          <p className="text-[11px] font-bold tracking-wide text-slate-400 dark:text-slate-500 uppercase mb-1.5">
+                            Pattern
+                          </p>
+                          <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-snug break-words bg-violet-50/50 dark:bg-violet-900/20 rounded-lg px-2 py-1.5">
+                            {rule.pattern}
+                          </p>
+                        </div>
+
+                        {/* ── How widely it looks ──
+                            Two states, both spelled out in what they do rather
+                            than named after the column they are stored in.
+                            "Contains" is the one that can cost a purchase — it
+                            silences every alert carrying this text, with the
+                            app closed — so it says so where the choice is
+                            made, not in a help page nobody opens. */}
+                        {onSetRulePatternType && (
+                          <div>
+                            <p className="text-[11px] font-bold tracking-wide text-slate-400 dark:text-slate-500 uppercase mb-1.5">
+                              Match
+                            </p>
+                            <div className="flex gap-1.5">
+                              {(['exact', 'contains'] as PatternType[]).map((type) => {
+                                const active = currentType === type;
+                                return (
+                                  <button
+                                    key={type}
+                                    onClick={() => { void handleSetRuleType(rule.id, type); }}
+                                    disabled={retypingId === rule.id || active}
+                                    aria-pressed={active}
+                                    className={`flex-1 text-left px-2.5 py-1.5 rounded-lg border transition-all duration-200 active:scale-[0.98] disabled:active:scale-100 ${
+                                      active
+                                        ? matchTypeStyles[type]
+                                        : 'bg-transparent border-slate-200 dark:border-slate-700/50 text-slate-400 dark:text-slate-500 hover:border-violet-200 dark:hover:border-violet-700/50'
+                                    } ${retypingId === rule.id ? 'opacity-50' : ''}`}
+                                  >
+                                    <span className="block text-[11px] font-bold uppercase tracking-wide">
+                                      {type}
+                                    </span>
+                                    <span className="block text-[10px] font-medium leading-snug mt-0.5 normal-case">
+                                      {type === 'exact'
+                                        ? 'Only this alert, word for word'
+                                        : 'Any alert containing this text'}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* ── What it has actually done ──
+                            The only evidence the user has about a rule that
+                            works by making things disappear. A rule with no
+                            uses is usually one written `exact` from an alert
+                            whose next copy says a different number. */}
+                        <div>
+                          <p className="text-[11px] font-bold tracking-wide text-slate-400 dark:text-slate-500 uppercase mb-1.5">
+                            Uses
+                          </p>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
+                            {uses === 0
+                              ? 'Has not skipped anything yet'
+                              : `Skipped ${uses} ${uses === 1 ? 'alert' : 'alerts'}`}
+                            {uses > 0 && rule.last_used_at
+                              ? ` · last on ${new Date(rule.last_used_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+                              : ''}
+                          </p>
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-snug mt-1">
+                            Added {new Date(rule.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
