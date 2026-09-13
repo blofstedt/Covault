@@ -7,6 +7,7 @@ import Onboarding from './components/Onboarding';
 import FullScreenLoader from './components/FullScreenLoader';
 import SubscriptionRequired from './components/SubscriptionRequired';
 import { getEntitlementStatus } from './lib/entitlement';
+import { serverNow } from './lib/serverClock';
 import ErrorBoundary from './components/ErrorBoundary';
 import UpdateBanner from './components/UpdateBanner';
 import type { AppState, BudgetCategory, Transaction, Toast } from './types';
@@ -451,7 +452,8 @@ const App: React.FC = () => {
     return <FullScreenLoader />;
   }
 
-  const entitlementStatus = getEntitlementStatus(appState.user);
+  // Against the database's clock, not the phone's. See lib/serverClock.ts.
+  const entitlementStatus = getEntitlementStatus(appState.user, serverNow());
 
   return (
     <ErrorBoundary>

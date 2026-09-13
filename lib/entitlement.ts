@@ -2,7 +2,9 @@
 //
 // The single place that decides whether this account gets to use the app:
 // a permanent tester exemption, a real Google Play subscription, or still
-// inside the one-month trial every new signup starts with. See
+// inside the one-month trial every new signup starts with. The trial is
+// compared against the DATABASE's clock, not the phone's — see
+// lib/serverClock.ts for why, and for what that does and does not buy. See
 // `getEntitlementStatus` for the rule and `App.tsx` for where it's applied
 // (the whole app locks, not individual features — see docs/ARCHITECTURE.md).
 //
@@ -40,7 +42,17 @@ function isUnloaded(user: EntitlementUser): boolean {
   );
 }
 
-export function getEntitlementStatus(user: EntitlementUser | null | undefined): EntitlementStatus {
+/**
+ * @param nowMs What "now" is. Callers pass `serverNow()` from lib/serverClock,
+ *   which is the database's clock rather than the phone's: the trial is a
+ *   date, and a date compared against a clock the person being charged can
+ *   set is not a limit. It defaults to the local clock so a caller that has
+ *   not synced behaves as this always did rather than failing shut.
+ */
+export function getEntitlementStatus(
+  user: EntitlementUser | null | undefined,
+  nowMs: number = Date.now(),
+): EntitlementStatus {
   if (!user) return 'checking';
   if (isUnloaded(user)) return 'checking';
 
@@ -49,7 +61,7 @@ export function getEntitlementStatus(user: EntitlementUser | null | undefined): 
 
   if (user.trial_ends_at) {
     const endsAt = new Date(user.trial_ends_at).getTime();
-    if (Number.isFinite(endsAt) && Date.now() < endsAt) return 'active';
+    if (Number.isFinite(endsAt) && nowMs < endsAt) return 'active';
   }
 
   return 'locked';

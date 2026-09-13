@@ -16,6 +16,7 @@ import {
   clearCachedAccessToken,
   DEFAULT_MONTHLY_INCOME,
 } from '../apiHelpers';
+import { syncServerClock } from '../serverClock';
 import { useFromSupabaseTransaction } from './transactionMappers';
 import { readFirstPaintCache } from '../firstPaintCache';
 import { createReadGate, type ReadGate } from '../readGate';
@@ -669,14 +670,19 @@ export const useDataLoading = ({
       hydrateFromCache(userId);
       await loadCategories();
 
-      // These four are mutually independent: each uses a functional
-      // setAppState updater and they touch disjoint keys (budgets +
-      // hiddenCategories / user + theme / transactions / pendingTransactions).
-      // Running them serially cost four round-trips for no ordering benefit.
+      // These are mutually independent: each uses a functional setAppState
+      // updater and they touch disjoint keys (budgets + hiddenCategories /
+      // user + theme / transactions). Running them serially cost a round trip
+      // each for no ordering benefit.
+      //
+      // The clock sync rides along for the same reason. It has to land before
+      // the trial date it is compared against is any use, and it costs nothing
+      // here — it is one more request in a batch that is already waiting.
       await Promise.all([
         loadUserBudgets(userId), // user-specific budget limits
         loadUserSettings(userId), // monthly_income, theme, trial flags
         loadTransactions(userId),
+        syncServerClock(), // what time the database thinks it is
       ]);
 
       // Must stay after loadTransactions: it merges the partner's rows onto

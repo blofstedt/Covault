@@ -552,6 +552,32 @@ CREATE TRIGGER on_auth_user_created
 
 
 -- ============================================================
+-- FUNCTIONS
+-- ============================================================
+
+-- What time it is, according to the database.
+--
+-- The trial is a date, and the app used to compare it against the phone's own
+-- clock — which belongs to the person being charged. This is how the app stops
+-- trusting that: it takes the difference between this answer and its own clock
+-- at load time and asks every entitlement question against the result. See
+-- lib/serverClock.ts and 2026_09_server_clock_for_trial.sql.
+--
+-- Read-only and argument-free; the only thing it can tell you is the time.
+CREATE OR REPLACE FUNCTION public.server_now()
+RETURNS timestamptz
+LANGUAGE sql
+STABLE
+SET search_path = public, pg_temp
+AS $$
+  SELECT now();
+$$;
+
+REVOKE ALL ON FUNCTION public.server_now() FROM public;
+GRANT EXECUTE ON FUNCTION public.server_now() TO authenticated;
+
+
+-- ============================================================
 -- DEAD CODE — flagged for cleanup
 -- ============================================================
 -- The following exist in the live DB but are not used by the app:
