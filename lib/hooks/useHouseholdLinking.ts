@@ -37,7 +37,7 @@ export interface LinkOutcome {
   message?: string;
 }
 
-/** Shape returned by link_partner_by_code / link_partner_by_email. */
+/** Shape returned by link_partner_by_code. */
 interface LinkedPartner {
   partner_id: string;
   partner_name: string | null;
@@ -83,15 +83,29 @@ export const useHouseholdLinking = ({
     }
   }, [appState.user, setDbError]);
 
-  // Join household using a link code (stored in partner's settings row)
+  /**
+   * Join a household with the code its owner gave you.
+   *
+   * The ONLY way two accounts are linked. There used to be a second — enter a
+   * partner's email address and both rows were written on the spot — which
+   * meant anyone who knew a Covault user's email could link themselves to that
+   * account and read its transactions and budgets through the partner
+   * policies. Nobody was asked and nobody was told. The code is the whole
+   * point: it exists on the other person's screen, so handing it over IS the
+   * permission, and there is no way to obtain one without asking.
+   *
+   * Returns an outcome rather than only raising a banner, because the intro
+   * is a full-screen step that has somewhere to put the reason and a toast
+   * behind a modal is a message nobody reads.
+   */
   const handleJoinWithCode = useCallback(
-    async (code: string) => {
+    async (code: string): Promise<LinkOutcome> => {
       try {
         const userId = appState.user?.id;
         const userName = appState.user?.name;
         if (!userId || !userName) {
           setDbError('User not logged in');
-          return;
+          return { ok: false, message: 'User not logged in' };
         }
 
         // One call does both halves: it claims the code and writes each row's
@@ -107,13 +121,14 @@ export const useHouseholdLinking = ({
 
         if (!result.ok) {
           setDbError(result.message);
-          return;
+          return { ok: false, message: result.message };
         }
 
         const linked = result.data?.[0];
         if (!linked) {
-          setDbError('Invalid or expired link code');
-          return;
+          const message = 'That code is not valid. Ask your partner to show you a fresh one.';
+          setDbError(message);
+          return { ok: false, message };
         }
 
         // budgeting_solo isn't part of the handshake — it's a per-user display
@@ -140,71 +155,16 @@ export const useHouseholdLinking = ({
         }));
 
         log.debug('[joinWithCode] Successfully linked household');
-      } catch (err: any) {
-        setDbError(`Join with code exception: ${err?.message || err}`);
-      }
-    },
-    [appState.user, setAppState, setDbError],
-  );
-
-  // Send a partner link request by email
-  const handleLinkPartner = useCallback(
-    async (partnerEmail: string): Promise<LinkOutcome> => {
-      try {
-        const userId = appState.user?.id;
-        if (!userId) {
-          setDbError('User not logged in');
-          return { ok: false, message: 'User not logged in' };
-        }
-
-        // Same reasoning as the code path: the lookup and the write both target
-        // a row RLS hides from us, so both happen inside the function. It also
-        // refuses to hijack an account already linked to someone else.
-        const result = await callRpc<LinkedPartner[]>('link_partner_by_email', {
-          p_email: partnerEmail,
-        });
-
-        if (!result.ok) {
-          setDbError(result.message);
-          return { ok: false, message: result.message };
-        }
-
-        const linked = result.data?.[0];
-        if (!linked) {
-          const message =
-            `No Covault account found for ${partnerEmail}. They need to sign up first.`;
-          setDbError(message);
-          return { ok: false, message };
-        }
-
-        await restFetch(`/settings?user_id=eq.${userId}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ budgeting_solo: false }),
-        });
-
-        setAppState(prev => ({
-          ...prev,
-          user: prev.user
-            ? {
-                ...prev.user,
-                budgetingSolo: false,
-                hasJointAccounts: true,
-                partnerId: linked.partner_id,
-                partnerName: linked.partner_name || undefined,
-                partnerEmail: linked.partner_email || partnerEmail,
-              }
-            : null,
-        }));
-        log.debug('[linkPartner] OK, linked with', partnerEmail);
         return { ok: true };
       } catch (err: any) {
-        const message = `Link exception: ${err?.message || err}`;
+        const message = `Join with code exception: ${err?.message || err}`;
         setDbError(message);
         return { ok: false, message };
       }
     },
     [appState.user, setAppState, setDbError],
   );
+
 
   // Disconnect household (clear partner fields in both users' settings)
   const handleUnlinkPartner = useCallback(async () => {
@@ -251,7 +211,6 @@ export const useHouseholdLinking = ({
   return {
     handleGenerateLinkCode,
     handleJoinWithCode,
-    handleLinkPartner,
     handleUnlinkPartner,
   };
 };

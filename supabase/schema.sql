@@ -555,6 +555,13 @@ CREATE TRIGGER on_auth_user_created
 -- FUNCTIONS
 -- ============================================================
 
+-- Household linking is BY CODE ONLY. `link_partner_by_email` used to exist
+-- beside `link_partner_by_code` and linked two accounts on one person's say-so
+-- — anyone who knew a Covault user's email address could attach themselves to
+-- that account and read its spending. It was dropped by
+-- 2026_09_drop_email_linking.sql and must not come back: the code lives on the
+-- other person's screen, so asking for it is the consent.
+
 -- What time it is, according to the database.
 --
 -- The trial is a date, and the app used to compare it against the phone's own

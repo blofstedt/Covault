@@ -62,9 +62,12 @@ describe('a trigger function is not an endpoint', () => {
 
 describe('the partner RPCs', () => {
   it('are closed to anonymous callers', () => {
+    // link_partner_by_email is deliberately absent: it linked two accounts on
+    // one person's say-so and was dropped by 2026_09_drop_email_linking.sql.
+    // Its grants are still in this older migration's text, which is why the
+    // list here names only the two that survive.
     for (const fn of [
       'public.link_partner_by_code(text)',
-      'public.link_partner_by_email(text)',
       'public.unlink_partner()',
     ]) {
       expect(migration).toContain(`REVOKE ALL ON FUNCTION ${fn} FROM PUBLIC`);
@@ -78,7 +81,6 @@ describe('the partner RPCs', () => {
     // failing with a permission error for every user.
     for (const fn of [
       'public.link_partner_by_code(text)',
-      'public.link_partner_by_email(text)',
       'public.unlink_partner()',
     ]) {
       expect(migration).toContain(`GRANT EXECUTE ON FUNCTION ${fn} TO authenticated`);

@@ -31,7 +31,6 @@ export const useUserData = ({
   const {
     handleGenerateLinkCode,
     handleJoinWithCode,
-    handleLinkPartner,
     handleUnlinkPartner,
   } = useHouseholdLinking({ appState, setAppState, setDbError });
 
@@ -50,7 +49,6 @@ export const useUserData = ({
     handleAddTransaction,
     handleUpdateTransaction,
     handleDeleteTransaction,
-    handleLinkPartner,
     handleUnlinkPartner,
     handleGenerateLinkCode,
     handleJoinWithCode,

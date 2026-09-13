@@ -6,37 +6,70 @@ import ConfirmModal from '../../ui/ConfirmModal';
 
 interface VaultSharingSectionProps {
   user: DashboardUser | null | undefined;
-  isLinkingPartner: boolean;
-  partnerLinkEmail: string;
-  onChangePartnerLinkEmail: (value: string) => void;
-  onConnectPartner: () => void;
+  /** Mints a fresh code on this account and returns it to show. */
+  onGenerateLinkCode: () => Promise<string | null>;
+  /** Claims the code the partner read out. */
+  onJoinWithCode: (code: string) => Promise<{ ok: boolean; message?: string }>;
   onDisconnectPartner: () => void;
-  onToggleLinkingPartner: (value: boolean) => void;
 }
 
+/**
+ * Linking two households, by a code one of them reads out to the other.
+ *
+ * There used to be a second route here: type your partner's email address and
+ * both accounts were linked on the spot. Nobody was asked and nobody was told,
+ * so anyone who knew a Covault user's email could attach themselves to that
+ * account and read its transactions and budgets. It is gone.
+ *
+ * The code is the whole mechanism and the whole consent: it exists only on the
+ * other person's screen, so there is no way to get one without asking them for
+ * it, and asking IS the permission.
+ */
 const VaultSharingSection: React.FC<VaultSharingSectionProps> = ({
   user,
-  isLinkingPartner,
-  partnerLinkEmail,
-  onChangePartnerLinkEmail,
-  onConnectPartner,
+  onGenerateLinkCode,
+  onJoinWithCode,
   onDisconnectPartner,
-  onToggleLinkingPartner,
 }) => {
-  // Disconnecting ran on a single tap. It is not a display preference: it
-  // clears the link in BOTH households, so the partner stops seeing the shared
-  // budget at the same moment, and putting it back means one of them sending a
-  // request and the other accepting it. Rendered inline rather than through a
-  // Portal, the way the account-deletion confirmation beside it is — the
-  // settings sheet is itself a z-[110] overlay, so an overlay inside it is
-  // already above everything that matters.
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+  const [myCode, setMyCode] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [entered, setEntered] = useState('');
+  const [joining, setJoining] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
+
+  const handleShowCode = async () => {
+    setGenerating(true);
+    setJoinError(null);
+    try {
+      setMyCode(await onGenerateLinkCode());
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleJoin = async () => {
+    const code = entered.trim().toUpperCase();
+    if (!code || joining) return;
+    setJoining(true);
+    setJoinError(null);
+    try {
+      const result = await onJoinWithCode(code);
+      if (!result.ok) {
+        setJoinError(result.message || 'That code is not valid.');
+        return;
+      }
+      setEntered('');
+    } finally {
+      setJoining(false);
+    }
+  };
 
   return (
     <SettingsCard id="settings-sharing-container" className="space-y-4">
       <SectionHeader
         title="Vault Sharing"
-        subtitle="Connect with a partner to view and manage your combined budget."
+        subtitle="Share one budget with your partner. One of you shows a code, the other enters it."
       />
 
       {user?.partnerEmail ? (
@@ -76,7 +109,7 @@ const VaultSharingSection: React.FC<VaultSharingSectionProps> = ({
           {confirmDisconnect && (
             <ConfirmModal
               title="Disconnect your partner?"
-              message={`You and ${user.partnerEmail} would stop seeing each other's transactions and budgets straight away. Nothing is deleted — but reconnecting means sending a new request and having it accepted.`}
+              message={`You and ${user.partnerEmail} would stop seeing each other's transactions and budgets straight away. Nothing is deleted — but reconnecting means one of you showing a code and the other entering it again.`}
               confirmLabel="Disconnect"
               cancelLabel="Stay connected"
               variant="danger"
@@ -89,44 +122,56 @@ const VaultSharingSection: React.FC<VaultSharingSectionProps> = ({
           )}
         </div>
       ) : (
-        <div className="space-y-4">
-          {isLinkingPartner ? (
-            <div className="space-y-3 animate-in slide-in-from-top-2 duration-300">
-              <input
-                autoFocus
-                type="email"
-                placeholder="Partner's email..."
-                value={partnerLinkEmail}
-                onChange={(e) => onChangePartnerLinkEmail(e.target.value)}
-                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl py-4 px-5 text-sm font-bold text-slate-600 dark:text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
-              />
-              <div className="flex space-x-2">
-                <button
-                  disabled={!partnerLinkEmail.includes('@')}
-                  onClick={onConnectPartner}
-                  className="flex-1 py-4 bg-emerald-600 text-white text-xs font-semibold rounded-2xl shadow-lg shadow-emerald-500/10 active:scale-[0.97] transition-all duration-200 tracking-wide disabled:opacity-30"
-                >
-                  Send Request
-                </button>
-                <button
-                  onClick={() => {
-                    onToggleLinkingPartner(false);
-                    onChangePartnerLinkEmail('');
-                  }}
-                  className="px-6 py-4 bg-slate-100 dark:bg-slate-700 text-slate-400 text-xs font-semibold rounded-2xl active:scale-[0.97] transition-all duration-200 tracking-wide"
-                >
-                  Cancel
-                </button>
-              </div>
+        <div className="space-y-3">
+          {/* ── Your code, for the partner to type ── */}
+          {myCode ? (
+            <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-emerald-200 dark:border-emerald-800/40 text-center space-y-1.5 animate-in fade-in duration-300">
+              <p className="text-[10px] font-semibold tracking-widest uppercase text-slate-400 dark:text-slate-500">
+                Your code
+              </p>
+              <p className="text-2xl font-bold tracking-[0.2em] text-emerald-600 dark:text-emerald-400">
+                {myCode}
+              </p>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-snug">
+                Read this out to your partner and have them enter it on their phone.
+                It works once.
+              </p>
             </div>
           ) : (
             <button
-              onClick={() => onToggleLinkingPartner(true)}
-              className="w-full py-5 bg-white dark:bg-slate-900 border-2 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-semibold rounded-2xl hover:bg-emerald-50 transition-all duration-200 tracking-wide shadow-sm active:scale-[0.97]"
+              onClick={handleShowCode}
+              disabled={generating}
+              className="w-full py-5 bg-white dark:bg-slate-900 border-2 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-semibold rounded-2xl hover:bg-emerald-50 dark:hover:bg-emerald-900/10 transition-all duration-200 tracking-wide shadow-sm active:scale-[0.97] disabled:opacity-50"
             >
-              + Link a Partner
+              {generating ? 'Getting your code…' : 'Show my code'}
             </button>
           )}
+
+          {/* ── Their code, for you to type ── */}
+          <div className="space-y-2">
+            <input
+              inputMode="text"
+              autoCapitalize="characters"
+              placeholder="Enter your partner's code"
+              value={entered}
+              onChange={(e) => { setEntered(e.target.value.toUpperCase()); setJoinError(null); }}
+              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl py-4 px-5 text-sm font-bold tracking-[0.15em] text-center text-slate-600 dark:text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/20 placeholder:tracking-normal placeholder:font-semibold"
+            />
+            {entered.trim().length > 0 && (
+              <button
+                onClick={handleJoin}
+                disabled={joining}
+                className="w-full py-4 bg-emerald-600 text-white text-xs font-semibold rounded-2xl shadow-lg shadow-emerald-500/10 active:scale-[0.97] transition-all duration-200 tracking-wide disabled:opacity-40 animate-in fade-in duration-200"
+              >
+                {joining ? 'Linking…' : 'Link with this code'}
+              </button>
+            )}
+            {joinError && (
+              <p className="text-[11px] font-semibold text-rose-500 leading-snug px-1">
+                {joinError}
+              </p>
+            )}
+          </div>
         </div>
       )}
     </SettingsCard>

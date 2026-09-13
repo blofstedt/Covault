@@ -51,7 +51,14 @@ interface OnboardingProps {
    * not. It now does exactly what Vault Sharing does — the same database
    * handshake — so the promise on the button is the thing that happens.
    */
-  onLinkPartner?: (partnerEmail: string) => Promise<{ ok: boolean; message?: string }>;
+  /**
+   * Linking is code-only. An email route used to exist and linked both
+   * accounts on one person's say-so, which meant anyone who knew a Covault
+   * user's email address could attach themselves to it. The code lives on the
+   * other person's screen, so asking for it IS the permission.
+   */
+  onGenerateLinkCode?: () => Promise<string | null>;
+  onJoinWithCode?: (code: string) => Promise<{ ok: boolean; message?: string }>;
 }
 
 const STEPS = [
@@ -128,14 +135,16 @@ const StepWrapper = ({ children, className = "" }: { children?: React.ReactNode,
   </div>
 );
 
-const Onboarding: React.FC<OnboardingProps> = ({ onComplete, setup, onLinkPartner }) => {
+const Onboarding: React.FC<OnboardingProps> = ({ onComplete, setup, onGenerateLinkCode, onJoinWithCode }) => {
   // Which named step we are on. The three opening slides are all `intro`; which
   // slide is `slide` below, and is deliberately not persisted — resuming to
   // slide two of three is not worth a write per tap.
   const [step, setStep] = useState<OnboardingStepId>('intro');
   const [slide, setSlide] = useState(0);
   const [solo, setSolo] = useState(true);
-  const [partnerEmail, setPartnerEmail] = useState('');
+  const [partnerCode, setPartnerCode] = useState('');
+  const [myCode, setMyCode] = useState<string | null>(null);
+  const [generatingCode, setGeneratingCode] = useState(false);
   // Only set when the link actually went through. An address typed and then
   // skipped past is not a partner, and recording it would tell the user their
   // vault was shared when it is not — the exact lie this step used to tell.
@@ -207,17 +216,28 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete, setup, onLinkPartne
     goTo(nextStep('who', { solo: true }), true);
   };
 
+  const handleShowMyCode = async () => {
+    if (!onGenerateLinkCode || generatingCode) return;
+    setGeneratingCode(true);
+    setLinkError(null);
+    try {
+      setMyCode(await onGenerateLinkCode());
+    } finally {
+      setGeneratingCode(false);
+    }
+  };
+
   const handleFinishCouples = async () => {
     if (linking) return;
-    const email = partnerEmail.trim();
-    if (!email) return;
+    const code = partnerCode.trim().toUpperCase();
+    if (!code) return;
 
     // No linker passed (the web build, or a test): carry on rather than block.
     // The intro is not the only route to this — Vault Sharing does the same
     // thing — so a step that cannot link must never be a step that traps.
-    if (!onLinkPartner) {
+    if (!onJoinWithCode) {
       if (!setup) {
-        finish(false, email);
+        finish(false, undefined);
         return;
       }
       goTo(nextStep('partner', { solo: false }), false);
@@ -226,19 +246,21 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete, setup, onLinkPartne
 
     setLinking(true);
     setLinkError(null);
-    const result = await onLinkPartner(email);
+    const result = await onJoinWithCode(code);
     setLinking(false);
 
     if (!result.ok) {
-      // Stay on the step. The common failure is a partner who has not signed
-      // up yet, and the answer to that is to carry on alone and link later —
-      // which is what the button below now says.
-      setLinkError(result.message || 'Could not link that account.');
+      // Stay on the step. The common failure is a code that has been used or
+      // mistyped, and the answer to that is to ask for a fresh one — or carry
+      // on alone, which is what the button below says.
+      setLinkError(result.message || 'That code is not valid.');
       return;
     }
-    setLinkedEmail(email);
+    // The partner's own email comes back on the linked user object once the
+    // next load lands; the intro does not need it to move on.
+    setLinkedEmail(undefined);
     if (!setup) {
-      finish(false, email);
+      finish(false, undefined);
       return;
     }
     goTo(nextStep('partner', { solo: false }), false);
@@ -363,14 +385,20 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete, setup, onLinkPartne
     );
   }
 
-  // STEP: PARTNER EMAIL (for couples)
+  // STEP: PARTNER CODE (for couples)
+  //
+  // A code, not an email. The code exists on the other person's screen, so
+  // there is no way to get one without asking them for it — and the asking is
+  // the consent. An email address is something you can know without their
+  // knowing you know it.
   if (step === 'partner') {
     return (
-      <StepWrapper className="justify-center text-center space-y-12">
+      <StepWrapper className="justify-center text-center space-y-10">
         <div className="space-y-4 animate-nest">
           <h2 className="text-4xl font-bold text-slate-600 dark:text-slate-100 tracking-tight">Link Partner</h2>
           <p className="text-slate-400 dark:text-slate-500 font-medium tracking-wide text-xs">
-            Enter the email they use for Covault. They need an account already — this joins the two of you now.
+            One of you shows a code, the other types it in. Whoever already has
+            Covault open can show theirs.
           </p>
         </div>
 
@@ -378,11 +406,12 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete, setup, onLinkPartne
            <div className="relative flex flex-col items-center">
              <input
               autoFocus
-              type="email"
-              placeholder="partner@example.com"
-              value={partnerEmail}
-              onChange={e => setPartnerEmail(e.target.value)}
-              className="w-full bg-transparent border-b-2 border-slate-200 dark:border-slate-800 py-6 text-2xl font-black text-slate-500 dark:text-slate-100 placeholder-slate-200 dark:placeholder-slate-800 outline-none text-center focus:border-emerald-500 transition-all"
+              inputMode="text"
+              autoCapitalize="characters"
+              placeholder="THEIR CODE"
+              value={partnerCode}
+              onChange={e => { setPartnerCode(e.target.value.toUpperCase()); setLinkError(null); }}
+              className="w-full bg-transparent border-b-2 border-slate-200 dark:border-slate-800 py-6 text-2xl font-black tracking-[0.25em] text-slate-500 dark:text-slate-100 placeholder-slate-200 dark:placeholder-slate-800 outline-none text-center focus:border-emerald-500 transition-all"
             />
            </div>
 
@@ -393,12 +422,37 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete, setup, onLinkPartne
            )}
 
            <button
-              disabled={!partnerEmail.includes('@') || linking}
+              disabled={partnerCode.trim().length === 0 || linking}
               onClick={handleFinishCouples}
               className="w-full py-6 bg-emerald-600 text-white rounded-[2rem] font-semibold text-lg shadow-2xl shadow-emerald-500/20 active:scale-[0.97] disabled:opacity-30 transition-all duration-200 tracking-wide"
             >
               {linking ? 'Linking…' : 'Link Partner'}
             </button>
+
+           {/* The other side of the same exchange, for whoever got here first. */}
+           {onGenerateLinkCode && (
+             myCode ? (
+               <div className="space-y-1.5 animate-in fade-in duration-300">
+                 <p className="text-[10px] font-semibold tracking-widest uppercase text-slate-400 dark:text-slate-500">
+                   Your code
+                 </p>
+                 <p className="text-3xl font-bold tracking-[0.2em] text-emerald-600 dark:text-emerald-400">
+                   {myCode}
+                 </p>
+                 <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-snug px-4">
+                   Read this to your partner instead. It works once.
+                 </p>
+               </div>
+             ) : (
+               <button
+                 onClick={handleShowMyCode}
+                 disabled={generatingCode}
+                 className="text-slate-400 dark:text-slate-600 font-medium text-[10px] tracking-wide hover:text-emerald-500 transition-colors disabled:opacity-50"
+               >
+                 {generatingCode ? 'Getting your code…' : 'Or show them my code instead'}
+               </button>
+             )
+           )}
         </div>
 
         <button

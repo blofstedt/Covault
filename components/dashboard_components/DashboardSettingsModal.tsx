@@ -54,17 +54,14 @@ export interface DashboardSettingsModalProps {
   isSharedAccount: boolean;
   settings: DashboardSettings;
   user: DashboardUser | null | undefined;
-  isLinkingPartner: boolean;
-  partnerLinkEmail: string;
+  onGenerateLinkCode: () => Promise<string | null>;
+  onJoinWithCode: (code: string) => Promise<{ ok: boolean; message?: string }>;
   budgets: BudgetCategory[];
   transactions: Transaction[];
-  onChangePartnerLinkEmail: (value: string) => void;
   onClose: () => void;
   onUpdateSettings: (key: string, value: any) => void;
   onUpdateUserIncome: (income: number) => void;
-  onConnectPartner: () => void;
   onDisconnectPartner: () => void;
-  onToggleLinkingPartner: (value: boolean) => void;
   onSignOut: () => void;
   onDeleteAccount: () => Promise<void>;
   onSaveBudgetLimit: (categoryId: string, newLimit: number) => void;
@@ -85,17 +82,14 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
   isSharedAccount,
   settings,
   user,
-  isLinkingPartner,
-  partnerLinkEmail,
+  onGenerateLinkCode,
+  onJoinWithCode,
   budgets,
   transactions,
-  onChangePartnerLinkEmail,
   onClose,
   onUpdateSettings,
   onUpdateUserIncome,
-  onConnectPartner,
   onDisconnectPartner,
-  onToggleLinkingPartner,
   onSignOut,
   onDeleteAccount,
   onSaveBudgetLimit,
@@ -275,12 +269,9 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
           <div data-tour="settings-sharing">
           <VaultSharingSection
             user={user}
-            isLinkingPartner={isLinkingPartner}
-            partnerLinkEmail={partnerLinkEmail}
-            onChangePartnerLinkEmail={onChangePartnerLinkEmail}
-            onConnectPartner={onConnectPartner}
+            onGenerateLinkCode={onGenerateLinkCode}
+            onJoinWithCode={onJoinWithCode}
             onDisconnectPartner={onDisconnectPartner}
-            onToggleLinkingPartner={onToggleLinkingPartner}
           />
           </div>
 

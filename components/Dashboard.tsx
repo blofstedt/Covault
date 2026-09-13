@@ -89,7 +89,10 @@ interface Props {
   saveTheme: (theme: 'light' | 'dark') => Promise<void>;
   saveBudgetVisibility: (categoryId: string, visible: boolean) => Promise<void>;
   saveSettingToDb: (dbKey: string, value: boolean | string | number) => Promise<void>;
-  onLinkPartner: (partnerEmail: string) => Promise<{ ok: boolean; message?: string }>;
+  /** Mints a fresh link code on this account. Linking is code-only — see
+   *  VaultSharingSection for why an email route no longer exists. */
+  onGenerateLinkCode: () => Promise<string | null>;
+  onJoinWithCode: (code: string) => Promise<{ ok: boolean; message?: string }>;
   onUnlinkPartner: () => Promise<void>;
   onRefreshNotifications?: () => Promise<void>;
   onReloadTransactions?: (userId: string) => Promise<void>;
@@ -119,7 +122,8 @@ const Dashboard: React.FC<Props> = ({
   saveTheme,
   saveBudgetVisibility,
   saveSettingToDb,
-  onLinkPartner,
+  onGenerateLinkCode,
+  onJoinWithCode,
   onUnlinkPartner,
   onRefreshNotifications,
   onReloadTransactions,
@@ -146,8 +150,6 @@ const Dashboard: React.FC<Props> = ({
   // happens while the app is simply open, at a quiet moment on a connection
   // that is not metered — see useAIModelOnDevice.
   const aiModel = useAIModelOnDevice(true);
-  const [isLinkingPartner, setIsLinkingPartner] = useState(false);
-  const [partnerLinkEmail, setPartnerLinkEmail] = useState('');
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [showTransactionForm, setShowTransactionForm] = useState(false);
   /** The walkthrough, reopened from Settings. */
@@ -1010,11 +1012,10 @@ const Dashboard: React.FC<Props> = ({
           isSharedAccount={!state.user?.budgetingSolo}
           settings={state.settings}
           user={state.user}
-          isLinkingPartner={isLinkingPartner}
-          partnerLinkEmail={partnerLinkEmail}
+          onGenerateLinkCode={onGenerateLinkCode}
+          onJoinWithCode={onJoinWithCode}
           budgets={state.budgets}
           transactions={normalizedTransactions}
-          onChangePartnerLinkEmail={setPartnerLinkEmail}
           onClose={() => {
             setShowSettings(false);
             setSettingsTarget(undefined);
@@ -1027,9 +1028,7 @@ const Dashboard: React.FC<Props> = ({
           }}
           onUpdateSettings={handleUpdateSettings}
           onUpdateUserIncome={(income) => saveUserIncome(income)}
-          onConnectPartner={() => onLinkPartner(partnerLinkEmail)}
           onDisconnectPartner={onUnlinkPartner}
-          onToggleLinkingPartner={setIsLinkingPartner}
           onSignOut={onSignOut}
           onDeleteAccount={onDeleteAccount}
           onSaveBudgetLimit={saveBudgetLimit}

@@ -172,10 +172,14 @@ describe('the partner step', () => {
     // It said "Send Invite" and sent nothing: the address was kept in memory,
     // no email was composed, and the partner was never told. Whoever used it
     // believed their household was shared and it was not.
-    expect(ONBOARDING).toContain('onLinkPartner');
-    // The button now says what happens, and does it.
+    //
+    // Then it did link — but on the strength of an email address alone, which
+    // is worse: the OTHER person was never asked. It takes a code now, which
+    // only exists on their screen. See linkingIsByCodeOnly.test.ts.
+    expect(ONBOARDING).toContain('onJoinWithCode');
+    // The button still says what happens, and still does it.
     expect(ONBOARDING).toContain("'Linking…' : 'Link Partner'");
-    expect(ONBOARDING).toContain('await onLinkPartner(email)');
+    expect(ONBOARDING).toContain('await onJoinWithCode(code)');
   });
 
   it('stays on the step and says why when the link fails', () => {

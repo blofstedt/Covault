@@ -146,6 +146,10 @@ const DEMO_ENTRY = { vendor: 'Second Cup', amount: 9.51, recurrence: Recurrence.
 
 const NOOP = () => {};
 const ASYNC_NOOP = async () => {};
+// The tour is a walkthrough on fake data — it shows the sharing card without
+// ever linking anything.
+const DEMO_LINK_CODE = async () => 'DEMO12';
+const DEMO_JOIN = async () => ({ ok: false, message: 'Not available in the tour.' });
 const NO_EXPANDED: Set<string> = new Set();
 
 /** Enough of the settings shape for the menu to draw itself. */
@@ -381,17 +385,14 @@ const TourDemoScreen: React.FC<TourDemoScreenProps> = ({ stage = 'home' }) => {
           isSharedAccount={false}
           settings={DEMO_SETTINGS}
           user={demoUser}
-          isLinkingPartner={false}
-          partnerLinkEmail=""
+          onGenerateLinkCode={DEMO_LINK_CODE}
+          onJoinWithCode={DEMO_JOIN}
           budgets={budgets}
           transactions={thisMonthTransactions}
-          onChangePartnerLinkEmail={NOOP}
           onClose={NOOP}
           onUpdateSettings={NOOP}
           onUpdateUserIncome={NOOP}
-          onConnectPartner={NOOP}
           onDisconnectPartner={NOOP}
-          onToggleLinkingPartner={NOOP}
           onSignOut={NOOP}
           onDeleteAccount={ASYNC_NOOP}
           onSaveBudgetLimit={NOOP}
