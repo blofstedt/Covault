@@ -225,7 +225,15 @@ final class WidgetRenderer {
         // entirely at zero — an always-present "0 to review" is noise.
         int pending = snapshot.optInt("pendingReview", 0);
         if (pending > 0) {
-            drawReviewPill(canvas, pending, widthPx, pad, headerSize, dp, p);
+            // The header's OPTICAL centre, not half its point size. A text's
+            // glyphs do not straddle its baseline evenly — most of a capital
+            // sits above it and only the descenders fall below — so centring
+            // the pill on `pad + headerSize / 2` put it a couple of dp above
+            // the word it sits beside, which is the sort of gap that reads as
+            // "something is off" without being nameable.
+            Paint.FontMetrics hm = text.getFontMetrics();
+            float headerCentre = pad + headerSize + ((hm.ascent + hm.descent) / 2f);
+            drawReviewPill(canvas, pending, widthPx, pad, headerCentre, dp, p);
         }
 
         // ── Composition ──
@@ -568,7 +576,7 @@ final class WidgetRenderer {
         // different thing about the same month.
         if (legendWidth > 0) {
             if (monthText > 0f) {
-                drawLegend(canvas, snapshot, slices, legendLeft, legendWidth,
+                drawLegend(context, canvas, snapshot, slices, legendLeft, legendWidth,
                     availTop, availH, dp, p, monthText);
             }
             if (focused != null && focusedText > 0f) {
@@ -801,7 +809,8 @@ final class WidgetRenderer {
      * fixed count, so a short widget shows two and a tall one shows four —
      * nothing is ever half-drawn at the bottom edge.
      */
-    private static void drawLegend(Canvas canvas, JSONObject snapshot, List<Slice> slices,
+    private static void drawLegend(Context context, Canvas canvas, JSONObject snapshot,
+                                   List<Slice> slices,
                                    float left, float width,
                                    float top, float height, float dp, Palette p,
                                    float alpha) {
@@ -905,7 +914,15 @@ final class WidgetRenderer {
         // top — with the figure above, the block now sits under it.
         float y = legendTop + (legendHeight - (rows * rowH)) / 2f;
 
+        // The mark at the head of each row. It was a plain coloured dot, which
+        // is a legend for a chart; the ring's own bands already carry the
+        // category icons, and the app's transaction rows carry them too, so a
+        // dot was the one place in the whole product where a category was
+        // represented by nothing but a colour. `dot` stays as the geometry the
+        // row is laid out against — the icon is drawn into a disc of the same
+        // size — so nothing about the row's spacing changes.
         float dot = 5.5f * dp;
+        float markRadius = 8.5f * dp;
         Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
         fill.setStyle(Paint.Style.FILL);
 
@@ -926,9 +943,8 @@ final class WidgetRenderer {
             Slice s = slices.get(i);
             float baseline = y + (rowH / 2f) + (4f * dp);
 
-            fill.setColor(s.color);
-            fill.setAlpha(alpha255(alpha));
-            canvas.drawCircle(left + dot, y + (rowH / 2f), dot, fill);
+            drawCategoryMark(context, canvas, fill, s.name, s.color,
+                left + dot, y + (rowH / 2f), markRadius, alpha, p);
 
             String value = money(s.amount);
             float valueW = amount.measureText(value);
@@ -960,7 +976,9 @@ final class WidgetRenderer {
             hollow.setStrokeWidth(Math.max(1f, 1.4f * dp));
             hollow.setColor(p.secondary);
             hollow.setAlpha(alpha255(alpha * 0.7f));
-            canvas.drawCircle(left + dot, y + (rowH / 2f), dot - (0.7f * dp), hollow);
+            // Sized to the icon discs above it rather than to the old dot, so
+            // the column of marks lines up down its own left edge.
+            canvas.drawCircle(left + dot, y + (rowH / 2f), markRadius - (0.7f * dp), hollow);
 
             name.setColor(p.secondary);
             String label = "+" + (slices.size() - shown) + " more";
@@ -999,7 +1017,7 @@ final class WidgetRenderer {
 
     private static void drawReviewPill(
         Canvas canvas, int pending, int widthPx, float pad,
-        float headerSize, float dp, Palette p
+        float centreY, float dp, Palette p
     ) {
         boolean dark = p == DARK;
         Paint pill = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -1024,14 +1042,22 @@ final class WidgetRenderer {
 
         float padX = 8f * dp;
         float padY = 4.5f * dp;
-        float h = label.getTextSize() + (padY * 2);
+
+        // Measured, not estimated. The height used to be the text's point size
+        // plus padding, and the baseline inside it `0.82 * size` down from the
+        // top — both guesses at what the font actually does, and both slightly
+        // wrong in the same direction, so the label rode high inside a pill
+        // that was itself a little too short for it.
+        Paint.FontMetrics lm = label.getFontMetrics();
+        float textH = lm.descent - lm.ascent;
+        float h = textH + (padY * 2);
         float right = widthPx - pad;
         float left = right - textW - (padX * 2);
-        float top = pad + (headerSize / 2f) - (h / 2f);
+        float top = centreY - (h / 2f);
 
         RectF box = new RectF(left, top, right, top + h);
         canvas.drawRoundRect(box, h / 2f, h / 2f, pill);
-        canvas.drawText(text, left + padX, top + padY + label.getTextSize() * 0.82f, label);
+        canvas.drawText(text, left + padX, top + padY - lm.ascent, label);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────
@@ -1089,6 +1115,38 @@ final class WidgetRenderer {
     }
 
     /**
+     * A category's icon in a disc of its own colour, for a legend row.
+     *
+     * The same mark the ring's arcs wear, so a row and its band are obviously
+     * the same thing. Falls back to the filled disc on its own when the
+     * drawable will not resolve — which is exactly what the row used to be, so
+     * the worst case is the old appearance rather than an empty space.
+     */
+    private static void drawCategoryMark(Context context, Canvas canvas, Paint fill,
+                                         String name, int color,
+                                         float cx, float cy, float radius,
+                                         float alpha, Palette p) {
+        fill.setColor(color);
+        fill.setAlpha(alpha255(alpha));
+        canvas.drawCircle(cx, cy, radius, fill);
+        fill.setAlpha(255);
+
+        Drawable icon = iconFor(context, name);
+        if (icon == null) return;
+        // mutate() first, for the reason the arc chips give: the colour filter
+        // would otherwise leak into the shared constant state and tint every
+        // other user of the same resource.
+        icon = icon.mutate();
+        icon.setColorFilter(p.surface, PorterDuff.Mode.SRC_IN);
+        icon.setAlpha(alpha255(alpha));
+        int glyph = (int) Math.max(6f, radius * 1.15f);
+        icon.setBounds(
+            (int) (cx - glyph / 2f), (int) (cy - glyph / 2f),
+            (int) (cx + glyph / 2f), (int) (cy + glyph / 2f));
+        icon.draw(canvas);
+    }
+
+    /**
      * Resolved by name so a missing drawable degrades to a plain colour chip
      * rather than throwing inside a widget update, which the launcher would
      * surface as "Problem loading widget".
@@ -1096,11 +1154,24 @@ final class WidgetRenderer {
     private static Drawable iconFor(Context context, String category) {
         String lower = category == null ? "" : category.toLowerCase(Locale.US);
         String res;
+        // Shopping, Personal and Travel used to fall through to the generic
+        // icon — three of the ten categories wearing the same mark as "Other"
+        // while the app gave each of them its own. Their drawables are the
+        // app's own paths, converted.
+        //
+        // The order below is getBudgetIcon()'s order, deliberately, down to
+        // "services" being last. These are `contains` tests, so a household
+        // that renames a category to something matching two of them ("Personal
+        // Services") gets whichever comes first — and the phone answering that
+        // differently from the app is the sort of drift nothing would catch.
         if (lower.contains("housing")) res = "ic_budget_housing";
         else if (lower.contains("groceries")) res = "ic_budget_groceries";
         else if (lower.contains("transport")) res = "ic_budget_transport";
-        else if (lower.contains("utilities")) res = "ic_budget_utilities";
         else if (lower.contains("leisure") || lower.contains("dining")) res = "ic_budget_leisure";
+        else if (lower.contains("utilities")) res = "ic_budget_utilities";
+        else if (lower.contains("shopping")) res = "ic_budget_shopping";
+        else if (lower.contains("personal")) res = "ic_budget_personal";
+        else if (lower.contains("travel")) res = "ic_budget_travel";
         else if (lower.contains("services")) res = "ic_budget_services";
         else res = "ic_budget_other";
         try {
