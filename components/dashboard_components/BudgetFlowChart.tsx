@@ -633,10 +633,14 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
     });
   }, [highlightedBudgetName, categoryNames, highlightedCatColor, theme]);
 
-  // No data fallback
+  // No data fallback.
+  //
+  // mb-1, not mb-2: this card stands in the chart's slot, so it has to leave
+  // the same gap above the vials. See the rhythm note in
+  // DashboardBalanceSection.tsx.
   if (chartData.length === 0) {
     return (
-      <div id="spending-flow-chart" className="w-full mb-2">
+      <div id="spending-flow-chart" className="w-full mb-1">
         <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-md rounded-3xl p-4 border-2 border-slate-100 dark:border-slate-800 shadow-lg">
           <div className="mb-3">
             <h3 className="text-[10px] font-semibold tracking-wide text-slate-400 dark:text-slate-500">

@@ -322,10 +322,35 @@ const EMAILISH_RE = /\b(?:e-?mail|mail|inbox|webmail)\b/i;
 /**
  * Everything the picker should show, from what is installed on the phone.
  *
- * Recognised banks and mail apps first; anything unrecognised that looks
- * financial or mail-shaped is offered separately so the user can approve it.
- * Matching is on the app's own name — no notification is ever read to decide,
- * so nothing about an unapproved app's contents is examined.
+ * ONLY apps Covault recognises — the ~350 banks and the mail apps it knows by
+ * name. It used to also offer any installed app whose NAME looked financial or
+ * mail-shaped, marked with an amber "?" for the user to approve or ignore.
+ * That is gone, for two reasons.
+ *
+ * It could not work on a Play install anyway. Google does not allow an app to
+ * ask what else is on the phone, so the Play build replaces that permission
+ * with an explicit list of the packages it knows (scripts/play-manifest.mjs) —
+ * which means `installed` can only ever contain recognised apps there, and the
+ * "?" was structurally impossible. Leaving the code in made the sideloaded
+ * build behave differently from the one people download, on the single screen
+ * that decides whether anything gets captured at all.
+ *
+ * And a guess from an app's name is a poor thing to put in front of someone.
+ * "Mail & Money" is bank-shaped; so is a mortgage calculator. The user is
+ * being asked to approve something Covault itself cannot vouch for, on a
+ * screen where the wrong answer means a firehose of notifications.
+ *
+ * What it costs, plainly: a bank Covault has never heard of can no longer be
+ * approved from this screen. Capture itself is unaffected — a notification
+ * listener hears every app regardless — but nothing will read that bank's
+ * alerts until its package is added to lib/bankingApps.ts. That was already
+ * true of every Play install; now it is true of both.
+ *
+ * The one exception is an app the user ALREADY approved under the old
+ * behaviour. It keeps its place in the list, "?" and all, so it can be
+ * switched off — dropping it would leave a monitored app with nothing on
+ * screen to turn it off with, which is the silent kind of wrong this app has
+ * been bitten by before.
  */
 export function buildSourceOptions(
   installed: Array<{ packageName: string; name: string }>,
@@ -333,10 +358,13 @@ export function buildSourceOptions(
   const seen = new Set<string>();
   const out: CaptureSourceOption[] = [];
 
-  // Unrecognised apps whose NAME looks financial. Reuses the existing bank
-  // suggestion rule rather than restating it, so the two can never disagree
-  // about what counts as bank-shaped.
-  const unknownBanks = new Set(
+  // Only ever to keep a past approval visible — never to make a new offer.
+  const alreadyApproved = new Set(getSelectedSources().map(normalizePackage));
+
+  // Still consulted, but only to decide which HEADING a past approval sits
+  // under. Reusing the real rule rather than restating it means the two can
+  // never disagree about what counts as bank-shaped.
+  const bankShaped = new Set(
     suggestUnknownBankApps(installed || []).map((app) => normalizePackage(app.packageName)),
   );
 
@@ -351,16 +379,17 @@ export function buildSourceOptions(
       out.push({ packageName: pkg, name: captureSourceName(pkg) || name, kind: known, recognised: true });
       continue;
     }
-    // A name can look like both ("Mail & Money"); bank wins, matching
-    // captureSourceKind, so an app never changes kind depending on which list
-    // happened to be consulted first.
-    if (unknownBanks.has(pkg)) {
-      out.push({ packageName: pkg, name, kind: 'bank', recognised: false });
-      continue;
-    }
-    if (EMAILISH_RE.test(name)) {
-      out.push({ packageName: pkg, name, kind: 'email', recognised: false });
-    }
+    if (!alreadyApproved.has(pkg)) continue;
+
+    // A past approval only. A name can look like both ("Mail & Money"); bank
+    // wins, matching captureSourceKind, so an app never changes kind depending
+    // on which list happened to be consulted first.
+    out.push({
+      packageName: pkg,
+      name,
+      kind: bankShaped.has(pkg) || !EMAILISH_RE.test(name) ? 'bank' : 'email',
+      recognised: false,
+    });
   }
 
   out.sort((a, b) => a.name.localeCompare(b.name));

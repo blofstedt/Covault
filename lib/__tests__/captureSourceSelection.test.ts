@@ -172,15 +172,41 @@ describe('what the picker offers', () => {
     expect(byPkg['com.google.android.gm']).toMatchObject({ kind: 'email', recognised: true });
   });
 
-  it('offers unrecognised apps that look financial or mail-shaped', () => {
-    const byPkg = Object.fromEntries(buildSourceOptions(installed).map((o) => [o.packageName, o]));
-    expect(byPkg['ca.smalltown.cu']).toMatchObject({ kind: 'bank', recognised: false });
-    expect(byPkg['com.example.mailbag']).toMatchObject({ kind: 'email', recognised: false });
+  it('never offers an app it does not recognise', () => {
+    // It used to offer any installed app whose NAME looked financial or
+    // mail-shaped, with an amber "?" for the user to approve. That could never
+    // happen on a Play install — Google does not allow asking what else is on
+    // the phone, so the Play manifest names only the packages Covault knows
+    // (scripts/play-manifest.mjs) — which made the sideloaded build behave
+    // differently from the one people download, on the single screen that
+    // decides whether anything is captured at all. It is also a guess Covault
+    // cannot stand behind: "Mail & Money" is bank-shaped, and so is a mortgage
+    // calculator.
+    const packages = buildSourceOptions(installed).map((o) => o.packageName);
+    expect(packages).not.toContain('ca.smalltown.cu');
+    expect(packages).not.toContain('com.example.mailbag');
   });
 
   it('never offers an ordinary app', () => {
     const packages = buildSourceOptions(installed).map((o) => o.packageName);
     expect(packages).not.toContain('com.example.notes');
+  });
+
+  it('keeps an unrecognised app that was ALREADY approved, so it can be switched off', () => {
+    // Dropping it would leave an app that is still being monitored with
+    // nothing on screen to turn it off with — the silent kind of wrong this
+    // app has been bitten by before.
+    setSelectedSources(['ca.smalltown.cu']);
+    const byPkg = Object.fromEntries(buildSourceOptions(installed).map((o) => [o.packageName, o]));
+    expect(byPkg['ca.smalltown.cu']).toMatchObject({ kind: 'bank', recognised: false });
+    // Still no new offers alongside it.
+    expect(byPkg['com.example.mailbag']).toBeUndefined();
+  });
+
+  it('files a past approval under the heading it would have had', () => {
+    setSelectedSources(['com.example.mailbag']);
+    const byPkg = Object.fromEntries(buildSourceOptions(installed).map((o) => [o.packageName, o]));
+    expect(byPkg['com.example.mailbag']).toMatchObject({ kind: 'email', recognised: false });
   });
 
   it('offers a wallet as a bank', () => {
