@@ -284,6 +284,47 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const attention = (section: 'amount' | 'vendor' | 'vault') =>
     awaiting === section ? 'motion-safe:animate-attention-pulse' : '';
 
+  // ── Reaching for a control the form is not ready for ──
+  //
+  // The sections are filled top to bottom and each one unlocks the next, so
+  // there is always exactly one place to be. A locked control that simply
+  // ignores a tap teaches people the app is broken, so every one of them
+  // answers instead: the section still being asked for flashes its ring twice,
+  // brighter than the ambient pulse, and — where there is a cursor to place —
+  // the tap also puts it there.
+  //
+  // The counter is what makes a second tap answerable. A browser restarts a CSS
+  // animation only when the animation NAME changes, so re-rendering with the
+  // same class does nothing at all; alternating between two identically-defined
+  // keyframes (see tailwind.config.js) means every tap gets its own flash.
+  const [nudges, setNudges] = useState(0);
+  const nudgeClass =
+    nudges === 0
+      ? ''
+      : nudges % 2 === 1
+        ? 'motion-safe:animate-attention-nudge-a'
+        : 'motion-safe:animate-attention-nudge-b';
+
+  /** Say no to a tap, and point at where the form is actually waiting. */
+  const refuse = () => {
+    setNudges((n) => n + 1);
+    if (awaiting === 'amount') amountInputRef.current?.focus();
+    else if (awaiting === 'vendor') vendorInputRef.current?.focus();
+  };
+
+  /** The flash goes on the section being asked for, not on the one tapped. */
+  const nudge = (section: 'amount' | 'vendor' | 'vault') =>
+    awaiting === section ? nudgeClass : '';
+
+  // What each step is waiting on. Read once here rather than re-derived at
+  // three call sites, so a change to the order cannot half-apply.
+  const vendorUnlocked = hasAmount;
+  const vaultUnlocked = hasAmount && hasVendor;
+  const detailsUnlocked = vaultUnlocked && hasVault;
+
+  /** Greyed and inert, with the tap still answered by the caller's onClick. */
+  const LOCKED = 'opacity-40 pointer-events-none';
+
   // Closing is the same 300ms as opening, in reverse.
   //
   // A 250ms duration used to be asked for below, which is not a value
@@ -298,7 +339,11 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
         <div className="flex items-center justify-between">
           <div className="flex flex-col">
             <h2 className="text-lg font-bold text-slate-600 dark:text-slate-100 tracking-tight">
-              {initialTransaction ? 'Edit Entry' : 'New Entry'}
+              {/* "Manual Entry", not "New Entry": this modal is the one route
+                  into the app that is not a captured bank alert, and saying so
+                  is the distinction that matters to someone looking at a list
+                  where nearly everything arrived on its own. */}
+              {initialTransaction ? 'Edit Entry' : 'Manual Entry'}
             </h2>
             {isSharedAccount && (
               <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 tracking-wide mt-1">
@@ -316,7 +361,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-3">
-            <div id="tutorial-amount-field" data-tour="form-amount" className={`flex flex-col items-center justify-center py-5 bg-slate-50/50 dark:bg-slate-800/20 rounded-3xl border border-slate-100/50 dark:border-slate-800/30 ${attention('amount')}`}>
+            <div id="tutorial-amount-field" data-tour="form-amount" className={`flex flex-col items-center justify-center py-5 bg-slate-50/50 dark:bg-slate-800/20 rounded-3xl border border-slate-100/50 dark:border-slate-800/30 ${attention('amount')} ${nudge('amount')}`}>
               <div className="flex items-center justify-center space-x-1">
                 <span className={`text-xl font-black select-none ${isRefund ? 'text-emerald-400 dark:text-emerald-500' : 'text-slate-300 dark:text-slate-700'}`}>$</span>
                 <input
@@ -363,12 +408,27 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
               <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 tracking-wide">
                 Vendor
               </span>
+              {!vendorUnlocked && (
+                <span className="text-[10px] font-medium text-slate-300 dark:text-slate-600 tracking-wide">
+                  Enter the amount first
+                </span>
+              )}
             </div>
 
-            <div id="tutorial-vendor-field" data-tour="form-vendor" className={`relative rounded-2xl ${attention('vendor')}`}>
+            {/* onClick sits on the wrapper because the input inside is inert
+                while locked — a disabled control raises no click of its own,
+                so without this the tap would land on nothing. */}
+            <div
+              id="tutorial-vendor-field"
+              data-tour="form-vendor"
+              onClick={vendorUnlocked ? undefined : refuse}
+              className={`relative rounded-2xl ${attention('vendor')} ${nudge('vendor')}`}
+            >
+              <div className={`transition-opacity duration-200 ${vendorUnlocked ? 'opacity-100' : LOCKED}`}>
               <input
                 ref={vendorInputRef}
                 type="text"
+                disabled={!vendorUnlocked}
                 // The field is named by the label above now, so the placeholder
                 // is free to say what a vendor IS rather than asking where the
                 // money went — which is what it used to do, badly: it read as a
@@ -414,6 +474,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                   })}
                 </div>
               )}
+              </div>
             </div>
           </div>
 
@@ -422,20 +483,20 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
               <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 tracking-wide">
                 Target Vault
               </span>
-              {!hasVendor && (
+              {!vaultUnlocked && (
                 <span className="text-[10px] font-medium text-slate-300 dark:text-slate-600 tracking-wide">
-                  Name the vendor first
+                  {hasAmount ? 'Name the vendor first' : 'Enter the amount first'}
                 </span>
               )}
             </div>
 
-            {/* Tapping the vaults before there is a vendor puts the cursor
-                where the form is actually waiting, rather than doing nothing —
-                a dimmed control that ignores a tap teaches the user the app is
-                broken. */}
+            {/* Tapping the vaults before the form is ready puts the cursor
+                where it is actually waiting and flashes that section, rather
+                than doing nothing — a dimmed control that ignores a tap
+                teaches the user the app is broken. */}
             <div
-              onClick={hasVendor ? undefined : () => vendorInputRef.current?.focus()}
-              className={`rounded-2xl ${attention('vault')}`}
+              onClick={vaultUnlocked ? undefined : refuse}
+              className={`rounded-2xl ${attention('vault')} ${nudge('vault')}`}
             >
             {/* Equal thirds, whatever the count.
                 //
@@ -454,7 +515,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
               id="tutorial-budget-grid"
               data-tour="form-budget"
               className={`grid grid-cols-3 gap-1.5 transition-opacity duration-200 ${
-                hasVendor ? 'opacity-100' : 'opacity-40 pointer-events-none'
+                vaultUnlocked ? 'opacity-100' : LOCKED
               }`}
             >
               {vaults.map(b => {
@@ -464,7 +525,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                   <button
                     key={b.id}
                     type="button"
-                    disabled={!hasVendor}
+                    disabled={!vaultUnlocked}
                     onClick={() => toggleCategory(b.id)}
                     className={`
                       relative flex items-center justify-center p-2 rounded-2xl transition-all duration-200 border w-full aspect-square active:scale-[0.97]
@@ -489,7 +550,14 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             </div>
           </div>
 
-          <div className="space-y-3">
+          {/* Date and recurrence are last in the order, so they wait for the
+              vault the same way everything else waits for what precedes it.
+              Both already hold a sensible answer — today, and One-time — so a
+              user who never reaches them loses nothing; what the lock buys is
+              that the form is read in one direction instead of offering a
+              choice about next month before it knows what was bought. */}
+          <div className="space-y-3" onClick={detailsUnlocked ? undefined : refuse}>
+            <div className={`space-y-3 transition-opacity duration-200 ${detailsUnlocked ? 'opacity-100' : LOCKED}`}>
             {/* Styled date picker */}
             <div
               onClick={() => setShowCalendar(true)}
@@ -519,17 +587,24 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                 ))}
               </div>
             </div>
+            </div>
           </div>
 
-          <button
-            type="submit"
-            data-tour="form-save"
-            disabled={!canSubmit}
-            aria-busy={isSaving}
-            className={`w-full py-3 rounded-2xl font-semibold text-xs shadow-xl active:scale-[0.97] transition-all duration-200 tracking-wide mt-1 ${canSubmit ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 opacity-50 cursor-not-allowed'}`}
-          >
-            {isSaving ? 'Saving…' : initialTransaction ? 'Update Transaction' : 'Confirm Entry'}
-          </button>
+          {/* The wrapper is what makes a premature tap answerable at all: a
+              disabled button raises no click event, so the impatient tap on
+              Confirm — the likeliest one there is — would otherwise be the one
+              place in the form that stays silent. */}
+          <div onClick={isFormValid ? undefined : refuse}>
+            <button
+              type="submit"
+              data-tour="form-save"
+              disabled={!canSubmit}
+              aria-busy={isSaving}
+              className={`w-full py-3 rounded-2xl font-semibold text-xs shadow-xl active:scale-[0.97] transition-all duration-200 tracking-wide mt-1 ${canSubmit ? 'bg-emerald-600 text-white' : `bg-slate-100 dark:bg-slate-800 text-slate-400 opacity-50 cursor-not-allowed ${isFormValid ? '' : 'pointer-events-none'}`}`}
+            >
+              {isSaving ? 'Saving…' : initialTransaction ? 'Update Transaction' : 'Confirm Entry'}
+            </button>
+          </div>
 
           {/* Delete button only shown when editing an existing transaction */}
           {initialTransaction && onDelete && (

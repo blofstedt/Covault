@@ -41,6 +41,27 @@ export default {
           '0%, 100%': { boxShadow: '0 0 0 0 rgba(16, 185, 129, 0.0)' },
           '50%': { boxShadow: '0 0 0 4px rgba(16, 185, 129, 0.18)' },
         },
+        // The same ring, said louder: what the form does when you reach for a
+        // control it is not ready for yet. Brighter and tighter than the
+        // ambient pulse above (0.45 against 0.18, 5px against 4px) so it reads
+        // as an answer to the tap rather than as the waiting state carrying
+        // on, and it runs exactly twice — the two beats are the 0-50-100
+        // below, played through twice by the `2` in the animation shorthand.
+        //
+        // Two identical names, -a and -b, on purpose. Tapping a locked control
+        // again while this is still running has to restart it, and a browser
+        // only restarts an animation when the animation NAME changes — React
+        // re-rendering with the same class does nothing. The form alternates
+        // between the two, so every tap is answered. See `nudgeClass` in
+        // components/TransactionForm.tsx.
+        'attention-nudge-a': {
+          '0%, 100%': { boxShadow: '0 0 0 0 rgba(16, 185, 129, 0.0)' },
+          '50%': { boxShadow: '0 0 0 5px rgba(16, 185, 129, 0.45)' },
+        },
+        'attention-nudge-b': {
+          '0%, 100%': { boxShadow: '0 0 0 0 rgba(16, 185, 129, 0.0)' },
+          '50%': { boxShadow: '0 0 0 5px rgba(16, 185, 129, 0.45)' },
+        },
         // Count badge reacting to a new item. Deliberately asymmetric — a
         // quick overshoot out, a slower settle back.
         'badge-pop': {
@@ -52,6 +73,10 @@ export default {
       animation: {
         'softdup-pulse': 'softdup-pulse 2.4s ease-in-out infinite',
         'attention-pulse': 'attention-pulse 2.4s cubic-bezier(0.32, 0.72, 0.24, 1) infinite',
+        // 320ms per beat, twice — the app's one duration and one curve, the
+        // same clock the budget expand and the chart run on.
+        'attention-nudge-a': 'attention-nudge-a 320ms cubic-bezier(0.32, 0.72, 0.24, 1) 2',
+        'attention-nudge-b': 'attention-nudge-b 320ms cubic-bezier(0.32, 0.72, 0.24, 1) 2',
         'badge-pop': 'badge-pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1)',
       },
     },

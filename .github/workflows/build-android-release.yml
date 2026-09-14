@@ -36,7 +36,19 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm install --legacy-peer-deps
+        # Retried for the same reason the Gradle step is: a build has already
+        # been lost to a dropped TLS connection midway through this, which is
+        # the registry having a bad moment rather than anything to fix here.
+        run: |
+          for attempt in 1 2 3; do
+            npm install --legacy-peer-deps && break
+            if [ "$attempt" = 3 ]; then
+              echo "npm install failed three times — not a network blip."
+              exit 1
+            fi
+            echo "npm attempt $attempt failed; retrying in $((attempt * 10))s"
+            sleep $((attempt * 10))
+          done
 
       - name: Type-check and run unit tests
         run: |
@@ -81,6 +93,28 @@ jobs:
       # battery-optimisation exemption) and replaces the blunt package-visibility
       # permission with an explicit <queries> list. See scripts/play-manifest.mjs
       # for what that costs. The APK workflow does not set it and is unaffected.
+      # Gradle, and everything Gradle downloads, kept between runs.
+      #
+      # Two builds in a row have died here on GitHub's own servers rather than
+      # on anything in this repo — one on a 504 fetching the Gradle
+      # distribution itself, one on a dropped connection pulling npm packages —
+      # so this is about not needing the network, not about speed.
+      #
+      # It has to come AFTER the android/ directory is generated: that folder
+      # is deleted and rebuilt by `npx cap add android` on every run, so the
+      # wrapper properties this key is built from do not exist until then. The
+      # key changes when the Gradle version does, which is what stops a stale
+      # distribution being reused after an upgrade.
+      - name: Cache Gradle and its downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
       - name: Sync custom Android files (icons, Java, manifest)
         env:
           COVAULT_DISTRIBUTION: play
@@ -158,7 +192,19 @@ jobs:
         run: |
           cd android
           chmod +x ./gradlew
-          ./gradlew bundleRelease
+          # Three attempts, because the failure this guards is a transient
+          # 504 or a dropped connection while Gradle fetches something — not a
+          # broken build. A real compile error fails all three in seconds and
+          # still fails the run, so this cannot hide one.
+          for attempt in 1 2 3; do
+            ./gradlew bundleRelease && break
+            if [ "$attempt" = 3 ]; then
+              echo "Gradle failed three times — this is not a network blip."
+              exit 1
+            fi
+            echo "Gradle attempt $attempt failed; retrying in $((attempt * 15))s"
+            sleep $((attempt * 15))
+          done
 
       # Confirms the bundle is actually signed with our key, not left
       # unsigned or picked up some other default — the same category of

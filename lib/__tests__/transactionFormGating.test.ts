@@ -33,9 +33,13 @@ describe('the entry form', () => {
     );
   });
 
-  it('keeps the vaults inert until there is a vendor to file', () => {
-    expect(FORM).toContain("hasVendor ? 'opacity-100' : 'opacity-40 pointer-events-none'");
-    expect(FORM).toContain('disabled={!hasVendor}');
+  it('keeps the vaults inert until the form is ready for them', () => {
+    // This used to read `hasVendor` alone. The form now unlocks strictly top
+    // to bottom, so the vaults wait for the amount as well — see
+    // manualEntryIsSequential.test.ts, which pins the whole order.
+    expect(FORM).toContain("vaultUnlocked ? 'opacity-100' : LOCKED");
+    expect(FORM).toContain('disabled={!vaultUnlocked}');
+    expect(FORM).toContain("const LOCKED = 'opacity-40 pointer-events-none';");
   });
 
   it('puts the cursor where it is waiting rather than ignoring the tap', () => {
