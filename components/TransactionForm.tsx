@@ -320,7 +320,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   // three call sites, so a change to the order cannot half-apply.
   const vendorUnlocked = hasAmount;
   const vaultUnlocked = hasAmount && hasVendor;
-  const detailsUnlocked = vaultUnlocked && hasVault;
 
   /** Greyed and inert, with the tap still answered by the caller's onClick. */
   const LOCKED = 'opacity-40 pointer-events-none';
@@ -478,7 +477,24 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             </div>
           </div>
 
-          <div className="space-y-3">
+          {/* The ring goes around the WHOLE vault section — its heading as
+              well as the grid — rather than around the grid alone.
+              
+              The two steps above it each have a filled, rounded control for
+              the ring to hug, so it reads as an outline on a thing. The vaults
+              have no such box: a ring drawn round the bare grid traced the
+              tiles' bounding box and looked like an accident. Round the
+              section it is an outline on the step being asked for, which is
+              what it means.
+              
+              Tapping in here before the form is ready puts the cursor where it
+              IS waiting and flashes that section, rather than doing nothing —
+              a dimmed control that ignores a tap teaches the user the app is
+              broken. */}
+          <div
+            onClick={vaultUnlocked ? undefined : refuse}
+            className={`space-y-3 rounded-3xl ${attention('vault')} ${nudge('vault')}`}
+          >
             <div className="flex items-center justify-between px-2">
               <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 tracking-wide">
                 Target Vault
@@ -490,14 +506,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
               )}
             </div>
 
-            {/* Tapping the vaults before the form is ready puts the cursor
-                where it is actually waiting and flashes that section, rather
-                than doing nothing — a dimmed control that ignores a tap
-                teaches the user the app is broken. */}
-            <div
-              onClick={vaultUnlocked ? undefined : refuse}
-              className={`rounded-2xl ${attention('vault')} ${nudge('vault')}`}
-            >
             {/* Equal thirds, whatever the count.
                 //
                 // This was two hand-cut rows — the first three categories, then
@@ -547,17 +555,15 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                 );
               })}
             </div>
-            </div>
           </div>
 
-          {/* Date and recurrence are last in the order, so they wait for the
-              vault the same way everything else waits for what precedes it.
-              Both already hold a sensible answer — today, and One-time — so a
-              user who never reaches them loses nothing; what the lock buys is
-              that the form is read in one direction instead of offering a
-              choice about next month before it knows what was bought. */}
-          <div className="space-y-3" onClick={detailsUnlocked ? undefined : refuse}>
-            <div className={`space-y-3 transition-opacity duration-200 ${detailsUnlocked ? 'opacity-100' : LOCKED}`}>
+          {/* Date and recurrence are deliberately NOT gated, unlike everything
+              above them. The three steps above are gated because the form
+              cannot be saved without them and an empty one says nothing; these
+              two already hold the right answer for almost every entry — today,
+              and One-time — so there is nothing to insist on. Locking them
+              would be the form being strict for its own sake. */}
+          <div className="space-y-3">
             {/* Styled date picker */}
             <div
               onClick={() => setShowCalendar(true)}
@@ -586,7 +592,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                   </button>
                 ))}
               </div>
-            </div>
             </div>
           </div>
 

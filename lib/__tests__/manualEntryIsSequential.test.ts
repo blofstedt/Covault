@@ -4,10 +4,13 @@
  * Every section used to be live at once. You could tap into the vendor before
  * naming an amount, choose a recurrence before a vault, and the Confirm button
  * sat greyed out with nothing saying which of the three missing things it was
- * waiting for. Now each section unlocks the one below it, and reaching for a
- * control that is not ready yet is answered rather than ignored — the section
- * the form IS waiting on flashes its ring twice, brighter than the ambient
- * pulse, and the cursor goes there.
+ * waiting for. Now the three REQUIRED steps unlock in order — amount, vendor,
+ * vault — and reaching for one that is not ready yet is answered rather than
+ * ignored: the section the form IS waiting on flashes its ring twice, brighter
+ * than the ambient pulse, and the cursor goes there.
+ *
+ * The gating stops at the vault on purpose. Date and recurrence already hold
+ * the right answer for almost every entry, so there is nothing to insist on.
  *
  * These are class names and prop names, not a rendered form, so this cannot
  * prove the sequence feels right — only that every step is still gated on the
@@ -25,7 +28,6 @@ describe('each step waits for the one above it', () => {
   it('the gates are defined in order, each including the last', () => {
     expect(form).toContain('const vendorUnlocked = hasAmount;');
     expect(form).toContain('const vaultUnlocked = hasAmount && hasVendor;');
-    expect(form).toContain('const detailsUnlocked = vaultUnlocked && hasVault;');
   });
 
   it('the vendor field is inert until there is an amount', () => {
@@ -41,8 +43,13 @@ describe('each step waits for the one above it', () => {
     expect(form).not.toContain("hasVendor ? 'opacity-100'");
   });
 
-  it('date and recurrence wait for the vault', () => {
-    expect(form).toContain("detailsUnlocked ? 'opacity-100' : LOCKED");
+  it('stops at the vault — date and recurrence are never locked', () => {
+    // The gating exists because the form cannot be saved without those three
+    // and an empty one says nothing about which is missing. Date and
+    // recurrence already hold the right answer for almost every entry —
+    // today, and One-time — so there is nothing to insist on, and locking
+    // them would be the form being strict for its own sake.
+    expect(form).not.toContain('detailsUnlocked');
   });
 
   it('says which step is holding things up, for anyone who cannot see motion', () => {
@@ -57,8 +64,9 @@ describe('a tap on a locked control is answered, never swallowed', () => {
   it('every locked region refuses rather than doing nothing', () => {
     // A dimmed control that ignores a tap teaches people the app is broken.
     const refusals = form.match(/onClick=\{\w+ \? undefined : refuse\}/g) ?? [];
-    // Vendor, vault, the date/recurrence block, and the Confirm button.
-    expect(refusals.length).toBe(4);
+    // Vendor, the whole vault section, and the Confirm button. Three, because
+    // date and recurrence are not gated and so have nothing to refuse.
+    expect(refusals.length).toBe(3);
   });
 
   it('the Confirm button is reachable for the refusal', () => {
@@ -103,6 +111,18 @@ describe('the flash restarts on every tap', () => {
     // becomes indistinguishable from the waiting state carrying on.
     expect(tailwind).toContain("boxShadow: '0 0 0 4px rgba(16, 185, 129, 0.18)'"); // ambient
     expect(tailwind).toContain("boxShadow: '0 0 0 5px rgba(16, 185, 129, 0.45)'"); // the answer
+  });
+});
+
+describe('the ring outlines the step, not whatever box happens to be there', () => {
+  it('the vault ring wraps the whole section, heading and all', () => {
+    // The amount and the vendor each have a filled, rounded control for the
+    // ring to hug. The vaults do not: drawn round the bare grid it traced the
+    // tiles' bounding box and read as an accident rather than as an outline
+    // on the step being asked for.
+    expect(form).toContain(
+      "className={`space-y-3 rounded-3xl ${attention('vault')} ${nudge('vault')}`}",
+    );
   });
 });
 
