@@ -884,6 +884,33 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       >
         {enabled ? (
           <>
+            {/* Why a purchase did or did not turn up.
+                First, because it is the question the screen gets opened with —
+                "where is my Safeway charge" — and an answer found by scrolling
+                past everything else is one most people never find. Collapsed,
+                so on a working install it is a single quiet line saying so. */}
+            <div className="shrink-0 mb-4">
+              <CaptureHealthCard
+                {...captureHealth}
+                isExpanded={expandedSections.captureHealth}
+                onToggleExpanded={() => {
+                  toggleSection('captureHealth');
+                  // Permissions change in Android's settings, out of sight, so
+                  // the answers are re-read when the card is opened rather
+                  // than trusted from whenever the screen first mounted.
+                  if (!expandedSections.captureHealth) void captureHealth.refresh();
+                }}
+                onFixAccess={() => { void openNotificationSettings(); }}
+                onFixNotifications={() => {
+                  // Covault's OWN notification permission, which lives on its
+                  // App info page. Posting is what tray suppression waits on,
+                  // so without it captures happen in silence and the bank's
+                  // alert is never tidied away.
+                  void openAppInfo(undefined, 'Open Notifications and allow them for Covault');
+                }}
+                onFixSources={onOpenCaptureSources}
+              />
+            </div>
             <div data-tour="review-banks" className="shrink-0 mb-4">
               <ActiveBanksCard
                 isExpanded={expandedSections.activeBanks}
@@ -969,30 +996,6 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
               </div>
             )}
 
-            {/* Why a purchase did or did not turn up. Last, because it is the
-                thing you go looking for rather than the thing you came for. */}
-            <div className="shrink-0 mt-4">
-              <CaptureHealthCard
-                {...captureHealth}
-                isExpanded={expandedSections.captureHealth}
-                onToggleExpanded={() => {
-                  toggleSection('captureHealth');
-                  // Permissions change in Android's settings, out of sight, so
-                  // the answers are re-read when the card is opened rather
-                  // than trusted from whenever the screen first mounted.
-                  if (!expandedSections.captureHealth) void captureHealth.refresh();
-                }}
-                onFixAccess={() => { void openNotificationSettings(); }}
-                onFixNotifications={() => {
-                  // Covault's OWN notification permission, which lives on its
-                  // App info page. Posting is what tray suppression waits on,
-                  // so without it captures happen in silence and the bank's
-                  // alert is never tidied away.
-                  void openAppInfo(undefined, 'Open Notifications and allow them for Covault');
-                }}
-                onFixSources={onOpenCaptureSources}
-              />
-            </div>
 
             <div data-tour="review-rules" className="shrink-0 mt-4">
               <LearnedRulesCard
