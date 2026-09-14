@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android 11 and below (android:fullBackupContent).
+
+    Nothing in this app is backed up. The WebView's localStorage holds the
+    Supabase session — including the refresh token, which is a long-lived
+    credential — and the app's SharedPreferences hold the pending capture
+    queue and the widget's copy of the month's spending. All of it lives
+    inside the app's data directory, which is exactly what auto-backup copies
+    to the user's Google Drive and what `adb backup` pulls off the device.
+
+    There is nothing here worth restoring anyway: every budget, limit and
+    transaction comes back from Supabase on the next sign-in, and the pending
+    queue is meaningless on a different install.
+-->
+<full-backup-content>
+    <exclude domain="root" />
+    <exclude domain="file" />
+    <exclude domain="database" />
+    <exclude domain="sharedpref" />
+    <exclude domain="external" />
+</full-backup-content>

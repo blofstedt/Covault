@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android 12 and above (android:dataExtractionRules).
+
+    allowBackup="false" turns off cloud backup, but device-to-device transfer
+    is governed separately and is NOT covered by it — so both halves have to
+    say no, or moving to a new phone carries the session token across in a
+    channel this app never audited. See backup_rules.xml for why none of it is
+    worth keeping: signing in restores everything that matters.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>

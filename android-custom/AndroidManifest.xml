@@ -100,19 +100,51 @@
     -->
     <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
 
-    <!-- For keeping the app running in background -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!--
+        Restarting the listener after a reboot.
+
+        FOREGROUND_SERVICE and FOREGROUND_SERVICE_SPECIAL_USE used to sit here
+        too and were removed by a security review: this app has never started
+        a foreground service. A NotificationListenerService is bound by the
+        system, not run in the foreground, and nothing else in android-custom/
+        calls startForeground. Beyond being two permissions asked for and never
+        used, FOREGROUND_SERVICE_SPECIAL_USE is one Google requires a written
+        justification for at upload — a justification there is no service to
+        give. If a real foreground service is ever added, both come back WITH
+        the <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE">
+        the platform requires alongside them.
+    -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!--
+        allowBackup="false", and the two rules files that go with it.
+
+        This was "true", which is the platform default and reads as harmless.
+        It is not: the Supabase session lives in the WebView's localStorage,
+        inside the app's data directory, and its refresh token is a long-lived
+        credential. Auto-backup copies that directory to the user's Google
+        Drive and `adb backup` pulls it off the device, so the household's
+        sign-in was leaving the phone through a channel nobody had looked at.
+        Nothing is lost by switching it off — signing in restores every budget,
+        limit and transaction from Supabase. The two rules files are belt and
+        braces, and dataExtractionRules is NOT redundant: allowBackup does not
+        govern device-to-device transfer on Android 12+.
+
+        usesCleartextTraffic="false" for the same reason. The WebView is served
+        over https (androidScheme in capacitor.config.ts), Supabase is https and
+        the update downloads are https — there is not one http:// URL in the app
+        — so "true" bought nothing and left a downgrade open.
+    -->
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="false">
 
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"

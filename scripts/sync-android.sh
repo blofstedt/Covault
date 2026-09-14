@@ -79,6 +79,11 @@ done
 cp -v "$CUSTOM_DIR/res/drawable/widget_preview.xml" "$RES_DIR/drawable/"
 cp -v "$CUSTOM_DIR/res/layout/widget_covault.xml" "$RES_DIR/layout/"
 cp -v "$CUSTOM_DIR/res/xml/covault_widget_info.xml" "$RES_DIR/xml/"
+# Backup rules. The manifest names both by resource id, so a missing file is a
+# build failure rather than a silent fallback to backing everything up — which
+# is the whole reason they exist. See the allowBackup comment in the manifest.
+cp -v "$CUSTOM_DIR/res/xml/backup_rules.xml" "$RES_DIR/xml/"
+cp -v "$CUSTOM_DIR/res/xml/data_extraction_rules.xml" "$RES_DIR/xml/"
 cp -v "$CUSTOM_DIR/res/values/widget_strings.xml" "$RES_DIR/values/"
 
 # Notification status bar icon (monochrome white). Raster fallbacks at
@@ -108,6 +113,8 @@ for f in \
   "$RES_DIR/layout/widget_covault.xml" \
   "$RES_DIR/drawable/widget_preview.xml" \
   "$RES_DIR/xml/covault_widget_info.xml" \
+  "$RES_DIR/xml/backup_rules.xml" \
+  "$RES_DIR/xml/data_extraction_rules.xml" \
   "$RES_DIR/values/widget_strings.xml" \
   "$RES_DIR/drawable/ic_budget_housing.xml" \
   "$RES_DIR/drawable/ic_budget_groceries.xml" \

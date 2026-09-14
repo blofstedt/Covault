@@ -9,7 +9,11 @@ const config: CapacitorConfig = {
   },
   plugins: {},
   android: {
-    allowMixedContent: true,
+    // An https page may not pull http subresources. This was true, which
+    // together with usesCleartextTraffic in the manifest meant a page served
+    // over https could still be fed plain-http content. Nothing in the app
+    // loads over http, so turning it off costs nothing.
+    allowMixedContent: false,
     captureInput: true,
     // Gated rather than hardcoded off. With this false there is no way to
     // attach chrome://inspect to the APK, which means nothing visual or

@@ -108,6 +108,10 @@ CREATE TABLE IF NOT EXISTS public.settings (
   subscription_status text DEFAULT 'none'
     CHECK (subscription_status = ANY (ARRAY['none', 'active', 'expired'])),
   link_code text,
+  -- Thirty minutes from minting (generate_link_code). A code with no expiry
+  -- sat on the row until somebody claimed it, which is a standing invitation
+  -- to a household's spending. See 2026_09_security_review.sql.
+  link_code_expires_at timestamp with time zone,
   -- Added by 2026_08_01_sync_schema_to_app.sql. Off by default: auto-filing
   -- records a purchase the user never sees, so it has to be chosen.
   auto_accept_known_vendors boolean NOT NULL DEFAULT false,
@@ -135,17 +139,17 @@ DO $$ BEGIN
       FOR SELECT TO authenticated
       USING (auth.uid() = user_id);
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE tablename = 'settings' AND policyname = 'Users can view partner settings') THEN
-    CREATE POLICY "Users can view partner settings" ON public.settings
-      FOR SELECT TO authenticated
-      USING (
-        user_id IN (
-          SELECT s.partner_id FROM public.settings s
-          WHERE s.user_id = auth.uid() AND s.partner_id IS NOT NULL
-        )
-      );
-  END IF;
+  -- There is deliberately NO partner policy on `settings`, and this file used
+  -- to describe one that the live database has never had. Do not add it back.
+  -- Two reasons. It would be a policy on `settings` whose USING clause reads
+  -- `settings`, which recurses. And it trusted `partner_id` — a column on the
+  -- READER's own row, which the reader could set to any user id — so it would
+  -- hand over a stranger's name, email, income and trial state. What a partner
+  -- is allowed to know comes from the SECURITY DEFINER functions instead:
+  -- partner_monthly_income() returns one number, partner_month_summary()
+  -- returns totals at the level that partner chose, and linked_partner_id()
+  -- refuses to call anyone a partner unless both rows point at each other.
+  -- See 2026_09_security_review.sql.
   IF NOT EXISTS (SELECT 1 FROM pg_policies
                  WHERE tablename = 'settings' AND policyname = 'Users can insert own settings') THEN
     CREATE POLICY "Users can insert own settings" ON public.settings

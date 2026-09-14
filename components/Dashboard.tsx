@@ -76,6 +76,16 @@ const SETTING_DB_KEYS: Record<string, string> = {
   haptics_enabled: 'haptics_enabled',
   community_rules_enabled: 'community_rules_enabled',
   community_rules_contribute: 'community_rules_contribute',
+  // How much of your spending your partner sees. Missing from this map until a
+  // security review caught it, which meant the privacy selector moved on
+  // screen, survived until the next load, and never reached the database — so
+  // someone who chose "totals only" went on sharing every transaction. The
+  // database now enforces this column (see 2026_09_security_review.sql), which
+  // makes a setting that does not save a privacy failure rather than a
+  // cosmetic one. `budgetMode` is deliberately NOT here: it belongs to the
+  // household and goes through set_household_budget_mode, which writes both
+  // rows.
+  shareLevel: 'share_level',
 };
 
 interface VendorHistoryItem {

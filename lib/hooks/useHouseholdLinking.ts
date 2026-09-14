@@ -59,23 +59,28 @@ export const useHouseholdLinking = ({
         return null;
       }
 
-      // Generate a 6-character code
-      const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-
-      const res = await restFetch(`/settings?user_id=eq.${userId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          link_code: code,
-        }),
-      });
-
-      if (!res.ok) {
-        const body = await res.text();
-        setDbError(`Failed to generate link code: ${body.slice(0, 200)}`);
+      // Minted in the database, not here. The old version was
+      // `Math.random().toString(36).substring(2, 8)`: not a cryptographic
+      // generator, not reliably six characters (Math.random can return a
+      // value whose base-36 form is short, and the code came out short with
+      // it), never checked for uniqueness, and it sat on the row for ever
+      // because nothing expired it. A link code is the ONLY thing standing
+      // between a stranger and this household's spending, so it is now eight
+      // characters of gen_random_bytes on an alphabet with no 0/O or 1/I/L to
+      // misread, unique among live codes, and good for thirty minutes.
+      const result = await callRpc<string>('generate_link_code', {});
+      if (!result.ok) {
+        setDbError(`Failed to generate link code: ${result.message}`);
         return null;
       }
 
-      log.debug('[generateLinkCode] Generated code:', code);
+      const code = typeof result.data === 'string' ? result.data : null;
+      if (!code) {
+        setDbError('Failed to generate link code');
+        return null;
+      }
+
+      log.debug('[generateLinkCode] Generated code');
       return code;
     } catch (err: any) {
       setDbError(`Generate link code exception: ${err?.message || err}`);

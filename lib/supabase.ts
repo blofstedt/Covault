@@ -115,7 +115,16 @@ export const supabase = isSupabaseConfigured
         // Recommended for browser-based OAuth flows
         flowType: 'pkce',
 
-        // Use Capacitor secure storage on native platforms
+        // NOT secure storage, whatever this used to claim. `undefined` means
+        // "use supabase-js's default", which is the WebView's own
+        // localStorage — so on Android the session, refresh token included,
+        // sits in the app's data directory in plain text. That is private to
+        // the app on a device that is not rooted, which is why this is left
+        // as it is for now; what made it dangerous was the app also allowing
+        // backups, so the token was being copied to Google Drive. The
+        // manifest now says allowBackup="false". Moving this to the Android
+        // keystore is a real improvement and a separate piece of work — do
+        // not re-add a comment saying it has already happened.
         storage: Capacitor.isNativePlatform() ? undefined : localStorage,
       },
     })

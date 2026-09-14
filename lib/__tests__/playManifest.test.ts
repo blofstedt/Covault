@@ -42,9 +42,11 @@ describe('the Play manifest', () => {
     for (const kept of [
       'android.permission.INTERNET',
       'android.permission.POST_NOTIFICATIONS',
-      'android.permission.FOREGROUND_SERVICE',
-      'android.permission.FOREGROUND_SERVICE_SPECIAL_USE',
       'android.permission.RECEIVE_BOOT_COMPLETED',
+      // FOREGROUND_SERVICE and FOREGROUND_SERVICE_SPECIAL_USE were listed here
+      // and have been removed from the manifest entirely: this app has never
+      // started a foreground service, so neither was ever load-bearing for
+      // capture. See phoneKeepsItsData.test.ts, which pins that they stay out.
     ]) {
       expect(played, `${kept} is load-bearing and must survive`).toContain(kept);
     }
