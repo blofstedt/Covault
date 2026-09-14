@@ -226,6 +226,22 @@ describe('link codes are minted in the database and go stale', () => {
   });
 });
 
+describe('the new functions are not anonymous endpoints', () => {
+  it.each([
+    'public.linked_partner_id()',
+    'public.partner_share_level()',
+    'public.generate_link_code()',
+  ])('%s is revoked from anon by name', (fn) => {
+    // A REVOKE from PUBLIC does not undo the EXECUTE this schema grants
+    // directly to `anon` on every new function, so `anon` has to be named.
+    expect(migration).toContain(`REVOKE EXECUTE ON FUNCTION ${fn}`.replace('()', '()'));
+    const line = migration
+      .split('\n')
+      .find((l) => l.includes(`REVOKE EXECUTE ON FUNCTION ${fn}`) && l.includes('FROM anon'));
+    expect(line, `${fn} is still reachable without signing in`).toBeTruthy();
+  });
+});
+
 describe('the privacy selector actually saves', () => {
   it('shareLevel has a database column to write to', () => {
     // It was missing from SETTING_DB_KEYS, so the choice moved on screen,

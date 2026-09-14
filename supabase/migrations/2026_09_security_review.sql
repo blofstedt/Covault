@@ -370,6 +370,20 @@ DROP POLICY IF EXISTS "Anyone can read Banking" ON public.banks;
 CREATE POLICY "Signed-in users can read the bank list" ON public.banks
   FOR SELECT TO authenticated USING (true);
 
+-- Both halves are needed. This schema grants EXECUTE to `anon` and
+-- `authenticated` by default on every new function, and a REVOKE from PUBLIC
+-- does not undo a grant made directly to a role — so `anon` has to be named,
+-- or each of these is published as an endpoint anybody can POST to without
+-- signing in. None of them could do anything today (auth.uid() is null for
+-- anon, so they return null or raise 'Not authenticated'), but that is an
+-- argument about the current function body, not about who should reach it.
+REVOKE EXECUTE ON FUNCTION public.linked_partner_id()        FROM anon;
+REVOKE EXECUTE ON FUNCTION public.partner_share_level()      FROM anon;
+REVOKE EXECUTE ON FUNCTION public.generate_link_code()       FROM anon;
+REVOKE EXECUTE ON FUNCTION public.delete_own_account()       FROM anon;
+REVOKE EXECUTE ON FUNCTION public.link_partner_by_code(text) FROM anon;
+REVOKE EXECUTE ON FUNCTION public.unlink_partner()           FROM anon;
+
 REVOKE ALL ON FUNCTION public.linked_partner_id()      FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.partner_share_level()    FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.generate_link_code()     FROM PUBLIC;
