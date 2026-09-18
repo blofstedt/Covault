@@ -321,7 +321,7 @@ export const useNotificationListener = ({
                       `looks similar to existing ${result.softDuplicateOf.vendor} $${result.softDuplicateOf.amount} ` +
                       `on ${result.softDuplicateOf.date}`,
                     );
-                    (tx as any).softDuplicateOf = result.softDuplicateOf;
+                    tx.softDuplicateOf = result.softDuplicateOf;
                   }
                   if (onAutoAcceptedTransaction) {
                     onAutoAcceptedTransaction(tx);

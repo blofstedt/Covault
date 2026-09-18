@@ -120,7 +120,7 @@ export function generateProjectedTransactions(
     if (tx.is_projected && String(tx.id || '').startsWith('projected-')) continue;
     // Skip executor-spawned rows — they're already handled by the original
     // template. Using them as a second source would double-project.
-    if ((tx as any).source === 'executor') continue;
+    if (tx.source === 'executor') continue;
     const recurrence = normalizeRecurrence(tx);
     if (recurrence === 'one-time') continue;
     const isoDay = toIsoDay(tx.date);

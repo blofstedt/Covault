@@ -100,7 +100,7 @@ export const useTransactionOps = ({
       try {
         const row = toSupabaseTransaction(tx);
         // Ensure auto-added transactions appear in the badge until cleared
-        if (tx.label === 'Automatic') (row as any).caught_cleared = false;
+        if (tx.label === 'Automatic') row.caught_cleared = false;
         log.debug('[insert] payload:', JSON.stringify(row));
 
         const res = await restFetch(`/transactions`, {
