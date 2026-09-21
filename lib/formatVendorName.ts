@@ -187,3 +187,27 @@ export function fuzzyVendorMatch(a: string, b: string): boolean {
 
   return fewer.every(t => more.some(u => wordsAgree(t, u)));
 }
+
+/**
+ * Do two vendor names begin with the same word?
+ *
+ * `fuzzyVendorMatch` accepts one name appearing in the MIDDLE of another, so
+ * that "SQ *Bloom Cafe" and "Bloom Cafe" are one merchant. That rule cannot
+ * tell the difference between a processor prefix and a first syllable: a
+ * charge the parser had reduced to "Services" matched a stored merchant called
+ * "Eservices Kb Civil…", because "eservices" contains "services", and the
+ * capture was filed under that merchant's name and its budget.
+ *
+ * So a caller about to ADOPT the other name — rather than merely note a
+ * resemblance — asks this as well. It is the check the vendor-memory lookup
+ * always described itself as making ("prefer matches with the same normalized
+ * prefix") and only ever applied as a preference, which a lone weak match
+ * still won. Abbreviations still agree ("AMZN" leads "Amazon"), so nothing
+ * that was genuinely one merchant stops being one.
+ */
+export function leadWordsAgree(a: string, b: string): boolean {
+  const tokA = identifyingTokens(a || '');
+  const tokB = identifyingTokens(b || '');
+  if (tokA.length === 0 || tokB.length === 0) return false;
+  return wordsAgree(tokA[0], tokB[0]);
+}

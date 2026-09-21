@@ -14,7 +14,7 @@
 import { log } from './log';
 import { djb2Base36 } from './hash';
 import { supabase } from './supabase';
-import { formatVendorName, fuzzyVendorMatch, normalizeVendorForDedup } from './formatVendorName';
+import { formatVendorName, fuzzyVendorMatch, leadWordsAgree, normalizeVendorForDedup } from './formatVendorName';
 import { parseNotificationText } from './deviceTransactionParser';
 import { addToReviewQueue, getVendorMapEntry, getVendorMap, isNotificationProcessed, markNotificationProcessed, isNotificationRejected, markNotificationRejected, getCachedAIResult, setCachedAIResult, type CachedAIResult } from './localNotificationMemory';
 import { findMatchingExpense, REFUND_MATCH_WINDOW_DAYS } from './refundMatching';
@@ -2067,14 +2067,23 @@ async function processNotificationWithAIImpl(
       // system to learn from their corrections — fuzzy matching is how
       // we make one correction apply to many surface forms.
       const allEntries = getVendorMap();
+      const incomingName = parsed.vendorDisplay || parsed.vendorKey;
       let bestKey: string | null = null;
       let bestScore = 0;
       for (const [key, entry] of Object.entries(allEntries)) {
-        if (!fuzzyVendorMatch(parsed.vendorDisplay || parsed.vendorKey, entry.vendor_display)) continue;
-        // Prefer matches with the same normalized prefix (e.g. "amazon"
-        // vs "amzn") to avoid accidentally mapping "Spotify" to "Amazon".
+        if (!fuzzyVendorMatch(incomingName, entry.vendor_display)) continue;
+        // The two names must also START with the same word. This block adopts
+        // the stored merchant's NAME and its budget, so a resemblance is not
+        // enough — "Services" resembles "Eservices Kb Civil" only in the sense
+        // that one string contains the other, and that capture arrived in
+        // Review as a merchant the household had never bought from. The check
+        // was always described here ("prefer matches with the same normalized
+        // prefix") but only ever scored, so a lone weak match still won.
+        if (!leadWordsAgree(incomingName, entry.vendor_display)) continue;
+        // Among the matches that qualify, prefer one whose first word is
+        // spelled identically over one that merely agrees ("AMZN"/"Amazon").
         const normalizedStored = (entry.vendor_display || '').toLowerCase().split(/\s+/)[0];
-        const normalizedIncoming = (parsed.vendorDisplay || parsed.vendorKey).toLowerCase().split(/\s+/)[0];
+        const normalizedIncoming = incomingName.toLowerCase().split(/\s+/)[0];
         const score = normalizedStored && normalizedIncoming && normalizedStored === normalizedIncoming ? 1.0 : 0.5;
         if (score > bestScore) {
           bestScore = score;

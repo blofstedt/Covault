@@ -124,6 +124,7 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | "it taught the same restaurant chain twice" / "I want one lesson to cover every branch" | `lib/chainVendorKeys.ts` — a short, hand-curated list of single-category chains get a `prefix` rule instead of a branch-specific `exact` one. See Invariants |
 | "the merchant name has a dot / a store number / a branch on it" | `stripVendorNoise` in `lib/deviceTransactionParser.ts` — the display name IS the merchant's identity, so every stray spelling costs a rule. See Invariants |
 | "it used a different shop's name / budget" / "a purchase went missing" | `fuzzyVendorMatch` in `lib/formatVendorName.ts` — the one "are these the same merchant?" answer, asked by the duplicate skip, the soft-dup warning, the local vendor memory and the recurring lookup. See Invariants |
+| "it filed a charge under a shop I've never bought from" | `stripProcessorPrefixes` in `lib/deviceTransactionParser.ts` (what "GOOGLE *SERVICES" is left as) → step 5b of `lib/notificationProcessor.ts` (which remembered merchant it then adopts). See Invariants |
 | "the review list / badge is wrong" | `lib/reviewQueue.ts` — the single definition of "waiting"; the list, badge and widget all read it |
 | "the widget is stale or wrong" | `lib/widgetSnapshot.ts` → `android-custom/WidgetDeltaStore.java` → `android-custom/WidgetRenderer.java` |
 | "the 'add widget' button in settings doesn't work" | `android-custom/CovaultWidgetPlugin.java` (`isSupported` / `requestPinAppWidget`) → `components/dashboard_components/settings_modal_components/HomeScreenWidgetSection.tsx` — the button is one of two routes and only ever shown once `isSupported` says the launcher can honour it; the other route is the written steps, unconditional and always correct |
@@ -380,6 +381,30 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   simplify either half back: exactness put a phantom row on the dashboard,
   and an unpaired sweep drops a real expected one.
   `duplicateChargeDrift.test.ts` pins both.
+
+- **A processor prefix is only removed when there is a merchant behind it, and
+  a resemblance is not permission to adopt another merchant's name.** Both
+  halves of one capture the household could not explain: a $29.40 Google
+  subscription announced as "GOOGLE *SERVICES You made a recurring payment"
+  arrived in Review named after a government portal they had used once,
+  carrying that portal's budget. The prefix strip exists because the processor
+  is not the merchant — the money went to La Carnita, not to Toast — but here
+  there was nothing behind the prefix, so the merchant became "Services", a
+  word generic enough to collide with anything. It then did: the phone's
+  vendor memory (step 5b) adopts a remembered merchant's NAME and its budget,
+  and "services" sits inside "eservices", which `fuzzyVendorMatch` accepts by
+  design so that "SQ *Bloom Cafe" and "Bloom Cafe" are one shop. The "prefer
+  the same first word" guard written next to that lookup was only ever scored,
+  never enforced, so a lone weak match still won. So `GENERIC_PROCESSOR_TAILS`
+  keeps the processor's own name when the leftover names no merchant ("Google
+  Services", which is also what the statement says), and the vendor-memory
+  lookup now requires `leadWordsAgree` as well — abbreviations still agree
+  ("AMZN" leads "Amazon"), so nothing that was genuinely one merchant stops
+  being one. The generic leftover is deliberately NOT kept as a vendor alias:
+  aliases are compared with `fuzzyVendorMatch` by the duplicate check, which
+  would put "services" back in reach of "eservices" where the cost is a real
+  purchase dropped rather than a name on screen. `genericProcessorName.test.ts`
+  pins both halves, end to end through the real pipeline.
 
 - **An auto-filed capture is never a soft duplicate.** Auto-filing is the one
   path that records a purchase the user never sees, and the soft-duplicate rule

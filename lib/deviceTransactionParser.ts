@@ -494,7 +494,7 @@ function extractVendorRaw(text: string, isRefund?: boolean): string {
   // raw notification text rather than this cleaned-up vendor. It is also still
   // part of the merchant's name for MATCHING purposes — see
   // processorPrefixedNames and ParsedNotification.vendorAliases.
-  t = t.replace(processorPrefixRegex(), '');
+  t = stripProcessorPrefixes(t);
 
   // Drop parenthetical qualifiers before anything tries to read a merchant out
   // of this text. A bracketed aside in a bank alert is a note ABOUT the charge —
@@ -652,6 +652,45 @@ export function toVendorKey(vendor: string): string {
  */
 function processorPrefixRegex(): RegExp {
   return /\b(TST|SQ|PP|PAYPAL|GOOGLE)\s*\*\s*/gi;
+}
+
+/**
+ * Words that name no merchant on their own, checked only where a payment
+ * processor's prefix has just been removed.
+ *
+ * Stripping the prefix assumes the name behind it is the real merchant — true
+ * for "GOOGLE *YOUTUBEPREMIUM" and "TST* LA CARNITA", and false for Google's
+ * own subscriptions, which announce themselves as "GOOGLE *SERVICES". Removing
+ * the prefix there left the merchant called "Services", which is not a shop
+ * anyone has heard of and, worse, is a word common enough to collide: the
+ * phone's vendor memory matched it against an unrelated merchant whose name
+ * merely CONTAINED it ("Eservices Kb Civil…"), and the charge arrived in
+ * Review wearing that merchant's name and its budget.
+ *
+ * So where the leftover is one of these, the processor's own name is kept and
+ * the charge is filed as "Google Services" — which is what the statement says
+ * and what the user recognises.
+ *
+ * Deliberately short and hand-picked. A word here only ever costs the
+ * processor's name being kept; anything not on it behaves exactly as before.
+ */
+const GENERIC_PROCESSOR_TAILS = new Set([
+  'service', 'services', 'payment', 'payments', 'pay', 'billing', 'bill',
+  'subscription', 'subscriptions', 'store', 'online', 'checkout', 'purchase',
+  'merchant', 'transaction', 'account',
+]);
+
+/**
+ * Remove payment-processor prefixes, except where doing so would leave a word
+ * that names no merchant — there the "*" is dropped and the processor's name
+ * kept as part of the merchant's own. See GENERIC_PROCESSOR_TAILS.
+ */
+function stripProcessorPrefixes(text: string): string {
+  return text.replace(processorPrefixRegex(), (match, processor: string, offset: number) => {
+    const tail = /^[A-Za-z]+/.exec(text.slice(offset + match.length));
+    if (tail && GENERIC_PROCESSOR_TAILS.has(tail[0].toLowerCase())) return `${processor} `;
+    return '';
+  });
 }
 
 /**
