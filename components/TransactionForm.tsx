@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { Transaction, BudgetCategory, Recurrence, TransactionLabel } from '../types';
 import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
 import { cleanVendorInput } from '../lib/formatVendorName';
@@ -8,7 +8,8 @@ import { selectableBudgets } from '../lib/budgetVisibility';
 import { log } from '../lib/log';
 import CalendarPicker from './CalendarPicker';
 import { CloseButton } from './shared';
-import { useEscapeKey } from '../lib/hooks/useEscapeKey';
+import { useDialogInteraction } from '../lib/hooks/useDialogInteraction';
+import { useDialogExit } from '../lib/hooks/useDialogExit';
 
 interface VendorHistoryItem {
   vendor: string;
@@ -107,42 +108,17 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
-  const [isClosing, setIsClosing] = useState(false);
+  const { isClosing, close } = useDialogExit();
   const [showCalendar, setShowCalendar] = useState(false);
 
   const isAITransaction = initialTransaction?.label === 'Automatic';
   const amountInputRef = useRef<HTMLInputElement>(null);
   const vendorInputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
-  // Matches the `duration-300` on the overlay and card below, so the form is
-  // unmounted exactly as the fade finishes rather than part-way through it or
-  // a beat after it.
-  const CLOSE_ANIMATION_MS = 300;
-  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleClose = () => close(onClose);
 
-  const handleClose = () => {
-    setIsClosing(true);
-    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
-    closeTimerRef.current = setTimeout(() => onClose(), CLOSE_ANIMATION_MS);
-  };
-
-  useEffect(() => {
-    return () => {
-      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!initialTransaction) {
-      amountInputRef.current?.focus();
-    }
-    // Once, on open: focusing again whenever the form is handed a row would
-    // pull the keyboard up mid-edit.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Skip while the calendar sub-picker is open so Escape dismisses that first.
-  useEscapeKey(handleClose, !showCalendar);
+  const handleDialogKeyDown = useDialogInteraction(dialogRef, handleClose, { disabled: isClosing });
 
   // Vendor autocomplete suggestions — substring match (so "hort" surfaces
   // "Tim Hortons"), with prefix matches ranked ahead of mid-string ones.
@@ -257,7 +233,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       setIsSaving(false);
       return;
     }
-    onClose();
+    handleClose();
   };
 
   const isFormValid = amount > 0 && selectedId !== null && vendor.trim() !== '';
@@ -336,8 +312,17 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   // closing. Durations must come from Tailwind's scale or be written as
   // arbitrary values; `durationClasses.test.ts` enforces it.
   return (
-    <div className={`fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-xl transition-opacity duration-300 ${isClosing ? 'opacity-0' : 'animate-in fade-in duration-300'}`}>
-      <div id="tutorial-transaction-form" className={`w-full max-w-sm lg:max-w-lg bg-white dark:bg-slate-900 rounded-[3rem] p-6 space-y-4 shadow-2xl border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] border-slate-100 dark:border-slate-800/60 max-h-[90vh] overflow-y-auto no-scrollbar transition-all duration-300 ${isClosing ? 'opacity-0 scale-95' : 'animate-in zoom-in-95 duration-300'}`}>
+    <div className={`fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-xl ${isClosing ? 'dialog-exiting dialog-exit-backdrop' : 'animate-in fade-in dialog-motion'}`}>
+      <div
+        ref={dialogRef}
+        id="tutorial-transaction-form"
+        role="dialog"
+        aria-modal="true"
+        aria-label={initialTransaction ? 'Edit entry' : 'Manual entry'}
+        tabIndex={-1}
+        onKeyDown={handleDialogKeyDown}
+        className={`w-full max-w-sm lg:max-w-lg bg-white dark:bg-slate-900 rounded-[3rem] p-6 space-y-4 shadow-2xl border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] border-slate-100 dark:border-slate-800/60 max-h-[90vh] overflow-y-auto no-scrollbar ${isClosing ? 'dialog-exiting dialog-exit-surface' : 'animate-in zoom-in-95 dialog-motion'}`}
+      >
         <div className="flex items-center justify-between">
           <div className="flex flex-col">
             <h2 className="text-lg font-bold text-slate-600 dark:text-slate-100 tracking-tight">
@@ -368,6 +353,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                 <span className={`text-xl font-black select-none ${isRefund ? 'text-emerald-400 dark:text-emerald-500' : 'text-slate-300 dark:text-slate-700'}`}>$</span>
                 <input
                   ref={amountInputRef}
+                  data-dialog-initial-focus={!initialTransaction ? 'true' : undefined}
                   type="number"
                   inputMode="decimal"
                   placeholder="0.00"

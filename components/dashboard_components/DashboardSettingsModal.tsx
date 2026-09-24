@@ -21,7 +21,8 @@ import AppTourSection from './settings_modal_components/AppTourSection';
 import { BudgetCategory, Transaction } from '../../types';
 import PremiumGate from '../PremiumGate';
 import { CloseButton } from '../shared';
-import { useEscapeKey } from '../../lib/hooks/useEscapeKey';
+import { useDialogInteraction } from '../../lib/hooks/useDialogInteraction';
+import { useDialogExit } from '../../lib/hooks/useDialogExit';
 import type { AIModelOnDevice } from '../../lib/hooks/useAIModelOnDevice';
 
 export interface DashboardSettings {
@@ -115,29 +116,36 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
     const target = document.getElementById(scrollToSectionId);
     if (!target) return;
     // After the modal's own entrance, so the scroll is not undone by it.
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
     const timer = setTimeout(
-      () => target.scrollIntoView({ behavior: 'smooth', block: 'start' }),
-      350,
+      () => target.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' }),
+      reduceMotion ? 0 : 320,
     );
     return () => clearTimeout(timer);
   }, [scrollToSectionId]);
 
-  // Stand down while the FAQ sub-modal is open so Escape closes that first.
-  useEscapeKey(onClose, !showFAQ);
+  const { isClosing, close } = useDialogExit();
+  const dismiss = () => close(onClose);
+  const handleKeyDown = useDialogInteraction(settingsScrollRef, dismiss, { disabled: isClosing });
 
   return (
-    <div className="fixed inset-0 z-[110] bg-slate-900/40 backdrop-blur-lg flex items-center justify-center p-6 animate-in fade-in duration-300">
+    <div className={`fixed inset-0 z-[110] bg-slate-900/40 backdrop-blur-lg flex items-center justify-center p-6 ${isClosing ? 'dialog-exiting dialog-exit-backdrop' : 'animate-in fade-in dialog-motion'}`}>
       <div
         ref={settingsScrollRef}
-        className="w-full max-w-lg lg:max-w-2xl bg-white dark:bg-slate-900 rounded-[3rem] px-5 py-10 space-y-8 shadow-2xl animate-in zoom-in-95 duration-500 max-h-[85vh] overflow-y-auto no-scrollbar border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] border-slate-100 dark:border-slate-800/60"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="vault-settings-title"
+        tabIndex={-1}
+        onKeyDown={handleKeyDown}
+        className={`w-full max-w-lg lg:max-w-2xl bg-white dark:bg-slate-900 rounded-[3rem] px-5 py-10 space-y-8 shadow-2xl max-h-[85vh] overflow-y-auto no-scrollbar border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] border-slate-100 dark:border-slate-800/60 ${isClosing ? 'dialog-exiting dialog-exit-surface' : 'animate-in zoom-in-95 dialog-motion'}`}
       >
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-slate-600 dark:text-slate-100 tracking-tight">
+          <h2 id="vault-settings-title" className="text-2xl font-bold text-slate-600 dark:text-slate-100 tracking-tight">
             Vault Settings
           </h2>
           <div className="flex items-center space-x-2">
-            <CloseButton onClick={onClose} />
+            <CloseButton onClick={dismiss} />
           </div>
         </div>
 
@@ -154,7 +162,7 @@ const DashboardSettingsModal: React.FC<DashboardSettingsModalProps> = ({
 
           {/* The walkthrough, on demand */}
           <div data-tour="settings-walkthrough">
-            <AppTourSection onReplayTour={onReplayTour} />
+            <AppTourSection onReplayTour={() => close(onReplayTour)} />
           </div>
 
           {/* Income.

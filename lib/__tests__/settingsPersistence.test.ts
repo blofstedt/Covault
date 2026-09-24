@@ -70,7 +70,7 @@ describe('rapid changes to one setting', () => {
     });
     await Promise.all([first, second]);
 
-    expect(rollbacks).toEqual(['transactions', 'transactions']);
+    expect(rollbacks).toEqual(['transactions']);
   });
 
   it('drops queued writes when the signed-in user changes', async () => {

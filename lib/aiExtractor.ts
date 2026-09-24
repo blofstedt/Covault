@@ -19,12 +19,15 @@ import {
   createModelCache,
   loadStoredRuntime,
   markModelReady,
+  preserveStableRuntimeUrls,
   readModelReport,
   requestDurableStorage,
+  runtimeUrls,
   storageSupported,
   storeRuntime,
   type AIModelReport,
   type ModelFileStore,
+  type RuntimeAssetUrls,
 } from './aiModelStore';
 import { formatVendorName } from './formatVendorName';
 import { BANK_NAME_PREFIXES, isCommonNounOnly } from './deviceTransactionParser';
@@ -57,24 +60,16 @@ export interface AIExtractionResult {
 const MODEL_ID = 'Xenova/flan-t5-small';
 
 /**
- * Where the runtime is fetched from when it is not already on the phone.
+ * Runtime URLs come from the ONNX Runtime package used by this build.
  *
- * Transformers.js sets exactly this by default, so as a fallback it changes
- * nothing — what it changes is that it can no longer *silently* stop being
- * true. The library also has a path that resolves the binary relative to the
- * bundle, and Vite sees that path and emits a 21MB .wasm into dist/ that is
- * never fetched; vite.config.ts drops that file on the strength of this
- * constant, and `aiRuntimeSource.test.ts` fails the build if the two drift
- * apart.
+ * Keep those URLs intact so the loader and binary remain on the same version.
  */
-const RUNTIME_CDN_PREFIX_FOR = (version: string) =>
-  `https://cdn.jsdelivr.net/npm/@huggingface/transformers@${version}/dist/`;
 
 /** The one store the model and the runtime are kept in. See aiModelStore.ts. */
 const modelStore: ModelFileStore = createIdbStore();
 
-/** The prefix the last load used, so the settings screen can report on it. */
-let lastRuntimePrefix = RUNTIME_CDN_PREFIX_FOR('3.8.1');
+/** The ONNX Runtime files used by the last load. */
+let lastRuntimeUrls: RuntimeAssetUrls | null = null;
 
 let generatorPromise: Promise<Text2TextGenerationPipeline> | null = null;
 
@@ -99,9 +94,6 @@ function getGenerator(): Promise<Text2TextGenerationPipeline> {
       // unavailable, or empty, or the phone has cleared it, each line below
       // falls back to what the library would have done unaided: fetch the
       // weights from huggingface.co and the runtime from the CDN.
-      const prefix = `https://cdn.jsdelivr.net/npm/@huggingface/transformers@${env.version}/dist/`;
-      lastRuntimePrefix = prefix;
-
       void requestDurableStorage();
 
       // The weights. `customCache` is the library's own hook for this — an
@@ -119,27 +111,20 @@ function getGenerator(): Promise<Text2TextGenerationPipeline> {
         log.warn('[aiExtractor] Keeping the model on this phone is unavailable:', e);
       }
 
-      // The runtime. The .wasm goes in as bytes, which the loader prefers over
-      // any path — that alone is the offline win, since it is the ~9MB half.
-      // wasmPaths stays pointed at the real CDN, on purpose, even when the
-      // .wasm bytes are already in hand.
-      //
-      // A stored .mjs used to be handed back as a blob: URL and put in
-      // wasmPaths.mjs instead, so the loader script itself would run from
-      // the blob too. That broke in production (Sentry: "Failed to
-      // construct 'URL': Invalid URL", thrown from inside the blob module,
-      // an unhandled rejection outside every try/catch here) — this build
-      // is the "jsep"/threaded variant, which spawns a Web Worker, and a
-      // worker spawned from a module loaded off a blob: URL has no real
-      // location to resolve its own sibling assets against. A script loaded
-      // from its real CDN URL doesn't have that problem, so the loader
-      // itself is left on the network path and only the big binary is
-      // served from what's on the phone.
-      if (env.backends?.onnx?.wasm) {
-        env.backends.onnx.wasm.wasmPaths = prefix;
-        const stored = await loadStoredRuntime(modelStore, prefix);
+      // The ONNX runtime URLs are supplied by the matching onnxruntime-web
+      // version. Keep them unchanged; its cache uses our IndexedDB adapter for
+      // both files, including the loader script needed for offline starts.
+      const runtime = env.backends.onnx.wasm;
+      lastRuntimeUrls = preserveStableRuntimeUrls(
+        lastRuntimeUrls,
+        runtimeUrls(runtime?.wasmPaths, env.version),
+      );
+      const urls = lastRuntimeUrls;
+      if (runtime && urls) {
+        env.useWasmCache = true;
+        const stored = await loadStoredRuntime(modelStore, urls);
         if (stored) {
-          (env.backends.onnx.wasm as { wasmBinary?: ArrayBuffer }).wasmBinary = stored.wasmBinary;
+          (runtime as { wasmBinary?: ArrayBuffer }).wasmBinary = stored.wasmBinary;
           log.debug('[aiExtractor] Using the AI runtime\'s .wasm stored on this phone');
         }
       }
@@ -187,23 +172,37 @@ export async function downloadAIModelToDevice(): Promise<AIModelReport> {
   await requestDurableStorage();
   try {
     await getGenerator();
-    await storeRuntime(modelStore, lastRuntimePrefix);
-    await markModelReady(modelStore);
+    if (lastRuntimeUrls) {
+      await storeRuntime(modelStore, lastRuntimeUrls);
+      await markModelReady(modelStore, lastRuntimeUrls);
+    }
   } catch (e) {
     log.warn('[aiExtractor] Could not put the AI model on this phone:', e);
     // The generator resets itself on failure, so a later attempt starts clean.
   }
-  return readModelReport(modelStore, lastRuntimePrefix);
+  return readAIModelReport();
 }
 
 /** What is on this phone right now. Read from the store, never from a flag. */
-export function readAIModelReport(): Promise<AIModelReport> {
+export async function readAIModelReport(): Promise<AIModelReport> {
   if (!storageSupported()) {
-    return Promise.resolve({
+    return {
       state: 'unsupported', bytes: 0, weights: false, runtime: false, at: 0,
-    });
+    };
   }
-  return readModelReport(modelStore, lastRuntimePrefix);
+
+  if (!lastRuntimeUrls) {
+    try {
+      const { env } = await import('@huggingface/transformers');
+      lastRuntimeUrls = preserveStableRuntimeUrls(
+        lastRuntimeUrls,
+        runtimeUrls(env.backends.onnx.wasm?.wasmPaths, env.version),
+      );
+    } catch (e) {
+      log.warn('[aiExtractor] Could not inspect the AI runtime files:', e);
+    }
+  }
+  return readModelReport(modelStore, lastRuntimeUrls);
 }
 
 async function aiGenerate(prompt: string, maxTokens = 64): Promise<string> {

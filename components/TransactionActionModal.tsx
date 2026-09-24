@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Transaction, BudgetCategory } from '../types';
 import TransactionForm from './TransactionForm';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
-import { useEscapeKey } from '../lib/hooks/useEscapeKey';
 import { normalizeRecurrence } from '../lib/recurrence';
 
 interface VendorHistoryItem {
@@ -37,9 +36,6 @@ const TransactionActionModal: React.FC<TransactionActionModalProps> = ({
   onVendorOverrideUpdated,
 }) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-
-  // Stand down while the delete confirmation is up, so Escape dismisses that first.
-  useEscapeKey(onClose, !showDeleteConfirm);
 
   // A recurring entry doesn't delete alone: this occurrence and every one after
   // it go, while the ones that already happened stay. The warning belongs here,

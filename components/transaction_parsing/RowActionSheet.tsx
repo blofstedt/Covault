@@ -1,5 +1,6 @@
-import React from 'react';
-import { useEscapeKey } from '../../lib/hooks/useEscapeKey';
+import React, { useRef } from 'react';
+import { useDialogInteraction } from '../../lib/hooks/useDialogInteraction';
+import { useDialogExit } from '../../lib/hooks/useDialogExit';
 import Portal from '../ui/Portal';
 
 export interface RowAction {
@@ -35,20 +36,26 @@ interface RowActionSheetProps {
  * gesture bar as well, so the last action isn't sitting under it.
  */
 const RowActionSheet: React.FC<RowActionSheetProps> = ({ title, actions, onClose }) => {
-  useEscapeKey(onClose);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const { isClosing, close } = useDialogExit();
+  const dismiss = () => close(onClose);
+  const handleKeyDown = useDialogInteraction(dialogRef, dismiss, { disabled: isClosing });
 
   return (
     <Portal>
     <div
-      className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] sm:pb-4 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200"
+      ref={dialogRef}
+      className={`fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] sm:pb-4 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm ${isClosing ? 'dialog-exiting dialog-exit-backdrop' : 'animate-in fade-in dialog-motion'}`}
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) dismiss();
       }}
       role="dialog"
       aria-modal="true"
       aria-label={title}
+      tabIndex={-1}
+      onKeyDown={handleKeyDown}
     >
-      <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-[2rem] p-4 shadow-2xl border border-slate-100 dark:border-slate-800/60 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-300">
+      <div className={`w-full max-w-sm bg-white dark:bg-slate-900 rounded-[2rem] p-4 shadow-2xl border border-slate-100 dark:border-slate-800/60 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] ${isClosing ? 'dialog-exiting dialog-exit-sheet' : 'animate-in slide-in-from-bottom-4 sm:zoom-in-95 dialog-motion'}`}>
         <p className="text-[11px] font-semibold tracking-wide text-slate-400 dark:text-slate-500 px-2 pb-2 truncate">
           {title}
         </p>
@@ -59,8 +66,10 @@ const RowActionSheet: React.FC<RowActionSheetProps> = ({ title, actions, onClose
               key={action.label}
               type="button"
               onClick={() => {
-                onClose();
-                action.onSelect();
+                close(() => {
+                  onClose();
+                  action.onSelect();
+                });
               }}
               className={`w-full min-h-[52px] flex items-center gap-3 px-4 py-3 rounded-2xl text-left transition-colors active:scale-[0.98] ${
                 action.tone === 'danger'
@@ -83,7 +92,7 @@ const RowActionSheet: React.FC<RowActionSheetProps> = ({ title, actions, onClose
 
         <button
           type="button"
-          onClick={onClose}
+          onClick={dismiss}
           className="mt-2 w-full min-h-[48px] py-3 text-xs font-bold rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors active:scale-[0.98]"
         >
           Cancel

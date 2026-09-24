@@ -36,15 +36,23 @@ phone app usable after each step.
 - [x] Use the committed lockfile for local and CI installs. Both Android
   workflows now use `npm ci --legacy-peer-deps`.
 - [x] Make the dashboard's ordinary settings and sharing privacy choice report
-  a failed save and restore the last saved value. Tests cover a failed response,
-  a missing row, and two quick changes to the same choice. Review the remaining
-  save paths for the same failure.
+  a failed save and restore the last saved value. The remaining income, theme,
+  budget-limit, and budget-visibility paths now reject successful responses that
+  changed no row, preserve the income create fallback, and serialize each
+  combined budget-row choice so overlapping changes cannot overwrite or roll
+  back each other. Focused and full tests pass; Sol's review found no remaining
+  issues. Phone-only behavior is still unverified.
 - [ ] Write one current database setup path. The README currently points to
   the August schema sync while later migrations change sharing, privacy, and
   other behavior. Verify a fresh database and an existing database before
-  replacing the instructions. Never infer deployed schema from the files alone.
-- [ ] Confirm the build workflow needs each permission it grants. Keep release
-  publishing separate from ordinary validation.
+  replacing the instructions. The user has no approved read-only way to inspect
+  the deployed schema yet, so this remains open. Never infer deployed schema
+  from the files alone.
+- [x] Confirm the build workflow needs each permission it grants. Keep release
+  publishing separate from ordinary validation. The build job now has only
+  `contents: read`; the main-branch publisher has `contents: write`, and the
+  unused Actions/packages write grants are gone. `appUpdate.test.ts` pins the
+  job boundary; its focused 25-test run passed.
 
 ### 2. Give features clear boundaries
 
@@ -56,40 +64,109 @@ phone app usable after each step.
   own its screen, small controls, hook, data operations, and tests. Keep
   genuinely shared controls in `components/ui` or `components/shared`; do not
   create a generic component for a single use.
-- [ ] Split `notificationProcessor.ts` along stable decisions, one at a time:
-  whether an alert is spending, whether it is a duplicate, which category it
-  belongs to, and how the accepted result is saved. Test the user-visible
-  capture and notification behavior before replacing a custom step.
+- [ ] Split `notificationProcessor.ts` along stable decisions, one at a time.
+  The first boundary is already in place: `deviceTransactionParser.ts` owns
+  spending eligibility, with matching Android wording rules. Its parser,
+  pre-authorization, income, non-spending, non-purchase, and capture-source
+  behavior suite passed (215 tests). The nearby same-merchant hard-skip versus
+  visible possible-duplicate decision is now isolated in
+  `notificationDuplicates.ts`; its 8 direct behavior tests and 42-test focused
+  duplicate/capture regression set passed. Cross-app same-tap matching and
+  email-to-bank duplicate selection now have pure decisions with behavior
+  coverage in `captureChannel.ts` and `notificationDuplicates.ts`. Fallback
+  category choice is isolated in `notificationCategory.ts`, with focused
+  tests for AI precedence, hidden categories, merchant signals, and defaults.
+  Shared exact, prefix, and contains matching now lives in
+  `vendorRuleMatching.ts`; both personal and partner rules use it. It prefers
+  the displayed vendor name over aliases. Behavior tests cover key priority,
+  row order, empty keys, and all supported match types. Sol's review found no
+  remaining issues.
+  The reverse-order bank-upgrades-email match selection is now isolated too;
+  its row update remains in the processor. The captured-row insert and
+  compatibility retry for optional late-added columns now live in
+  `notificationPersistence.ts`, with behavior tests for both retry and failure.
+  The post-insert race-recovery keep/rollback decision now lives in
+  `notificationDuplicates.ts` with direct result tests; the processor still
+  owns the database re-query and delete choreography. Local review/processed
+  writes now pass through `notificationMarkers.ts`; behavior tests cover
+  permanent captures, retryable rejections, legacy keys, and keeping
+  auto-accepted rows out of Review. Auto-filing eligibility now lives in
+  `notificationAutoAccept.ts`; direct tests cover each refusal gate, and
+  processor tests confirm email, fuel-hold, and foreign-currency captures stay
+  in Review even when a learned rule matches. Sol found no remaining issues.
+  Learned merchant-rule selection now also lives in
+  `decideMerchantRuleChoice`: sibling branches can surface real category
+  conflicts, `Other` is not counted as an opinion, and only the rule matching
+  the current capture can be applied. Direct decision tests and capture tests
+  cover the Wendy's rescue and Costco conflict; Sol found no remaining issues.
+  Recurring-charge handling now separately checks whether a matched row is
+  this capture's recorded occurrence before attaching today's notification;
+  older schedule entries remain untouched. Direct boundary tests and processor
+  tests cover both outcomes, and Sol found no remaining issues. The phone's
+  saved vendor-map choice now lives in `vendorMapMatching.ts`; tests cover
+  primary-key and alias priority, constrained fuzzy matches, ties, and a
+  real false-match capture regression. Sol found no remaining issues.
+  Conflict suggestions now count only this merchant's past filings, including
+  parser aliases; ties still suggest nothing, and suggestions remain in Review.
+  Direct behavior tests and Sol's review found no remaining issues. The full
+  suite (2,118 tests), type-check, ESLint, and production build pass.
+  The Android capture-flow check is still outstanding.
 - [ ] Evaluate whether the existing React Query cache should own more server
-  reads. Its first use is Review's ignored-alert rules. Compare a small
-  migration against the current failed-read, stale-answer, and first-paint
-  behavior before deciding whether budgets, transactions, or settings belong
-  there too. The current split is a starting point, not a permanent rule.
+  reads. The current bounded use is Review's ignored-alert rules; tests cover a
+  failed refetch, prefetching, and user-scoped cache entries, while sign-out
+  clears the cache. Transactions and budgets remain on the existing load path,
+  which protects first paint, failed reads, and out-of-order answers
+  (`firstPaintCache`, `budgetFallback`, and `readGate`). The planned comparison
+  of another low-risk read on a phone has not been done, so no wider migration
+  decision is claimed yet.
 
 ### 3. Make the design easier to keep consistent
 
-- [ ] Gather the card, button, sheet, and motion values that screens repeat.
-  Start with the existing controls and the budget interaction's 320 ms curve.
-  Replace copies only after comparing the rendered screens.
+- [x] Gather the card, button, sheet, and motion values that screens repeat.
+  `docs/UI_VISUAL_CHECKS.md` records the current shared values and differences.
+  The account-free visual page compares the real populated and empty dashboard,
+  Review, onboarding, add-entry, and settings components in browser renders;
+  no broad restyle was made before an Android comparison.
 - [ ] Give dialogs and sheets one accessible interaction pattern: initial
-  focus, Escape, return focus, scroll locking, and reduced motion. Check it on
-  the phone, where the keyboard and system sheets change the layout.
-- [ ] Add a small set of repeatable visual checks for the dashboard, Review,
-  onboarding, and settings. Include empty and populated states at phone size.
-  Screenshots help spot drift; a real device check still decides whether motion
-  feels smooth.
+  focus, Escape, return focus, scroll locking, and reduced motion. Modal and
+  sheet surfaces now share `useDialogInteraction`, including nested layers;
+  tests cover focus containment/return, Escape order, scroll restoration, and
+  inert walkthrough content. The visible walkthrough layer keeps focus and
+  Escape handling above stage dialogs mounted later, and the calendar now names
+  its month controls and announces month changes. Entrances use the shared
+  320 ms curve and honor reduced motion. Dismissals now use that same curve;
+  reduced-motion users close immediately, while actions that submit or confirm
+  retain their existing lifecycle. A physical-phone keyboard, safe-area, and
+  motion check is still outstanding.
+- [x] Add a small set of repeatable visual checks for the dashboard, Review,
+  onboarding, and settings. `visual-tests/index.html` supplies example and
+  empty fixtures at a phone viewport; the same components are rendered in dark
+  and light mode without Supabase credentials. Browser screenshots passed a
+  visual inspection; Android WebView motion and native safe areas remain
+  unverified.
 
 ### 4. Strengthen checks without a rewrite
 
 - [x] Enable strict TypeScript checking. The initial 11 errors were nullable
   values and have been fixed without changing the intended data flow. Keep it
   on for new work; do not add casts merely to make it pass.
-- [ ] Add behavior tests beside changed features. Keep source-text tests only
-  for relationships that cannot reasonably be exercised, such as generated
-  Android wiring and mirrored native rules.
-- [ ] Review dependencies and build tools on a schedule. Verify the current
-  stable version, license, and audit result before adding a package. Avoid
-  adding a state library until a concrete shared-state problem calls for it.
+- [x] Add behavior tests beside changed features. The extracted duplicate
+  decision has direct decision tests; the shared dialogs now have keyboard,
+  focus-return, and scroll-lock behavior tests. Source checks remain only for
+  build wiring where the behavior runs outside the unit-test process.
+- [x] Review dependencies and build tools on a schedule. The new DOM test
+  environment was checked against npm's latest stable release and its MIT
+  license. The 17 advisories in the installed tree were cleared: PostCSS is
+  8.5.28, Vite 6.4.3, and Vitest 4.1.11, with compatible transitive fixes.
+  Transformers.js moved to 4.3.0 (Apache-2.0) to fix its vulnerable `sharp`
+  dependency. The AI model store now uses the versioned WASM and loader URLs
+  supplied by ONNX Runtime, which are separate from the Transformers.js
+  package. Readiness markers are tied to that package/runtime identity and
+  remain stable across temporary blob URLs created during retries. `npm audit`
+  reports no known vulnerabilities. `.github/dependabot.yml` asks for monthly,
+  grouped npm and GitHub Actions update proposals; Dependabot does not
+  auto-merge them, and the repository does not enforce reviewer approval
+  before merge. No state library was added.
 
 ## Decisions to challenge
 

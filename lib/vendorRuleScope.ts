@@ -40,6 +40,11 @@ export interface ScopedRule {
   category_id?: string | null;
 }
 
+export type MerchantRuleChoice<T extends ScopedRule> =
+  | { kind: 'no-match'; merchantRules: T[]; realCategories: string[] }
+  | { kind: 'matched'; merchantRules: T[]; realCategories: string[]; rule: T }
+  | { kind: 'conflict'; merchantRules: T[]; realCategories: string[] };
+
 /** The display name, folded for comparison. Empty means "no name to group on". */
 function merchantKey(rule: ScopedRule): string {
   return String(rule?.proper_name || '').trim().toLowerCase();
@@ -92,6 +97,32 @@ export function distinctCategories(rules: readonly ScopedRule[]): string[] {
     if (category) seen.add(category);
   }
   return [...seen];
+}
+
+/**
+ * Decide whether one of the current person's matching rules can be applied.
+ *
+ * Sibling branch rules widen the set used to detect a real disagreement, but
+ * never replace the rule that matched this capture. "Other" is not a second
+ * opinion, so an Other rule and one real category do not conflict.
+ */
+export function decideMerchantRuleChoice<T extends ScopedRule>(
+  matchedRules: readonly T[],
+  allRules: readonly T[],
+): MerchantRuleChoice<T> {
+  const merchantRules = merchantRuleScope(matchedRules, allRules);
+  const realCategories = distinctCategories(merchantRules).filter(category => category !== 'other');
+
+  if (realCategories.length > 1) {
+    return { kind: 'conflict', merchantRules, realCategories };
+  }
+
+  const matchedRule = matchedRules[0];
+  if (!matchedRule) {
+    return { kind: 'no-match', merchantRules, realCategories };
+  }
+
+  return { kind: 'matched', merchantRules, realCategories, rule: matchedRule };
 }
 
 /**

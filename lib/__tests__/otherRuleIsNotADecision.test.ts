@@ -6,9 +6,9 @@
  *   1. Nothing ever WRITES an Other rule any more (persistVendorOverride,
  *      handleSetVendorCategory) — pinned in vendorOverrideWrite.test.ts and
  *      here, by source, for the hook.
- *   2. The capture pipeline's conflict check no longer counts an Other rule
- *      as a second opinion — a branch taught Other must not outvote, or
- *      "disagree with", a real answer taught elsewhere on the same merchant.
+ *   2. The merchant-rule decision helper no longer counts an Other rule as a
+ *      second opinion. Its behavior and the real capture path are covered in
+ *      vendorRuleScope.test.ts and notificationProcessor.test.ts.
  *   3. When the narrow match for THIS capture is an Other rule but the rest
  *      of the merchant agrees on exactly one real category, that real
  *      category is used instead — at confidence 0, same treatment as a
@@ -75,15 +75,8 @@ describe('an Other rule is not a real opinion, for the merchant-level check', ()
   });
 });
 
-describe('the capture pipeline: conflict decided on real categories only', () => {
+describe('the capture pipeline: suggestions and Other rescue', () => {
   const source = readFileSync(resolve(__dirname, '../notificationProcessor.ts'), 'utf8');
-
-  it('filters Other out before deciding whether there is a conflict', () => {
-    expect(source).toContain(
-      "realCategories = conflictingCategories.filter((c) => c !== 'other')",
-    );
-    expect(source).toContain('overrideRuleConflict = realCategories.length > 1');
-  });
 
   it('never suggests Other back as the frequency-based candidate', () => {
     const block = source.slice(

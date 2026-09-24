@@ -1403,13 +1403,17 @@ describe('a branch taught Other does not outvote the rest of the chain', () => {
       makeInput({
         rawNotification: "WENDY'S CROWFOOT You spent $11.75 with your credit card.",
         notificationTimestamp: Date.now(),
+        autoAcceptKnownVendors: true,
       }),
       WENDYS_CATEGORIES,
     );
 
     expect(result.categoryName).toBe('Leisure');
+    expect(result.autoAccepted).toBe(false);
     const row = txChain.insert.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
     expect(row?.budget).toBe('Leisure');
+    expect(row).not.toHaveProperty('auto_filed');
+    expect(row).not.toHaveProperty('caught_cleared');
     // Never full confidence: this came from a sibling branch's rule, not the
     // one that matched THIS capture's own slug, so it must still land in
     // Review rather than auto-file.
@@ -1436,6 +1440,7 @@ describe('a branch taught Other does not outvote the rest of the chain', () => {
       makeInput({
         rawNotification: 'Purchase of $65.20 at COSTCO GAS #123',
         notificationTimestamp: Date.now(),
+        autoAcceptKnownVendors: true,
       }),
       costcoCategories,
     );
@@ -1443,7 +1448,10 @@ describe('a branch taught Other does not outvote the rest of the chain', () => {
     // A genuine two-real-category conflict is unaffected by the Other fix —
     // it still asks, exactly as vendorRuleScope.test.ts already pins.
     const row = txChain.insert.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+    expect(result.autoAccepted).toBe(false);
     expect((row?.confidence as number) ?? 0).toBeLessThan(1);
+    expect(row).not.toHaveProperty('auto_filed');
+    expect(row).not.toHaveProperty('caught_cleared');
     expect(result.categoryName).not.toBeNull();
   });
 });

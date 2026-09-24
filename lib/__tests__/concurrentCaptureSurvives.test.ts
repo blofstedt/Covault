@@ -33,42 +33,66 @@ vi.mock('../supabase', () => ({
   supabaseAnonKey: 'mock-anon-key',
 }));
 
-import { pickSurvivingCharge } from '../notificationProcessor';
+import { decideConcurrentCapture } from '../notificationDuplicates';
 
 const ours = { id: 'bbb', created_at: '2026-08-14T22:10:00.200000+00:00' };
 const theirs = { id: 'aaa', created_at: '2026-08-14T22:10:00.100000+00:00' };
 
-describe('choosing which row survives a concurrent double-insert', () => {
-  it('keeps the older row', () => {
-    expect(pickSurvivingCharge([ours, theirs])?.id).toBe('aaa');
+describe('reconciling a concurrent double-insert', () => {
+  it('rolls back the later insert and names the older row as survivor', () => {
+    expect(decideConcurrentCapture([ours, theirs], ours.id)).toEqual({
+      kind: 'rollback',
+      survivor: theirs,
+    });
   });
 
   it('gives the same answer whichever side is asking', () => {
     // The two invocations read the rows back in whatever order Postgres
     // returns them. The answer cannot depend on that.
-    expect(pickSurvivingCharge([ours, theirs])?.id).toBe(
-      pickSurvivingCharge([theirs, ours])?.id,
-    );
+    expect(decideConcurrentCapture([ours, theirs], ours.id)).toEqual({
+      kind: 'rollback',
+      survivor: theirs,
+    });
+    expect(decideConcurrentCapture([theirs, ours], ours.id)).toEqual({
+      kind: 'rollback',
+      survivor: theirs,
+    });
   });
 
   it('still picks exactly one when the timestamps are identical', () => {
     const a = { id: 'aaa', created_at: '2026-08-14T22:10:00.000000+00:00' };
     const b = { id: 'bbb', created_at: '2026-08-14T22:10:00.000000+00:00' };
-    expect(pickSurvivingCharge([a, b])?.id).toBe('aaa');
-    expect(pickSurvivingCharge([b, a])?.id).toBe('aaa');
+    expect(decideConcurrentCapture([a, b], b.id)).toEqual({ kind: 'rollback', survivor: a });
+    expect(decideConcurrentCapture([b, a], b.id)).toEqual({ kind: 'rollback', survivor: a });
   });
 
-  it('picks one out of three', () => {
+  it('picks the oldest of three and rolls back a newer insert', () => {
     const third = { id: 'ccc', created_at: '2026-08-14T22:10:00.300000+00:00' };
-    expect(pickSurvivingCharge([ours, theirs, third])?.id).toBe('aaa');
+    expect(decideConcurrentCapture([ours, theirs, third], third.id)).toEqual({
+      kind: 'rollback',
+      survivor: theirs,
+    });
   });
 
   it('keeps a lone row', () => {
-    expect(pickSurvivingCharge([ours])?.id).toBe('bbb');
+    expect(decideConcurrentCapture([ours], ours.id)).toEqual({
+      kind: 'keep',
+      reason: 'only-our-row',
+    });
   });
 
-  it('has nothing to say about an empty set', () => {
-    expect(pickSurvivingCharge([])).toBeNull();
+  it('keeps the insert when it is absent from the rows the query returned', () => {
+    expect(decideConcurrentCapture([theirs], ours.id)).toEqual({
+      kind: 'keep',
+      reason: 'insert-not-visible',
+    });
+  });
+
+  it('keeps the older insert when it is the selected survivor', () => {
+    expect(decideConcurrentCapture([ours, theirs], theirs.id)).toEqual({
+      kind: 'keep',
+      reason: 'insert-survives',
+    });
   });
 });
 
@@ -87,15 +111,18 @@ describe('the post-insert duplicate check', () => {
       source.indexOf('releasePurchase(purchaseKey);', source.indexOf('Step 6b')),
     );
     expect(raceCheck).not.toMatch(/\.neq\(/);
-    expect(raceCheck).toMatch(/pickSurvivingCharge/);
+    expect(raceCheck).toMatch(/decideConcurrentCapture\(sameCharge, transactionId\)/);
   });
 
   it('only deletes our row when we are not the winner', () => {
-    expect(source).toMatch(/if \(winner && winner\.id !== transactionId\)/);
+    expect(source).toMatch(/if \(decision\.kind === 'rollback'\)/);
   });
 
   it('keeps our row when we cannot see it to compare', () => {
-    expect(source).toMatch(/if \(ours && others\.length > 0\)/);
+    expect(decideConcurrentCapture([theirs], ours.id)).toEqual({
+      kind: 'keep',
+      reason: 'insert-not-visible',
+    });
   });
 });
 

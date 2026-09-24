@@ -11,9 +11,30 @@ import { describe, it, expect } from 'vitest';
 import {
   collectRecurringCharges,
   findRecurringScheduleMatch,
+  isRecordedOccurrenceNearCapture,
   isRecurringRow,
   scheduleLandsNear,
 } from '../recurringSchedule';
+
+describe('isRecordedOccurrenceNearCapture', () => {
+  it('recognises a nearby row as the occurrence confirmed by the capture', () => {
+    expect(isRecordedOccurrenceNearCapture('2026-08-14', '2026-08-15')).toBe(true);
+  });
+
+  it('does not treat a scheduled match from another month as this occurrence', () => {
+    expect(isRecordedOccurrenceNearCapture('2026-07-16', '2026-08-15')).toBe(false);
+  });
+
+  it('refuses missing dates instead of attaching the notification by guess', () => {
+    expect(isRecordedOccurrenceNearCapture(null, '2026-08-15')).toBe(false);
+    expect(isRecordedOccurrenceNearCapture('2026-08-15', undefined)).toBe(false);
+  });
+
+  it('respects the configured date tolerance at the boundary', () => {
+    expect(isRecordedOccurrenceNearCapture('2026-08-12', '2026-08-15', 3)).toBe(true);
+    expect(isRecordedOccurrenceNearCapture('2026-08-11', '2026-08-15', 3)).toBe(false);
+  });
+});
 
 describe('isRecurringRow', () => {
   it('counts a monthly or biweekly row, in any casing', () => {

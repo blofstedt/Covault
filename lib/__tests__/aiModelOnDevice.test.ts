@@ -3,6 +3,7 @@ import {
   createModelCache,
   loadStoredRuntime,
   markModelReady,
+  preserveStableRuntimeUrls,
   readModelReport,
   runtimeUrls,
   shouldDownloadNow,
@@ -67,7 +68,11 @@ function brokenStore(): ModelFileStore {
   };
 }
 
-const PREFIX = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/';
+const RUNTIME_URLS = {
+  wasm: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.0-dev.20260914-8d85527a0/dist/ort-wasm-simd-threaded.asyncify.wasm',
+  mjs: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.0-dev.20260914-8d85527a0/dist/ort-wasm-simd-threaded.asyncify.mjs',
+  transformersVersion: '4.3.0',
+};
 const WEIGHTS_URL = `https://huggingface.co/${AI_MODEL_ID}/resolve/main/onnx/encoder_model_quantized.onnx`;
 
 function bytes(n: number): ArrayBuffer {
@@ -129,7 +134,20 @@ describe('when the store will not cooperate', () => {
   it('a runtime that could not be fetched is reported, not thrown', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 503 });
     vi.stubGlobal('fetch', fetchMock);
-    expect(await storeRuntime(memoryStore(), PREFIX)).toBe(false);
+    expect(await storeRuntime(memoryStore(), RUNTIME_URLS)).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
+  it('does not download runtime files already kept in the store', async () => {
+    const store = memoryStore();
+    for (const url of [RUNTIME_URLS.wasm, RUNTIME_URLS.mjs]) {
+      await store.put(url, { body: bytes(32), headers: [], at: Date.now() });
+    }
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(storeRuntime(store, RUNTIME_URLS)).resolves.toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
 });
@@ -137,31 +155,51 @@ describe('when the store will not cooperate', () => {
 describe('the runtime', () => {
   it('is only offered when both of its halves are here', async () => {
     const store = memoryStore();
-    const urls = runtimeUrls(PREFIX);
+    const urls = runtimeUrls(RUNTIME_URLS, RUNTIME_URLS.transformersVersion)!;
     // The .wasm alone is not a usable runtime, and pairing a stored half with
     // a fetched half risks two different versions.
     await store.put(urls.wasm, { body: bytes(64), headers: [], at: Date.now() });
-    expect(await loadStoredRuntime(store, PREFIX)).toBeNull();
+    expect(await loadStoredRuntime(store, RUNTIME_URLS)).toBeNull();
 
     await store.put(urls.mjs, { body: bytes(32), headers: [], at: Date.now() });
-    const loaded = await loadStoredRuntime(store, PREFIX);
+    const loaded = await loadStoredRuntime(store, RUNTIME_URLS);
     expect(loaded?.wasmBinary.byteLength).toBe(64);
-    // No mjsUrl any more — the loader script is always fetched from its real
-    // CDN location, never re-served as a blob: URL. See loadStoredRuntime's
-    // own comment for why.
+    // The temporary blob URL used while a page is open is not a reusable
+    // persistence identity. Only the WASM bytes are passed directly here;
+    // ONNX Runtime loads the loader through its cache using the stable URL.
     expect(loaded).not.toHaveProperty('mjsUrl');
   });
 
-  it('asks for the file names the loader actually looks for', () => {
-    const urls = runtimeUrls(PREFIX);
-    expect(urls.wasm).toBe(`${PREFIX}ort-wasm-simd-threaded.jsep.wasm`);
-    expect(urls.mjs).toBe(`${PREFIX}ort-wasm-simd-threaded.jsep.mjs`);
+  it('keeps the versioned URLs provided by ONNX Runtime', () => {
+    expect(runtimeUrls({ wasm: RUNTIME_URLS.wasm, mjs: RUNTIME_URLS.mjs }, RUNTIME_URLS.transformersVersion))
+      .toEqual(RUNTIME_URLS);
+    expect(runtimeUrls('https://example.test/ort/', RUNTIME_URLS.transformersVersion)).toBeNull();
+  });
+
+  it('keeps a failed-then-successful retry on the stable loader URL', async () => {
+    const stableUrls = preserveStableRuntimeUrls(null, RUNTIME_URLS);
+    // Transformers replaces this URL with a temporary blob after its runtime
+    // cache initializes, even if the first model load then fails.
+    const retryUrls = preserveStableRuntimeUrls(stableUrls, {
+      ...RUNTIME_URLS,
+      mjs: 'blob:https://app.example/temporary-runtime-loader',
+    });
+
+    expect(retryUrls).toEqual(RUNTIME_URLS);
+
+    const store = memoryStore();
+    await store.put(WEIGHTS_URL, { body: bytes(4096), headers: [], at: Date.now() });
+    await store.put(RUNTIME_URLS.wasm, { body: bytes(2048), headers: [], at: Date.now() });
+    await store.put(RUNTIME_URLS.mjs, { body: bytes(128), headers: [], at: Date.now() });
+    await markModelReady(store, retryUrls!);
+
+    expect((await readModelReport(store, RUNTIME_URLS)).state).toBe('ready');
   });
 });
 
 describe('what the settings screen is told', () => {
   it('says nothing is here when nothing is here', async () => {
-    const report = await readModelReport(memoryStore(), PREFIX);
+    const report = await readModelReport(memoryStore(), RUNTIME_URLS);
     expect(report.state).toBe('absent');
     expect(report.bytes).toBe(0);
   });
@@ -169,7 +207,7 @@ describe('what the settings screen is told', () => {
   it('does not claim ready on the weights alone', async () => {
     const store = memoryStore();
     await store.put(WEIGHTS_URL, { body: bytes(4096), headers: [], at: Date.now() });
-    const report = await readModelReport(store, PREFIX);
+    const report = await readModelReport(store, RUNTIME_URLS);
     expect(report.state).toBe('partial');
     expect(report.weights).toBe(true);
     expect(report.runtime).toBe(false);
@@ -177,18 +215,37 @@ describe('what the settings screen is told', () => {
 
   it('claims ready only after a load has actually succeeded', async () => {
     const store = memoryStore();
-    const urls = runtimeUrls(PREFIX);
+    const urls = runtimeUrls(RUNTIME_URLS, RUNTIME_URLS.transformersVersion)!;
     await store.put(WEIGHTS_URL, { body: bytes(4096), headers: [], at: Date.now() });
     await store.put(urls.wasm, { body: bytes(2048), headers: [], at: Date.now() });
     await store.put(urls.mjs, { body: bytes(128), headers: [], at: Date.now() });
 
     // Everything is here, but nothing has proved it can be loaded yet.
-    expect((await readModelReport(store, PREFIX)).state).toBe('partial');
+    expect((await readModelReport(store, RUNTIME_URLS)).state).toBe('partial');
 
-    await markModelReady(store);
-    const report = await readModelReport(store, PREFIX);
+    await markModelReady(store, RUNTIME_URLS);
+    const report = await readModelReport(store, RUNTIME_URLS);
     expect(report.state).toBe('ready');
     expect(report.bytes).toBeGreaterThan(6000);
+  });
+
+  it('does not carry an old ready marker across a runtime upgrade', async () => {
+    const store = memoryStore();
+    await store.put(WEIGHTS_URL, { body: bytes(4096), headers: [], at: Date.now() });
+    await store.put(RUNTIME_URLS.wasm, { body: bytes(2048), headers: [], at: Date.now() });
+    await store.put(RUNTIME_URLS.mjs, { body: bytes(128), headers: [], at: Date.now() });
+    await store.put('__covault_model_ready__', {
+      body: new ArrayBuffer(0), headers: [], at: Date.now(),
+    });
+
+    expect((await readModelReport(store, RUNTIME_URLS)).state).toBe('partial');
+
+    await markModelReady(store, RUNTIME_URLS);
+    expect((await readModelReport(store, RUNTIME_URLS)).state).toBe('ready');
+    expect((await readModelReport(store, {
+      ...RUNTIME_URLS,
+      transformersVersion: '4.4.0',
+    })).state).toBe('partial');
   });
 
   it('counts sizes the way a person reads them', () => {

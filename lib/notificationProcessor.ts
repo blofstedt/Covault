@@ -14,9 +14,27 @@
 import { log } from './log';
 import { djb2Base36 } from './hash';
 import { supabase } from './supabase';
-import { formatVendorName, fuzzyVendorMatch, leadWordsAgree, normalizeVendorForDedup } from './formatVendorName';
+import { formatVendorName, fuzzyVendorMatch, normalizeVendorForDedup } from './formatVendorName';
+import {
+  findUnpairedBankCaptureForEmail,
+  findEmailCaptureForBank,
+  findNotificationDuplicate,
+  decideConcurrentCapture,
+  NOTIFICATION_AMOUNT_TOLERANCE,
+} from './notificationDuplicates';
 import { parseNotificationText } from './deviceTransactionParser';
-import { addToReviewQueue, getVendorMapEntry, getVendorMap, isNotificationProcessed, markNotificationProcessed, isNotificationRejected, markNotificationRejected, getCachedAIResult, setCachedAIResult, type CachedAIResult } from './localNotificationMemory';
+import {
+  addToReviewQueue,
+  getVendorMap,
+  isNotificationProcessed,
+  markNotificationProcessed,
+  isNotificationRejected,
+  markNotificationRejected,
+  getCachedAIResult,
+  setCachedAIResult,
+  type CachedAIResult,
+} from './localNotificationMemory';
+import { createNotificationMarkers } from './notificationMarkers';
 import { findMatchingExpense, REFUND_MATCH_WINDOW_DAYS } from './refundMatching';
 import { rememberHold, settleHold } from './pendingHold';
 import { aiFindRefundMatch, aiLooksLikeIgnoredAlert } from './aiExtractor';
@@ -25,12 +43,18 @@ import { checkNotificationRules, bumpRuleUseCount, listIgnoredPatterns } from '.
 import { candidatePatternsFor } from './notificationShape';
 import { getLocalToday, parseLocalDate, toLocalIsoDay } from './dateUtils';
 import { extractWithAI, type AIExtractionResult } from './aiExtractor';
-import { detectMerchantSignal, resolveSignalCategory } from './merchantCategorySignals';
+import { chooseNotificationFallbackCategory } from './notificationCategory';
+import { canAutoAcceptCapture } from './notificationAutoAccept';
+import { insertNotificationTransaction } from './notificationPersistence';
 import { lookupCommunityRule } from './communityRules';
 import type { Transaction } from '../types';
-import { scoreVendorMatch, shouldAutoAccept, toMatchKey } from './vendorMatchConfidence';
-import { amountsAgree, daysApart, isSameCharge } from './duplicateCharge';
-import { findRecurringScheduleMatch, type RecurringChargeRow } from './recurringSchedule';
+import { scoreVendorMatch, toMatchKey } from './vendorMatchConfidence';
+import { amountsAgree } from './duplicateCharge';
+import {
+  findRecurringScheduleMatch,
+  isRecordedOccurrenceNearCapture,
+  type RecurringChargeRow,
+} from './recurringSchedule';
 import {
   allowedSourceKind,
   isCaptureSourceAllowed,
@@ -38,17 +62,16 @@ import {
 } from './captureSources';
 import { parseEmailAlert } from './emailNotification';
 import {
-  hasPairedEmail,
-  isBankSourcedRow,
-  isEmailSourcedRow,
   isOtherAppSameTap,
   withCaptureMarker,
   withEmailPairedMarker,
 } from './captureChannel';
 import { detectFuelHold, isFuelMerchant, isHoldAmount, pastFillAmounts, withFuelHoldMarker } from './fuelHold';
 import { withCaptureNotificationMarker } from './captureNotificationMarker';
-import { mostFrequentCategory } from './categoryFrequency';
-import { distinctCategories, merchantRuleScope } from './vendorRuleScope';
+import { mostFrequentCategoryForVendor } from './categoryFrequency';
+import { decideMerchantRuleChoice, distinctCategories, merchantRuleScope } from './vendorRuleScope';
+import { findFirstMatchingVendorRules } from './vendorRuleMatching';
+import { findVendorMapMatch } from './vendorMapMatching';
 
 /**
  * Add the notif-id marker only when there is an id to add.
@@ -66,7 +89,7 @@ function withNotificationIdIfKnown(rawText: string, captureNotificationId: numbe
 // ─── Constants ───────────────────────────────────────────────────
 
 /** Tolerance for comparing monetary amounts */
-const AMOUNT_TOLERANCE = 0.01;
+const AMOUNT_TOLERANCE = NOTIFICATION_AMOUNT_TOLERANCE;
 
 /** Number of days tolerance for recurring transaction date matching */
 const RECURRING_DATE_TOLERANCE_DAYS = 3;
@@ -137,6 +160,13 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
  * Value: timestamp when the key was added (for cache expiry)
  */
 const recentlyProcessedCache = new Map<string, number>();
+const notificationMarkers = createNotificationMarkers(recentlyProcessedCache, {
+  isProcessed: isNotificationProcessed,
+  markProcessed: markNotificationProcessed,
+  isRejected: isNotificationRejected,
+  markRejected: markNotificationRejected,
+  addToReviewQueue,
+});
 
 /**
  * Set of notification keys that are CURRENTLY being processed.
@@ -184,29 +214,6 @@ function claimPurchase(key: string): boolean {
 
 function releasePurchase(key: string): void {
   inFlightPurchaseKeys.delete(key);
-}
-
-/**
- * Which of several rows for the same charge is the one to keep.
- *
- * Used by the post-insert race check, where two invocations that inserted the
- * same purchase at the same moment each have to decide whether to withdraw.
- * The rule has one job: both sides must reach the same answer from the same
- * rows, so that exactly one row survives. Asking "does another row exist?"
- * does not have that property — both sides answer yes and both withdraw,
- * which deletes the purchase entirely.
- *
- * Oldest wins, because a row that was already there is the one the user may
- * have seen. `created_at` comes back from Postgres with microsecond precision
- * so a genuine tie is vanishingly unlikely, but ids break it if it happens,
- * and any total order will do as long as it is the same one on both sides.
- */
-export function pickSurvivingCharge<T extends { id: string; created_at: string }>(
-  rows: T[],
-): T | null {
-  if (rows.length === 0) return null;
-  const rank = (row: T) => `${row.created_at}|${row.id}`;
-  return rows.reduce((best, row) => (rank(row) < rank(best) ? row : best));
 }
 
 /**
@@ -949,8 +956,7 @@ async function processNotificationWithAIImpl(
     // with it — this is the only place its wording is ever kept, since a
     // skipped notification becomes no row and no log the user can read.
     void bumpRuleUseCount(matchedRule.id, input.rawNotification);
-    recentlyProcessedCache.set(inMemoryKey, Date.now());
-    markNotificationRejected(inMemoryKey);
+    notificationMarkers.recordRejected(inMemoryKey);
     return {
       processed: true,
       isTransaction: false,
@@ -967,10 +973,10 @@ async function processNotificationWithAIImpl(
   // user clears it from the <> page and the app is closed/reopened.
   // A CAPTURE is permanent: the row is in the ledger and must never be
   // inserted twice, so forceReprocess deliberately does not bypass this.
-  if (isNotificationProcessed(capturedKey) || isNotificationProcessed(inMemoryKey)) {
+  if (notificationMarkers.isCaptured(capturedKey, inMemoryKey)) {
     log.debug('[AI pipeline] Persistent dedup hit (already captured), skipping');
     // Warm the in-memory cache so subsequent checks in this session are fast
-    recentlyProcessedCache.set(inMemoryKey, Date.now());
+    notificationMarkers.rememberRecent(inMemoryKey);
     return {
       processed: false,
       isTransaction: false,
@@ -983,7 +989,7 @@ async function processNotificationWithAIImpl(
   // still loading, a refund whose expense has not arrived yet, a reworded bank
   // alert — so an explicit rescan (the scan button) is allowed to look again.
   // Rejections also expire on their own; see localNotificationMemory.
-  if (!input.forceReprocess && isNotificationRejected(inMemoryKey)) {
+  if (!input.forceReprocess && notificationMarkers.isRejected(inMemoryKey)) {
     log.debug('[AI pipeline] Previously rejected, skipping (a rescan will retry)');
     return {
       processed: false,
@@ -1001,7 +1007,7 @@ async function processNotificationWithAIImpl(
   if (isDuplicate) {
     log.debug('[AI pipeline] Duplicate detected, skipping');
     // Also add to in-memory cache to prevent re-processing
-    recentlyProcessedCache.set(inMemoryKey, Date.now());
+    notificationMarkers.rememberRecent(inMemoryKey);
     return {
       processed: false,
       isTransaction: false,
@@ -1039,8 +1045,7 @@ async function processNotificationWithAIImpl(
       );
     }
 
-    recentlyProcessedCache.set(inMemoryKey, Date.now());
-    markNotificationRejected(inMemoryKey);
+    notificationMarkers.recordRejected(inMemoryKey);
     return {
       processed: true,
       isTransaction: false,
@@ -1151,8 +1156,7 @@ async function processNotificationWithAIImpl(
       .catch(() => false);
     if (sameKind) {
       log.debug('[AI pipeline] Reads as a reworded version of an alert the user ignores');
-      recentlyProcessedCache.set(inMemoryKey, Date.now());
-      markNotificationRejected(inMemoryKey);
+      notificationMarkers.recordRejected(inMemoryKey);
       return {
         processed: true,
         isTransaction: false,
@@ -1230,8 +1234,7 @@ async function processNotificationWithAIImpl(
       } else if (aiResult.rejectionReason) {
         // The AI thinks this isn't a transaction. Trust it over the regex.
         log.debug(`[AI fallback] parser=${parserConfidence.toFixed(2)} → AI rejected: ${aiResult.rejectionReason}`);
-        recentlyProcessedCache.set(inMemoryKey, Date.now());
-        markNotificationRejected(inMemoryKey);
+        notificationMarkers.recordRejected(inMemoryKey);
         return {
           processed: true,
           isTransaction: false,
@@ -1356,8 +1359,7 @@ async function processNotificationWithAIImpl(
           log.debug(
             `[AI pipeline] Refund matched: struck through ${match.vendor} $${match.amount} (${match.date})`,
           );
-          recentlyProcessedCache.set(inMemoryKey, Date.now());
-          markNotificationProcessed(capturedKey);
+          notificationMarkers.recordCaptured(inMemoryKey, capturedKey);
           return {
             processed: true,
             isTransaction: true,
@@ -1379,8 +1381,7 @@ async function processNotificationWithAIImpl(
         log.debug(
           `[AI pipeline] Refund ${vendor} $${rawAmount} has no matching expense in ${REFUND_MATCH_WINDOW_DAYS}-day window; skipping`,
         );
-        recentlyProcessedCache.set(inMemoryKey, Date.now());
-        markNotificationRejected(inMemoryKey);
+        notificationMarkers.recordRejected(inMemoryKey);
         return {
           processed: true,
           isTransaction: false,
@@ -1395,8 +1396,7 @@ async function processNotificationWithAIImpl(
       log.debug(
         `[AI pipeline] Refund ${vendor} $${rawAmount} has no candidate expenses; skipping`,
       );
-      recentlyProcessedCache.set(inMemoryKey, Date.now());
-      markNotificationRejected(inMemoryKey);
+      notificationMarkers.recordRejected(inMemoryKey);
       return {
         processed: true,
         isTransaction: false,
@@ -1413,8 +1413,7 @@ async function processNotificationWithAIImpl(
   if (!vendor) {
     const reason = 'No vendor name found in notification';
     log.debug('[AI pipeline] Skipped: no vendor identified');
-    recentlyProcessedCache.set(inMemoryKey, Date.now());
-    markNotificationRejected(inMemoryKey);
+    notificationMarkers.recordRejected(inMemoryKey);
     return {
       processed: true,
       isTransaction: false,
@@ -1426,23 +1425,6 @@ async function processNotificationWithAIImpl(
   }
 
   // ── Step 4: Duplicate detection (fuzzy vendor + amount ±3 days) ──
-  const normalizedVendor = normalizeVendorForDedup(vendor);
-
-  /**
-   * Is `existingName` the same merchant as the one we just captured?
-   *
-   * Checks every name the capture answers to, not just the polished one. A
-   * recurring "Google" on the books and an incoming "GOOGLE *YOUTUBEPREMIUM"
-   * are the same merchant, but only the alias makes that visible — the parser
-   * hands us "Youtubepremium", which shares nothing with "Google".
-   */
-  const matchesCapturedVendor = (existingName: string | null | undefined): boolean => {
-    const existing = String(existingName || '');
-    if (!existing) return false;
-    if (normalizeVendorForDedup(existing) === normalizedVendor) return true;
-    if (fuzzyVendorMatch(existing, vendor)) return true;
-    return vendorAliases.some((alias) => fuzzyVendorMatch(existing, alias));
-  };
   // Projection is the superset of what step 4 and step 5b need, so step 5b
   // can reuse this result instead of re-issuing the identical query (same
   // user, same +/-3 day window). Nothing between the two steps writes to
@@ -1450,62 +1432,41 @@ async function processNotificationWithAIImpl(
   // a fresh query.
   const { data: existingTx } = await nearbyTransactions;
 
-  if (existingTx && existingTx.length > 0) {
-    // Single permissive pass: any same-vendor match in the window is a
-    // soft-dup. The only hard-skip is same-day same-amount, which is
-    // almost certainly a re-broadcast of the same notification.
-    const sameDaySameAmount = existingTx.find((tx) => {
-      if (tx.date !== today) return false;
-      if (Math.abs(Number(tx.amount) - amount) >= AMOUNT_TOLERANCE) return false;
-      // Exact normalized equality first, then fuzzy. Two apps often report one
-      // purchase in different wordings ("Staples" vs "Staples #462 Ca"), and
-      // exact equality alone let both through as separate rows. Same day AND
-      // same amount AND a similar vendor is a double-report, not two
-      // coincidental purchases.
-      return matchesCapturedVendor(tx.vendor);
-    });
+  // A same-day near-exact report is a hard skip. Anything less certain is
+  // preserved and surfaced as a possible duplicate so a real second purchase
+  // is never silently lost. The pure classifier lives in
+  // lib/notificationDuplicates.ts; this pipeline owns the user-visible result.
+  const duplicateDecision = findNotificationDuplicate(existingTx || [], {
+    vendor,
+    aliases: vendorAliases,
+    amount,
+    date: today,
+  });
 
-    if (sameDaySameAmount) {
-      // True re-broadcast of the same notification — hard skip. The
-      // in-memory cache above should catch this first, but we keep this
-      // as a belt-and-suspenders.
-      log.debug(`[AI pipeline] Hard skip: same-day same-amount match ${sameDaySameAmount.vendor} $${sameDaySameAmount.amount} (${sameDaySameAmount.date})`);
-      recentlyProcessedCache.set(inMemoryKey, Date.now());
-      markNotificationProcessed(capturedKey);
-      return {
-        processed: true,
-        isTransaction: true,
-        vendor,
-        amount,
-        skipReason: 'duplicate_ai' as const,
-        rejectionReason: 'Same notification reprocessed on the same day',
-        bankName: input.bankName,
-      };
-    }
+  if (duplicateDecision.kind === 'hard') {
+    const duplicate = duplicateDecision.transaction;
+    log.debug(`[AI pipeline] Hard skip: same-day same-amount match ${duplicate.vendor} $${duplicate.amount} (${duplicate.date})`);
+    notificationMarkers.recordCaptured(inMemoryKey, capturedKey);
+    return {
+      processed: true,
+      isTransaction: true,
+      vendor,
+      amount,
+      skipReason: 'duplicate_ai' as const,
+      rejectionReason: 'Same notification reprocessed on the same day',
+      bankName: input.bankName,
+    };
+  }
 
-    // Soft-dup: any other same-vendor match in the window. We do NOT skip
-    // — the user has said they'd rather see both rows and dedup manually.
-    // Pick the closest match (by amount) to surface in the parsing UI.
-    //
-    // Matched the same way as the hard skip above. It used to demand exact
-    // equality of the normalised names while the hard skip matched fuzzily,
-    // so a charge whose bank wording differs from the recorded one — the
-    // common case, and the whole reason the fuzzy matcher exists — produced
-    // no warning at all.
-    const allMatches = existingTx.filter((tx) => matchesCapturedVendor(tx.vendor));
-    if (allMatches.length > 0) {
-      const sameAmount = allMatches.find((tx) => Math.abs(Number(tx.amount) - amount) < AMOUNT_TOLERANCE);
-      const closest = sameAmount || allMatches.sort((a, b) =>
-        Math.abs(Number(a.amount) - amount) - Math.abs(Number(b.amount) - amount)
-      )[0];
-      log.debug(`[AI pipeline] Soft-dup: similar ${closest.vendor} $${closest.amount} on ${closest.date} (source=${closest.source || 'unknown'}), but new charge is $${amount.toFixed(2)}`);
-      softDupMatch = {
-        id: closest.id,
-        vendor: closest.vendor,
-        amount: Number(closest.amount),
-        date: closest.date,
-      };
-    }
+  if (duplicateDecision.kind === 'soft') {
+    const closest = duplicateDecision.transaction;
+    log.debug(`[AI pipeline] Soft-dup: similar ${closest.vendor} $${closest.amount} on ${closest.date} (source=${closest.source || 'unknown'}), but new charge is $${amount.toFixed(2)}`);
+    softDupMatch = {
+      id: closest.id,
+      vendor: closest.vendor,
+      amount: Number(closest.amount),
+      date: closest.date,
+    };
   }
 
   // ── Step 4d: Two apps, one tap — the first to report it wins ──
@@ -1536,8 +1497,7 @@ async function processNotificationWithAIImpl(
       log.debug(
         `[AI pipeline] Another app already reported this tap: ${sameTap.vendor} $${sameTap.amount}; dropping the second report from ${input.bankAppId}`,
       );
-      recentlyProcessedCache.set(inMemoryKey, Date.now());
-      markNotificationProcessed(capturedKey);
+      notificationMarkers.recordCaptured(inMemoryKey, capturedKey);
       return {
         processed: true,
         isTransaction: true,
@@ -1578,21 +1538,7 @@ async function processNotificationWithAIImpl(
   // Closest first, so when several rows could match, the nearest in amount and
   // then in time is the one consumed.
   if (input.channel === 'email' && existingTx && existingTx.length > 0) {
-    const candidates = existingTx
-      .filter((tx) => isBankSourcedRow(tx) && !hasPairedEmail(tx.raw_notification))
-      .filter((tx) => isSameCharge({ vendor, amount, date: today }, {
-        vendor: tx.vendor,
-        amount: Number(tx.amount),
-        date: tx.date,
-      }))
-      .sort((a, b) => {
-        const byAmount =
-          Math.abs(Number(a.amount) - amount) - Math.abs(Number(b.amount) - amount);
-        if (byAmount !== 0) return byAmount;
-        return (daysApart(a.date, today) ?? 99) - (daysApart(b.date, today) ?? 99);
-      });
-
-    const claimed = candidates[0];
+    const claimed = findUnpairedBankCaptureForEmail(existingTx, { vendor, amount, date: today });
     if (claimed) {
       log.debug(
         `[AI pipeline] Email repeats a bank capture: ${claimed.vendor} $${claimed.amount} on ${claimed.date}; dropping the email copy`,
@@ -1610,8 +1556,7 @@ async function processNotificationWithAIImpl(
         log.warn('[AI pipeline] Could not mark the bank row as paired:', e);
       }
 
-      recentlyProcessedCache.set(inMemoryKey, Date.now());
-      markNotificationProcessed(capturedKey);
+      notificationMarkers.recordCaptured(inMemoryKey, capturedKey);
       return {
         processed: true,
         isTransaction: true,
@@ -1643,15 +1588,7 @@ async function processNotificationWithAIImpl(
   // retried as an insert: the money is already on the books with very nearly the
   // right figure, and a second row would be worse than a slightly stale one.
   if (input.channel !== 'email' && existingTx && existingTx.length > 0) {
-    const stale = existingTx
-      .filter((tx) => isEmailSourcedRow(tx))
-      .filter((tx) => isSameCharge({ vendor, amount, date: today }, {
-        vendor: tx.vendor,
-        amount: Number(tx.amount),
-        date: tx.date,
-      }))
-      .sort((a, b) =>
-        Math.abs(Number(a.amount) - amount) - Math.abs(Number(b.amount) - amount))[0];
+    const stale = findEmailCaptureForBank(existingTx, { vendor, amount, date: today });
 
     if (stale) {
       log.debug(
@@ -1673,8 +1610,7 @@ async function processNotificationWithAIImpl(
         log.warn('[AI pipeline] Could not upgrade the email row with the bank alert:', e);
       }
 
-      recentlyProcessedCache.set(inMemoryKey, Date.now());
-      markNotificationProcessed(capturedKey);
+      notificationMarkers.recordCaptured(inMemoryKey, capturedKey);
       return {
         processed: true,
         isTransaction: true,
@@ -1751,30 +1687,16 @@ async function processNotificationWithAIImpl(
       // Issued alongside the other two reads above; this is just collecting it.
       const { data } = await vendorRules;
       const allRows = data || [];
-      // Filter in-memory by match_type semantics. Most-recent-wins is
-      // already guaranteed by the ORDER BY + first-match in loop.
-      const rulesMatching = (key: string) => allRows.filter((row: any) => {
-        const mk = (row.match_key || '').toLowerCase();
-        if (!mk) return false;
-        const mt = row.match_type || 'exact';
-        if (mt === 'exact') return key === mk;
-        if (mt === 'prefix') return key.startsWith(mk);
-        if (mt === 'contains') return key.includes(mk);
-        return false;
+      // The shared matcher preserves match_type semantics and tries the
+      // polished name before any parser-recognized aliases.
+      const ruleMatch = findFirstMatchingVendorRules({
+        rows: allRows,
+        keys: [vendorKey, ...aliasKeys],
       });
-
-      let matching = rulesMatching(vendorKey);
-      // Nothing under the polished name — try the merchant's other names before
-      // giving up. This is what keeps a rule taught as "googleyoutubepremium"
-      // working after the parser started stripping the "GOOGLE *" prefix off
-      // the name it extracts.
-      for (const aliasKey of aliasKeys) {
-        if (matching.length > 0) break;
-        matching = rulesMatching(aliasKey);
-        if (matching.length > 0) {
-          matchedKey = aliasKey;
-          log.debug(`[AI pipeline] No rule for "${vendor}"; matched on alias key "${aliasKey}"`);
-        }
+      const matching = ruleMatch?.rows ?? [];
+      if (ruleMatch && ruleMatch.key !== vendorKey) {
+        matchedKey = ruleMatch.key;
+        log.debug(`[AI pipeline] No rule for "${vendor}"; matched on alias key "${matchedKey}"`);
       }
 
       // A vendor may legitimately have more than one rule: Walmart→Groceries
@@ -1798,25 +1720,11 @@ async function processNotificationWithAIImpl(
       // comparing only the slug that matched meant a merchant could never be
       // in conflict with itself: one branch's stale rule filed silently while
       // every other branch of the same restaurant said something else.
-      const merchantRules = merchantRuleScope(matching, allRows);
-      // "Other" is not a second opinion — it is the app's own shrug, written
-      // back as though it were one. A branch taught Other because nobody ever
-      // told it anything else must not outvote every other branch of the same
-      // chain that DID get a real answer, and it must not count as the
-      // "disagreement" that sends the capture to review either: there is
-      // nothing to disagree about when only one of the two sides is a real
-      // decision. So the conflict check — and the category actually used —
-      // are both computed on the REAL categories only. `distinctCategories`
-      // already lowercases, so the comparison is exact.
-      const conflictingCategories = distinctCategories(merchantRules);
-      realCategories = conflictingCategories.filter((c) => c !== 'other');
-      overrideRuleConflict = realCategories.length > 1;
-      // Still chosen from the rules that actually matched this capture's slug:
-      // widening above decides only WHETHER to ask, never which rule applies
-      // when there is nothing to ask about. If that narrow match turns out to
-      // be an Other rule, the check just below this block replaces it with
-      // the merchant's one real category, when there is exactly one.
-      overrideRows = overrideRuleConflict ? [] : matching.slice(0, 1);
+      const ruleChoice = decideMerchantRuleChoice(matching, allRows);
+      const merchantRules = ruleChoice.merchantRules;
+      realCategories = ruleChoice.realCategories;
+      overrideRuleConflict = ruleChoice.kind === 'conflict';
+      overrideRows = ruleChoice.kind === 'matched' ? [ruleChoice.rule] : [];
 
       if (overrideRuleConflict) {
         log.debug(
@@ -1851,8 +1759,12 @@ async function processNotificationWithAIImpl(
             .in('budget', candidateNames)
             .order('date', { ascending: false })
             .limit(MAX_FREQUENCY_ROWS);
-          const sameVendorRows = (frequencyRows || []).filter((row: any) => matchesCapturedVendor(row.vendor));
-          const suggested = mostFrequentCategory(sameVendorRows, candidateNames);
+          const suggested = mostFrequentCategoryForVendor(
+            frequencyRows || [],
+            candidateNames,
+            vendor,
+            vendorAliases,
+          );
           if (suggested) {
             const suggestedCat = availableCategories.find(
               (c) => c.name.toLowerCase() === suggested.toLowerCase(),
@@ -1862,7 +1774,7 @@ async function processNotificationWithAIImpl(
               categoryName = suggestedCat.name;
               log.debug(
                 `[AI pipeline] Suggesting ${categoryName} for ${vendor} — the more common of the ` +
-                `${conflictingCategories.length} rules in this household's own history, still routed to review`,
+                `${realCategories.length} rules in this household's own history, still routed to review`,
               );
             }
           }
@@ -1981,21 +1893,11 @@ async function processNotificationWithAIImpl(
       let borrowed: { row: VendorRuleRow; from: 'partner' } | null = null;
 
       if (partnerRows.length > 0) {
-        const partnerMatching = (key: string) => partnerRows.filter((row) => {
-          const mk = (row.match_key || '').toLowerCase();
-          if (!mk) return false;
-          const mt = row.match_type || 'exact';
-          if (mt === 'exact') return key === mk;
-          if (mt === 'prefix') return key.startsWith(mk);
-          if (mt === 'contains') return key.includes(mk);
-          return false;
+        const ruleMatch = findFirstMatchingVendorRules({
+          rows: partnerRows,
+          keys: [vendorKey, ...aliasKeys],
         });
-
-        let matching = partnerMatching(vendorKey);
-        for (const aliasKey of aliasKeys) {
-          if (matching.length > 0) break;
-          matching = partnerMatching(aliasKey);
-        }
+        const matching = ruleMatch?.rows ?? [];
 
         // The same refusal to guess, one layer down: two people in a household
         // can legitimately disagree about a merchant, and the app must ask
@@ -2049,53 +1951,20 @@ async function processNotificationWithAIImpl(
   // "Amazon Prime" all map to "Amazon"). Without fuzzy matching, the user
   // would have to correct each variant separately.
   if (!categoryId && parsed.vendorKey) {
-    let vendorMapEntry = getVendorMapEntry(parsed.vendorKey);
-
-    // Same fallback as the server rules: the merchant's other names, tried
-    // only after its polished one comes up empty.
-    if (!vendorMapEntry) {
-      for (const aliasKey of vendorAliases.map(toMatchKey)) {
-        if (!aliasKey) continue;
-        vendorMapEntry = getVendorMapEntry(aliasKey);
-        if (vendorMapEntry) break;
-      }
+    const vendorMapMatch = findVendorMapMatch({
+      entries: getVendorMap(),
+      vendorKey: parsed.vendorKey,
+      aliasKeys: vendorAliases.map(toMatchKey),
+      incomingName: parsed.vendorDisplay || parsed.vendorKey,
+    });
+    if (vendorMapMatch?.kind === 'fuzzy') {
+      log.debug(
+        `[AI pipeline] vendorMap fuzzy match: "${parsed.vendorDisplay}" → ` +
+        `"${vendorMapMatch.entry.vendor_display}" (key=${vendorMapMatch.key})`,
+      );
     }
 
-    if (!vendorMapEntry) {
-      // Fuzzy fallback: scan all stored entries and find the closest one
-      // by token-level Jaccard similarity. The user said they want the
-      // system to learn from their corrections — fuzzy matching is how
-      // we make one correction apply to many surface forms.
-      const allEntries = getVendorMap();
-      const incomingName = parsed.vendorDisplay || parsed.vendorKey;
-      let bestKey: string | null = null;
-      let bestScore = 0;
-      for (const [key, entry] of Object.entries(allEntries)) {
-        if (!fuzzyVendorMatch(incomingName, entry.vendor_display)) continue;
-        // The two names must also START with the same word. This block adopts
-        // the stored merchant's NAME and its budget, so a resemblance is not
-        // enough — "Services" resembles "Eservices Kb Civil" only in the sense
-        // that one string contains the other, and that capture arrived in
-        // Review as a merchant the household had never bought from. The check
-        // was always described here ("prefer matches with the same normalized
-        // prefix") but only ever scored, so a lone weak match still won.
-        if (!leadWordsAgree(incomingName, entry.vendor_display)) continue;
-        // Among the matches that qualify, prefer one whose first word is
-        // spelled identically over one that merely agrees ("AMZN"/"Amazon").
-        const normalizedStored = (entry.vendor_display || '').toLowerCase().split(/\s+/, 1)[0];
-        const normalizedIncoming = incomingName.toLowerCase().split(/\s+/, 1)[0];
-        const score = normalizedStored && normalizedIncoming && normalizedStored === normalizedIncoming ? 1.0 : 0.5;
-        if (score > bestScore) {
-          bestScore = score;
-          bestKey = key;
-        }
-      }
-      if (bestKey) {
-        vendorMapEntry = allEntries[bestKey];
-        log.debug(`[AI pipeline] vendorMap fuzzy match: "${parsed.vendorDisplay}" → "${vendorMapEntry.vendor_display}" (key=${bestKey})`);
-      }
-    }
-
+    const vendorMapEntry = vendorMapMatch?.entry;
     if (vendorMapEntry) {
       displayVendor = vendorMapEntry.vendor_display || displayVendor;
       const matchedCategory = availableCategories.find(
@@ -2110,63 +1979,37 @@ async function processNotificationWithAIImpl(
 
   // 5c: Fallback category — try AI suggestion first, then "Other"
   if (!categoryId && availableCategories.length > 0) {
-    const aiSuggested = (aiResult as any)?.suggestedCategory || (parsed as any).suggestedCategory;
-    if (aiSuggested) {
-      const matched = availableCategories.find(
-        c => c.name.toLowerCase() === aiSuggested.toLowerCase(),
-      );
-      if (matched) {
-        categoryId = matched.id;
-        categoryName = matched.name;
+    const choice = chooseNotificationFallbackCategory({
+      availableCategories,
+      aiSuggestedCategory: aiResult?.suggestedCategory,
+      merchantText: `${vendor || ''} ${input.rawNotification || ''}`,
+      hiddenCategoryIds: input.hiddenCategoryIds,
+    });
+
+    switch (choice.kind) {
+      case 'ai':
+        categoryId = choice.category.id;
+        categoryName = choice.category.name;
         log.debug(`[AI pipeline] AI suggested category: ${categoryName}`);
+        break;
+      case 'signal':
+        categoryId = choice.category.id;
+        categoryName = choice.category.name;
+        log.debug(
+          `[AI pipeline] merchant signal ${choice.signal.kind} (${choice.signal.evidence}) → ${categoryName}`,
+        );
+        break;
+      case 'fallback':
+        categoryId = choice.category.id;
+        categoryName = choice.category.name;
+        log.debug(`[AI pipeline] Fallback category: ${categoryName}`);
+        break;
+      case 'none':
+        break;
+      default: {
+        const unreachableChoice: never = choice;
+        throw new Error(`Unhandled notification category choice: ${String(unreachableChoice)}`);
       }
-    }
-
-    // Offline merchant-descriptor signal (lib/merchantCategorySignals.ts).
-    //
-    // Competes with "Other" — never with a category the model actually chose.
-    // Note the second half of the condition: a suggestion of "Other" resolves
-    // to a real categoryId above, but it is not an answer, it is the same shrug
-    // the fallback below gives. Gating on `!categoryId` alone would skip this
-    // for exactly the captures it exists to rescue.
-    //
-    // Reads the raw notification as well as the vendor because the strongest
-    // tell — the TST*/Toast processor prefix — is stripped out of the display
-    // name by polishVendor before it ever reaches here.
-    //
-    // `overrideMatchConfidence` is deliberately left at 0: a descriptor token
-    // is a decent guess, not something the user taught us, so this can suggest
-    // a category but can never clear the auto-accept threshold and file money
-    // without review.
-    if (!categoryId || (categoryName || '').toLowerCase() === 'other') {
-      const signal = detectMerchantSignal(`${vendor || ''} ${input.rawNotification || ''}`);
-      // Only the categories the user can actually see are candidates. A
-      // category they switched off is not a destination for a guess — see
-      // `hiddenCategoryIds` on NotificationInput.
-      const hidden = new Set((input.hiddenCategoryIds || []).map(String));
-      const visibleCategories = hidden.size
-        ? availableCategories.filter((c) => !hidden.has(String(c.id)))
-        : availableCategories;
-      const signalCat = signal ? resolveSignalCategory(signal, visibleCategories) : null;
-      if (signal && signalCat) {
-        categoryId = signalCat.id;
-        categoryName = signalCat.name;
-        log.debug(`[AI pipeline] merchant signal ${signal.kind} (${signal.evidence}) → ${categoryName}`);
-      }
-    }
-
-    if (!categoryId) {
-      const otherCat = availableCategories.find(
-        c => c.name.toLowerCase() === 'other',
-      );
-      if (otherCat) {
-        categoryId = otherCat.id;
-        categoryName = otherCat.name;
-      } else {
-        categoryId = availableCategories[0].id;
-        categoryName = availableCategories[0].name;
-      }
-      log.debug(`[AI pipeline] Fallback category: ${categoryName}`);
     }
   }
 
@@ -2253,8 +2096,11 @@ async function processNotificationWithAIImpl(
     // row; failing to record where the confirmation came from costs
     // traceability, not correctness, so it must not turn into a duplicate
     // insert.
-    const rowGap = daysApart(String(recurringMatch.date || ''), today);
-    if (rowGap !== null && rowGap <= RECURRING_DATE_TOLERANCE_DAYS) {
+    if (isRecordedOccurrenceNearCapture(
+      recurringMatch.date,
+      today,
+      RECURRING_DATE_TOLERANCE_DAYS,
+    )) {
       const { error: attachError } = await supabase
         .from('transactions')
         .update({ raw_notification: (input.rawNotification || '').slice(0, 4000) })
@@ -2264,8 +2110,7 @@ async function processNotificationWithAIImpl(
       }
     }
 
-    recentlyProcessedCache.set(inMemoryKey, Date.now());
-    markNotificationProcessed(capturedKey);
+    notificationMarkers.recordCaptured(inMemoryKey, capturedKey);
     return {
       processed: true,
       isTransaction: true,
@@ -2342,7 +2187,7 @@ async function processNotificationWithAIImpl(
   // recoverable. The invocation that actually writes the row marks it.
   if (!claimPurchase(purchaseKey)) {
     log.debug(`[AI pipeline] Purchase already being inserted by a parallel capture: ${finalVendorName} $${storedAmount}`);
-    recentlyProcessedCache.set(inMemoryKey, Date.now());
+    notificationMarkers.rememberRecent(inMemoryKey);
     return {
       processed: false,
       isTransaction: false,
@@ -2358,56 +2203,17 @@ async function processNotificationWithAIImpl(
   // worth keeping: the user can see the app was guessing and correct it.
   const captureConfidence = aiResult?.confidence ?? parsed.confidence ?? null;
 
-  // ── Auto-accept ──
-  // Opt-in. When a learned rule explains the incoming vendor name well enough,
-  // the row is filed straight into its budget under the rule's proper name and
-  // never appears in the review list.
-  //
-  // Gated on the OVERRIDE match score, not the AI's extraction confidence.
-  // Those measure different things: captureConfidence says "I read $12.40 at
-  // TIM HORTONS correctly", which tells you nothing about whether TIM HORTONS
-  // belongs in Groceries. Only a rule the user wrote themselves justifies
-  // skipping their review, so 5b/5c matches leave overrideMatchConfidence at 0
-  // and always go to the queue.
-  //
-  // A fuel hold can never be auto-filed, however well the user's rule matches.
-  // Auto-accept means the row is never shown, and the whole point of a
-  // placeholder is that somebody has to replace it with the real number.
-  //
-  // Nor can an extraction the model was unsure about (Step 2c). A rule match
-  // scores how well a NAME is explained, and a low-confidence read is evidence
-  // the name itself may be wrong — filing on the strength of a rule matched
-  // against a misread merchant is how a charge ends up in the wrong budget
-  // with nobody ever seeing it.
-  //
-  // Nor can a capture that looks like one already on the books. The soft
-  // duplicate above deliberately does NOT skip the insert — the user would
-  // rather see both rows than lose a charge — but that bargain only works if
-  // they SEE both rows. Filed automatically, a second report of one charge
-  // landed straight on the dashboard and was never shown to anybody: a monthly
-  // insurance premium counted twice, a day apart, with nothing in Review to say
-  // so. The row is still written; it just has to be looked at.
-  //
-  // Nor can anything that came in by email, ever. Auto-filing is the one path
-  // that records a purchase the user never sees, and mail is the least reliable
-  // thing the app reads: the sender is vetted but the body is a truncated
-  // snippet a mail app chose, and the merchant has to be dug out of prose rather
-  // than a bank's fixed wording. A bank push that parses badly costs a row in
-  // Review; an email that parses badly and files itself costs a wrong number on
-  // the dashboard that nobody was shown. Email captures are always looked at.
-  //
-  // Nor can an amount that was quoted in another currency. "€9.90" is captured
-  // as the number 9.90 because that is what the bank printed and converting it
-  // would mean inventing a rate (see lib/foreignCurrency.ts) — so the one thing
-  // that must not happen is that figure landing on the dashboard as $9.90 with
-  // nobody ever having seen it. The row is written; it is always looked at.
+  // Auto-filing is one safety decision: only a confident user-authored rule may
+  // bypass Review, and uncertain or unusual captures must remain visible.
   const foreignCurrency = parsed.foreignCurrency || null;
-
-  const autoAccepted = input.channel !== 'email'
-    && !fuelHold && !lowConfidenceExtraction && !softDupMatch && !foreignCurrency
-    && shouldAutoAccept({
-    enabled: input.autoAcceptKnownVendors === true,
-    confidence: overrideMatchConfidence,
+  const autoAccepted = canAutoAcceptCapture({
+    source: input.channel ?? 'bank',
+    optedIn: input.autoAcceptKnownVendors === true,
+    hasFuelHold: !!fuelHold,
+    hasUncertainExtraction: lowConfidenceExtraction,
+    hasPossibleDuplicate: !!softDupMatch,
+    hasForeignCurrency: !!foreignCurrency,
+    matchConfidence: overrideMatchConfidence,
     hasCategory: !!categoryId,
   });
   if (autoAccepted) {
@@ -2473,16 +2279,13 @@ async function processNotificationWithAIImpl(
     // automatically" card reads this.
     ...(autoAccepted ? { caught_cleared: true, auto_filed: true } : {}),
   };
-  let { error: txError } = await supabase.from('transactions').insert(insertRow);
-  // Tolerate DBs where a late-added column hasn't been migrated yet: retry
-  // once without them rather than dropping the whole capture. Both are
-  // decoration on a row whose purpose is the amount — losing the meter or the
-  // "we filed this for you" mark costs the user information, losing the
-  // insert costs them a purchase.
-  if (txError && /confidence|auto_filed/i.test(txError.message || '')) {
-    const { confidence: _omitConfidence, auto_filed: _omitAutoFiled, ...withoutLateColumns } = insertRow;
-    ({ error: txError } = await supabase.from('transactions').insert(withoutLateColumns));
-  }
+  const txError = await insertNotificationTransaction(
+    insertRow,
+    async (row) => {
+      const { error } = await supabase.from('transactions').insert(row);
+      return { error };
+    },
+  );
 
   if (txError) {
     log.error('[AI pipeline] Error inserting transaction:', txError);
@@ -2539,57 +2342,53 @@ async function processNotificationWithAIImpl(
     const sameCharge = raceCheck.filter(
       (row) => normalizeVendorForDedup(row.vendor) === normalizedOur,
     );
-    const ours = sameCharge.find((row) => row.id === transactionId);
-    const others = sameCharge.filter((row) => row.id !== transactionId);
-
     // Our own row missing from a read taken after our own successful insert
     // means we cannot establish an order, so we keep it. A visible duplicate
     // is something the user can delete in one tap; a purchase deleted on a
     // guess is gone.
-    if (ours && others.length > 0) {
-      const winner = pickSurvivingCharge(sameCharge);
-
-      if (winner && winner.id !== transactionId) {
-        log.warn(
-          `[AI pipeline] ⚠️ Race-recovery: rolling back our insert of ${finalVendorName} $${storedAmount} ` +
-          `(${transactionId}) — duplicate of ${winner.id} (${winner.vendor} $${winner.amount}, created ${winner.created_at})`,
-        );
-        const { error: rollbackError } = await supabase
-          .from('transactions')
-          .delete()
-          .eq('id', transactionId);
-        if (rollbackError) {
-          log.error('[AI pipeline] Race-recovery rollback failed:', rollbackError);
-          // We couldn't roll back, so the user will see both rows. Log
-          // loudly so we know to investigate.
-        }
-        // The winning row is in the ledger, so this notification is captured
-        // and must not be imported again.
-        markNotificationProcessed(capturedKey);
-        recentlyProcessedCache.set(inMemoryKey, Date.now());
-        releasePurchase(purchaseKey);
-        return {
-          processed: true,
-          isTransaction: true,
-          vendor: finalVendorName,
-          amount: storedAmount,
-          skipReason: 'duplicate_ai' as const,
-          rejectionReason: 'Duplicate detected after insert (race-recovery rollback)',
-          bankName: input.bankName,
-          // Surface the winning row as the soft-dup so the UI can
-          // show the "possible duplicate" badge.
-          softDuplicateOf: {
-            id: winner.id,
-            vendor: winner.vendor,
-            amount: Number(winner.amount),
-            date: winner.date,
-          },
-        };
+    const decision = decideConcurrentCapture(sameCharge, transactionId);
+    if (decision.kind === 'rollback') {
+      const winner = decision.survivor;
+      log.warn(
+        `[AI pipeline] ⚠️ Race-recovery: rolling back our insert of ${finalVendorName} $${storedAmount} ` +
+        `(${transactionId}) — duplicate of ${winner.id} (${winner.vendor} $${winner.amount}, created ${winner.created_at})`,
+      );
+      const { error: rollbackError } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', transactionId);
+      if (rollbackError) {
+        log.error('[AI pipeline] Race-recovery rollback failed:', rollbackError);
+        // We couldn't roll back, so the user will see both rows. Log
+        // loudly so we know to investigate.
       }
+      // The winning row is in the ledger, so this notification is captured
+      // and must not be imported again.
+      notificationMarkers.recordCaptured(inMemoryKey, capturedKey);
+      releasePurchase(purchaseKey);
+      return {
+        processed: true,
+        isTransaction: true,
+        vendor: finalVendorName,
+        amount: storedAmount,
+        skipReason: 'duplicate_ai' as const,
+        rejectionReason: 'Duplicate detected after insert (race-recovery rollback)',
+        bankName: input.bankName,
+        // Surface the winning row as the soft-dup so the UI can
+        // show the "possible duplicate" badge.
+        softDuplicateOf: {
+          id: winner.id,
+          vendor: winner.vendor,
+          amount: Number(winner.amount),
+          date: winner.date,
+        },
+      };
+    }
 
+    if (decision.kind === 'keep' && decision.reason === 'insert-survives') {
       log.warn(
         `[AI pipeline] Race-recovery: keeping our insert of ${finalVendorName} $${storedAmount} ` +
-        `(${transactionId}); ${others.length} concurrent duplicate(s) will roll themselves back`,
+        `(${transactionId}); ${sameCharge.length - 1} concurrent duplicate(s) will roll themselves back`,
       );
     }
   }
@@ -2606,14 +2405,14 @@ async function processNotificationWithAIImpl(
   // An auto-accepted row is already filed, so flagging it "needs a look" would
   // be a contradiction — and the review-queue badge would count a row the list
   // never shows.
-  if (!autoAccepted) {
-    addToReviewQueue(transactionId);
-  }
-
-  // Persist to localStorage so this notification is never re-processed
-  // after app restart (the in-memory cache below is cleared on reload).
-  markNotificationProcessed(capturedKey);
-  recentlyProcessedCache.set(inMemoryKey, Date.now());
+  // Persist the capture and queue it for review only when it was not filed
+  // automatically; the queue badge must not contradict the saved row.
+  notificationMarkers.recordInsertedTransaction(
+    inMemoryKey,
+    capturedKey,
+    transactionId,
+    autoAccepted,
+  );
 
   return {
     processed: true,

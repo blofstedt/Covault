@@ -64,8 +64,29 @@ vi.mock('../supabase', () => ({
   supabaseAnonKey: 'anon',
 }));
 
+class MemoryStorage {
+  private values = new Map<string, string>();
+
+  getItem(key: string): string | null {
+    return this.values.get(key) ?? null;
+  }
+
+  setItem(key: string, value: string): void {
+    this.values.set(key, String(value));
+  }
+
+  clear(): void {
+    this.values.clear();
+  }
+}
+
+const captureSourceStorage = new MemoryStorage();
+vi.stubGlobal('localStorage', captureSourceStorage);
+
 import { processNotificationWithAI, _clearDedupCacheForTesting } from '../notificationProcessor';
 import { selectRecentlyAutoFiled, AUTO_FILED_WINDOW_DAYS } from '../reviewQueue';
+import { setSelectedSources } from '../captureSources';
+import { parseNotificationText } from '../deviceTransactionParser';
 import type { Transaction } from '../../types';
 
 const CATEGORIES = [
@@ -78,6 +99,7 @@ const CATEGORIES = [
 const ALERT = 'BLUE DOOR CAFE 🍴 You spent $12.40 with your credit card.';
 
 beforeEach(() => {
+  captureSourceStorage.clear();
   for (const key of Object.keys(inserts)) delete inserts[key];
   for (const key of Object.keys(tableResults)) delete tableResults[key];
   _clearDedupCacheForTesting();
@@ -85,11 +107,15 @@ beforeEach(() => {
 
 /** A rule matched on the whole name — the strongest case auto-accept can get. */
 function teachRule() {
+  teachRuleFor('Blue Door Cafe');
+}
+
+function teachRuleFor(properName: string, category = 'Groceries') {
   tableResults.overrides = {
     data: [
       {
-        category_id: 'Groceries',
-        proper_name: 'Blue Door Cafe',
+        category_id: category,
+        proper_name: properName,
         match_key: '',
         match_type: 'exact',
         updated_at: '2026-01-01T00:00:00Z',
@@ -133,6 +159,59 @@ describe('a capture filed on arrival', () => {
     await capture();
 
     const row = inserts.transactions?.[0] as Record<string, unknown>;
+    expect(row).not.toHaveProperty('auto_filed');
+    expect(row).not.toHaveProperty('caught_cleared');
+  });
+
+  it('keeps a vetted email capture in Review even when its learned rule matches', async () => {
+    teachRule();
+    setSelectedSources(['com.google.android.gm']);
+
+    const result = await capture({
+      bankAppId: 'com.google.android.gm',
+      bankName: 'Gmail',
+      notificationTitle: 'RBC Royal Bank',
+      notificationBody: 'You spent $12.40 at Blue Door Cafe.',
+      autoAcceptKnownVendors: true,
+    });
+
+    const row = inserts.transactions?.[0] as Record<string, unknown>;
+    expect(result.categoryName).toBe('Groceries');
+    expect(result.autoAccepted).toBe(false);
+    expect(row).not.toHaveProperty('auto_filed');
+    expect(row).not.toHaveProperty('caught_cleared');
+  });
+
+  it('keeps a fuel hold in Review even when its learned rule matches', async () => {
+    const rawNotification = 'BMO You spent $150.00 at SHELL on your card.';
+    const parsed = parseNotificationText(rawNotification);
+    expect(parsed.vendorDisplay).toBe('Shell');
+    expect(parsed.confidence).toBeCloseTo(0.9, 2);
+    teachRuleFor('Shell');
+
+    const result = await capture({ rawNotification, autoAcceptKnownVendors: true });
+
+    const row = inserts.transactions?.[0] as Record<string, unknown>;
+    expect(result.categoryName).toBe('Groceries');
+    expect(result.fuelHold).toMatchObject({ holdAmount: 150 });
+    expect(result.autoAccepted).toBe(false);
+    expect(row).not.toHaveProperty('auto_filed');
+    expect(row).not.toHaveProperty('caught_cleared');
+  });
+
+  it('keeps a foreign-currency capture in Review even when its learned rule matches', async () => {
+    const rawNotification = 'BMO You spent €12.40 at Blue Door Cafe on your card.';
+    const parsed = parseNotificationText(rawNotification);
+    expect(parsed.foreignCurrency).toBe('€');
+    expect(parsed.vendorDisplay).toBe('Blue Door Cafe');
+    expect(parsed.confidence).toBeCloseTo(0.9, 2);
+    teachRule();
+
+    const result = await capture({ rawNotification, autoAcceptKnownVendors: true });
+
+    const row = inserts.transactions?.[0] as Record<string, unknown>;
+    expect(result.categoryName).toBe('Groceries');
+    expect(result.autoAccepted).toBe(false);
     expect(row).not.toHaveProperty('auto_filed');
     expect(row).not.toHaveProperty('caught_cleared');
   });

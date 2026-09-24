@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import { CloseButton } from '../shared';
-import { useEscapeKey } from '../../lib/hooks/useEscapeKey';
+import { useDialogInteraction } from '../../lib/hooks/useDialogInteraction';
+import { useDialogExit } from '../../lib/hooks/useDialogExit';
 
 interface FAQItem {
   question: string;
@@ -163,7 +164,10 @@ const FAQ_ITEMS: FAQItem[] = [
 ];
 
 const FAQModal: React.FC<FAQModalProps> = ({ onClose }) => {
-  useEscapeKey(onClose);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const { isClosing, close } = useDialogExit();
+  const dismiss = () => close(onClose);
+  const handleKeyDown = useDialogInteraction(dialogRef, dismiss, { disabled: isClosing });
 
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
@@ -179,14 +183,22 @@ const FAQModal: React.FC<FAQModalProps> = ({ onClose }) => {
   }, [searchQuery]);
 
   return (
-    <div className="fixed inset-0 z-[120] bg-slate-900/50 backdrop-blur-lg flex items-center justify-center p-4 animate-in fade-in duration-300">
-      <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl animate-in zoom-in-95 duration-500 max-h-[85vh] flex flex-col border border-slate-100 dark:border-slate-800/60 overflow-hidden">
+    <div className={`fixed inset-0 z-[120] bg-slate-900/50 backdrop-blur-lg flex items-center justify-center p-4 ${isClosing ? 'dialog-exiting dialog-exit-backdrop' : 'animate-in fade-in dialog-motion'}`}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="faq-title"
+        tabIndex={-1}
+        onKeyDown={handleKeyDown}
+        className={`w-full max-w-md bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl max-h-[85vh] flex flex-col border border-slate-100 dark:border-slate-800/60 overflow-hidden ${isClosing ? 'dialog-exiting dialog-exit-surface' : 'animate-in zoom-in-95 dialog-motion'}`}
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-6 pb-4">
-          <h2 className="text-lg font-bold text-slate-700 dark:text-slate-100 tracking-tight">
+          <h2 id="faq-title" className="text-lg font-bold text-slate-700 dark:text-slate-100 tracking-tight">
             Frequently Asked
           </h2>
-          <CloseButton onClick={onClose} size="sm" />
+          <CloseButton onClick={dismiss} size="sm" />
         </div>
 
         {/* Search bar */}

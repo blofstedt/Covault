@@ -21,10 +21,9 @@
 //   3. It survives the app updating itself, since a web bundle swap does not
 //      change the origin the data belongs to.
 //
-// The ONNX runtime is kept here too. It is fetched separately by the runtime
-// loader rather than through the cache above, so a stored copy of the model
-// with no stored runtime is still an app that cannot infer offline. See
-// `loadStoredRuntime`.
+// The ONNX runtime is kept here too. Transformers.js sends its versioned
+// runtime requests through the same cache, so the model and runtime can both
+// be available offline. See `loadStoredRuntime`.
 //
 // Every path in here is best-effort by construction: a failure to open, read
 // or write the store degrades to exactly the behaviour that exists today —
@@ -40,8 +39,8 @@ const DB_NAME = 'covault-ai-model';
 const DB_VERSION = 1;
 const STORE_NAME = 'files';
 
-/** Set once a full load has completed, so "ready" means loadable, not "some bytes". */
-const READY_KEY = '__covault_model_ready__';
+/** Ready markers are tied to the model library and runtime URLs. */
+const READY_KEY_PREFIX = '__covault_model_ready__:';
 
 export interface StoredFile {
   /** The file itself. */
@@ -240,32 +239,57 @@ export function createModelCache(
 
 // ─── The ONNX runtime ────────────────────────────────────────────
 
-/**
- * The two files the runtime loader fetches, given the CDN prefix aiExtractor
- * pins. The .wasm is the runtime itself; the .mjs is the small loader that
- * instantiates it, and both are needed before a single token can be generated.
- */
-export function runtimeUrls(prefix: string): { wasm: string; mjs: string } {
-  const base = prefix.endsWith('/') ? prefix : `${prefix}/`;
-  return {
-    wasm: `${base}ort-wasm-simd-threaded.jsep.wasm`,
-    mjs: `${base}ort-wasm-simd-threaded.jsep.mjs`,
-  };
+export interface RuntimeAssetUrls {
+  wasm: string;
+  mjs: string;
+  transformersVersion: string;
+}
+
+/** Read the version-specific URLs supplied by ONNX Runtime. */
+export function runtimeUrls(paths: unknown, transformersVersion: string): RuntimeAssetUrls | null {
+  if (!transformersVersion) return null;
+  if (!paths || typeof paths !== 'object' || !('wasm' in paths) || !('mjs' in paths)) {
+    return null;
+  }
+
+  const { wasm, mjs } = paths;
+  if (typeof wasm !== 'string' || typeof mjs !== 'string') return null;
+  return { wasm, mjs, transformersVersion };
+}
+
+/** Keep a stable CDN identity when Transformers temporarily swaps in a blob URL. */
+export function preserveStableRuntimeUrls(
+  current: RuntimeAssetUrls | null,
+  candidate: RuntimeAssetUrls | null,
+): RuntimeAssetUrls | null {
+  if (!candidate) return current;
+  if (/^blob:/i.test(candidate.wasm) || /^blob:/i.test(candidate.mjs)) return current;
+  return candidate;
 }
 
 /** Fetch the runtime and keep it, so later launches need no network for it. */
-export async function storeRuntime(store: ModelFileStore, prefix: string): Promise<boolean> {
-  const urls = runtimeUrls(prefix);
+export async function storeRuntime(store: ModelFileStore, urls: RuntimeAssetUrls): Promise<boolean> {
   try {
+    const existing = await Promise.all([store.get(urls.wasm), store.get(urls.mjs)]);
+    if (existing.every(Boolean)) return true;
+
     const files = await Promise.all(
-      [urls.wasm, urls.mjs].map(async (url) => {
+      [urls.wasm, urls.mjs].map(async (url, index) => {
+        if (existing[index]) return { url, stored: existing[index] };
         const res = await fetch(url);
         if (!res.ok) throw new Error(`${res.status} for ${url}`);
-        return { url, body: await res.arrayBuffer(), headers: [...res.headers.entries()] as Array<[string, string]> };
+        return {
+          url,
+          stored: {
+            body: await res.arrayBuffer(),
+            headers: [...res.headers.entries()] as Array<[string, string]>,
+            at: Date.now(),
+          },
+        };
       }),
     );
     for (const file of files) {
-      await store.put(file.url, { body: file.body, headers: file.headers, at: Date.now() });
+      if (file.stored) await store.put(file.url, file.stored);
     }
     return true;
   } catch (e) {
@@ -274,34 +298,12 @@ export async function storeRuntime(store: ModelFileStore, prefix: string): Promi
   }
 }
 
-/**
- * The stored .wasm, as raw bytes — the form the runtime prefers over any
- * path, and the ~9MB half that made storing this worthwhile in the first
- * place.
- *
- * The .mjs loader script is deliberately NOT handed back here any more. It
- * used to be re-served as a blob: URL and set as wasmPaths.mjs, so the
- * loader itself would run from the blob too — which broke in production
- * (Sentry: "Failed to construct 'URL': Invalid URL", thrown from inside
- * that blob module as an unhandled rejection). This build of the runtime
- * spawns a Web Worker, and a worker spawned from a script with no real
- * network location has nothing to resolve its own sibling assets against.
- * The .mjs is left on its ordinary CDN URL by the caller instead — see
- * aiExtractor.ts — which is a tiny, cheap fetch next to the .wasm.
- *
- * Both halves are still checked before returning bytes: a stored .wasm
- * with no matching stored .mjs record would mean a version mismatch is
- * possible, even though the .mjs itself isn't used from here.
- *
- * Returns null when either half is missing, or the phone reported none of
- * this ever having been stored.
- */
+/** Return stored WASM only when its matching loader file is present too. */
 export async function loadStoredRuntime(
   store: ModelFileStore,
-  prefix: string,
+  urls: RuntimeAssetUrls,
 ): Promise<{ wasmBinary: ArrayBuffer } | null> {
   try {
-    const urls = runtimeUrls(prefix);
     const [wasm, mjs] = await Promise.all([store.get(urls.wasm), store.get(urls.mjs)]);
     if (!wasm || !mjs) return null;
     return { wasmBinary: wasm.body };
@@ -332,8 +334,15 @@ export function storageSupported(): boolean {
   return typeof indexedDB !== 'undefined';
 }
 
-export async function markModelReady(store: ModelFileStore): Promise<void> {
-  await store.put(READY_KEY, { body: new ArrayBuffer(0), headers: [], at: Date.now() });
+function readyMarkerKey(urls: RuntimeAssetUrls): string {
+  const identity = [urls.transformersVersion, urls.wasm, urls.mjs]
+    .map(encodeURIComponent)
+    .join(':');
+  return `${READY_KEY_PREFIX}${identity}`;
+}
+
+export async function markModelReady(store: ModelFileStore, urls: RuntimeAssetUrls): Promise<void> {
+  await store.put(readyMarkerKey(urls), { body: new ArrayBuffer(0), headers: [], at: Date.now() });
 }
 
 /**
@@ -349,7 +358,7 @@ export async function markModelReady(store: ModelFileStore): Promise<void> {
  */
 export async function readModelReport(
   store: ModelFileStore,
-  prefix: string,
+  urls: RuntimeAssetUrls | null,
 ): Promise<AIModelReport> {
   let rows: Array<{ key: string; bytes: number; at: number }> = [];
   try {
@@ -357,22 +366,22 @@ export async function readModelReport(
   } catch (e) {
     log.warn('[aiModel] Could not read what is stored:', e);
   }
-  const urls = runtimeUrls(prefix);
   let bytes = 0;
   let at = 0;
   let weights = false;
   let runtimeWasm = false;
   let runtimeMjs = false;
   let markedReady = false;
+  const currentReadyKey = urls ? readyMarkerKey(urls) : null;
   for (const row of rows) {
     bytes += row.bytes;
     at = Math.max(at, row.at);
-    if (row.key === READY_KEY) markedReady = true;
-    else if (row.key === urls.wasm) runtimeWasm = true;
-    else if (row.key === urls.mjs) runtimeMjs = true;
+    if (row.key === currentReadyKey) markedReady = true;
+    else if (urls && row.key === urls.wasm) runtimeWasm = true;
+    else if (urls && row.key === urls.mjs) runtimeMjs = true;
     else if (row.key.includes(AI_MODEL_ID) && row.bytes > 0) weights = true;
   }
-  const runtime = runtimeWasm && runtimeMjs;
+  const runtime = urls !== null && runtimeWasm && runtimeMjs;
   let state: AIModelState = 'absent';
   if (weights && runtime && markedReady) state = 'ready';
   else if (weights || runtime) state = 'partial';

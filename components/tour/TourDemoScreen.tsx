@@ -76,6 +76,8 @@ const BudgetFlowChart = React.lazy(() => import('../dashboard_components/BudgetF
 interface TourDemoScreenProps {
   /** Which screen the walkthrough is on. */
   stage?: TourStage;
+  /** Populated examples power the tour; empty examples support visual checks. */
+  fixture?: 'empty' | 'populated';
 }
 
 /** Enough categories to look like a used dashboard, few enough to stay two-line. */
@@ -173,8 +175,10 @@ const DEMO_AI_MODEL = {
   refresh: ASYNC_NOOP,
 };
 
-const TourDemoScreen: React.FC<TourDemoScreenProps> = ({ stage = 'home' }) => {
+const TourDemoScreen: React.FC<TourDemoScreenProps> = ({ stage = 'home', fixture = 'populated' }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const hasExampleData = fixture === 'populated';
+  const monthlyIncome = hasExampleData ? DEMO_MONTHLY_INCOME : 0;
 
   const today = getLocalToday();
   const currentMonthKey = getLocalMonthKey(today);
@@ -182,13 +186,17 @@ const TourDemoScreen: React.FC<TourDemoScreenProps> = ({ stage = 'home' }) => {
 
   const budgets: BudgetCategory[] = useMemo(
     () =>
-      SYSTEM_CATEGORIES.filter((category) =>
-        (DEMO_BUDGET_NAMES as readonly string[]).includes(category.name),
-      ).map((category) => ({ ...category, totalLimit: DEMO_LIMITS[category.name] })),
-    [],
+      hasExampleData
+        ? SYSTEM_CATEGORIES.filter((category) =>
+            (DEMO_BUDGET_NAMES as readonly string[]).includes(category.name),
+          ).map((category) => ({ ...category, totalLimit: DEMO_LIMITS[category.name] }))
+        : [],
+    [hasExampleData],
   );
 
   const thisMonthTransactions: Transaction[] = useMemo(() => {
+    if (!hasExampleData) return [];
+
     const rows: Transaction[] = [];
     budgets.forEach((budget) => {
       (DEMO_THIS_MONTH[budget.name] ?? []).forEach((entry, i) => {
@@ -215,11 +223,13 @@ const TourDemoScreen: React.FC<TourDemoScreenProps> = ({ stage = 'home' }) => {
       });
     });
     return rows;
-  }, [budgets, currentMonthKey, todayDay]);
+  }, [budgets, currentMonthKey, hasExampleData, todayDay]);
 
   // The chart reads this month plus the three before it; the earlier months
   // are one row each, since nothing ever opens them.
   const chartTransactions: Transaction[] = useMemo(() => {
+    if (!hasExampleData) return [];
+
     const rows: Transaction[] = [...thisMonthTransactions];
     budgets.forEach((budget) => {
       (DEMO_HISTORY[budget.name] ?? []).forEach((amount, i) => {
@@ -237,12 +247,12 @@ const TourDemoScreen: React.FC<TourDemoScreenProps> = ({ stage = 'home' }) => {
       });
     });
     return rows;
-  }, [thisMonthTransactions, budgets, currentMonthKey]);
+  }, [thisMonthTransactions, budgets, currentMonthKey, hasExampleData]);
 
   const remaining = useMemo(
     () =>
-      DEMO_MONTHLY_INCOME - thisMonthTransactions.reduce((sum, tx) => sum + tx.amount, 0),
-    [thisMonthTransactions],
+      monthlyIncome - thisMonthTransactions.reduce((sum, tx) => sum + tx.amount, 0),
+    [monthlyIncome, thisMonthTransactions],
   );
 
   // The vial the walkthrough opens: the FIRST one, which is the one the
@@ -272,8 +282,8 @@ const TourDemoScreen: React.FC<TourDemoScreenProps> = ({ stage = 'home' }) => {
   );
 
   const demoUser = useMemo(
-    () => ({ id: 'tour', name: 'You', monthlyIncome: DEMO_MONTHLY_INCOME }),
-    [],
+    () => ({ id: 'tour', name: 'You', monthlyIncome }),
+    [monthlyIncome],
   );
 
   return (
@@ -281,7 +291,7 @@ const TourDemoScreen: React.FC<TourDemoScreenProps> = ({ stage = 'home' }) => {
     // without a stacking context here that z-index would compete with the
     // tour's dim (which has none) and paint the nav bar over the top of it,
     // undimmed, on every step.
-    <div aria-hidden="true" className="absolute inset-0 isolate pointer-events-none select-none">
+    <div aria-hidden="true" inert className="absolute inset-0 isolate pointer-events-none select-none">
       {stage === 'review' ? (
         <TransactionParsing
           walkthrough
@@ -303,7 +313,7 @@ const TourDemoScreen: React.FC<TourDemoScreenProps> = ({ stage = 'home' }) => {
         <DashboardBalanceSection
           isSharedAccount={false}
           remainingMoney={remaining}
-          monthlyIncome={DEMO_MONTHLY_INCOME}
+          monthlyIncome={monthlyIncome}
           isIncomeLoaded
           searchQuery=""
           isSearchOpen={false}
@@ -323,7 +333,7 @@ const TourDemoScreen: React.FC<TourDemoScreenProps> = ({ stage = 'home' }) => {
               <BudgetFlowChart
                 budgets={budgets}
                 transactions={chartTransactions}
-                monthlyIncome={DEMO_MONTHLY_INCOME}
+                monthlyIncome={monthlyIncome}
                 theme={theme}
                 highlightedBudgetId={
                   expandedBudgets.size > 0 ? Array.from(expandedBudgets)[0] : null
@@ -359,7 +369,7 @@ const TourDemoScreen: React.FC<TourDemoScreenProps> = ({ stage = 'home' }) => {
           onAddTransaction={NOOP}
           onOpenParsing={NOOP}
           activeView="home"
-          pendingCount={DEMO_WAITING.size}
+          pendingCount={hasExampleData ? DEMO_WAITING.size : 0}
         />
       </PageShell>
       )}
@@ -375,7 +385,9 @@ const TourDemoScreen: React.FC<TourDemoScreenProps> = ({ stage = 'home' }) => {
           // Filled in, because the vault grid and the confirm button are both
           // disabled until there is an amount and a vendor — and a tour of a
           // form cannot explain four controls with three of them greyed out.
-          initialValues={{ ...DEMO_ENTRY, budgetId: demoEntryBudgetId }}
+          initialValues={
+            hasExampleData ? { ...DEMO_ENTRY, budgetId: demoEntryBudgetId } : undefined
+          }
         />
       )}
 

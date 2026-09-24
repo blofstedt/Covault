@@ -218,4 +218,19 @@ describe('the workflow that feeds it', () => {
     expect(workflow).toContain('apksigner');
     expect(workflow).toContain('certificate SHA-256 digest');
   });
+
+  it('keeps repository write access in the release job only', () => {
+    const workflowPermissions = workflow.match(/^permissions:\n((?: {2}.*\n)+)/m)?.[1];
+    const publishJob = workflow.match(/^ {2}publish-release:\n([\s\S]*)$/m)?.[1] ?? '';
+
+    expect(workflowPermissions).toBe('  contents: read\n');
+    expect(workflow).not.toMatch(/^\s*(actions|packages):\s*write$/m);
+    expect(publishJob).toMatch(/^ {4}needs: build$/m);
+    expect(publishJob).toMatch(
+      /^ {4}if: github.event_name == 'push' && github.ref == 'refs\/heads\/main'$/m,
+    );
+    expect(publishJob).toMatch(/^ {4}permissions:\n {6}contents: write$/m);
+    expect(publishJob).toContain('actions/download-artifact@v4');
+    expect(publishJob).toContain('gh release upload "$TAG" "$APK" "$WEB_BUNDLE" --clobber');
+  });
 });

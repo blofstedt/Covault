@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useId, useRef } from 'react';
 import { PREMIUM_FEATURE_LABELS, type PremiumFeature } from '../lib/entitlement';
-import { useEscapeKey } from '../lib/hooks/useEscapeKey';
+import { useDialogInteraction } from '../lib/hooks/useDialogInteraction';
+import { useDialogExit } from '../lib/hooks/useDialogExit';
 
 interface SubscribeModalProps {
   onClose: () => void;
@@ -17,11 +18,24 @@ const PREMIUM_FEATURES: PremiumFeature[] = [
 ];
 
 const SubscribeModal: React.FC<SubscribeModalProps> = ({ onClose, onSubscribe }) => {
-  useEscapeKey(onClose);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const id = useId();
+  const { isClosing, close } = useDialogExit();
+  const dismiss = () => close(onClose);
+  const handleKeyDown = useDialogInteraction(dialogRef, dismiss, { disabled: isClosing });
 
   return (
-    <div className="fixed inset-0 z-[200] bg-slate-900/50 backdrop-blur-lg flex items-center justify-center p-6 animate-in fade-in duration-300">
-      <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-[2rem] p-8 space-y-6 shadow-2xl animate-in zoom-in-95 duration-500 border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] border-slate-100 dark:border-slate-800/60">
+    <div className={`fixed inset-0 z-[200] bg-slate-900/50 backdrop-blur-lg flex items-center justify-center p-6 ${isClosing ? 'dialog-exiting dialog-exit-backdrop' : 'animate-in fade-in dialog-motion'}`}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={`${id}-title`}
+        aria-describedby={`${id}-message`}
+        tabIndex={-1}
+        onKeyDown={handleKeyDown}
+        className={`w-full max-w-sm bg-white dark:bg-slate-900 rounded-[2rem] p-8 space-y-6 shadow-2xl border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] border-slate-100 dark:border-slate-800/60 ${isClosing ? 'dialog-exiting dialog-exit-surface' : 'animate-in zoom-in-95 dialog-motion'}`}
+      >
         {/* Icon */}
         <div className="flex justify-center">
           <div className="w-16 h-16 bg-emerald-50 dark:bg-emerald-900/30 rounded-2xl flex items-center justify-center">
@@ -32,12 +46,12 @@ const SubscribeModal: React.FC<SubscribeModalProps> = ({ onClose, onSubscribe })
         </div>
 
         {/* Title */}
-        <h2 className="text-2xl font-bold text-slate-700 dark:text-slate-100 tracking-tight text-center">
+        <h2 id={`${id}-title`} className="text-2xl font-bold text-slate-700 dark:text-slate-100 tracking-tight text-center">
           Subscribe for More!
         </h2>
 
         {/* Description */}
-        <p className="text-xs text-slate-500 dark:text-slate-400 text-center leading-relaxed">
+        <p id={`${id}-message`} className="text-xs text-slate-500 dark:text-slate-400 text-center leading-relaxed">
           Unlock all premium features by subscribing to Covault:
         </p>
 
@@ -66,7 +80,8 @@ const SubscribeModal: React.FC<SubscribeModalProps> = ({ onClose, onSubscribe })
             Upgrade Now!
           </button>
           <button
-            onClick={onClose}
+            onClick={dismiss}
+            data-dialog-initial-focus
             className="w-full py-3 text-slate-400 dark:text-slate-500 text-[11px] font-medium tracking-wide hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
           >
             Maybe Later

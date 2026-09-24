@@ -71,7 +71,7 @@ const Auth: React.FC<AuthProps> = () => {
   };
 
   return (
-    <div
+    <main
       className="flex-1 flex flex-col p-8 bg-slate-50 dark:bg-slate-950 transition-colors relative overflow-hidden"
       style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 2rem)' }}
     >
@@ -173,7 +173,7 @@ const Auth: React.FC<AuthProps> = () => {
           </button>
         )}
 
-        <p className="text-center text-[10px] text-slate-400 dark:text-slate-600 font-medium tracking-wide max-w-[240px] mx-auto">
+        <p className="text-center text-[10px] text-slate-500 dark:text-slate-400 font-medium tracking-wide max-w-[240px] mx-auto">
           Secured by Supabase · AES-256
         </p>
         <nav aria-label="Legal" className="flex items-center space-x-3">
@@ -181,22 +181,22 @@ const Auth: React.FC<AuthProps> = () => {
             href="https://covaultbudgeting.vercel.app/privacy"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[10px] text-slate-400 dark:text-slate-600 font-medium tracking-wide hover:text-emerald-500 transition-colors"
+            className="text-[10px] text-slate-500 dark:text-slate-400 font-medium tracking-wide hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
           >
             Privacy
           </a>
-          <span className="text-[10px] text-slate-400 dark:text-slate-600">·</span>
+          <span className="text-[10px] text-slate-500 dark:text-slate-400">·</span>
           <a
             href="https://covaultbudgeting.vercel.app/terms"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[10px] text-slate-400 dark:text-slate-600 font-medium tracking-wide hover:text-emerald-500 transition-colors"
+            className="text-[10px] text-slate-500 dark:text-slate-400 font-medium tracking-wide hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
           >
             Terms
           </a>
         </nav>
       </div>
-    </div>
+    </main>
   );
 };
 

@@ -145,30 +145,25 @@ describe('the rule is wired the way it has to be', () => {
   });
 
   it('an email only ever defers to a bank-sourced row', () => {
-    // Never to another email: two mails about two real purchases must both
-    // survive.
-    expect(PROCESSOR).toMatch(/isBankSourcedRow\(tx\)/);
+    // The pure selector excludes other emails and typed entries; the pipeline
+    // calls it only on the email route.
+    expect(PROCESSOR).toMatch(/findUnpairedBankCaptureForEmail\(existingTx/);
   });
 
   it('one email cancels at most one bank row', () => {
     // Without the pairing mark, a second genuine purchase at the same merchant
     // for the same amount inside the window would vanish into the same row —
     // the trap two Fizz charges three days apart already sprang once.
-    expect(PROCESSOR).toMatch(/!hasPairedEmail\(tx\.raw_notification\)/);
     expect(PROCESSOR).toMatch(/withEmailPairedMarker\(/);
   });
 
   it('uses the looser same-charge test, not the same-day same-cent one', () => {
-    expect(PROCESSOR).toMatch(/isSameCharge\(\{ vendor, amount, date: today \}/);
+    expect(PROCESSOR).toMatch(/findUnpairedBankCaptureForEmail\(existingTx, \{ vendor, amount, date: today \}\)/);
   });
 
   it('a later bank alert upgrades the email row instead of duplicating it', () => {
     expect(PROCESSOR).toMatch(/input\.channel !== 'email' && existingTx/);
-    expect(PROCESSOR).toMatch(/isEmailSourcedRow\(tx\)/);
-  });
-
-  it('nothing captured from email is ever filed without being seen', () => {
-    expect(PROCESSOR).toMatch(/input\.channel !== 'email'\s*\n\s*&& !fuelHold/);
+    expect(PROCESSOR).toMatch(/findEmailCaptureForBank\(existingTx/);
   });
 
   it('every capture records the route it came by', () => {

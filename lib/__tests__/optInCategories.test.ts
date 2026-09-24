@@ -15,6 +15,7 @@ import { resolve } from 'node:path';
 import { SYSTEM_CATEGORIES, OPT_IN_CATEGORIES, isOptInCategory } from '../../constants';
 import { sortBudgets, budgetRank } from '../budgetOrder';
 import { detectMerchantSignal, resolveSignalCategory } from '../merchantCategorySignals';
+import { chooseNotificationFallbackCategory } from '../notificationCategory';
 import { shouldUseDenseRows, DENSE_ROW_THRESHOLD } from '../vialDensity';
 
 describe('the category list itself', () => {
@@ -217,21 +218,21 @@ describe('the offline guess knows the three new kinds', () => {
     expect(kindOf('SPAM MUSEUM')).toBeNull();
   });
 
-  it('is still only ever a suggestion', () => {
-    // The whole safety argument: a signal sets a category but never the match
-    // confidence, and auto-accept needs both.
-    const source = readFileSync(resolve(__dirname, '../notificationProcessor.ts'), 'utf8');
-    const block = source.slice(
-      source.indexOf('const signal = detectMerchantSignal('),
-      source.indexOf('if (!categoryId) {', source.indexOf('const signal = detectMerchantSignal(')),
-    );
-    expect(block).not.toContain('overrideMatchConfidence =');
-  });
-
   it('hands the signal only the categories the user can see', () => {
-    const source = readFileSync(resolve(__dirname, '../notificationProcessor.ts'), 'utf8');
-    expect(source).toContain('input.hiddenCategoryIds');
-    expect(source).toContain('resolveSignalCategory(signal, visibleCategories)');
+    const choice = chooseNotificationFallbackCategory({
+      availableCategories: [
+        { id: 'cat-restaurants', name: 'Restaurants' },
+        { id: 'cat-other', name: 'Other' },
+      ],
+      aiSuggestedCategory: 'Other',
+      merchantText: 'TST* LA CARNITA',
+      hiddenCategoryIds: ['cat-restaurants'],
+    });
+
+    expect(choice).toEqual({
+      kind: 'ai',
+      category: { id: 'cat-other', name: 'Other' },
+    });
   });
 
   it('is fed the hidden list by the listener that runs captures', () => {

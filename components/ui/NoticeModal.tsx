@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
-import { useEscapeKey } from '../../lib/hooks/useEscapeKey';
+import React, { useId, useRef } from 'react';
+import { useDialogInteraction } from '../../lib/hooks/useDialogInteraction';
+import { useDialogExit } from '../../lib/hooks/useDialogExit';
 import Portal from './Portal';
 
 interface NoticeModalProps {
@@ -35,15 +36,11 @@ const NoticeModal: React.FC<NoticeModalProps> = ({
   icon,
   onDismiss,
 }) => {
-  useEscapeKey(onDismiss);
-
-  useEffect(() => {
-    const originalStyle = window.getComputedStyle(document.body).overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = originalStyle;
-    };
-  }, []);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const id = useId();
+  const { isClosing, close } = useDialogExit();
+  const dismiss = () => close(onDismiss);
+  const handleKeyDown = useDialogInteraction(dialogRef, dismiss, { disabled: isClosing });
 
   const defaultIcon = (
     <svg
@@ -64,11 +61,18 @@ const NoticeModal: React.FC<NoticeModalProps> = ({
   return (
     <Portal>
       <div
-        className="fixed inset-0 z-[120] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300"
-        onClick={onDismiss}
+        className={`fixed inset-0 z-[120] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md ${isClosing ? 'dialog-exiting dialog-exit-backdrop' : 'animate-in fade-in dialog-motion'}`}
+        onClick={dismiss}
       >
         <div
-          className="w-full max-w-[320px] bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 space-y-8 shadow-2xl animate-in zoom-in-95 duration-300 border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] border-slate-100 dark:border-slate-800/60 text-center"
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={`${id}-title`}
+          aria-describedby={`${id}-message`}
+          tabIndex={-1}
+          onKeyDown={handleKeyDown}
+          className={`w-full max-w-[320px] bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 space-y-8 shadow-2xl border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] border-slate-100 dark:border-slate-800/60 text-center ${isClosing ? 'dialog-exiting dialog-exit-surface' : 'animate-in zoom-in-95 dialog-motion'}`}
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex flex-col items-center space-y-4">
@@ -85,10 +89,10 @@ const NoticeModal: React.FC<NoticeModalProps> = ({
               </span>
             </div>
             <div className="space-y-2">
-              <h3 className="text-xl font-bold text-slate-600 dark:text-slate-100 tracking-tight">
+              <h3 id={`${id}-title`} className="text-xl font-bold text-slate-600 dark:text-slate-100 tracking-tight">
                 {title}
               </h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
+              <p id={`${id}-message`} className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
                 {message}
               </p>
             </div>
@@ -96,7 +100,8 @@ const NoticeModal: React.FC<NoticeModalProps> = ({
 
           <button
             type="button"
-            onClick={onDismiss}
+            onClick={dismiss}
+            data-dialog-initial-focus
             className="w-full py-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-2xl font-semibold text-sm active:scale-[0.97] transition-all duration-200 tracking-wide"
           >
             {dismissLabel}

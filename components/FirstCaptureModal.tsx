@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
-import { useEscapeKey } from '../lib/hooks/useEscapeKey';
+import React, { useId, useRef } from 'react';
+import { useDialogInteraction } from '../lib/hooks/useDialogInteraction';
+import { useDialogExit } from '../lib/hooks/useDialogExit';
 import Portal from './ui/Portal';
 
 interface FirstCaptureModalProps {
@@ -24,24 +25,27 @@ interface FirstCaptureModalProps {
  * only then does it count against a vial.
  */
 const FirstCaptureModal: React.FC<FirstCaptureModalProps> = ({ onShowMe, onDismiss }) => {
-  useEscapeKey(onDismiss);
-
-  useEffect(() => {
-    const originalStyle = window.getComputedStyle(document.body).overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = originalStyle;
-    };
-  }, []);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const id = useId();
+  const { isClosing, close } = useDialogExit();
+  const dismiss = () => close(onDismiss);
+  const handleKeyDown = useDialogInteraction(dialogRef, dismiss, { disabled: isClosing });
 
   return (
     <Portal>
       <div
-        className="fixed inset-0 z-[120] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300"
-        onClick={onDismiss}
+        className={`fixed inset-0 z-[120] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md ${isClosing ? 'dialog-exiting dialog-exit-backdrop' : 'animate-in fade-in dialog-motion'}`}
+        onClick={dismiss}
       >
         <div
-          className="w-full max-w-[340px] bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 space-y-7 shadow-2xl animate-in zoom-in-95 duration-300 border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] border-slate-100 dark:border-slate-800/60 text-center"
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={`${id}-title`}
+          aria-describedby={`${id}-message`}
+          tabIndex={-1}
+          onKeyDown={handleKeyDown}
+          className={`w-full max-w-[340px] bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 space-y-7 shadow-2xl border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] border-slate-100 dark:border-slate-800/60 text-center ${isClosing ? 'dialog-exiting dialog-exit-surface' : 'animate-in zoom-in-95 dialog-motion'}`}
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex flex-col items-center space-y-4">
@@ -53,10 +57,10 @@ const FirstCaptureModal: React.FC<FirstCaptureModalProps> = ({ onShowMe, onDismi
               </svg>
             </div>
             <div className="space-y-2">
-              <h3 className="text-xl font-bold text-slate-600 dark:text-slate-100 tracking-tight">
+              <h3 id={`${id}-title`} className="text-xl font-bold text-slate-600 dark:text-slate-100 tracking-tight">
                 Covault caught its first purchase
               </h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
+              <p id={`${id}-message`} className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
                 It read your bank's alert and put the purchase in Review. Nothing
                 counts against a vial until you say it is right — check the shop
                 and the vial, tap to accept, and Covault will remember that shop
@@ -68,14 +72,15 @@ const FirstCaptureModal: React.FC<FirstCaptureModalProps> = ({ onShowMe, onDismi
           <div className="space-y-3">
             <button
               type="button"
-              onClick={onShowMe}
+              onClick={() => close(onShowMe)}
               className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-semibold text-sm active:scale-[0.97] transition-all duration-200 tracking-wide shadow-lg shadow-emerald-500/30"
             >
               Show me
             </button>
             <button
               type="button"
-              onClick={onDismiss}
+              onClick={dismiss}
+              data-dialog-initial-focus
               className="w-full py-3 text-slate-400 dark:text-slate-500 text-[11px] font-medium tracking-wide hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
             >
               Later

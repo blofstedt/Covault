@@ -11,12 +11,12 @@ interface SaveRequest {
   value: SettingValue;
   previousValue: SettingValue;
   save: (key: string, value: SettingValue) => Promise<void>;
-  onFailure: (lastSavedValue: SettingValue) => void;
+  onFailure: (lastSavedValue: SettingValue, error: unknown) => void;
 }
 
 /**
- * Keep writes to one setting in tap order. If a later tap fails, restore the
- * latest value the server accepted, even when an earlier tap also failed.
+ * Keep writes to one setting in tap order. If the final queued choice fails,
+ * restore the latest value the server accepted, even if earlier writes failed.
  */
 export class SettingSaveQueue {
   private pending = new Map<string, PendingSave>();
@@ -38,8 +38,12 @@ export class SettingSaveQueue {
         await save(key, value);
         if (generation !== this.generation) return;
         entry.lastSavedValue = value;
-      } catch {
-        if (generation === this.generation) onFailure(entry.lastSavedValue);
+      } catch (error) {
+        // If a newer choice is already waiting, leave its optimistic value in
+        // place. The last queued failure restores the last confirmed value.
+        if (generation === this.generation && entry.count === 1) {
+          onFailure(entry.lastSavedValue, error);
+        }
       } finally {
         entry.count -= 1;
         if (entry.count === 0 && this.pending.get(key) === entry) {

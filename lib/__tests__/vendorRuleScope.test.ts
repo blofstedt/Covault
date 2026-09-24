@@ -15,7 +15,12 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { merchantRuleScope, distinctCategories, dedupeByCategory } from '../vendorRuleScope';
+import {
+  decideMerchantRuleChoice,
+  merchantRuleScope,
+  distinctCategories,
+  dedupeByCategory,
+} from '../vendorRuleScope';
 
 const WENDYS = [
   { proper_name: "Wendy's", match_key: 'wendysolympic', category_id: 'Leisure' },
@@ -88,6 +93,44 @@ describe('merchantRuleScope', () => {
   });
 });
 
+describe('choosing among a merchant\'s learned rules', () => {
+  it('asks for review when sibling branches point to different real categories', () => {
+    const costcoRules = [
+      { proper_name: 'Costco', match_key: 'costcowholesale', category_id: 'Groceries' },
+      { proper_name: 'Costco', match_key: 'costcogas', category_id: 'Transport' },
+    ];
+
+    expect(decideMerchantRuleChoice([costcoRules[0]], costcoRules)).toEqual({
+      kind: 'conflict',
+      merchantRules: costcoRules,
+      realCategories: ['groceries', 'transport'],
+    });
+  });
+
+  it('ignores Other as an opinion but only returns the branch that matched', () => {
+    const choice = decideMerchantRuleChoice([WENDYS[1]], WENDYS);
+
+    expect(choice.kind).toBe('matched');
+    expect(choice.realCategories).toEqual(['leisure']);
+    expect(choice.merchantRules.map(rule => rule.match_key)).toEqual([
+      'wendyscrowfoot',
+      'wendysolympic',
+      'wendyscochrane',
+    ]);
+    if (choice.kind === 'matched') {
+      expect(choice.rule.match_key).toBe('wendyscrowfoot');
+    }
+  });
+
+  it('distinguishes an unmatched merchant from a rule that can be applied', () => {
+    expect(decideMerchantRuleChoice([], WENDYS)).toEqual({
+      kind: 'no-match',
+      merchantRules: [],
+      realCategories: [],
+    });
+  });
+});
+
 describe('dedupeByCategory', () => {
   const rules = [
     { properName: "Wendy's", categoryId: 'budget:leisure' },
@@ -116,24 +159,6 @@ describe('dedupeByCategory', () => {
 
 describe('the capture pipeline uses the merchant scope', () => {
   const source = readFileSync(resolve(__dirname, '../notificationProcessor.ts'), 'utf8');
-
-  it('decides the conflict on the merchant, not on the slug that matched', () => {
-    expect(source).toContain('const merchantRules = merchantRuleScope(matching, allRows)');
-    expect(source).toContain('const conflictingCategories = distinctCategories(merchantRules)');
-    // Other is excluded before the conflict decision — see
-    // optInCategoryOtherRules.test.ts for why a branch taught Other must
-    // never outvote, or count as disagreeing with, a real answer elsewhere
-    // on the same merchant.
-    expect(source).toContain("realCategories = conflictingCategories.filter((c) => c !== 'other')");
-    expect(source).toContain('overrideRuleConflict = realCategories.length > 1');
-  });
-
-  it('still applies only a rule that actually matched this capture', () => {
-    // Widening decides WHETHER to ask. It must never change which rule gets
-    // applied when there is nothing to ask about, or a capture could be filed
-    // under a branch whose slug the bank never sent.
-    expect(source).toContain('overrideRows = overrideRuleConflict ? [] : matching.slice(0, 1)');
-  });
 
   it('offers every conflicting category as a suggestion candidate', () => {
     expect(source).toContain(

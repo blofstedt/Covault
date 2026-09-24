@@ -9,11 +9,8 @@ on:
       - main
   workflow_dispatch: # Allows manual "Run workflow" button in Actions tab
 
-# Explicitly grant write access to bypass repository-level restrictions
 permissions:
-  contents: write
-  actions: write
-  packages: write
+  contents: read
 
 # Cancel older builds on the same branch if a new one is started
 concurrency:
@@ -260,20 +257,53 @@ jobs:
           retention-days: 14
           compression-level: 0
 
-      # What the app on the phone actually reads. An Actions artifact is a zip
-      # behind a login; a release asset is a plain public download, which is
-      # what lets the app fetch it itself. Pull requests never publish — only a
-      # merged change should reach anyone's phone.
+      - name: Share release files with the publisher
+        uses: actions/upload-artifact@v4
+        with:
+          name: covault-release-assets
+          path: |
+            android/app/build/outputs/apk/debug/Covault-*.apk
+            ${{ env.WEB_BUNDLE }}
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+
+  publish-release:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code for release notes
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Download validated release files
+        uses: actions/download-artifact@v4
+        with:
+          name: covault-release-assets
+          path: release-assets
+
+      # Only this job can publish a public release. The build and validation
+      # job keeps read-only repository access, including on pull requests.
       - name: Publish the APK as a release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          APK="$(find release-assets -type f -name 'Covault-*.apk' -print -quit)"
+          WEB_BUNDLE="$(find release-assets -type f -name 'covault-web-*.zip' -print -quit)"
+          if [ -z "$APK" ] || [ -z "$WEB_BUNDLE" ]; then
+            echo "The validated APK and web bundle were not both found."
+            exit 1
+          fi
+
           # The release body is what the update pill shows as "what changed",
           # so it is the commit subject rather than a generated changelog.
           NOTES="$(git log -1 --pretty=%s)"
           TAG="v${{ github.run_number }}"
-          APK="android/app/build/outputs/apk/debug/${APK_NAME}"
           # Re-running a workflow reuses its run number, so the tag may already
           # exist. Replacing the asset is the right answer there; failing the
           # build over it is not.

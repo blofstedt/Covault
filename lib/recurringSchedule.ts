@@ -138,6 +138,21 @@ export interface CandidateCharge {
 }
 
 /**
+ * Whether a matched recurring row is close enough to be the occurrence this
+ * capture confirms, rather than an older template found by walking its
+ * schedule. Only nearby rows should receive the notification text; otherwise
+ * a current alert would rewrite the history of a different month's charge.
+ */
+export function isRecordedOccurrenceNearCapture(
+  rowDate: string | null | undefined,
+  captureDate: string | null | undefined,
+  dayTolerance: number = SAME_CHARGE_DAY_TOLERANCE,
+): boolean {
+  const gap = daysApart(String(rowDate || ''), String(captureDate || ''));
+  return gap !== null && gap <= dayTolerance;
+}
+
+/**
  * The recurring row this capture is a second copy of, or null.
  *
  * `rows` may contain anything; non-recurring rows are ignored, so callers can

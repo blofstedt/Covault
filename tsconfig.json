@@ -33,6 +33,7 @@
     "index.tsx",
     "components",
     "lib",
+    "visual-tests",
     "types.ts",
     "constants.ts"
   ],

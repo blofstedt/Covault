@@ -67,6 +67,22 @@ describe('prefetching', () => {
     prefetchNotificationRules(client, 'u1');
     expect(restFetch).toHaveBeenCalledTimes(1);
   });
+
+  it('keeps each signed-in person’s rules in a separate cache entry', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const secondPersonRule = { ...RULE, id: 'r2', user_id: 'u2', pattern: 'rent notice' };
+    restFetch.mockResolvedValueOnce(ok([RULE])).mockResolvedValueOnce(ok([secondPersonRule]));
+
+    await client.fetchQuery(notificationRulesQuery('u1'));
+    await client.fetchQuery(notificationRulesQuery('u2'));
+
+    expect(restFetch.mock.calls.map(([path]) => String(path))).toEqual([
+      expect.stringContaining('user_id=eq.u1'),
+      expect.stringContaining('user_id=eq.u2'),
+    ]);
+    expect(client.getQueryData(notificationRulesKey('u1'))).toEqual([RULE]);
+    expect(client.getQueryData(notificationRulesKey('u2'))).toEqual([secondPersonRule]);
+  });
 });
 
 describe('wiring', () => {
@@ -82,9 +98,16 @@ describe('wiring', () => {
 
   it('signing out empties the cache, so the next person never sees these rules', () => {
     const auth = read('lib/hooks/useAuthState.ts');
-    expect(auth.match(/queryClient\.clear\(\)/g)?.length).toBe(
-      auth.match(/clearFirstPaintCache\(\)/g)?.length,
-    );
+    const listenerStart = auth.indexOf('supabase.auth.onAuthStateChange');
+    const listenerEnd = auth.indexOf('return () => subscription.unsubscribe()', listenerStart);
+    expect(listenerStart).toBeGreaterThanOrEqual(0);
+    expect(listenerEnd).toBeGreaterThan(listenerStart);
+    const listener = auth.slice(listenerStart, listenerEnd);
+    const signedOutStart = listener.lastIndexOf('} else {');
+    expect(signedOutStart).toBeGreaterThanOrEqual(0);
+    const signedOutBranch = listener.slice(signedOutStart);
+    expect(signedOutBranch).toMatch(/clearFirstPaintCache\(\)/);
+    expect(signedOutBranch).toMatch(/queryClient\.clear\(\)/);
   });
 
   it('the Review page reads the rules through the cache', () => {

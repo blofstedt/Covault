@@ -45,9 +45,11 @@ describe('what a borrowed rule is allowed to do', () => {
     // Anchored on code rather than on a comment: the whole point is that a
     // comment saying "never scored" cannot enforce anything.
     const start = pipeline.indexOf('await fetchPartnerRules(userId)');
-    const borrowed = pipeline.slice(start, pipeline.indexOf('getVendorMapEntry(parsed.vendorKey)'));
+    const end = pipeline.indexOf('if (!categoryId && parsed.vendorKey)', start);
+    const borrowed = pipeline.slice(start, end);
 
     expect(start, 'the borrowed-layer branch has been renamed or removed').toBeGreaterThan(-1);
+    expect(end, 'the local vendor-map fallback boundary is missing').toBeGreaterThan(start);
     expect(borrowed).toContain('lookupCommunityRule');
     expect(
       /overrideMatchConfidence\s*=/.test(borrowed),

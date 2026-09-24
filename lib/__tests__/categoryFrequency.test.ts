@@ -10,7 +10,10 @@
  * never touches here, and is out of scope for a pure function.
  */
 import { describe, it, expect } from 'vitest';
-import { mostFrequentCategory } from '../categoryFrequency';
+import {
+  mostFrequentCategory,
+  mostFrequentCategoryForVendor,
+} from '../categoryFrequency';
 
 const rows = (...budgets: string[]) => budgets.map((budget) => ({ budget }));
 
@@ -69,5 +72,48 @@ describe('mostFrequentCategory', () => {
 
   it('returns null with no candidates', () => {
     expect(mostFrequentCategory(rows('Groceries'), [])).toBeNull();
+  });
+});
+
+describe('mostFrequentCategoryForVendor', () => {
+  it('does not let another merchant in the candidate budgets sway the suggestion', () => {
+    expect(mostFrequentCategoryForVendor(
+      [
+        { vendor: "Wendy's", budget: 'Leisure' },
+        { vendor: "Wendy's", budget: 'Leisure' },
+        { vendor: 'Costco', budget: 'Groceries' },
+        { vendor: 'Costco', budget: 'Groceries' },
+        { vendor: 'Costco', budget: 'Groceries' },
+      ],
+      ['Leisure', 'Groceries'],
+      "Wendy's",
+      [],
+    )).toBe('Leisure');
+  });
+
+  it('counts a saved display name reached through a capture alias', () => {
+    expect(mostFrequentCategoryForVendor(
+      [
+        { vendor: 'Google', budget: 'Subscriptions' },
+        { vendor: 'Google', budget: 'Subscriptions' },
+        { vendor: 'Google', budget: 'Subscriptions' },
+        { vendor: 'YouTube', budget: 'Leisure' },
+      ],
+      ['Subscriptions', 'Leisure'],
+      'Youtubepremium',
+      ['Google Youtubepremium'],
+    )).toBe('Subscriptions');
+  });
+
+  it('still returns no suggestion when the matching merchant is tied', () => {
+    expect(mostFrequentCategoryForVendor(
+      [
+        { vendor: 'Walmart', budget: 'Groceries' },
+        { vendor: 'Walmart', budget: 'Other' },
+      ],
+      ['Groceries', 'Other'],
+      'Walmart',
+      [],
+    )).toBeNull();
   });
 });

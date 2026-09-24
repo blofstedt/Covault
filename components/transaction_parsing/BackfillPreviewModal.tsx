@@ -1,5 +1,6 @@
-import React from 'react';
-import { useEscapeKey } from '../../lib/hooks/useEscapeKey';
+import React, { useId, useRef } from 'react';
+import { useDialogInteraction } from '../../lib/hooks/useDialogInteraction';
+import { useDialogExit } from '../../lib/hooks/useDialogExit';
 import Portal from '../ui/Portal';
 
 interface BackfillPreviewModalProps {
@@ -40,16 +41,30 @@ const BackfillPreviewModal: React.FC<BackfillPreviewModalProps> = ({
   onConfirm,
   onCancel,
 }) => {
-  // Escape cancels, unless a request is in flight.
-  useEscapeKey(onCancel, !isApplying);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const id = useId();
+  const { isClosing, close } = useDialogExit();
+  const dismiss = () => {
+    if (!isApplying) close(onCancel);
+  };
+  const handleKeyDown = useDialogInteraction(dialogRef, dismiss, { disabled: isClosing });
 
   return (
     <Portal>
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm animate-in fade-in"
-      onClick={(e) => { if (e.target === e.currentTarget && !isApplying) onCancel(); }}
+      className={`fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm ${isClosing ? 'dialog-exiting dialog-exit-backdrop' : 'animate-in fade-in dialog-motion'}`}
+      onClick={(e) => { if (e.target === e.currentTarget) dismiss(); }}
     >
-      <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl border border-slate-200 dark:border-slate-700/50 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] overflow-hidden">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={`${id}-title`}
+        aria-describedby={`${id}-message`}
+        tabIndex={-1}
+        onKeyDown={handleKeyDown}
+        className={`w-full max-w-md bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl border border-slate-200 dark:border-slate-700/50 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] overflow-hidden ${isClosing ? 'dialog-exiting dialog-exit-surface' : 'animate-in zoom-in-95 dialog-motion'}`}
+      >
         {/* Header */}
         <div className="px-6 pt-6 pb-4">
           <div className="flex items-start gap-3">
@@ -61,10 +76,10 @@ const BackfillPreviewModal: React.FC<BackfillPreviewModalProps> = ({
               </svg>
             </div>
             <div className="flex-1 min-w-0">
-              <h2 className="text-base font-bold text-slate-800 dark:text-slate-100 tracking-tight">
+              <h2 id={`${id}-title`} className="text-base font-bold text-slate-800 dark:text-slate-100 tracking-tight">
                 Apply to historical transactions?
               </h2>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
+              <p id={`${id}-message`} className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
                 Renamed <span className="font-semibold text-slate-700 dark:text-slate-200">{oldVendor}</span> to <span className="font-semibold text-slate-700 dark:text-slate-200">{newVendor}</span>.
               </p>
             </div>
@@ -127,7 +142,8 @@ const BackfillPreviewModal: React.FC<BackfillPreviewModalProps> = ({
           )}
           <button
             type="button"
-            onClick={onCancel}
+            onClick={dismiss}
+            data-dialog-initial-focus
             disabled={isApplying}
             className="w-full px-4 py-2 rounded-xl text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50 active:scale-95 transition-all duration-150 disabled:opacity-50"
           >

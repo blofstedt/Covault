@@ -8,7 +8,8 @@ import {
   type TargetRect,
   type TourStage,
 } from '../../lib/tourSteps';
-import { useEscapeKey } from '../../lib/hooks/useEscapeKey';
+import { useDialogInteraction } from '../../lib/hooks/useDialogInteraction';
+import { useDialogExit } from '../../lib/hooks/useDialogExit';
 
 /**
  * The walkthrough: a spotlight over the app, driving the app as it goes.
@@ -95,7 +96,7 @@ const GAP = 16;
  * press, short enough that six of them across the walkthrough do not feel
  * like waiting.
  */
-const TAP_MS = 420;
+const TAP_MS = 320;
 
 const SETTLE_MS = 2200;
 const SETTLE_FLOOR_MS = 900;
@@ -104,6 +105,10 @@ const STABLE_FRAMES = 4;
 function sameRect(a: TargetRect | null, b: TargetRect | null): boolean {
   if (!a || !b) return a === b;
   return a.top === b.top && a.left === b.left && a.width === b.width && a.height === b.height;
+}
+
+function prefersReducedMotion(): boolean {
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 }
 
 const GuidedTour: React.FC<GuidedTourProps> = ({
@@ -134,7 +139,12 @@ const GuidedTour: React.FC<GuidedTourProps> = ({
   const isLast = index === steps.length - 1;
   const stage: TourStage = step?.stage ?? 'home';
 
-  useEscapeKey(onFinish);
+  const { isClosing, close } = useDialogExit();
+  const finish = () => {
+    if (tapTimer.current) clearTimeout(tapTimer.current);
+    close(onFinish);
+  };
+  const handleKeyDown = useDialogInteraction(rootRef, finish, { layer: 'walkthrough', disabled: isClosing });
 
   // Move the app to where this step is talking about. Before measuring, and
   // only when the stage actually CHANGES — asking for "home" again on every
@@ -241,7 +251,10 @@ const GuidedTour: React.FC<GuidedTourProps> = ({
       if (union && !scrolled && scrolledFor.current !== index) {
         const offScreen = union.top < GAP || union.top + union.height > window.innerHeight - GAP;
         if (offScreen) {
-          targets[0]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          targets[0]?.scrollIntoView({
+            behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+            block: 'center',
+          });
         }
         scrolled = true;
         scrolledFor.current = index;
@@ -294,7 +307,7 @@ const GuidedTour: React.FC<GuidedTourProps> = ({
 
   const advance = () => {
     const go = () => {
-      if (isLast) onFinish();
+      if (isLast) finish();
       else setIndex((i) => i + 1);
     };
 
@@ -302,7 +315,7 @@ const GuidedTour: React.FC<GuidedTourProps> = ({
     // drawn at the middle of the highlight, which is where a finger would
     // have landed, and the screen only changes once it has played — otherwise
     // the app appears to navigate on its own.
-    if (!step.tap || !rect) {
+    if (!step.tap || !rect || prefersReducedMotion()) {
       go();
       return;
     }
@@ -333,7 +346,9 @@ const GuidedTour: React.FC<GuidedTourProps> = ({
       role="dialog"
       aria-modal="true"
       aria-label="How Covault works"
-      className={`fixed inset-0 z-[300] overflow-hidden ${
+      tabIndex={-1}
+      onKeyDown={handleKeyDown}
+      className={`fixed inset-0 z-[300] overflow-hidden ${isClosing ? 'dialog-exiting dialog-exit-overlay' : ''} ${
         surface === 'live' ? '' : 'bg-slate-50 dark:bg-slate-950'
       }`}
     >
@@ -342,7 +357,7 @@ const GuidedTour: React.FC<GuidedTourProps> = ({
       {/* The dim, with the hole in it. */}
       {rect ? (
         <div
-          className="absolute pointer-events-none motion-safe:transition-all motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)]"
+          className="absolute pointer-events-none motion-safe:transition-all dialog-transition"
           style={{
             top: rect.top,
             left: rect.left,
@@ -375,7 +390,7 @@ const GuidedTour: React.FC<GuidedTourProps> = ({
       <div
         ref={captionRef}
         style={captionPosition}
-        className="absolute left-4 right-4 lg:left-1/2 lg:right-auto lg:w-[26rem] lg:-translate-x-1/2 motion-safe:transition-all motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)]"
+        className="absolute left-4 right-4 lg:left-1/2 lg:right-auto lg:w-[26rem] lg:-translate-x-1/2 motion-safe:transition-all dialog-transition"
       >
         <div className="rounded-[2rem] bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/60 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] shadow-2xl p-6 space-y-3">
           {/* The demo screen's figures are invented, and something on screen
@@ -410,7 +425,7 @@ const GuidedTour: React.FC<GuidedTourProps> = ({
             <div className="flex items-center gap-2" aria-hidden="true">
               <div className="flex-1 h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
                 <div
-                  className="h-full rounded-full bg-slate-300 dark:bg-slate-700 motion-safe:transition-[width] motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)]"
+                  className="h-full rounded-full bg-slate-300 dark:bg-slate-700 motion-safe:transition-[width] dialog-transition"
                   style={{ width: `${((index + 1) / steps.length) * 100}%` }}
                 />
               </div>
@@ -425,7 +440,7 @@ const GuidedTour: React.FC<GuidedTourProps> = ({
               ) : (
                 <button
                   type="button"
-                  onClick={onFinish}
+                  onClick={finish}
                   className="px-1 py-2.5 text-[11px] font-medium tracking-wide text-slate-400 dark:text-slate-500 active:scale-[0.97] transition-all duration-200"
                 >
                   Skip the tour
@@ -445,6 +460,7 @@ const GuidedTour: React.FC<GuidedTourProps> = ({
                 <button
                   type="button"
                   onClick={advance}
+                  data-dialog-initial-focus
                   className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl text-[12px] font-semibold tracking-wide shadow-lg shadow-emerald-500/30 active:scale-[0.97] transition-all duration-200"
                 >
                   {isLast ? finishLabel : 'Next'}

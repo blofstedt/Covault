@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useId, useRef, useState } from 'react';
 import { formatCurrency } from '../../lib/formatCurrency';
-import { useEscapeKey } from '../../lib/hooks/useEscapeKey';
+import { useDialogInteraction } from '../../lib/hooks/useDialogInteraction';
+import { useDialogExit } from '../../lib/hooks/useDialogExit';
 import Portal from '../ui/Portal';
 
 export type NotATxRuleType = 'exact' | 'contains';
@@ -48,19 +49,32 @@ const NotATransactionModal: React.FC<NotATransactionModalProps> = ({
   onCancel,
 }) => {
   const [ruleType, setRuleType] = useState<NotATxRuleType>('exact');
-
-  // Escape cancels, unless a request is in flight.
-  useEscapeKey(onCancel, !isSaving);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const id = useId();
+  const { isClosing, close } = useDialogExit();
+  const dismiss = () => {
+    if (!isSaving) close(onCancel);
+  };
+  const handleKeyDown = useDialogInteraction(dialogRef, dismiss, { disabled: isClosing });
 
   const pattern = rawNotification.trim();
 
   return (
     <Portal>
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm animate-in fade-in"
-      onClick={(e) => { if (e.target === e.currentTarget && !isSaving) onCancel(); }}
+      className={`fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm ${isClosing ? 'dialog-exiting dialog-exit-backdrop' : 'animate-in fade-in dialog-motion'}`}
+      onClick={(e) => { if (e.target === e.currentTarget) dismiss(); }}
     >
-      <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl border border-slate-200 dark:border-slate-700/50 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] overflow-hidden">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={`${id}-title`}
+        aria-describedby={`${id}-message`}
+        tabIndex={-1}
+        onKeyDown={handleKeyDown}
+        className={`w-full max-w-md bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl border border-slate-200 dark:border-slate-700/50 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] overflow-hidden ${isClosing ? 'dialog-exiting dialog-exit-surface' : 'animate-in zoom-in-95 dialog-motion'}`}
+      >
         {/* Header */}
         <div className="px-6 pt-6 pb-4">
           <div className="flex items-start gap-3">
@@ -72,10 +86,10 @@ const NotATransactionModal: React.FC<NotATransactionModalProps> = ({
               </svg>
             </div>
             <div className="flex-1 min-w-0">
-              <h2 className="text-base font-bold text-slate-800 dark:text-slate-100 tracking-tight">
+              <h2 id={`${id}-title`} className="text-base font-bold text-slate-800 dark:text-slate-100 tracking-tight">
                 Mark as not a transaction?
               </h2>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
+              <p id={`${id}-message`} className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
                 <span className="font-semibold text-slate-700 dark:text-slate-200">{vendor}</span> {formatCurrency(amount)} will be removed, and alerts like it will be ignored from now on — including the same wording with a different amount in it.
               </p>
             </div>
@@ -165,7 +179,8 @@ const NotATransactionModal: React.FC<NotATransactionModalProps> = ({
         <div className="px-6 pb-6 flex items-center gap-2">
           <button
             type="button"
-            onClick={onCancel}
+            onClick={dismiss}
+            data-dialog-initial-focus
             disabled={isSaving}
             className="flex-1 px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800/60 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 transition-all duration-150 disabled:opacity-50"
           >

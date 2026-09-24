@@ -24,7 +24,7 @@ const conflictBlock = source.slice(
 
 describe('the category suggestion on a conflicting vendor', () => {
   it('exists, computed from the conflicting categories', () => {
-    expect(conflictBlock).toContain('mostFrequentCategory(');
+    expect(conflictBlock).toContain('mostFrequentCategoryForVendor(');
     expect(conflictBlock).toContain('candidateNames');
   });
 

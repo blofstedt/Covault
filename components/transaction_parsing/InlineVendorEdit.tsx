@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { toVendorKey } from '../../lib/deviceTransactionParser';
 import { pickVendorNameSuggestion } from '../../lib/vendorNameSuggestion';
 import { getBudgetIcon } from '../dashboard_components/getBudgetIcon';
-import { useEscapeKey } from '../../lib/hooks/useEscapeKey';
+import { useDialogInteraction } from '../../lib/hooks/useDialogInteraction';
+import { useDialogExit } from '../../lib/hooks/useDialogExit';
 import Portal from '../ui/Portal';
 import type { ExistingRule } from './CategoryPickerSheet';
 
@@ -112,6 +113,8 @@ const InlineVendorEdit: React.FC<InlineVendorEditProps> = ({
   // on a rule. Holds the stored spelling so the user can choose between them.
   const [nearMatch, setNearMatch] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const { isClosing, close } = useDialogExit();
   // The whole editor, so a blur can tell "focus moved to my own Save button"
   // from "focus left entirely".
   const editorRef = useRef<HTMLDivElement>(null);
@@ -125,10 +128,11 @@ const InlineVendorEdit: React.FC<InlineVendorEditProps> = ({
   // Escape closes the sheet from anywhere inside it, not only from the field.
   // Flagged as a cancel first, for the same reason the buttons do: it is a
   // dismissal, and a dismissal must never commit what was typed.
-  useEscapeKey(() => {
+  const dismiss = () => {
     cancelRef.current = true;
-    onCancel();
-  }, editing);
+    close(onCancel);
+  };
+  const handleDialogKeyDown = useDialogInteraction(dialogRef, dismiss, { disabled: isClosing });
 
   useEffect(() => {
     if (editing) {
@@ -155,7 +159,7 @@ const InlineVendorEdit: React.FC<InlineVendorEditProps> = ({
     if (name && name !== value) {
       await onSave(name, pickRuleToAdopt(knownRules, name));
     } else {
-      onCancel();
+      dismiss();
     }
   };
 
@@ -197,7 +201,7 @@ const InlineVendorEdit: React.FC<InlineVendorEditProps> = ({
   const runSave = async () => {
     const trimmed = draft.trim();
     if (!trimmed) {
-      onCancel();
+      dismiss();
       return;
     }
 
@@ -253,7 +257,8 @@ const InlineVendorEdit: React.FC<InlineVendorEditProps> = ({
   return (
     <Portal>
       <div
-        className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] sm:pb-4 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200"
+        ref={dialogRef}
+        className={`fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] sm:pb-4 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm ${isClosing ? 'dialog-exiting dialog-exit-backdrop' : 'animate-in fade-in dialog-motion'}`}
         // Down, not up, and for the same reason the Cancel button does it:
         // this has to be recorded before the input blurs, or dismissing the
         // sheet by tapping beside it would be read as leaving the field and
@@ -262,16 +267,17 @@ const InlineVendorEdit: React.FC<InlineVendorEditProps> = ({
           if (e.target === e.currentTarget) cancelRef.current = true;
         }}
         onClick={(e) => {
-          if (e.target === e.currentTarget) onCancel();
+          if (e.target === e.currentTarget) dismiss();
         }}
         role="dialog"
         aria-modal="true"
         aria-label="Rename merchant"
+        tabIndex={-1}
+        onKeyDown={handleDialogKeyDown}
       >
         <div
           ref={editorRef}
-          onKeyDown={(e) => e.stopPropagation()}
-          className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-[2rem] p-5 shadow-2xl border border-slate-100 dark:border-slate-800/60 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-300"
+          className={`w-full max-w-sm bg-white dark:bg-slate-900 rounded-[2rem] p-5 shadow-2xl border border-slate-100 dark:border-slate-800/60 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] ${isClosing ? 'dialog-exiting dialog-exit-sheet' : 'animate-in slide-in-from-bottom-4 sm:zoom-in-95 dialog-motion'}`}
         >
           {nearMatch ? (
             /* Both spellings side by side, neither preselected — the point is
@@ -332,7 +338,7 @@ const InlineVendorEdit: React.FC<InlineVendorEditProps> = ({
               <button
                 type="button"
                 onPointerDown={() => { cancelRef.current = true; }}
-                onClick={onCancel}
+                onClick={dismiss}
                 disabled={isSaving}
                 className="mt-4 w-full min-h-[48px] py-3 text-xs font-bold rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors active:scale-[0.98] disabled:opacity-40"
               >
@@ -362,7 +368,7 @@ const InlineVendorEdit: React.FC<InlineVendorEditProps> = ({
                   } else if (e.key === 'Escape') {
                     e.preventDefault();
                     cancelRef.current = true;
-                    onCancel();
+                    dismiss();
                   }
                 }}
                 onBlur={handleBlur}
@@ -422,7 +428,7 @@ const InlineVendorEdit: React.FC<InlineVendorEditProps> = ({
                 // blurs, so dismissing the sheet doesn't get read as leaving
                 // the field.
                 onPointerDown={() => { cancelRef.current = true; }}
-                onClick={onCancel}
+                onClick={dismiss}
                 disabled={isSaving}
                 className="mt-2 w-full min-h-[48px] py-3 text-xs font-bold rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors active:scale-[0.98] disabled:opacity-40"
               >

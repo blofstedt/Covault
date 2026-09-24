@@ -1,41 +1,199 @@
 // lib/hooks/useUserSettings.ts
 import { log } from '../log';
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { REST_BASE, getAuthHeaders, restFetch, DEFAULT_MONTHLY_INCOME } from '../apiHelpers';
 import { persistSetting } from '../settings/persistSetting';
+import { SettingSaveQueue, type SettingValue } from '../settings/settingSaveQueue';
 import type { UseUserDataParams } from './types';
+
+const parseRows = (body: string): unknown[] => {
+  try {
+    const rows: unknown = body ? JSON.parse(body) : [];
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveErrorMessage = (error: unknown, operation: string): string => {
+  if (error instanceof Error && error.message.startsWith(`[${operation}]`)) return error.message;
+  const message = error instanceof Error ? error.message : String(error);
+  return `[${operation}] exception: ${message}`;
+};
+
+interface BudgetRowChoice {
+  limit: number;
+  visible: boolean;
+}
+
+const parseBudgetRowChoice = (value: SettingValue): BudgetRowChoice => {
+  if (typeof value !== 'string') {
+    throw new TypeError('Invalid queued budget row choice');
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new TypeError('Invalid queued budget row choice');
+  }
+  if (
+    typeof parsed !== 'object'
+    || parsed === null
+    || Array.isArray(parsed)
+    || !('limit' in parsed)
+    || typeof parsed.limit !== 'number'
+    || !('visible' in parsed)
+    || typeof parsed.visible !== 'boolean'
+  ) {
+    throw new TypeError('Invalid queued budget row choice');
+  }
+  return { limit: parsed.limit, visible: parsed.visible };
+};
+
+const parseThemeChoice = (value: SettingValue): 'light' | 'dark' => {
+  if (value === 'light' || value === 'dark') return value;
+  throw new TypeError('Invalid queued theme choice');
+};
+
+async function persistBudgetRow(
+  userId: string,
+  categoryId: string,
+  categoryName: string,
+  budgetingSolo: boolean | undefined,
+  choice: BudgetRowChoice,
+  operation: 'saveBudgetLimit' | 'saveBudgetVisibility',
+): Promise<void> {
+  const headers = await getAuthHeaders();
+  const patchHeaders: Record<string, string> = {
+    ...headers,
+    Prefer: 'return=representation',
+  };
+  const patchQueries = [
+    `${REST_BASE}/budgets?user_uuid=eq.${userId}&budget=eq.${encodeURIComponent(categoryName)}`,
+    `${REST_BASE}/budgets?user_id=eq.${userId}&category=eq.${encodeURIComponent(categoryName)}`,
+    categoryId.startsWith('budget:')
+      ? null
+      : `${REST_BASE}/budgets?id=eq.${encodeURIComponent(categoryId)}`,
+  ].filter((patchUrl): patchUrl is string => patchUrl !== null);
+
+  let patchRes: Response | null = null;
+  let patchBody = '';
+  for (const patchUrl of patchQueries) {
+    patchRes = await fetch(patchUrl, {
+      method: 'PATCH',
+      headers: patchHeaders,
+      body: JSON.stringify({ amount: choice.limit, Visible: choice.visible }),
+    });
+    patchBody = await patchRes.text();
+    if (patchRes.ok) break;
+
+    patchRes = await fetch(patchUrl, {
+      method: 'PATCH',
+      headers: patchHeaders,
+      body: JSON.stringify({
+        limit_amount: choice.limit,
+        visible: choice.visible,
+        is_household: !budgetingSolo,
+      }),
+    });
+    patchBody = await patchRes.text();
+    if (patchRes.ok) break;
+  }
+
+  if (!patchRes || !patchRes.ok) {
+    throw new Error(`[${operation}] PATCH failed (${patchRes?.status ?? 'unknown'}): ${patchBody.slice(0, 200)}`);
+  }
+  if (parseRows(patchBody).length > 0) {
+    log.debug(`[${operation}] PATCH OK for ${categoryName}`);
+    return;
+  }
+
+  const postHeaders: Record<string, string> = {
+    ...headers,
+    Prefer: 'return=representation',
+  };
+  let postRes = await fetch(`${REST_BASE}/budgets`, {
+    method: 'POST',
+    headers: postHeaders,
+    body: JSON.stringify({
+      user_uuid: userId,
+      budget: categoryName,
+      amount: choice.limit,
+      Visible: choice.visible,
+    }),
+  });
+  let postBody = await postRes.text();
+
+  if (!postRes.ok) {
+    postRes = await fetch(`${REST_BASE}/budgets`, {
+      method: 'POST',
+      headers: postHeaders,
+      body: JSON.stringify({
+        user_id: userId,
+        category: categoryName,
+        limit_amount: choice.limit,
+        visible: choice.visible,
+        is_household: !budgetingSolo,
+      }),
+    });
+    postBody = await postRes.text();
+  }
+
+  if (!postRes.ok) {
+    throw new Error(`[${operation}] INSERT failed (${postRes.status}): ${postBody.slice(0, 200)}`);
+  }
+  if (parseRows(postBody).length === 0) {
+    throw new Error(`[${operation}] INSERT returned no rows`);
+  }
+  log.debug(`[${operation}] INSERT OK for ${categoryName}`);
+}
 
 export const useUserSettings = ({
   appState,
   setAppState,
   setDbError,
 }: UseUserDataParams) => {
+  const saveQueueRef = useRef(new SettingSaveQueue());
+  const budgetRowChoicesRef = useRef(new Map<string, BudgetRowChoice>());
+  useEffect(() => {
+    saveQueueRef.current.clear();
+  }, [appState.user?.id]);
 
-  // Always-current ref for hiddenCategories, used for rollback in saveBudgetVisibility
-  // to avoid stale closure values when the useCallback captures old appState
-  const hiddenCategoriesRef = useRef<string[]>([]);
-  hiddenCategoriesRef.current = appState.settings.hiddenCategories || [];
+  const currentHiddenCategories = appState.settings.hiddenCategories || [];
+  if (appState.user?.id) {
+    for (const budget of appState.budgets) {
+      budgetRowChoicesRef.current.set(`${appState.user.id}:${budget.id}`, {
+        limit: budget.totalLimit,
+        visible: !currentHiddenCategories.includes(budget.id),
+      });
+    }
+  }
 
   // Save a single budget limit for the current user
   const saveBudgetLimit = useCallback(
     async (categoryId: string, newLimit: number) => {
       const userId = appState.user?.id;
-      if (!userId) return;
+      if (!userId) {
+        setDbError('Could not save this budget limit. Please try again.');
+        return;
+      }
 
       // Find the category name from the categoryId
       const category = appState.budgets.find(b => b.id === categoryId);
       if (!category) {
         log.error('[saveBudgetLimit] Category not found:', categoryId);
+        setDbError('Could not save this budget limit. Please try again.');
         return;
       }
       const categoryName = category.name;
-      
-      // Store previous value for rollback
-      const previousLimit = category.totalLimit;
-
-      // Get current visibility state (true if NOT in hiddenCategories)
-      const hiddenCategories = appState.settings.hiddenCategories || [];
-      const visible = !hiddenCategories.includes(categoryId);
+      const rowKey = `${userId}:${categoryId}`;
+      const previousChoice = budgetRowChoicesRef.current.get(rowKey) ?? {
+        limit: category.totalLimit,
+        visible: !appState.settings.hiddenCategories?.includes(categoryId),
+      };
+      const nextChoice = { ...previousChoice, limit: newLimit };
+      budgetRowChoicesRef.current.set(rowKey, nextChoice);
 
       // Optimistic UI update
       setAppState(prev => ({
@@ -45,141 +203,44 @@ export const useUserSettings = ({
         ),
       }));
 
-      const rollback = () => {
-        setAppState(prev => ({
-          ...prev,
-          budgets: prev.budgets.map(b =>
-            b.id === categoryId ? { ...b, totalLimit: previousLimit } : b,
-          ),
-        }));
-      };
-
-      try {
-        const headers = await getAuthHeaders();
-
-        // First try PATCH (update) on existing row — this works regardless of unique constraints
-        const patchHeaders: Record<string, string> = {
-          ...headers,
-          'Prefer': 'return=representation',
-        };
-        const patchQueries = [
-          `${REST_BASE}/budgets?user_uuid=eq.${userId}&budget=eq.${encodeURIComponent(categoryName)}`,
-          `${REST_BASE}/budgets?user_id=eq.${userId}&category=eq.${encodeURIComponent(categoryName)}`,
-          categoryId.startsWith('budget:')
-            ? null
-            : `${REST_BASE}/budgets?id=eq.${encodeURIComponent(categoryId)}`,
-        ].filter(Boolean) as string[];
-
-        let patchRes: Response | null = null;
-        let patchBody = '';
-
-        for (const patchUrl of patchQueries) {
-          patchRes = await fetch(
-            patchUrl,
-            {
-              method: 'PATCH',
-              headers: patchHeaders,
-              body: JSON.stringify({ amount: newLimit, Visible: visible }),
-            },
+      return saveQueueRef.current.enqueue({
+        key: `budget-row:${userId}:${categoryId}`,
+        value: JSON.stringify(nextChoice),
+        previousValue: JSON.stringify(previousChoice),
+        save: async (_key, serializedChoice) => {
+          await persistBudgetRow(
+            userId,
+            categoryId,
+            categoryName,
+            appState.user?.budgetingSolo,
+            parseBudgetRowChoice(serializedChoice),
+            'saveBudgetLimit',
           );
-          patchBody = await patchRes.text();
-
-          if (patchRes.ok) break;
-
-          patchRes = await fetch(
-            patchUrl,
-            {
-              method: 'PATCH',
-              headers: patchHeaders,
-              body: JSON.stringify({
-                limit_amount: newLimit,
-                visible,
-                is_household: !appState.user?.budgetingSolo,
-              }),
-            },
-          );
-          patchBody = await patchRes.text();
-
-          if (patchRes.ok) break;
-        }
-
-        if (!patchRes || !patchRes.ok) {
-          const status = patchRes?.status ?? 'unknown';
-          const msg = `[saveBudgetLimit] PATCH failed (${status}): ${patchBody.slice(0, 200)}`;
+        },
+        onFailure: (lastSavedValue, error) => {
+          const msg = saveErrorMessage(error, 'saveBudgetLimit');
           log.error(msg);
           setDbError(msg);
-          rollback();
-          return;
-        }
-
-        // Check if any rows were updated
-        let updatedRows: any[] = [];
-        try {
-          updatedRows = patchBody ? JSON.parse(patchBody) : [];
-        } catch {
-          updatedRows = [];
-        }
-
-        if (Array.isArray(updatedRows) && updatedRows.length > 0) {
-          log.debug(`[saveBudgetLimit] PATCH OK for ${categoryName}`);
-          return;
-        }
-
-        // No existing row found — INSERT a new one
-        const postHeaders: Record<string, string> = {
-          ...headers,
-          'Prefer': 'return=representation',
-        };
-        let postRes = await fetch(
-          `${REST_BASE}/budgets`,
-          {
-            method: 'POST',
-            headers: postHeaders,
-            body: JSON.stringify({
-              user_uuid: userId,
-              budget: categoryName,
-              amount: newLimit,
-              Visible: visible,
-            }),
-          },
-        );
-
-        let postBody = await postRes.text();
-
-        if (!postRes.ok) {
-          postRes = await fetch(
-            `${REST_BASE}/budgets`,
-            {
-              method: 'POST',
-              headers: postHeaders,
-              body: JSON.stringify({
-                user_id: userId,
-                category: categoryName,
-                limit_amount: newLimit,
-                visible,
-                is_household: !appState.user?.budgetingSolo,
-              }),
-            },
-          );
-          postBody = await postRes.text();
-        }
-
-        if (!postRes.ok) {
-          const msg = `[saveBudgetLimit] INSERT failed (${postRes.status}): ${postBody.slice(0, 200)}`;
-          log.error(msg);
-          setDbError(msg);
-          rollback();
-        } else {
-          log.debug(`[saveBudgetLimit] INSERT OK for ${categoryName}`);
-        }
-      } catch (err: any) {
-        const msg = `[saveBudgetLimit] exception: ${err?.message || err}`;
-        log.error(msg);
-        setDbError(msg);
-        rollback();
-      }
+          const lastSavedChoice = parseBudgetRowChoice(lastSavedValue);
+          budgetRowChoicesRef.current.set(rowKey, lastSavedChoice);
+          setAppState(prev => {
+            if (prev.user?.id !== userId) return prev;
+            const hidden = prev.settings.hiddenCategories || [];
+            const hiddenCategories = lastSavedChoice.visible
+              ? hidden.filter(id => id !== categoryId)
+              : hidden.includes(categoryId) ? hidden : [...hidden, categoryId];
+            return {
+              ...prev,
+              budgets: prev.budgets.map(b =>
+                b.id === categoryId ? { ...b, totalLimit: lastSavedChoice.limit } : b,
+              ),
+              settings: { ...prev.settings, hiddenCategories },
+            };
+          });
+        },
+      });
     },
-    [appState.user, appState.budgets, appState.settings, setAppState, setDbError],
+    [appState.user, appState.budgets, appState.settings.hiddenCategories, setAppState, setDbError],
   );
 
   // Save user monthly income to Supabase settings table
@@ -189,12 +250,9 @@ export const useUserSettings = ({
       const userName = appState.user?.name;
       const userEmail = appState.user?.email;
       
-      if (!userId || !userName || !userEmail) {
-        const missing = [];
-        if (!userId) missing.push('userId');
-        if (!userName) missing.push('userName');
-        if (!userEmail) missing.push('userEmail');
-        log.warn(`[saveUserIncome] missing user data: ${missing.join(', ')}, skipping save`);
+      if (!userId) {
+        log.warn('[saveUserIncome] missing userId, skipping save');
+        setDbError('Could not save your monthly income. Please try again.');
         return;
       }
 
@@ -207,56 +265,46 @@ export const useUserSettings = ({
         user: prev.user ? { ...prev.user, monthlyIncome: income } : null,
       }));
 
-      try {
-
-        // PATCH first \u2014 this only updates the columns we specify, so the
-        // existing `subscription_status` row value is preserved and the
-        // settings_subscription_status_check constraint is never touched.
-        // (The previous POST/upsert path failed because it tried to INSERT
-        // with the schema default `\"false\"` for subscription_status, which
-        // violates the check constraint that only allows values like
-        // \"active\".)
-        const res = await restFetch(
-          `/settings?user_id=eq.${userId}`,
-          {
+      return saveQueueRef.current.enqueue({
+        key: 'user-income',
+        value: income,
+        previousValue: previousIncome,
+        save: async () => {
+          // PATCH first — this only updates the columns we specify, so the
+          // existing subscription_status value is preserved.
+          const res = await restFetch(`/settings?user_id=eq.${userId}`, {
             method: 'PATCH',
             headers: { Prefer: 'return=representation' },
             body: JSON.stringify({ monthly_income: income }),
-          },
-        );
+          });
 
-        let updatedRows: any[] = [];
-        try {
-          const text = await res.text();
-          updatedRows = text ? JSON.parse(text) : [];
-        } catch {
-          updatedRows = [];
-        }
+          let patchBody = '';
+          let updatedRows: unknown[] = [];
+          try {
+            patchBody = await res.text();
+            updatedRows = parseRows(patchBody);
+          } catch {
+            // A bad body cannot confirm a save; continue to the create fallback.
+          }
 
-        if (res.ok && Array.isArray(updatedRows) && updatedRows.length > 0) {
-          log.debug(`[saveUserIncome] PATCH OK: ${income}`);
-          return;
-        }
+          if (res.ok && updatedRows.length > 0) {
+            log.debug(`[saveUserIncome] PATCH OK: ${income}`);
+            return;
+          }
 
-        // No existing row \u2014 fall back to a full POST. subscription_status
-        // is left unset deliberately: the column default is 'none' (see
-        // 2026_fix_subscription_status_default.sql), which now satisfies
-        // the check constraint on its own. An earlier version of this
-        // fallback set it to 'active' explicitly to work around that
-        // constraint before the default was fixed \u2014 which meant anyone
-        // whose very first settings write happened to hit this rare path
-        // (PATCH racing ahead of the signup trigger) was granted paid
-        // access by accident, permanently, with nothing to say so.
-        if (!res.ok) {
-          const body = await res.text();
-          log.warn(`[saveUserIncome] PATCH failed (${res.status}): ${body.slice(0, 200)} \u2014 trying POST`);
-        } else {
-          log.warn(`[saveUserIncome] PATCH matched 0 rows \u2014 trying POST`);
-        }
+          // No existing row — fall back to a full POST. subscription_status
+          // stays unset so the database default remains in control.
+          if (!res.ok) {
+            log.warn(`[saveUserIncome] PATCH failed (${res.status}): ${patchBody.slice(0, 200)} — trying POST`);
+          } else {
+            log.warn('[saveUserIncome] PATCH matched 0 rows — trying POST');
+          }
 
-        const postRes = await restFetch(
-          `/settings`,
-          {
+          if (!userName || !userEmail) {
+            throw new Error('[saveUserIncome] Cannot create a settings row without the user name and email');
+          }
+
+          const postRes = await restFetch('/settings', {
             method: 'POST',
             headers: { Prefer: 'return=representation' },
             body: JSON.stringify({
@@ -265,51 +313,32 @@ export const useUserSettings = ({
               email: userEmail,
               monthly_income: income,
             }),
-          },
-        );
+          });
 
-        if (!postRes.ok) {
-          const body = await postRes.text();
-          const msg = `[saveUserIncome] POST failed (${postRes.status}): ${body.slice(0, 200)}`;
-          log.error(msg);
-          setDbError(msg);
-          setAppState(prev => ({
-            ...prev,
-            user: prev.user ? { ...prev.user, monthlyIncome: previousIncome } : null,
-          }));
-          return;
-        }
+          if (!postRes.ok) {
+            const body = await postRes.text();
+            throw new Error(`[saveUserIncome] POST failed (${postRes.status}): ${body.slice(0, 200)}`);
+          }
 
-        const postBody = await postRes.text();
-        let postRows: any[] = [];
-        try {
-          postRows = postBody ? JSON.parse(postBody) : [];
-        } catch {
-          postRows = [];
-        }
-
-        if (!Array.isArray(postRows) || postRows.length === 0) {
-          const msg = '[saveUserIncome] POST returned no rows';
-          log.error(msg);
-          setDbError(msg);
-          setAppState(prev => ({
-            ...prev,
-            user: prev.user ? { ...prev.user, monthlyIncome: previousIncome } : null,
-          }));
-        } else {
+          const postBody = await postRes.text();
+          if (parseRows(postBody).length === 0) {
+            throw new Error('[saveUserIncome] POST returned no rows');
+          }
           log.debug(`[saveUserIncome] POST OK: ${income}`);
-        }
-      } catch (err: any) {
-        const msg = `[saveUserIncome] exception: ${err?.message || err}`;
-        log.error(msg);
-        setDbError(msg);
-
-        // Rollback optimistic update on error
-        setAppState(prev => ({
-          ...prev,
-          user: prev.user ? { ...prev.user, monthlyIncome: previousIncome } : null,
-        }));
-      }
+        },
+        onFailure: (lastSavedValue, error) => {
+          const msg = saveErrorMessage(error, 'saveUserIncome');
+          log.error(msg);
+          setDbError(msg);
+          setAppState(prev => {
+            if (prev.user?.id !== userId || prev.user.monthlyIncome !== income) return prev;
+            return {
+              ...prev,
+              user: { ...prev.user, monthlyIncome: Number(lastSavedValue) },
+            };
+          });
+        },
+      });
     },
     [appState.user, setAppState, setDbError],
   );
@@ -320,6 +349,7 @@ export const useUserSettings = ({
       const userId = appState.user?.id;
       if (!userId) {
         log.warn('[saveTheme] no userId, skipping save');
+        setDbError('Could not save your theme choice. Please try again.');
         return;
       }
 
@@ -332,42 +362,35 @@ export const useUserSettings = ({
         settings: { ...prev.settings, theme },
       }));
 
-      try {
-        // Update the settings table for this user
-        const res = await restFetch(
-          `/settings?user_id=eq.${userId}`,
-          {
+      return saveQueueRef.current.enqueue({
+        key: 'theme',
+        value: theme,
+        previousValue: previousTheme,
+        save: async () => {
+          const res = await restFetch(`/settings?user_id=eq.${userId}`, {
             method: 'PATCH',
             headers: { Prefer: 'return=representation' },
             body: JSON.stringify({ theme_selected: theme }),
-          },
-        );
-        
-        if (!res.ok) {
+          });
           const body = await res.text();
-          const msg = `[saveTheme] update failed (${res.status}): ${body.slice(0, 200)}`;
+          if (!res.ok || parseRows(body).length === 0) {
+            const reason = res.ok
+              ? 'update returned no settings row'
+              : `update failed (${res.status})`;
+            throw new Error(`[saveTheme] ${reason}: ${body.slice(0, 200)}`);
+          }
+          log.debug(`[saveTheme] successfully updated to ${theme}`);
+        },
+        onFailure: (lastSavedValue, error) => {
+          const msg = saveErrorMessage(error, 'saveTheme');
           log.error(msg);
           setDbError(msg);
-          
-          // Rollback optimistic update on failure
-          setAppState(prev => ({
-            ...prev,
-            settings: { ...prev.settings, theme: previousTheme },
-          }));
-        } else {
-          log.debug(`[saveTheme] successfully updated to ${theme}`);
-        }
-      } catch (err: any) {
-        const msg = `[saveTheme] exception: ${err?.message || err}`;
-        log.error(msg);
-        setDbError(msg);
-        
-        // Rollback optimistic update on error
-        setAppState(prev => ({
-          ...prev,
-          settings: { ...prev.settings, theme: previousTheme },
-        }));
-      }
+          setAppState(prev => {
+            if (prev.user?.id !== userId || prev.settings.theme !== theme) return prev;
+            return { ...prev, settings: { ...prev.settings, theme: parseThemeChoice(lastSavedValue) } };
+          });
+        },
+      });
     },
     [appState.user, appState.settings.theme, setAppState, setDbError],
   );
@@ -376,140 +399,73 @@ export const useUserSettings = ({
   const saveBudgetVisibility = useCallback(
     async (categoryId: string, visible: boolean) => {
       const userId = appState.user?.id;
-      if (!userId) return;
+      if (!userId) {
+        setDbError('Could not save this budget visibility choice. Please try again.');
+        return;
+      }
 
       // Find the category name from the categoryId
       const category = appState.budgets.find(b => b.id === categoryId);
       if (!category) {
         log.error('[saveBudgetVisibility] Category not found:', categoryId);
+        setDbError('Could not save this budget visibility choice. Please try again.');
         return;
       }
       const categoryName = category.name;
-
-      // Optimistic UI update: toggle hiddenCategories
-      // Read current hidden state from the always-current ref
-      // to avoid stale closure values causing the rollback to restore wrong state
-      const previousHidden = [...hiddenCategoriesRef.current];
-      const nextHidden = visible
-        ? previousHidden.filter((id: string) => id !== categoryId)
-        : [...previousHidden, categoryId];
-
-      setAppState(prev => ({
-        ...prev,
-        settings: { ...prev.settings, hiddenCategories: nextHidden },
-      }));
-
-      const rollback = () => {
-        setAppState(prev => ({
-          ...prev,
-          settings: { ...prev.settings, hiddenCategories: previousHidden },
-        }));
+      const rowKey = `${userId}:${categoryId}`;
+      const previousChoice = budgetRowChoicesRef.current.get(rowKey) ?? {
+        limit: category.totalLimit,
+        visible: !appState.settings.hiddenCategories?.includes(categoryId),
       };
+      const nextChoice = { ...previousChoice, visible };
+      budgetRowChoicesRef.current.set(rowKey, nextChoice);
 
-      try {
-        const headers = await getAuthHeaders();
+      setAppState(prev => {
+        const hidden = prev.settings.hiddenCategories || [];
+        const nextHidden = visible
+          ? hidden.filter(id => id !== categoryId)
+          : hidden.includes(categoryId) ? hidden : [...hidden, categoryId];
+        return { ...prev, settings: { ...prev.settings, hiddenCategories: nextHidden } };
+      });
 
-        // Use PATCH to update existing row (avoids dependency on unique constraints)
-        const patchHeaders: Record<string, string> = {
-          ...headers,
-          'Prefer': 'return=representation',
-        };
-        const patchQueries = [
-          `${REST_BASE}/budgets?user_uuid=eq.${userId}&budget=eq.${encodeURIComponent(categoryName)}`,
-          `${REST_BASE}/budgets?user_id=eq.${userId}&category=eq.${encodeURIComponent(categoryName)}`,
-          categoryId.startsWith('budget:')
-            ? null
-            : `${REST_BASE}/budgets?id=eq.${encodeURIComponent(categoryId)}`,
-        ].filter(Boolean) as string[];
-
-        let patchRes: Response | null = null;
-        let patchBody = '';
-
-        for (const patchUrl of patchQueries) {
-          patchRes = await fetch(
-            patchUrl,
-            {
-              method: 'PATCH',
-              headers: patchHeaders,
-              body: JSON.stringify({ amount: category.totalLimit, Visible: visible }),
-            },
+      return saveQueueRef.current.enqueue({
+        key: `budget-row:${userId}:${categoryId}`,
+        value: JSON.stringify(nextChoice),
+        previousValue: JSON.stringify(previousChoice),
+        save: async (_key, serializedChoice) => {
+          await persistBudgetRow(
+            userId,
+            categoryId,
+            categoryName,
+            appState.user?.budgetingSolo,
+            parseBudgetRowChoice(serializedChoice),
+            'saveBudgetVisibility',
           );
-          patchBody = await patchRes.text();
-
-          if (patchRes.ok) break;
-
-          patchRes = await fetch(
-            patchUrl,
-            {
-              method: 'PATCH',
-              headers: patchHeaders,
-              body: JSON.stringify({
-                limit_amount: category.totalLimit,
-                visible,
-                is_household: !appState.user?.budgetingSolo,
-              }),
-            },
-          );
-          patchBody = await patchRes.text();
-
-          if (patchRes.ok) break;
-        }
-
-        if (!patchRes || !patchRes.ok) {
-          log.error('[saveBudgetVisibility] PATCH failed:', patchBody.slice(0, 200));
-          setDbError(`[saveBudgetVisibility] PATCH failed (${patchRes?.status ?? 'unknown'})`);
-          rollback();
-          return;
-        }
-
-        // Check if any rows were updated
-        let updatedRows: any[] = [];
-        try {
-          updatedRows = patchBody ? JSON.parse(patchBody) : [];
-        } catch {
-          updatedRows = [];
-        }
-
-        if (Array.isArray(updatedRows) && updatedRows.length > 0) {
-          log.debug(`[saveBudgetVisibility] PATCH OK ${categoryName} visible=${visible}`);
-          return;
-        }
-
-        // No existing row — INSERT
-        const postHeaders: Record<string, string> = {
-          ...headers,
-          'Prefer': 'return=representation',
-        };
-        const postRes = await fetch(
-          `${REST_BASE}/budgets`,
-          {
-            method: 'POST',
-            headers: postHeaders,
-            body: JSON.stringify({
-              user_uuid: userId,
-              budget: categoryName,
-              amount: category.totalLimit,
-              Visible: visible,
-            }),
-          },
-        );
-
-        if (!postRes.ok) {
-          const postBody = await postRes.text();
-          log.error('[saveBudgetVisibility] INSERT failed:', postBody.slice(0, 200));
-          setDbError(`[saveBudgetVisibility] INSERT failed (${postRes.status})`);
-          rollback();
-        } else {
-          log.debug(`[saveBudgetVisibility] INSERT OK ${categoryName} visible=${visible}`);
-        }
-      } catch (err: any) {
-        const msg = `[saveBudgetVisibility] exception: ${err?.message || err}`;
-        log.error(msg);
-        setDbError(msg);
-        rollback();
-      }
+        },
+        onFailure: (lastSavedValue, error) => {
+          const msg = saveErrorMessage(error, 'saveBudgetVisibility');
+          log.error(msg);
+          setDbError(msg);
+          const lastSavedChoice = parseBudgetRowChoice(lastSavedValue);
+          budgetRowChoicesRef.current.set(rowKey, lastSavedChoice);
+          setAppState(prev => {
+            if (prev.user?.id !== userId) return prev;
+            const hidden = prev.settings.hiddenCategories || [];
+            const nextHidden = lastSavedChoice.visible
+              ? hidden.filter(id => id !== categoryId)
+              : hidden.includes(categoryId) ? hidden : [...hidden, categoryId];
+            return {
+              ...prev,
+              budgets: prev.budgets.map(b =>
+                b.id === categoryId ? { ...b, totalLimit: lastSavedChoice.limit } : b,
+              ),
+              settings: { ...prev.settings, hiddenCategories: nextHidden },
+            };
+          });
+        },
+      });
     },
-    [appState.user, appState.budgets, setAppState, setDbError],
+    [appState.user, appState.budgets, appState.settings.hiddenCategories, setAppState, setDbError],
   );
 
   // Save one setting to the person's settings row. A successful HTTP response

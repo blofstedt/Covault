@@ -7,6 +7,7 @@ export default {
     "./App.tsx",
     "./components/**/*.{js,ts,jsx,tsx}",
     "./lib/**/*.{js,ts,jsx,tsx}",
+    "./visual-tests/**/*.{js,ts,jsx,tsx}",
     "./*.{js,ts,jsx,tsx}",
   ],
   darkMode: 'class',

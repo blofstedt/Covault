@@ -19,9 +19,15 @@
 // the conflict check exists to avoid trusting (see the comment beside
 // `overrideRuleConflict`).
 
+import { matchesCapturedVendor } from './notificationDuplicates';
+
 /** The one field this needs from a past transaction. */
 export interface FrequencyRow {
   budget?: string | null;
+}
+
+export interface MerchantFrequencyRow extends FrequencyRow {
+  vendor?: string | null;
 }
 
 /**
@@ -67,4 +73,21 @@ export function mostFrequentCategory(
 
   if (!winnerKey || tied) return null;
   return byLower.get(winnerKey) ?? null;
+}
+
+/**
+ * Choose a conflict suggestion only from history belonging to this merchant.
+ * Parser aliases count as the same merchant, but unrelated transactions in
+ * the queried categories must not influence the suggested starting choice.
+ */
+export function mostFrequentCategoryForVendor(
+  rows: readonly MerchantFrequencyRow[],
+  candidateNames: readonly string[],
+  vendor: string,
+  aliases: readonly string[],
+): string | null {
+  const merchantRows = rows.filter((row) =>
+    matchesCapturedVendor(row.vendor, vendor, aliases),
+  );
+  return mostFrequentCategory(merchantRows, candidateNames);
 }

@@ -68,38 +68,6 @@ describe('near-match consolidation', () => {
  * noticed on a phone.
  */
 describe('rule-system guards', () => {
-  it('the capture pipeline refuses to guess between conflicting rules', () => {
-    const source = readFileSync(join(ROOT, 'lib/notificationProcessor.ts'), 'utf8');
-
-    expect(
-      /overrideRuleConflict/.test(source),
-      'notificationProcessor must detect vendors matching rules in different ' +
-      'categories and route them to review.',
-    ).toBe(true);
-
-    // The old code took the most recently updated rule AND scored it as a
-    // full-confidence match, so auto-accept filed it without the user ever
-    // seeing the transaction. Detection has to look at every matching rule's
-    // category, and the conflict has to gate which rows are used.
-    expect(
-      /distinctCategories/.test(source),
-      'Conflict detection must compare the categories of ALL matching rules.',
-    ).toBe(true);
-
-    expect(
-      /overrideRuleConflict \? \[\] : matching\.slice\(0, 1\)/.test(source),
-      'A conflict must yield NO override rows, so no category is applied and ' +
-      'overrideMatchConfidence stays 0 (which is what suppresses auto-accept).',
-    ).toBe(true);
-
-    // The proper_name fallback would otherwise re-apply one of the very rules
-    // just judged ambiguous, at confidence 1.
-    expect(
-      /!overrideRuleConflict && \(!overrideRows/.test(source),
-      'The proper_name fallback must be skipped on a conflict.',
-    ).toBe(true);
-  });
-
   it('teaching is not an opt-in second button any more', () => {
     const row = readFileSync(
       join(ROOT, 'components/transaction_parsing/AIEnteredRow.tsx'),
