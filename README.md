@@ -8,9 +8,8 @@ React 19 + TypeScript + Vite, packaged for Android with Capacitor. Data lives in
 Supabase; AI extraction runs **on-device** via `@huggingface/transformers`, so
 there is no OpenAI or Gemini key.
 
-> **Working on this repo with an AI?** Point it at `CLAUDE.md` — that is the
-> index written for it, and it should be read before anything else.
-> `docs/ARCHITECTURE.md` has the deep detail. This file is just setup.
+> **Working on this repo with an AI?** Read `CLAUDE.md` for the current
+> repository rules. This file covers human setup.
 
 The [codebase plan](docs/CODEBASE_PLAN.md) tracks the next reliability, structure,
 and design improvements. It starts with small changes that keep the phone app
@@ -18,7 +17,7 @@ working while the code is reorganized.
 
 ## Requirements
 
-- Node.js 20+
+- Node.js 22.22.2+
 - A Supabase project
 - For local Android builds: JDK 21 and the Android SDK (or let CI do it)
 
@@ -53,19 +52,11 @@ matching `*credentials*` / `*secrets*` are gitignored.
 
 ## Database
 
-For an existing database, run
-`supabase/migrations/2026_08_01_sync_schema_to_app.sql` in the Supabase SQL
-editor. It is idempotent — safe to run twice — and brings the schema in line
-with the current app. Migration files whose header says **SUPERSEDED** are
-history; you do not need them.
-
-For a fresh project, run `supabase/schema.sql` first. It creates the tables the
-app uses: `settings`, `budgets`, `transactions`, `overrides`, `banks`,
-`notification_rules`. Without it you will see 404s in the console for missing
-tables.
-
-`pending_transactions` is deliberately **not** in the schema; the app treats its
-absence as an empty queue. See `docs/ARCHITECTURE.md`.
+The app uses the `settings`, `budgets`, `transactions`, `overrides`, `banks`,
+and `notification_rules` tables. The repository contains `supabase/schema.sql`
+and later migrations, but a fresh-install and existing-database sequence has
+not yet been verified against a live project. See the
+[codebase plan](docs/CODEBASE_PLAN.md) before applying them to a vault.
 
 ## Auth configuration
 
@@ -86,7 +77,7 @@ Credentials → your OAuth 2.0 Client ID, add this authorised redirect URI:
 
 ```bash
 npm run dev              # dev server
-npm run verify           # typecheck + unused check + tests + build
+npm run verify           # typecheck + unused check + lint + tests + build
 npm test                 # tests only
 npm run build            # production build to dist/
 npm run cap:build        # web build + cap sync + custom native file sync

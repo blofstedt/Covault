@@ -437,9 +437,6 @@ const App: React.FC = () => {
     await supabase.auth.signOut();
   }, []);
 
-  // No Play Billing purchase flow exists yet (see docs/ARCHITECTURE.md,
-  // section 6) — this is the honest placeholder until that's built, rather
-  // than a button that pretends to charge someone.
   const handleSubscribe = useCallback(() => {
     setToast({ tone: 'error', message: 'Subscriptions aren’t set up yet — check back soon.' });
   }, [setToast]);

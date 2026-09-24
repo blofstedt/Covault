@@ -1,759 +1,207 @@
-# Covault — AI index
+# Covault
 
-**Read this before opening any other file.** It exists so you can go straight to
-the two or three files a request actually touches instead of reading the repo.
+This is the single source of agent instructions for this repository. `AGENTS.md`
+only points here. Keep this file to facts and rules that apply to the current
+code. Put unfinished work in `docs/CODEBASE_PLAN.md` and past decisions in Git
+history. Remove a rule when the code changes rather than preserving the story
+behind it. Name the tool, file, value, or behavior an agent needs to act on;
+omit comparisons with tools this app does not use.
 
-The person you are working for does not write code and will not review a diff
-line by line. Assume every change is yours to get right, and that "it compiles"
-is not evidence it works.
+## App and workflow
 
-## How to answer them
+Covault is a household budget app. React 19, TypeScript, Vite 6, Tailwind 3,
+and Capacitor 8 make the Android app. Supabase stores household data. Android
+bank notifications feed the capture pipeline. Vitest runs unit and component
+tests; Playwright runs browser tests.
 
-This is not a style preference. They cannot check your work by reading the
-code, so the reply *is* the deliverable — if it is unreadable to them, the work
-is unreviewable.
+The user does not write code. Answer in a short numbered list, with a verdict
+first and one claim per number. Use plain English and explain what the change
+means for the app. State what was verified and what remains unverified. Do not
+show code, diffs, file contents, or commands for the user to run.
 
-- **Plain English only.** No code in the answer, no diffs, no file contents, no
-  snippets to run. Naming a file so they know where something lives is fine;
-  showing them its contents is not.
-- **Numbered, concise.** Any feedback on a change, a plan, a review, or another
-  tool's suggestion comes back as a short numbered list — one claim per number,
-  verdict first. Not paragraphs, not a narrated walk through the reasoning.
-- **Explain in consequences, not mechanics.** "New purchases would stop being
-  captured" — not "the listener's `commit()` returns before the insert
-  resolves". If a mechanism has to be mentioned, one clause, then back to what
-  it means for them.
-- **Say plainly what you did not verify.** They cannot infer it. CI opens only
-  the web sign-in screen. A green build proves nothing about capture, the
-  widget, or authenticated screens on a phone.
-- **Answer the question that was asked**, then stop. If they ask whether
-  something is right, the first thing they should read is whether it is right.
+Follow the branch requested by the user. Otherwise, commit to `main` and push
+to `main`. CI builds the phone APK from
+`main`. A passing build or browser test does not verify Android capture, the
+widget, authenticated screens, or motion on a phone.
 
-## Where work goes: main
+Use `npm ci --legacy-peer-deps` for a clean install. Never commit secrets. Read
+`docs/CODEBASE_PLAN.md` for pending work; its checklist is a plan, not a second
+set of repository rules.
 
-**Commit to `main` and push to `main`.** Do not create a feature branch, and do
-not open a pull request, unless they ask for one in that request. They do not
-want to manage branches, and a PR only adds a review step that nobody performs
-— they cannot read the diff, which is the whole point of the section above.
+## Find the owner
 
-If the harness you are running under forces you onto a branch, finish the work
-there, then fast-forward `main` to it and push, and say in your reply that you
-did. Do not leave the work parked on a branch and call it delivered.
+| Area | Start here |
+| --- | --- |
+| Android notification listener and source selection | `android-custom/NotificationListener.java`, `lib/captureSources.ts`, `lib/bankingApps.ts` |
+| Parse and accept a notification | `lib/deviceTransactionParser.ts`, `lib/notificationProcessor.ts` |
+| Email capture | `lib/emailNotification.ts`, `lib/captureChannel.ts` |
+| Merchant names and learned rules | `lib/formatVendorName.ts`, `lib/vendorRuleScope.ts`, `lib/vendorOverrideWrite.ts`, `components/transaction_parsing/useVendorOverrides.ts` |
+| Skipped alerts and Review | `lib/notificationRules.ts`, `lib/queries/notificationRules.ts`, `components/TransactionParsing.tsx` |
+| Recurring, duplicate, and fuel-hold decisions | `lib/projectedTransactions.ts`, `lib/recurringSchedule.ts`, `lib/duplicateCharge.ts`, `lib/fuelHold.ts`, `lib/fuelHoldReconcile.ts` |
+| Budgets, categories, and totals | `lib/hooks/useDataLoading.ts`, `lib/budgetFallback.ts`, `lib/budgetAllocation.ts`, `lib/budgetOrder.ts`, `components/dashboard_components/useDashboardTotals.ts` |
+| Saved settings and sharing | `lib/hooks/useUserSettings.ts`, `lib/settings/`, `lib/hooks/useHouseholdLinking.ts` |
+| Subscription access | `lib/entitlement.ts`, `lib/serverClock.ts`, `components/SubscriptionRequired.tsx` |
+| Dashboard month selection and chart | `components/Dashboard.tsx`, `lib/hooks/useMonthSelection.ts`, `components/dashboard_components/BudgetFlowChart.tsx` |
+| Onboarding | `components/Onboarding.tsx`, `components/onboarding/`, `lib/onboardingProgress.ts` |
+| Widget | `lib/widgetSnapshot.ts`, `android-custom/WidgetDeltaStore.java`, `android-custom/WidgetRenderer.java` |
+| App updates and builds | `lib/appUpdate.ts`, `lib/hooks/useAppUpdate.ts`, `android-custom/CovaultUpdaterPlugin.java`, `scripts/sync-android.sh`, `.github/workflows/` |
+| Shared controls, tests, and lint | `components/ui/`, `components/shared/`, `test/renderWithProviders.tsx`, `eslint.config.js` |
 
-`main` is what CI builds the APK from, so it is also the phone build. That
-makes `npm run verify` before pushing non-negotiable, not a nicety: breaking
-`main` means no APK to install. It still does not mean the app works — see the
-Verification reality section.
+`android/`, `dist/`, and `node_modules/` are generated. Android source owned by
+this repository lives in `android-custom/`. Migration files marked
+`SUPERSEDED` are not the current schema setup path.
 
-## What they care about: how it looks and how it moves
+## Capture and money invariants
 
-They judge this app on whether it is beautiful to use. Not as a finishing
-touch — as the point. A correct feature that looks wrong, breaks the visual
-language, or stutters on the phone is not finished, and saying "it works" about
-it will not land.
+- `NotificationListener.broadcastTransaction` persists a pending capture,
+  posts Covault's notification, and then dismisses the bank notification.
+  Persistence uses `commit()` so dismissal waits for durable storage. The
+  native pending queue is the sole pending capture queue.
+- The listener's income, failed-charge, bill-notice, stop/go, and bank email
+  sender lists mirror the TypeScript parser lists. Update both languages and
+  their parity tests together. The listener silences only alerts the parser
+  rejects. A quiet capture writes no widget delta. Bank tray suppression also
+  requires permission to post Covault's own notification.
+- The user's selected capture-source list takes priority after
+  `monitored_apps_chosen` is set. An empty chosen list is valid. Only
+  `saveMonitoredApps` marks the list as chosen. `applySourceSelection` updates
+  the native and web copies together; app discovery seeds choices only before
+  the user has chosen.
+- Two apps reporting one tap match on amount and time in
+  `lib/captureChannel.ts`. Bank-versus-email matching uses its separate
+  one-to-one rule. Email captures go to Review, leave the user's mail in place,
+  and write no widget delta.
+- Recurring occurrences are projected for display by
+  `lib/projectedTransactions.ts`. They do not create transaction rows. A real
+  charge cancels at most one matching projected occurrence. A new recurrence
+  label requires a database enum migration before the app queries or writes it.
+- `lib/notificationProcessor.ts` keeps a soft duplicate in Review. It does not
+  auto-file that capture. A processor prefix is removed only when a merchant
+  name remains. Local vendor memory requires agreeing lead words before it
+  adopts a remembered name or category.
+- `fuzzyVendorMatch` asks whether two names identify the same merchant. Its
+  callers include duplicate checks, vendor memory, and recurring lookup. Keep
+  the conservative first-word, abbreviation, and one-word rules covered by
+  `lib/__tests__/fuzzyVendorMatch.test.ts`.
+- Learned rules match bank text through `match_key` and group by the displayed
+  `proper_name`. The picker shows one choice per category. New rules do not
+  teach `Other`; an existing `Other` rule yields to the merchant's one real
+  category. Conflicting real categories still go to Review.
+- Prefix rules cover only the curated single-category chains in
+  `lib/chainVendorKeys.ts`. A prefix-rule update stays within its category.
+  Display-name cleanup carries the earlier spelling as an alias so learned
+  rules continue matching.
+- A budget limit reduction is allowed even when the resulting total remains
+  above income. A failed budgets read preserves the last displayed budgets;
+  an empty successful read may seed defaults. Keep the current column-name
+  fallbacks for `user_uuid`/`user_id`, `Visible`/`visible`, and
+  `Budget`/`budget` until the deployed schemas are verified. A 401 does not
+  trigger a column-name fallback.
+- Current month and browsed month are separate in `components/Dashboard.tsx`.
+  The dashboard follows the browsed month. Widget and over-budget alerts use
+  the current month. Browsing resets on app pause, resume, Home, a calendar
+  rollover, or a second tap on the current month. `lib/budgetOrder.ts` owns
+  category order.
+- New opt-in categories start hidden in an existing vault and visible in a new
+  vault. Automatic category guesses use visible categories. Dining alone has
+  the Leisure fallback; personal, travel, and shopping guesses can return no
+  category. A user-taught rule still applies to a later-hidden category.
+- `lib/refundMatching.ts` pairs a refund with at most one matching expense in
+  the current 60-day window. The negative amount reduces spending while the
+  paired expense remains visible with its refunded state.
 
-- **Consistency over invention.** The app already has a design language: one
-  category palette (`lib/budgetColors.ts`, reused by bars, icons and the
-  chart), `rounded-[2rem]` cards, tight tracking on big numerals, muted glassy
-  surfaces. Reuse the existing pieces — `components/ui/`, `components/shared/`,
-  `getBudgetIcon` — before adding a new visual idea. A new control that looks
-  like it came from a different app is a regression even if it works.
-- **One clock per interaction.** Everything moving as part of the same gesture
-  shares 320ms and `cubic-bezier(0.32, 0.72, 0.24, 1)` — the budget expand, the
-  card, the chart. Mixed durations inside one interaction were what previously
-  read as "not smooth"; the fix was putting them on the same clock, not making
-  them faster.
-- **Smooth on their phone, not on your laptop.** Motion has to hold up in an
-  Android WebView at 120Hz, roughly an 8ms frame budget. That is where the
-  Invariants below come from — `backdrop-filter` over the animating list,
-  `content-visibility`, layout-property transitions. Those rules exist to
-  protect the feel, so treat them as design rules, not micro-optimisations.
-- **Never trade the look for an easier implementation** without saying so. If
-  the simple approach is uglier, say that plainly, in English, and describe the
-  alternative and what it costs. Let them choose.
-- **Be honest about what you have not seen.** CI renders the web sign-in screen
-  only. If you changed another screen or animation, say it is unverified rather
-  than letting a green build imply it looks right.
+## Screen and interaction invariants
 
-## What it is
+- Reuse `lib/budgetColors.ts`, `getBudgetIcon`, and the shared cards and
+  controls. `components/shared/cardSurface.ts` holds the common card surface.
+  Keep light and dark appearances paired. Add a shared control when two real
+  screens use the same behavior and appearance.
+- The budget expand uses 320 ms and
+  `cubic-bezier(0.32, 0.72, 0.24, 1)` for everything moving in that gesture.
+  Avoid backdrop filtering, `content-visibility`, and layout-property
+  transitions over its animating list. Check motion in an Android WebView
+  before calling it smooth.
+- The collapsed budget row shows one line above seven visible vials. Expanded
+  cards keep their full content. `lib/vialDensity.ts` owns that threshold.
+- Overlays inside Review's `<main>` use `components/ui/Portal.tsx` so the
+  bottom navigation does not cover them. `ConfirmModal` receives initial
+  focus, traps Tab, handles Escape, restores focus, and locks body scrolling.
+  Match that interaction when adding another dialog or sheet.
+- Onboarding saves each answer before leaving for Android settings and waits
+  for loaded categories before displaying them. The setup hint is shown while
+  Android settings is open. Every setup step remains skippable.
+- `lib/bankHeartbeat.ts` reports silence from a bank as an inference. The app
+  cannot read another app's notification settings.
+- `lib/widgetSnapshot.ts` sends the current figures to the native widget. The
+  listener adds month-scoped deltas while the app is closed. The widget renders
+  from local state and caps its bitmap at 180,000 pixels.
 
-Personal budget app for a household. Users track spending by category;
-transactions are captured automatically from Android banking notifications. Two
-people can share a vault.
+## Data, tests, and boundaries
 
-React 19 + TypeScript + Vite 6 + Tailwind 3, wrapped in Capacitor 8 for Android.
-Supabase (Postgres + RLS) for data. On-device flan-T5 via
-`@huggingface/transformers` for parsing. Vitest for tests.
+- Dashboard setting saves use `lib/settings/` for column mapping, response
+  checks, write ordering, and rollback. Follow that boundary in changed
+  features: components ask for an operation, and the data layer handles table
+  names and response shapes. A failed read is distinct from an empty result;
+  a failed write must not appear saved.
+- `App.tsx` owns current budgets, transactions, and settings, with
+  `lib/firstPaintCache.ts` for launch. `lib/queryClient.ts` currently caches
+  Review's skipped-alert rules. Query functions throw on failed reads, and
+  sign-out clears the query cache and first-paint snapshot. Evaluate any new
+  query migration against stale answers, failed reads, account switching, and
+  first paint.
+- Partner linking and unlinking use the RPC operations in
+  `lib/hooks/useHouseholdLinking.ts`. `lib/entitlement.ts` grants access to a
+  tester, an active subscriber, or a trial still within its end date. It
+  returns `checking` while those settings load. `App.tsx` applies that result
+  to the whole app.
+- Screen drafts, search text, and open sheets stay with their screen. Device
+  storage owns phone-specific choices. Parse notification text, native payloads,
+  stored JSON, and server responses at their entry boundary before treating
+  them as typed values. Keep shared UI controls free of Supabase and native
+  plugin imports; pass values and actions through props.
+- Vitest tests observable behavior with fresh data for each test. Component
+  tests render through `test/renderWithProviders.tsx`, which mounts the app
+  query provider and clears the DOM and cache after each test. Keep a local
+  controlled-state harness when the parent screen owns the state. Use user
+  actions, accessible names, and an axe scan when dialog semantics change.
+  Keep source checks for native/web parity and build wiring that cannot run in
+  Vitest.
+- Playwright uses a fresh browser context per test and blocks unexpected
+  external requests. The current parallel suite covers the unauthenticated
+  sign-in screen. An authenticated test needs an isolated user, vault, and
+  cleanup per worker before it joins the parallel suite. CI does not exercise
+  authenticated screens or Android features.
+- `eslint.config.js` enforces the owned UI and feature import boundaries.
+  The changed-file Stop hook also runs ESLint fixes. New dependencies need a
+  current stable-version and license check plus an installation audit.
 
-```bash
-npm run verify     # typecheck + typecheck:unused + lint + test + build  ← run before committing
-npm run dev        # localhost:3000
-npm run cap:build  # web build + cap sync + scripts/sync-android.sh
-```
+## Android and release invariants
 
-## Where to look, by what the user says
+- The sideload APK and Play AAB have different manifest permissions.
+  `scripts/play-manifest.mjs` applies the Play changes only to the AAB build.
+  The APK retains its update and package-discovery permissions.
+- CI pins the APK signing certificate and checks the built APK with
+  `apksigner`. The CI run number supplies Android `versionCode` and release tag
+  `v<n>`.
+- `scripts/native-hash.mjs` fingerprints native code, Capacitor config, and
+  plugin versions. A web bundle applies only to a phone with the matching
+  fingerprint; native changes require an APK.
+- The APK downloads when an update is found and attempts installation when
+  the app enters the background. Silent installation requires Android 12 or
+  newer, `UPDATE_PACKAGES_WITHOUT_USER_ACTION`, and the user's install-apps
+  permission. A refusal is recorded per build.
+- `CovaultUpdaterPlugin.load()` checks a staged web bundle before Capacitor
+  reads its stored path. A staged bundle needs two confirmed launches;
+  `useAppUpdate` confirms the new bundle after launch.
+- `vite.config.ts` drops the unused ONNX runtime binary while
+  `lib/aiExtractor.ts` pins its CDN path. Keep these settings together.
+- Trial expiry uses the database clock through `lib/serverClock.ts` and fails
+  open when that clock cannot be read. Keep `tailwindcss-animate` registered in
+  `tailwind.config.js` so `animate-in` classes emit CSS.
 
-Requests arrive in plain language. Start here, not with a repo-wide search.
+## Verification
 
-| The user says | Open, in this order |
-|---|---|
-| "a purchase wasn't captured" | `lib/deviceTransactionParser.ts` (regex) → `lib/notificationProcessor.ts` (pipeline) |
-| "something that isn't my bank got captured" | `android-custom/NotificationListener.java` (forwarding) → `lib/bankingApps.ts` (`isBankingApp`, the JS backstop) |
-| "my bank stopped being captured" | `lib/bankingApps.ts` — `suggestUnknownBankApps`, surfaced in `components/NotificationSettings.tsx` |
-| "the gas amount is wrong" / "it says placeholder" | `lib/fuelHold.ts` — hold detection, applied at step 6 of the processor and re-derived per row in `AIEnteredRow` |
-| "I have two rows for one tank of gas" | `lib/fuelHoldReconcile.ts` — pairs a settled charge with the hold it replaces |
-| "I got a duplicate" | `lib/notificationProcessor.ts` — dedup is steps 1, 2, 5 and the post-insert race recovery |
-| "recurring charges are duplicating / I keep deleting them" | `lib/projectedTransactions.ts` — recurring is display-only. Nothing writes recurring rows. See Invariants |
-| "a deposit / my pay showed up as spending" | `INCOME_PHRASES` in `lib/deviceTransactionParser.ts`, mirrored into `android-custom/NotificationListener.java` — the native listener has to know income on sight, or it announces the deposit and adds it to the widget hours before the parser rejects it |
-| "something that isn't spending got captured" (a deposit, a declined card, a statement reminder, a balance alert) | the four mirrored lists at the top of `lib/deviceTransactionParser.ts` — `INCOME_PHRASES`, `FAILED_CHARGE_PHRASES`, `BILL_NOTICE_PHRASES`, and `STOP_PHRASES` vs `GO_PHRASES` — each copied into `android-custom/NotificationListener.java`, because the listener has to reach the same verdict on sight or it announces the capture and adds it to the widget hours before the parser rejects it |
-| "my bank only emails me, nothing gets captured" | `lib/emailNotification.ts` — the sender has to be a bank before the body is read at all. A bank whose sender name is not in `EMAIL_BANK_SENDERS` is silently never captured; adding it there (and to the mirrored Java list) is the fix |
-| "an email that wasn't a purchase got captured" | `lib/emailNotification.ts` — the sender gate, then the four existing phrase lists in `deviceTransactionParser.ts`, which email inherits unchanged |
-| "I turned a bank off and it kept capturing" | `lib/captureSources.ts` (the user's list, and the three-state "never chosen" flag) → `isMonitoredApp` in `android-custom/NotificationListener.java` → `autoDetectBankingApps` in `CovaultNotificationPlugin.java`, which must only ever SEED |
-| "nothing is captured at all any more" | `lib/captureSources.ts` first — `isCaptureSourceAllowed` returning false for everything is the one silent, total failure this app has. Check `monitored_apps_chosen` before anything else |
-| "I got two rows for one tap-to-pay purchase" | `lib/captureChannel.ts` (`isOtherAppSameTap`) → step 4d of `lib/notificationProcessor.ts`. Matched on amount and timing, never on the merchant name |
-| "a subscription got captured / notified about anyway" | `lib/recurringSchedule.ts` — matches the capture against the recurring *schedule*, not just nearby rows; applied at step 5b. The notification is suppressed in `NotificationListener.java` (`RECURRING_CHARGES_KEY`) and withdrawn by `useNotificationListener.ts` when it slipped through |
-| "the budget pills keep rearranging" | `lib/budgetOrder.ts` — the `budgets` table has no sort column, so the order is fixed in code. See Invariants |
-| "my budget limits / hidden categories are back to the defaults" | `loadUserBudgets` in `lib/hooks/useDataLoading.ts` → `lib/budgetFallback.ts`. Check the Supabase edge logs for a non-200 on `/rest/v1/budgets` before assuming the data is gone — it usually isn't |
-| "it picked the wrong category" | `lib/hooks/useVendorMatcher.ts`, `lib/vendorMatchConfidence.ts`, step 5a of the processor |
-| "a new restaurant landed in Other" | `lib/merchantCategorySignals.ts` — the offline descriptor/POS-prefix guess plus the named-chain list, applied in step 5c |
-| "a haircut / a flight / a shop landed in Other" | `lib/merchantCategorySignals.ts` — same detector, four kinds now (dining, personal, travel, shopping). Only dining has a fallback; the rest resolve to a category of that name or nothing. See Invariants |
-| "I switched a category on and nothing files there" / "three new vials appeared" | `OPT_IN_CATEGORIES` in `constants.ts` → `ensureDefaultBudgets` in `lib/hooks/useDataLoading.ts`. A later addition is seeded hidden into an existing vault. See Invariants |
-| "the vials only show one line now" | `lib/vialDensity.ts` — past seven visible vials the collapsed row drops its "$288 left" line. Measured, not guessed. See Invariants |
-| "it keeps getting ONE merchant wrong" / "the picker offered me the same budget twice" | `lib/vendorRuleScope.ts` — a chain writes one rule per branch; this is what makes them read as one merchant. See Invariants |
-| "it filed as Other and now keeps filing as Other" | `lib/vendorOverrideWrite.ts` / `useVendorOverrides.ts` refuse to teach a rule for Other in the first place; `notificationProcessor.ts` step 5a-i-b ignores an existing Other rule when the rest of the merchant agrees on something real. See Invariants |
-| "it taught the same restaurant chain twice" / "I want one lesson to cover every branch" | `lib/chainVendorKeys.ts` — a short, hand-curated list of single-category chains get a `prefix` rule instead of a branch-specific `exact` one. See Invariants |
-| "the merchant name has a dot / a store number / a branch on it" | `stripVendorNoise` in `lib/deviceTransactionParser.ts` — the display name IS the merchant's identity, so every stray spelling costs a rule. See Invariants |
-| "it used a different shop's name / budget" / "a purchase went missing" | `fuzzyVendorMatch` in `lib/formatVendorName.ts` — the one "are these the same merchant?" answer, asked by the duplicate skip, the soft-dup warning, the local vendor memory and the recurring lookup. See Invariants |
-| "it filed a charge under a shop I've never bought from" | `stripProcessorPrefixes` in `lib/deviceTransactionParser.ts` (what "GOOGLE *SERVICES" is left as) → step 5b of `lib/notificationProcessor.ts` (which remembered merchant it then adopts). See Invariants |
-| "the ignored-alert rules on Review are stale / missing" | `lib/queries/notificationRules.ts` (cached, prefetched query) → `components/transaction_parsing/useNotificationRules.ts`. The cache itself is `lib/queryClient.ts` |
-| "lint is failing" / "why is this lint rule off" | `eslint.config.js` — every rule switched off carries its reason. Several would CHANGE behaviour if auto-fixed (hashes, `null` vs `[]`, newer-WebView-only methods) |
-| "write a component test" | `test/renderWithProviders.tsx` — mounts the app's query provider and clears its cache after each test; keep a controlled-state harness local to the test when the screen owns that state |
-| "the review list / badge is wrong" | `lib/reviewQueue.ts` — the single definition of "waiting"; the list, badge and widget all read it |
-| "the widget is stale or wrong" | `lib/widgetSnapshot.ts` → `android-custom/WidgetDeltaStore.java` → `android-custom/WidgetRenderer.java` |
-| "the 'add widget' button in settings doesn't work" | `android-custom/CovaultWidgetPlugin.java` (`isSupported` / `requestPinAppWidget`) → `components/dashboard_components/settings_modal_components/HomeScreenWidgetSection.tsx` — the button is one of two routes and only ever shown once `isSupported` says the launcher can honour it; the other route is the written steps, unconditional and always correct |
-| "notifications look wrong / didn't arrive" | `lib/appNotifications.ts` (JS-posted) and `android-custom/NotificationListener.java` (native, fires with app closed) |
-| "bank alerts aren't being hidden any more" | `canPostCaptureNotifications` in `android-custom/NotificationListener.java` **first** — suppression needs Covault's own notification to post, and `POST_NOTIFICATIONS` is a separate permission a reinstall resets. Only then the gates in `maybeHideBankNotification` |
-| "tapping a notification goes to the wrong place" | `lib/hooks/useNotificationRoute.ts`, `android-custom/MainActivity.java` |
-| "partner sharing / linking is broken" | `lib/hooks/useHouseholdLinking.ts` + the RPCs in `supabase/migrations/2026_08_01_sync_schema_to_app.sql` |
-| "it won't let me lower a budget" / "it says I'm over my income" | `lib/budgetAllocation.ts` — the rule is direction, not the line; see the invariant below |
-| "nothing is being captured from one of my banks" | the amber card in `NotificationSettingsSection.tsx`, fed by `lib/bankHeartbeat.ts`. The app cannot read another app's notification settings — this is an inference from silence |
-| "a setting doesn't stick" | `SETTING_DB_KEYS` in `components/Dashboard.tsx` → `lib/hooks/useUserSettings.ts` → `lib/hooks/useDataLoading.ts`. **Usually a missing DB column** — see Invariants |
-| "an edit didn't save" | `lib/hooks/useTransactionOps.ts`. If it's a **vendor rename**, also `lib/formatVendorName.ts` — it has previously overwritten the user's own capitalisation |
-| "the numbers are wrong" | `components/dashboard_components/useDashboardTotals.ts`, `lib/refundMatching.ts`, `lib/projectedTransactions.ts` |
-| "the chart is showing the wrong months" / "I tapped a month and nothing changed" | `lib/monthWindow.ts` (the seven keys) → `lib/hooks/useMonthSelection.ts` (which one is on screen, and what puts it back) → `components/dashboard_components/BudgetFlowChart.tsx` (the rail) |
-| "it's showing me an old month" / "the balance at the top looks wrong" | `components/Dashboard.tsx` — `monthKey` is the month we are IN, `viewMonthKey` the one being READ. See the invariant below before moving anything onto the second |
-| "last month's entries are still listed" / "the list is in the wrong order" | `lib/transactionOrdering.ts` (one month, chronological) → `lib/hooks/useCurrentDay.ts` (the single clock) → `components/Dashboard.tsx` |
-| "a modal/sheet looks broken or is cut off" | `components/ui/Portal.tsx` — overlays inside `<main>` need it; see Invariants |
-| "the animation is janky" | `index.css`, `components/BudgetSection.tsx`, `components/dashboard_components/BudgetFlowChart.tsx` |
-| "the intro didn't set anything up" / "I got dropped on an empty dashboard" | `components/Onboarding.tsx` (the step router) → `components/onboarding/` (one file per setup step) → `lib/onboardingProgress.ts` (where it resumes from) |
-| "the app didn't offer me the update" / "it didn't update itself" | `lib/appUpdate.ts` (the check) → `lib/hooks/useAppUpdate.ts` (when, and which of the two routes) → `android-custom/CovaultUpdaterPlugin.java` (install, or unpack) |
-| "it still asked me to confirm the update" | the three conditions in the APK-route invariant below — `UPDATE_PACKAGES_WITHOUT_USER_ACTION` in `android-custom/AndroidManifest.xml`, Android 12+, and the install permission. A refusal is recorded per build in `CovaultUpdaterPlugin` and reported by `getStatus` as `quietInstallSupported` |
-| anything about the Android build | `scripts/sync-android.sh`, `.github/workflows/build-android.yml` |
-| "the Play build got rejected" / "why can't it see my bank on the Play version" | `scripts/play-manifest.mjs` — the AAB is built from a stripped manifest. See Invariants |
-| "my trial ran out early / never ran out" | `lib/serverClock.ts` → `lib/entitlement.ts`. The trial is judged on the DATABASE's clock, not the phone's |
-
-Deeper detail on any of these: `docs/ARCHITECTURE.md`. Human setup: `README.md`.
-
-## Invariants — look like bugs, are not
-
-Do not "clean these up". Each one was a real failure that cost real debugging.
-
-- **`NotificationListener.broadcastTransaction` runs persist → notify →
-  dismiss.** Tray suppression may only delete a bank's notification *after* the
-  capture is durably on disk and Covault has posted its own. Reordering silently
-  destroys purchases.
-- **The pending queue uses `commit()`, not `apply()`.** The return value has to
-  mean "on disk", because suppression acts on it.
-- **`useDataLoading.ts` requests late-added settings columns in a separate
-  select with a fallback.** PostgREST 400s the *whole* select on one unknown
-  column, and that function returns early on a non-ok response — naming them
-  unconditionally takes theme, income and trial fields down with them.
-- **Column-name fallbacks are load-bearing**: `user_uuid`/`user_id`,
-  `Visible`/`visible`, `Budget`/`budget`, `recur`/`recurrence`.
-- **There is one queue, and it is the native one.** `pending_transactions` was
-  a second, database-side queue that the app read and wrote and the database
-  has never had. The read could not return a row, so the queue was permanently
-  empty and the approve/reject/clear handlers built on it were unreachable
-  rather than merely failing — and the read itself was a 404 that every capture
-  arriving with the app closed had to wait out. All of it is gone. Captured
-  purchases land in `transactions` and the review list reads them from there;
-  what survives a closed app is the native SharedPreferences queue, which is
-  what `commit()` and the tray-suppression ordering above are about. Do not
-  re-add a database-side pending queue without deciding what it is for.
-- **There are two Android distributions and the manifest cannot serve both.**
-  The sideloaded APK updates itself and discovers banking apps by looking at
-  what is installed; Google Play forbids both — an app that installs packages,
-  and one that can see every package on the phone, are each a policy violation.
-  So the AAB workflow sets `COVAULT_DISTRIBUTION=play` and
-  `scripts/play-manifest.mjs` removes five permissions and replaces
-  `QUERY_ALL_PACKAGES` with a `<queries>` list generated from
-  `lib/bankingApps.ts`. Two things are load-bearing. It is OPT-IN: the APK
-  workflow does not set the variable, so the phone build is unchanged, and it
-  must stay that way — a sideload build without `REQUEST_INSTALL_PACKAGES`
-  cannot update itself. And a permission it means to remove but cannot find
-  THROWS: an upload carrying `REQUEST_INSTALL_PACKAGES` is rejected outright,
-  and one carrying `QUERY_ALL_PACKAGES` needs a declaration Covault cannot
-  honestly make, so failing the build is the cheap outcome. What the Play build
-  loses is real and deliberate: its capture-sources screen can only offer banks
-  already on the list, and unknown-bank suggestions cannot happen. Capture
-  itself is unaffected — a notification listener hears every app regardless.
-  `playManifest.test.ts` pins it.
-- **The trial is judged on the database's clock, not the phone's.** It is "you
-  have until this date", and it was being compared against `Date.now()` — the
-  clock belonging to the person being charged, so winding the phone back a
-  month extended the trial for ever. `lib/serverClock.ts` asks the database for
-  the time once per load and carries the difference as an offset; every
-  entitlement question passes `serverNow()`. It fails OPEN on purpose: no
-  network, or a database without `server_now()`, leaves the offset at zero and
-  behaves exactly as before, because a household locked out of its own budget
-  by a failed round trip is far worse than a trial running long. This fixes the
-  CLOCK only — whether someone has PAID is still a column the client reads, and
-  making that trustworthy needs Play Billing and a verified purchase record.
-  `serverClockTrial.test.ts` pins both directions.
-- **`tailwindcss-animate` must stay in `tailwind.config.js` plugins.** ~40 uses
-  of `animate-in` / `zoom-in-*` / `slide-in-*` emit *no CSS at all* without it,
-  silently. `lib/__tests__/tailwindAnimatePlugin.test.ts` guards this.
-- **Vendor matching exists in three places on purpose** — the TS pipeline, the
-  TS widget snapshot, and `WidgetDeltaStore.java`. The Java copy is deliberately
-  dumber. `widgetPalette.test.ts` and `widgetAutoFileThreshold.test.ts` fail the
-  build if the constants drift.
-- **Overlays rendered inside the Review page's `<main>` need `Portal`.** `<main>`
-  is `relative z-10`, which caps everything inside it below the `z-40` nav bar
-  no matter how large its own z-index is.
-- **The APK signing key is pinned, and the pinning is verified.** CI writes an
-  explicit `signingConfigs.debug` into `android/app/build.gradle` naming
-  `android-custom/covault-debug.keystore`, then checks the built APK's
-  certificate with `apksigner` and fails if it doesn't match. Both halves are
-  load-bearing. Without a pinned key Gradle mints a fresh one per run and
-  Android refuses to install the update, so the only way forward is
-  uninstalling — which erases the app's local data. And without the check the
-  pinning can fail silently: the first attempt dropped the keystore at
-  `~/.android/debug.keystore` and Gradle ignored it, which shipped three
-  uninstallable releases with a green build each time. Do not "simplify" this
-  back to copying a file into place. Changing the key forces one more uninstall
-  on every phone.
-- **The CI run number is the versionCode *and* the release tag `v<n>`.** That
-  shared integer is the entire update check. Break either half and the app
-  never offers an update again, in silence. `appUpdate.test.ts` reads the
-  workflow to catch it.
-- **A web-only change updates itself; anything native needs the APK.** Which
-  route a release takes is decided by `scripts/native-hash.mjs` — a fingerprint
-  of `android-custom/`, `capacitor.config.ts` and the Capacitor plugin
-  versions, baked into the APK and used to name the published web bundle. A
-  phone applies only a bundle carrying its own fingerprint, so touching any
-  native file automatically forces a full install instead. Do not "simplify"
-  that by dropping the fingerprint: the failure it prevents is web code calling
-  into native code that isn't there. `webBundleWiring.test.ts` holds the five
-  links together.
-
-- **The APK route arrives on its own too, but only Android decides whether it
-  is silent.** The download no longer waits for a tap — it happens when the
-  update is found, hidden from the notification shade — and the install is
-  attempted as the app goes to the *background*, because a self-update kills
-  the process and doing that in the foreground closes the app in the user's
-  hands. Three things have to hold for the confirmation to be skipped, and
-  losing any one of them fails silently back to the pill: the
-  `UPDATE_PACKAGES_WITHOUT_USER_ACTION` permission in the manifest (a normal
-  permission, and without it `USER_ACTION_NOT_REQUIRED` is ignored with no
-  error), Android 12 or newer, and the user's own "allow Covault to install
-  apps". A refusal comes back asynchronously as `STATUS_PENDING_USER_ACTION`,
-  where the session is abandoned — an app has a session limit, and one refused
-  every launch would eventually break its own quiet route — and recorded
-  against the running versionCode so it is attempted once per build rather than
-  once per launch. Never start the confirmation activity from that callback: it
-  arrives while the app is in the background, where Android blocks activity
-  starts and the user is in some other app. `apkArrivesByItself.test.ts` pins
-  the shape.
-- **`CovaultUpdaterPlugin.load()` runs before Capacitor reads the stored
-  server path.** That ordering *is* the rollback: a staged web bundle that
-  hasn't confirmed two launches gets thrown away before the WebView is pointed
-  at it. `useAppUpdate` calling `confirmWebBundle()` a few seconds after mount
-  is the other half — remove it and every update silently reverts.
-- **The 21MB ONNX runtime is dropped from the build on purpose.**
-  `vite.config.ts` deletes it because `lib/aiExtractor.ts` pins the runtime to
-  a CDN, which makes the bundled copy unreachable. The two only work as a pair;
-  `aiRuntimeSource.test.ts` fails the build if one goes without the other. The
-  model weights come from huggingface.co regardless, so the AI fallback has
-  never worked offline.
-- **A settings toggle that "works" may not be saving.** The UI applies changes
-  optimistically and `saveSettingToDb` only logs failures, so a missing column
-  is indistinguishable from success. Check the column exists.
-- **Recurring charges are never written to the database.**
-  `lib/projectedTransactions.ts` already includes the current month's
-  occurrences in the dashboard total — an occurrence whose date has passed is
-  emitted with `is_projected: false`, so it counts exactly like a real row. A
-  `lib/recurringExecutor.ts` used to also insert a real row per due date; every
-  subscription was therefore counted twice, and because those rows carried
-  label `Automatic` they queued up in Review, where the user deleted them by
-  hand — which put them back in scope for the next day's run, so they returned
-  every morning. Do not re-add a DB-writing catch-up. Rows already in the DB
-  with `source: 'executor'` are left alone and are still skipped as projection
-  sources.
-
-- **A cadence the `Recurrence` enum does not know cannot be stored OR asked
-  about.** `transactions.recur` is a Postgres enum, not free text, so adding a
-  cadence is a migration first and app code second — and the failure is not
-  symmetrical. An insert of an unknown label is rejected loudly, but a SELECT
-  that *filters* on one fails the whole query, which is how the recurring-charge
-  lookup that stops a subscription being captured twice once returned a 400 for
-  months and saw no rows at all. `Yearly` was added by
-  `2026_add_yearly_recurrence.sql`; `yearlyRecurrence.test.ts` pins the app's
-  own list of cadences to the labels that query asks for. Yearly rows are
-  deliberately kept OUT of the list mirrored to the phone: the native matcher
-  compares vendor and amount and knows nothing about dates, which is honest for
-  a charge that bills every month and would otherwise silence a matching
-  purchase on any of an annual charge's other 364 days.
-
-- **A failed budgets read may not replace the budgets on screen.** The limits
-  and the hidden-category list are the only things the `budgets` table holds,
-  and `loadUserBudgets` used to answer any failed read by putting
-  `SYSTEM_CATEGORIES` into app state — reading "I could not ask" as "you have
-  not set any". It happened: four requests go out together at the start of a
-  load, the access token rotated in that instant, and the budgets read alone
-  came back 401 while settings, transactions and overrides succeeded. The user
-  found every limit back at 500 and their hidden categories showing. Worse than
-  a wrong screen — the limits shown are what the settings screen writes back, so
-  the starter figures sat one tap from being saved over the real ones. The rule
-  is the one `fetchTransactionsFor` already follows: an empty answer is an
-  answer, a failed request is not. See `lib/budgetFallback.ts`, which also holds
-  why the `user_uuid`/`user_id` fallback fires only on 400/404 — answering a 401
-  by asking for a column the schema lacks turned a recoverable failure into a
-  certain one. `budgetsSurviveFailedRead.test.ts` pins all of it.
-
-- **A quiet capture writes no widget delta.** The listener stays silent about
-  six kinds of alert — a price alert or promo, one matching a user skip rule,
-  a charge already on the books as recurring, money coming in (a deposit, an
-  e-Transfer received, payroll), a charge that did not go through (declined,
-  failed, cancelled), and an alert about money where no money moved (a balance,
-  a statement, a minimum payment due) — and each of them means the
-  JS pipeline will produce no row (the recurring one is already counted by the
-  projection; income is never recorded at all). The optimistic widget delta
-  used to be recorded anyway, so a
-  "BTC is trading at $112,013.15" alert put six figures of spending and a
-  phantom review item on the home screen, a payday deposit landed as a
-  purchase that ate the month's remaining balance, and a declined $37.67 landed
-  as a second copy of a charge that had already gone through for real the day
-  before — where they stayed until the
-  app was next opened: only a fresh snapshot discards a delta. The delta is
-  gated on the same `captureQuietly` flag as the notification;
-  `widgetQuietCaptures.test.ts`, `quietIncomeAlerts.test.ts` and
-  `quietNonSpendingAlerts.test.ts` hold them together, the latter two also
-  pinning the listener's phrase lists to the parser's own.
-
-- **The setup flow's instructions have to survive leaving the app.** Every step
-  hands the screen to Android's Settings, where none of Covault's text exists
-  any more — and the step that matters most is the one where the switch REFUSES
-  to move. Told in advance, a user carries on; arriving at a dead switch with
-  nothing on screen, they conclude the app is broken, which is what the first
-  one did. An app cannot draw over Settings (Android blocks overlays there —
-  that is how tapjacking is prevented), so a Toast posted on the way out is the
-  only surface left. `STEP_HINT` in `NotificationAccessGuide.tsx` holds the
-  words and the plugin's `showHint` posts whatever it is handed, from the UI
-  thread — the Java deliberately has no copy of its own to drift from.
-  `setupHintOutsideTheApp.test.ts` pins that, and pins that a Play Store install
-  is never promised a refusal that is not coming: `getRestrictedSettingsInfo`
-  reads the installing package, and a store install gets two steps rather than
-  four.
-
-- **The listener may only go quiet where the parser would refuse the row.**
-  Every list mirrored into `NotificationListener.java` is a copy of one the
-  parser already rejects on, never a new opinion of the native side's own. That
-  is the whole safety argument for silencing anything at all: the worst a
-  faithful copy can cost is an announcement of something that was never going
-  to appear in Review, whereas an opinion held only on the phone can cost a
-  purchase outright — the listener runs with the app closed and nothing
-  downstream can recover a spend it decided to ignore. The mirror tests parse
-  both files and fail the build on drift, so a phrase added on one side only
-  breaks CI rather than shipping. The one asymmetry that is deliberate:
-  `BILL_NOTICE_PHRASES` beats a spending word ("minimum **payment** due"),
-  because a statement reminder was otherwise captured as a purchase for the
-  minimum payment, while `available balance` and `available credit` stay in
-  `STOP_PHRASES`, where a spending word in the same sentence still overrules
-  them — some cards append the balance to a real purchase alert.
-
-- **A real charge cancels at most ONE projected occurrence, and it does so by
-  resemblance rather than by an exact match.** The projection is a guess that a
-  recurring charge is coming; once the charge lands, showing the guess too
-  counts the money twice. That test used to demand the same vendor spelling,
-  the same amount to the cent, the same day and the same category, so a
-  premium reported at $477.45 on its due date and captured at $477.46 the next
-  day sat on the dashboard twice. It is now "looks like the same charge"
-  (`lib/duplicateCharge.ts`) — but paired off one-to-one, closest first,
-  because the household has two Fizz charges a month three days apart and a
-  single unpaired sweep would let the first of them cancel both. Do not
-  simplify either half back: exactness put a phantom row on the dashboard,
-  and an unpaired sweep drops a real expected one.
-  `duplicateChargeDrift.test.ts` pins both.
-
-- **A processor prefix is only removed when there is a merchant behind it, and
-  a resemblance is not permission to adopt another merchant's name.** Both
-  halves of one capture the household could not explain: a $29.40 Google
-  subscription announced as "GOOGLE *SERVICES You made a recurring payment"
-  arrived in Review named after a government portal they had used once,
-  carrying that portal's budget. The prefix strip exists because the processor
-  is not the merchant — the money went to La Carnita, not to Toast — but here
-  there was nothing behind the prefix, so the merchant became "Services", a
-  word generic enough to collide with anything. It then did: the phone's
-  vendor memory (step 5b) adopts a remembered merchant's NAME and its budget,
-  and "services" sits inside "eservices", which `fuzzyVendorMatch` accepts by
-  design so that "SQ *Bloom Cafe" and "Bloom Cafe" are one shop. The "prefer
-  the same first word" guard written next to that lookup was only ever scored,
-  never enforced, so a lone weak match still won. So `GENERIC_PROCESSOR_TAILS`
-  keeps the processor's own name when the leftover names no merchant ("Google
-  Services", which is also what the statement says), and the vendor-memory
-  lookup now requires `leadWordsAgree` as well — abbreviations still agree
-  ("AMZN" leads "Amazon"), so nothing that was genuinely one merchant stops
-  being one. The generic leftover is deliberately NOT kept as a vendor alias:
-  aliases are compared with `fuzzyVendorMatch` by the duplicate check, which
-  would put "services" back in reach of "eservices" where the cost is a real
-  purchase dropped rather than a name on screen. `genericProcessorName.test.ts`
-  pins both halves, end to end through the real pipeline.
-
-- **An auto-filed capture is never a soft duplicate.** Auto-filing is the one
-  path that records a purchase the user never sees, and the soft-duplicate rule
-  deliberately inserts a lookalike rather than risk losing a charge — the two
-  together filed a second copy of one charge straight to the dashboard with
-  nothing in Review to say so. The insert still happens; only the filing is
-  refused. `softDuplicateNotFiledSilently.test.ts` holds it.
-
-- **A budget limit change that REDUCES the total is always allowed, even while
-  the total is still over the income.** The limits screen used to refuse any
-  save whose result came out above the monthly income, and looked only at that
-  result — which trapped every new user whose income was under $3,500, because
-  the starter set is seven categories at $500 and they were over the line
-  before touching anything. Lowering a limit still left them over, so lowering
-  was refused too: the only escape the app offered was to claim a bigger
-  income. `lib/budgetAllocation.ts` holds the rule and
-  `budgetAllocation.test.ts` pins it. Do not "restore" the simpler check.
-
-- **The intro's setup steps write each answer as it is given, and never render
-  `SYSTEM_CATEGORIES`.** Two separate reasons, both easy to undo by accident.
-  The writing: the capture step leaves the app for Android's settings, where the
-  WebView is routinely destroyed, so a flow that collected answers and committed
-  them at the end would commit at a moment many users never reach —
-  `lib/onboardingProgress.ts` therefore only has to remember WHICH step, never
-  what was typed. The ids: `budgets` has no id column, so a loaded row is
-  `budget:<name>` while the starter constants carry fixed UUIDs, and
-  `hiddenCategories` stores whichever id was on screen when the eye was tapped
-  — rendering the constants would let a category be hidden under one id and
-  un-hidden under another the moment the real load landed. The step waits on
-  `categoriesLoaded` instead. `onboardingProgress.test.ts` pins both, along with
-  every step being skippable: the intro is now the only thing between a new user
-  and their app, and it must never be able to trap them.
-
-- **"We have heard nothing from this bank" is an inference, and the app says
-  so.** Android exposes no way for an ordinary app to read whether ANOTHER
-  app's notifications are enabled — `areNotificationsEnabled` and
-  `getNotificationChannels` are scoped to the caller, the per-package variants
-  are system APIs, and the listener's ranking data only describes notifications
-  that were actually posted, which is no help when the complaint is that none
-  are. So `lib/bankHeartbeat.ts` records the one observable thing — the last
-  time each bank reached us — and the warning is worded as a guess with a
-  button to the page that fixes it. Do not reword it into a statement of fact,
-  and do not shorten the silence window: the same silence is what a quiet week
-  on a rarely-used card looks like.
-
-- **The user's list of capture sources is authoritative, and "never asked" is a
-  third state.** `isMonitoredApp` used to check the hardcoded ~350-bank list
-  FIRST and only then the user's choices, so unticking a built-in bank appeared
-  to work and changed nothing — while `autoDetectBankingApps`, which is add-only
-  and runs on every launch, put back anything removed. The stored list now wins
-  once `monitored_apps_chosen` is set, INCLUDING when it is empty, which is a
-  real answer. Losing that flag reads as "we have not asked" and quietly
-  restores the defaults; setting it too early freezes a seed as though the user
-  had chosen it. Only `saveMonitoredApps` raises it, and it is never lowered.
-  Both lists — the phone's `monitored_apps` and the web selection — must be
-  written together, which is what `applySourceSelection` is for: writing one
-  alone gives you notifications that are read and then thrown away, in silence.
-  `captureSourceSelection.test.ts` pins all of it.
-
-- **Two apps reporting one tap are matched on AMOUNT AND TIME, never on the
-  merchant.** Google Wallet re-announces every tap-to-pay purchase the card's
-  own app announces. It was excluded outright for years because the first
-  attempt at collapsing the pair compared merchant names — and a wallet is
-  precisely the source that parses the merchant badly, so it failed exactly
-  when needed. Step 4d instead drops a capture whose amount matches one another
-  app reported within five minutes, and the first reporter keeps the row. Do not
-  widen that window to reach the bank-versus-email case: an email arrives hours
-  or a day later and is a separate rule (step 4e) with its own one-to-one
-  pairing, because at that range amount alone would eat real purchases. The
-  exclusion list still exists but is empty; it is the only thing that beats a
-  user's own choice.
-
-- **An email capture is never auto-filed, never hides the user's mail, and never
-  writes a widget delta.** Mail is the least reliable source the app has — a
-  truncated snippet the mail app chose, with the merchant buried in prose — so
-  it always goes to Review. Hiding it would delete something Covault does not
-  own and cannot put back. And most banks announce a purchase twice, so an email
-  capture is routinely discarded moments later; a delta written for one would
-  show the purchase twice on the home screen until the app was next opened.
-
-- **The month the user is IN and the month they are READING are two different
-  things, and only one of them may leave the screen.** The chart's rail shows
-  seven months and any of them can be tapped, which puts the vials and the
-  headline balance on that month — so the dashboard now holds `monthKey` (now)
-  and `viewMonthKey` (what is on screen) side by side. Everything the user is
-  looking at follows the second; the home-screen widget and the over-budget
-  notifications must keep following the first. A widget drawn from a month the
-  user wandered to would go on showing March after the phone was put down, with
-  nothing on the home screen to say which month it is, and a "you are over
-  budget" notification about a month that ended is simply false. The selection
-  is also deliberately not durable — it is dropped on pause, on resume, on a tab
-  becoming hidden, when the calendar rolls over, on Home, and on a second tap of
-  the current month — because a dashboard that OPENS on a month four back is a
-  dashboard lying about the money. `monthBrowsing.test.ts` pins all of it,
-  including that the widget effect and the notification call never mention
-  `viewMonth`.
-
-- **A category added after launch arrives switched OFF in a vault that
-  already exists, and ON in a new one.** `budgets` rows carry a `Visible`
-  column, `loadUserBudgets` turns `false` into `settings.hiddenCategories`,
-  and `ensureDefaultBudgets` inserts any `SYSTEM_CATEGORIES` row the vault is
-  missing — which means adding a name to that list would have put three new
-  vials on the dashboard of every household already using the app, on the one
-  screen they read every day, as a side effect of an update they never chose,
-  at a vial count the two-line row cannot hold. So `OPT_IN_CATEGORIES` in
-  `constants.ts` names the later additions and they are seeded `Visible:
-  false` whenever the vault already had rows. "Already had rows" is the honest
-  test, and it is only reachable on a SUCCESSFUL read: an empty answer is a
-  first-ever load, a failed one returns before seeding — the same rule
-  `budgetFallback.ts` enforces for the display. Both column spellings
-  (`Visible`/`budget` and `visible`/`category`) must carry the same flag, or
-  the outcome depends on which schema the vault happens to have; and the
-  "system category missing from the rows" fallback inside `loadUserBudgets`
-  needs it too, or the three appear on an established dashboard exactly when
-  something has already gone wrong. Three new vials are also three new hues in
-  `budgetColors.ts` AND in `WidgetRenderer.java` — the fallback palette
-  repeats, so a category missing from the map is drawn in another category's
-  identical colour, and `widgetPalette.test.ts` fails the build if the two
-  sides drift. `optInCategories.test.ts` pins all of it.
-
-- **Only dining gets a fallback category; the other three signal kinds resolve
-  or stay silent.** `merchantCategorySignals.ts` reads four kinds now — dining,
-  personal, travel, shopping. Dining falls back to Leisure because a
-  restaurant genuinely belongs there in the stock set (see
-  `DINING_FALLBACK_PATTERN`). There is no equivalent home for a haircut or a
-  flight, so when the household has no such category — or has switched it off
-  — the answer is null, the capture lands in Other, and the person decides.
-  Giving the new kinds a fallback would file every Dollarama run into Leisure
-  for everyone still on the original seven. The guess is also handed only the
-  categories the user can SEE (`hiddenCategoryIds` on `NotificationInput`,
-  applied at step 5c): filing into a hidden category puts a purchase where the
-  dashboard does not draw it and the allocation total does not count it, which
-  is worse than Other. That filter is deliberately on the GUESS alone — a rule
-  the user taught themselves still fires for a category they later hid,
-  because their own instruction outranks the app's inference, and nothing
-  already filed is ever moved.
-
-- **Past seven visible vials the collapsed row shows one line, not two.**
-  The collapsed vials share ONE fixed-height column and never scroll, so each
-  category switched on takes height off every other vial rather than adding
-  any. Measured at 393x852: seven vials get 53px each, which is the two-line
-  row's natural size; eight get 45px, nine 39px, ten 34px. Nothing is
-  literally truncated at any of those — checked against the browser's own
-  rendering rather than assumed — but from eight up the row is wearing its
-  padding as slack and by ten it runs edge to edge, which on this app is a
-  real problem rather than a cosmetic one. So `lib/vialDensity.ts` drops the
-  "$288 left" line past seven and keeps the name and the limit, whose natural
-  height is about 30px and therefore fits eight, nine and ten with room to
-  spare. It is driven by the COUNT, not by a measurement, because a measured
-  threshold would have to be re-read on resize and could flip mid-expand —
-  changing padding and font size on the very frame the 320ms expand starts,
-  which is the class of hitch the constant `overflow-hidden` in
-  `DashboardBudgetSectionsList` exists to prevent. It counts VISIBLE vials, so
-  switching a category off gives the others their second line back, and it is
-  gated on every card being collapsed, since an expanded card has the whole
-  column and is always drawn full size.
-
-- **The vendor DISPLAY name is the merchant's identity, so tidying it has to
-  carry the old spelling forward.** Learned rules are keyed off the name the
-  app shows, which means every spelling variation is a separate merchant with
-  its own rule to teach. RBC ends its alert with a full stop — "...was made
-  from RBC credit card 9141 at SECOND CUP." — and removing a store number from
-  the middle left that stop stranded as a word of its own, so one household
-  accumulated "Second Cup.", "Shoppers Drug Mart .", "Walmart Store ." and
-  "Lola Lash Bar - Crowfo." inside 185 rules covering 126 merchants.
-  `stripVendorNoise` now runs its rules to a fixed point, because removing one
-  piece of noise exposes the next. Two things about it are load-bearing. Each
-  rule must be safe on a name that is ALREADY clean, which is most of them —
-  hence a trailing "Store" is dropped only when punctuation left behind proves
-  something was cut away (the Apple Store and The Ups Store have nothing after
-  it), and the locale suffix is refused when it would leave a single trailing
-  letter (Toys R Us, not Toys R). And the untidy spelling is returned as a
-  vendor ALIAS: a cleaner name changes what future captures key on, so without
-  the alias every rule the household had already taught would silently stop
-  matching. Aliases are tried only after the tidy name finds nothing, so a
-  rule written against the name the app shows still wins.
-  `vendorNameTidying.test.ts` pins all of it, on real notifications.
-  Still unsolved and deliberately not guessed at: RBC truncates the merchant at
-  22 characters ("JD Sports Chinook Cent.", "LS Rosso Coffee Roaste."), and a
-  bare trailing "Store" with no punctuation after it is left alone because
-  "Walmart Store" and "Dollar Store" cannot be told apart offline.
-
-- **"Same kind of business" is not "same business", and `fuzzyVendorMatch` may
-  never confuse the two.** One function answers "are these the same merchant?"
-  for four callers at once — the same-day duplicate skip, the soft-duplicate
-  warning, the phone's local vendor memory, and the recurring-charge lookup —
-  and it used to answer yes whenever the two names shared any word of four
-  letters or more, anywhere in either. The word two merchants share is almost
-  always the word saying what KIND of business it is, which is the one word
-  that cannot say WHICH business it is: "Bloom Cafe" and "Hero Cafe" were one
-  merchant, so were "Kinton Ramen" and "Ramen Danbo", and — the one that gives
-  the game away — so were "Calgary Co-op" and "Calgary Public Library". It cost
-  two things: a capture that matched the wrong merchant in local memory arrived
-  in Review wearing a stranger's name and a stranger's budget, one tap from
-  being filed that way; and two different merchants charging the same amount on
-  the same day read as one purchase announced twice, so the second was dropped
-  outright. The bar is now "the same merchant spelled differently": identical,
-  or one name starting the other, or the same first word with every word of the
-  shorter name accounted for. A one-word name has to match that word exactly,
-  because it has nothing else to corroborate it — that is what stops "Pho"
-  swallowing "Phoenix Store". Abbreviations are read by squeezing the vowels
-  out ("AMZN" is Amazon), which reaches only an abbreviation that kept every
-  consonant, so "MKTP" and "CDN" are deliberately NOT reachable — they are the
-  alias machinery's job. Do not loosen any of this to catch one more case: the
-  matcher is allowed to miss that two named branches of a chain are the same
-  place, because a miss costs a duplicate hint nobody relied on while a false
-  match costs a purchase. `fuzzyVendorMatch.test.ts` pins both directions.
-
-- **A merchant's rules are grouped by the name the USER sees, not by the slug
-  the bank sends.** A rule stores both: `proper_name` ("Wendy's") and
-  `match_key`, the slug of what the bank actually announces
-  ("wendyscrowfoot"). Matching has to go through the slug, because that is the
-  string that recurs — but a chain announces every branch under its own slug,
-  so three visits to three branches wrote three separate rules, each able to
-  carry a different category and none able to see the others. The pipeline's
-  "these rules disagree, so ask rather than guess" check compared only the
-  rules matching the incoming slug, which meant a merchant could never be found
-  in conflict with itself: one branch's stale `Wendy's → Other` went on filing
-  a restaurant under Other for a month while every other Wendy's in the
-  household's history sat in Leisure, and nothing was ever shown to the user to
-  disagree with. The same split made the review picker offer "Wendy's ·
-  Leisure", "Wendy's · Leisure" and "Wendy's · Other" — the same answer twice,
-  with nothing on screen telling the two apart. `lib/vendorRuleScope.ts` holds
-  both halves: the conflict check widens to every rule sharing a display name,
-  and the picker collapses to one entry per category. The widening decides only
-  WHETHER to ask — the rule actually applied is still one whose slug matched,
-  so a merchant whose rules agree behaves exactly as before.
-  `vendorRuleScope.test.ts` pins it.
-
-- **"Other" is never taught as a rule, and an existing Other rule is never
-  trusted over a real one on the same merchant.** A household's own Costco,
-  Walmart, Wendy's, Starbucks, Safeway, No Frills and Superstore rules were
-  each split between a real category and Other — not because the household
-  disagreed with itself, but because one branch, or one review-tap, had
-  landed on Other while everything else agreed on something real. Other is
-  the app's own shrug, written back through the same "every categorisation
-  teaches a rule" mechanism as a real decision, and a stale shrug then went on
-  filing that one branch's charges under Other indefinitely, with nothing on
-  screen to say the rest of the merchant disagreed. Two halves fix it.
-  Nothing writes an Other rule any more — `persistVendorOverride` in
-  `lib/vendorOverrideWrite.ts` and `handleSetVendorCategory` in
-  `useVendorOverrides.ts` both refuse before the network call, though the
-  transaction itself is still filed as Other; only the "remember this" side
-  effect is skipped, and the review-row toast says "Filed as Other" rather
-  than "Learned", with an Undo that puts the row back in review rather than
-  one that would try to delete a rule that was never written. And the
-  pipeline's own conflict check (step 5a) computes `realCategories` by
-  filtering Other out of the merchant-wide category list BEFORE deciding
-  whether there is a disagreement, so an Other-only branch can no longer
-  outvote — or count as "disagreeing with" — a single real answer elsewhere
-  on the same merchant; when the narrow rule that matched THIS capture's own
-  slug turns out to be that stale Other row, the merchant's one real category
-  is used instead, at confidence 0 (the same treatment as a borrowed partner
-  rule), so it still lands in Review rather than auto-filing. Two or more
-  REAL categories are untouched by any of this and still route to review
-  exactly as before — this only ever resolves the case that has exactly one
-  honest answer. `otherRuleIsNotADecision.test.ts` pins all of it, including
-  an end-to-end pass through the real pipeline.
-
-- **A rule is taught for the CHAIN, not the branch, but only for chains named
-  in `lib/chainVendorKeys.ts` — and that list is short on purpose.** A
-  learned rule's `match_key` has to be what the bank literally sends, because
-  that is the string that recurs; a chain announces every location under its
-  own name, so a household that had corrected three Wendy's branches had
-  three separate rules, each teaching nothing about the other two. The fix is
-  not new matching logic — `match_type: 'prefix'` already exists and is
-  already understood everywhere the overrides table is read — it is choosing
-  to WRITE a `prefix` rule keyed to the chain's own name instead of the
-  branch-specific one, for chains on this list and nowhere else. The list is
-  restaurants, cafes, and a modest set of single-purpose retail, personal-care,
-  hotel and airline brands — picked by hand, not derived from a pattern — and
-  it deliberately EXCLUDES every grocery, pharmacy and big-box chain
-  (`CHAIN_NAME_WINS_RE`'s own members: Costco, Walmart, Loblaws, Sobeys,
-  Safeway, No Frills, Superstore, Metro, Shoppers Drug Mart, Canadian Tire,
-  Target, Whole Foods, Trader Joe's, Kroger, Publix, Aldi, Lidl, Wegmans,
-  IKEA), because those chains genuinely sell across categories at some
-  branches — Costco's gas bar is the proof: a household's own Costco rules
-  are a real, correct split between Groceries and Transport, and a blanket
-  "costco" rule would have silently forced the gas charge into whatever the
-  warehouse run was taught. A wrong guess in `merchantCategorySignals.ts`
-  costs one tap in Review; a wrong entry here can reach the auto-accept
-  threshold and file money without a human ever looking, so the bar for
-  belonging on this list is stricter: every branch must mean the same
-  spending, no exceptions. The PATCH that finds and updates an existing
-  `prefix` rule is additionally scoped to the SAME category, so a sibling
-  branch that genuinely disagrees creates a second rule instead of silently
-  overwriting the first — two rows sharing one `match_key` with different
-  categories is exactly the shape the read-side conflict check already knows
-  how to catch. An ordinary, non-chain vendor's `exact` rule is NOT scoped
-  this way, because correcting your own past categorisation of the same
-  vendor is supposed to update in place. `chainVendorKeys.test.ts` and
-  `vendorOverrideWrite.test.ts` pin both halves.
-
-- **React Query caches screen-level reads only — never transactions, budgets
-  or settings.** `lib/queryClient.ts` holds reads a screen makes when it
-  opens (today: the Review page's skip rules), so a return visit draws at once
-  and the read can be started early — a few seconds after the dashboard
-  settles, and on the first touch of the Review button. The core load in
-  `useDataLoading.ts` stays outside it on purpose: it already paints from
-  `firstPaintCache.ts`, and it carries rules a generic cache would quietly
-  break — a failed read never replaces what is on screen, an older answer
-  never overwrites a newer one, the column-name fallbacks. A query function
-  must THROW on a failed read, never return `[]`, or the cache treats the
-  failure as "nothing" and empties the screen. Sign-out clears the cache
-  alongside the first-paint snapshot. `reviewRulesQuery.test.ts` pins it.
-
-- **The budget order comes from `lib/budgetOrder.ts`, not from the database.**
-  `budgets` has no primary key and no sort column, and `loadUserBudgets` reads
-  it with a plain `select=*`, so PostgREST returns Postgres's heap order — which
-  moves a row to the end the moment it is UPDATEd. Editing one budget's limit
-  therefore sent that vial to the bottom of the dashboard on the next load. An
-  `order=` on the query cannot fix it (there is nothing worth ordering on), so
-  the order is fixed in code and every consumer inherits it from the one sorted
-  list in app state. `budgetOrder.test.ts` pins it.
-
-## Do not read
-
-- `android/` — generated by CI (`rm -rf android && npx cap add android`) and
-  gitignored. Custom native source lives in `android-custom/`.
-- `dist/`, `node_modules/`.
-- `supabase/migrations/*.sql` marked **SUPERSEDED** in their header.
-
-## Conventions
-
-For new features and tests, follow `docs/ENGINEERING_STANDARD.md`. It records
-the feature boundaries, visual rules, test layers, and parallel browser test
-requirements drawn from the reference codebases. The invariants above still
-govern existing behavior.
-
-- **A Stop hook lints every file the turn changed** (`.claude/hooks/lint-changed.sh`,
-  wired in `.claude/settings.json`). It runs `eslint --fix` on files that differ
-  from the commit the turn started on, committed or not. If that rewrites
-  anything, or leaves errors, the turn is sent back once — commit the fixes or
-  repair the rest before finishing. It never loops a second time.
-
-- Surgical, behaviour-preserving changes. No broad rewrites unless asked.
-- Never wrap imports in `try`/`catch`.
-- Enum/label ↔ DB mapping belongs in `lib/hooks/transactionMappers.ts`.
-- New bank or vendor pattern ⇒ add a parser test.
-- Never commit secrets. `.env` and `*credentials*`/`*secrets*` are gitignored.
-- `npm run verify` before committing.
-
-## Verification reality
-
-CI type-checks, tests, builds an APK, and opens the web sign-in screen in
-Playwright. It does not exercise notification capture, tray suppression,
-on-device AI, the home-screen widget, haptics, authenticated screens, or phone
-motion. Those need a device or a focused running-app check. Say what was
-actually seen rather than implying a green build means the app works.
+Run `npm run verify` before committing. It checks TypeScript, unused values,
+ESLint, Vitest, and the web build. Run the relevant Playwright suite for browser
+changes. Check affected capture, widget, update, and motion flows on an Android
+phone before claiming they work there. Report any check that was not run.

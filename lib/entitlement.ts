@@ -1,17 +1,7 @@
 // lib/entitlement.ts
 //
-// The single place that decides whether this account gets to use the app:
-// a permanent tester exemption, a real Google Play subscription, or still
-// inside the one-month trial every new signup starts with. The trial is
-// compared against the DATABASE's clock, not the phone's — see
-// lib/serverClock.ts for why, and for what that does and does not buy. See
-// `getEntitlementStatus` for the rule and `App.tsx` for where it's applied
-// (the whole app locks, not individual features — see docs/ARCHITECTURE.md).
-//
-// This used to gate individual "premium" features (see PREMIUM_FEATURE_*
-// below) with everything hardcoded open. That per-feature split doesn't fit
-// a single $6.99/month whole-app plan, so it's left in place but unused
-// rather than wired up — the check below is the one that actually runs.
+// The current whole-app access decision. `App.tsx` applies this result after
+// passing the database clock from `lib/serverClock.ts`.
 
 /** The fields `getEntitlementStatus` reads, from `types.ts`'s `User`. */
 export interface EntitlementUser {
@@ -68,8 +58,7 @@ export function getEntitlementStatus(
 }
 
 // ---------------------------------------------------------------------------
-// Legacy per-feature labels — unused by the check above, kept only because
-// SubscribeModal/PremiumGate still reference them. See the note at the top.
+// Labels used by SubscribeModal and PremiumGate.
 
 /**
  * Premium feature identifiers used for gating.
