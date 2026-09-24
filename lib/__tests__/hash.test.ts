@@ -38,7 +38,7 @@ describe('djb2', () => {
       const h = djb2(s);
       expect(Number.isInteger(h)).toBe(true);
       expect(h).toBeGreaterThanOrEqual(0);
-      expect(h).toBeLessThanOrEqual(0xffffffff);
+      expect(h).toBeLessThanOrEqual(0xFFFFFFFF);
     }
   });
 

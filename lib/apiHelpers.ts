@@ -14,7 +14,7 @@ let cachedAccessTokenExpMs: number | null = null;
 /** Decode a JWT's `exp` claim, in ms. Null if it can't be read. */
 const readTokenExpMs = (token: string): number | null => {
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
+    const payload = JSON.parse(atob(token.split('.', 2)[1]));
     return typeof payload.exp === 'number' ? payload.exp * 1000 : null;
   } catch {
     return null;

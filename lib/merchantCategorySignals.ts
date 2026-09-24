@@ -245,7 +245,7 @@ const CHAIN_NAME_WINS_RE = new RegExp(
 
 /** Fold accents so "CAFÉ" matches the ASCII token "CAFE". */
 function deaccent(value: string): string {
-  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return value.normalize('NFD').replace(/[\u0300-\u036F]/g, '');
 }
 
 /**

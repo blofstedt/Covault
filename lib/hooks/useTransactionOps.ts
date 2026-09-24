@@ -22,7 +22,7 @@ import type { UseUserDataParams } from './types';
 // Re-exported from where the projected ids are minted, so the pattern has one
 // definition. Kept exported here because callers (and tests) already import it
 // from this module.
-export { getSourceTransactionIdFromProjectedId };
+
 
 /** PostgREST `in.(...)` list, quoted the way the other bulk calls here do. */
 const toIdList = (ids: string[]) => ids.map(id => `"${String(id).replace(/"/g, '')}"`).join(',');
@@ -254,7 +254,7 @@ export const useTransactionOps = ({
           let updatedRows: any[] = [];
           try {
             updatedRows = body ? JSON.parse(body) : [];
-          } catch (parseErr) {
+          } catch {
             const msg = `[updateTransaction] failed to parse response: ${body.slice(0, 200)}`;
             log.error(msg);
             setDbError(msg);
@@ -477,3 +477,5 @@ export const useTransactionOps = ({
     handleClearApprovedTransactions,
   };
 };
+
+export {getSourceTransactionIdFromProjectedId} from '../projectedTransactions';

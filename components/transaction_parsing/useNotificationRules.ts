@@ -1,6 +1,6 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  listNotificationRules,
   createNotificationRule,
   deleteNotificationRule,
   updateNotificationRulePatternType,
@@ -10,32 +10,49 @@ import {
   type CreateNotificationRuleInput,
   type PatternType,
 } from '../../lib/notificationRules';
+import {
+  canFetchNotificationRules,
+  notificationRulesKey,
+  notificationRulesQuery,
+} from '../../lib/queries/notificationRules';
 
 interface UseNotificationRulesOptions {
   userId?: string;
 }
 
+const NO_RULES: NotificationRule[] = [];
+
 export function useNotificationRules({ userId }: UseNotificationRulesOptions) {
-  const [rules, setRules] = useState<NotificationRule[]>([]);
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
+  const enabled = canFetchNotificationRules(userId);
+
+  // Cached between visits and usually prefetched before Review opens — see
+  // lib/queries/notificationRules.ts. A failed read keeps the list already
+  // on screen rather than emptying it.
+  const query = useQuery({
+    ...notificationRulesQuery(userId ?? ''),
+    enabled,
+  });
+  const rules = enabled ? query.data ?? NO_RULES : NO_RULES;
+  const loading = query.isFetching;
+  const { refetch } = query;
 
   const load = useCallback(async () => {
-    if (!userId) {
-      setRules([]);
-      return;
-    }
-    setLoading(true);
-    try {
-      const data = await listNotificationRules(userId);
-      setRules(data);
-    } finally {
-      setLoading(false);
-    }
-  }, [userId]);
+    if (enabled) await refetch();
+  }, [enabled, refetch]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // Every write below edits the cached list in place, exactly as it used to
+  // edit component state — so the change also survives leaving the page.
+  const setRules = useCallback(
+    (update: (prev: NotificationRule[]) => NotificationRule[]) => {
+      if (!userId) return;
+      queryClient.setQueryData<NotificationRule[]>(
+        notificationRulesKey(userId),
+        (prev) => update(prev ?? []),
+      );
+    },
+    [queryClient, userId],
+  );
 
   const create = useCallback(
     async (input: CreateNotificationRuleInput): Promise<NotificationRule | null> => {
@@ -46,7 +63,7 @@ export function useNotificationRules({ userId }: UseNotificationRulesOptions) {
       }
       return rule;
     },
-    [userId],
+    [userId, setRules],
   );
 
   const remove = useCallback(
@@ -58,7 +75,7 @@ export function useNotificationRules({ userId }: UseNotificationRulesOptions) {
       }
       return ok;
     },
-    [userId],
+    [userId, setRules],
   );
 
   /**
@@ -98,7 +115,7 @@ export function useNotificationRules({ userId }: UseNotificationRulesOptions) {
       }
       return ok;
     },
-    [userId, rules],
+    [userId, rules, setRules],
   );
 
   /**
@@ -121,7 +138,7 @@ export function useNotificationRules({ userId }: UseNotificationRulesOptions) {
       }
       return ok;
     },
-    [userId, rules],
+    [userId, rules, setRules],
   );
 
   return { rules, loading, load, create, remove, setPatternType, setPattern };

@@ -44,12 +44,12 @@ const SkipPhrasePicker: React.FC<SkipPhrasePickerProps> = ({
   // what the rule already matches rather than a blank slate.
   const current = useMemo(() => {
     const at = sourceText.toLowerCase().indexOf(pattern.trim().toLowerCase());
-    if (at < 0) return null;
+    if (at === -1) return null;
     const end = at + pattern.trim().length;
     const first = words.findIndex((w) => w.end > at);
     let last = -1;
     for (let i = 0; i < words.length; i++) if (words[i].start < end) last = i;
-    return first >= 0 && last >= first ? { first, last } : null;
+    return first !== -1 && last >= first ? { first, last } : null;
   }, [sourceText, pattern, words]);
 
   const [anchor, setAnchor] = useState<number | null>(null);

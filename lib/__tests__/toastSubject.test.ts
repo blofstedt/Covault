@@ -72,6 +72,6 @@ describe('resolveToastMessage', () => {
 
   it('keeps the recorded name when the row has lost its vendor', () => {
     const toast = filedToast('t1', 'Tst-pizza Culture');
-    expect(resolveToastMessage(toast, [tx('t1', '   ')])).toBe('Filed Tst-pizza Culture');
+    expect(resolveToastMessage(toast, [tx('t1', ' '.repeat(3))])).toBe('Filed Tst-pizza Culture');
   });
 });

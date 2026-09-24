@@ -116,11 +116,9 @@ function bestMatchIn(normalized: NormalizedOverride[], vendorKey: string): Vendo
     }
 
     // Fallback: contains without explicit type
-    if (vendorKey.includes(matchKey) || vendorKey.includes(properKey)) {
-      if (best.state === 'none') {
+    if ((vendorKey.includes(matchKey) || vendorKey.includes(properKey)) && best.state === 'none') {
         best = { match: vo, state: 'contains' };
       }
-    }
   }
 
   // Extra fallback: if the transaction vendor contains the proper_name as a substring

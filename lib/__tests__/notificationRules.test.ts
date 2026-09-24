@@ -66,7 +66,7 @@ describe('matchesRule', () => {
   });
 
   it('returns false for whitespace-only pattern', () => {
-    const r = rule({ pattern: '   ', pattern_type: 'contains' });
+    const r = rule({ pattern: ' '.repeat(3), pattern_type: 'contains' });
     expect(matchesRule('anything', r)).toBe(false);
   });
 

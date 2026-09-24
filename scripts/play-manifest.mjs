@@ -73,7 +73,7 @@ const MAIL_PACKAGES = [
 export function bankingPackages() {
   const source = readFileSync(resolve(ROOT, 'lib/bankingApps.ts'), 'utf8');
   const start = source.indexOf('export const KNOWN_BANKING_APPS');
-  if (start < 0) throw new Error('KNOWN_BANKING_APPS not found in lib/bankingApps.ts');
+  if (start === -1) throw new Error('KNOWN_BANKING_APPS not found in lib/bankingApps.ts');
   const end = source.indexOf('\n};', start);
   const body = source.slice(start, end);
   const found = [...body.matchAll(/^\s*'([a-zA-Z0-9._]+)'\s*:/gm)].map((m) => m[1]);

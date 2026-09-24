@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef } from 'react';
 import { supabase } from '../supabase';
 import { clearCachedAccessToken, setCachedAccessToken } from '../apiHelpers';
 import { clearFirstPaintCache } from '../firstPaintCache';
+import { queryClient } from '../queryClient';
 import type { AppState, User } from '../../types';
 
 import { shouldShowOnboarding } from '../onboardingState';
@@ -101,7 +102,7 @@ export const useAuthState = ({
       id: sessionUser.id,
       name:
         sessionUser.user_metadata?.full_name ||
-        sessionUser.email?.split('@')[0] ||
+        sessionUser.email?.split('@', 1)[0] ||
         'User',
       email: sessionUser.email || '',
       hasJointAccounts: false,
@@ -141,6 +142,7 @@ export const useAuthState = ({
           clearSessionTimestamp();
           clearCachedAccessToken();
           clearFirstPaintCache();
+          queryClient.clear();
           lastLoadedUserIdRef.current = null;
           loadUserDataPromiseRef.current = null;
           loadingUserIdRef.current = null;
@@ -202,6 +204,7 @@ export const useAuthState = ({
         // The next person on this phone should not see the last one's
         // spending flash up behind the sign-in screen.
         clearFirstPaintCache();
+        queryClient.clear();
         lastLoadedUserIdRef.current = null;
         loadUserDataPromiseRef.current = null;
         loadingUserIdRef.current = null;

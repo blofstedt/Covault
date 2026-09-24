@@ -32,7 +32,7 @@ vi.mock('@huggingface/transformers', () => {
         // Flan-T5 response in that format.
         if (lower.includes('istransaction:') || lower.includes('reply in this exact format')) {
           const text = prompt.match(/Notification:\s*"([^"]+)"/)?.[1]
-            || prompt.split('Notification:')[1]?.split('\n')[0]?.replace(/"/g, '').trim()
+            || prompt.split('Notification:', 2)[1]?.split('\n', 1)[0]?.replace(/"/g, '').trim()
             || '';
           const tl = text.toLowerCase();
           const structured = (vendor: string, category: string, isTx: 'yes' | 'no', reason: string) => [

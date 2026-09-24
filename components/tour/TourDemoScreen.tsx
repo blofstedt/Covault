@@ -139,7 +139,7 @@ const DEMO_HISTORY: Record<string, [number, number, number]> = {
 
 /** The example captures still waiting on the review page. Kept to three, and
  *  matched by the bottom bar's badge below. */
-const DEMO_WAITING = ['Superstore', 'Petro-Canada', 'Second Cup'];
+const DEMO_WAITING = new Set(['Superstore', 'Petro-Canada', 'Second Cup']);
 
 /** The entry the walkthrough fills the add form in with. */
 const DEMO_ENTRY = { vendor: 'Second Cup', amount: 9.51, recurrence: Recurrence.ONE_TIME };
@@ -208,7 +208,7 @@ const TourDemoScreen: React.FC<TourDemoScreenProps> = ({ stage = 'home' }) => {
           // waiting would put thirteen rows on a page whose whole point is
           // that it is a short queue — and would disagree with the badge on
           // the bottom bar beside it.
-          caught_cleared: !DEMO_WAITING.includes(entry.vendor),
+          caught_cleared: !DEMO_WAITING.has(entry.vendor),
           is_projected: false,
           created_at: `${currentMonthKey}-${day}T12:00:00.000Z`,
         });
@@ -359,7 +359,7 @@ const TourDemoScreen: React.FC<TourDemoScreenProps> = ({ stage = 'home' }) => {
           onAddTransaction={NOOP}
           onOpenParsing={NOOP}
           activeView="home"
-          pendingCount={DEMO_WAITING.length}
+          pendingCount={DEMO_WAITING.size}
         />
       </PageShell>
       )}

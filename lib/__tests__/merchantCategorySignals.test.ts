@@ -143,7 +143,7 @@ describe('detectMerchantSignal — descriptor tokens', () => {
 
   it('is safe on empty and missing input', () => {
     expect(detectMerchantSignal('')).toBeNull();
-    expect(detectMerchantSignal('   ')).toBeNull();
+    expect(detectMerchantSignal(' '.repeat(3))).toBeNull();
     expect(detectMerchantSignal(null)).toBeNull();
     expect(detectMerchantSignal(undefined)).toBeNull();
   });

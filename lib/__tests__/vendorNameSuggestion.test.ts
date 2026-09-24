@@ -89,7 +89,7 @@ describe('pickVendorNameSuggestion', () => {
   });
 
   it('says nothing about an empty or punctuation-only entry', () => {
-    expect(pickVendorNameSuggestion(known('Safeway'), '   ', 'SAFEWAY')).toBeNull();
+    expect(pickVendorNameSuggestion(known('Safeway'), ' '.repeat(3), 'SAFEWAY')).toBeNull();
     expect(pickVendorNameSuggestion(known('Safeway'), '---', 'SAFEWAY')).toBeNull();
   });
 

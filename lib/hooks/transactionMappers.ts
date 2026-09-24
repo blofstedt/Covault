@@ -8,12 +8,12 @@ import { SYSTEM_CATEGORIES } from '../../constants';
 
 // Valid recurrence values. These must match the labels of the Postgres enum
 // public."Recurrence" exactly — a value it does not know is rejected outright.
-const VALID_RECURRENCES = [
+const VALID_RECURRENCES = new Set([
   Recurrence.ONE_TIME,
   Recurrence.BIWEEKLY,
   Recurrence.MONTHLY,
   Recurrence.YEARLY,
-];
+]);
 
 const normalizeBudgetName = (value: string) => value.trim().toLowerCase();
 
@@ -103,7 +103,7 @@ export const toSupabaseTransaction = (
   // Validate and set recurrence value
   let recurrence: string = Recurrence.ONE_TIME;
   if (tx.recurrence) {
-    if (VALID_RECURRENCES.includes(tx.recurrence as Recurrence)) {
+    if (VALID_RECURRENCES.has(tx.recurrence as Recurrence)) {
       recurrence = tx.recurrence;
     } else {
       log.warn(`Invalid recurrence value "${tx.recurrence}", defaulting to "${Recurrence.ONE_TIME}"`);
@@ -152,7 +152,7 @@ export const useFromSupabaseTransaction = () =>
     let recurrence: Recurrence = Recurrence.ONE_TIME;
     const recurrenceRaw = row.recur || row.recurrence;
     if (recurrenceRaw) {
-      if (VALID_RECURRENCES.includes(recurrenceRaw as Recurrence)) {
+      if (VALID_RECURRENCES.has(recurrenceRaw as Recurrence)) {
         recurrence = recurrenceRaw as Recurrence;
       } else {
         log.warn(`Invalid recurrence value "${recurrenceRaw}" from database, using "${Recurrence.ONE_TIME}"`);

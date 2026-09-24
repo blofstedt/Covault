@@ -64,8 +64,7 @@ export function computeBudgetTotals(
   let projected = 0;
   const visibleTransactions: Transaction[] = [];
 
-  for (let i = 0; i < transactions.length; i++) {
-    const tx = transactions[i];
+  for (const tx of transactions) {
 
     if (tx.refunded) refundedExpenseIds.add(tx.id);
     if (!isRefund(tx)) visibleTransactions.push(tx);

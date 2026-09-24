@@ -346,7 +346,7 @@ export async function extractWithAI(
   let aiResponse: string;
   try {
     aiResponse = await aiGenerate(prompt, 64);
-  } catch (err) {
+  } catch {
     // AI failed — fall back to rule-based result
     if (hasRuleVendor) {
       return {

@@ -577,7 +577,7 @@ export function useVendorOverrides({ userId, partnerId, budgets }: UseVendorOver
             vo.proper_name.toLowerCase() === vendorName.toLowerCase() &&
             vo.category_id === categoryId,
         );
-        if (existingIdx >= 0) {
+        if (existingIdx !== -1) {
           // Update existing override
           const updated = [...prev];
           updated[existingIdx] = {

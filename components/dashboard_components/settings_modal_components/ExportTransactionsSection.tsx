@@ -134,9 +134,9 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
     link.setAttribute('href', url);
     link.setAttribute('download', fileName);
     link.style.visibility = 'hidden';
-    document.body.appendChild(link);
+    document.body.append(link);
     link.click();
-    document.body.removeChild(link);
+    link.remove();
     URL.revokeObjectURL(url);
 
     setExported(true);
@@ -158,10 +158,11 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
 
       <div className="flex gap-3 mb-4">
         <div className="flex-1">
-          <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 tracking-wide block mb-1">
+          <label htmlFor="export-start-date" className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 tracking-wide block mb-1">
             From
           </label>
           <button
+            id="export-start-date"
             type="button"
             onClick={() => setCalendarOpen('start')}
             className="w-full px-3 py-2.5 text-xs text-left bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-200 active:scale-[0.98] transition-all"
@@ -170,10 +171,11 @@ const ExportTransactionsSection: React.FC<ExportTransactionsSectionProps> = ({
           </button>
         </div>
         <div className="flex-1">
-          <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 tracking-wide block mb-1">
+          <label htmlFor="export-end-date" className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 tracking-wide block mb-1">
             To
           </label>
           <button
+            id="export-end-date"
             type="button"
             onClick={() => setCalendarOpen('end')}
             className="w-full px-3 py-2.5 text-xs text-left bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-200 active:scale-[0.98] transition-all"

@@ -2082,8 +2082,8 @@ async function processNotificationWithAIImpl(
         if (!leadWordsAgree(incomingName, entry.vendor_display)) continue;
         // Among the matches that qualify, prefer one whose first word is
         // spelled identically over one that merely agrees ("AMZN"/"Amazon").
-        const normalizedStored = (entry.vendor_display || '').toLowerCase().split(/\s+/)[0];
-        const normalizedIncoming = incomingName.toLowerCase().split(/\s+/)[0];
+        const normalizedStored = (entry.vendor_display || '').toLowerCase().split(/\s+/, 1)[0];
+        const normalizedIncoming = incomingName.toLowerCase().split(/\s+/, 1)[0];
         const score = normalizedStored && normalizedIncoming && normalizedStored === normalizedIncoming ? 1.0 : 0.5;
         if (score > bestScore) {
           bestScore = score;
@@ -2143,7 +2143,7 @@ async function processNotificationWithAIImpl(
       // Only the categories the user can actually see are candidates. A
       // category they switched off is not a destination for a guess — see
       // `hiddenCategoryIds` on NotificationInput.
-      const hidden = new Set((input.hiddenCategoryIds || []).map((id) => String(id)));
+      const hidden = new Set((input.hiddenCategoryIds || []).map(String));
       const visibleCategories = hidden.size
         ? availableCategories.filter((c) => !hidden.has(String(c.id)))
         : availableCategories;

@@ -162,7 +162,7 @@ const GuidedTour: React.FC<GuidedTourProps> = ({
     // A step with no target is not pointing at anything on purpose — the
     // closing note about privacy, for one. It dims the whole screen.
     if (!step.target) return [];
-    return Array.from(scope.querySelectorAll<HTMLElement>(`[data-tour="${step.target}"]`));
+    return Array.from(scope.querySelectorAll<HTMLElement>(`[data-tour="${CSS.escape(step.target)}"]`));
   }, [step, surface]);
 
   const measure = useCallback(
@@ -311,7 +311,7 @@ const GuidedTour: React.FC<GuidedTourProps> = ({
     let point = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     if (step.tapTarget) {
       const scope: ParentNode = surface === 'live' ? document : (rootRef.current ?? document);
-      const el = scope.querySelector<HTMLElement>(`[data-tour="${step.tapTarget}"]`);
+      const el = scope.querySelector<HTMLElement>(`[data-tour="${CSS.escape(step.tapTarget)}"]`);
       const box = el?.getBoundingClientRect();
       if (box && box.width > 0 && box.height > 0) {
         point = { x: box.left + box.width / 2, y: box.top + box.height / 2 };

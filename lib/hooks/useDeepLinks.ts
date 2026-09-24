@@ -121,7 +121,7 @@ export const useDeepLinks = () => {
           // Close the in-app browser that was opened for OAuth
           try {
             await Browser.close();
-          } catch (_) {
+          } catch {
             // Browser may already be closed
           }
         } else {

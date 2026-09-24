@@ -10,8 +10,8 @@
  * that other vial to look as though it came in under its limit.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   computeShieldedOverflow,
   computeShieldBreakdown,

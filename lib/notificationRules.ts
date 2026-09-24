@@ -354,17 +354,30 @@ export async function bumpRuleUseCount(ruleId: string, alertText?: string): Prom
   }
 }
 
-export async function listNotificationRules(userId: string): Promise<NotificationRule[]> {
+/**
+ * The rules list for the Review page, newest first — or a THROW if it could
+ * not be read.
+ *
+ * Throwing rather than answering `[]` is what lets the query cache keep the
+ * list it already has: an empty answer is an answer and would replace it,
+ * which is how a dropped connection used to make every rule on the page
+ * disappear until the next visit.
+ */
+export async function fetchNotificationRuleList(userId: string): Promise<NotificationRule[]> {
   if (!userId) return [];
+  const res = await restFetch(
+    `/notification_rules?select=*&user_id=eq.${userId}&order=created_at.desc`,
+    { cache: 'no-store' },
+  );
+  if (!res.ok) throw new Error(`notification_rules read failed (${res.status})`);
+  const rows: NotificationRule[] = (await res.json()) || [];
+  mirrorRulesToNative(rows);
+  return rows;
+}
+
+export async function listNotificationRules(userId: string): Promise<NotificationRule[]> {
   try {
-    const res = await restFetch(
-      `/notification_rules?select=*&user_id=eq.${userId}&order=created_at.desc`,
-      { cache: 'no-store' },
-    );
-    if (!res.ok) return [];
-    const rows: NotificationRule[] = (await res.json()) || [];
-    mirrorRulesToNative(rows);
-    return rows;
+    return await fetchNotificationRuleList(userId);
   } catch {
     return [];
   }

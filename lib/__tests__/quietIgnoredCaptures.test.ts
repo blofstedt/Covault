@@ -79,7 +79,7 @@ describe('mirroring the skip rules to the listener', () => {
 
   it('drops empty patterns, which would match everything under `contains`', async () => {
     await pushSkipRules([
-      { pattern: '   ', pattern_type: 'contains' },
+      { pattern: ' '.repeat(3), pattern_type: 'contains' },
       { pattern: 'reward points', pattern_type: 'contains' },
     ]);
 

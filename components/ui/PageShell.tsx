@@ -5,7 +5,11 @@ interface PageShellProps {
 }
 
 const PageShell: React.FC<PageShellProps> = ({ children }) => (
-  <div className="flex-1 flex flex-col h-screen h-[100dvh] relative overflow-hidden transition-colors duration-700 bg-slate-50 dark:bg-slate-950">
+  <div
+    // Not a contradiction: h-screen is the fallback for a WebView too old for
+    // dvh, which drops the second rule and keeps the first.
+    // eslint-disable-next-line tailwindcss/no-contradicting-classname
+    className="flex-1 flex flex-col h-screen h-[100dvh] relative overflow-hidden transition-colors duration-700 bg-slate-50 dark:bg-slate-950">
     {/* Ambient glow — radial gradients with multi-stop ultra-smooth falloff */}
     <div className="absolute inset-0 z-0 pointer-events-none" style={{
       backgroundImage: [

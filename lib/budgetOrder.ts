@@ -35,7 +35,7 @@ export function budgetRank(name: string | null | undefined): number {
   const key = String(name || '').trim().toLowerCase();
   if (key === 'other') return Number.MAX_SAFE_INTEGER;
   const index = CANONICAL_ORDER.indexOf(key);
-  return index >= 0 ? index : CANONICAL_ORDER.length;
+  return index !== -1 ? index : CANONICAL_ORDER.length;
 }
 
 /** Comparator form, for `Array.prototype.sort`. */

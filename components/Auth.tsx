@@ -78,7 +78,7 @@ const Auth: React.FC<AuthProps> = () => {
       {/* Dynamic Background */}
       <div className="absolute top-[-10%] left-[-10%] w-[120%] h-[120%] pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-emerald-400/20 dark:bg-emerald-600/10 rounded-full blur-[100px] animate-blob" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-400/20 dark:bg-blue-600/10 rounded-full blur-[100px] animate-blob animation-delay-4000" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-400/20 dark:bg-blue-600/10 rounded-full blur-[100px] animate-blob" />
       </div>
 
       <div className="relative flex-1 flex flex-col items-center justify-center space-y-12">

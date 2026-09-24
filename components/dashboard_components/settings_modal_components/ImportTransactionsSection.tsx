@@ -90,7 +90,7 @@ const ImportTransactionsSection: React.FC<ImportTransactionsSectionProps> = ({
       const recurrenceIdx = headers.indexOf('recurrence');
 
       const budgetMap = new Map<string, string>(budgets.map((b) => [b.name.toLowerCase(), b.name]));
-      const validRecurrences = ['one-time', 'biweekly', 'monthly', 'yearly'];
+      const validRecurrences = new Set(['one-time', 'biweekly', 'monthly', 'yearly']);
 
       const rows: Array<{
         user_id: string;
@@ -151,7 +151,7 @@ const ImportTransactionsSection: React.FC<ImportTransactionsSectionProps> = ({
 
         // Recurrence
         const recurrence = rawRecurrence.toLowerCase();
-        const recur = validRecurrences.includes(recurrence)
+        const recur = validRecurrences.has(recurrence)
           ? rawRecurrence.charAt(0).toUpperCase() + rawRecurrence.slice(1).toLowerCase()
           : 'One-time';
 
@@ -206,7 +206,7 @@ const ImportTransactionsSection: React.FC<ImportTransactionsSectionProps> = ({
       setStatus('success');
       setMessage(`Imported ${insertedCount} transaction${insertedCount !== 1 ? 's' : ''}${warnText}.`);
       onImportComplete();
-    } catch (e) {
+    } catch {
       setStatus('error');
       setMessage('Failed to read file.');
     } finally {

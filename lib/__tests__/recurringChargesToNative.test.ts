@@ -38,7 +38,7 @@ describe('pushRecurringCharges', () => {
     const plugin = fakePlugin();
     await pushRecurringCharges(
       [
-        { vendor: '   ', amount: 20.33 },
+        { vendor: ' '.repeat(3), amount: 20.33 },
         { vendor: 'Netflix', amount: 0 },
         { vendor: 'Netflix', amount: -20.33 },
         { vendor: 'Netflix', amount: Number.NaN },

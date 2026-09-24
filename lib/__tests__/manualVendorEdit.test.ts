@@ -26,7 +26,7 @@ describe('cleanVendorInput', () => {
 
   it('handles empty input', () => {
     expect(cleanVendorInput('')).toBe('');
-    expect(cleanVendorInput('   ')).toBe('');
+    expect(cleanVendorInput(' '.repeat(3))).toBe('');
   });
 
   it('detects a capitalization-only rename as a change', () => {

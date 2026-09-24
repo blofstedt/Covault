@@ -48,7 +48,7 @@ function dayNumber(value: string | Date | null | undefined): number | null {
 /** Loose station-name comparison, tolerant of store numbers and punctuation. */
 function sameStation(a: string, b: string): boolean {
   const norm = (v: string) =>
-    v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z]/g, '');
+    v.normalize('NFD').replace(/[\u0300-\u036F]/g, '').toUpperCase().replace(/[^A-Z]/g, '');
   const x = norm(a);
   const y = norm(b);
   if (!x || !y) return false;

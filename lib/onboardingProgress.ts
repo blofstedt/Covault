@@ -126,7 +126,7 @@ export function nextStep(
   { solo }: { solo: boolean },
 ): OnboardingStepId | null {
   const index = ONBOARDING_STEPS.indexOf(current);
-  if (index < 0) return FIRST_STEP;
+  if (index === -1) return FIRST_STEP;
   for (let i = index + 1; i < ONBOARDING_STEPS.length; i++) {
     const step = ONBOARDING_STEPS[i];
     if (step === 'partner' && solo) continue;

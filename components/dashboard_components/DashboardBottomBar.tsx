@@ -4,6 +4,12 @@ interface DashboardBottomBarProps {
   onGoHome: () => void;
   onAddTransaction: () => void;
   onOpenParsing: () => void;
+  /**
+   * Called the instant a finger lands on (or a pointer moves over) the Review
+   * button, before the tap completes — the gap is spent loading what Review
+   * will ask for. Must be cheap and safe to call repeatedly.
+   */
+  onPrefetchParsing?: () => void;
   activeView?: 'home' | 'parsing';
   pendingCount?: number;
 }
@@ -12,6 +18,7 @@ const DashboardBottomBar: React.FC<DashboardBottomBarProps> = ({
   onGoHome,
   onAddTransaction,
   onOpenParsing,
+  onPrefetchParsing,
   activeView = 'home',
   pendingCount = 0,
 }) => {
@@ -106,6 +113,9 @@ const DashboardBottomBar: React.FC<DashboardBottomBarProps> = ({
           <button
             data-tour="review"
             onClick={onOpenParsing}
+            onPointerEnter={onPrefetchParsing}
+            onPointerDown={onPrefetchParsing}
+            onFocus={onPrefetchParsing}
             className={`relative p-3 rounded-full transition-all duration-200 active:scale-[0.97] ${
               activeView === 'parsing'
                 ? 'text-emerald-600 dark:text-emerald-400'

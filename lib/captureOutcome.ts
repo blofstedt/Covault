@@ -25,7 +25,7 @@ export type CaptureOutcomeCode =
   | 'not_spending'
   | 'only_held';
 
-const OUTCOME_CODES: readonly CaptureOutcomeCode[] = [
+const OUTCOME_CODES: ReadonlySet<CaptureOutcomeCode> = new Set([
   'hidden',
   'blocked',
   'not_saved',
@@ -40,7 +40,7 @@ const OUTCOME_CODES: readonly CaptureOutcomeCode[] = [
   'failed_charge',
   'not_spending',
   'only_held',
-];
+]);
 
 export interface CaptureOutcome {
   /** When the decision was made, epoch millis. */
@@ -78,7 +78,7 @@ export function parseCaptureOutcomes(raw: unknown): CaptureOutcome[] {
     const entry = row as Record<string, unknown>;
     const outcome = entry.outcome;
     if (typeof outcome !== 'string') continue;
-    if (!OUTCOME_CODES.includes(outcome as CaptureOutcomeCode)) continue;
+    if (!OUTCOME_CODES.has(outcome as CaptureOutcomeCode)) continue;
     const at = typeof entry.at === 'number' && Number.isFinite(entry.at) ? entry.at : 0;
     const amount =
       typeof entry.amount === 'number' && Number.isFinite(entry.amount) ? entry.amount : null;

@@ -1,9 +1,11 @@
 import React, { Suspense, lazy } from 'react';
 import ReactDOM from 'react-dom/client';
+import { QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import FullScreenLoader from './components/FullScreenLoader';
 import './index.css';
 import { initErrorReporting } from './lib/errorReporting';
+import { queryClient } from './lib/queryClient';
 
 // Only one of the four routes ever renders. The static pages are lazy so
 // they stay out of the entry chunk that the app itself loads from.
@@ -33,8 +35,10 @@ const getPageComponent = () => {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <Suspense fallback={<FullScreenLoader />}>
-      {getPageComponent()}
-    </Suspense>
+    <QueryClientProvider client={queryClient}>
+      <Suspense fallback={<FullScreenLoader />}>
+        {getPageComponent()}
+      </Suspense>
+    </QueryClientProvider>
   </React.StrictMode>
 );

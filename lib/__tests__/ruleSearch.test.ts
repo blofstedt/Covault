@@ -34,7 +34,7 @@ describe('normalizeForSearch', () => {
   });
 
   it('is empty for nothing at all', () => {
-    expect(normalizeForSearch('   ')).toBe('');
+    expect(normalizeForSearch(' '.repeat(3))).toBe('');
     expect(normalizeForSearch('---')).toBe('');
   });
 });

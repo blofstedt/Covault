@@ -102,7 +102,7 @@ describe('the sender gate', () => {
 
   it('treats an empty or missing sender as not a bank', () => {
     expect(looksLikeBankSender('')).toBe(false);
-    expect(looksLikeBankSender('   ')).toBe(false);
+    expect(looksLikeBankSender(' '.repeat(3))).toBe(false);
     expect(looksLikeBankSender(null)).toBe(false);
     expect(looksLikeBankSender(undefined)).toBe(false);
   });

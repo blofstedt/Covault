@@ -117,7 +117,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
                       : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                   }`}
                 >
-                  {transaction.userName?.split(' ')[0]}
+                  {transaction.userName?.split(' ', 1)[0]}
                 </span>
               )}
 

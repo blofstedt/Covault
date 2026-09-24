@@ -86,7 +86,7 @@ const CORPUS = [
   'Rewards update: you now have 12,450 points',
   'Rewards update: you now have 12,900 points',
   '',
-  '   ',
+  ' '.repeat(3),
   '$42.10',
 ];
 
@@ -189,7 +189,7 @@ describe('what a rule must never catch', () => {
 
   it('anything, on an empty rule', () => {
     expect(matchesRule('LOBLAWS You spent $84.21', rule({ pattern: '' }))).toBe(false);
-    expect(matchesRule('LOBLAWS You spent $84.21', rule({ pattern: '   ', pattern_type: 'contains' }))).toBe(false);
+    expect(matchesRule('LOBLAWS You spent $84.21', rule({ pattern: ' '.repeat(3), pattern_type: 'contains' }))).toBe(false);
   });
 });
 

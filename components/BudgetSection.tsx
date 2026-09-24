@@ -436,7 +436,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
         {spentWidth > 0 && spentWidth < 100 && (
           <div
-            className="absolute top-0 h-full w-[3px] -ml-[3px] motion-safe:transition-[left] motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)]"
+            className="absolute top-0 h-full w-[3px] ml-[-3px] motion-safe:transition-[left] motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)]"
             style={{
               left: `${spentWidth}%`,
               background: budgetColor,

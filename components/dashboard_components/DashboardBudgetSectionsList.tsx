@@ -159,9 +159,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
           // (`flex: 1 1 0%` ↔ `flex: 0 0 0%` is fine, but mixing the
           // shorthand with a different basis like `1 1 100%` can fail to
           // animate in some engines; the longhand form is bulletproof.)
-          const rowFlexBasis = expandedBudgetId
-            ? (isExpanded ? '100%' : '0%')
-            : '0%';
+          const rowFlexBasis = expandedBudgetId && isExpanded ? '100%' : '0%';
           const rowFlexGrow = expandedBudgetId && !isExpanded ? 0 : 1;
           const rowFlexShrink = expandedBudgetId && !isExpanded ? 0 : 1;
 

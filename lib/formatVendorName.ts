@@ -183,7 +183,7 @@ export function fuzzyVendorMatch(a: string, b: string): boolean {
 
   // A one-word name has nothing else to corroborate it, so it has to be that
   // word — "Pho" must not swallow "Phoenix Store".
-  if (fewer.length === 1) return more.some(t => t === fewer[0]);
+  if (fewer.length === 1) return more.includes(fewer[0]);
 
   return fewer.every(t => more.some(u => wordsAgree(t, u)));
 }

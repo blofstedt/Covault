@@ -125,6 +125,8 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | "the merchant name has a dot / a store number / a branch on it" | `stripVendorNoise` in `lib/deviceTransactionParser.ts` — the display name IS the merchant's identity, so every stray spelling costs a rule. See Invariants |
 | "it used a different shop's name / budget" / "a purchase went missing" | `fuzzyVendorMatch` in `lib/formatVendorName.ts` — the one "are these the same merchant?" answer, asked by the duplicate skip, the soft-dup warning, the local vendor memory and the recurring lookup. See Invariants |
 | "it filed a charge under a shop I've never bought from" | `stripProcessorPrefixes` in `lib/deviceTransactionParser.ts` (what "GOOGLE *SERVICES" is left as) → step 5b of `lib/notificationProcessor.ts` (which remembered merchant it then adopts). See Invariants |
+| "the ignored-alert rules on Review are stale / missing" | `lib/queries/notificationRules.ts` (cached, prefetched query) → `components/transaction_parsing/useNotificationRules.ts`. The cache itself is `lib/queryClient.ts` |
+| "lint is failing" / "why is this lint rule off" | `eslint.config.js` — every rule switched off carries its reason. Several would CHANGE behaviour if auto-fixed (hashes, `null` vs `[]`, newer-WebView-only methods) |
 | "the review list / badge is wrong" | `lib/reviewQueue.ts` — the single definition of "waiting"; the list, badge and widget all read it |
 | "the widget is stale or wrong" | `lib/widgetSnapshot.ts` → `android-custom/WidgetDeltaStore.java` → `android-custom/WidgetRenderer.java` |
 | "the 'add widget' button in settings doesn't work" | `android-custom/CovaultWidgetPlugin.java` (`isSupported` / `requestPinAppWidget`) → `components/dashboard_components/settings_modal_components/HomeScreenWidgetSection.tsx` — the button is one of two routes and only ever shown once `isSupported` says the launcher can honour it; the other route is the written steps, unconditional and always correct |
@@ -697,6 +699,19 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   this way, because correcting your own past categorisation of the same
   vendor is supposed to update in place. `chainVendorKeys.test.ts` and
   `vendorOverrideWrite.test.ts` pin both halves.
+
+- **React Query caches screen-level reads only — never transactions, budgets
+  or settings.** `lib/queryClient.ts` holds reads a screen makes when it
+  opens (today: the Review page's skip rules), so a return visit draws at once
+  and the read can be started early — a few seconds after the dashboard
+  settles, and on the first touch of the Review button. The core load in
+  `useDataLoading.ts` stays outside it on purpose: it already paints from
+  `firstPaintCache.ts`, and it carries rules a generic cache would quietly
+  break — a failed read never replaces what is on screen, an older answer
+  never overwrites a newer one, the column-name fallbacks. A query function
+  must THROW on a failed read, never return `[]`, or the cache treats the
+  failure as "nothing" and empties the screen. Sign-out clears the cache
+  alongside the first-paint snapshot. `reviewRulesQuery.test.ts` pins it.
 
 - **The budget order comes from `lib/budgetOrder.ts`, not from the database.**
   `budgets` has no primary key and no sort column, and `loadUserBudgets` reads

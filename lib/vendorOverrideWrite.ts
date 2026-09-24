@@ -48,7 +48,7 @@ export function onVendorOverrideWritten(listener: VendorOverrideListener): () =>
 
 /** Tell every listener. One throwing listener must not stop the others. */
 function announceVendorOverrideWritten(): void {
-  for (const listener of [...listeners]) {
+  for (const listener of listeners) {
     try {
       listener();
     } catch (err: any) {

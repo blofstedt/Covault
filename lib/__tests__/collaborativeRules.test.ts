@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { readFileSync } from 'fs';
-import { join, resolve } from 'path';
+import { readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { classifyMatch } from '../hooks/useVendorMatcher';
 
 /**

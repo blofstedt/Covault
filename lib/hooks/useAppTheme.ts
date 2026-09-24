@@ -6,11 +6,7 @@ export const useAppTheme = (theme: 'light' | 'dark') => {
     const el = document.documentElement;
     el.classList.add('theme-transitioning');
 
-    if (theme === 'dark') {
-      el.classList.add('dark');
-    } else {
-      el.classList.remove('dark');
-    }
+    el.classList.toggle('dark', theme === 'dark');
 
     const timer = setTimeout(() => {
       el.classList.remove('theme-transitioning');

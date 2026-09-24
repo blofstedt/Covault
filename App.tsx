@@ -463,7 +463,11 @@ const App: React.FC = () => {
 
   return (
     <ErrorBoundary>
-    <div className="h-screen h-[100dvh] w-full bg-slate-50 dark:bg-slate-950 overflow-hidden relative flex flex-col transition-colors duration-300">
+    <div
+      // Not a contradiction: h-screen is the fallback for a WebView too old
+      // for dvh, which drops the second rule and keeps the first.
+      // eslint-disable-next-line tailwindcss/no-contradicting-classname
+      className="h-screen h-[100dvh] w-full bg-slate-50 dark:bg-slate-950 overflow-hidden relative flex flex-col transition-colors duration-300">
       {toast && (
         <div
           role="alert"

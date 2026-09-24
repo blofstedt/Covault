@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
-import { join, resolve } from 'path';
+import { readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 
 /**
  * Two pieces of the visual language that have each been got wrong once, and

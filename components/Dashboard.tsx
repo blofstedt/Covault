@@ -1,6 +1,7 @@
 import { log } from '../lib/log';
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { useQueryClient } from '@tanstack/react-query';
 import { AppState, Transaction } from '../types';
 import type { Toast } from '../types';
 
@@ -60,6 +61,7 @@ import { countAwaitingReview } from '../lib/reviewQueue';
 import { computeShieldBreakdown, type ShieldBreakdown } from '../lib/discretionaryShield';
 import { collectRecurringCharges } from '../lib/recurringSchedule';
 import { useAIModelOnDevice } from '../lib/hooks/useAIModelOnDevice';
+import { prefetchNotificationRules } from '../lib/queries/notificationRules';
 
 // Map from app-state setting keys to DB column names.
 // Stable identity: a fresh `{ total: 0, contributors: [] }` every render would
@@ -814,6 +816,20 @@ const Dashboard: React.FC<Props> = ({
   }, [isSearchOpen, searchQuery]);
 
 
+  // ── Load Review before it is opened ──
+  // Once the dashboard has had a few seconds to settle (so this never competes
+  // with the launch load), and again the instant a finger lands on the Review
+  // button. Either way Review usually opens onto its rules already loaded.
+  const queryClient = useQueryClient();
+  const prefetchReview = useCallback(
+    () => prefetchNotificationRules(queryClient, state.user?.id),
+    [queryClient, state.user?.id],
+  );
+  useEffect(() => {
+    const timer = setTimeout(prefetchReview, 3000);
+    return () => clearTimeout(timer);
+  }, [prefetchReview]);
+
   // Both screens are built here rather than returned early, so the
   // walkthrough below can sit outside the branch. It drives the app between
   // the dashboard and Review, and an early return put it inside one of the
@@ -1064,6 +1080,7 @@ const Dashboard: React.FC<Props> = ({
           onGoHome={goHome}
           onAddTransaction={() => setShowTransactionForm(true)}
           onOpenParsing={() => setShowParsing(true)}
+          onPrefetchParsing={prefetchReview}
           activeView="home"
           pendingCount={aiTransactionsCount}
         />

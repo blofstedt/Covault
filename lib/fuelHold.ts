@@ -98,7 +98,7 @@ const FUEL_WORD_RE = /\b(?:GAS|FUEL|PETROL|GASOLINE|PUMP)\b/i;
 
 /** Fold accents so a decorated brand name still matches the ASCII token. */
 function deaccent(value: string): string {
-  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return value.normalize('NFD').replace(/[\u0300-\u036F]/g, '');
 }
 
 /**

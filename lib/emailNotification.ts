@@ -104,7 +104,7 @@ export const EMAIL_BANK_SENDER_WORDS = [
 export function normalizeSender(sender: string | null | undefined): string {
   return (sender || '')
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u0300-\u036F]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .replace(/\s+/g, ' ')

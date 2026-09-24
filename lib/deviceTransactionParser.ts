@@ -369,7 +369,7 @@ export function pickAmount(candidates: AmountCandidate[], tLower: string): numbe
  * a greedy pattern has over-captured (e.g. "Amazon for your order" → "Amazon").
  */
 function trimAtPreposition(vendor: string): string {
-  return vendor.split(/\s+(?=(?:for|on|with|using|via|ending|was|is|has|and|from)\b)/i)[0].trim();
+  return vendor.split(/\s+(?=(?:for|on|with|using|via|ending|was|is|has|and|from)\b)/i, 1)[0].trim();
 }
 
 /**
@@ -756,9 +756,10 @@ const NON_VENDOR_WORDS = new Set([
   'reminder', 'reminders', 'update', 'updates', 'confirmation', 'confirmations',
   'fyi', 'psa', 'heads', 'up',
   // financial / banking boilerplate
-  'card', 'account', 'bank', 'credit', 'debit', 'transaction', 'transactions',
-  'payment', 'payments', 'transfer', 'transfers', 'deposit', 'deposits',
-  'withdrawal', 'withdrawals', 'fee', 'fees', 'charge', 'charges',
+  // (transaction, payment, transfer and charge are already listed above)
+  'card', 'account', 'bank', 'credit', 'debit', 'transactions',
+  'payments', 'transfers', 'deposit', 'deposits',
+  'withdrawal', 'withdrawals', 'fee', 'fees', 'charges',
   'available', 'balance', 'limit', 'remaining', 'total', 'amount', 'sum', 'cost', 'price',
   'preauthorized', 'pre-authorized', 'authorized', 'approved', 'declined',
   // urgency / promo words (false-positive headlines)
