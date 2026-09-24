@@ -93,6 +93,15 @@ phone app usable after each step.
 
 ## Decisions to challenge
 
+- State ownership is currently split three ways: `App.tsx` holds saved budgets,
+  transactions, and settings in one React state object; `firstPaintCache.ts`
+  restores a bounded snapshot on launch; React Query caches Review's ignored
+  notification rules. Keep this map explicit while changing data flow. The
+  next small experiment should move one low-risk server read into React Query
+  and compare launch, offline return, failed reads, and account switching with
+  the existing flow. Add Zustand only if a concrete client-only value needs
+  sharing across unrelated screens after that separation. It should not become
+  a second home for Supabase rows.
 - The app has a custom REST wrapper, direct fetches, Supabase client calls, and
   schema-name fallbacks. Check whether a typed data layer and generated database
   types can replace some of this without losing support for a database that is
