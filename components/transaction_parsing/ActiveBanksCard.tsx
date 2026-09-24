@@ -3,7 +3,7 @@ import ParsingCard from '../ui/ParsingCard';
 import CaptureSourcePicker, {
   captureSourceCountFor,
   prefetchCaptureSources,
-} from '../ui/CaptureSourcePicker';
+} from '../capture_sources/CaptureSourcePicker';
 import { covaultNotification } from '../../lib/covaultNotification';
 
 interface ActiveBanksCardProps {

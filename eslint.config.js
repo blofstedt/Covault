@@ -174,6 +174,21 @@ export default tseslint.config(
     },
   },
   {
+    // Shared visual controls must work without a vault, database, or native
+    // plugin. Keep data loading and phone effects in their owning features.
+    files: ['components/ui/**/*.{ts,tsx}', 'components/shared/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/consistent-type-imports': ['error', { fixStyle: 'inline-type-imports' }],
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          group: ['@supabase/*', '@capacitor/*', '**/lib/supabase', '**/lib/apiHelpers', '**/lib/covaultNotification', '**/lib/captureSources'],
+          message: 'Shared controls cannot read household data or call native plugins. Pass values and actions through props.',
+        }],
+      }],
+    },
+  },
+  {
     // The entry point mounts the app; nothing hot-reloads it.
     files: ['index.tsx'],
     rules: { 'react-refresh/only-export-components': 'off' },

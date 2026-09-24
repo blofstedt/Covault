@@ -28,6 +28,8 @@ vercel.env.txt
 node_modules
 .auth-session.json
 screenshots/
+playwright-report/
+test-results/
 
 # Session-specific context file with credentials. Lives only on the
 # developer's local machine, never committed.

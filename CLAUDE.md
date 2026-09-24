@@ -23,9 +23,9 @@ is unreviewable.
   captured" — not "the listener's `commit()` returns before the insert
   resolves". If a mechanism has to be mentioned, one clause, then back to what
   it means for them.
-- **Say plainly what you did not verify.** They cannot infer it. CI does not run
-  this app: compile-green proves nothing about capture, the widget, or anything
-  visual. Say so rather than letting a green build imply it works.
+- **Say plainly what you did not verify.** They cannot infer it. CI opens only
+  the web sign-in screen. A green build proves nothing about capture, the
+  widget, or authenticated screens on a phone.
 - **Answer the question that was asked**, then stop. If they ask whether
   something is right, the first thing they should read is whether it is right.
 
@@ -71,9 +71,9 @@ it will not land.
 - **Never trade the look for an easier implementation** without saying so. If
   the simple approach is uglier, say that plainly, in English, and describe the
   alternative and what it costs. Let them choose.
-- **Be honest about what you have not seen.** Nothing in CI renders this app.
-  If you changed something visual or animated, say it is unverified rather than
-  letting a green build imply it looks right.
+- **Be honest about what you have not seen.** CI renders the web sign-in screen
+  only. If you changed another screen or animation, say it is unverified rather
+  than letting a green build imply it looks right.
 
 ## What it is
 
@@ -731,6 +731,11 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
 
 ## Conventions
 
+For new features and tests, follow `docs/ENGINEERING_STANDARD.md`. It records
+the feature boundaries, visual rules, test layers, and parallel browser test
+requirements drawn from the reference codebases. The invariants above still
+govern existing behavior.
+
 - **A Stop hook lints every file the turn changed** (`.claude/hooks/lint-changed.sh`,
   wired in `.claude/settings.json`). It runs `eslint --fix` on files that differ
   from the commit the turn started on, committed or not. If that rewrites
@@ -746,7 +751,8 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
 
 ## Verification reality
 
-CI type-checks, tests and builds an APK. **Nothing runs the app.** Compile-green
-is not evidence for: notification capture, tray suppression, on-device AI, the
-home-screen widget, haptics, or anything visual. Those need a device or
-`npm run dev`. Say so plainly rather than implying a green build means it works.
+CI type-checks, tests, builds an APK, and opens the web sign-in screen in
+Playwright. It does not exercise notification capture, tray suppression,
+on-device AI, the home-screen widget, haptics, authenticated screens, or phone
+motion. Those need a device or a focused running-app check. Say what was
+actually seen rather than implying a green build means the app works.

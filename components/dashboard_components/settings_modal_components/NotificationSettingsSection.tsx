@@ -3,7 +3,7 @@ import { log } from '../../../lib/log';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import SettingsCard from '../../ui/SettingsCard';
-import CaptureSourcePicker from '../../ui/CaptureSourcePicker';
+import CaptureSourcePicker from '../../capture_sources/CaptureSourcePicker';
 import SectionHeader from '../../ui/SectionHeader';
 import ToggleSwitch from '../../ui/ToggleSwitch';
 import NotificationAccessGuide from '../../NotificationAccessGuide';

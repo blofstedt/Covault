@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+import type React from 'react';
+import { useEffect } from 'react';
 import { useEscapeKey } from '../../lib/hooks/useEscapeKey';
 import Portal from './Portal';
 
