@@ -28,7 +28,8 @@
     "typescript-lsp@claude-plugins-official": true,
     "context7@claude-plugins-official": true,
     "web-tooling@covault-skills": true,
-    "react-best-practices@covault-skills": true
+    "react-best-practices@covault-skills": true,
+    "supabase@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
     "claude-plugins-official": {
