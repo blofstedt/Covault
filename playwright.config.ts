@@ -24,11 +24,10 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 30_000,
     env: {
-      // The smoke suite must use Covault's unconfigured client and never a
-      // developer's real Supabase project, even when a local .env exists.
-      VITE_SUPABASE_URL: '',
+      // The local server owns every test account. No live Supabase is contacted.
+      VITE_SUPABASE_URL: `${baseURL}/mock-supabase`,
       VITE_PUBLIC_SUPABASE_URL: '',
-      VITE_SUPABASE_ANON_KEY: '',
+      VITE_SUPABASE_ANON_KEY: 'covault-local-e2e-key',
     },
   },
 });

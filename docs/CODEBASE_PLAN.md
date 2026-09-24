@@ -32,11 +32,9 @@ repository rules. Completed work belongs in Git history.
 
 ## 3. Make tests cover the running experience
 
-- [ ] Build a disposable authenticated browser fixture. Give each worker its
-  own user and vault, seed through one fixture, block unexpected network calls,
-  and remove server data after each test. Run two concurrent writes of the same
-  record type, repeat with two workers, and verify neither test sees the other's
-  data.
+- [ ] Verify live Supabase access policies against a disposable local database
+  after the database setup sequence is validated. The browser fixture covers
+  concurrent local test users but cannot certify database row security.
 - [ ] Add repeatable phone-size browser checks for dashboard, Review,
   onboarding, and settings, including empty and populated states. Inspect each
   image before accepting a baseline. Check changed motion on an Android phone.

@@ -167,10 +167,10 @@ this repository lives in `android-custom/`. Migration files marked
   Keep source checks for native/web parity and build wiring that cannot run in
   Vitest.
 - Playwright uses a fresh browser context per test and blocks unexpected
-  external requests. The current parallel suite covers the unauthenticated
-  sign-in screen. An authenticated test needs an isolated user, vault, and
-  cleanup per worker before it joins the parallel suite. CI does not exercise
-  authenticated screens or Android features.
+  external requests. Authenticated tests use `e2e/fixtures.ts` to create and
+  remove distinct users and vaults in a shared local test backend. The backend
+  checks each REST request against its test token. Browser tests do not verify
+  live Supabase access policies or Android behavior.
 - `eslint.config.js` enforces the owned UI and feature import boundaries.
   The changed-file Stop hook also runs ESLint fixes. New dependencies need a
   current stable-version and license check plus an installation audit.
