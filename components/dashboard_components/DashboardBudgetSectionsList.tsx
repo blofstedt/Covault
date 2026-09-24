@@ -23,7 +23,7 @@ interface DashboardBudgetSectionsListProps {
   settings?: DashboardSettingsShape;
   currentUserName?: string;
   isSharedAccount?: boolean;
-  scrollContainerRef: React.RefObject<HTMLDivElement>;
+  scrollContainerRef: React.RefObject<HTMLDivElement | null>;
   /** False while the user is reading another month on the chart's rail. */
   isCurrentMonth?: boolean;
   onToggleExpand?: (id: string) => void;
@@ -74,7 +74,7 @@ const DashboardBudgetSectionsList: React.FC<DashboardBudgetSectionsListProps> = 
   }, [budgets, isFocusMode, focusedBudgetId, safeSettings.hiddenCategories]);
 
   const transactionsByBudgetId = useMemo(() => {
-    const grouped = new Map<string, Transaction[]>();
+    const grouped = new Map<string | null, Transaction[]>();
 
     for (const transaction of transactions) {
       const bucket = grouped.get(transaction.budget_id);

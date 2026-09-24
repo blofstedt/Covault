@@ -125,8 +125,9 @@ export const useHouseholdLinking = ({
         });
 
         if (!result.ok) {
-          setDbError(result.message);
-          return { ok: false, message: result.message };
+          const message = result.message ?? 'Could not link your partner. Please try again.';
+          setDbError(message);
+          return { ok: false, message };
         }
 
         const linked = result.data?.[0];
@@ -184,7 +185,7 @@ export const useHouseholdLinking = ({
       // points back at you.
       const result = await callRpc<null>('unlink_partner', {});
       if (!result.ok) {
-        setDbError(result.message);
+        setDbError(result.message ?? 'Could not unlink your partner. Please try again.');
         return;
       }
 

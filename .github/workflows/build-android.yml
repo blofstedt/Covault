@@ -41,9 +41,9 @@ jobs:
         # the registry having a bad moment rather than anything to fix here.
         run: |
           for attempt in 1 2 3; do
-            npm install --legacy-peer-deps && break
+            npm ci --legacy-peer-deps && break
             if [ "$attempt" = 3 ]; then
-              echo "npm install failed three times — not a network blip."
+              echo "npm ci failed three times — not a network blip."
               exit 1
             fi
             echo "npm attempt $attempt failed; retrying in $((attempt * 10))s"

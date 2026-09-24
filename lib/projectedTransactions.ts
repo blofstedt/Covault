@@ -234,7 +234,7 @@ export function generateProjectedTransactions(
     if (cancelled.has(index)) return;
     projected.push({
       ...candidate.source,
-      budget_id: getTransactionBudgetId(candidate.source),
+      budget_id: getTransactionBudgetId(candidate.source) ?? null,
       id: `projected-${candidate.source.id}-${candidate.date}`,
       date: candidate.date,
       is_projected: candidate.isFuture,

@@ -42,14 +42,15 @@ export function useNotificationSetupCompletion({ enabled, onEnable }: Params): v
   onEnableRef.current = onEnable;
 
   useEffect(() => {
-    if (!Capacitor.isNativePlatform() || !covaultNotification) return;
+    const notificationPlugin = covaultNotification;
+    if (!Capacitor.isNativePlatform() || !notificationPlugin) return;
 
     let cancelled = false;
 
     const check = async () => {
       if (cancelled || !isSetupPending()) return;
       try {
-        const { enabled: listenerGranted } = await covaultNotification.isEnabled();
+        const { enabled: listenerGranted } = await notificationPlugin.isEnabled();
         if (cancelled) return;
 
         if (

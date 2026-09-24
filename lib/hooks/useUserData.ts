@@ -7,6 +7,7 @@ import { useDataLoading } from './useDataLoading';
 import { useTransactionOps } from './useTransactionOps';
 import { useHouseholdLinking } from './useHouseholdLinking';
 import { useUserSettings } from './useUserSettings';
+import { writeDashboardSetting } from '../settings/dashboardSettingWrite';
 
 interface UseUserDataParams {
   appState: AppState;
@@ -42,6 +43,15 @@ export const useUserData = ({
     saveSettingToDb,
   } = useUserSettings({ appState, setAppState, setDbError });
 
+  const saveDashboardSetting = async (key: string, value: boolean | string | number) => {
+    try {
+      await writeDashboardSetting(key, value, saveSettingToDb);
+    } catch (error) {
+      setDbError('Could not save this setting. Please try again.');
+      throw error;
+    }
+  };
+
   return {
     categoriesLoaded,
     loadUserData,
@@ -58,5 +68,6 @@ export const useUserData = ({
     saveTheme,
     saveBudgetVisibility,
     saveSettingToDb,
+    saveDashboardSetting,
   };
 };
