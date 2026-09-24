@@ -731,6 +731,12 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
 
 ## Conventions
 
+- **A Stop hook lints every file the turn changed** (`.claude/hooks/lint-changed.sh`,
+  wired in `.claude/settings.json`). It runs `eslint --fix` on files that differ
+  from the commit the turn started on, committed or not. If that rewrites
+  anything, or leaves errors, the turn is sent back once — commit the fixes or
+  repair the rest before finishing. It never loops a second time.
+
 - Surgical, behaviour-preserving changes. No broad rewrites unless asked.
 - Never wrap imports in `try`/`catch`.
 - Enum/label ↔ DB mapping belongs in `lib/hooks/transactionMappers.ts`.
