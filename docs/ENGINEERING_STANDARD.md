@@ -60,6 +60,8 @@ coverage currently stops at the sign-in screen.
 ## Visual and interaction rules
 
 - Reuse `lib/budgetColors.ts`, `getBudgetIcon`, and the existing cards and controls.
+  `components/shared/cardSurface.ts` owns the common surface used by ordinary
+  cards and Review cards; their variant borders remain with each component.
   Choose a new color or component variant centrally before using it on a screen.
   Keep light and dark appearances paired.
 - Give every part of one gesture the same duration and easing. The budget expand
@@ -85,6 +87,15 @@ caches, and temporary files after it. Prefer the real domain function over a tes
 that searches source text. Keep source checks only for a real cross-language or
 build contract. Do not raise a coverage number by testing constants or mirroring
 an implementation.
+
+Two current examples set the bar for changing tests. The behavioral cases in
+`lib/__tests__/reviewRulesQuery.test.ts` show that a failed read retains cached
+rules. Its source checks for the Review button and root provider should become
+rendered interaction checks once an isolated authenticated UI fixture exists.
+`lib/__tests__/budgetExpandHotPath.test.ts` guards a real Android performance
+failure, but its source checks do not measure frames. Keep those checks until a
+phone measurement can replace them; do not call a passing regex a smooth
+animation.
 
 ### Browser test isolation contract
 

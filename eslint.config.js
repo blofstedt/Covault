@@ -174,12 +174,19 @@ export default tseslint.config(
     },
   },
   {
+    // Start strict local rules at owned boundaries. Legacy app files still
+    // have `any` values that need to be removed alongside their data parsing.
+    files: ['components/ui/**/*.{ts,tsx}', 'components/shared/**/*.{ts,tsx}', 'components/capture_sources/**/*.{ts,tsx}', 'e2e/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/consistent-type-imports': ['error', { fixStyle: 'inline-type-imports' }],
+    },
+  },
+  {
     // Shared visual controls must work without a vault, database, or native
     // plugin. Keep data loading and phone effects in their owning features.
     files: ['components/ui/**/*.{ts,tsx}', 'components/shared/**/*.{ts,tsx}'],
     rules: {
-      '@typescript-eslint/no-explicit-any': 'error',
-      '@typescript-eslint/consistent-type-imports': ['error', { fixStyle: 'inline-type-imports' }],
       'no-restricted-imports': ['error', {
         patterns: [{
           group: ['@supabase/*', '@capacitor/*', '**/lib/supabase', '**/lib/apiHelpers', '**/lib/covaultNotification', '**/lib/captureSources'],

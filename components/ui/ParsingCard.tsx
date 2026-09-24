@@ -1,4 +1,5 @@
 import type React from 'react';
+import { CARD_SURFACE_CLASSES } from '../shared/cardSurface';
 
 type ColorScheme = 'emerald' | 'amber' | 'blue' | 'violet' | 'slate' | 'red';
 
@@ -80,7 +81,7 @@ const ParsingCard: React.FC<ParsingCardProps> = ({
 }) => (
   <div
     id={id}
-    className={`bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-xl border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] ${borderColors[colorScheme]} ${className}`}
+    className={`${CARD_SURFACE_CLASSES} ${borderColors[colorScheme]} ${className}`}
   >
     {/* The gap below the header belongs to the content. A collapsed card has
         none, and keeping it there left the icon and its two lines sitting
