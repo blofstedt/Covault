@@ -7,6 +7,29 @@ the best one. Replace custom code when a simpler, established approach can
 preserve the behavior. Make changes one working feature at a time and keep the
 phone app usable after each step.
 
+## Current checkpoint
+
+The foundation and quality changes are combined on local `main`. Strict
+TypeScript, the lockfile install path, guarded dashboard setting saves, targeted
+lint boundaries, and a shared component-test provider are in place. The first
+rendered deletion test exercises Cancel, confirmation, focus, and dialog
+accessibility. Common card surface classes now have one owner.
+
+Playwright runs the web sign-in screen with two isolated browser workers. It
+does not sign in or exercise household data, so it does not prove that two
+authenticated tests can run without server state leaking. The full TypeScript,
+lint, Vitest, and build gate passed after these changes, as did the repeated
+two-worker browser smoke suite. No changed authenticated screen, capture flow,
+widget, or Android animation has been checked on a phone. The local work has
+not been published while repository access is pending.
+
+The next check with the highest reach is a disposable authenticated test
+fixture: it must give each worker its own user and vault, block unexpected
+network requests, and clean up its data. That fixture can support repeatable
+visual checks for the dashboard, Review, onboarding, and settings. Before
+moving more server reads into React Query or replacing schema fallbacks,
+verify fresh and existing database setup against a real database.
+
 ## Rules for every change
 
 1. Name the behavior being changed and the person who will notice it. Keep a
