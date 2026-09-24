@@ -102,7 +102,7 @@ const createStubClient = () => {
 };
 
 // ✅ Create and export the real Supabase client (or stub if misconfigured)
-export const supabase = isSupabaseConfigured
+export const supabase = supabaseUrl && supabaseAnonKey
   ? createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         // Keep the user logged in across page reloads

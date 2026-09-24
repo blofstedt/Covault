@@ -2,6 +2,7 @@
 import { log } from '../log';
 import { useCallback, useRef } from 'react';
 import { REST_BASE, getAuthHeaders, restFetch, DEFAULT_MONTHLY_INCOME } from '../apiHelpers';
+import { persistSetting } from '../settings/persistSetting';
 import type { UseUserDataParams } from './types';
 
 export const useUserSettings = ({
@@ -511,25 +512,20 @@ export const useUserSettings = ({
     [appState.user, appState.budgets, setAppState, setDbError],
   );
 
-  // Save a single boolean setting to the Supabase settings table
+  // Save one setting to the person's settings row. A successful HTTP response
+  // with no updated row is a failed save, not a saved choice.
   const saveSettingToDb = useCallback(
     async (dbKey: string, value: boolean | string | number) => {
       const userId = appState.user?.id;
-      if (!userId) return;
+      if (!userId) {
+        throw new Error('No signed-in user to save this setting for.');
+      }
       try {
-        const res = await restFetch(`/settings?user_id=eq.${userId}`, {
-          method: 'PATCH',
-          headers: { Prefer: 'return=representation' },
-          body: JSON.stringify({ [dbKey]: value }),
-        });
-        if (!res.ok) {
-          const body = await res.text();
-          log.error(`[saveSettingToDb] ${dbKey} failed (${res.status}): ${body.slice(0, 200)}`);
-        } else {
-          log.debug(`[saveSettingToDb] ${dbKey} = ${value}`);
-        }
-      } catch (err: any) {
-        log.error(`[saveSettingToDb] exception: ${err?.message || err}`);
+        await persistSetting(userId, dbKey, value);
+        log.debug(`[saveSettingToDb] ${dbKey} = ${value}`);
+      } catch (error) {
+        log.error('[saveSettingToDb] failed:', error);
+        throw error;
       }
     },
     [appState.user],

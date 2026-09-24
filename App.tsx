@@ -171,6 +171,7 @@ const App: React.FC = () => {
     saveTheme,
     saveBudgetVisibility,
     saveSettingToDb,
+    saveDashboardSetting,
   } = useUserData({ appState, setAppState, setDbError });
 
   // Deleting raises nothing afterwards. The confirmation says what will go,
@@ -378,13 +379,16 @@ const App: React.FC = () => {
       }));
       // Solo or not is a real preference the user just expressed, and it lived
       // in memory only — so it was gone by the next launch and the intro was
-      // the only thing that ever asked. Failures are logged and swallowed by
-      // saveSettingToDb, which is right here: the intro must end either way.
-      void saveSettingToDb('budgeting_solo', isSolo);
+      // the only thing that ever asked. A failed save raises a visible error,
+      // but the intro still ends so it cannot trap the user.
+      void saveSettingToDb('budgeting_solo', isSolo).catch((error) => {
+        log.error('[App] Could not save budgeting choice:', error);
+        setDbError('Could not save your budgeting choice. Please try again.');
+      });
       markOnboarded(appState.user?.id);
       setAuthState('authenticated');
     },
-    [appState.user?.id, saveSettingToDb],
+    [appState.user?.id, saveSettingToDb, setDbError],
   );
 
   /**
@@ -551,7 +555,7 @@ const App: React.FC = () => {
           saveUserIncome={saveUserIncome}
           saveTheme={saveTheme}
           saveBudgetVisibility={saveBudgetVisibility}
-          saveSettingToDb={saveSettingToDb}
+          saveDashboardSetting={saveDashboardSetting}
           onGenerateLinkCode={handleGenerateLinkCode}
           onJoinWithCode={handleJoinWithCode}
           onUnlinkPartner={handleUnlinkPartner}

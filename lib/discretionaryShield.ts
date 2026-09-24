@@ -137,7 +137,7 @@ export function computeShieldBreakdown(
 
   // Group once. Each vial's totals are computed from its own rows, the same
   // way the dashboard groups them before rendering.
-  const byBudgetId = new Map<string, Transaction[]>();
+  const byBudgetId = new Map<string | null, Transaction[]>();
   for (const tx of transactions || []) {
     const bucket = byBudgetId.get(tx.budget_id);
     if (bucket) bucket.push(tx);

@@ -61,34 +61,12 @@ import { countAwaitingReview } from '../lib/reviewQueue';
 import { computeShieldBreakdown, type ShieldBreakdown } from '../lib/discretionaryShield';
 import { collectRecurringCharges } from '../lib/recurringSchedule';
 import { useAIModelOnDevice } from '../lib/hooks/useAIModelOnDevice';
+import { SettingSaveQueue } from '../lib/settings/settingSaveQueue';
 import { prefetchNotificationRules } from '../lib/queries/notificationRules';
 
-// Map from app-state setting keys to DB column names.
 // Stable identity: a fresh `{ total: 0, contributors: [] }` every render would
 // defeat memo(BudgetSection) for the Leisure card on every keystroke elsewhere.
 const NO_SHIELD: ShieldBreakdown = { total: 0, contributors: [] };
-
-const SETTING_DB_KEYS: Record<string, string> = {
-  rolloverEnabled: 'rollover_enabled',
-  useLeisureAsBuffer: 'leisure_buffer_enabled',
-  showSavingsInsight: 'show_savings_insight',
-  app_notifications_enabled: 'app_notifications_enabled',
-  smart_notifications_enabled: 'smart_notifications_enabled',
-  auto_accept_known_vendors: 'auto_accept_known_vendors',
-  haptics_enabled: 'haptics_enabled',
-  community_rules_enabled: 'community_rules_enabled',
-  community_rules_contribute: 'community_rules_contribute',
-  // How much of your spending your partner sees. Missing from this map until a
-  // security review caught it, which meant the privacy selector moved on
-  // screen, survived until the next load, and never reached the database — so
-  // someone who chose "totals only" went on sharing every transaction. The
-  // database now enforces this column (see 2026_09_security_review.sql), which
-  // makes a setting that does not save a privacy failure rather than a
-  // cosmetic one. `budgetMode` is deliberately NOT here: it belongs to the
-  // household and goes through set_household_budget_mode, which writes both
-  // rows.
-  shareLevel: 'share_level',
-};
 
 interface VendorHistoryItem {
   vendor: string;
@@ -107,7 +85,7 @@ interface Props {
   saveUserIncome: (income: number) => Promise<void>;
   saveTheme: (theme: 'light' | 'dark') => Promise<void>;
   saveBudgetVisibility: (categoryId: string, visible: boolean) => Promise<void>;
-  saveSettingToDb: (dbKey: string, value: boolean | string | number) => Promise<void>;
+  saveDashboardSetting: (key: string, value: boolean | string | number) => Promise<void>;
   /** Mints a fresh link code on this account. Linking is code-only — see
    *  VaultSharingSection for why an email route no longer exists. */
   onGenerateLinkCode: () => Promise<string | null>;
@@ -140,7 +118,7 @@ const Dashboard: React.FC<Props> = ({
   saveUserIncome,
   saveTheme,
   saveBudgetVisibility,
-  saveSettingToDb,
+  saveDashboardSetting,
   onGenerateLinkCode,
   onJoinWithCode,
   onUnlinkPartner,
@@ -150,6 +128,10 @@ const Dashboard: React.FC<Props> = ({
 }) => {
   const [showParsing, setShowParsing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const settingSaveQueue = useRef(new SettingSaveQueue());
+  useEffect(() => {
+    settingSaveQueue.current.clear();
+  }, [state.user?.id]);
   // Set when the settings modal is opened with one section in mind, so the user
   // lands on it rather than at the top of a long modal.
   const [settingsTarget, setSettingsTarget] = useState<string | undefined>(undefined);
@@ -692,6 +674,7 @@ const Dashboard: React.FC<Props> = ({
   }, [state.budgets, state.settings.hiddenCategories]);
 
   const handleUpdateSettings = (key: string, value: any) => {
+    const previousValue = state.settings[key as keyof AppState['settings']];
     setState(prev => ({
       ...prev,
       settings: {
@@ -702,10 +685,25 @@ const Dashboard: React.FC<Props> = ({
 
     if (key === 'theme' && (value === 'light' || value === 'dark')) {
       saveTheme(value).catch((e) => log.error('[Dashboard] saveTheme failed:', e));
-    } else if (SETTING_DB_KEYS[key] !== undefined) {
-      saveSettingToDb(SETTING_DB_KEYS[key], value).catch(
-        (e) => log.error(`[Dashboard] saveSettingToDb(${key}) failed:`, e),
-      );
+    } else if (typeof previousValue === 'boolean' || typeof previousValue === 'string') {
+      const userId = state.user?.id;
+      void settingSaveQueue.current.enqueue({
+        key,
+        value,
+        previousValue,
+        save: saveDashboardSetting,
+        onFailure: (lastSavedValue) => {
+          setState(current => {
+            if (current.user?.id !== userId || current.settings[key as keyof AppState['settings']] !== value) {
+              return current;
+            }
+            return {
+              ...current,
+              settings: { ...current.settings, [key]: lastSavedValue },
+            };
+          });
+        },
+      });
     }
   };
 

@@ -22,6 +22,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { writeDashboardSetting } from '../settings/dashboardSettingWrite';
 
 const migration = readFileSync(
   resolve(__dirname, '../../supabase/migrations/2026_09_security_review.sql'),
@@ -243,21 +244,18 @@ describe('the new functions are not anonymous endpoints', () => {
 });
 
 describe('the privacy selector actually saves', () => {
-  it('shareLevel has a database column to write to', () => {
-    // It was missing from SETTING_DB_KEYS, so the choice moved on screen,
-    // survived until the next load, and never reached the database — which
-    // now enforces it. Someone who chose "totals only" went on sharing every
-    // transaction. See the "a setting doesn't stick" row in CLAUDE.md.
-    const dashboard = readFileSync(resolve(__dirname, '../../components/Dashboard.tsx'), 'utf8');
-    const map = codeOnly(
-      dashboard.slice(
-        dashboard.indexOf('const SETTING_DB_KEYS'),
-        dashboard.indexOf('};', dashboard.indexOf('const SETTING_DB_KEYS')),
-      ),
+  it('writes the sharing choice but leaves household mode to its own RPC', async () => {
+    const writes: Array<[string, boolean | string | number]> = [];
+    const save = async (column: string, value: boolean | string | number) => {
+      writes.push([column, value]);
+    };
+
+    await writeDashboardSetting('shareLevel', 'totals', save);
+    await writeDashboardSetting('notificationsEnabled', true, save);
+    await expect(writeDashboardSetting('budgetMode', 'combined', save)).rejects.toThrow(
+      'No persistence path for dashboard setting: budgetMode',
     );
-    expect(map).toContain("shareLevel: 'share_level'");
-    // budgetMode belongs to the household and goes through the RPC that writes
-    // both rows; a client PATCH would let the two sides disagree.
-    expect(map).not.toContain('budgetMode');
+
+    expect(writes).toEqual([['share_level', 'totals']]);
   });
 });

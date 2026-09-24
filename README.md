@@ -12,6 +12,10 @@ there is no OpenAI or Gemini key.
 > index written for it, and it should be read before anything else.
 > `docs/ARCHITECTURE.md` has the deep detail. This file is just setup.
 
+The [codebase plan](docs/CODEBASE_PLAN.md) tracks the next reliability, structure,
+and design improvements. It starts with small changes that keep the phone app
+working while the code is reorganized.
+
 ## Requirements
 
 - Node.js 20+
@@ -23,7 +27,7 @@ there is no OpenAI or Gemini key.
 ```bash
 git clone https://github.com/blofstedt/Covault.git
 cd Covault
-npm install --legacy-peer-deps   # flag matches CI; needed for React 19 / Vite 6 peer ranges
+npm ci --legacy-peer-deps        # install exactly what the lockfile records
 cp .env.example .env             # then fill in the values below
 npm run dev                      # http://localhost:3000
 ```
