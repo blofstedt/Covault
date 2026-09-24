@@ -180,6 +180,7 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/consistent-type-imports': ['error', { fixStyle: 'inline-type-imports' }],
+      'react/button-has-type': 'error',
     },
   },
   {
@@ -191,6 +192,20 @@ export default tseslint.config(
         patterns: [{
           group: ['@supabase/*', '@capacitor/*', '**/lib/supabase', '**/lib/apiHelpers', '**/lib/covaultNotification', '**/lib/captureSources'],
           message: 'Shared controls cannot read household data or call native plugins. Pass values and actions through props.',
+        }],
+      }],
+    },
+  },
+  {
+    // Dashboard and review features use their existing data hooks and actions.
+    // Settings sections in this tree do own native actions, so this rule only
+    // blocks direct Supabase client imports.
+    files: ['components/dashboard_components/**/*.{ts,tsx}', 'components/transaction_parsing/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          group: ['@supabase/*', '**/lib/supabase'],
+          message: 'Use the feature data hooks or actions instead of opening a Supabase client in a component.',
         }],
       }],
     },

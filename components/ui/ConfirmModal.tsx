@@ -82,12 +82,14 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
 
         <div className="flex flex-col space-y-3">
           <button
+            type="button"
             onClick={onConfirm}
             className={`w-full py-4 ${confirmBg} text-white rounded-2xl font-semibold text-sm active:scale-[0.97] transition-all duration-200 tracking-wide`}
           >
             {confirmLabel}
           </button>
           <button
+            type="button"
             onClick={onCancel}
             className="w-full py-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-2xl font-semibold text-sm active:scale-[0.97] transition-all duration-200 tracking-wide"
           >
