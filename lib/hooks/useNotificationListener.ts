@@ -460,6 +460,5 @@ export const useNotificationListener = ({
     // dependencies. Depending on the whole object meant every token refresh
     // (which rebuilds it in useAuthState) tore down and re-added the native
     // listener across the JS<->native bridge.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, user?.name, user?.partnerName, budgets, onTransactionDetected, onAutoAcceptedTransaction, onAIProcessingResult]);
 };

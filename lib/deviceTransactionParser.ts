@@ -1032,8 +1032,8 @@ export function parseNotificationText(text: string): ParsedNotification {
   // matching, or cleaning the name would silently orphan every rule the
   // household had already taught.
   const untidyDisplay = formatVendorName(titleCaseVendor(cleanedVendor));
-  let vendorDisplay = stripVendorNoise(untidyDisplay);
-  let vendorKey = toVendorKey(cleanedVendor || 'unknown');
+  const vendorDisplay = stripVendorNoise(untidyDisplay);
+  const vendorKey = toVendorKey(cleanedVendor || 'unknown');
 
   // ── Final vendor sanity check ──
   // If every word in the extracted vendor is a common noun ("You Got",

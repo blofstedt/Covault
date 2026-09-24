@@ -1,5 +1,5 @@
 // components/dashboard_components/SearchResults.tsx
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import type { Transaction, BudgetCategory } from '../../types';
 import TransactionItem from '../TransactionItem';
 import { generateProjectedTransactions } from '../../lib/projectedTransactions';
@@ -110,7 +110,10 @@ const SearchResults: React.FC<SearchResultsProps> = ({
 }) => {
   const q = searchQuery.toLowerCase().trim();
 
-  const filterFn = (tx: Transaction) => tx.vendor.toLowerCase().includes(q) && !isRefund(tx);
+  const filterFn = useCallback(
+    (tx: Transaction) => tx.vendor.toLowerCase().includes(q) && !isRefund(tx),
+    [q],
+  );
 
   // Refund matching across the full transaction set so the search list
   // can show refunded expenses with a strikethrough.
@@ -161,9 +164,9 @@ const SearchResults: React.FC<SearchResultsProps> = ({
     [futureTransactions, projectedFuture],
   );
 
-  const filteredCurrent = useMemo(() => augmentedCurrent.filter(filterFn), [augmentedCurrent, q]);
-  const filteredPast = useMemo(() => pastTransactions.filter(filterFn), [pastTransactions, q]);
-  const filteredFuture = useMemo(() => augmentedFuture.filter(filterFn), [augmentedFuture, q]);
+  const filteredCurrent = useMemo(() => augmentedCurrent.filter(filterFn), [augmentedCurrent, filterFn]);
+  const filteredPast = useMemo(() => pastTransactions.filter(filterFn), [pastTransactions, filterFn]);
+  const filteredFuture = useMemo(() => augmentedFuture.filter(filterFn), [augmentedFuture, filterFn]);
   const { futureActualTransactions, futureProjectedTransactions } = useMemo(() => {
     return filteredFuture.reduce(
       (groups, tx) => {

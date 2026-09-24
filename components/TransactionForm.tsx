@@ -136,6 +136,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     if (!initialTransaction) {
       amountInputRef.current?.focus();
     }
+    // Once, on open: focusing again whenever the form is handed a row would
+    // pull the keyboard up mid-edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Skip while the calendar sub-picker is open so Escape dismisses that first.

@@ -285,7 +285,7 @@ let recentUsesColumn: boolean | null = null;
 let sourceTextColumn: boolean | null = null;
 
 /** One stored use, from an alert. */
-function useEntry(alertText: string): RuleUse {
+function recentUseEntry(alertText: string): RuleUse {
   const text = alertText.replace(/\s+/g, ' ').trim().slice(0, MAX_USE_TEXT);
   return { at: new Date().toISOString(), text };
 }
@@ -337,7 +337,7 @@ export async function bumpRuleUseCount(ruleId: string, alertText?: string): Prom
         : [];
       // Newest first, trimmed here rather than in the database: the column is
       // the app's own list and nothing else writes it.
-      body.recent_uses = [useEntry(alertText), ...existing].slice(0, MAX_RECENT_USES);
+      body.recent_uses = [recentUseEntry(alertText), ...existing].slice(0, MAX_RECENT_USES);
     }
 
     await restFetch(

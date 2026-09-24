@@ -54,6 +54,7 @@ jobs:
         run: |
           npm run typecheck
           npm run typecheck:unused
+          npm run lint
           npm test
 
       - name: Build web app

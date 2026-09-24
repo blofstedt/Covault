@@ -417,7 +417,7 @@ const AIEnteredRow: React.FC<AIEnteredRowProps> = ({
       });
     }
     return items;
-  }, [canAccept, matchKind, onMarkNotTransaction, onVendorRenamed, openPicker, tx.vendor]);
+  }, [canAccept, onMarkNotTransaction, onVendorRenamed, openPicker, tx.vendor]);
 
   // Rendered at row level rather than inside the text column, so the buttons
   // align to the card's edge instead of hanging off the vendor name.

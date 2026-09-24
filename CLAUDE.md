@@ -86,7 +86,7 @@ Supabase (Postgres + RLS) for data. On-device flan-T5 via
 `@huggingface/transformers` for parsing. Vitest for tests.
 
 ```bash
-npm run verify     # typecheck + typecheck:unused + test + build  ← run before committing
+npm run verify     # typecheck + typecheck:unused + lint + test + build  ← run before committing
 npm run dev        # localhost:3000
 npm run cap:build  # web build + cap sync + scripts/sync-android.sh
 ```

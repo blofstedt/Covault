@@ -215,7 +215,7 @@ export const useUserSettings = ({
         // with the schema default `\"false\"` for subscription_status, which
         // violates the check constraint that only allows values like
         // \"active\".)
-        let res = await restFetch(
+        const res = await restFetch(
           `/settings?user_id=eq.${userId}`,
           {
             method: 'PATCH',
@@ -368,7 +368,7 @@ export const useUserSettings = ({
         }));
       }
     },
-    [appState.user, setAppState, setDbError],
+    [appState.user, appState.settings.theme, setAppState, setDbError],
   );
 
   // Save budget visibility to Supabase budgets table

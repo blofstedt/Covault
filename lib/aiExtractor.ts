@@ -712,7 +712,7 @@ function ruleBasedVendorExtraction(text: string): { vendor: string | null; isTra
 
   const titleMatch = stripped.match(/^([A-Z][A-Za-z0-9 .&'+*()-]*?)(?:\s+(?:\(.*?\)\s+)?(?:You|Your|A |An |The |We |This |Payment|Charged))/i);
   if (titleMatch?.[1]) {
-    let title = titleMatch[1].replace(/\s*\(.*?\)\s*/g, '').trim();
+    const title = titleMatch[1].replace(/\s*\(.*?\)\s*/g, '').trim();
     if (title.length >= 2) return { vendor: title, isTransaction: true, rejectionReason: null };
   }
 
