@@ -1,0 +1,31 @@
+{
+  "name": "covault-skills",
+  "description": "Skills for Covault's React, Vite, and Vitest stack",
+  "owner": {
+    "name": "Covault"
+  },
+  "plugins": [
+    {
+      "name": "web-tooling",
+      "description": "Vite and Vitest skills from Anthony Fu's skills collection",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/antfu/skills.git",
+        "path": "skills"
+      },
+      "strict": false,
+      "skills": ["./vite", "./vitest"]
+    },
+    {
+      "name": "react-best-practices",
+      "description": "React performance guidance from Vercel Engineering",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/vercel-labs/agent-skills.git",
+        "path": "skills"
+      },
+      "strict": false,
+      "skills": ["./react-best-practices"]
+    }
+  ]
+}

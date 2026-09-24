@@ -22,5 +22,28 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "context7@claude-plugins-official": true,
+    "web-tooling@covault-skills": true,
+    "react-best-practices@covault-skills": true
+  },
+  "extraKnownMarketplaces": {
+    "claude-plugins-official": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official"
+      },
+      "autoUpdate": true
+    },
+    "covault-skills": {
+      "source": {
+        "source": "directory",
+        "path": "./.claude/marketplace"
+      },
+      "autoUpdate": true
+    }
   }
 }
