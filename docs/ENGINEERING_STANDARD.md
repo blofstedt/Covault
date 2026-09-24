@@ -9,7 +9,7 @@ detail.
 
 | Reference | Pattern to use here | Boundary |
 | --- | --- | --- |
-| `sender-ui/src/app/new` | Keep a redesigned area on one set of semantic style values and shared controls. Put response parsing at the data boundary and test visible behavior. | Covault uses Tailwind, not Material UI. Copy the ownership rule, not the theme API or company terminology. |
+| `sender-ui/src/app/new` | Keep a redesigned area on one set of semantic style values and shared controls. Put response parsing at the data boundary. Mount component tests with shared app providers, local controlled-state harnesses, user actions, and accessibility checks. | Covault uses Tailwind, not Material UI. Copy the ownership and test structure, not the theme API or company terminology. |
 | `shinier-mock-server/packages/libs/mock-server` | Make runtime state explicit, create it per test, and test behavior through the public boundary. Keep transport details out of product decisions. | Covault has no Express server. Apply this to Supabase and native adapters rather than copying routes or recipes. |
 | `claude-plugin-marketplace` | Keep agent guidance short, route to focused references, and enforce mechanical rules with checks. Validate live artifacts rather than trusting documentation alone. | Plugin packaging, release rules, and OneSpan setup do not belong here. |
 | `frontend-tools` | Give tests temporary resources and stub external commands or services. Clean up after each test and state exactly which platforms were exercised. | Its CLI and operating system setup are unrelated to the budget app. |
@@ -87,6 +87,13 @@ caches, and temporary files after it. Prefer the real domain function over a tes
 that searches source text. Keep source checks only for a real cross-language or
 build contract. Do not raise a coverage number by testing constants or mirroring
 an implementation.
+
+Component tests use `test/renderWithProviders.tsx`. It mounts the same query
+client as the app and clears that cache and the rendered DOM after each test.
+Keep a small controlled-state harness beside the test when a parent screen owns
+the value under test. Use Testing Library actions and visible results, and scan
+changed dialog semantics with axe. Direct `render` imports in component test
+files fail lint so new tests follow the same setup.
 
 Two current examples set the bar for changing tests. The behavioral cases in
 `lib/__tests__/reviewRulesQuery.test.ts` show that a failed read retains cached

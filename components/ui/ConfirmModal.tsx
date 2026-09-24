@@ -1,5 +1,5 @@
 import type React from 'react';
-import { useEffect } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { useEscapeKey } from '../../lib/hooks/useEscapeKey';
 
 interface ConfirmModalProps {
@@ -26,13 +26,22 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
   onConfirm,
   onCancel,
 }) => {
+  const titleId = useId();
+  const messageId = useId();
+  const confirmRef = useRef<HTMLButtonElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
   useEscapeKey(onCancel);
 
   useEffect(() => {
+    const previousFocus = document.activeElement;
+    cancelRef.current?.focus();
     const originalStyle = window.getComputedStyle(document.body).overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = originalStyle;
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) {
+        previousFocus.focus();
+      }
     };
   }, []);
 
@@ -64,17 +73,33 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
     ) : null;
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      aria-describedby={messageId}
+      onKeyDown={(event) => {
+        if (event.key !== 'Tab') return;
+        if (event.shiftKey && document.activeElement === confirmRef.current) {
+          event.preventDefault();
+          cancelRef.current?.focus();
+        } else if (!event.shiftKey && document.activeElement === cancelRef.current) {
+          event.preventDefault();
+          confirmRef.current?.focus();
+        }
+      }}
+      className="fixed inset-0 z-[120] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300"
+    >
       <div className="w-full max-w-[320px] bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 space-y-8 shadow-2xl animate-in zoom-in-95 duration-300 border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] border-slate-100 dark:border-slate-800/60 text-center">
         <div className="flex flex-col items-center space-y-4">
           <div className={`w-16 h-16 ${iconBg} rounded-2xl flex items-center justify-center`}>
             {icon || defaultIcon}
           </div>
           <div className="space-y-2">
-            <h3 className="text-xl font-bold text-slate-600 dark:text-slate-100 tracking-tight">
+            <h3 id={titleId} className="text-xl font-bold text-slate-600 dark:text-slate-100 tracking-tight">
               {title}
             </h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
+            <p id={messageId} className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
               {message}
             </p>
           </div>
@@ -82,6 +107,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
 
         <div className="flex flex-col space-y-3">
           <button
+            ref={confirmRef}
             type="button"
             onClick={onConfirm}
             className={`w-full py-4 ${confirmBg} text-white rounded-2xl font-semibold text-sm active:scale-[0.97] transition-all duration-200 tracking-wide`}
@@ -89,6 +115,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
             {confirmLabel}
           </button>
           <button
+            ref={cancelRef}
             type="button"
             onClick={onCancel}
             className="w-full py-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-2xl font-semibold text-sm active:scale-[0.97] transition-all duration-200 tracking-wide"

@@ -216,6 +216,19 @@ export default tseslint.config(
     rules: { 'react-refresh/only-export-components': 'off' },
   },
   {
+    // Component tests share the app providers and clear their query cache.
+    files: ['**/__tests__/**/*.test.tsx'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        paths: [{
+          name: '@testing-library/react',
+          importNames: ['render'],
+          message: 'Use test/renderWithProviders so component tests mount the app providers and clear shared state.',
+        }],
+      }],
+    },
+  },
+  {
     // Build scripts run under Node, not in the WebView.
     files: ['scripts/**/*.{js,mjs,cjs}', '*.config.{js,ts}'],
     languageOptions: { globals: globals.node },
