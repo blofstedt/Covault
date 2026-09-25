@@ -15,6 +15,7 @@
 // timezones.
 
 import type { Transaction } from '../types';
+import { countedAmount } from './refundMatching';
 
 /** Months shown before the current one. */
 export const MONTHS_BEFORE = 3;
@@ -127,6 +128,8 @@ export function remainingForMonth(
   monthTransactions: readonly Transaction[],
   income: number,
 ): number {
-  const spent = monthTransactions.reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0);
+  // Same per-row rule as the vials (see countedAmount), so a refunded purchase
+  // that has dropped out of its vial is not still lowering this figure.
+  const spent = monthTransactions.reduce((sum, tx) => sum + countedAmount(tx), 0);
   return income - spent;
 }

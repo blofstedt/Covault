@@ -573,11 +573,39 @@ export function getBankingApps(): Record<string, string> {
 }
 
 /**
+ * How long a successful read of the bank list is reused.
+ *
+ * The app refreshes capture every five minutes while it is open, and each
+ * refresh asked the database for the whole list of banking apps again — a few
+ * hundred rows that change when a bank is added to the table, which is rare.
+ * A failed read is never cached, so an app that started offline still picks
+ * the list up as soon as it can.
+ */
+const BANK_LIST_TTL_MS = 6 * 60 * 60 * 1000;
+let bankListLoadedAt = 0;
+let bankListInFlight: Promise<Record<string, string>> | null = null;
+
+/**
  * Load banking apps from the public.banks table in Supabase.
  * Updates the module-level cache so subsequent getBankingApps() calls
  * return DB data. Falls back to the hardcoded list if the DB is unavailable.
+ *
+ * Reuses a successful read for BANK_LIST_TTL_MS, and shares one request
+ * between callers that ask at the same moment (turning capture on and the
+ * periodic refresh both ask at once).
  */
 export async function loadBankingAppsFromDB(): Promise<Record<string, string>> {
+  if (bankListLoadedAt > 0 && Date.now() - bankListLoadedAt < BANK_LIST_TTL_MS) {
+    return cachedBankingApps;
+  }
+  if (bankListInFlight) return bankListInFlight;
+  bankListInFlight = fetchBankingAppsFromDB().finally(() => {
+    bankListInFlight = null;
+  });
+  return bankListInFlight;
+}
+
+async function fetchBankingAppsFromDB(): Promise<Record<string, string>> {
   try {
     const res = await restFetch(`/banks?select=package_name,display_name`);
 
@@ -594,6 +622,7 @@ export async function loadBankingAppsFromDB(): Promise<Record<string, string>> {
       apps[row.package_name] = row.display_name;
     }
     cachedBankingApps = apps;
+    bankListLoadedAt = Date.now();
     return apps;
   } catch {
     log.warn('[loadBankingApps] Error loading from DB, using hardcoded fallback');

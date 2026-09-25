@@ -22,7 +22,7 @@
 // shielded amount to any total would count the overspend twice.
 
 import type { BudgetCategory, Transaction } from '../types';
-import { isRefund, matchRefundsToExpenses } from './refundMatching';
+import { countedAmount, isRefund, matchRefundsToExpenses } from './refundMatching';
 
 /**
  * Which vault absorbs the overflow.
@@ -72,11 +72,12 @@ export function computeBudgetTotals(
     if (tx.budget_id === budgetId) {
       if (tx.is_projected) {
         projected += tx.amount;
-      } else if (
-        !tx.refunded &&
-        !(refundedExpenseIds.has(tx.id) && Number(tx.amount) > 0)
-      ) {
-        spent += tx.amount;
+      } else {
+        // A purchase struck through by a hand-entered refund still counts
+        // here, because the refund row counts too and the pair nets to zero.
+        // Leaving the purchase out AND subtracting the refund is how a
+        // returned $60 used to leave its vial at -$60. See countedAmount.
+        spent += countedAmount(tx);
       }
     }
   }

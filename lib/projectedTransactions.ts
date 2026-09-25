@@ -234,6 +234,12 @@ export function generateProjectedTransactions(
     if (cancelled.has(index)) return;
     projected.push({
       ...candidate.source,
+      // A refund belongs to the one charge it matched, not to the series. An
+      // occurrence copied from a refunded source would otherwise inherit the
+      // flag and be counted as nothing — every future month of that
+      // subscription silently free. Only written when there is something to
+      // undo, so every other occurrence keeps exactly the shape it had.
+      ...(candidate.source.refunded ? { refunded: false } : {}),
       budget_id: getTransactionBudgetId(candidate.source) ?? null,
       id: `projected-${candidate.source.id}-${candidate.date}`,
       date: candidate.date,

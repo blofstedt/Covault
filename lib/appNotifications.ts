@@ -3,6 +3,8 @@ import { log } from './log';
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import type { BudgetCategory, Transaction } from '../types';
+import { countedAmount } from './refundMatching';
+import { spendingAgainstMyBudgets, type BudgetMode } from './householdSharing';
 
 export interface NotificationSettingsShape {
   app_notifications_enabled?: boolean;
@@ -101,22 +103,50 @@ async function sendNotification(title: string, body: string) {
 
 interface CheckArgs {
   userId: string;
+  /** The limits the vials draw — the household's, in combined mode. */
   budgets: BudgetCategory[];
   transactions: Transaction[]; // current month transactions
+  /**
+   * Whose spending counts against those limits. Separate (the default) counts
+   * only the signed-in person's rows, exactly as the vials do; without it a
+   * partner's groceries set off "Groceries is over its limit" on a phone whose
+   * Groceries vial was half full.
+   */
+  budgetMode?: BudgetMode;
   remainingMoney: number;
   settings: NotificationSettingsShape;
+}
+
+/**
+ * What has already been said about one budget this month. Stored as the value
+ * of its alert key so a warning and an overrun are remembered separately.
+ *
+ * `'1'` is what every build before this one wrote, for whichever of the two it
+ * sent. It is read as the stronger of them so that nobody is told a budget is
+ * over twice in the month this ships; from the next month on, a warning no
+ * longer silences the overrun that follows it.
+ */
+type BudgetAlertLevel = 'warn' | 'over';
+
+function alreadyAlerted(stored: string | null, level: BudgetAlertLevel): boolean {
+  if (stored === '1' || stored === 'over') return true;
+  return level === 'warn' && stored === 'warn';
 }
 
 /**
  * Evaluates budget thresholds and fires local notifications.
  * Uses localStorage flags to avoid firing the same alert repeatedly.
  *
- * Alerts once a budget reaches 80% of its limit.
+ * A budget is warned about once when it reaches 80% of its limit, and told
+ * once more if it then goes over. Both used to share a single flag, so the
+ * warning at 80% was the last thing the user ever heard that month — however
+ * far over the budget then went.
  */
 export async function checkAndTriggerAppNotifications({
   userId,
   budgets,
   transactions,
+  budgetMode = 'separate',
   remainingMoney,
   settings,
 }: CheckArgs) {
@@ -131,10 +161,10 @@ export async function checkAndTriggerAppNotifications({
     // per budget, so the whole month's transaction list was walked once for
     // every budget on every transaction change.
     const spentByBudgetId = new Map<string, number>();
-    for (const tx of transactions) {
+    for (const tx of spendingAgainstMyBudgets(transactions, userId, budgetMode)) {
       if (tx.is_projected) continue; // only real transactions
       if (!tx.budget_id) continue;
-      spentByBudgetId.set(tx.budget_id, (spentByBudgetId.get(tx.budget_id) ?? 0) + Number(tx.amount));
+      spentByBudgetId.set(tx.budget_id, (spentByBudgetId.get(tx.budget_id) ?? 0) + countedAmount(tx));
     }
 
     // Check each budget for overspend
@@ -147,16 +177,16 @@ export async function checkAndTriggerAppNotifications({
 
       if (ratio >= 0.8) {
         const key = makeBudgetAlertKey(userId, budget.id, alertMonth);
-        const alreadySent =
-          typeof localStorage !== 'undefined' && localStorage.getItem(key) === '1';
-        if (!alreadySent) {
-          const title = ratio >= 1 ? 'Budget exceeded' : 'Budget warning';
-          const body = ratio >= 1
+        const level: BudgetAlertLevel = ratio >= 1 ? 'over' : 'warn';
+        const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
+        if (!alreadyAlerted(stored, level)) {
+          const title = level === 'over' ? 'Budget exceeded' : 'Budget warning';
+          const body = level === 'over'
             ? `${budget.name} is over its limit ($${spent.toFixed(0)} of $${limit.toFixed(0)}).`
             : `${budget.name} is at ${Math.round(ratio * 100)}% of its limit ($${spent.toFixed(0)} of $${limit.toFixed(0)}).`;
           await sendNotification(title, body);
           if (typeof localStorage !== 'undefined') {
-            localStorage.setItem(key, '1');
+            localStorage.setItem(key, level);
           }
         }
       }

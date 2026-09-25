@@ -15,6 +15,7 @@
 import { getBudgetColor } from './budgetColors';
 import { getLocalMonthKey, getLocalToday } from './dateUtils';
 import type { BudgetCategory, Transaction } from '../types';
+import { countedAmount } from './refundMatching';
 
 /** Bumped if the shape changes, so an old native reader can bail rather than misread. */
 export const WIDGET_SNAPSHOT_VERSION = 2;
@@ -145,7 +146,9 @@ export function buildWidgetSnapshot({
   const byCategory = new Map<string, number>();
   let totalSpent = 0;
   for (const tx of currentMonthTransactions) {
-    const amount = Number(tx.amount) || 0;
+    // The app's own per-row rule, so a refunded purchase that has dropped out
+    // of its vial does not stay on the home screen. See countedAmount.
+    const amount = countedAmount(tx);
     if (amount === 0) continue;
     const name = (tx.budget_id && nameById.get(tx.budget_id)) || 'Other';
     byCategory.set(name, (byCategory.get(name) || 0) + amount);
@@ -201,7 +204,8 @@ function buildRecent(
   const byCategory = new Map<string, { at: number; entry: WidgetRecent }[]>();
 
   for (const tx of transactions) {
-    const amount = Number(tx.amount) || 0;
+    // A refunded purchase is money that came back, not something spent.
+    const amount = countedAmount(tx);
     if (amount <= 0) continue;
     const name = (tx.budget_id && nameById.get(tx.budget_id)) || 'Other';
     const day = typeof tx.date === 'string' ? tx.date.slice(0, 10) : '';

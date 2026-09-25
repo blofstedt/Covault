@@ -106,6 +106,47 @@ export function getCommunityPack(): CommunityRule[] {
 }
 
 /**
+ * The pack, indexed by merchant key, parsed once per version of it on disk.
+ *
+ * The lookup used to read and JSON.parse the whole stored pack — up to twenty
+ * thousand merchants — every time it was asked about ONE merchant, and then
+ * walk it. The Review list asks once per row it draws, so opening Review with
+ * a page of unfamiliar merchants parsed the same megabyte of JSON over and
+ * over on the main thread. The parsed index is kept against the exact string
+ * it came from: a refreshed pack is a different string and is re-read, and an
+ * unchanged one costs a string comparison.
+ *
+ * The first entry for a key wins, which is what the linear scan did.
+ */
+let packIndex: { raw: string; byKey: Map<string, CommunityRule> } | null = null;
+
+function readPackIndex(): Map<string, CommunityRule> | null {
+  let raw: string | null = null;
+  try {
+    raw = localStorage.getItem(PACK_KEY);
+  } catch {
+    return null;
+  }
+  if (!raw) return null;
+  if (packIndex && packIndex.raw === raw) return packIndex.byKey;
+
+  let stored: StoredPack | null = null;
+  try {
+    stored = JSON.parse(raw) as StoredPack;
+  } catch {
+    return null;
+  }
+  const byKey = new Map<string, CommunityRule>();
+  for (const rule of Array.isArray(stored?.rules) ? stored!.rules : []) {
+    if (rule && typeof rule.matchKey === 'string' && !byKey.has(rule.matchKey)) {
+      byKey.set(rule.matchKey, rule);
+    }
+  }
+  packIndex = { raw, byKey };
+  return byKey;
+}
+
+/**
  * What the pool says about a merchant, or null.
  *
  * Null on every uncertainty, deliberately — the flag being off, an empty or
@@ -118,13 +159,9 @@ export function getCommunityPack(): CommunityRule[] {
 export function lookupCommunityRule(vendorKey: string): CommunityRule | null {
   if (!vendorKey) return null;
   if (!getCommunityFlags().enabled) return null;
-  const pack = getCommunityPack();
-  if (pack.length === 0) return null;
-  const key = vendorKey.toLowerCase();
-  for (const rule of pack) {
-    if (rule.matchKey === key) return rule;
-  }
-  return null;
+  const pack = readPackIndex();
+  if (!pack || pack.size === 0) return null;
+  return pack.get(vendorKey.toLowerCase()) ?? null;
 }
 
 /**

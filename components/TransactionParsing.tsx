@@ -36,6 +36,14 @@ import { openNotificationSettings, openAppInfo } from '../lib/covaultNotificatio
 /** Delay (ms) after scanning to allow notification processing before reloading data */
 const SCAN_PROCESSING_DELAY_MS = 2000;
 
+/**
+ * What the user is told when filing or deleting in Review did not reach the
+ * database. Plain, and says what to do: the row is still there, so trying
+ * again is always safe.
+ */
+const FILE_FAILED_MESSAGE = 'Couldn’t file that — nothing was changed. Check your connection and try again.';
+const DELETE_FAILED_MESSAGE = 'Couldn’t delete those — nothing was removed. Check your connection and try again.';
+
 function prefersReducedMotion(): boolean {
   try {
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -84,7 +92,8 @@ interface TransactionParsingProps {
   /** Update a transaction (full record, persisted). Used by the inline
    *  vendor rename in the Caught Transactions list. The handler also
    *  writes the vendor correction to the overrides table. */
-  onUpdateTransaction?: (tx: Transaction) => void | Promise<void>;
+  /** Resolves false when the change could not be saved (and was undone). */
+  onUpdateTransaction?: (tx: Transaction) => void | Promise<void | boolean>;
   /** Currently-loaded vendor overrides, used by the Learned Rules card. */
   vendorOverrides?: import('./transaction_parsing/useVendorOverrides').VendorOverride[];
   /** The partner's rules. Read-only, never listed as the user's own. */
@@ -325,10 +334,18 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   // between the two steps leaves the user with the right amount recorded twice
   // rather than the wrong amount recorded once. Over-counting is visible and
   // fixable; a silently wrong total is neither.
+  //
+  // The correction is awaited before anything is deleted. It used to be fired
+  // and forgotten, so the delete ran alongside it — and when the correction
+  // failed, the real charge was deleted anyway and the placeholder kept the
+  // held amount: exactly the "wrong amount recorded once" this order exists to
+  // prevent. A correction that reports failure now stops here, leaving both
+  // rows for the user to see.
   const handleSettleFuelHold = useCallback(
     async (placeholder: Transaction, charge: Transaction) => {
       if (!onUpdateTransaction || !onDeleteTransaction) return;
-      onUpdateTransaction({ ...placeholder, amount: Number(charge.amount) });
+      const corrected = await onUpdateTransaction({ ...placeholder, amount: Number(charge.amount) });
+      if (corrected === false) return;
       await onDeleteTransaction(charge.id);
     },
     [onUpdateTransaction, onDeleteTransaction],
@@ -369,16 +386,30 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   // ── Caught-transaction triage (Accept / Change / Create rule) ──
   // Files a caught transaction: sets caught_cleared (so it leaves the "Caught
   // Transactions" queue) plus any budget change, then reloads from the DB.
+  //
+  // Resolves whether the write went through. It used to resolve either way —
+  // `fetch` does not throw on a refused request — so a failed filing was
+  // followed by "Filed Safeway" and an Undo, and the row quietly reappeared
+  // in Review on the reload a moment later, as if the tap had been ignored.
   const fileCaughtTransaction = useCallback(
-    async (txId: string, extra: Record<string, unknown> = {}) => {
+    async (txId: string, extra: Record<string, unknown> = {}): Promise<boolean> => {
+      let filed = false;
       try {
-        await restFetch(`/transactions?id=eq.${txId}`, {
+        const res = await restFetch(`/transactions?id=eq.${txId}`, {
           method: 'PATCH',
           headers: { Prefer: 'return=minimal' },
           body: JSON.stringify(buildFilePayload(extra)),
         });
+        filed = res.ok;
+        if (!res.ok) log.warn('[TransactionParsing] file caught transaction failed:', res.status);
       } catch (err) {
         log.warn('[TransactionParsing] file caught transaction failed:', err);
+      }
+      if (!filed) {
+        onToast?.({ tone: 'error', message: FILE_FAILED_MESSAGE });
+        // Reloaded anyway, so the list shows what the database actually holds.
+        if (userId) await onReloadTransactions?.(userId);
+        return false;
       }
       // The notification for this purchase says "tap to review", and the
       // reviewing has just happened. Leaving it in the shade afterwards reads
@@ -389,8 +420,9 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       // after being dealt with is worse than one that does not.
       void dismissCaptureNotification(txId);
       if (userId) await onReloadTransactions?.(userId);
+      return true;
     },
-    [userId, onReloadTransactions],
+    [userId, onReloadTransactions, onToast],
   );
 
   // Un-file rows: the exact inverse of fileCaughtTransaction. `budget` is
@@ -399,22 +431,30 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   // brings the row back under the wrong budget is worse than no Undo.
   const restoreCaughtTransactions = useCallback(
     async (rows: Array<{ id: string; budget: string | null }>) => {
-      await Promise.all(
+      const results = await Promise.all(
         rows.map(async ({ id, budget }) => {
           try {
-            await restFetch(`/transactions?id=eq.${id}`, {
+            const res = await restFetch(`/transactions?id=eq.${id}`, {
               method: 'PATCH',
               headers: { Prefer: 'return=minimal' },
               body: JSON.stringify(buildUndoPayload(budget)),
             });
+            if (!res.ok) log.warn('[TransactionParsing] undo file failed:', res.status);
+            return res.ok;
           } catch (err) {
             log.warn('[TransactionParsing] undo file failed:', err);
+            return false;
           }
         }),
       );
+      // An Undo that did nothing used to look exactly like one that worked
+      // until the user went looking for the row in Review.
+      if (results.some((ok) => !ok)) {
+        onToast?.({ tone: 'error', message: 'Couldn’t undo that — the purchase is still filed.' });
+      }
       if (userId) await onReloadTransactions?.(userId);
     },
-    [userId, onReloadTransactions],
+    [userId, onReloadTransactions, onToast],
   );
 
   /** The row's category name as it stands right now, for restoring on Undo. */
@@ -452,7 +492,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
           log.warn('[TransactionParsing] adopting a borrowed rule failed:', err);
         }
       }
-      await fileCaughtTransaction(tx.id);
+      if (!(await fileCaughtTransaction(tx.id))) return;
       clearCaptureNotificationForRows([tx]);
       onToast?.({
         message: `Filed ${tx.vendor}`,
@@ -476,14 +516,21 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       // Snapshot before filing — after the reload these rows are gone from state.
       const snapshot = txs.map((tx) => ({ id: tx.id, budget: budgetNameOf(tx) }));
       const idList = txs.map((tx) => `"${tx.id.replace(/"/g, '')}"`).join(',');
+      let filed = false;
       try {
-        await restFetch(`/transactions?id=in.(${idList})`, {
+        const res = await restFetch(`/transactions?id=in.(${idList})`, {
           method: 'PATCH',
           headers: { Prefer: 'return=minimal' },
           body: JSON.stringify(buildFilePayload()),
         });
+        filed = res.ok;
       } catch (err) {
         log.warn('[TransactionParsing] bulk accept failed:', err);
+      }
+      if (!filed) {
+        onToast?.({ tone: 'error', message: FILE_FAILED_MESSAGE });
+        if (userId) await onReloadTransactions?.(userId);
+        return;
       }
       clearCaptureNotificationForRows(txs);
       if (userId) await onReloadTransactions?.(userId);
@@ -580,7 +627,7 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       // would otherwise sit on the toast doing nothing when tapped.
       if ((name || '').toLowerCase() === 'other') {
         const previousBudget = budgetNameOf(tx);
-        await fileCaughtTransaction(tx.id, { budget: 'Other' });
+        if (!(await fileCaughtTransaction(tx.id, { budget: 'Other' }))) return;
         onToast?.({
           message: `Filed ${tx.vendor} as Other`,
           tone: 'info',
@@ -603,7 +650,9 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
       } catch (err) {
         log.warn('[TransactionParsing] learn rule failed:', err);
       }
-      await fileCaughtTransaction(tx.id, name ? { budget: name } : {});
+      // A failed filing has already said so; "Learned" on top of it would
+      // bury the one message the user needs.
+      if (!(await fileCaughtTransaction(tx.id, name ? { budget: name } : {}))) return;
 
       if (alreadyKnown) return;
 
@@ -736,19 +785,21 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
         headers: { Prefer: 'return=representation' },
         body: JSON.stringify(buildFilePayload()),
       });
-      for (const tx of rows) void dismissCaptureNotification(String(tx.id));
       if (!res.ok) {
         log.error('[TransactionParsing] Error clearing entered:', res.status);
+        onToast?.({ tone: 'error', message: FILE_FAILED_MESSAGE });
         return;
       }
+      for (const tx of rows) void dismissCaptureNotification(String(tx.id));
     } catch (err) {
       log.error('[TransactionParsing] Error clearing entered:', err);
+      onToast?.({ tone: 'error', message: FILE_FAILED_MESSAGE });
       return;
     }
     clearCaptureNotificationForRows(rows);
     onClearEntered?.();
     await onReloadTransactions?.(userId);
-  }, [userId, onClearEntered, onReloadTransactions]);
+  }, [userId, onClearEntered, onReloadTransactions, onToast]);
 
   // The "Filed automatically" receipt has been read.
   //
@@ -799,19 +850,23 @@ const TransactionParsing: React.FC<TransactionParsingProps> = ({
   const handleDeleteAllEntered = useCallback(async (rows: Transaction[]) => {
     if (!userId || rows.length === 0) return;
     const idList = rows.map((tx) => `"${String(tx.id).replace(/"/g, '')}"`).join(',');
-    for (const tx of rows) void dismissCaptureNotification(String(tx.id));
     try {
       const res = await restFetch(`/transactions?id=in.(${idList})`, { method: 'DELETE' });
       if (!res.ok) {
         log.error('[TransactionParsing] Error deleting captured transactions:', res.status);
+        onToast?.({ tone: 'error', message: DELETE_FAILED_MESSAGE });
         return;
       }
     } catch (err) {
       log.error('[TransactionParsing] Error deleting captured transactions:', err);
+      onToast?.({ tone: 'error', message: DELETE_FAILED_MESSAGE });
       return;
     }
+    // Only once they are really gone: a notification taken down for a row
+    // that is still waiting leaves nothing pointing at it.
+    for (const tx of rows) void dismissCaptureNotification(String(tx.id));
     await onReloadTransactions?.(userId);
-  }, [userId, onReloadTransactions]);
+  }, [userId, onReloadTransactions, onToast]);
 
   // ── Refresh handler ──
   const followUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

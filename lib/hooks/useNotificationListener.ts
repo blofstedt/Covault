@@ -379,10 +379,30 @@ export const useNotificationListener = ({
 
                 return;
               } catch (err) {
+                // Thrown on, not swallowed. This used to fall through to the
+                // legacy insert below, which builds a row with no budget — an
+                // insert that can only fail — so a pipeline error showed the
+                // user "Transaction must have a valid budget_id" and then
+                // released the capture from the queue as though it had been
+                // handled. The purchase was gone.
+                //
+                // Rethrowing is what keeps it: a drained capture that throws
+                // stays parked and is replayed on the next launch (see
+                // lib/pendingCaptureQueue.ts), and a live one is still in the
+                // native queue for the next drain. Replaying is safe — the
+                // pipeline's own duplicate checks recognise a purchase it had
+                // already recorded before it failed.
                 log.error(
-                  '[notification] AI pipeline error, falling back to legacy:',
+                  '[notification] Capture pipeline failed; leaving it queued for another try:',
                   err,
                 );
+                // And out of the re-broadcast window, or the retry arriving
+                // within the next 30 seconds would be waved through as a
+                // duplicate of this attempt — returning normally, and so
+                // releasing the capture after all.
+                const attempt = recentListenerEvents.findIndex((e) => e.key === dedupKey);
+                if (attempt !== -1) recentListenerEvents.splice(attempt, 1);
+                throw err;
               }
             }
 
@@ -406,7 +426,11 @@ export const useNotificationListener = ({
             onTransactionDetected(tx);
         };
 
-        const handle = await covaultNotification.addListener('transactionDetected', handleEvent);
+        // A live broadcast has no one to rethrow to: its copy in the native
+        // queue is what gets retried, at the next drain. Already logged.
+        const handle = await covaultNotification.addListener('transactionDetected', (event) => {
+          void handleEvent(event).catch(() => {});
+        });
 
         if (cancelled) {
           // The effect re-ran while we were awaiting; remove the just-added
@@ -437,6 +461,14 @@ export const useNotificationListener = ({
           if (!user?.id) return;
           void drainQueuedNotifications(handleEvent);
         });
+        if (cancelled) {
+          // The effect was torn down during that await — a sign-out, or a new
+          // user. Its cleanup has already run and will not run again, so this
+          // listener would outlive it and drain the queue on the next resume
+          // under the account that was signed in before.
+          resumeHandle.remove();
+          return;
+        }
         const removeListener = cleanup;
         cleanup = () => {
           removeListener?.();

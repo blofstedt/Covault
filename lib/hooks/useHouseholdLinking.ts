@@ -2,6 +2,7 @@
 import { log } from '../log';
 import { useCallback } from 'react';
 import { restFetch, callRpc } from '../apiHelpers';
+import { withoutPartner } from '../householdSharing';
 import type { UseUserDataParams } from './types';
 
 /**
@@ -195,19 +196,15 @@ export const useHouseholdLinking = ({
         body: JSON.stringify({ budgeting_solo: true }),
       });
 
-      setAppState(prev => ({
-        ...prev,
-        user: prev.user
-          ? {
-              ...prev.user,
-              budgetingSolo: true,
-              hasJointAccounts: false,
-              partnerId: undefined,
-              partnerEmail: undefined,
-              partnerName: undefined,
-            }
-          : null,
-      }));
+      // Everything derived from the partner goes too — their income in the
+      // household figure, their month summary, their limits and their
+      // purchases — not just their name. See withoutPartner.
+      setAppState(prev => {
+        if (prev.user?.id !== userId) return prev;
+        const next = withoutPartner(prev, userId);
+        if (!next.user || next.user.budgetingSolo) return next;
+        return { ...next, user: { ...next.user, budgetingSolo: true, hasJointAccounts: false } };
+      });
       log.debug('[unlinkPartner] OK');
     } catch (err: any) {
       setDbError(`Unlink exception: ${err?.message || err}`);

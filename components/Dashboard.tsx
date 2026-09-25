@@ -77,7 +77,8 @@ interface Props {
   state: AppState;
   setState: React.Dispatch<React.SetStateAction<AppState>>;
   onAddTransaction: (t: Transaction) => void;
-  onUpdateTransaction: (t: Transaction) => void | Promise<void>;
+  /** Resolves false when the change could not be saved (and was undone). */
+  onUpdateTransaction: (t: Transaction) => void | Promise<void | boolean>;
   onDeleteTransaction: (id: string) => void;
   onSignOut: () => Promise<void>;
   onDeleteAccount: () => Promise<void>;
@@ -524,20 +525,27 @@ const Dashboard: React.FC<Props> = ({
 
   // Stable key: changes only when a budget limit is added/removed/modified.
   // Prevents the notification effect from re-running on every array re-creation.
+  // Read from the limits the vials actually draw, so a household in combined
+  // mode is alerted against the combined line and not one person's half of it.
   const budgetLimitKey = useMemo(
-    () => state.budgets.map(b => `${b.id}:${b.totalLimit}`).join(','),
-    [state.budgets],
+    () => householdBudgetList.map(b => `${b.id}:${b.totalLimit}`).join(','),
+    [householdBudgetList],
   );
 
   // Fire push notifications for budget overruns / low balance whenever the
   // transaction data changes. appNotifications.ts dedupes via localStorage so
   // the same alert won't fire more than once per budget per month.
+  //
+  // Same limits and same spending as the vials: in separate mode a partner's
+  // purchases do not count against your lines (see spendingAgainstMyBudgets),
+  // so they must not set off an alert about them either.
   useEffect(() => {
-    if (!state.user?.id || !state.budgets.length) return;
+    if (!state.user?.id || !householdBudgetList.length) return;
     checkAndTriggerAppNotifications({
       userId: state.user.id,
-      budgets: state.budgets,
+      budgets: householdBudgetList,
       transactions: currentMonthBudgetTransactions,
+      budgetMode,
       remainingMoney,
       settings: {
         app_notifications_enabled: state.settings.app_notifications_enabled,
@@ -548,6 +556,7 @@ const Dashboard: React.FC<Props> = ({
   }, [
     state.user?.id,
     budgetLimitKey,
+    budgetMode,
     remainingMoney,
     state.settings.smart_notifications_enabled,
     state.settings.app_notifications_enabled,
@@ -1109,6 +1118,13 @@ const Dashboard: React.FC<Props> = ({
                   ...prev,
                   settings: { ...prev.settings, budgetMode: previous },
                 }));
+                // The switch flipping back on its own, with nothing said,
+                // reads as a control that is broken rather than a save that
+                // failed.
+                onToast?.({
+                  tone: 'error',
+                  message: 'Couldn’t change how your budgets are shared. Please try again.',
+                });
               }
             });
           }}

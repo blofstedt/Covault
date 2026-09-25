@@ -8,6 +8,7 @@ import SettingsCard from '../../ui/SettingsCard';
 import SectionHeader from '../../ui/SectionHeader';
 import { getLocalMonthKey } from '../../../lib/dateUtils';
 import { getBudgetColor } from '../../../lib/budgetColors';
+import { countedAmount } from '../../../lib/refundMatching';
 
 interface ReportSectionProps {
   budgets: BudgetCategory[];
@@ -47,7 +48,9 @@ const ReportSection: React.FC<ReportSectionProps> = ({
     const spentById = new Map<string, number>();
     for (const tx of currentMonthTxs) {
       if (!tx.budget_id) continue;
-      spentById.set(tx.budget_id, (spentById.get(tx.budget_id) ?? 0) + tx.amount);
+      // The dashboard's own per-row rule, so the report agrees with the vials
+      // about a refunded purchase. See countedAmount.
+      spentById.set(tx.budget_id, (spentById.get(tx.budget_id) ?? 0) + countedAmount(tx));
     }
     return budgets
       .filter(b => b.totalLimit > 0)

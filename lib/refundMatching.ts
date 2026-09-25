@@ -45,6 +45,30 @@ export function isIncome(tx: Pick<Transaction, 'amount' | 'is_income'>): boolean
 }
 
 /**
+ * What one row adds to "money spent" — the single rule every total uses.
+ *
+ * A purchase the capture pipeline marked `refunded` (a refund notification
+ * matched it, and no negative row was written) counts for nothing: the money
+ * came back. Everything else counts at face value, which includes a negative
+ * refund row the user entered by hand — so that refund and the purchase it
+ * matches net to zero on their own.
+ *
+ * This used to be applied in the vials only. The headline balance, the chart,
+ * the widget and the over-budget alerts all summed raw amounts, so a refunded
+ * purchase dropped out of its vial but went on lowering "Remaining Balance" —
+ * two answers to one question on the same screen. And the vial itself went
+ * one step further for a hand-entered refund: it dropped the matched purchase
+ * AND subtracted the refund, so a returned $60 left the vial at -$60 instead
+ * of $0. One function, used everywhere, is what keeps them from drifting apart
+ * again.
+ */
+export function countedAmount(tx: Pick<Transaction, 'amount' | 'refunded'>): number {
+  if (tx.refunded === true) return 0;
+  const amount = Number(tx.amount);
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+/**
  * Normalize a vendor string for the strict equality used by refund matching.
  * Refunds are bookkeeping — we want zero false positives, so we use a
  * case-insensitive trim + collapse rather than fuzzy matching. If a

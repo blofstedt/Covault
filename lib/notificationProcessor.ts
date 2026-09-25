@@ -438,8 +438,10 @@ async function checkAlreadyProcessed(
   const todayDate = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
   const windowStartDate = new Date(todayDate.getTime() - RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY);
   const windowEndDate = new Date(todayDate.getTime() + RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY);
-  const startDateStr = windowStartDate.toISOString().slice(0, 10);
-  const endDateStr = windowEndDate.toISOString().slice(0, 10);
+  // Local calendar days, like the anchor they are built from. The UTC slice
+  // read a local midnight east of Greenwich as the day before.
+  const startDateStr = toLocalIsoDay(windowStartDate);
+  const endDateStr = toLocalIsoDay(windowEndDate);
 
   // One read, against the ledger.
   //
@@ -1075,8 +1077,8 @@ async function processNotificationWithAIImpl(
   // return before some of them are read.
   const today = getLocalToday();
   const todayMs = parseLocalDate(today).getTime();
-  const step4WindowStart = new Date(todayMs - RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY).toISOString().slice(0, 10);
-  const step4WindowEnd = new Date(todayMs + RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY).toISOString().slice(0, 10);
+  const step4WindowStart = toLocalIsoDay(new Date(todayMs - RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY));
+  const step4WindowEnd = toLocalIsoDay(new Date(todayMs + RECURRING_DATE_TOLERANCE_DAYS * MS_PER_DAY));
 
   // Promise.resolve rather than calling .then on the builder: a query builder
   // is thenable, so this issues the read immediately, and it also survives a
@@ -1303,12 +1305,12 @@ async function processNotificationWithAIImpl(
   // The original row's amount is unchanged; the UI applies strikethrough
   // and the budget reduce excludes the refunded row from the spent total.
   if (parsed.isRefund && vendor && rawAmount > 0) {
-    const refundWindowStart = new Date(
+    const refundWindowStart = toLocalIsoDay(new Date(
       notifTimestamp - REFUND_MATCH_WINDOW_DAYS * MS_PER_DAY
-    ).toISOString().slice(0, 10);
-    const refundWindowEnd = new Date(
+    ));
+    const refundWindowEnd = toLocalIsoDay(new Date(
       notifTimestamp + REFUND_MATCH_WINDOW_DAYS * MS_PER_DAY
-    ).toISOString().slice(0, 10);
+    ));
     const { data: refundCandidates } = await supabase
       .from('transactions')
       .select('id, vendor, amount, date, budget, refunded')
@@ -1330,7 +1332,9 @@ async function processNotificationWithAIImpl(
         refunded: row.refunded === true,
       }));
       let match = findMatchingExpense(
-        { vendor, amount: rawAmount, date: new Date(notifTimestamp).toISOString().slice(0, 10), budget_id: '' },
+        // The refund's own local day. The UTC slice put an evening refund in
+        // the Americas on tomorrow's date.
+        { vendor, amount: rawAmount, date: toLocalIsoDay(new Date(notifTimestamp)), budget_id: '' },
         mapped,
       );
       // AI fallback: try semantic vendor matching for refunds with different names

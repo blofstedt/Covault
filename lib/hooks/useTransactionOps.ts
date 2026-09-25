@@ -174,7 +174,7 @@ export const useTransactionOps = ({
 
   // Update transaction
   const handleUpdateTransaction = useCallback(
-    async (updatedTx: Transaction) => {
+    async (updatedTx: Transaction): Promise<boolean> => {
       const sourceTransactionId = getSourceTransactionIdFromProjectedId(updatedTx.id);
       const isProjectedEdit = Boolean(sourceTransactionId);
       const originalTx = appState.transactions.find(t => t.id === (sourceTransactionId || updatedTx.id));
@@ -183,7 +183,7 @@ export const useTransactionOps = ({
         const msg = `[updateTransaction] Could not find source transaction for projected id ${updatedTx.id}`;
         log.error(msg);
         setDbError(msg);
-        return;
+        return false;
       }
 
       const txToPersist = buildPersistedUpdateTransaction(updatedTx, originalTx);
@@ -200,6 +200,10 @@ export const useTransactionOps = ({
         ),
       }));
 
+      // Set once the database has confirmed the change, so an exception after
+      // that point (the local vendor memory, the rule write) is never mistaken
+      // for a failed save and undone.
+      let saved = false;
       try {
         const row = toSupabaseTransaction(txToPersist);
         log.debug(
@@ -235,8 +239,41 @@ export const useTransactionOps = ({
               ),
             }));
           }
-          return;
+          return false;
         } else {
+          // A 200 is not a save. PostgREST answers an UPDATE that matched no
+          // row — one the database will not let this account change, or one
+          // that has since been deleted — with success and an empty list.
+          // This used to report the error and then carry on as if it had
+          // saved: the edit stayed on screen, the row was marked reviewed and
+          // the vendor was remembered under the new name, while the database
+          // still held the old values. The next reload quietly put them back.
+          // So the rows are checked FIRST, and a save that changed nothing is
+          // undone on screen like any other failed save.
+          let updatedRows: any[] = [];
+          let confirmed = false;
+          try {
+            updatedRows = body ? JSON.parse(body) : [];
+            confirmed = Array.isArray(updatedRows) && updatedRows.length > 0;
+          } catch {
+            log.error(`[updateTransaction] failed to parse response: ${body.slice(0, 200)}`);
+          }
+
+          if (!confirmed) {
+            log.error(`[updateTransaction] no rows updated for transaction ${txToPersist.id}`);
+            setDbError('That change could not be saved. Please try again.');
+            if (originalTx) {
+              setAppState(prev => ({
+                ...prev,
+                transactions: prev.transactions.map(t =>
+                  t.id === txToPersist.id ? originalTx : t
+                ),
+              }));
+            }
+            return false;
+          }
+          saved = true;
+
           markReviewQueueStatus(txToPersist.id, 'reviewed');
           const mappedBudget = appState.budgets.find(b => b.id === txToPersist.budget_id)?.name || 'Other';
           const vendorDisplay = formatVendorName(txToPersist.vendor || 'Unknown');
@@ -248,23 +285,6 @@ export const useTransactionOps = ({
               budget: mappedBudget,
               updated_at: new Date().toISOString(),
             });
-          }
-
-          // Verify that rows were actually updated
-          let updatedRows: any[] = [];
-          try {
-            updatedRows = body ? JSON.parse(body) : [];
-          } catch {
-            const msg = `[updateTransaction] failed to parse response: ${body.slice(0, 200)}`;
-            log.error(msg);
-            setDbError(msg);
-            return;
-          }
-
-          if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
-            const msg = `[updateTransaction] no rows updated for transaction ${txToPersist.id}`;
-            log.error(msg);
-            setDbError(msg);
           }
 
           // If AI transaction was re-categorized or vendor renamed, update the overrides table
@@ -312,10 +332,23 @@ export const useTransactionOps = ({
             }
           }
         }
+        return saved;
       } catch (err: any) {
         const msg = `Update exception: ${err?.message || err}`;
         log.error(msg);
         setDbError(msg);
+        // A request that never completed (no connection, a dropped socket)
+        // saved nothing, so the edit comes back off the screen rather than
+        // sitting there looking saved until the next reload quietly reverts it.
+        if (!saved && originalTx) {
+          setAppState(prev => ({
+            ...prev,
+            transactions: prev.transactions.map(t =>
+              t.id === txToPersist.id ? originalTx : t
+            ),
+          }));
+        }
+        return saved;
       }
     },
     [appState.transactions, appState.user, appState.budgets, setAppState, setDbError, toSupabaseTransaction],

@@ -1,0 +1,35 @@
+-- Migration: a client may only CREATE its settings row with the columns it
+-- would be allowed to UPDATE.
+--
+-- NOT YET APPLIED. Run it in the Supabase SQL editor (or ask Claude to apply
+-- it). Safe to run more than once. Nothing in the app changes behaviour.
+--
+-- 2026_09_security_review.sql closed the paywall to the client on UPDATE: the
+-- table grant was taken away and only the ordinary preference columns were
+-- handed back, so `{"is_tester": true}` or `{"trial_ends_at": "2099-01-01"}`
+-- stopped being one PATCH away. INSERT was left alone, and the INSERT policy
+-- only checks `auth.uid() = user_id`. So for any account whose settings row
+-- does not exist — which does happen: the app itself has a fallback that
+-- creates the row when saving the income finds none (useUserSettings.ts,
+-- saveUserIncome) — the same unlock was one POST away:
+--
+--   POST /rest/v1/settings {"user_id": <me>, "name": "x", "email": "x",
+--                           "is_tester": true, "subscription_status": "active"}
+--
+-- The fix is the same shape as the UPDATE one, and the order matters for the
+-- same reason: a column-level grant means nothing while the role still holds
+-- INSERT on the whole table, so the table grant goes first and the columns are
+-- handed back by name.
+--
+-- The columns handed back are exactly the four that app's own fallback sends,
+-- and nothing else — every other column takes its database default, which is
+-- the untrusted state: not a tester, no subscription, no trial dates, no
+-- partner. The signup trigger (handle_new_user) and every SECURITY DEFINER
+-- function run as the table's owner and are unaffected.
+--
+-- Deliberately only columns that exist in every version of this schema, so the
+-- GRANT cannot fail half way through on a project that is behind on
+-- migrations and leave the table with no INSERT grant at all.
+
+REVOKE INSERT ON public.settings FROM authenticated;
+GRANT INSERT (user_id, name, email, monthly_income) ON public.settings TO authenticated;

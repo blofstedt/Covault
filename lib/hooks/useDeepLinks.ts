@@ -7,53 +7,29 @@ import { Browser } from '@capacitor/browser';
 import { supabase } from '../supabase';
 
 /**
- * Parse OAuth callback from deep link URL
- * Handles PKCE flow (code param), implicit flow (hash fragment tokens),
- * and query parameter tokens as fallback
+ * The PKCE authorization code in a sign-in callback, or null.
+ *
+ * ONLY a code. This used to accept an access token and refresh token straight
+ * out of the link too — an "implicit flow" fallback — and hand them to
+ * `setSession`. But the app signs in with PKCE (lib/supabase.ts), so a real
+ * callback never carries tokens, and any page or app on the phone can open a
+ * `com.covault.app://` link. One carrying someone else's tokens would have
+ * signed this phone into THEIR account without a word — after which every
+ * purchase this phone captured from the user's bank alerts would have been
+ * filed into a stranger's account, where they could read it.
+ *
+ * A code cannot be used that way: exchanging it needs the verifier this app
+ * stored when it started the sign-in, so a code minted for anyone else's
+ * sign-in simply fails.
  */
-const parseOAuthUrl = (url: string): { accessToken?: string; refreshToken?: string; code?: string } | null => {
+export const parseOAuthCode = (url: string): string | null => {
   try {
-    log.debug('[useDeepLinks] Parsing URL:', url);
-
-    // Check query parameters first for PKCE authorization code
     const hashIndex = url.indexOf('#');
     const queryIndex = url.indexOf('?');
-    if (queryIndex !== -1) {
-      const queryEnd = hashIndex !== -1 ? hashIndex : url.length;
-      const query = url.substring(queryIndex + 1, queryEnd);
-      const params = new URLSearchParams(query);
-
-      // PKCE flow: look for authorization code
-      const code = params.get('code');
-      if (code) {
-        log.debug('[useDeepLinks] Found PKCE authorization code in query params');
-        return { code };
-      }
-
-      // Implicit flow fallback: tokens in query params
-      const accessToken = params.get('access_token');
-      const refreshToken = params.get('refresh_token');
-      if (accessToken && refreshToken) {
-        log.debug('[useDeepLinks] Found tokens in query parameters');
-        return { accessToken, refreshToken };
-      }
-    }
-
-    // Try hash fragment (implicit flow)
-    if (hashIndex !== -1) {
-      const fragment = url.substring(hashIndex + 1);
-      const params = new URLSearchParams(fragment);
-      const accessToken = params.get('access_token');
-      const refreshToken = params.get('refresh_token');
-
-      if (accessToken && refreshToken) {
-        log.debug('[useDeepLinks] Found tokens in hash fragment');
-        return { accessToken, refreshToken };
-      }
-    }
-
-    log.debug('[useDeepLinks] No OAuth code or tokens found in URL');
-    return null;
+    if (queryIndex === -1) return null;
+    const queryEnd = hashIndex !== -1 && hashIndex > queryIndex ? hashIndex : url.length;
+    const params = new URLSearchParams(url.substring(queryIndex + 1, queryEnd));
+    return params.get('code') || null;
   } catch (error) {
     log.error('[useDeepLinks] Error parsing OAuth URL:', error);
     return null;
@@ -81,13 +57,13 @@ export const useDeepLinks = () => {
           url.includes('refresh_token') ||
           url.includes('code=')
         ) {
-          const parsed = parseOAuthUrl(url);
+          const code = parseOAuthCode(url);
 
-          if (parsed?.code) {
+          if (code) {
             // PKCE flow: exchange authorization code for session
             log.debug('[useDeepLinks] Exchanging PKCE code for session...');
             try {
-              const { data, error } = await supabase.auth.exchangeCodeForSession(parsed.code);
+              const { data, error } = await supabase.auth.exchangeCodeForSession(code);
               if (error) {
                 log.error('[useDeepLinks] Error exchanging PKCE code:', error);
               } else {
@@ -97,25 +73,10 @@ export const useDeepLinks = () => {
             } catch (error) {
               log.error('[useDeepLinks] Exception exchanging PKCE code:', error);
             }
-          } else if (parsed?.accessToken && parsed?.refreshToken) {
-            // Implicit flow: set session directly from tokens
-            log.debug('[useDeepLinks] Setting session from tokens...');
-            try {
-              const { data, error } = await supabase.auth.setSession({
-                access_token: parsed.accessToken,
-                refresh_token: parsed.refreshToken,
-              });
-              if (error) {
-                log.error('[useDeepLinks] Error setting session from tokens:', error);
-              } else {
-                log.debug('[useDeepLinks] ✅ Session set from tokens');
-                log.debug('[useDeepLinks] User:', data?.session?.user?.email);
-              }
-            } catch (error) {
-              log.error('[useDeepLinks] Exception setting session:', error);
-            }
           } else {
-            log.warn('[useDeepLinks] OAuth callback received but no code or tokens found');
+            // Including a link carrying raw tokens, which is refused on
+            // purpose — see parseOAuthCode.
+            log.warn('[useDeepLinks] Sign-in link had no authorization code; ignoring it');
           }
 
           // Close the in-app browser that was opened for OAuth

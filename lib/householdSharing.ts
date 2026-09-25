@@ -24,7 +24,8 @@
 // Balance" is a claim about the household's money and there is no reading of
 // it where one person's salary is the whole of it.
 
-import type { Transaction, BudgetCategory } from '../types';
+import type { AppState, Transaction, BudgetCategory } from '../types';
+import { countedAmount } from './refundMatching';
 
 /** Whose budget lines the vials show. A property of the household, not a phone. */
 export type BudgetMode = 'separate' | 'combined';
@@ -179,13 +180,63 @@ export function householdSpend(
   myUserId: string,
   partnerSummary: PartnerSummary | null,
 ): number {
-  const visible = visibleTransactions.reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0);
+  // countedAmount, not the raw amount: a purchase the pipeline marked refunded
+  // has already dropped out of its vial and must drop out of the balance too.
+  const visible = visibleTransactions.reduce((sum, tx) => sum + countedAmount(tx), 0);
   if (!partnerSummary) return visible;
   // At 'transactions' the rows are already in the list above; anything else and
   // they are not, so the summary is the only record of them.
   if (partnerSummary.level === 'transactions') return visible;
   const mine = visibleTransactions
     .filter((tx) => !tx.user_id || tx.user_id === myUserId)
-    .reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0);
+    .reduce((sum, tx) => sum + countedAmount(tx), 0);
   return mine + partnerSummary.total;
+}
+
+/**
+ * App state with every trace of a partner taken out.
+ *
+ * Unlinking used to clear the partner's NAME and nothing that was derived from
+ * them: their income stayed in the household figure, their month summary kept
+ * being subtracted from it, their limits stayed in the combined vials and
+ * their purchases stayed in the list — so "Remaining Balance" went on counting
+ * an ex-partner's salary until the app was next closed. The same happened on
+ * the other phone when a partner unlinked from theirs, because the reload that
+ * found no partner cleared nothing.
+ *
+ * `budgetingSolo` is only flipped back when there WAS a partner to lose. A
+ * person with no partner yet who chose "together" during setup keeps that
+ * choice; this is about a link that ended, not about who they are.
+ *
+ * Returns the same object when there is nothing to remove, so a reload that
+ * finds no partner, for someone who never had one, does not re-render the app.
+ */
+export function withoutPartner(state: AppState, myUserId: string): AppState {
+  const hadPartner = !!state.user?.partnerId;
+  const hasPartnerFigures =
+    state.partnerIncome != null || state.partnerSummary != null || state.partnerBudgets != null;
+  const hasPartnerRows = state.transactions.some(
+    (tx) => !!tx.user_id && tx.user_id !== myUserId,
+  );
+  if (!hadPartner && !hasPartnerFigures && !hasPartnerRows) return state;
+
+  return {
+    ...state,
+    user: state.user && hadPartner
+      ? {
+          ...state.user,
+          budgetingSolo: true,
+          hasJointAccounts: false,
+          partnerId: undefined,
+          partnerName: undefined,
+          partnerEmail: undefined,
+        }
+      : state.user,
+    partnerIncome: null,
+    partnerSummary: null,
+    partnerBudgets: null,
+    transactions: hasPartnerRows
+      ? state.transactions.filter((tx) => !tx.user_id || tx.user_id === myUserId)
+      : state.transactions,
+  };
 }

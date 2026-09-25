@@ -373,6 +373,14 @@ export function useVendorOverrides({ userId, partnerId, budgets }: UseVendorOver
                 setVendorOverrides((prev) =>
                   prev.map((vo) => vo.id === tempId ? { ...vo, id: realId } : vo)
                 );
+              } else {
+                // The insert failed and there was no existing row to update
+                // either, so nothing was saved. Leaving the optimistic rule in
+                // the list showed a lesson the database never learned — it
+                // would be gone on the next launch and never filed anything.
+                log.error('[TransactionParsing] Vendor override was not saved (insert failed, no existing rule):', (await insertRes.text()).slice(0, 200));
+                setVendorOverrides((prev) => prev.filter((vo) => vo.id !== tempId));
+                return;
               }
             } else {
               const insertBody = await insertRes.text();

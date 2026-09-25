@@ -186,7 +186,11 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     [budgets, hiddenCategories, selectedId],
   );
 
-  const amount = parseFloat(amountStr) || 0;
+  // Whole cents. A number field accepts "12.345", and that was saved as typed —
+  // a fraction of a cent the dashboard never shows but every total carries.
+  // Rounded here, so the check that enables Confirm and the figure saved are
+  // the same number (and "0.001" is not a purchase at all).
+  const amount = Math.round((parseFloat(amountStr) || 0) * 100) / 100;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

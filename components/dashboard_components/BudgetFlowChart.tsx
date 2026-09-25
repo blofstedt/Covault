@@ -3,6 +3,7 @@ import * as d3 from 'd3';
 import { BudgetCategory, Transaction } from '../../types';
 import { getBudgetGradient, getBudgetColor } from '../../lib/budgetColors';
 import { buildMonthWindow, shortMonthName, longMonthLabel } from '../../lib/monthWindow';
+import { countedAmount } from '../../lib/refundMatching';
 
 interface BudgetFlowChartProps {
   budgets: BudgetCategory[];
@@ -145,7 +146,9 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
       // Extract YYYY-MM directly from the date string to avoid timezone shifts
       const txMonthKey = rawDate.slice(0, 7);
 
-      const amount = Number(tx.amount) || 0;
+      // Same per-row rule as the vials and the balance: a refunded purchase
+      // is money that came back. See countedAmount.
+      const amount = countedAmount(tx);
       if (amount === 0) continue;
 
       const monthKey = txMonthKey;
@@ -485,11 +488,10 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
       if (tx.budget_id !== highlightedBudgetId) continue;
       const rawDate = tx.date;
       if (!rawDate || rawDate.slice(0, 7) !== selectedMonthKey) continue;
-      const amt = Number(tx.amount) || 0;
       if (tx.is_projected) {
-        projected += amt;
+        projected += Number(tx.amount) || 0;
       } else {
-        spent += amt;
+        spent += countedAmount(tx);
       }
     }
 

@@ -139,6 +139,10 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | "a setting doesn't stick" | `SETTING_DB_KEYS` in `components/Dashboard.tsx` → `lib/hooks/useUserSettings.ts` → `lib/hooks/useDataLoading.ts`. **Usually a missing DB column** — see Invariants |
 | "an edit didn't save" | `lib/hooks/useTransactionOps.ts`. If it's a **vendor rename**, also `lib/formatVendorName.ts` — it has previously overwritten the user's own capitalisation |
 | "the numbers are wrong" | `components/dashboard_components/useDashboardTotals.ts`, `lib/refundMatching.ts`, `lib/projectedTransactions.ts` |
+| "a refund didn't change my balance" / "the balance and the bars disagree" | `countedAmount` in `lib/refundMatching.ts` — the one per-row rule every spending total uses. See Invariants |
+| "we unlinked but the balance still has their money in it" | `withoutPartner` in `lib/householdSharing.ts`, applied by `handleUnlinkPartner` and by `loadHouseholdLink` when a reload finds no partner |
+| "I got a budget alert about my partner's spending" / "it never told me I went over" | `checkAndTriggerAppNotifications` in `lib/appNotifications.ts` — same limits and same rows as the vials; the warning and the overrun are remembered separately |
+| "a sign-in link did something strange" | `parseOAuthCode` in `lib/hooks/useDeepLinks.ts` — only a PKCE code is ever accepted. See Invariants |
 | "the chart is showing the wrong months" / "I tapped a month and nothing changed" | `lib/monthWindow.ts` (the seven keys) → `lib/hooks/useMonthSelection.ts` (which one is on screen, and what puts it back) → `components/dashboard_components/BudgetFlowChart.tsx` (the rail) |
 | "it's showing me an old month" / "the balance at the top looks wrong" | `components/Dashboard.tsx` — `monthKey` is the month we are IN, `viewMonthKey` the one being READ. See the invariant below before moving anything onto the second |
 | "last month's entries are still listed" / "the list is in the wrong order" | `lib/transactionOrdering.ts` (one month, chronological) → `lib/hooks/useCurrentDay.ts` (the single clock) → `components/Dashboard.tsx` |
@@ -712,6 +716,40 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   must THROW on a failed read, never return `[]`, or the cache treats the
   failure as "nothing" and empties the screen. Sign-out clears the cache
   alongside the first-paint snapshot. `reviewRulesQuery.test.ts` pins it.
+
+- **Every spending total goes through `countedAmount`, and a refunded purchase
+  counts as nothing.** The capture pipeline records a refund by marking the
+  original purchase `refunded` — it writes no negative row — while a refund the
+  user enters by hand IS a negative row. The vials used to be the only thing
+  that knew about the flag: the headline balance, the chart, the widget, the
+  report and the over-budget alerts all summed raw amounts, so a returned
+  purchase left its vial and kept lowering "Remaining Balance". And the vial
+  over-corrected the hand-entered kind, dropping the struck-through purchase
+  AND subtracting the refund, so a returned $60 read -$60. `countedAmount` in
+  `lib/refundMatching.ts` is now the only rule: a flagged purchase is 0,
+  everything else counts at face value, so a hand-entered pair nets to zero
+  by itself. A projected occurrence never inherits `refunded` from the row it
+  was copied from — a refund belongs to one charge, not the series. Any new
+  total must use it. `refundedPurchaseTotals.test.ts` pins every consumer.
+
+- **A sign-in link is only ever exchanged as a PKCE code, never installed as
+  tokens.** `useDeepLinks` used to accept `access_token`/`refresh_token` from
+  any `com.covault.app://` link and call `setSession` with them — an
+  "implicit flow" fallback the app never needs, because it signs in with PKCE.
+  Any page or app can open that scheme, so a link carrying someone else's
+  tokens would have moved this phone onto their account in silence, and every
+  purchase it captured afterwards would have been filed where they could read
+  it. A code is safe because exchanging it needs the verifier this app stored
+  when it started the sign-in. Do not re-add the token path.
+  `signInLinkOnlyAcceptsCode.test.ts` pins it.
+
+- **A capture the pipeline throws on is rethrown, not handled.** It looks like
+  an unhandled error; it is the retry. `pendingCaptureQueue.ts` keeps any
+  entry whose handler throws and replays it on the next launch, and the
+  pipeline's own duplicate checks make the replay safe. The old catch fell
+  through to a "legacy" insert with no budget, which could only fail — and,
+  having returned normally, released the capture from the queue for good.
+  `captureSurvivesPipelineError.test.ts` pins it.
 
 - **The budget order comes from `lib/budgetOrder.ts`, not from the database.**
   `budgets` has no primary key and no sort column, and `loadUserBudgets` reads

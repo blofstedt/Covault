@@ -11,10 +11,21 @@ let cachedAccessToken = '';
 // JWT on every single request (loadUserData alone issues ~10).
 let cachedAccessTokenExpMs: number | null = null;
 
-/** Decode a JWT's `exp` claim, in ms. Null if it can't be read. */
-const readTokenExpMs = (token: string): number | null => {
+/**
+ * Decode a JWT's `exp` claim, in ms. Null if it can't be read.
+ *
+ * A JWT is base64URL, not base64: `-` and `_` where base64 has `+` and `/`,
+ * and no padding. `atob` rejects the first two outright, and a real session
+ * token almost always contains one of them somewhere in its payload — so this
+ * used to return null for nearly every token, every token read as stale, and
+ * the cache above it never cached: each of the ~10 requests in a load went
+ * back to `getSession()` first. Translated here; padding is optional to atob.
+ */
+export const readTokenExpMs = (token: string): number | null => {
   try {
-    const payload = JSON.parse(atob(token.split('.', 2)[1]));
+    const base64Url = token.split('.', 2)[1] ?? '';
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(atob(base64));
     return typeof payload.exp === 'number' ? payload.exp * 1000 : null;
   } catch {
     return null;

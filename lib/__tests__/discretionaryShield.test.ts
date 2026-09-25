@@ -122,14 +122,21 @@ describe('computeBudgetTotals', () => {
     const totals = computeBudgetTotals(OTHER, [spend, refund]);
     expect(totals.visibleTransactions.map((t) => t.id)).toEqual([spend.id]);
     expect(totals.refundedExpenseIds.has(spend.id)).toBe(true);
-    // Carried over from BudgetSection unchanged, and pinned here so this
-    // refactor provably moved the arithmetic without altering it: a MATCHED
-    // refund currently counts twice — the expense is dropped from the total
-    // AND the refund's negative amount is subtracted — so the vial reads -$60
-    // rather than $0. That is a separate, pre-existing question from the
-    // shield, deliberately not changed here (it would move every vial's
-    // numbers). Whoever fixes it should update this line.
-    expect(totals.spent).toBe(-60);
+    // A MATCHED refund used to count twice — the expense was dropped from the
+    // total AND the refund's negative amount was subtracted — so a returned
+    // $60 left the vial at -$60. The purchase and its refund now net to zero,
+    // and the purchase is still struck through on screen.
+    expect(totals.spent).toBe(0);
+  });
+
+  it('does not count a purchase the capture pipeline marked refunded', () => {
+    // No negative row exists for these: the refund notification flags the
+    // original purchase instead, so the purchase itself has to drop out.
+    const spend = tx(OTHER, 75, { vendor: 'Indigo', refunded: true });
+    const kept = tx(OTHER, 20, { vendor: 'Chapters' });
+    const totals = computeBudgetTotals(OTHER, [spend, kept]);
+    expect(totals.spent).toBe(20);
+    expect(totals.refundedExpenseIds.has(spend.id)).toBe(true);
   });
 });
 

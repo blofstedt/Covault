@@ -206,7 +206,11 @@ jobs:
           test -n "$NATIVE_HASH"
           test -f dist/index.html
           WEB_BUNDLE="covault-web-${NATIVE_HASH}.zip"
-          (cd dist && zip -qr "../${WEB_BUNDLE}" .)
+          # Source maps stay out of the bundle phones download. They are about
+          # three quarters of it (2.8 MB zipped with them, 0.65 MB without),
+          # the WebView never fetches them unless DevTools is attached, and
+          # the APK still carries its own copy for on-device debugging.
+          (cd dist && zip -qr "../${WEB_BUNDLE}" . -x '*.map')
           echo "WEB_BUNDLE=${WEB_BUNDLE}" >> $GITHUB_ENV
           ls -lh "${WEB_BUNDLE}"
 

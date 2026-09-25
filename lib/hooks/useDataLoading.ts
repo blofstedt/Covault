@@ -19,7 +19,12 @@ import {
 } from '../apiHelpers';
 import { syncServerClock } from '../serverClock';
 import { getLocalToday } from '../dateUtils';
-import { readPartnerSummary, type ShareLevel, type BudgetMode } from '../householdSharing';
+import {
+  readPartnerSummary,
+  withoutPartner,
+  type ShareLevel,
+  type BudgetMode,
+} from '../householdSharing';
 import { useFromSupabaseTransaction } from './transactionMappers';
 import { readFirstPaintCache } from '../firstPaintCache';
 import { createReadGate, type ReadGate } from '../readGate';
@@ -599,6 +604,11 @@ export const useDataLoading = ({
 
         const body = await res.text();
         const data = JSON.parse(body);
+        // Who the partner was at the previous load, read before it is
+        // overwritten below — the only way to tell "the link just ended" from
+        // "there never was one".
+        const previousPartnerId =
+          partnerOwnerIdRef.current === userId ? partnerIdRef.current : null;
         // Recorded (or cleared) before anything else, so a reload triggered
         // while this is still resolving already knows who to fetch alongside
         // the signed-in user — and so unlinking, or signing in as somebody
@@ -606,6 +616,29 @@ export const useDataLoading = ({
         partnerIdRef.current =
           data && data.length > 0 && data[0].partner_id ? String(data[0].partner_id) : null;
         partnerOwnerIdRef.current = userId;
+        if (!partnerIdRef.current) {
+          // No partner. For someone who never had one this changes nothing.
+          // For someone whose partner unlinked from THEIR phone, it is the
+          // only moment this phone finds out — and it used to clear nothing,
+          // so the ex-partner's income, month and purchases stayed in the
+          // household figures. See withoutPartner.
+          //
+          // Only onto this user's own state: a load that finishes after the
+          // account on screen has changed must not filter the new account's
+          // rows against the old one's id.
+          setAppState(prev => (prev.user?.id === userId ? withoutPartner(prev, userId) : prev));
+          if (previousPartnerId) {
+            // The other side's app wrote nothing to this row when it unlinked,
+            // so `budgeting_solo` still says "shared" and the next launch
+            // would label the balance "Our" again. The same write this phone
+            // makes when it is the one that unlinks. Best-effort.
+            void restFetch(`/settings?user_id=eq.${userId}`, {
+              method: 'PATCH',
+              body: JSON.stringify({ budgeting_solo: true }),
+            }).catch(() => {});
+          }
+          return;
+        }
         if (data && data.length > 0 && data[0].partner_id) {
           const partnerId = data[0].partner_id;
           const partnerName = data[0].partner_name;
