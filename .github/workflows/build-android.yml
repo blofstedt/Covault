@@ -75,8 +75,16 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
+      # `packages` is spelled out because the action's default is
+      # "tools platform-tools", and Google has withdrawn the legacy `tools`
+      # package: sdkmanager now answers "Failed to find package 'tools'" and
+      # exits 1, which failed every build at this step from 2026-09-24 on.
+      # Nothing here uses `tools` — Gradle brings its own build tools and
+      # platforms, and apksigner comes from build-tools.
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Setup Capacitor and Android
         run: |
