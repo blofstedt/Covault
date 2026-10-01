@@ -14,6 +14,7 @@ import type { AppState, BudgetCategory, Transaction, Toast } from './types';
 import { supabase } from './lib/supabase';
 import { useAuthState, AuthStatus } from './lib/hooks/useAuthState';
 import { useDeepLinks } from './lib/hooks/useDeepLinks';
+import { useHardwareBack } from './lib/hooks/useHardwareBack';
 import { useNotificationListener } from './lib/hooks/useNotificationListener';
 import { useNotificationSetupCompletion } from './lib/hooks/useNotificationSetupCompletion';
 import { covaultNotification, autoDetectAndSaveMonitoredApps } from './lib/covaultNotification';
@@ -192,6 +193,7 @@ const App: React.FC = () => {
 
   useAuthState({ setAppState, setAuthState, loadUserData: loadUserDataWithState });
   useDeepLinks();
+  useHardwareBack();
 
   // Keep a copy of what is on screen so the next launch can draw it before the
   // network answers. See lib/firstPaintCache.ts.

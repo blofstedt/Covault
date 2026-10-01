@@ -1,4 +1,5 @@
-import { useLayoutEffect, type KeyboardEvent, type RefObject } from 'react';
+import { useLayoutEffect, useRef, type KeyboardEvent, type RefObject } from 'react';
+import { pushBackHandler } from '../backStack';
 
 let bodyScrollLockCount = 0;
 let bodyOverflowBeforeLock: string | undefined;
@@ -70,6 +71,14 @@ export function useDialogInteraction(
   onEscape: () => void,
   { layer = 'modal', disabled = false }: { layer?: DialogLayer; disabled?: boolean } = {},
 ): (event: KeyboardEvent<HTMLElement>) => void {
+  // Read through refs so the back-button registration below is made once per
+  // dialog, not once per render. Re-registering would move this dialog back to
+  // the top of the stack each time, over one opened after it.
+  const escapeRef = useRef(onEscape);
+  escapeRef.current = onEscape;
+  const disabledRef = useRef(disabled);
+  disabledRef.current = disabled;
+
   useLayoutEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog || dialog.closest('[aria-hidden="true"], [inert]')) return undefined;
@@ -78,11 +87,19 @@ export function useDialogInteraction(
     const releaseScrollLock = acquireBodyScrollLock();
     const registration: ActiveDialog = { element: dialog, layer, order: nextDialogOrder++ };
     activeDialogs.push(registration);
+    // The phone's back button does what Escape does. While the dialog is
+    // already playing its exit it still takes the press and ignores it, so a
+    // second press cannot fall through and close the page underneath.
+    const releaseBack = pushBackHandler(() => {
+      if (!disabledRef.current) escapeRef.current();
+      return true;
+    }, layer);
     if (topDialog() === registration) getInitialFocusTarget(dialog).focus();
 
     return () => {
       const stackIndex = activeDialogs.indexOf(registration);
       if (stackIndex !== -1) activeDialogs.splice(stackIndex, 1);
+      releaseBack();
       releaseScrollLock();
       const nextTop = topDialog();
       if (nextTop) {

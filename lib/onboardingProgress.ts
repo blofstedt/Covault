@@ -134,3 +134,23 @@ export function nextStep(
   }
   return null;
 }
+
+/**
+ * The step before this one, for the phone's back button.
+ *
+ * `partner` is skipped for a solo vault exactly as `nextStep` skips it, so back
+ * retraces the path that was actually walked. `null` at the first step: there
+ * is nothing behind it, and the caller lets the app leave instead.
+ */
+export function previousStep(
+  current: OnboardingStepId,
+  { solo }: { solo: boolean },
+): OnboardingStepId | null {
+  const index = ONBOARDING_STEPS.indexOf(current);
+  for (let i = index - 1; i >= 0; i--) {
+    const step = ONBOARDING_STEPS[i];
+    if (step === 'partner' && solo) continue;
+    return step;
+  }
+  return null;
+}

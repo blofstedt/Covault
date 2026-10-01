@@ -41,6 +41,7 @@ import {
   type PartnerSummary,
 } from '../lib/householdSharing';
 import { useCurrentDay } from '../lib/hooks/useCurrentDay';
+import { useBackHandler } from '../lib/hooks/useBackHandler';
 import { useMonthSelection } from '../lib/hooks/useMonthSelection';
 import { balanceLabelForMonth, remainingForMonth } from '../lib/monthWindow';
 import { isInMonth } from '../lib/transactionOrdering';
@@ -218,6 +219,21 @@ const Dashboard: React.FC<Props> = ({
     // it looks when you arrive", and it arrives on this month.
     resetToCurrentMonth();
   }, [closeParsing, resetToCurrentMonth]);
+
+  // The phone's back button, one step at a time. Registered in the order the
+  // user usually gets into things, because the stack answers newest first: out
+  // of a search before out of a vial, out of a vial before back to this month,
+  // and out of all of it before leaving the page. Dialogs register themselves
+  // (see useDialogInteraction) and always sit above these.
+  const onHome = !showParsing;
+  const searchActive = isSearchOpen || searchQuery.trim() !== '';
+  useBackHandler(showParsing, closeParsing);
+  useBackHandler(onHome && !isViewingCurrentMonth, resetToCurrentMonth);
+  useBackHandler(onHome && expandedBudgets.size > 0, () => setExpandedBudgets(new Set()));
+  useBackHandler(onHome && searchActive, () => {
+    setSearchQuery('');
+    setIsSearchOpen(false);
+  });
 
   const scrollRef = useRef<HTMLDivElement>(null);
 

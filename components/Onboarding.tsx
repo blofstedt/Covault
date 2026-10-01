@@ -4,11 +4,13 @@ import { SYSTEM_CATEGORIES } from '../constants';
 import {
   clearProgress,
   nextStep,
+  previousStep,
   readProgress,
   resumeStep,
   writeProgress,
   type OnboardingStepId,
 } from '../lib/onboardingProgress';
+import { useBackHandler } from '../lib/hooks/useBackHandler';
 import IncomeStep from './onboarding/IncomeStep';
 import BudgetLimitsStep from './onboarding/BudgetLimitsStep';
 import CaptureStep from './onboarding/CaptureStep';
@@ -192,6 +194,22 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete, setup, onGenerateLi
     clearProgress(userId);
     onComplete(isSolo, SYSTEM_CATEGORIES, email);
   };
+
+  // The phone's back button retraces the intro: a slide at a time, then a step
+  // at a time. At the very first slide there is nothing behind it, so it is
+  // declined and the app leaves, as it would from any first screen.
+  useBackHandler(true, () => {
+    if (step === 'intro') {
+      if (slide === 0) return false;
+      setSlide(slide - 1);
+      return true;
+    }
+    const previous = previousStep(step, { solo });
+    if (previous === null) return false;
+    writeProgress(userId, { step: previous, solo });
+    setStep(previous);
+    return true;
+  });
 
   const handleNextIntro = (e: React.MouseEvent) => {
     e.preventDefault();
