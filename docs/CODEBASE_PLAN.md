@@ -53,6 +53,10 @@ phone app usable after each step.
   `contents: read`; the main-branch publisher has `contents: write`, and the
   unused Actions/packages write grants are gone. `appUpdate.test.ts` pins the
   job boundary; its focused 25-test run passed.
+- [ ] Verify live Supabase access policies against a disposable database once
+  the setup sequence above is validated. The browser suite keeps concurrent
+  test households apart, but its stand-in database (`e2e/mockSupabase.ts`)
+  enforces its own rule, so it cannot certify the real row-level security.
 
 ### 2. Give features clear boundaries
 
@@ -60,6 +64,12 @@ phone app usable after each step.
   now owns the column mapping and checks the save result; the dashboard owns
   the person's choice and restores it when saving fails. Follow this boundary
   as other settings flows change.
+- [x] Keep shared controls free of household data. `eslint.config.js` refuses
+  Supabase, Capacitor and native-plugin imports in `components/ui` and
+  `components/shared`, and a direct Supabase client in dashboard and Review
+  components; the capture-source picker, which does call the phone, moved to
+  `components/capture_sources`. Those folders also require explicit button
+  types, type-only imports, and no `any`.
 - [ ] Put related screen code together as each feature changes. A feature can
   own its screen, small controls, hook, data operations, and tests. Keep
   genuinely shared controls in `components/ui` or `components/shared`; do not
@@ -126,7 +136,9 @@ phone app usable after each step.
   `docs/UI_VISUAL_CHECKS.md` records the current shared values and differences.
   The account-free visual page compares the real populated and empty dashboard,
   Review, onboarding, add-entry, and settings components in browser renders;
-  no broad restyle was made before an Android comparison.
+  no broad restyle was made before an Android comparison. General and Review
+  cards now draw their identical base surface from
+  `components/shared/cardSurface.ts`; the rendered classes are unchanged.
 - [ ] Give dialogs and sheets one accessible interaction pattern: initial
   focus, Escape, return focus, scroll locking, and reduced motion. Modal and
   sheet surfaces now share `useDialogInteraction`, including nested layers;
@@ -154,6 +166,14 @@ phone app usable after each step.
   decision has direct decision tests; the shared dialogs now have keyboard,
   focus-return, and scroll-lock behavior tests. Source checks remain only for
   build wiring where the behavior runs outside the unit-test process.
+  Component tests now mount through `test/renderWithProviders.tsx`; the first
+  one renders the skip-pattern delete flow, including cancel, focus return,
+  keyboard containment, and an axe accessibility scan.
+- [x] Run the web app in a browser in CI. The `Browser smoke` workflow runs
+  Playwright on every push to `main` against a local stand-in for Supabase,
+  with outside network requests blocked. It covers the sign-in screen's theme
+  and two signed-in households kept apart. It does not cover Android, real
+  database rules, or appearance.
 - [x] Review dependencies and build tools on a schedule. The new DOM test
   environment was checked against npm's latest stable release and its MIT
   license. The 17 advisories in the installed tree were cleared: PostCSS is

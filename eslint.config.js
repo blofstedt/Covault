@@ -174,9 +174,59 @@ export default tseslint.config(
     },
   },
   {
+    // Start strict local rules at owned boundaries. Legacy app files still
+    // have `any` values that need to be removed alongside their data parsing.
+    files: ['components/ui/**/*.{ts,tsx}', 'components/shared/**/*.{ts,tsx}', 'components/capture_sources/**/*.{ts,tsx}', 'e2e/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/consistent-type-imports': ['error', { fixStyle: 'inline-type-imports' }],
+      'react/button-has-type': 'error',
+    },
+  },
+  {
+    // Shared visual controls must work without a vault, database, or native
+    // plugin. Keep data loading and phone effects in their owning features.
+    files: ['components/ui/**/*.{ts,tsx}', 'components/shared/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          group: ['@supabase/*', '@capacitor/*', '**/lib/supabase', '**/lib/apiHelpers', '**/lib/covaultNotification', '**/lib/captureSources'],
+          message: 'Shared controls cannot read household data or call native plugins. Pass values and actions through props.',
+        }],
+      }],
+    },
+  },
+  {
+    // Dashboard and review features use their existing data hooks and actions.
+    // Settings sections in this tree do own native actions, so this rule only
+    // blocks direct Supabase client imports.
+    files: ['components/dashboard_components/**/*.{ts,tsx}', 'components/transaction_parsing/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          group: ['@supabase/*', '**/lib/supabase'],
+          message: 'Use the feature data hooks or actions instead of opening a Supabase client in a component.',
+        }],
+      }],
+    },
+  },
+  {
     // The entry point mounts the app; nothing hot-reloads it.
     files: ['index.tsx'],
     rules: { 'react-refresh/only-export-components': 'off' },
+  },
+  {
+    // Component tests share the app providers and clear their query cache.
+    files: ['**/__tests__/**/*.test.tsx'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        paths: [{
+          name: '@testing-library/react',
+          importNames: ['render'],
+          message: 'Use test/renderWithProviders so component tests mount the app providers and clear shared state.',
+        }],
+      }],
+    },
   },
   {
     // Build scripts run under Node, not in the WebView.

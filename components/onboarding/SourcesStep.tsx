@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import OnboardingStepShell from './OnboardingStepShell';
-import CaptureSourcePicker from '../ui/CaptureSourcePicker';
+import CaptureSourcePicker from '../capture_sources/CaptureSourcePicker';
 import type { CovaultNotificationPlugin } from '../../lib/covaultNotification';
 
 interface SourcesStepProps {

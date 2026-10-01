@@ -23,9 +23,9 @@ is unreviewable.
   captured" — not "the listener's `commit()` returns before the insert
   resolves". If a mechanism has to be mentioned, one clause, then back to what
   it means for them.
-- **Say plainly what you did not verify.** They cannot infer it. CI does not run
-  this app: compile-green proves nothing about capture, the widget, or anything
-  visual. Say so rather than letting a green build imply it works.
+- **Say plainly what you did not verify.** They cannot infer it. CI never runs
+  this app on a phone: compile-green proves nothing about capture, the widget,
+  or anything visual. Say so rather than letting a green build imply it works.
 - **Answer the question that was asked**, then stop. If they ask whether
   something is right, the first thing they should read is whether it is right.
 
@@ -56,7 +56,8 @@ it will not land.
   category palette (`lib/budgetColors.ts`, reused by bars, icons and the
   chart), `rounded-[2rem]` cards, tight tracking on big numerals, muted glassy
   surfaces. Reuse the existing pieces — `components/ui/`, `components/shared/`,
-  `getBudgetIcon` — before adding a new visual idea. A new control that looks
+  `getBudgetIcon`, and `components/shared/cardSurface.ts`, the one card surface
+  general and Review cards share — before adding a new visual idea. A new control that looks
   like it came from a different app is a regression even if it works.
 - **One clock per interaction.** Everything moving as part of the same gesture
   shares 320ms and `cubic-bezier(0.32, 0.72, 0.24, 1)` — the budget expand, the
@@ -71,7 +72,8 @@ it will not land.
 - **Never trade the look for an easier implementation** without saying so. If
   the simple approach is uglier, say that plainly, in English, and describe the
   alternative and what it costs. Let them choose.
-- **Be honest about what you have not seen.** Nothing in CI renders this app.
+- **Be honest about what you have not seen.** Nothing in CI looks at this app:
+  the browser tests check that a few screens work, not how they look or move.
   If you changed something visual or animated, say it is unverified rather than
   letting a green build imply it looks right.
 
@@ -83,10 +85,12 @@ people can share a vault.
 
 React 19 + TypeScript + Vite 6 + Tailwind 3, wrapped in Capacitor 8 for Android.
 Supabase (Postgres + RLS) for data. On-device flan-T5 via
-`@huggingface/transformers` for parsing. Vitest for tests.
+`@huggingface/transformers` for parsing. Vitest for unit and component tests;
+Playwright for browser tests.
 
 ```bash
 npm run verify     # typecheck + typecheck:unused + lint + test + build  ← run before committing
+npm run test:e2e   # Playwright browser tests against a local stand-in for Supabase
 npm run dev        # localhost:3000
 npm run cap:build  # web build + cap sync + scripts/sync-android.sh
 ```
@@ -126,7 +130,8 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | "it used a different shop's name / budget" / "a purchase went missing" | `fuzzyVendorMatch` in `lib/formatVendorName.ts` — the one "are these the same merchant?" answer, asked by the duplicate skip, the soft-dup warning, the local vendor memory and the recurring lookup. See Invariants |
 | "it filed a charge under a shop I've never bought from" | `stripProcessorPrefixes` in `lib/deviceTransactionParser.ts` (what "GOOGLE *SERVICES" is left as) → step 5b of `lib/notificationProcessor.ts` (which remembered merchant it then adopts). See Invariants |
 | "the ignored-alert rules on Review are stale / missing" | `lib/queries/notificationRules.ts` (cached, prefetched query) → `components/transaction_parsing/useNotificationRules.ts`. The cache itself is `lib/queryClient.ts` |
-| "lint is failing" / "why is this lint rule off" | `eslint.config.js` — every rule switched off carries its reason. Several would CHANGE behaviour if auto-fixed (hashes, `null` vs `[]`, newer-WebView-only methods) |
+| "lint is failing" / "why is this lint rule off" | `eslint.config.js` — every rule switched off carries its reason. Several would CHANGE behaviour if auto-fixed (hashes, `null` vs `[]`, newer-WebView-only methods). It also holds the import boundaries: shared controls may not reach the database or native plugins, and dashboard and Review components may not open a Supabase client |
+| "the browser tests are failing" | `playwright.config.ts` → `e2e/fixtures.ts` (blocks every outside request, creates a separate test household per test) → `e2e/mockSupabase.ts` (the stand-in database, served by Vite in `e2e` mode only) |
 | "the review list / badge is wrong" | `lib/reviewQueue.ts` — the single definition of "waiting"; the list, badge and widget all read it |
 | "the widget is stale or wrong" | `lib/widgetSnapshot.ts` → `android-custom/WidgetDeltaStore.java` → `android-custom/WidgetRenderer.java` |
 | "the 'add widget' button in settings doesn't work" | `android-custom/CovaultWidgetPlugin.java` (`isSupported` / `requestPinAppWidget`) → `components/dashboard_components/settings_modal_components/HomeScreenWidgetSection.tsx` — the button is one of two routes and only ever shown once `isSupported` says the launcher can honour it; the other route is the written steps, unconditional and always correct |
@@ -779,12 +784,31 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
 - Never wrap imports in `try`/`catch`.
 - Enum/label ↔ DB mapping belongs in `lib/hooks/transactionMappers.ts`.
 - New bank or vendor pattern ⇒ add a parser test.
+- Shared controls in `components/ui/` and `components/shared/` take data and
+  actions through props. Lint refuses Supabase, Capacitor and native-plugin
+  imports there, so the same control renders in a test, the visual check page
+  and the app alike.
+- Component tests run under `// @vitest-environment happy-dom` and mount
+  through `test/renderWithProviders.tsx`, which supplies the app's query cache
+  and clears it after each test; lint refuses a bare `render`. Dialogs play a
+  320ms exit before unmounting, so wait for one to disappear rather than
+  asserting it is gone straight after the click.
+- A new dependency needs its current stable version and licence checked, and
+  `npm audit` clean after the install.
 - Never commit secrets. `.env` and `*credentials*`/`*secrets*` are gitignored.
 - `npm run verify` before committing.
 
 ## Verification reality
 
-CI type-checks, tests and builds an APK. **Nothing runs the app.** Compile-green
-is not evidence for: notification capture, tray suppression, on-device AI, the
-home-screen widget, haptics, or anything visual. Those need a device or
-`npm run dev`. Say so plainly rather than implying a green build means it works.
+CI type-checks, tests and builds an APK. **Nothing runs the app on a phone or
+against the real database.** Compile-green is not evidence for: notification
+capture, tray suppression, on-device AI, the home-screen widget, haptics, or
+anything visual. Those need a device or `npm run dev`. Say so plainly rather
+than implying a green build means it works.
+
+The one exception is narrow. The `Browser smoke` workflow runs the Playwright
+suite (`npm run test:e2e`) in headless Chromium emulating a Pixel 7,
+against `e2e/mockSupabase.ts`: the sign-in screen and its theme, and two
+signed-in households that must not see each other's purchases. That proves the
+web app starts and those screens work. It says nothing about the real
+database's access rules, Android, or how anything looks or moves.

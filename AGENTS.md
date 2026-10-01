@@ -22,7 +22,7 @@ the deliverable.
   verdict first.
 - **Explain in consequences, not mechanics.** What it means for the app they
   use, not what the function does.
-- **Say plainly what you did not verify.** CI does not run this app. A green
+- **Say plainly what you did not verify.** CI never runs this app on a phone. A green
   build is not evidence that capture, the widget, or anything visual works.
 - **Answer the question that was asked**, then stop.
 
@@ -49,4 +49,4 @@ works but looks wrong or stutters is not finished.
   The performance rules in CLAUDE.md's Invariants exist to protect that feel.
 - If the easier implementation looks worse, say so in plain English and let
   them decide. And say plainly when you have not actually seen a visual change
-  render — CI never runs this app.
+  render — nothing in CI looks at it.

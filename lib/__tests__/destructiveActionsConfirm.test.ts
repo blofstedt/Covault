@@ -15,7 +15,9 @@ import { resolve } from 'node:path';
  * card, dismissing a duplicate warning. A confirmation on those would make the
  * real ones easier to click through.
  *
- * Nothing in CI renders any of this, so it reads the source.
+ * The skip-pattern delete also has a rendered interaction test in
+ * learnedRulesCardInteractions.test.tsx. These source checks cover the other
+ * delete entry points until their rendered flows are tested.
  */
 
 const read = (rel: string) => readFileSync(resolve(__dirname, '../../', rel), 'utf8');

@@ -1,4 +1,5 @@
-import React, { useId, useRef } from 'react';
+import type React from 'react';
+import { useId, useRef } from 'react';
 import { useDialogInteraction } from '../../lib/hooks/useDialogInteraction';
 import { useDialogExit } from '../../lib/hooks/useDialogExit';
 import Portal from './Portal';

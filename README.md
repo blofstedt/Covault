@@ -18,7 +18,7 @@ working while the code is reorganized.
 
 ## Requirements
 
-- Node.js 20+
+- Node.js 22.22.2+
 - A Supabase project
 - For local Android builds: JDK 21 and the Android SDK (or let CI do it)
 
@@ -59,6 +59,11 @@ editor. It is idempotent — safe to run twice — and brings the schema in line
 with the current app. Migration files whose header says **SUPERSEDED** are
 history; you do not need them.
 
+The `2026_09_*` migrations were written after that sync file and are not folded
+into it. Which of them an existing database still needs, and in what order, has
+not been checked against a live project yet — see the
+[codebase plan](docs/CODEBASE_PLAN.md) before applying them to a vault.
+
 For a fresh project, run `supabase/schema.sql` first. It creates the tables the
 app uses: `settings`, `budgets`, `transactions`, `overrides`, `banks`,
 `notification_rules`. Without it you will see 404s in the console for missing
@@ -86,8 +91,9 @@ Credentials → your OAuth 2.0 Client ID, add this authorised redirect URI:
 
 ```bash
 npm run dev              # dev server
-npm run verify           # typecheck + unused check + tests + build
+npm run verify           # typecheck + unused check + lint + tests + build
 npm test                 # tests only
+npm run test:e2e         # Playwright browser tests against a local stand-in for Supabase
 npm run build            # production build to dist/
 npm run cap:build        # web build + cap sync + custom native file sync
 npm run cap:sync         # sync only, no rebuild
