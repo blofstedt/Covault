@@ -23,7 +23,7 @@ export function parseManualAmount(value: string): number | null {
   return Number(amount.toFixed(2).replace('.', '')) === cents ? amount : null;
 }
 
-function normalizePastedManualAmount(value: string): string | null {
+export function normalizePastedManualAmount(value: string): string | null {
   const text = value.trim();
   if (!/^\$?\s*(?:\d+|\d{1,3}(?:,\d{3})+|(?=\.\d))(?:\.\d{1,2})?$/.test(text)) return null;
   return text.replace(/[$,\s]/g, '');
