@@ -29,21 +29,20 @@ is unreviewable.
 - **Answer the question that was asked**, then stop. If they ask whether
   something is right, the first thing they should read is whether it is right.
 
-## Where work goes: main
+## Where work goes: pull requests
 
-**Commit to `main` and push to `main`.** Do not create a feature branch, and do
-not open a pull request, unless they ask for one in that request. They do not
-want to manage branches, and a PR only adds a review step that nobody performs
-— they cannot read the diff, which is the whole point of the section above.
+**Commit and push a feature branch, then open a pull request to `main`.**
+Leave the PR open for review. Do not commit or push directly to `main`, merge
+a PR, or enable auto-merge unless the user explicitly asks.
 
-If the harness you are running under forces you onto a branch, finish the work
-there, then fast-forward `main` to it and push, and say in your reply that you
-did. Do not leave the work parked on a branch and call it delivered.
+Use a separate branch or worktree when another agent is using the checkout.
+Use [the repository's pull request template](.github/pull_request_template.md)
+for the description. Explain the outcome in plain English, report the checks
+actually run, and state what remains unverified.
 
-`main` is what CI builds the APK from, so it is also the phone build. That
-makes `npm run verify` before pushing non-negotiable, not a nicety: breaking
-`main` means no APK to install. It still does not mean the app works — see the
-Verification reality section.
+`main` is what CI builds the phone APK from, and merging can publish an app
+update. Run `npm run verify` before committing and pushing the branch. Passing
+checks still do not mean the app works on a phone; see Verification reality.
 
 ## What they care about: how it looks and how it moves
 
