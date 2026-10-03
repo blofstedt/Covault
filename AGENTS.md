@@ -28,12 +28,13 @@ the deliverable.
 
 ## Where work goes
 
-**Commit and push to `main`.** No feature branch, no pull request, unless they
-ask for one. If your harness forces you onto a branch, fast-forward `main` to it
-when the work is done and say so — do not leave it parked on a branch.
+**Use a feature branch and open a pull request to `main`.** Commit and push
+that branch, then leave the PR open for review. Do not commit or push directly
+to `main`, merge a PR, or enable auto-merge unless the user explicitly asks.
 
-`main` is the branch CI builds the phone APK from, so run `npm run verify`
-(type-check, tests, build) before pushing. Breaking `main` means no APK.
+Use `.github/pull_request_template.md` for the PR description. Run
+`npm run verify` before committing and pushing. `main` builds the phone APK,
+so merging a PR can publish an app update.
 
 ## What they care about
 
