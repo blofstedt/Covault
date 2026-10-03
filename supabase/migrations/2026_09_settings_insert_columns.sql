@@ -30,6 +30,19 @@
 -- Deliberately only columns that exist in every version of this schema, so the
 -- GRANT cannot fail half way through on a project that is behind on
 -- migrations and leave the table with no INSERT grant at all.
+--
+-- And the two run as one transaction, because the half-applied state is the
+-- worse of the two failures: with the REVOKE committed and the GRANT not,
+-- the app's own fallback can no longer create a missing settings row at all.
+-- Rolled back, nothing changes and the gap is merely still open. Checked on
+-- live 2026-10-03 before applying: the table grant to authenticated is the
+-- ONLY insert route — PUBLIC holds none, authenticated belongs to no other
+-- role, and there are no column-level insert grants — so after this the
+-- client can insert exactly these four columns and nothing else.
+--
+-- To undo: GRANT INSERT ON public.settings TO authenticated;
 
+BEGIN;
 REVOKE INSERT ON public.settings FROM authenticated;
 GRANT INSERT (user_id, name, email, monthly_income) ON public.settings TO authenticated;
+COMMIT;
