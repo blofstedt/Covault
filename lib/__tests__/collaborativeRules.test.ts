@@ -2,6 +2,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { classifyMatch } from '../hooks/useVendorMatcher';
+import {
+  assignCaptureCategory,
+  type NotificationCategoryAssignmentDependencies,
+  type NotificationCategoryAssignmentInput,
+  type VendorRuleRow,
+} from '../notificationCategoryAssignment';
 
 /**
  * The shared rule layers, and the three promises that make them safe.
@@ -15,6 +21,39 @@ const ROOT = resolve(__dirname, '../..');
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8');
 const stripComments = (source: string) =>
   source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+const ASSIGNMENT_CATEGORIES = [
+  { id: 'budget:groceries', name: 'Groceries' },
+  { id: 'budget:leisure', name: 'Leisure' },
+  { id: 'budget:other', name: 'Other' },
+];
+
+function makeAssignmentInput(
+  overrides: Partial<NotificationCategoryAssignmentInput> = {},
+): NotificationCategoryAssignmentInput {
+  return {
+    userId: 'user-1',
+    vendor: 'Costco',
+    vendorAliases: [],
+    parsed: { vendorKey: 'costco', vendorDisplay: 'Costco' },
+    availableCategories: ASSIGNMENT_CATEGORIES,
+    ...overrides,
+  };
+}
+
+function makeAssignmentDependencies(
+  overrides: Partial<NotificationCategoryAssignmentDependencies> = {},
+): NotificationCategoryAssignmentDependencies {
+  return {
+    vendorRules: Promise.resolve({ data: [] }),
+    readTransactionFrequencies: async () => ({ data: [] }),
+    readProperNameRule: async () => ({ data: [] }),
+    fetchPartnerRules: async () => [],
+    lookupCommunityRule: () => null,
+    getVendorMap: () => ({}),
+    ...overrides,
+  };
+}
 
 describe('what a borrowed rule is allowed to do', () => {
   it('is never mistaken for a rule the user wrote', () => {
@@ -36,35 +75,52 @@ describe('what a borrowed rule is allowed to do', () => {
       .toBe('exact');
   });
 
-  it('never carries a match confidence, so it can never auto-file', () => {
-    // The capture pipeline's one gate on filing money unseen is
-    // overrideMatchConfidence clearing AUTO_ACCEPT_MIN_CONFIDENCE. The borrowed
-    // branch must never write to it — the same treatment the model's guess and
-    // the offline descriptor hint already get.
-    const pipeline = stripComments(read('lib/notificationProcessor.ts'));
-    // Anchored on code rather than on a comment: the whole point is that a
-    // comment saying "never scored" cannot enforce anything.
-    const start = pipeline.indexOf('await fetchPartnerRules(userId)');
-    const end = pipeline.indexOf('if (!categoryId && parsed.vendorKey)', start);
-    const borrowed = pipeline.slice(start, end);
+  it('keeps a partner suggestion at zero confidence', async () => {
+    const partnerRule: VendorRuleRow = {
+      category_id: 'Groceries',
+      proper_name: 'Costco',
+      match_key: 'costco',
+      match_type: 'exact',
+    };
+    const result = await assignCaptureCategory(
+      makeAssignmentInput(),
+      makeAssignmentDependencies({
+        fetchPartnerRules: async () => [partnerRule],
+      }),
+    );
 
-    expect(start, 'the borrowed-layer branch has been renamed or removed').toBeGreaterThan(-1);
-    expect(end, 'the local vendor-map fallback boundary is missing').toBeGreaterThan(start);
-    expect(borrowed).toContain('lookupCommunityRule');
-    expect(
-      /overrideMatchConfidence\s*=/.test(borrowed),
-      'A partner or community match must leave overrideMatchConfidence at 0. ' +
-      'Scoring one would let a rule the user has never agreed to file money ' +
-      'without ever appearing in Review.',
-    ).toBe(false);
+    expect(result.categoryName).toBe('Groceries');
+    expect(result.overrideMatchConfidence).toBe(0);
   });
 
-  it('is not consulted when the user\'s own rules conflict', () => {
+  it('does not consult borrowed rules when the user\'s own rules conflict', async () => {
     // Two of the user's own rules disagreeing means this household has not
     // settled the merchant. Answering with somebody else's opinion would be
     // worse than asking.
-    const pipeline = stripComments(read('lib/notificationProcessor.ts'));
-    expect(pipeline).toContain('if (!categoryId && !overrideRuleConflict) {');
+    const ownRules: VendorRuleRow[] = [
+      { category_id: 'Groceries', proper_name: 'Costco', match_key: 'costco', match_type: 'exact' },
+      { category_id: 'Leisure', proper_name: 'Costco', match_key: 'costco', match_type: 'exact' },
+    ];
+    let partnerReads = 0;
+    const result = await assignCaptureCategory(
+      makeAssignmentInput(),
+      makeAssignmentDependencies({
+        vendorRules: Promise.resolve({ data: ownRules }),
+        fetchPartnerRules: async () => {
+          partnerReads += 1;
+          return [{
+            category_id: 'Groceries',
+            proper_name: 'Costco',
+            match_key: 'costco',
+            match_type: 'exact',
+          }];
+        },
+      }),
+    );
+
+    expect(result.overrideRuleConflict).toBe(true);
+    expect(result.overrideMatchConfidence).toBe(0);
+    expect(partnerReads).toBe(0);
   });
 
   it('is never swept up by the bulk accept', async () => {

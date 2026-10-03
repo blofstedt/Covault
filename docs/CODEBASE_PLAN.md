@@ -129,6 +129,9 @@ phone app usable after each step.
   parser aliases; ties still suggest nothing, and suggestions remain in Review.
   Direct behavior tests and Sol's review found no remaining issues. The full
   suite (2,118 tests), type-check, ESLint, and production build pass.
+  Step 5 category assignment now lives in `notificationCategoryAssignment.ts`,
+  with direct behavior tests for household, partner and community rules,
+  vendor-map matching, conflict rescue, and fallback choices.
   The Android capture-flow check is still outstanding.
 - [ ] Evaluate whether the existing React Query cache should own more server
   reads. The current bounded use is Review's ignored-alert rules; tests cover a

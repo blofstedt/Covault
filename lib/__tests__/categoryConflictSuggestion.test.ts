@@ -1,53 +1,106 @@
 /**
- * A category conflict still goes to review — that guarantee is
- * `overrideMatchConfidence` staying 0 (see learnedRuleIdentity.test.ts,
- * which pins that a conflict is never auto-filed). What changed is what the
- * reviewer sees when they open it: whichever of the conflicting categories
- * this vendor has actually been filed under most often, instead of nothing.
- * These pin the two properties that would be easy to break without a test
- * noticing — that the suggestion query can never widen who gets auto-filed,
- * and that a failure to compute one degrades to the old behaviour rather
- * than failing the capture.
+ * A category conflict still goes to review, but the household's past filings
+ * can give the reviewer a sensible starting category. A failed history read
+ * must leave the conflict in review rather than fail the capture.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import {
+  assignCaptureCategory,
+  type NotificationCategoryAssignmentDependencies,
+  type NotificationCategoryAssignmentInput,
+  type VendorRuleRow,
+} from '../notificationCategoryAssignment';
 
-const source = readFileSync(resolve(__dirname, '../notificationProcessor.ts'), 'utf8');
+const CATEGORIES = [
+  { id: 'budget:groceries', name: 'Groceries' },
+  { id: 'budget:leisure', name: 'Leisure' },
+  { id: 'budget:other', name: 'Other' },
+];
 
-// The block runs inside `if (overrideRuleConflict) { ... }`, right after the
-// existing debug log for the same branch.
-const conflictBlock = source.slice(
-  source.indexOf('routing to review instead of auto-filing'),
-  source.indexOf("// 2) proper_name ilike fallback"),
-);
+const CONFLICTING_RULES: VendorRuleRow[] = [
+  { category_id: 'Groceries', proper_name: 'Walmart', match_key: 'walmart', match_type: 'exact' },
+  { category_id: 'Leisure', proper_name: 'Walmart', match_key: 'walmart', match_type: 'exact' },
+];
+
+function makeInput(
+  overrides: Partial<NotificationCategoryAssignmentInput> = {},
+): NotificationCategoryAssignmentInput {
+  return {
+    userId: 'user-1',
+    vendor: 'Walmart',
+    vendorAliases: [],
+    parsed: { vendorKey: 'walmart', vendorDisplay: 'Walmart' },
+    availableCategories: CATEGORIES,
+    ...overrides,
+  };
+}
+
+function makeDependencies(
+  overrides: Partial<NotificationCategoryAssignmentDependencies> = {},
+): NotificationCategoryAssignmentDependencies {
+  return {
+    vendorRules: Promise.resolve({ data: CONFLICTING_RULES }),
+    readTransactionFrequencies: async () => ({ data: [] }),
+    readProperNameRule: async () => ({ data: [] }),
+    fetchPartnerRules: async () => [],
+    lookupCommunityRule: () => null,
+    getVendorMap: () => ({}),
+    ...overrides,
+  };
+}
 
 describe('the category suggestion on a conflicting vendor', () => {
-  it('exists, computed from the conflicting categories', () => {
-    expect(conflictBlock).toContain('mostFrequentCategoryForVendor(');
-    expect(conflictBlock).toContain('candidateNames');
+  it('suggests the household category with more matching history', async () => {
+    const result = await assignCaptureCategory(makeInput(), makeDependencies({
+      readTransactionFrequencies: async () => ({
+        data: [
+          { vendor: 'Walmart', budget: 'Groceries' },
+          { vendor: 'Walmart', budget: 'Groceries' },
+          { vendor: 'Walmart', budget: 'Leisure' },
+        ],
+      }),
+    }));
+
+    expect(result.categoryName).toBe('Groceries');
+    expect(result.overrideRuleConflict).toBe(true);
   });
 
-  it('never sets overrideMatchConfidence — the one thing that actually gates auto-accept', () => {
-    // shouldAutoAccept requires BOTH a category and confidence over the
-    // threshold. This block may set the category; it must never also set the
-    // confidence, or a conflict could file itself.
-    expect(conflictBlock).not.toContain('overrideMatchConfidence =');
+  it('keeps confidence at zero so a suggested conflict cannot auto-file', async () => {
+    const result = await assignCaptureCategory(makeInput(), makeDependencies({
+      readTransactionFrequencies: async () => ({
+        data: [{ vendor: 'Walmart', budget: 'Groceries' }],
+      }),
+    }));
+
+    expect(result.categoryId).toBe('budget:groceries');
+    expect(result.overrideMatchConfidence).toBe(0);
   });
 
-  it('is wrapped so a failure here cannot fail the capture', () => {
-    expect(conflictBlock).toContain('try {');
-    expect(conflictBlock).toContain('} catch (e) {');
+  it('keeps the capture reviewable if the history read fails', async () => {
+    await expect(assignCaptureCategory(makeInput(), makeDependencies({
+      readTransactionFrequencies: async () => {
+        throw new Error('history unavailable');
+      },
+    }))).resolves.toMatchObject({
+      categoryId: 'budget:other',
+      categoryName: 'Other',
+      overrideMatchConfidence: 0,
+      overrideRuleConflict: true,
+    });
   });
 
-  it('only ever suggests one of the categories actually in conflict', () => {
-    // The query is scoped to candidateNames, not the user's whole history —
-    // a vendor conflicted between Groceries and Other must never come back
-    // suggesting Leisure.
-    expect(conflictBlock).toMatch(/\.in\('budget', candidateNames\)/);
-  });
+  it('scopes the history read to this user and the categories in conflict', async () => {
+    const calls: Array<{ userId: string; candidateNames: string[] }> = [];
+    await assignCaptureCategory(makeInput(), makeDependencies({
+      readTransactionFrequencies: async (userId, candidateNames) => {
+        calls.push({ userId, candidateNames });
+        return { data: [] };
+      },
+    }));
 
-  it('is scoped to this user only', () => {
-    expect(conflictBlock).toContain(".eq('user_id', userId)");
+    expect(calls).toEqual([{
+      userId: 'user-1',
+      candidateNames: ['Groceries', 'Leisure'],
+    }]);
   });
 });

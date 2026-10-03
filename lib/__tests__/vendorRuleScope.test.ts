@@ -21,6 +21,12 @@ import {
   distinctCategories,
   dedupeByCategory,
 } from '../vendorRuleScope';
+import {
+  assignCaptureCategory,
+  type NotificationCategoryAssignmentDependencies,
+  type NotificationCategoryAssignmentInput,
+  type VendorRuleRow,
+} from '../notificationCategoryAssignment';
 
 const WENDYS = [
   { proper_name: "Wendy's", match_key: 'wendysolympic', category_id: 'Leisure' },
@@ -28,6 +34,40 @@ const WENDYS = [
   { proper_name: "Wendy's", match_key: 'wendyscochrane', category_id: 'Leisure' },
   { proper_name: 'Costco', match_key: 'costco', category_id: 'Groceries' },
 ];
+
+const ASSIGNMENT_CATEGORIES = [
+  { id: 'budget:groceries', name: 'Groceries' },
+  { id: 'budget:leisure', name: 'Leisure' },
+  { id: 'budget:transport', name: 'Transport' },
+  { id: 'budget:other', name: 'Other' },
+];
+
+function makeAssignmentInput(
+  overrides: Partial<NotificationCategoryAssignmentInput> = {},
+): NotificationCategoryAssignmentInput {
+  return {
+    userId: 'user-1',
+    vendor: "Wendy's Crowfoot",
+    vendorAliases: [],
+    parsed: { vendorKey: 'wendyscrowfoot', vendorDisplay: "Wendy's Crowfoot" },
+    availableCategories: ASSIGNMENT_CATEGORIES,
+    ...overrides,
+  };
+}
+
+function makeAssignmentDependencies(
+  overrides: Partial<NotificationCategoryAssignmentDependencies> = {},
+): NotificationCategoryAssignmentDependencies {
+  return {
+    vendorRules: Promise.resolve({ data: [] }),
+    readTransactionFrequencies: async () => ({ data: [] }),
+    readProperNameRule: async () => ({ data: [] }),
+    fetchPartnerRules: async () => [],
+    lookupCommunityRule: () => null,
+    getVendorMap: () => ({}),
+    ...overrides,
+  };
+}
 
 describe('merchantRuleScope', () => {
   it('pulls in the other branches of the same merchant', () => {
@@ -158,19 +198,40 @@ describe('dedupeByCategory', () => {
 });
 
 describe('the capture pipeline uses the merchant scope', () => {
-  const source = readFileSync(resolve(__dirname, '../notificationProcessor.ts'), 'utf8');
+  it('offers every merchant-wide conflicting category to the frequency read', async () => {
+    const rules: VendorRuleRow[] = [
+      { proper_name: "Wendy's", match_key: 'wendyscrowfoot', category_id: 'Leisure', match_type: 'exact' },
+      { proper_name: "Wendy's", match_key: 'wendysolympic', category_id: 'Groceries', match_type: 'exact' },
+      { proper_name: "Wendy's", match_key: 'wendyscochrane', category_id: 'Transport', match_type: 'exact' },
+    ];
+    let candidates: string[] = [];
+    await assignCaptureCategory(makeAssignmentInput({
+      availableCategories: [],
+    }), makeAssignmentDependencies({
+      vendorRules: Promise.resolve({ data: rules }),
+      readTransactionFrequencies: async (_userId, candidateNames) => {
+        candidates = candidateNames;
+        return { data: [] };
+      },
+    }));
 
-  it('offers every conflicting category as a suggestion candidate', () => {
-    expect(source).toContain(
-      'const candidateNames = [...new Set(',
-    );
-    expect(source).toContain('merchantRules');
+    expect(candidates.sort()).toEqual(['Groceries', 'Leisure', 'Transport']);
   });
 
-  it("applies the same scope to the partner's rules", () => {
-    expect(source).toContain(
-      'const partnerCategories = distinctCategories(merchantRuleScope(matching, partnerRows))',
-    );
+  it("does not suggest a partner rule when sibling branches disagree", async () => {
+    const partnerRules: VendorRuleRow[] = [
+      { proper_name: "Wendy's", match_key: 'wendyscrowfoot', category_id: 'Leisure', match_type: 'exact' },
+      { proper_name: "Wendy's", match_key: 'wendysolympic', category_id: 'Groceries', match_type: 'exact' },
+    ];
+    const result = await assignCaptureCategory(makeAssignmentInput({
+      availableCategories: [],
+    }), makeAssignmentDependencies({
+      fetchPartnerRules: async () => partnerRules,
+    }));
+
+    expect(result.categoryId).toBeNull();
+    expect(result.categoryName).toBeNull();
+    expect(result.overrideMatchConfidence).toBe(0);
   });
 });
 
