@@ -57,7 +57,7 @@ For a new project, run `supabase/schema.sql` once in the Supabase SQL editor.
 That is the whole setup. It was generated from the live project and checked
 against it on 2026-10-03, and it refuses to run where the tables already exist.
 
-For the existing live project, one migration is still outstanding. For how to
+The existing live project is fully up to date as of 2026-10-03. For how to
 check any database, and for how to change one, see
 [docs/DATABASE_SETUP.md](docs/DATABASE_SETUP.md). Do not re-run the older
 files in `supabase/migrations/`. Live already reflects them, and some of them

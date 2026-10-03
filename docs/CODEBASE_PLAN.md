@@ -46,11 +46,12 @@ phone app usable after each step.
   the single source. `supabase/schema.sql` was regenerated from the live
   catalog on 2026-10-03 through the read-only Supabase connection. A
   throwaway Supabase Postgres 17.6 built from it matches live on every
-  fingerprinted part (`scripts/schema-fingerprint.sql`). The one difference is
-  deliberate: the settings INSERT column grant. The existing database is up to
-  date except `2026_09_settings_insert_columns.sql`, which is confirmed
-  unapplied on live and affects no current account. Not verified: a real new
-  Supabase project, or a real sign-in to one.
+  fingerprinted part (`scripts/schema-fingerprint.sql`). The one remaining
+  migration, `2026_09_settings_insert_columns.sql`, passed an independent
+  review and was wrapped in one transaction. It was applied to live on
+  2026-10-03 and confirmed afterwards, so live now matches `schema.sql`
+  everywhere. Not verified: a real new Supabase project, or a real sign-in to
+  one.
 - [x] Confirm the build workflow needs each permission it grants. Keep release
   publishing separate from ordinary validation. The build job now has only
   `contents: read`; the main-branch publisher has `contents: write`, and the

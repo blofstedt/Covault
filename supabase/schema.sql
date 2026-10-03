@@ -12,15 +12,10 @@
 -- September it was missing household sharing, partner linking by code,
 -- account deletion and most of the access rules that keep two households
 -- apart. It was then loaded into an empty Supabase Postgres 17.6 and that
--- database's catalog compared against the live one; see
--- docs/DATABASE_SETUP.md for what was compared and the one deliberate
--- difference.
---
--- The one deliberate difference from live: a client may CREATE its own
--- settings row with four columns only (the last block of grants). Live still
--- lets it create the row with any column, including the paywall ones, until
--- migrations/2026_09_settings_insert_columns.sql is applied there. A new
--- database should not start out with that gap.
+-- database's catalog compared against the live one. Every part matches; see
+-- docs/DATABASE_SETUP.md for what was compared. (Until
+-- migrations/2026_09_settings_insert_columns.sql was applied to live later
+-- the same day, the settings INSERT grant was the one difference.)
 --
 -- What this file is NOT:
 --   - A migration for an existing database. It refuses to run if the tables

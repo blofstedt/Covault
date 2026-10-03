@@ -32,7 +32,8 @@ If step 2 stops at `CREATE EXTENSION pg_cron`, switch on **pg_cron** under
 - `scripts/schema-fingerprint.sql` was run against that copy and against live.
   Columns, constraints, indexes, access rules, function bodies, function
   permissions, the trigger, comments and the nightly job all match exactly.
-- The only difference is deliberate: see **The one gap on live** below.
+- The settings INSERT grant was the one difference at first. Live matched in
+  full once that fix was applied; see **The settings insert fix** below.
 - `scripts/rls-check.sql` then signed in as three test accounts on the copy.
   Strangers see only themselves. A one-sided partner link reads nothing, and a
   mutual one shares at the level the partner chose. Nobody can write into
@@ -45,17 +46,27 @@ but not its sign-in or API servers.
 
 ## Bring an existing database up to date
 
-There is one existing database, the household's live project. It is up to
-date except for one migration.
+There is one existing database, the household's live project. It is fully
+up to date as of 2026-10-03.
 
-### The one gap on live
+### The settings insert fix
 
-`supabase/migrations/2026_09_settings_insert_columns.sql` has **not** been
-applied. Until it is, a signed-in account whose settings row is missing could
-create the row already marked as subscribed or as a tester. Two things keep it
-from mattering today. Every account gets its row at sign-up, and nobody can
-delete their own. On 2026-10-03 all three accounts had theirs. Applying it
-changes nothing the app does. Run it in the SQL editor.
+`supabase/migrations/2026_09_settings_insert_columns.sql` was the last
+outstanding migration, and it was applied on 2026-10-03. Before it, a
+signed-in account whose settings row was missing could create the row already
+marked as subscribed or as a tester. No account was exposed: every account
+gets its row at sign-up, nobody can delete their own, and all three had
+theirs.
+
+Before it was run, an independent review (GPT-6.1 Sol) and the checks above
+confirmed that the app's writes were unaffected. Live had no other insert
+route, and the two statements were wrapped in one transaction so a failure
+could not leave it half-applied. Afterwards the read-only connection confirmed
+that a client can insert exactly the four ordinary columns. The undo is
+noted at the top of the file.
+
+Not checked: whether any existing row was already marked subscribed or as a
+tester before the fix. That needs reading account data.
 
 ### Checking any database
 
@@ -63,8 +74,8 @@ Supabase keeps a log of migrations applied through its tools: **Database →
 Migrations**, or `list_migrations` on the read-only connection. Every change
 since 2026-08-20 is in it. Compare that log with the table below. For a
 complete answer, run `scripts/schema-fingerprint.sql` in the SQL editor and
-compare it with `scripts/verify-schema.sh`. With the gap above still open,
-only the `cpriv` and `tpriv` lines differ.
+compare it with `scripts/verify-schema.sh`. On an up-to-date database every
+line matches.
 
 | Migration file | Name in live's log | On live |
 |---|---|---|
@@ -81,7 +92,7 @@ only the `cpriv` and `tpriv` lines differ.
 | `2026_09_drop_email_linking.sql` | `drop_unilateral_email_linking` | applied 2026-09-13 |
 | `2026_09_household_sharing.sql` | `household_sharing_modes`, `household_partner_reads` | applied 2026-09-13 |
 | `2026_09_security_review.sql` | four `security_review_*` entries | applied 2026-09-14 |
-| `2026_09_settings_insert_columns.sql` | — | **not applied** |
+| `2026_09_settings_insert_columns.sql` | — (run in the SQL editor) | applied 2026-10-03 |
 
 Everything else in `supabase/migrations/` was run by hand in the SQL editor
 before the log existed, and live already reflects it. The four files marked

@@ -1,8 +1,11 @@
 -- Migration: a client may only CREATE its settings row with the columns it
 -- would be allowed to UPDATE.
 --
--- NOT YET APPLIED. Run it in the Supabase SQL editor (or ask Claude to apply
--- it). Safe to run more than once. Nothing in the app changes behaviour.
+-- APPLIED to the live project on 2026-10-03 in the SQL editor, and confirmed
+-- afterwards through the read-only connection: authenticated can insert
+-- exactly email, monthly_income, name and user_id, and the grant fingerprint
+-- now equals supabase/schema.sql's. Safe to run more than once. Nothing in
+-- the app changes behaviour.
 --
 -- 2026_09_security_review.sql closed the paywall to the client on UPDATE: the
 -- table grant was taken away and only the ordinary preference columns were
