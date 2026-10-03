@@ -4,6 +4,7 @@ import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 import { supabase } from '../lib/supabase';
 import CovaultIcon from './CovaultIcon';
+import { getLegalLinkHref } from '../lib/legalLinks';
 
 interface AuthProps {
   onSignIn: () => void;
@@ -178,7 +179,7 @@ const Auth: React.FC<AuthProps> = () => {
         </p>
         <nav aria-label="Legal" className="flex items-center space-x-3">
           <a
-            href="https://covaultbudgeting.vercel.app/privacy"
+            href={getLegalLinkHref('/privacy')}
             target="_blank"
             rel="noopener noreferrer"
             className="text-[10px] text-slate-500 dark:text-slate-400 font-medium tracking-wide hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
@@ -187,7 +188,7 @@ const Auth: React.FC<AuthProps> = () => {
           </a>
           <span className="text-[10px] text-slate-500 dark:text-slate-400">·</span>
           <a
-            href="https://covaultbudgeting.vercel.app/terms"
+            href={getLegalLinkHref('/terms')}
             target="_blank"
             rel="noopener noreferrer"
             className="text-[10px] text-slate-500 dark:text-slate-400 font-medium tracking-wide hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"

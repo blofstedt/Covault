@@ -160,8 +160,9 @@ phone app usable after each step.
   its month controls and announces month changes. Entrances use the shared
   320 ms curve and honor reduced motion. Dismissals now use that same curve;
   reduced-motion users close immediately, while actions that submit or confirm
-  retain their existing lifecycle. A physical-phone keyboard, safe-area, and
-  motion check is still outstanding.
+  retain their existing lifecycle. The Review page's soft-duplicate popover now
+  uses the shared interaction pattern with scroll locking opted out. A
+  physical-phone keyboard, safe-area, and motion check is still outstanding.
 - [x] Add a small set of repeatable visual checks for the dashboard, Review,
   onboarding, and settings. `visual-tests/index.html` supplies example and
   empty fixtures at a phone viewport; the same components are rendered in dark

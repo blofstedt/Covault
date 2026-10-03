@@ -69,7 +69,11 @@ function getInitialFocusTarget(dialog: HTMLElement): HTMLElement {
 export function useDialogInteraction(
   dialogRef: RefObject<HTMLElement | null>,
   onEscape: () => void,
-  { layer = 'modal', disabled = false }: { layer?: DialogLayer; disabled?: boolean } = {},
+  {
+    layer = 'modal',
+    disabled = false,
+    lockScroll = true,
+  }: { layer?: DialogLayer; disabled?: boolean; lockScroll?: boolean } = {},
 ): (event: KeyboardEvent<HTMLElement>) => void {
   // Read through refs so the back-button registration below is made once per
   // dialog, not once per render. Re-registering would move this dialog back to
@@ -84,7 +88,7 @@ export function useDialogInteraction(
     if (!dialog || dialog.closest('[aria-hidden="true"], [inert]')) return undefined;
 
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const releaseScrollLock = acquireBodyScrollLock();
+    const releaseScrollLock = lockScroll ? acquireBodyScrollLock() : () => {};
     const registration: ActiveDialog = { element: dialog, layer, order: nextDialogOrder++ };
     activeDialogs.push(registration);
     // The phone's back button does what Escape does. While the dialog is
@@ -115,7 +119,7 @@ export function useDialogInteraction(
         previousFocus.focus();
       }
     };
-  }, [dialogRef, layer]);
+  }, [dialogRef, layer, lockScroll]);
 
   useLayoutEffect(() => {
     if (!disabled) return;

@@ -297,4 +297,27 @@ describe('shared modal interaction', () => {
     expect(document.activeElement).toBe(document.querySelector('button:not([disabled])'));
     expect(document.body.style.overflow).toBe('hidden');
   });
+
+  it('leaves body overflow untouched when lockScroll is false while default locks it', async () => {
+    function PopoverFixture({ lockScroll }: { lockScroll?: boolean }) {
+      const popoverRef = useRef<HTMLDivElement>(null);
+      const handleKeyDown = useDialogInteraction(popoverRef, () => {}, { lockScroll });
+      return (
+        <div ref={popoverRef} role="dialog" tabIndex={-1} onKeyDown={handleKeyDown}>
+          <button data-dialog-initial-focus>Action</button>
+        </div>
+      );
+    }
+
+    expect(document.body.style.overflow).toBe('clip');
+
+    await act(async () => root.render(<PopoverFixture lockScroll={false} />));
+    expect(document.body.style.overflow).toBe('clip');
+
+    await act(async () => root.render(<PopoverFixture />));
+    expect(document.body.style.overflow).toBe('hidden');
+
+    await act(async () => root.unmount());
+    expect(document.body.style.overflow).toBe('clip');
+  });
 });

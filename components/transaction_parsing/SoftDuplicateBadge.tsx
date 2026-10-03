@@ -1,8 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useId } from 'react';
 import { Transaction } from '../../types';
 import { formatCurrency } from '../../lib/formatCurrency';
 import Portal from '../ui/Portal';
 import ConfirmModal from '../ui/ConfirmModal';
+import { useDialogInteraction } from '../../lib/hooks/useDialogInteraction';
 
 interface SoftDuplicateBadgeProps {
   /** The auto-entered transaction that has the soft-dup flag */
@@ -17,6 +18,146 @@ interface SoftDuplicateBadgeProps {
   /** Whether deletion is currently in progress (disables the delete button) */
   isDeleting?: boolean;
 }
+
+interface SoftDuplicatePopoverProps {
+  tx: Transaction;
+  similar: NonNullable<Transaction['softDuplicateOf']>;
+  isDeleting: boolean;
+  onDismiss: (currentTxId: string, similarTxId: string) => void;
+  onDeleteSimilar: (similarTxId: string) => void;
+  onClose: () => void;
+  buttonRef: React.RefObject<HTMLButtonElement | null>;
+}
+
+const SoftDuplicatePopover: React.FC<SoftDuplicatePopoverProps> = ({
+  tx,
+  similar,
+  isDeleting,
+  onDismiss,
+  onDeleteSimilar,
+  onClose,
+  buttonRef,
+}) => {
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const id = useId();
+
+  const handleKeyDown = useDialogInteraction(popoverRef, onClose, {
+    lockScroll: false,
+  });
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (confirmDelete) return;
+      if (
+        popoverRef.current?.contains(e.target as Node) ||
+        buttonRef.current?.contains(e.target as Node)
+      ) {
+        return;
+      }
+      onClose();
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [confirmDelete, onClose, buttonRef]);
+
+  const handleDismiss = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onDismiss(tx.id, similar.id);
+    onClose();
+  };
+
+  // The popover explains the situation; it does not ask. "Delete the older
+  // one" is its red primary button, one tap from removing a real transaction
+  // and the money it accounts for, with no undo — and the app's own reading of
+  // "these look alike" is a guess the user is being asked to rule on. So the
+  // delete asks, like every other destructive action. That is also why
+  // "keep both" takes the focus when the popover opens, and why an outside
+  // tap is ignored while the confirm is up: the confirm is Portal'd outside
+  // this popover, so a tap on it used to read as "outside" and close both.
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setConfirmDelete(true);
+  };
+
+  return (
+    <div
+      ref={popoverRef}
+      role="dialog"
+      aria-label="Duplicate review"
+      aria-describedby={`${id}-desc`}
+      tabIndex={-1}
+      onKeyDown={handleKeyDown}
+      className="absolute left-0 top-full mt-1.5 z-50 w-64 rounded-2xl border border-amber-200 dark:border-amber-700/50 bg-white dark:bg-slate-800 shadow-xl shadow-amber-500/10 p-3 text-left animate-in fade-in slide-in-from-top-1"
+    >
+      <div className="flex items-start gap-2 mb-2">
+        <div className="w-7 h-7 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center shrink-0 mt-0.5">
+          <svg className="w-3.5 h-3.5 text-amber-600 dark:text-amber-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            <line x1="12" y1="9" x2="12" y2="13" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-bold text-slate-800 dark:text-slate-100">Looks like a duplicate</p>
+          <p id={`${id}-desc`} className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug mt-0.5">
+            You already have <span className="font-semibold text-slate-700 dark:text-slate-200">{similar.vendor}</span> {formatCurrency(similar.amount)} on {similar.date}.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-1.5 mt-2">
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={isDeleting}
+          className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[11px] font-bold text-white bg-rose-500 hover:bg-rose-600 active:scale-95 transition-all duration-150 disabled:opacity-50 disabled:cursor-wait"
+        >
+          {isDeleting ? (
+            <>
+              <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><circle cx="12" cy="12" r="10" opacity="0.25" /><path d="M12 2a10 10 0 0110 10" /></svg>
+              Deleting…
+            </>
+          ) : (
+            <>
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
+              Delete the older one
+            </>
+          )}
+        </button>
+        {confirmDelete && (
+          // Portal'd: this badge lives inside the Review page's <main>,
+          // which is `relative z-10`, so an overlay rendered here would be
+          // painted under the nav bar. See components/ui/Portal.tsx.
+          <Portal>
+            <ConfirmModal
+              title="Delete the older one?"
+              message={`${similar.vendor} ${formatCurrency(similar.amount)} on ${similar.date} leaves Covault for good — your history and the budget it counts against. If the two were separate purchases after all, that money stops being tracked.`}
+              confirmLabel="Delete it"
+              cancelLabel="Keep both"
+              variant="danger"
+              onConfirm={() => {
+                setConfirmDelete(false);
+                onDeleteSimilar(similar.id);
+                onClose();
+              }}
+              onCancel={() => setConfirmDelete(false)}
+            />
+          </Portal>
+        )}
+        <button
+          type="button"
+          data-dialog-initial-focus
+          onClick={handleDismiss}
+          className="w-full px-3 py-2 rounded-xl text-[11px] font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 transition-all duration-150"
+        >
+          Not a duplicate — keep both
+        </button>
+      </div>
+    </div>
+  );
+};
 
 /**
  * Cute amber pill badge that surfaces a "possible duplicate" warning on an
@@ -40,22 +181,7 @@ const SoftDuplicateBadge: React.FC<SoftDuplicateBadgeProps> = ({
 }) => {
   const [open, setOpen] = useState(false);
   const [pulseActive, setPulseActive] = useState(true);
-  const popoverRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
-
-  // Close on outside click
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (
-        popoverRef.current?.contains(e.target as Node) ||
-        buttonRef.current?.contains(e.target as Node)
-      ) return;
-      setOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
 
   const handleToggle = (e: React.MouseEvent) => {
     // Prevent the parent <button> (the transaction card) from firing.
@@ -65,25 +191,6 @@ const SoftDuplicateBadge: React.FC<SoftDuplicateBadgeProps> = ({
     // an effect on `open` lets React batch it into the same render.
     setPulseActive(false);
   };
-
-  const handleDismiss = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onDismiss(tx.id, similar.id);
-    setOpen(false);
-  };
-
-  // The popover explains the situation; it does not ask. "Delete the older
-  // one" is its red primary button, one tap from removing a real transaction
-  // and the money it accounts for, with no undo — and the app's own reading of
-  // "these look alike" is a guess the user is being asked to rule on. So the
-  // delete asks, like every other destructive action.
-  const [confirmDelete, setConfirmDelete] = useState(false);
-
-  const handleDelete = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setConfirmDelete(true);
-  };
-
 
   return (
     <div className="relative inline-flex">
@@ -111,76 +218,15 @@ const SoftDuplicateBadge: React.FC<SoftDuplicateBadgeProps> = ({
       </button>
 
       {open && (
-        <div
-          ref={popoverRef}
-          role="dialog"
-          aria-label="Duplicate review"
-          className="absolute left-0 top-full mt-1.5 z-50 w-64 rounded-2xl border border-amber-200 dark:border-amber-700/50 bg-white dark:bg-slate-800 shadow-xl shadow-amber-500/10 p-3 text-left animate-in fade-in slide-in-from-top-1"
-        >
-          <div className="flex items-start gap-2 mb-2">
-            <div className="w-7 h-7 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center shrink-0 mt-0.5">
-              <svg className="w-3.5 h-3.5 text-amber-600 dark:text-amber-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-                <line x1="12" y1="9" x2="12" y2="13" />
-                <line x1="12" y1="17" x2="12.01" y2="17" />
-              </svg>
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-bold text-slate-800 dark:text-slate-100">Looks like a duplicate</p>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug mt-0.5">
-                You already have <span className="font-semibold text-slate-700 dark:text-slate-200">{similar.vendor}</span> {formatCurrency(similar.amount)} on {similar.date}.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-1.5 mt-2">
-            <button
-              type="button"
-              onClick={handleDelete}
-              disabled={isDeleting}
-              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[11px] font-bold text-white bg-rose-500 hover:bg-rose-600 active:scale-95 transition-all duration-150 disabled:opacity-50 disabled:cursor-wait"
-            >
-              {isDeleting ? (
-                <>
-                  <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><circle cx="12" cy="12" r="10" opacity="0.25" /><path d="M12 2a10 10 0 0110 10" /></svg>
-                  Deleting…
-                </>
-              ) : (
-                <>
-                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
-                  Delete the older one
-                </>
-              )}
-            </button>
-            {confirmDelete && (
-              // Portal'd: this badge lives inside the Review page's <main>,
-              // which is `relative z-10`, so an overlay rendered here would be
-              // painted under the nav bar. See components/ui/Portal.tsx.
-              <Portal>
-                <ConfirmModal
-                  title="Delete the older one?"
-                  message={`${similar.vendor} ${formatCurrency(similar.amount)} on ${similar.date} leaves Covault for good — your history and the budget it counts against. If the two were separate purchases after all, that money stops being tracked.`}
-                  confirmLabel="Delete it"
-                  cancelLabel="Keep both"
-                  variant="danger"
-                  onConfirm={() => {
-                    setConfirmDelete(false);
-                    onDeleteSimilar(similar.id);
-                    setOpen(false);
-                  }}
-                  onCancel={() => setConfirmDelete(false)}
-                />
-              </Portal>
-            )}
-            <button
-              type="button"
-              onClick={handleDismiss}
-              className="w-full px-3 py-2 rounded-xl text-[11px] font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 transition-all duration-150"
-            >
-              Not a duplicate — keep both
-            </button>
-          </div>
-        </div>
+        <SoftDuplicatePopover
+          tx={tx}
+          similar={similar}
+          isDeleting={isDeleting}
+          onDismiss={onDismiss}
+          onDeleteSimilar={onDeleteSimilar}
+          onClose={() => setOpen(false)}
+          buttonRef={buttonRef}
+        />
       )}
     </div>
   );
