@@ -839,3 +839,16 @@ against `e2e/mockSupabase.ts`: the sign-in screen and its theme, and two
 signed-in households that must not see each other's purchases. That proves the
 web app starts and those screens work. It says nothing about the real
 database's access rules, Android, or how anything looks or moves.
+
+## Shared repository skills
+
+Four skills are included in this repository: `microinteractions` for interaction
+feedback and motion, `design-everyday-things` for clear controls and error
+recovery, `frontend-design` for visual design, and `unslop` for plain writing.
+They live in `.agents/skills/`, with repository-local links in `.claude/skills/`
+so Claude Code can use the same copies. Contributors get them when they pull;
+they do not need the original installer’s personal skill folders.
+
+See `.agents/skills/README.md` for how to invoke them, their pinned sources and
+licences, and how to update them. Apply the design skills within this app’s
+existing visual language and Android motion invariants.
