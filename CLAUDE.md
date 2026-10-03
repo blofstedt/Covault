@@ -835,20 +835,42 @@ than implying a green build means it works.
 
 The one exception is narrow. The `Browser smoke` workflow runs the Playwright
 suite (`npm run test:e2e`) in headless Chromium emulating a Pixel 7,
-against `e2e/mockSupabase.ts`: the sign-in screen and its theme, and two
-signed-in households that must not see each other's purchases. That proves the
-web app starts and those screens work. It says nothing about the real
-database's access rules, Android, or how anything looks or moves.
+against `e2e/mockSupabase.ts`: the sign-in screen and its theme, two
+signed-in households that must not see each other's purchases, and manual entry
+at phone widths and short screen heights. Manual-entry checks cover keyboard
+progression, reachable controls in both themes, rejected clipboard text and the
+corrected amount sent to a local saving response. These checks use artificial
+data and do not verify real database writes, access rules, Android keyboards or
+on-device motion. Inspect the generated screenshots for visual changes.
 
 ## Shared repository skills
 
-Four skills are included in this repository: `microinteractions` for interaction
-feedback and motion, `design-everyday-things` for clear controls and error
-recovery, `frontend-design` for visual design, and `unslop` for plain writing.
-They live in `.agents/skills/`, with repository-local links in `.claude/skills/`
-so Claude Code can use the same copies. Contributors get them when they pull;
-they do not need the original installer’s personal skill folders.
+Nine reference skills are committed in `.agents/skills/`, with portable links in
+`.claude/skills/`. Contributors get these copies when they pull. Shared
+`.claude/settings.json` explicitly lists each project skill as `on` through
+Claude Code's supported `skillOverrides` setting. Existing React, Vite and
+Vitest plugins remain enabled there too.
 
-See `.agents/skills/README.md` for how to invoke them, their pinned sources and
-licences, and how to update them. Apply the design skills within this app’s
-existing visual language and Android motion invariants.
+Use the repository-local guides by default for the matching task. Read the
+relevant skill before editing; loading a skill is not permission to broaden the
+request or change the app's established behavior.
+
+| Task | Default skills |
+| --- | --- |
+| Writing replies, interface copy or documentation | `unslop` |
+| Reading or editing TypeScript | `typescript-best-practices`, including its local type-system and boundary references |
+| Defining input validation or changing Zod schemas | `zod` and the TypeScript boundary reference |
+| Writing or changing tests | `principle-test-behavior-not-implementation`, plus the existing Vitest guidance when applicable |
+| Adding or changing inputs, dialogs or other controls | `accessibility` and `design-everyday-things` |
+| Changing layout, typography or visual design | `frontend-design` and `design-everyday-things` |
+| Changing feedback, transitions or interaction states | `microinteractions` |
+| Writing SQL, migrations, schema, indexes or access rules | `supabase-postgres-best-practices` |
+
+Use only the guides relevant to the task. Keep this app's category palette,
+shared components and 320ms Android motion clock. Validate money as complete
+input before converting it, and follow the Zod guide's Covault compatibility
+notes. Database work still follows the live-schema and read-only rules above;
+a general database skill does not authorize live changes or household-row reads.
+
+See `.agents/skills/README.md` for pinned sources, licences, local adaptations,
+commands and update instructions. No personal skill folders are required.

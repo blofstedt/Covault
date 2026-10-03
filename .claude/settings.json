@@ -1,4 +1,5 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -46,5 +47,16 @@
       },
       "autoUpdate": true
     }
+  },
+  "skillOverrides": {
+    "microinteractions": "on",
+    "design-everyday-things": "on",
+    "frontend-design": "on",
+    "unslop": "on",
+    "zod": "on",
+    "typescript-best-practices": "on",
+    "principle-test-behavior-not-implementation": "on",
+    "accessibility": "on",
+    "supabase-postgres-best-practices": "on"
   }
 }
