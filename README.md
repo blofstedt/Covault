@@ -53,24 +53,19 @@ matching `*credentials*` / `*secrets*` are gitignored.
 
 ## Database
 
-For an existing database, run
-`supabase/migrations/2026_08_01_sync_schema_to_app.sql` in the Supabase SQL
-editor. It is idempotent — safe to run twice — and brings the schema in line
-with the current app. Migration files whose header says **SUPERSEDED** are
-history; you do not need them.
+For a new project, run `supabase/schema.sql` once in the Supabase SQL editor.
+That is the whole setup. It was generated from the live project and checked
+against it on 2026-10-03, and it refuses to run where the tables already exist.
 
-The `2026_09_*` migrations were written after that sync file and are not folded
-into it. Which of them an existing database still needs, and in what order, has
-not been checked against a live project yet — see the
-[codebase plan](docs/CODEBASE_PLAN.md) before applying them to a vault.
+For the existing live project, one migration is still outstanding. For how to
+check any database, and for how to change one, see
+[docs/DATABASE_SETUP.md](docs/DATABASE_SETUP.md). Do not re-run the older
+files in `supabase/migrations/`. Live already reflects them, and some of them
+drop tables.
 
-For a fresh project, run `supabase/schema.sql` first. It creates the tables the
-app uses: `settings`, `budgets`, `transactions`, `overrides`, `banks`,
-`notification_rules`. Without it you will see 404s in the console for missing
-tables.
-
-`pending_transactions` is deliberately **not** in the schema; the app treats its
-absence as an empty queue. See `docs/ARCHITECTURE.md`.
+`pending_transactions` is deliberately **not** in the schema, and the app no
+longer refers to it. Captures waiting with the app closed live in the phone's
+own queue. See `docs/ARCHITECTURE.md`.
 
 ## Auth configuration
 

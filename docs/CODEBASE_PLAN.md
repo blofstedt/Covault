@@ -42,21 +42,29 @@ phone app usable after each step.
   combined budget-row choice so overlapping changes cannot overwrite or roll
   back each other. Focused and full tests pass; Sol's review found no remaining
   issues. Phone-only behavior is still unverified.
-- [ ] Write one current database setup path. The README currently points to
-  the August schema sync while later migrations change sharing, privacy, and
-  other behavior. Verify a fresh database and an existing database before
-  replacing the instructions. The user has no approved read-only way to inspect
-  the deployed schema yet, so this remains open. Never infer deployed schema
-  from the files alone.
+- [x] Write one current database setup path. `docs/DATABASE_SETUP.md` is now
+  the single source. `supabase/schema.sql` was regenerated from the live
+  catalog on 2026-10-03 through the read-only Supabase connection. A
+  throwaway Supabase Postgres 17.6 built from it matches live on every
+  fingerprinted part (`scripts/schema-fingerprint.sql`). The one difference is
+  deliberate: the settings INSERT column grant. The existing database is up to
+  date except `2026_09_settings_insert_columns.sql`, which is confirmed
+  unapplied on live and affects no current account. Not verified: a real new
+  Supabase project, or a real sign-in to one.
 - [x] Confirm the build workflow needs each permission it grants. Keep release
   publishing separate from ordinary validation. The build job now has only
   `contents: read`; the main-branch publisher has `contents: write`, and the
   unused Actions/packages write grants are gone. `appUpdate.test.ts` pins the
   job boundary; its focused 25-test run passed.
-- [ ] Verify live Supabase access policies against a disposable database once
-  the setup sequence above is validated. The browser suite keeps concurrent
-  test households apart, but its stand-in database (`e2e/mockSupabase.ts`)
-  enforces its own rule, so it cannot certify the real row-level security.
+- [x] Verify live Supabase access policies against a disposable database once
+  the setup sequence above is validated. `scripts/verify-schema.sh` runs
+  `scripts/rls-check.sql` against that fingerprint-matched copy, signed in
+  as three test accounts. All 16 checks pass: strangers are isolated, a
+  one-sided partner link reads nothing, share levels hold, and the paywall
+  columns are closed. A control run with live's settings grant showed the
+  insert check does catch the live gap. Still open: running it in CI, so a
+  migration cannot quietly weaken a rule. The browser suite's stand-in
+  database still certifies nothing about real RLS.
 
 ### 2. Give features clear boundaries
 

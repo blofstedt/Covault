@@ -112,6 +112,14 @@ a Supabase sign-in the first time in a session.
 - **Changes still go through a migration file.** Write a new
   `supabase/migrations/` file and tell the user to run it in the Supabase SQL
   editor; this connection cannot apply it, by design.
+- **A change to live is also a change to `supabase/schema.sql`.** That file is
+  how a new database is built, and it was regenerated from live on 2026-10-03
+  because the hand-kept version had fallen a month behind — no household
+  sharing, no partner-link functions, no account deletion. After any
+  migration, make the same change there and follow the check in
+  `docs/DATABASE_SETUP.md`: build a throwaway copy with
+  `scripts/verify-schema.sh` and compare its fingerprint with live's. Then
+  update that page's table of what is applied.
 
 ## Where to look, by what the user says
 
@@ -149,6 +157,7 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | "it filed a charge under a shop I've never bought from" | `stripProcessorPrefixes` in `lib/deviceTransactionParser.ts` (what "GOOGLE *SERVICES" is left as) → step 5b of `lib/notificationProcessor.ts` (which remembered merchant it then adopts). See Invariants |
 | "the ignored-alert rules on Review are stale / missing" | `lib/queries/notificationRules.ts` (cached, prefetched query) → `components/transaction_parsing/useNotificationRules.ts`. The cache itself is `lib/queryClient.ts` |
 | "lint is failing" / "why is this lint rule off" | `eslint.config.js` — every rule switched off carries its reason. Several would CHANGE behaviour if auto-fixed (hashes, `null` vs `[]`, newer-WebView-only methods). It also holds the import boundaries: shared controls may not reach the database or native plugins, and dashboard and Review components may not open a Supabase client |
+| "set up a new database" / "which migrations does the database still need" | `docs/DATABASE_SETUP.md` — the one setup path, the applied-on-live table, and how to verify `supabase/schema.sql` against live |
 | "the browser tests are failing" | `playwright.config.ts` → `e2e/fixtures.ts` (blocks every outside request, creates a separate test household per test) → `e2e/mockSupabase.ts` (the stand-in database, served by Vite in `e2e` mode only) |
 | "the review list / badge is wrong" | `lib/reviewQueue.ts` — the single definition of "waiting"; the list, badge and widget all read it |
 | "the widget is stale or wrong" | `lib/widgetSnapshot.ts` → `android-custom/WidgetDeltaStore.java` → `android-custom/WidgetRenderer.java` |

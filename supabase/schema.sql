@@ -1,83 +1,140 @@
 -- ============================================================
--- COVAULT DATABASE SCHEMA — INTROSPECTED FROM PRODUCTION
+-- COVAULT DATABASE SCHEMA — GENERATED FROM THE LIVE PROJECT
 -- ============================================================
--- This file is the canonical schema for the Covault project as it
--- actually exists in production. It was regenerated from PostgREST
--- introspection of the live https://<your-project-ref>.supabase.co project and
--- supplemented with the RLS policy intent from the original repo
--- files.
+-- What a brand-new Covault database needs, in one file. Run it once, in the
+-- Supabase SQL editor of an EMPTY project, before the app signs anyone in.
 --
--- IMPORTANT: This file is the source of truth for what the live DB
--- looks like. If you change the DB, update this file. The CI drift
--- check (scripts/check_schema_drift.sh) compares the introspection
--- of the live DB against this file's expected shape and fails if
--- they diverge.
+-- Where it came from. On 2026-10-03 this was generated from the live
+-- project's own catalog (tables, constraints, indexes, functions, access
+-- rules, grants, the sign-up trigger and the nightly job) through the
+-- read-only Supabase connection, not reconstructed from the migration files.
+-- The previous version of this file WAS reconstructed from them, and by
+-- September it was missing household sharing, partner linking by code,
+-- account deletion and most of the access rules that keep two households
+-- apart. It was then loaded into an empty Supabase Postgres 17.6 and that
+-- database's catalog compared against the live one; see
+-- docs/DATABASE_SETUP.md for what was compared and the one deliberate
+-- difference.
 --
--- What this file is:
---   - A reference / spec of the live DB
---   - A starting point for a brand-new project
---   - A drift-detection target
+-- The one deliberate difference from live: a client may CREATE its own
+-- settings row with four columns only (the last block of grants). Live still
+-- lets it create the row with any column, including the paywall ones, until
+-- migrations/2026_09_settings_insert_columns.sql is applied there. A new
+-- database should not start out with that gap.
 --
 -- What this file is NOT:
---   - A migration to apply on top of the live DB. Applying this on
---     the live DB will be a no-op (CREATE TABLE IF NOT EXISTS) for
---     everything and would only add what's missing.
+--   - A migration for an existing database. It refuses to run if the tables
+--     already exist. An existing database is brought up to date by the
+--     migration files instead — docs/DATABASE_SETUP.md says which.
+--   - Something to edit by hand when the live database changes. Write a
+--     migration, apply it, and regenerate this file the same way.
 --
--- Sections NOT introspected (intentional placeholders):
---   - Indexes (PostgREST does not expose index metadata)
---   - CHECK constraints beyond enum membership
---   - Triggers (e.g. on_auth_user_created, update_budgets_updated_at)
---   - Foreign keys (only user_id -> auth.users was inferable)
--- These are reconstructed from the original schema intent and
--- marked with "(RECONSTRUCTED)" comments.
+-- Supabase-specific: it assumes the auth schema, the anon / authenticated /
+-- service_role roles, and the pgcrypto and pg_cron extensions a Supabase
+-- project provides. It will not run on plain Postgres.
 -- ============================================================
+
+DO $$ BEGIN
+  IF to_regclass('public.transactions') IS NOT NULL THEN
+    RAISE EXCEPTION 'Covault tables already exist here. schema.sql is for an empty project only; see docs/DATABASE_SETUP.md for updating an existing one.';
+  END IF;
+END $$;
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
+CREATE EXTENSION IF NOT EXISTS pg_cron;
 
 
 -- ============================================================
 -- ENUMS
 -- ============================================================
+-- These are Postgres enums, not free text: a value the enum does not list is
+-- rejected on insert, and a query that FILTERS on one fails outright. Adding
+-- a category or a cadence is a migration first and app code second.
+-- schemaEnumsMatchTheApp.test.ts pins these lists to the app's own.
 
--- The Budgets enum is referenced by transactions.budget and
--- overrides.category_id. RLS-restricted tables don't expose enum
--- type details via PostgREST, but the valid members were confirmed
--- by attempting inserts via the API.
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'Budgets') THEN
-    CREATE TYPE public."Budgets" AS ENUM (
-      'Housing', 'Groceries', 'Leisure', 'Utilities',
-      'Transport', 'Services', 'Other',
-      -- The later additions. They are seeded hidden into a vault that already
-      -- has rows (OPT_IN_CATEGORIES in constants.ts) but they are ordinary
-      -- members of the enum, and a database created without them rejects any
-      -- transaction filed under one — silently, because the insert is the
-      -- thing that fails rather than anything the user can see.
-      'Shopping', 'Personal', 'Travel'
-    );
-  END IF;
-END $$;
+CREATE TYPE public."Budgets" AS ENUM (
+  'Housing',
+  'Groceries',
+  'Leisure',
+  'Utilities',
+  'Transport',
+  'Services',
+  'Other',
+  'Shopping',
+  'Personal',
+  'Travel'
+);
 
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'Type') THEN
-    CREATE TYPE public."Type" AS ENUM ('Manual', 'Automatic');
-  END IF;
-END $$;
+CREATE TYPE public."Recurrence" AS ENUM (
+  'One-time',
+  'Biweekly',
+  'Monthly',
+  'Yearly'
+);
 
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'Recurrence') THEN
-    -- 'Yearly' was added by 2026_add_yearly_recurrence.sql. Leaving it out of
-    -- a fresh database is not a cosmetic omission: the recurring-charge lookup
-    -- FILTERS on the full list of cadences, and a filter naming a label the
-    -- enum does not have fails the whole query — which is how that lookup
-    -- returned 400 for months and saw no rows at all.
-    CREATE TYPE public."Recurrence" AS ENUM ('One-time', 'Biweekly', 'Monthly', 'Yearly');
-  END IF;
-END $$;
+CREATE TYPE public."Type" AS ENUM (
+  'Manual',
+  'Automatic'
+);
 
 
 -- ============================================================
--- 1. SETTINGS  (one row per user)
+-- TABLES
 -- ============================================================
-CREATE TABLE IF NOT EXISTS public.settings (
+
+CREATE TABLE public.banks (
+  package_name text NOT NULL,
+  display_name text NOT NULL
+);
+
+-- No primary key and no sort column, on purpose of history rather than
+-- design: the app fixes the order in lib/budgetOrder.ts, and reads both
+-- user_uuid/user_id and Visible/visible spellings.
+CREATE TABLE public.budgets (
+  user_uuid uuid,
+  budget public."Budgets",
+  amount numeric,
+  "Visible" boolean DEFAULT true NOT NULL
+);
+
+CREATE TABLE public.community_rules (
+  match_key text NOT NULL,
+  category_id public."Budgets" NOT NULL,
+  household_count integer NOT NULL,
+  agreement numeric NOT NULL,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+CREATE TABLE public.notification_rules (
+  id uuid DEFAULT gen_random_uuid() NOT NULL,
+  user_id uuid NOT NULL,
+  pattern text NOT NULL,
+  pattern_type text DEFAULT 'exact'::text NOT NULL,
+  use_count integer DEFAULT 0 NOT NULL,
+  last_used_at timestamp with time zone DEFAULT now(),
+  created_at timestamp with time zone DEFAULT now(),
+  recent_uses jsonb DEFAULT '[]'::jsonb NOT NULL,
+  source_text text
+);
+
+CREATE TABLE public.overrides (
+  id uuid DEFAULT gen_random_uuid() NOT NULL,
+  user_id uuid NOT NULL,
+  category_id public."Budgets" NOT NULL,
+  proper_name text,
+  match_key text,
+  match_type text DEFAULT 'exact'::text NOT NULL,
+  updated_at timestamp with time zone DEFAULT now()
+);
+
+CREATE TABLE public.rule_contributions (
+  user_id uuid NOT NULL,
+  match_key text NOT NULL,
+  category_id public."Budgets" NOT NULL,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+CREATE TABLE public.settings (
   user_id uuid NOT NULL,
   name text NOT NULL,
   email text NOT NULL,
@@ -85,518 +142,703 @@ CREATE TABLE IF NOT EXISTS public.settings (
   partner_email text,
   partner_name text,
   budgeting_solo boolean DEFAULT true,
-  monthly_income numeric DEFAULT 0 CHECK (monthly_income >= 0),
+  monthly_income numeric DEFAULT 0,
   rollover_enabled boolean DEFAULT true,
   leisure_buffer_enabled boolean DEFAULT true,
   show_savings_insight boolean DEFAULT true,
   app_notifications_enabled boolean DEFAULT false,
-  -- Added by 2026_add_smart_notifications_column.sql. The app had been
-  -- writing this since smart notifications shipped, but the column did not
-  -- exist, so every toggle failed with PGRST204 and was only logged.
-  smart_notifications_enabled boolean NOT NULL DEFAULT true,
-  theme_selected text DEFAULT 'dark',
+  theme_selected text DEFAULT 'dark'::text,
   trial_started_at timestamp with time zone,
   trial_ends_at timestamp with time zone,
   trial_consumed boolean DEFAULT false,
-  -- The live DB has `DEFAULT false` (confirmed 2026-07-25), i.e. the text
-  -- 'false', which is NOT in the CHECK set — Postgres does not validate
-  -- defaults when a CHECK is added. It is currently unreachable: the only
-  -- inserter is handle_new_user(), which names subscription_status explicitly,
-  -- and the app only ever PATCHes this table. So it is a latent landmine, not
-  -- an active bug — any future INSERT that omits the column would fail.
-  -- 2026_fix_subscription_status_default.sql replaces it with 'none' below.
-  subscription_status text DEFAULT 'none'
-    CHECK (subscription_status = ANY (ARRAY['none', 'active', 'expired'])),
+  subscription_status text DEFAULT 'none'::text,
   link_code text,
-  -- Thirty minutes from minting (generate_link_code). A code with no expiry
-  -- sat on the row until somebody claimed it, which is a standing invitation
-  -- to a household's spending. See 2026_09_security_review.sql.
-  link_code_expires_at timestamp with time zone,
-  -- Added by 2026_08_01_sync_schema_to_app.sql. Off by default: auto-filing
-  -- records a purchase the user never sees, so it has to be chosen.
-  auto_accept_known_vendors boolean NOT NULL DEFAULT false,
-  haptics_enabled boolean NOT NULL DEFAULT true,
-  -- The shared vendor pool: take suggestions by default, volunteer nothing
-  -- until asked. See lib/communityRules.ts.
-  community_rules_enabled boolean NOT NULL DEFAULT true,
-  community_rules_contribute boolean NOT NULL DEFAULT false,
-  -- Closed-testing accounts, which skip the paywall.
-  is_tester boolean NOT NULL DEFAULT false,
-  CONSTRAINT settings_pkey PRIMARY KEY (user_id),
-  CONSTRAINT settings_email_key UNIQUE (email),
-  CONSTRAINT settings_user_id_fkey FOREIGN KEY (user_id)
-    REFERENCES auth.users(id),
-  CONSTRAINT settings_partner_id_fkey FOREIGN KEY (partner_id)
-    REFERENCES auth.users(id)
+  smart_notifications_enabled boolean DEFAULT true NOT NULL,
+  auto_accept_known_vendors boolean DEFAULT false NOT NULL,
+  haptics_enabled boolean DEFAULT true NOT NULL,
+  community_rules_enabled boolean DEFAULT true NOT NULL,
+  community_rules_contribute boolean DEFAULT false NOT NULL,
+  is_tester boolean DEFAULT false NOT NULL,
+  share_level text DEFAULT 'transactions'::text NOT NULL,
+  budget_mode text DEFAULT 'separate'::text NOT NULL,
+  link_code_expires_at timestamp with time zone
 );
 
-ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
-
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE tablename = 'settings' AND policyname = 'Users can view own settings') THEN
-    CREATE POLICY "Users can view own settings" ON public.settings
-      FOR SELECT TO authenticated
-      USING (auth.uid() = user_id);
-  END IF;
-  -- There is deliberately NO partner policy on `settings`, and this file used
-  -- to describe one that the live database has never had. Do not add it back.
-  -- Two reasons. It would be a policy on `settings` whose USING clause reads
-  -- `settings`, which recurses. And it trusted `partner_id` — a column on the
-  -- READER's own row, which the reader could set to any user id — so it would
-  -- hand over a stranger's name, email, income and trial state. What a partner
-  -- is allowed to know comes from the SECURITY DEFINER functions instead:
-  -- partner_monthly_income() returns one number, partner_month_summary()
-  -- returns totals at the level that partner chose, and linked_partner_id()
-  -- refuses to call anyone a partner unless both rows point at each other.
-  -- See 2026_09_security_review.sql.
-  IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE tablename = 'settings' AND policyname = 'Users can insert own settings') THEN
-    CREATE POLICY "Users can insert own settings" ON public.settings
-      FOR INSERT TO authenticated
-      WITH CHECK (auth.uid() = user_id);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE tablename = 'settings' AND policyname = 'Users can update own settings') THEN
-    CREATE POLICY "Users can update own settings" ON public.settings
-      FOR UPDATE TO authenticated
-      USING (auth.uid() = user_id)
-      WITH CHECK (auth.uid() = user_id);
-  END IF;
-END $$;
-
-
--- ============================================================
--- 2. TRANSACTIONS
--- ============================================================
-CREATE TABLE IF NOT EXISTS public.transactions (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
+CREATE TABLE public.transactions (
+  id uuid DEFAULT gen_random_uuid() NOT NULL,
   user_id uuid NOT NULL,
   vendor text NOT NULL,
-  amount numeric NOT NULL,
+  amount numeric(12,2) NOT NULL,
   date date NOT NULL,
-  is_projected boolean NOT NULL DEFAULT false,
+  is_projected boolean DEFAULT false NOT NULL,
   budget public."Budgets" NOT NULL,
-  type public."Type" NOT NULL DEFAULT 'Manual',
-  recur public."Recurrence" NOT NULL DEFAULT 'One-time',
+  type public."Type" DEFAULT 'Manual'::"Type" NOT NULL,
+  recur public."Recurrence" DEFAULT 'One-time'::"Recurrence" NOT NULL,
   created_at timestamp with time zone DEFAULT now(),
-  caught_cleared boolean NOT NULL DEFAULT false,
-  source text NOT NULL DEFAULT 'manual'
-    CHECK (source = ANY (ARRAY['executor', 'notification', 'manual', 'import'])),
-  confidence numeric,
-  -- Added by 2026_add_refunded_column.sql / 2026_learned_rules_and_refunded.sql.
-  refunded boolean NOT NULL DEFAULT false,
-  -- Added by 2026_learned_rules_and_refunded.sql. Powers the capture
-  -- reviewer's "View original notification" expander.
+  caught_cleared boolean DEFAULT false NOT NULL,
+  source text DEFAULT 'manual'::text NOT NULL,
+  refunded boolean DEFAULT false NOT NULL,
   raw_notification text,
-  -- Filed by a learned rule without the user seeing it first. The reviewer
-  -- separates these from the rows waiting on a decision — see
-  -- lib/reviewQueue.ts, which is the single definition of "waiting".
-  auto_filed boolean NOT NULL DEFAULT false,
-  CONSTRAINT transactions_pkey PRIMARY KEY (id),
-  CONSTRAINT transactions_user_id_fkey FOREIGN KEY (user_id)
-    REFERENCES auth.users(id)
+  confidence numeric,
+  auto_filed boolean DEFAULT false NOT NULL
 );
 
--- (RECONSTRUCTED) Indexes based on original schema intent:
---   idx_transactions_user_id     ON (user_id)
---   idx_transactions_date        ON (date)
---   idx_transactions_user_vendor ON (user_id, vendor)
-CREATE INDEX IF NOT EXISTS idx_transactions_user_id
-  ON public.transactions (user_id);
-CREATE INDEX IF NOT EXISTS idx_transactions_date
-  ON public.transactions (date);
-CREATE INDEX IF NOT EXISTS idx_transactions_user_vendor
-  ON public.transactions (user_id, vendor);
 
-ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+-- ============================================================
+-- CONSTRAINTS
+-- ============================================================
 
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE tablename = 'transactions' AND policyname = 'Users can view own transactions') THEN
-    CREATE POLICY "Users can view own transactions" ON public.transactions
-      FOR SELECT TO authenticated
-      USING (auth.uid() = user_id);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE tablename = 'transactions' AND policyname = 'Users can insert own transactions') THEN
-    CREATE POLICY "Users can insert own transactions" ON public.transactions
-      FOR INSERT TO authenticated
-      WITH CHECK (auth.uid() = user_id);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE tablename = 'transactions' AND policyname = 'Users can update own transactions') THEN
-    CREATE POLICY "Users can update own transactions" ON public.transactions
-      FOR UPDATE TO authenticated
-      USING (auth.uid() = user_id);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE tablename = 'transactions' AND policyname = 'Users can delete own transactions') THEN
-    CREATE POLICY "Users can delete own transactions" ON public.transactions
-      FOR DELETE TO authenticated
-      USING (auth.uid() = user_id);
-  END IF;
-  -- (LIVE ONLY) service_delete: lets the service role bypass RLS for
-  -- maintenance. Created automatically by Supabase when the service role
-  -- key is used. Documented here for completeness.
-  IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE tablename = 'transactions' AND policyname = 'service_delete') THEN
-    -- No-op: this policy is created by Supabase itself; we just note its existence.
-    NULL;
-  END IF;
-END $$;
+ALTER TABLE public.banks ADD CONSTRAINT known_banking_apps_pkey PRIMARY KEY (package_name);
+ALTER TABLE public.community_rules ADD CONSTRAINT community_rules_pkey PRIMARY KEY (match_key);
+ALTER TABLE public.notification_rules ADD CONSTRAINT notification_rules_pkey PRIMARY KEY (id);
+ALTER TABLE public.overrides ADD CONSTRAINT vendor_overrides_pkey PRIMARY KEY (id);
+ALTER TABLE public.rule_contributions ADD CONSTRAINT rule_contributions_pkey PRIMARY KEY (user_id, match_key);
+ALTER TABLE public.settings ADD CONSTRAINT settings_pkey PRIMARY KEY (user_id);
+ALTER TABLE public.transactions ADD CONSTRAINT transactions_pkey PRIMARY KEY (id);
+
+ALTER TABLE public.budgets ADD CONSTRAINT unique_user_budget UNIQUE (user_uuid, budget);
+ALTER TABLE public.overrides ADD CONSTRAINT overrides_id_key UNIQUE (id);
+ALTER TABLE public.settings ADD CONSTRAINT settings_email_key UNIQUE (email);
+ALTER TABLE public.settings ADD CONSTRAINT settings_user_id_key UNIQUE (user_id);
+ALTER TABLE public.transactions ADD CONSTRAINT transactions_id_key UNIQUE (id);
+
+ALTER TABLE public.notification_rules ADD CONSTRAINT notification_rules_pattern_type_check CHECK ((pattern_type = ANY (ARRAY['exact'::text, 'contains'::text])));
+ALTER TABLE public.overrides ADD CONSTRAINT overrides_match_type_check CHECK ((match_type = ANY (ARRAY['exact'::text, 'prefix'::text, 'contains'::text])));
+ALTER TABLE public.settings ADD CONSTRAINT settings_budget_mode_check CHECK ((budget_mode = ANY (ARRAY['separate'::text, 'combined'::text])));
+ALTER TABLE public.settings ADD CONSTRAINT settings_monthly_income_check CHECK ((monthly_income >= (0)::numeric));
+ALTER TABLE public.settings ADD CONSTRAINT settings_share_level_check CHECK ((share_level = ANY (ARRAY['transactions'::text, 'categories'::text, 'totals'::text])));
+ALTER TABLE public.settings ADD CONSTRAINT settings_subscription_status_check CHECK ((subscription_status = ANY (ARRAY['none'::text, 'active'::text, 'expired'::text])));
+ALTER TABLE public.transactions ADD CONSTRAINT transactions_source_check CHECK ((source = ANY (ARRAY['executor'::text, 'notification'::text, 'manual'::text, 'import'::text])));
+
+ALTER TABLE public.budgets ADD CONSTRAINT budgets_user_uuid_fkey FOREIGN KEY (user_uuid) REFERENCES auth.users(id);
+ALTER TABLE public.notification_rules ADD CONSTRAINT notification_rules_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id);
+ALTER TABLE public.overrides ADD CONSTRAINT vendor_overrides_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+ALTER TABLE public.rule_contributions ADD CONSTRAINT rule_contributions_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+ALTER TABLE public.settings ADD CONSTRAINT settings_partner_id_fkey FOREIGN KEY (partner_id) REFERENCES auth.users(id);
+ALTER TABLE public.settings ADD CONSTRAINT settings_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+ALTER TABLE public.transactions ADD CONSTRAINT transactions_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
 
 
 -- ============================================================
--- 3. BUDGETS
+-- INDEXES
 -- ============================================================
--- Note: live DB has NO primary key on this table. Each row is
--- identified by the (user_uuid, budget) tuple. The app uses
--- `on_conflict=user_uuid,budget` upserts, so a unique index on
--- that pair is required for upsert semantics to work.
-CREATE TABLE IF NOT EXISTS public.budgets (
-  user_uuid uuid,
-  budget public."Budgets",
-  amount numeric,
-  -- Quoted deliberately. An unquoted `Visible` folds to `visible`, but every
-  -- write in the app sends the JSON key "Visible"
-  -- (lib/hooks/useUserSettings.ts:81,141,428,486 and
-  -- lib/hooks/useDataLoading.ts:49) and PostgREST matches column names
-  -- case-sensitively. Creating a fresh project from an unquoted definition
-  -- would make every budget-limit and visibility write fail with PGRST204.
-  -- The `row.visible ?? row.Visible` fallback on the read path exists to
-  -- tolerate both spellings; the write path does not have one.
-  "Visible" boolean NOT NULL DEFAULT true,
-  -- Live DB has a FK on user_uuid and NO primary key.
-  CONSTRAINT budgets_user_uuid_fkey FOREIGN KEY (user_uuid)
-    REFERENCES auth.users(id)
-);
 
--- Required for the upsert at lib/hooks/useDataLoading.ts:53
--- (`on_conflict=user_uuid,budget`). Without a unique index or constraint on
--- exactly these columns Postgres raises 42P10; it does NOT degrade to a plain
--- insert (an earlier version of this comment said otherwise and was wrong).
---
--- In the live DB this is a bare UNIQUE INDEX, not a table constraint
--- (confirmed 2026-07-25). ON CONFLICT accepts either, so the upsert works —
--- but note that a plain schema export lists constraints and will appear to
--- show nothing here. It also prevents duplicate rows, which matters because
--- saveBudgetLimit writes via PATCH-then-plain-POST rather than an upsert.
-CREATE UNIQUE INDEX IF NOT EXISTS unique_user_budget
-  ON public.budgets USING btree (user_uuid, budget);
-
-ALTER TABLE public.budgets ENABLE ROW LEVEL SECURITY;
-
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE tablename = 'budgets' AND policyname = 'Users can view own budgets') THEN
-    CREATE POLICY "Users can view own budgets" ON public.budgets
-      FOR SELECT TO authenticated
-      USING (auth.uid() = user_uuid);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE tablename = 'budgets' AND policyname = 'Users can upsert own budgets') THEN
-    CREATE POLICY "Users can upsert own budgets" ON public.budgets
-      FOR INSERT TO authenticated
-      WITH CHECK (auth.uid() = user_uuid);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE tablename = 'budgets' AND policyname = 'Users can update own budgets') THEN
-    CREATE POLICY "Users can update own budgets" ON public.budgets
-      FOR UPDATE TO authenticated
-      USING (auth.uid() = user_uuid);
-  END IF;
-END $$;
+CREATE INDEX idx_community_rules_key ON public.community_rules USING btree (match_key);
+CREATE INDEX idx_notification_rules_user ON public.notification_rules USING btree (user_id);
+CREATE INDEX idx_overrides_user_match_key ON public.overrides USING btree (user_id, match_key);
+CREATE INDEX idx_overrides_user_updated_at ON public.overrides USING btree (user_id, updated_at DESC);
+CREATE INDEX overrides_match_key_idx ON public.overrides USING btree (match_key);
+CREATE INDEX idx_rule_contributions_match_key ON public.rule_contributions USING btree (match_key);
+CREATE INDEX idx_transactions_date ON public.transactions USING btree (date);
+CREATE INDEX idx_transactions_user_date_unrefunded ON public.transactions USING btree (user_id, date) WHERE ((refunded = false) AND (amount > (0)::numeric) AND (is_projected = false));
+CREATE INDEX idx_transactions_user_id ON public.transactions USING btree (user_id);
+CREATE INDEX idx_transactions_user_source_date ON public.transactions USING btree (user_id, source, date);
+CREATE INDEX idx_transactions_user_vendor ON public.transactions USING btree (user_id, vendor);
+CREATE INDEX idx_transactions_user_vendor_amount ON public.transactions USING btree (user_id, vendor, amount) WHERE (is_projected = false);
 
 
 -- ============================================================
--- 4. OVERRIDES  (vendor reclassification memory)
--- ============================================================
-CREATE TABLE IF NOT EXISTS public.overrides (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL,
-  category_id public."Budgets" NOT NULL,
-  proper_name text,
-  match_key text,
-  -- Both added by 2026_learned_rules_and_refunded.sql.
-  match_type text NOT NULL DEFAULT 'exact'
-    CHECK (match_type IN ('exact', 'prefix', 'contains')),
-  updated_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT overrides_pkey PRIMARY KEY (id),
-  -- Live constraint name retains the table's former name.
-  CONSTRAINT vendor_overrides_user_id_fkey FOREIGN KEY (user_id)
-    REFERENCES auth.users(id)
-);
-
-ALTER TABLE public.overrides ENABLE ROW LEVEL SECURITY;
-
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE tablename = 'overrides' AND policyname = 'Users can view own overrides') THEN
-    CREATE POLICY "Users can view own overrides" ON public.overrides
-      FOR SELECT TO authenticated
-      USING (auth.uid() = user_id);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE tablename = 'overrides' AND policyname = 'Users can insert own overrides') THEN
-    CREATE POLICY "Users can insert own overrides" ON public.overrides
-      FOR INSERT TO authenticated
-      WITH CHECK (auth.uid() = user_id);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE tablename = 'overrides' AND policyname = 'Users can update own overrides') THEN
-    CREATE POLICY "Users can update own overrides" ON public.overrides
-      FOR UPDATE TO authenticated
-      USING (auth.uid() = user_id);
-  END IF;
-END $$;
-
-
--- ============================================================
--- 5. BANKS  (banking app display name lookup)
--- ============================================================
-CREATE TABLE IF NOT EXISTS public.banks (
-  package_name text NOT NULL,
-  display_name text NOT NULL,
-  CONSTRAINT banks_pkey PRIMARY KEY (package_name)
-);
-
-ALTER TABLE public.banks ENABLE ROW LEVEL SECURITY;
-
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE tablename = 'banks' AND policyname = 'Anyone can read Banking') THEN
-    CREATE POLICY "Anyone can read banks" ON public.banks
-      FOR SELECT TO authenticated
-      USING (true);
-  END IF;
-END $$;
-
-
--- ============================================================
--- 6. NOTIFICATION_RULES  (trained "not a transaction" skip patterns)
--- ============================================================
--- Confirmed present in the live DB (2026-07-25). Read by
--- lib/notificationRules.ts (checkNotificationRules, listNotificationRules)
--- and written by createNotificationRule / deleteNotificationRule /
--- bumpRuleUseCount.
---
--- The app has NO fallback if this table is missing: a failed fetch is
--- treated as "no rules", so trained skip patterns would silently stop
--- applying and filtered notifications would start being captured again.
-CREATE TABLE IF NOT EXISTS public.notification_rules (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL,
-  pattern text NOT NULL,
-  -- Matches NotATxRuleType in components/transaction_parsing/NotATransactionModal.tsx
-  -- ('exact' | 'contains'). Note this is a NARROWER set than
-  -- overrides.match_type, which also allows 'prefix'.
-  pattern_type text NOT NULL DEFAULT 'exact'
-    CHECK (pattern_type = ANY (ARRAY['exact', 'contains'])),
-  use_count integer NOT NULL DEFAULT 0,
-  last_used_at timestamp with time zone DEFAULT now(),
-  created_at timestamp with time zone DEFAULT now(),
-  -- Added by 2026_09_skip_rule_recent_uses.sql. The last few alerts this rule
-  -- actually silenced, newest first, trimmed to five by the app. A skip rule
-  -- works by making things disappear, so this is the only evidence there is
-  -- about what one has been doing.
-  recent_uses jsonb NOT NULL DEFAULT '[]'::jsonb,
-  -- Added by 2026_09_skip_rule_source_text.sql. The whole alert the rule was
-  -- made from; `pattern` may be a span of a few words out of it.
-  source_text text,
-  CONSTRAINT notification_rules_pkey PRIMARY KEY (id),
-  CONSTRAINT notification_rules_user_id_fkey FOREIGN KEY (user_id)
-    REFERENCES auth.users(id)
-);
-
-ALTER TABLE public.notification_rules ENABLE ROW LEVEL SECURITY;
-
-
--- ============================================================
--- 7. COMMUNITY_RULES  (the shared vendor pool, read side)
--- ============================================================
--- One row per merchant slug: where most households file it, and how much
--- they agree. Every household may read the whole table — that is the point
--- of it — and nobody may write it from the client; it is derived from
--- rule_contributions below. See lib/communityRules.ts.
-CREATE TABLE IF NOT EXISTS public.community_rules (
-  match_key text NOT NULL,
-  category_id public."Budgets" NOT NULL,
-  household_count integer NOT NULL,
-  agreement numeric NOT NULL,
-  updated_at timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT community_rules_pkey PRIMARY KEY (match_key)
-);
-
-CREATE INDEX IF NOT EXISTS idx_community_rules_key
-  ON public.community_rules (match_key);
-
-ALTER TABLE public.community_rules ENABLE ROW LEVEL SECURITY;
-
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE tablename = 'community_rules'
-                   AND policyname = 'Anyone can read community rules') THEN
-    CREATE POLICY "Anyone can read community rules" ON public.community_rules
-      FOR SELECT TO authenticated
-      USING (true);
-  END IF;
-END $$;
-
-
--- ============================================================
--- 8. RULE_CONTRIBUTIONS  (the shared vendor pool, write side)
--- ============================================================
--- What one household has volunteered about a merchant. Deliberately
--- write-only from the client: there is INSERT, UPDATE and DELETE for your own
--- rows and NO select policy at all, so no household can read what another has
--- contributed. What comes back out is the aggregate in community_rules.
---
--- Losing that asymmetry would turn an anonymous pool into a way of asking
--- "where does this person shop", so a SELECT policy must never be added here.
-CREATE TABLE IF NOT EXISTS public.rule_contributions (
-  user_id uuid NOT NULL,
-  match_key text NOT NULL,
-  category_id public."Budgets" NOT NULL,
-  updated_at timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT rule_contributions_pkey PRIMARY KEY (user_id, match_key),
-  CONSTRAINT rule_contributions_user_id_fkey FOREIGN KEY (user_id)
-    REFERENCES auth.users(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_rule_contributions_match_key
-  ON public.rule_contributions (match_key);
-
-ALTER TABLE public.rule_contributions ENABLE ROW LEVEL SECURITY;
-
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE tablename = 'rule_contributions'
-                   AND policyname = 'Households can contribute') THEN
-    CREATE POLICY "Households can contribute" ON public.rule_contributions
-      FOR INSERT TO authenticated
-      WITH CHECK (auth.uid() = user_id);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE tablename = 'rule_contributions'
-                   AND policyname = 'Households can amend their contribution') THEN
-    CREATE POLICY "Households can amend their contribution" ON public.rule_contributions
-      FOR UPDATE TO authenticated
-      USING (auth.uid() = user_id)
-      WITH CHECK (auth.uid() = user_id);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE tablename = 'rule_contributions'
-                   AND policyname = 'Households can withdraw') THEN
-    CREATE POLICY "Households can withdraw" ON public.rule_contributions
-      FOR DELETE TO authenticated
-      USING (auth.uid() = user_id);
-  END IF;
-END $$;
-
-
--- ============================================================
--- PENDING_TRANSACTIONS — DOES NOT EXIST IN THE LIVE DB
--- ============================================================
--- Still absent, re-confirmed 2026-09-13 by listing the live schema: the
--- tables are banks, budgets, community_rules, notification_rules, overrides,
--- rule_contributions, settings and transactions. The app still references it:
---   lib/hooks/useDataLoading.ts    (loadPendingTransactions — the read)
---   lib/hooks/useTransactionOps.ts (approve / reject / clear-filtered)
---
--- Its absence is tolerated on the read path — loadPendingTransactions treats
--- a 404 as an empty queue — so the app runs without it. In practice the
--- separate review queue is inert and captured transactions land directly in
--- `transactions`, which is what the review UI reads.
---
--- Worth being precise about what "dead" means here, because it is stronger
--- than it looks: the read can never return a row, so appState.pendingTransactions
--- is permanently empty, so the approve/reject/clear handlers built on it are
--- unreachable rather than merely failing. Removing them is a deletion of a
--- feature surface, not a tidy-up, which is why it is still a decision and not
--- something to do in passing.
---
--- Decide one of:
---   a) create the table, if the pending/approve flow is still wanted; or
---   b) remove the dead references above.
--- Leaving it as-is means those insert/patch calls fail on every captured
--- notification and are swallowed.
+-- COMMENTS
 -- ============================================================
 
-
--- ============================================================
--- TRIGGERS
--- ============================================================
-
--- Auto-create a settings row when a new user signs up. The
--- original schema also set monthly_income=5000 and a 14-day trial;
--- the live DB's handle_new_user may not. This trigger is preserved
--- here for documentation; verify the live DB version matches before
--- relying on it.
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS trigger AS $$
-BEGIN
-  INSERT INTO public.settings (user_id, name, email)
-  VALUES (
-    NEW.id,
-    COALESCE(NEW.raw_user_meta_data ->> 'full_name',
-             split_part(NEW.email, '@', 1),
-             'User'),
-    NEW.email
-  )
-  ON CONFLICT (user_id) DO NOTHING;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+COMMENT ON COLUMN public.settings.theme_selected IS 'dark or light theme';
+COMMENT ON COLUMN public.transactions.type IS 'Is the transaction manual or automatic?';
+COMMENT ON COLUMN public.transactions.raw_notification IS 'Original raw notification text that produced this transaction. Populated by the notification pipeline. Used by the <> page to show the user what the parser saw, and to enable vendor correction.';
 
 
 -- ============================================================
 -- FUNCTIONS
 -- ============================================================
+-- Every SECURITY DEFINER function pins search_path, and each one checks
+-- auth.uid() itself, because it runs as the table owner and RLS does not
+-- apply inside it. definerFunctionGrants.test.ts holds the rule.
 
--- Household linking is BY CODE ONLY. `link_partner_by_email` used to exist
--- beside `link_partner_by_code` and linked two accounts on one person's say-so
--- — anyone who knew a Covault user's email address could attach themselves to
--- that account and read its spending. It was dropped by
--- 2026_09_drop_email_linking.sql and must not come back: the code lives on the
--- other person's screen, so asking for it is the consent.
+CREATE FUNCTION public.delete_own_account()
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE v_me uuid := auth.uid();
+BEGIN
+  IF v_me IS NULL THEN RAISE EXCEPTION 'Not authenticated'; END IF;
+  UPDATE public.settings SET partner_id = NULL, partner_name = NULL, partner_email = NULL WHERE partner_id = v_me;
+  DELETE FROM public.transactions       WHERE user_id   = v_me;
+  DELETE FROM public.overrides          WHERE user_id   = v_me;
+  DELETE FROM public.rule_contributions WHERE user_id   = v_me;
+  DELETE FROM public.notification_rules WHERE user_id   = v_me;
+  DELETE FROM public.budgets            WHERE user_uuid = v_me;
+  DELETE FROM public.settings           WHERE user_id   = v_me;
+  DELETE FROM auth.users WHERE id = v_me;
+END;
+$function$;
 
--- What time it is, according to the database.
---
--- The trial is a date, and the app used to compare it against the phone's own
--- clock — which belongs to the person being charged. This is how the app stops
--- trusting that: it takes the difference between this answer and its own clock
--- at load time and asks every entitlement question against the result. See
--- lib/serverClock.ts and 2026_09_server_clock_for_trial.sql.
---
--- Read-only and argument-free; the only thing it can tell you is the time.
-CREATE OR REPLACE FUNCTION public.server_now()
-RETURNS timestamptz
-LANGUAGE sql
-STABLE
-SET search_path = public, pg_temp
-AS $$
+CREATE FUNCTION public.generate_link_code()
+ RETURNS text
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_alphabet CONSTANT text := '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+  v_me uuid := auth.uid();
+  v_code text;
+  v_try int := 0;
+BEGIN
+  IF v_me IS NULL THEN RAISE EXCEPTION 'Not authenticated'; END IF;
+  LOOP
+    v_try := v_try + 1;
+    IF v_try > 20 THEN RAISE EXCEPTION 'Could not mint a link code'; END IF;
+    SELECT string_agg(substr(v_alphabet, 1 + (get_byte(b.bytes, i) % length(v_alphabet)), 1), '')
+      INTO v_code
+      FROM (SELECT extensions.gen_random_bytes(8) AS bytes) b, generate_series(0, 7) AS i;
+    EXIT WHEN NOT EXISTS (
+      SELECT 1 FROM public.settings s WHERE s.link_code = v_code AND s.link_code_expires_at > now()
+    );
+  END LOOP;
+  UPDATE public.settings s
+     SET link_code = v_code, link_code_expires_at = now() + interval '30 minutes'
+   WHERE s.user_id = v_me;
+  RETURN v_code;
+END;
+$function$;
+
+CREATE FUNCTION public.generate_transaction_hash(p_amount numeric, p_vendor text, p_date date)
+ RETURNS text
+ LANGUAGE plpgsql
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+BEGIN
+  RETURN md5(p_amount::TEXT || '|' || LOWER(TRIM(p_vendor)) || '|' || p_date::TEXT);
+END;
+$function$;
+
+-- The sign-up trigger. Every account gets its settings row here, which is
+-- why a client almost never needs to create one itself.
+CREATE FUNCTION public.handle_new_user()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+BEGIN
+  INSERT INTO public.settings (
+    user_id,
+    name,
+    email,
+    monthly_income,
+    trial_started_at,
+    trial_ends_at,
+    trial_consumed,
+    subscription_status
+  )
+  VALUES (
+    NEW.id,
+    COALESCE(
+      NEW.raw_user_meta_data ->> 'full_name',
+      split_part(NEW.email, '@', 1),
+      'User'
+    ),
+    NEW.email,
+    5000,
+    now(),
+    now() + interval '1 month',
+    true,
+    'none'
+  )
+  ON CONFLICT (user_id) DO NOTHING;
+
+  RETURN NEW;
+END;
+$function$;
+
+CREATE FUNCTION public.link_partner_by_code(p_code text)
+ RETURNS TABLE(partner_id uuid, partner_name text, partner_email text)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_me uuid := auth.uid();
+  v_my_name text; v_my_email text;
+  v_other_id uuid; v_other_name text; v_other_email text;
+BEGIN
+  IF v_me IS NULL THEN RAISE EXCEPTION 'Not authenticated'; END IF;
+  IF p_code IS NULL OR btrim(p_code) = '' THEN RAISE EXCEPTION 'Invalid or expired link code'; END IF;
+  SELECT s.name, s.email INTO v_my_name, v_my_email FROM public.settings s WHERE s.user_id = v_me;
+  UPDATE public.settings s
+     SET partner_id = v_me, partner_name = v_my_name, partner_email = v_my_email,
+         link_code = NULL, link_code_expires_at = NULL
+   WHERE upper(s.link_code) = upper(btrim(p_code))
+     AND s.link_code_expires_at > now()
+     AND s.user_id <> v_me
+  RETURNING s.user_id, s.name, s.email INTO v_other_id, v_other_name, v_other_email;
+  IF v_other_id IS NULL THEN RAISE EXCEPTION 'Invalid or expired link code'; END IF;
+  UPDATE public.settings s
+     SET partner_id = v_other_id, partner_name = v_other_name, partner_email = v_other_email
+   WHERE s.user_id = v_me;
+  RETURN QUERY SELECT v_other_id, v_other_name, v_other_email;
+END;
+$function$;
+
+CREATE FUNCTION public.linked_partner_id()
+ RETURNS uuid
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+  SELECT mine.partner_id
+    FROM public.settings mine
+    JOIN public.settings theirs ON theirs.user_id = mine.partner_id
+   WHERE mine.user_id = auth.uid()
+     AND mine.partner_id IS NOT NULL
+     AND theirs.partner_id = mine.user_id;
+$function$;
+
+COMMENT ON FUNCTION public.linked_partner_id() IS 'The mutually-confirmed partner of the calling user, or NULL. SECURITY DEFINER because confirming the other row points back requires reading it. Every partner SELECT policy goes through this - a one-sided partner_id is not a link.';
+
+-- Not a SECURITY DEFINER function, so RLS still applies inside it: a caller
+-- passing someone else's user id gets no rows back.
+CREATE FUNCTION public.match_vendor(p_user_id uuid, p_raw_vendor text)
+ RETURNS TABLE(rule_id text, proper_name text, category_id text, category_name text, confidence double precision, match_type text)
+ LANGUAGE plpgsql
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_key text;
+BEGIN
+  v_key := lower(regexp_replace(p_raw_vendor, '[^a-z0-9]', '', 'g'));
+
+  -- 1. Exact match
+  RETURN QUERY
+    SELECT o.id::text, o.proper_name, o.category_id, o.category_id,
+           0.95, 'exact'
+      FROM overrides o
+     WHERE o.user_id = p_user_id
+       AND (lower(regexp_replace(o.match_key, '[^a-z0-9]', '', 'g')) = v_key
+            OR lower(regexp_replace(o.proper_name, '[^a-z0-9]', '', 'g')) = v_key)
+     LIMIT 1;
+
+  IF FOUND THEN RETURN; END IF;
+
+  -- 2. Prefix match
+  RETURN QUERY
+    SELECT o.id::text, o.proper_name, o.category_id, o.category_id,
+           0.75, 'prefix'
+      FROM overrides o
+     WHERE o.user_id = p_user_id
+       AND (v_key LIKE lower(regexp_replace(o.match_key, '[^a-z0-9]', '', 'g')) || '%'
+            OR lower(regexp_replace(o.match_key, '[^a-z0-9]', '', 'g')) LIKE v_key || '%')
+     LIMIT 1;
+
+  IF FOUND THEN RETURN; END IF;
+
+  -- 3. Contains match
+  RETURN QUERY
+    SELECT o.id::text, o.proper_name, o.category_id, o.category_id,
+           0.55, 'contains'
+      FROM overrides o
+     WHERE o.user_id = p_user_id
+       AND (v_key LIKE '%' || lower(regexp_replace(o.match_key, '[^a-z0-9]', '', 'g')) || '%'
+            OR lower(regexp_replace(o.match_key, '[^a-z0-9]', '', 'g')) LIKE '%' || v_key || '%')
+     LIMIT 1;
+
+  IF FOUND THEN RETURN; END IF;
+
+  -- No match
+  RETURN QUERY SELECT NULL::text, NULL::text, NULL::text, NULL::text, 0.0, 'none';
+END;
+$function$;
+
+CREATE FUNCTION public.partner_month_summary(p_month text)
+ RETURNS TABLE(share_level text, budget text, total numeric)
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE v_partner uuid; v_level text;
+BEGIN
+  IF p_month IS NULL OR p_month !~ '^\d{4}-\d{2}$' THEN
+    RAISE EXCEPTION 'Month must look like 2026-09';
+  END IF;
+  v_partner := public.linked_partner_id();
+  IF v_partner IS NULL THEN RETURN; END IF;
+  v_level := public.partner_share_level();
+  IF v_level IS NULL OR v_level = 'transactions' THEN RETURN; END IF;
+  IF v_level = 'categories' THEN
+    RETURN QUERY
+      SELECT v_level, t.budget::text, SUM(t.amount)::numeric
+        FROM public.transactions t
+       WHERE t.user_id = v_partner AND to_char(t.date, 'YYYY-MM') = p_month AND t.is_projected = false
+       GROUP BY t.budget;
+  ELSE
+    RETURN QUERY
+      SELECT v_level, NULL::text, COALESCE(SUM(t.amount), 0)::numeric
+        FROM public.transactions t
+       WHERE t.user_id = v_partner AND to_char(t.date, 'YYYY-MM') = p_month AND t.is_projected = false;
+  END IF;
+END;
+$function$;
+
+CREATE FUNCTION public.partner_monthly_income()
+ RETURNS numeric
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+  SELECT s.monthly_income FROM public.settings s WHERE s.user_id = public.linked_partner_id();
+$function$;
+
+CREATE FUNCTION public.partner_share_level()
+ RETURNS text
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+  SELECT s.share_level FROM public.settings s WHERE s.user_id = public.linked_partner_id();
+$function$;
+
+-- Run nightly by the cron job at the bottom of this file, never by a client.
+CREATE FUNCTION public.refresh_community_rules()
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  MIN_HOUSEHOLDS constant integer := 5;
+  MIN_AGREEMENT  constant numeric := 0.7;
+  EXCLUDED_CATEGORIES constant public."Budgets"[] := ARRAY[]::public."Budgets"[];
+BEGIN
+  DELETE FROM public.community_rules;
+
+  WITH households AS (
+    SELECT DISTINCT
+      COALESCE(LEAST(c.user_id, s.partner_id), c.user_id) AS household_key,
+      c.match_key,
+      c.category_id
+    FROM public.rule_contributions c
+    LEFT JOIN public.settings s ON s.user_id = c.user_id
+    WHERE c.match_key <> ''
+      AND c.category_id <> ALL (EXCLUDED_CATEGORIES)
+  ),
+  tally AS (
+    SELECT
+      match_key,
+      category_id,
+      COUNT(*) AS votes,
+      SUM(COUNT(*)) OVER (PARTITION BY match_key) AS total_votes,
+      ROW_NUMBER() OVER (PARTITION BY match_key ORDER BY COUNT(*) DESC, category_id) AS rank
+    FROM households
+    GROUP BY match_key, category_id
+  )
+  INSERT INTO public.community_rules (match_key, category_id, household_count, agreement, updated_at)
+  SELECT
+    match_key,
+    category_id,
+    total_votes::integer,
+    ROUND(votes::numeric / total_votes, 3),
+    now()
+  FROM tally
+  WHERE rank = 1
+    AND total_votes >= MIN_HOUSEHOLDS
+    AND votes::numeric / total_votes >= MIN_AGREEMENT;
+END $function$;
+
+-- The trial is judged on the database's clock, not the phone's
+-- (lib/serverClock.ts).
+CREATE FUNCTION public.server_now()
+ RETURNS timestamp with time zone
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
   SELECT now();
-$$;
+$function$;
 
-REVOKE ALL ON FUNCTION public.server_now() FROM public;
-GRANT EXECUTE ON FUNCTION public.server_now() TO authenticated;
+CREATE FUNCTION public.set_household_budget_mode(p_mode text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE v_me uuid := auth.uid(); v_partner uuid;
+BEGIN
+  IF v_me IS NULL THEN RAISE EXCEPTION 'Not authenticated'; END IF;
+  IF p_mode NOT IN ('separate', 'combined') THEN RAISE EXCEPTION 'Unknown budget mode'; END IF;
+  v_partner := public.linked_partner_id();
+  UPDATE public.settings s SET budget_mode = p_mode WHERE s.user_id = v_me;
+  IF v_partner IS NOT NULL THEN
+    UPDATE public.settings s SET budget_mode = p_mode WHERE s.user_id = v_partner;
+  END IF;
+END;
+$function$;
+
+CREATE FUNCTION public.unlink_partner()
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_me    uuid := auth.uid();
+  v_other uuid;
+BEGIN
+  IF v_me IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  SELECT s.partner_id INTO v_other
+    FROM public.settings s WHERE s.user_id = v_me;
+
+  UPDATE public.settings s
+     SET partner_id = NULL, partner_name = NULL, partner_email = NULL
+   WHERE s.user_id = v_me;
+
+  -- Only clear the other row if it actually points back at us, so this can
+  -- never be used to detach two unrelated accounts.
+  IF v_other IS NOT NULL THEN
+    UPDATE public.settings s
+       SET partner_id = NULL, partner_name = NULL, partner_email = NULL
+     WHERE s.user_id = v_other
+       AND s.partner_id = v_me;
+  END IF;
+END;
+$function$;
+
+-- Present on live but attached to no table: nothing keeps updated_at current
+-- automatically. Kept so a fresh database matches.
+CREATE FUNCTION public.update_updated_at_column()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$function$;
 
 
 -- ============================================================
--- DEAD CODE — flagged for cleanup
+-- ROW LEVEL SECURITY
 -- ============================================================
--- The following exist in the live DB but are not used by the app:
---   - public.get_my_partner_id (RPC)  — references missing
---     public.profiles table, fails on call
---   - public.generate_transaction_hash (RPC)  — not called
---     by the app or tests
---
--- Drop them by running the snippet in
--- supabase/migrations/2026_cleanup_dead_rpcs.sql.
+-- Every table has it on. A table with RLS on and no policy for an action
+-- refuses that action outright, which is how banks and community_rules stay
+-- read-only to clients, and why no one can delete their own settings row.
+
+ALTER TABLE public.banks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.budgets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.community_rules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notification_rules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.overrides ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rule_contributions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Signed-in users can read the bank list" ON public.banks
+  AS PERMISSIVE FOR SELECT TO authenticated
+  USING (true);
+
+CREATE POLICY "Users can insert own budgets" ON public.budgets
+  AS PERMISSIVE FOR INSERT TO authenticated
+  WITH CHECK ((user_uuid = auth.uid()));
+
+CREATE POLICY "Users can update own budgets" ON public.budgets
+  AS PERMISSIVE FOR UPDATE TO authenticated
+  USING ((user_uuid = auth.uid()))
+  WITH CHECK ((user_uuid = auth.uid()));
+
+CREATE POLICY "Users can view own budgets" ON public.budgets
+  AS PERMISSIVE FOR SELECT TO authenticated
+  USING ((user_uuid = auth.uid()));
+
+-- A partner's rows are visible only through linked_partner_id(), which
+-- requires BOTH settings rows to point at each other.
+CREATE POLICY "Users can view partner budgets" ON public.budgets
+  AS PERMISSIVE FOR SELECT TO authenticated
+  USING ((user_uuid = public.linked_partner_id()));
+
+CREATE POLICY "Anyone can read community rules" ON public.community_rules
+  AS PERMISSIVE FOR SELECT TO authenticated
+  USING (true);
+
+CREATE POLICY "Users can delete own notification rules" ON public.notification_rules
+  AS PERMISSIVE FOR DELETE TO authenticated
+  USING ((auth.uid() = user_id));
+
+CREATE POLICY "Users can insert own notification rules" ON public.notification_rules
+  AS PERMISSIVE FOR INSERT TO authenticated
+  WITH CHECK ((auth.uid() = user_id));
+
+CREATE POLICY "Users can update own notification rules" ON public.notification_rules
+  AS PERMISSIVE FOR UPDATE TO authenticated
+  USING ((auth.uid() = user_id));
+
+CREATE POLICY "Users can view own notification rules" ON public.notification_rules
+  AS PERMISSIVE FOR SELECT TO authenticated
+  USING ((auth.uid() = user_id));
+
+CREATE POLICY "Users can delete own overrides" ON public.overrides
+  AS PERMISSIVE FOR DELETE TO authenticated
+  USING ((auth.uid() = user_id));
+
+CREATE POLICY "Users can update own vendor overrides" ON public.overrides
+  AS PERMISSIVE FOR UPDATE TO authenticated
+  USING ((auth.uid() = user_id));
+
+CREATE POLICY "Users can upsert own vendor overrides" ON public.overrides
+  AS PERMISSIVE FOR INSERT TO authenticated
+  WITH CHECK ((auth.uid() = user_id));
+
+CREATE POLICY "Users can view own vendor overrides" ON public.overrides
+  AS PERMISSIVE FOR SELECT TO authenticated
+  USING ((auth.uid() = user_id));
+
+CREATE POLICY "Users can view partner overrides" ON public.overrides
+  AS PERMISSIVE FOR SELECT TO authenticated
+  USING (((user_id = public.linked_partner_id()) AND (public.partner_share_level() = 'transactions'::text)));
+
+CREATE POLICY "Households can amend their contribution" ON public.rule_contributions
+  AS PERMISSIVE FOR UPDATE TO authenticated
+  USING ((auth.uid() = user_id))
+  WITH CHECK ((auth.uid() = user_id));
+
+CREATE POLICY "Households can contribute" ON public.rule_contributions
+  AS PERMISSIVE FOR INSERT TO authenticated
+  WITH CHECK ((auth.uid() = user_id));
+
+CREATE POLICY "Households can see their own contributions" ON public.rule_contributions
+  AS PERMISSIVE FOR SELECT TO authenticated
+  USING ((auth.uid() = user_id));
+
+CREATE POLICY "Households can withdraw" ON public.rule_contributions
+  AS PERMISSIVE FOR DELETE TO authenticated
+  USING ((auth.uid() = user_id));
+
+CREATE POLICY "Users can insert own settings" ON public.settings
+  AS PERMISSIVE FOR INSERT TO authenticated
+  WITH CHECK ((auth.uid() = user_id));
+
+CREATE POLICY "Users can update own settings" ON public.settings
+  AS PERMISSIVE FOR UPDATE TO authenticated
+  USING ((auth.uid() = user_id))
+  WITH CHECK ((auth.uid() = user_id));
+
+CREATE POLICY "Users can view own settings" ON public.settings
+  AS PERMISSIVE FOR SELECT TO authenticated
+  USING ((auth.uid() = user_id));
+
+CREATE POLICY "Users can delete own transactions" ON public.transactions
+  AS PERMISSIVE FOR DELETE TO authenticated
+  USING ((auth.uid() = user_id));
+
+CREATE POLICY "Users can insert own transactions" ON public.transactions
+  AS PERMISSIVE FOR INSERT TO authenticated
+  WITH CHECK ((auth.uid() = user_id));
+
+CREATE POLICY "Users can update own transactions" ON public.transactions
+  AS PERMISSIVE FOR UPDATE TO authenticated
+  USING ((auth.uid() = user_id));
+
+CREATE POLICY "Users can view own transactions" ON public.transactions
+  AS PERMISSIVE FOR SELECT TO authenticated
+  USING ((auth.uid() = user_id));
+
+CREATE POLICY "Users can view partner transactions" ON public.transactions
+  AS PERMISSIVE FOR SELECT TO authenticated
+  USING (((user_id = public.linked_partner_id()) AND (public.partner_share_level() = 'transactions'::text)));
+
+CREATE POLICY service_delete ON public.transactions
+  AS PERMISSIVE FOR DELETE TO service_role
+  USING (true);
+
+
 -- ============================================================
+-- SIGN-UP TRIGGER
+-- ============================================================
+
+CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+
+-- ============================================================
+-- GRANTS
+-- ============================================================
+-- A Supabase project hands every new table and function to anon,
+-- authenticated and service_role by default. Everything is taken back first
+-- and then granted by name, so the result does not depend on those defaults.
+-- anon (signed out) gets no table at all.
+
+REVOKE ALL ON public.banks FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON public.budgets FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON public.community_rules FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON public.notification_rules FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON public.overrides FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON public.rule_contributions FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON public.settings FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON public.transactions FROM PUBLIC, anon, authenticated, service_role;
+
+GRANT ALL ON public.banks TO authenticated, service_role;
+GRANT ALL ON public.budgets TO authenticated, service_role;
+GRANT ALL ON public.community_rules TO authenticated, service_role;
+GRANT ALL ON public.notification_rules TO authenticated, service_role;
+GRANT ALL ON public.overrides TO authenticated, service_role;
+GRANT ALL ON public.rule_contributions TO authenticated, service_role;
+GRANT ALL ON public.transactions TO authenticated, service_role;
+
+-- settings is the paywall: trial dates, subscription status, the tester flag
+-- and the partner link live here. A client may UPDATE only its ordinary
+-- preferences (2026_09_security_review.sql) and CREATE its row with only the
+-- four columns the app's own fallback sends (2026_09_settings_insert_columns.sql).
+-- Everything else is written by the sign-up trigger and the SECURITY DEFINER
+-- functions above, which run as the table owner.
+GRANT ALL ON public.settings TO service_role;
+GRANT SELECT, DELETE, REFERENCES, TRIGGER, TRUNCATE ON public.settings TO authenticated;
+GRANT UPDATE (app_notifications_enabled, auto_accept_known_vendors, budgeting_solo, community_rules_contribute, community_rules_enabled, email, haptics_enabled, leisure_buffer_enabled, monthly_income, name, rollover_enabled, share_level, show_savings_insight, smart_notifications_enabled, theme_selected) ON public.settings TO authenticated;
+GRANT INSERT (user_id, name, email, monthly_income) ON public.settings TO authenticated;
+
+REVOKE ALL ON FUNCTION public.delete_own_account() FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.generate_link_code() FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.generate_transaction_hash(p_amount numeric, p_vendor text, p_date date) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.handle_new_user() FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.link_partner_by_code(p_code text) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.linked_partner_id() FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.match_vendor(p_user_id uuid, p_raw_vendor text) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.partner_month_summary(p_month text) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.partner_monthly_income() FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.partner_share_level() FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.refresh_community_rules() FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.server_now() FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.set_household_budget_mode(p_mode text) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.unlink_partner() FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.update_updated_at_column() FROM PUBLIC, anon, authenticated, service_role;
+
+-- Signed-in only.
+GRANT EXECUTE ON FUNCTION public.delete_own_account() TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.generate_link_code() TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.link_partner_by_code(p_code text) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.linked_partner_id() TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.partner_month_summary(p_month text) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.partner_monthly_income() TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.partner_share_level() TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.set_household_budget_mode(p_mode text) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.unlink_partner() TO authenticated, service_role;
+
+-- Server only.
+GRANT EXECUTE ON FUNCTION public.handle_new_user() TO service_role;
+GRANT EXECUTE ON FUNCTION public.refresh_community_rules() TO service_role;
+
+-- Open to everyone, as on live. None of these is SECURITY DEFINER, so none
+-- of them can read past RLS.
+GRANT EXECUTE ON FUNCTION public.server_now() TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.generate_transaction_hash(p_amount numeric, p_vendor text, p_date date) TO PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.match_vendor(p_user_id uuid, p_raw_vendor text) TO PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.update_updated_at_column() TO PUBLIC, anon, authenticated, service_role;
+
+
+-- ============================================================
+-- NIGHTLY JOB
+-- ============================================================
+-- Rebuilds the community rule pool from what households have contributed.
+
+SELECT cron.schedule('refresh-community-rules', '17 4 * * *', 'SELECT public.refresh_community_rules()');
