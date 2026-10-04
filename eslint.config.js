@@ -299,7 +299,7 @@ export default tseslint.config(
   },
   {
     // Build scripts run under Node, not in the WebView.
-    files: ['scripts/**/*.{js,mjs,cjs}', '*.config.{js,ts}'],
+    files: ['scripts/**/*.{js,mjs,cjs}', '.claude/hooks/*.mjs', '*.config.{js,ts}'],
     languageOptions: { globals: globals.node },
     rules: {
       // The scripts are both run directly and imported by tests.
