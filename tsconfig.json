@@ -29,8 +29,7 @@
     "noEmit": true
   },
   "include": [
-    "App.tsx",
-    "index.tsx",
+    "app",
     "components",
     "lib",
     "visual-tests",

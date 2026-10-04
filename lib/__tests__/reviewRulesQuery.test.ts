@@ -87,7 +87,7 @@ describe('prefetching', () => {
 
 describe('wiring', () => {
   it('the cache sits at the root of the app', () => {
-    expect(read('index.tsx')).toMatch(/<QueryClientProvider client=\{queryClient\}>/);
+    expect(read('app/index.tsx')).toMatch(/<QueryClientProvider client=\{queryClient\}>/);
   });
 
   it('the Review button warms the cache before the tap completes', () => {

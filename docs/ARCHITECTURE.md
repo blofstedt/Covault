@@ -12,7 +12,9 @@ forward unchecked.
 ## 1. Repo layout
 
 ```
-App.tsx / index.tsx      Root state, auth, routing (onboarding → dashboard → review → settings)
+app/
+  App.tsx                Root state, auth, routing (onboarding → dashboard → review → settings)
+  index.tsx              Browser entry, shared providers and static-page routing
 constants.ts             The 7 system budget categories + their fixed UUIDs
 types.ts                 Domain types: User, BudgetCategory, Transaction, Toast, Recurrence, ...
 index.css                Hand-rolled keyframes + the reduced-motion block
@@ -242,7 +244,7 @@ policies, grants or function bodies.
 ## 6. Subscriptions
 
 `lib/entitlement.ts`'s `getEntitlementStatus` is the single source of truth,
-read once in `App.tsx` and applied to the whole app — there is no per-feature
+read once in `app/App.tsx` and applied to the whole app — there is no per-feature
 gating (`PremiumGate`/`SubscribeModal` exist but are unused dead code left
 over from an earlier, abandoned per-feature design; do not wire them back up).
 Access is: `is_tester` OR `subscription_status === 'active'` OR now <

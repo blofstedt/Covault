@@ -202,7 +202,7 @@ phone app usable after each step.
 
 ## Decisions to challenge
 
-- State ownership is currently split three ways: `App.tsx` holds saved budgets,
+- State ownership is currently split three ways: `app/App.tsx` holds saved budgets,
   transactions, and settings in one React state object; `firstPaintCache.ts`
   restores a bounded snapshot on launch; React Query caches Review's ignored
   notification rules. Keep this map explicit while changing data flow. The

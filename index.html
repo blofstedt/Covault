@@ -20,7 +20,7 @@
 
         Anything other than an explicit 'light' means dark, which is also what
         makes dark the default for a vault that has never chosen. The key and
-        shape here mirror SETTINGS_KEY / DEFAULT_SETTINGS in App.tsx.
+        shape here mirror SETTINGS_KEY / DEFAULT_SETTINGS in app/App.tsx.
       */
       try {
         var stored = localStorage.getItem('covault_settings');
@@ -58,6 +58,6 @@
   </head>
   <body class="bg-slate-50 dark:bg-slate-950">
     <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
+    <script type="module" src="/app/index.tsx"></script>
   </body>
 </html>

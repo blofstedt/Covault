@@ -254,7 +254,7 @@ export default tseslint.config(
   },
   {
     // The entry point mounts the app; nothing hot-reloads it.
-    files: ['index.tsx'],
+    files: ['app/index.tsx'],
     rules: { 'react-refresh/only-export-components': 'off' },
   },
   {
