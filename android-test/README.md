@@ -133,6 +133,50 @@ The widget assertions check the native snapshot and merged totals used by its
 renderer. They do not prove launcher placement, bitmap appearance, resize
 behavior, motion smoothness, OEM battery handling or a physical phone.
 
+## Emulator startup checks
+
+The full runner is `scripts/run-android-emulator-tests.sh`. After enabling
+airplane mode, it observes Android's actual `phone` Binder service for up to
+60 seconds before disabling mobile data. A booted emulator can still be
+restarting that process. A successful command exit alone does not mean the
+service exists, as Android's
+[service command](https://android.googlesource.com/platform/frameworks/native/+/refs/heads/android16-release/cmds/service/service.cpp)
+reports a missing service without a failing exit code. Missing registration or
+failed offline verification stops the run before the app tests start.
+
+The two Maestro flows use explicit driver ports 17001 and 17002. Pinned
+[Maestro 2.11.0](https://github.com/mobile-dev-inc/Maestro/blob/cli-2.11.0/maestro-cli/src/main/java/maestro/cli/command/TestCommand.kt)
+supports `test --driver-host-port` and otherwise chooses a free host port,
+then asks its [Android driver](https://github.com/mobile-dev-inc/Maestro/blob/cli-2.11.0/maestro-client/src/main/java/maestro/drivers/AndroidDriver.kt#L124)
+to bind the same number inside the emulator.
+A free host port can already be occupied on Android. Before each flow the
+runner checks host IPv4 and IPv6 binding, the emulator's TCP sockets in all
+states, and its actual ephemeral range. The chosen port must be below that
+range. Unavailable socket inspection or an occupied port stops the run with
+diagnostics. The check releases its host probe before Maestro binds, so it
+cannot reserve the port against a new unrelated process. It never stops such
+a process, selects another port, or retries a failed test.
+
+On failure the artifacts include the phone-service observations, port checks,
+Android service list, selected emulator process and socket inventories,
+airplane-mode value, and the two host port availability results. Other host
+processes and connections are not enumerated. Existing screenshots, logcat
+and JUnit reports remain available. These diagnostics do not turn setup
+failures into app test passes.
+
+Focused startup scenarios run without an Android SDK:
+
+```sh
+python3 android-test/test_emulator_preflight.py
+bash -n scripts/run-android-emulator-tests.sh
+```
+
+They execute the preflight command against synthetic ADB responses and real
+temporary host socket bindings. They cover delayed or missing service
+registration, hung commands, occupied IPv4 and IPv6 ports, connected and closing
+Android sockets, and unavailable inspection. They do not prove the Android
+image exposes its socket inventory; the hosted emulator run must verify that.
+
 ## Dependency checks
 
 Latest stable versions were checked against Google's release pages on
