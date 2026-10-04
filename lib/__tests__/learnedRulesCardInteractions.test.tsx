@@ -7,6 +7,7 @@ import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import LearnedRulesCard from '../../components/transaction_parsing/LearnedRulesCard';
 import type { NotificationRule } from '../notificationRules';
+import type { VendorOverride } from '../../components/transaction_parsing/useVendorOverrides';
 import { renderWithProviders } from '../../test/renderWithProviders';
 
 const skipRule: NotificationRule = {
@@ -104,5 +105,62 @@ describe('deleting a learned skip pattern', () => {
     expect(dialog).toHaveAccessibleDescription(/Your balance is \$500/);
     const result = await axe(dialog, { rules: { region: { enabled: false } } });
     expect(result.violations).toEqual([]);
+  });
+});
+
+const vendorRule: VendorOverride = {
+  id: 'vendor-rule-1', proper_name: 'Corner Store',
+  match_key: 'cornerstore', match_type: 'exact', category_id: 'budget:food',
+};
+
+function renderCategoryRule(onSetVendorCategory = vi.fn()) {
+  renderWithProviders(
+    <LearnedRulesCard
+      vendorOverrides={[vendorRule]}
+      budgets={[
+        { id: 'budget:food', name: 'Food', totalLimit: 100 },
+        { id: 'budget:groceries', name: 'Groceries', totalLimit: 100 },
+        { id: 'budget:other', name: 'Other', totalLimit: 100 },
+      ]}
+      categoryNameById={new Map([['budget:food', 'Food']])}
+      hiddenCategories={['budget:food', 'budget:other']}
+      expandedVendorCategory="Corner Store::budget:food"
+      onSetVendorCategory={onSetVendorCategory}
+      onDeleteVendorOverride={vi.fn()}
+    />,
+  );
+  return onSetVendorCategory;
+}
+
+describe('choosing a learned-rule category', () => {
+  it('opens from the keyboard and cancels without changing the rule', async () => {
+    const user = userEvent.setup();
+    const saveCategory = renderCategoryRule();
+    const trigger = screen.getByRole('button', { name: 'Change Category' });
+    trigger.focus();
+    await user.keyboard('{Enter}');
+    const dialog = screen.getByRole('dialog', { name: 'Choose a category' });
+    expect(dialog).toHaveAccessibleDescription('File Corner Store here, and remember it next time.');
+    expect(within(dialog).getByRole('button', { name: 'Food' })).toHaveFocus();
+    expect(within(dialog).getByRole('button', { name: 'Groceries' })).toBeEnabled();
+    expect(within(dialog).queryByRole('button', { name: 'Other' })).not.toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await waitForElementToBeRemoved(dialog);
+    expect(trigger).toHaveFocus();
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(saveCategory).not.toHaveBeenCalled();
+  });
+
+  it('opens by clicking and saves the chosen category before returning focus', async () => {
+    const user = userEvent.setup();
+    const saveCategory = renderCategoryRule();
+    const trigger = screen.getByRole('button', { name: 'Change Category' });
+    await user.click(trigger);
+    const dialog = screen.getByRole('dialog', { name: 'Choose a category' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    await user.click(within(dialog).getByRole('button', { name: 'Groceries' }));
+    await waitForElementToBeRemoved(dialog);
+    expect(saveCategory).toHaveBeenCalledExactlyOnceWith('Corner Store', 'budget:groceries');
+    expect(trigger).toHaveFocus();
   });
 });

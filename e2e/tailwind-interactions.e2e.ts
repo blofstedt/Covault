@@ -82,7 +82,8 @@ test('mobile month, budget and transaction controls keep their press feedback an
   await expect(page.getByLabel('Amount', { exact: true })).toHaveValue('14.25');
 });
 
-test('review category and rename controls stay usable on a touch-only phone', async ({ page, signedInVault }) => {
+test('review category and rename controls stay usable on a touch-only phone', async ({ page, signedInVault }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 568 });
   await page.addInitScript(userId => {
     localStorage.setItem(`covault_first_capture_seen_v1:${userId}`, '1');
     localStorage.setItem('covault_settings', JSON.stringify({ notificationsEnabled: true }));
@@ -98,6 +99,12 @@ test('review category and rename controls stay usable on a touch-only phone', as
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify([{
       id: 'known-touch-rule', user_id: signedInVault.userId, proper_name: 'Known Touch Store',
       match_key: 'knowntouchstore', match_type: 'exact', category_id: 'Food',
+    }]) });
+  });
+  await page.route('**/mock-supabase/rest/v1/overrides', async route => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify([{
+      id: 'groceries-touch-rule', user_id: signedInVault.userId, proper_name: 'Known Touch Store',
+      match_key: 'knowntouchstore', match_type: 'exact', category_id: 'Groceries',
     }]) });
   });
   await page.route('**/mock-supabase/rest/v1/notification_rules?**', async route => {
@@ -124,15 +131,36 @@ test('review category and rename controls stay usable on a touch-only phone', as
   await expect(page.getByText('Unmatched Touch Store', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Accept', exact: true })).toBeEnabled();
 
-  // This existing learned-rule menu really relies on touch-emulated group hover.
   await page.getByRole('button', { name: /Known Touch Store.*Food/ }).tap();
   const changeCategory = page.getByRole('button', { name: 'Change Category', exact: true });
-  const choice = changeCategory.locator('..').getByRole('button', { name: 'Groceries', exact: true });
-  await expect(choice).toBeHidden();
   await changeCategory.tap();
+  await expect(categories).toBeVisible();
+  const choice = categories.getByRole('button', { name: 'Groceries', exact: true });
   await expect(choice).toBeVisible();
+  await expect(choice).toBeEnabled();
+  await settleEntrance(categories);
+  await expect(choice).toBeInViewport({ ratio: 1 });
+  await expect(categories.getByRole('button', { name: 'Cancel', exact: true })).toBeInViewport({ ratio: 1 });
+  await page.screenshot({ path: testInfo.outputPath('learned-rule-category-chooser.png') });
+  await categories.getByRole('button', { name: 'Cancel', exact: true }).tap();
+  await expect(categories).toBeHidden();
+  await expect(page.getByRole('button', { name: /Known Touch Store.*Food/ })).toBeVisible();
   await page.getByRole('button', { name: 'Edit Name', exact: true }).tap();
-  await expect(page.getByRole('textbox')).toHaveValue('Known Touch Store');
+  const properName = page.getByRole('textbox');
+  await expect(properName).toHaveValue('Known Touch Store');
+  await properName.press('Escape');
+  await expect(properName).toBeHidden();
+
+  await changeCategory.tap();
+  await expect(categories).toBeVisible();
+  const savedRule = page.waitForRequest(request => request.method() === 'POST' &&
+    new URL(request.url()).pathname === '/mock-supabase/rest/v1/overrides');
+  await choice.tap();
+  expect((await savedRule).postDataJSON()).toMatchObject({
+    category_id: 'Groceries', proper_name: 'Known Touch Store',
+  });
+  await expect(categories).toBeHidden();
+  await expect(page.getByRole('button', { name: /Known Touch Store.*Groceries/ })).toBeVisible();
 });
 
 test('an amount field keeps a visible focus cue in forced colors', async ({ page, signedInVault }) => {
