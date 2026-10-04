@@ -230,7 +230,16 @@ describe('the workflow that feeds it', () => {
       /^ {4}if: github.event_name == 'push' && github.ref == 'refs\/heads\/main'$/m,
     );
     expect(publishJob).toMatch(/^ {4}permissions:\n {6}contents: write$/m);
-    expect(publishJob).toContain('actions/download-artifact@v4');
+    const downloadedArtifact = publishJob.match(
+      /^ {8}uses: actions\/download-artifact@\S+[^\n]*\n {8}with:\n {10}name: ([^\n]+)\n {10}path: release-assets$/m,
+    )?.[1];
+    const buildJob = workflow.split(/^ {2}publish-release:/m, 1)[0];
+    const uploadedArtifacts = [...buildJob.matchAll(
+      /^ {8}uses: actions\/upload-artifact@\S+[^\n]*\n {8}with:\n {10}name: ([^\n]+)$/gm,
+    )].map(match => match[1]);
+
+    expect(downloadedArtifact).toBe('covault-release-assets');
+    expect(uploadedArtifacts).toContain(downloadedArtifact);
     expect(publishJob).toContain('gh release upload "$TAG" "$APK" "$WEB_BUNDLE" --clobber');
   });
 });
