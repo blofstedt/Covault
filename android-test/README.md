@@ -60,6 +60,10 @@ $12.34.` The native capture vendor is `SECOND CUP`; the app tidies it to
 
 Supported `scenario` values are `purchase`, `income`, `declined` and `hold`.
 Optional string extras `amount` and `vendor` replace `12.34` and `SECOND CUP`.
+The string extra `group` groups an alert; boolean `group_summary` marks its
+summary and requires that group. Boolean `blank_content` omits title and body
+to exercise the shape of Android's automatic summary. `INSPECT` reports the
+actual flags and group alongside each alert's text.
 An amount must have exactly two decimal places. Each `id` is a separate Android
 notification; reusing it replaces that helper alert. Commands return result 0
 on success and result 1 with a reason on failure. Missing posting permission
@@ -94,6 +98,29 @@ The authenticated test bootstrap also keeps the web selection aligned.
   posting another replacement or counting the expense twice on the widget.
   The native queue deliberately contains live and scan records, which the web
   pipeline deduplicates. The test does not claim to verify web deduplication.
+- Blank and purchase-looking group summaries are ignored on live delivery
+  and reconnect. A genuine grouped child still reaches disk, posts one
+  replacement and counts once on the widget. The test drains its live record
+  before reconnect, then observes one scan record without another widget delta.
+
+Between cases, setup and cleanup wait for the fake bank's actual notification
+list to become empty before clearing preferences or reconnecting the listener.
+The helper's cancel command returning is not proof that Android has completed
+the cancellation.
+
+## Group summary failure evidence
+
+The 2026-10-04 hosted Actions update run queued the expected income and decline
+followed by a third live notification with empty title/body and no amount.
+Its flags were not recorded, so identifying that event as an automatic summary
+is an inference. Android 16's
+[summary builder](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android16-release/services/core/java/com/android/server/notification/NotificationManagerService.java#7647)
+uses the original app's package and omits those text fields. Its
+[group helper](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android16-release/services/core/java/com/android/server/notification/GroupHelper.java#80)
+sets `FLAG_GROUP_SUMMARY`, which now rejects only flagged summaries at the
+shared capture entry. Individual grouped alerts follow the normal path.
+The new instrumentation case must pass on an emulator before these native
+behavior expectations can be reported as verified.
 
 The Activity and WebView are never opened by these native tests. They run in
 the app's instrumentation process, so "unopened" does not mean a killed process

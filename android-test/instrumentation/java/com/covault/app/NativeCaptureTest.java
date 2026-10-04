@@ -68,8 +68,9 @@ public final class NativeCaptureTest {
         await("listener disconnect", () -> NotificationListener.getInstance() == null);
         grantPostingPermission(BANK);
         grantPostingPermission(APP);
-        bankCommand("CANCEL_ALL", null);
+        cancelBankNotifications();
         notifications.cancelAll();
+        await("old Covault replacements removed", () -> notifications.getActiveNotifications().length == 0);
         assertTrue(prefs.edit().clear()
             .putBoolean("monitored_apps_chosen", true)
             .putString("monitored_apps", "[\"com.covault.fakebank\"]")
@@ -79,6 +80,8 @@ public final class NativeCaptureTest {
         device.pressHome();
         shell("cmd notification allow_listener " + COMPONENT);
         await("OS listener binding", this::listenerBound);
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+        assertEquals("No old bank capture may survive into a new case: " + diskQueue(), 0, diskQueue().length());
         assertTrue("Test app must be allowed to post replacements", notifications.areNotificationsEnabled());
     }
 
@@ -89,8 +92,9 @@ public final class NativeCaptureTest {
         grantPostingPermission(APP);
         shell("cmd notification disallow_listener " + COMPONENT);
         await("listener cleanup", () -> NotificationListener.getInstance() == null);
-        bankCommand("CANCEL_ALL", null);
+        cancelBankNotifications();
         notifications.cancelAll();
+        await("replacement cleanup", () -> notifications.getActiveNotifications().length == 0);
         assertTrue(prefs.edit().clear().commit());
     }
 
@@ -160,7 +164,7 @@ public final class NativeCaptureTest {
                 && notifications.getActiveNotifications().length == 1);
         assertWidget(57.03, 942.97, 1);
         assertEquals(1, new JSONArray(prefs.getString("widget_deltas", "[]")).length());
-        bankCommand("CANCEL_ALL", null);
+        cancelBankNotifications();
         assertTrue(prefs.edit().putString("monitored_apps", "[\"com.covault.fakebank\"]").commit());
         post(303, "purchase", "19.05");
         await("reenabled source captures again", () -> hasOutcome(19.05, "hidden"));
@@ -173,7 +177,7 @@ public final class NativeCaptureTest {
         await("income processed", () -> hasOutcome(31.21, "income"));
         post(402, "declined", "42.32");
         await("decline processed", () -> hasOutcome(42.32, "failed_charge"));
-        assertEquals(2, diskQueue().length());
+        assertEquals("Only the posted income and decline belong in this queue: " + diskQueue(), 2, diskQueue().length());
         assertEquals(31.21, findCapture(diskQueue(), 31.21).getDouble("amount"), 0.000001);
         assertEquals(42.32, findCapture(diskQueue(), 42.32).getDouble("amount"), 0.000001);
         assertTrue(bankHas(401));
@@ -209,6 +213,65 @@ public final class NativeCaptureTest {
         assertEquals(55.54, recovered.getJSONObject(0).getDouble("amount"), 0.000001);
         assertEquals(55.54, recovered.getJSONObject(1).getDouble("amount"), 0.000001);
         assertEquals(0, diskQueue().length());
+    }
+
+    @Test
+    public void groupSummariesStayIgnoredOnDeliveryAndReconnectButTheirPurchaseCaptures() throws Exception {
+        final String group = "covault-ci-purchases";
+        postGrouped(601, "66.65", group, true, true);
+        await("blank summary really posted", () -> bankHasSummary(601, group, ""));
+        assertStable("A blank summary is not a capture", this::noCaptureOrReplacement);
+        assertWidget(40.00, 960.00, 0);
+
+        // Keep the grouped child visible through reconnect, so the OS cannot
+        // discard an orphan summary before the scan exercises the guard.
+        assertTrue(prefs.edit().putBoolean("hide_bank_notifications", false).commit());
+        postGrouped(602, "66.65", group, false, false);
+        await("grouped child durably captured with suppression off", () ->
+            hasOutcome(66.65, "toggle_off") && bankHas(602));
+        JSONArray captured = diskQueue();
+        assertEquals("The grouped child is captured exactly once: " + captured, 1, captured.length());
+        JSONObject purchase = captured.getJSONObject(0);
+        assertEquals(66.65, purchase.getDouble("amount"), 0.000001);
+        assertEquals("SECOND CUP", purchase.getString("vendor"));
+        assertEquals("You made a purchase at SECOND CUP for $66.65.", purchase.getString("body"));
+        assertFalse(purchase.getBoolean("from_scan"));
+        StatusBarNotification replacement = replacementFor(purchase.getInt("capture_notification_id"));
+        assertNotNull("The grouped purchase has a real visible replacement", replacement);
+        assertEquals("$66.65 at SECOND CUP", replacement.getNotification().extras.getString(Notification.EXTRA_TITLE));
+        assertWidget(106.65, 893.35, 1);
+
+        // An app-provided summary can quote a purchase verbatim. Its flag,
+        // rather than its text or amount, identifies it as an aggregate.
+        postGrouped(601, "66.65", group, true, false);
+        await("purchase-looking summary really posted", () -> bankHasSummary(601, group,
+            "You made a purchase at SECOND CUP for $66.65."));
+        assertStable("A purchase-looking summary adds nothing to its real child", () ->
+            diskQueue().length() == 1
+                && notifications.getActiveNotifications().length == 1
+                && new JSONArray(prefs.getString("widget_deltas", "[]")).length() == 1);
+        JSONArray drained = new JSONArray(NotificationListener.drainPendingQueue(context));
+        assertEquals(1, drained.length());
+        assertEquals(66.65, drained.getJSONObject(0).getDouble("amount"), 0.000001);
+        assertEquals(0, diskQueue().length());
+
+        shell("cmd notification disallow_listener " + COMPONENT);
+        await("summary test listener stopped", () -> NotificationListener.getInstance() == null);
+        shell("cmd notification allow_listener " + COMPONENT);
+        await("summary test listener reconnected and child rescanned", () ->
+            listenerBound() && hasScanCapture(66.65));
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+        assertStable("A reconnect must not backfill a summary", () ->
+            bankHasSummary(601, group, "You made a purchase at SECOND CUP for $66.65.")
+                && diskQueue().length() == 1 && bankHas(602));
+        JSONArray recovered = diskQueue();
+        assertEquals(1, recovered.length());
+        assertEquals(66.65, recovered.getJSONObject(0).getDouble("amount"), 0.000001);
+        assertEquals("SECOND CUP", recovered.getJSONObject(0).getString("vendor"));
+        assertTrue(recovered.getJSONObject(0).getBoolean("from_scan"));
+        assertEquals(1, notifications.getActiveNotifications().length);
+        assertEquals(1, new JSONArray(prefs.getString("widget_deltas", "[]")).length());
+        assertWidget(106.65, 893.35, 1);
     }
 
     private void seedWidget() throws Exception {
@@ -284,8 +347,49 @@ public final class NativeCaptureTest {
         bankCommand("POST", args);
     }
 
+    private void postGrouped(int id, String amount, String group, boolean summary, boolean blank) throws Exception {
+        Bundle args = new Bundle();
+        args.putInt("id", id);
+        args.putString("scenario", "purchase");
+        args.putString("amount", amount);
+        args.putString("group", group);
+        args.putBoolean("group_summary", summary);
+        args.putBoolean("blank_content", blank);
+        bankCommand("POST", args);
+    }
+
+    private boolean noCaptureOrReplacement() throws Exception {
+        return diskQueue().length() == 0
+            && notifications.getActiveNotifications().length == 0
+            && new JSONArray(prefs.getString("widget_deltas", "[]")).length() == 0;
+    }
+
+    private void cancelBankNotifications() throws Exception {
+        bankCommand("CANCEL_ALL", null);
+        // cancelAll queues work in Android's notification service. The ordered
+        // receiver finishing does not mean the old alerts have been removed.
+        await("fake-bank cancellations completed", () -> bankNotifications().length() == 0);
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+    }
+
+    private JSONArray bankNotifications() throws Exception {
+        return new JSONArray(bankCommand("INSPECT", null).getString("notifications", "[]"));
+    }
+
+    private boolean bankHasSummary(int id, String group, String body) throws Exception {
+        JSONArray active = bankNotifications();
+        for (int i = 0; i < active.length(); i++) {
+            JSONObject item = active.getJSONObject(i);
+            if (item.getInt("id") == id
+                && (item.getInt("flags") & Notification.FLAG_GROUP_SUMMARY) != 0
+                && group.equals(item.optString("group"))
+                && body.equals(item.optString("body", ""))) return true;
+        }
+        return false;
+    }
+
     private boolean bankHas(int id) throws Exception {
-        JSONArray active = new JSONArray(bankCommand("INSPECT", null).getString("notifications", "[]"));
+        JSONArray active = bankNotifications();
         for (int i = 0; i < active.length(); i++) {
             if (active.getJSONObject(i).getInt("id") == id) return true;
         }
