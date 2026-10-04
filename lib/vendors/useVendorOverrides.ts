@@ -1,0 +1,626 @@
+import { log } from '../observability/log';
+import { useState, useCallback, useEffect } from 'react';
+import { restFetch } from '../api/apiHelpers';
+import { BudgetCategory } from '../../types';
+import { toVendorKey } from '../capture/deviceTransactionParser';
+import { contributeRule, withdrawRule } from './communityRules';
+import { onVendorOverrideWritten } from './vendorOverrideWrite';
+import { chainAwareMatchKey } from './chainVendorKeys';
+
+export type MatchType = 'exact' | 'prefix' | 'contains';
+
+export interface VendorOverride {
+  id: string;
+  /** Display name for the vendor (user-editable, e.g. 'Amazon') */
+  proper_name: string;
+  /** Normalized raw vendor key for matching incoming transactions (e.g. 'amznmktpca') */
+  match_key?: string;
+  /**
+   * How the parser matches future notifications to this override:
+   *   - exact    : match_key equals the normalized incoming vendor
+   *   - prefix   : incoming normalized vendor starts with match_key
+   *   - contains : incoming normalized vendor contains match_key
+   * Default 'exact'. Legacy rows (pre-migration) are backfilled to 'exact'.
+   */
+  match_type?: MatchType;
+  /** Most recent update time (ISO). Used for "most recent wins" sorting. */
+  updated_at?: string | null;
+  /** Budget in app format: 'budget:groceries' (converted from DB's Budgets enum) */
+  category_id: string;
+  /** Human-readable category name resolved from category_id (not in DB) */
+  category_name?: string;
+}
+
+interface UseVendorOverridesOptions {
+  userId?: string;
+  /** The other person in the vault, when there is one. Their rules are read, never written. */
+  partnerId?: string;
+  budgets: BudgetCategory[];
+}
+
+/**
+ * DB rows in the shape the app uses.
+ *
+ * `category_id` in the DB is a Budgets enum value, e.g. 'Groceries'; the app
+ * compares against 'budget:groceries', so the conversion happens here once for
+ * both the user's own rules and their partner's.
+ */
+function toVendorOverrides(rows: any[]): VendorOverride[] {
+  return (rows || []).map((row: any) => ({
+    id: row.id,
+    proper_name: row.proper_name,
+    match_key: row.match_key || undefined,
+    match_type: (row.match_type === 'prefix' || row.match_type === 'contains')
+      ? row.match_type
+      : 'exact',
+    updated_at: row.updated_at || undefined,
+    category_id: row.category_id ? `budget:${(row.category_id as string).toLowerCase()}` : '',
+    category_name: row.category_id || undefined,
+  }));
+}
+
+export function useVendorOverrides({ userId, partnerId, budgets }: UseVendorOverridesOptions) {
+  const [vendorOverrides, setVendorOverrides] = useState<VendorOverride[]>([]);
+  // Kept in its own array rather than merged into the list above, deliberately.
+  // Everything downstream — the rules list, the emerald "you taught this"
+  // badge, the rules mirrored to the home-screen widget — means "the user's
+  // own", and blurring the two would quietly hand a partner's rule all the
+  // authority of one the user wrote themselves.
+  const [partnerOverrides, setPartnerOverrides] = useState<VendorOverride[]>([]);
+  const [expandedVendorCategory, setExpandedVendorCategory] = useState<string | null>(null);
+
+  // ── Load vendor overrides (default categories) from Supabase ──
+  const loadVendorOverrides = useCallback(async () => {
+    if (!userId) return;
+
+    try {
+      const overridesRes = await restFetch(
+        `/overrides?select=*&user_id=eq.${userId}&order=proper_name`,
+        { cache: 'no-store' },
+      );
+      if (!overridesRes.ok) {
+        log.error('[TransactionParsing] Error loading vendor overrides:', overridesRes.status, await overridesRes.text());
+        return;
+      }
+      const data = await overridesRes.json();
+      setVendorOverrides(toVendorOverrides(data));
+    } catch (err: any) {
+      log.error('[TransactionParsing] Exception loading vendor overrides:', err?.message || err);
+    }
+  }, [userId]);
+
+  // Load vendor overrides on mount + when userId changes
+  useEffect(() => {
+    loadVendorOverrides();
+  }, [loadVendorOverrides]);
+
+  // ── Rules taught somewhere else in the app ──
+  //
+  // Renaming a caught transaction teaches a rule, and that write happens deep
+  // in the transaction update path (lib/vendors/vendorOverrideWrite.ts), not here.
+  // Without this the list was fetched exactly once per launch, so a rule the
+  // user had just taught was missing from the "rules you've taught" card
+  // underneath the row they renamed — the rule was in the database, but the
+  // only place that would have shown it had stopped asking. Re-reading rather
+  // than patching state locally is deliberate: the row comes back with its real
+  // id, which is what Undo and delete need.
+  useEffect(() => onVendorOverrideWritten(() => { void loadVendorOverrides(); }), [loadVendorOverrides]);
+
+  // ── The partner's rules ──
+  //
+  // Read-only, and read at all only because the database says so: the
+  // partner-visible policy on `overrides` is what permits this, exactly as the
+  // partner policies on transactions and budgets permit the rest of the shared
+  // vault. On a project where that policy has not been applied the read simply
+  // returns nothing, and the household layer is silently absent rather than
+  // broken.
+  //
+  // Unlinking has to stop it dead, which is what the empty-on-no-partner branch
+  // is for: `partnerId` goes undefined the moment the household is unlinked,
+  // and their rules leave the matcher on that same render.
+  useEffect(() => {
+    if (!partnerId || partnerId === userId) {
+      setPartnerOverrides([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await restFetch(
+          `/overrides?select=*&user_id=eq.${partnerId}&order=proper_name`,
+          { cache: 'no-store' },
+        );
+        if (!res.ok) {
+          log.debug('[TransactionParsing] No partner rules available:', res.status);
+          return;
+        }
+        const rows = await res.json();
+        if (!cancelled) setPartnerOverrides(toVendorOverrides(rows));
+      } catch (err: any) {
+        log.warn('[TransactionParsing] Could not load partner rules:', err?.message || err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [partnerId, userId]);
+
+  // ── Delete a vendor override ──
+  const handleDeleteVendorOverride = useCallback(
+    async (overrideId: string) => {
+      if (!userId) return;
+
+      const deletedOverride = vendorOverrides.find((vo) => vo.id === overrideId);
+      const properName = deletedOverride?.proper_name;
+
+      setVendorOverrides((prev) => prev.filter((vo) => vo.id !== overrideId));
+      setExpandedVendorCategory(null);
+
+      try {
+        let url: string;
+
+        if (overrideId.startsWith('temp-') && properName) {
+          // Scoped by category as well as vendor. A vendor can now hold more
+          // than one rule, and deleting by proper_name alone would take out
+          // every category for that merchant — deleting Walmart→Other would
+          // silently destroy Walmart→Groceries too.
+          //
+          // `category_name` is the DB's Budgets enum value (the row's
+          // category_id). Without it, fall back to deleting nothing rather
+          // than deleting too much: an orphaned row is recoverable from the
+          // rules list, a wrongly-deleted rule is not.
+          const dbCategory = deletedOverride?.category_name;
+          if (!dbCategory) {
+            log.warn(
+              '[TransactionParsing] Temp override has no category; skipping remote delete for',
+              properName,
+            );
+            return;
+          }
+          url =
+            `/overrides?user_id=eq.${userId}` +
+            `&proper_name=eq.${encodeURIComponent(properName)}` +
+            `&category_id=eq.${encodeURIComponent(dbCategory)}`;
+        } else {
+          url = `/overrides?id=eq.${overrideId}&user_id=eq.${userId}`;
+        }
+
+        const res = await restFetch(url, { method: 'DELETE', headers: { Prefer: 'return=representation' } });
+        const body = await res.text();
+        let deletedRows: any[] = [];
+        try { deletedRows = body ? JSON.parse(body) : []; } catch (e) { log.warn('[TransactionParsing] Failed to parse delete response:', e); deletedRows = []; }
+
+        if (!res.ok) {
+          log.error('[TransactionParsing] Error deleting vendor override:', res.status, body.slice(0, 200));
+          if (deletedOverride) {
+            setVendorOverrides((prev) => [...prev, deletedOverride]);
+          }
+          return;
+        }
+
+        if (!Array.isArray(deletedRows) || deletedRows.length === 0) {
+          log.warn('[TransactionParsing] Delete matched 0 rows for override:', overrideId);
+          // Still keep the optimistic removal — the row may not exist in DB (temp/stale id)
+        }
+
+        log.debug('[TransactionParsing] Vendor override deleted:', overrideId);
+
+        // Take the pool contribution back with it. A household that has just
+        // deleted what it taught about a merchant should not go on voting on
+        // it — and a withdrawal that only stopped FUTURE contributions would
+        // make the opt-in switch a lie. If another rule for the same merchant
+        // survives, the next capture the user files re-contributes it.
+        void withdrawRule(
+          userId,
+          deletedOverride?.match_key || toVendorKey(deletedOverride?.proper_name || ''),
+        );
+      } catch (err: any) {
+        log.error('[TransactionParsing] Exception deleting vendor override:', err?.message || err);
+        if (deletedOverride) {
+          setVendorOverrides((prev) => [...prev, deletedOverride]);
+        }
+      }
+    },
+    [userId, vendorOverrides],
+  );
+
+  // ── Set or update a vendor's default category ──
+  const handleSetVendorCategory = useCallback(
+    async (vendorName: string, categoryId: string) => {
+      if (!userId) return;
+
+      // categoryId is in app format 'budget:groceries'; find the budget to get DB name 'Groceries'
+      const category = budgets.find((b) => b.id === categoryId);
+      if (!category) {
+        log.error('[TransactionParsing] Invalid category ID:', categoryId);
+        return;
+      }
+      const categoryName = category.name;
+      // DB expects the Budgets enum value (e.g. 'Groceries'), not the app-format id
+      const dbCategoryId = categoryName;
+
+      // Other is the app's own shrug, not a decision the user made about this
+      // vendor — see the matching note in lib/vendors/vendorOverrideWrite.ts. The row
+      // is still filed as Other by the caller; only the "remember this" rule
+      // is skipped, so a stale placeholder can never outlive the purchase it
+      // was never really about.
+      if (categoryName.trim().toLowerCase() === 'other') {
+        log.debug(`[TransactionParsing] not teaching a rule for "${vendorName}" → Other`);
+        return;
+      }
+
+      const vendorKey = toVendorKey(vendorName);
+
+      // A rule is identified by vendor AND category, not vendor alone.
+      //
+      // This used to match on vendor only and PATCH the row's category, so
+      // teaching Walmart→Other silently REPLACED Walmart→Groceries. A vendor
+      // can genuinely belong to two categories (groceries and clothing bought
+      // at the same store), and the rules list has always keyed its rows
+      // `properName::categoryId` — the data layer was the only part that
+      // insisted a vendor had exactly one category.
+      //
+      // So: an identical pairing updates in place (a no-op that keeps the row's
+      // id stable), and a new category for a known vendor INSERTS a second rule
+      // rather than overwriting the first. The DB has no unique constraint on
+      // (user_id, match_key) — only the primary key on id — so nothing has to
+      // be relaxed to allow it.
+      const existing = vendorOverrides.find((vo) => {
+        const sameVendor =
+          vo.proper_name.toLowerCase() === vendorName.toLowerCase() ||
+          (vo.match_key ? vo.match_key === vendorKey : toVendorKey(vo.proper_name) === vendorKey);
+        return sameVendor && vo.category_id === categoryId;
+      });
+
+      try {
+        if (existing) {
+          setVendorOverrides((prev) =>
+            prev.map((vo) =>
+              vo.id === existing.id
+                ? { ...vo, category_id: categoryId, category_name: categoryName }
+                : vo
+            )
+          );
+
+          // Use proper_name-based URL when override has a temp ID (not yet synced with DB)
+          const url = existing.id.startsWith('temp-')
+            ? `/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(existing.proper_name)}`
+            : `/overrides?id=eq.${existing.id}&user_id=eq.${userId}`;
+          const res = await restFetch(
+            url,
+            { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ category_id: dbCategoryId }) },
+          );
+
+          const body = await res.text();
+          let data: any[] = [];
+          try { data = body ? JSON.parse(body) : []; } catch { data = []; }
+
+          if (!res.ok || !Array.isArray(data) || data.length === 0) {
+            log.error('[TransactionParsing] Error updating vendor category:', res.status, (body || '').slice(0, 200));
+            setVendorOverrides((prev) =>
+              prev.map((vo) =>
+                vo.id === existing.id
+                  ? { ...vo, category_id: existing.category_id, category_name: existing.category_name }
+                  : vo
+              )
+            );
+            return;
+          }
+
+          // Replace temp ID with real ID from DB response
+          if (existing.id.startsWith('temp-') && Array.isArray(data) && data.length > 0) {
+            const realId = data[0].id;
+            setVendorOverrides((prev) =>
+              prev.map((vo) => vo.id === existing.id ? { ...vo, id: realId } : vo)
+            );
+          }
+        } else {
+          // Teach the CHAIN, not the branch, when this is a known chain with
+          // something appended after its name — see lib/vendors/chainVendorKeys.ts.
+          // Everything else keeps its own exact key, unchanged.
+          const { matchKey: effectiveMatchKey, matchType } = chainAwareMatchKey(vendorKey);
+
+          const tempId = `temp-${crypto.randomUUID()}`;
+          const newOverride: VendorOverride = {
+            id: tempId,
+            proper_name: vendorName,
+            category_id: categoryId,
+            category_name: categoryName,
+          };
+          setVendorOverrides((prev) => [...prev, newOverride]);
+
+          const insertRes = await restFetch(`/overrides`, {
+            method: 'POST',
+            headers: { Prefer: 'return=representation' },
+            body: JSON.stringify({
+              user_id: userId,
+              proper_name: vendorName,
+              match_key: effectiveMatchKey,
+              match_type: matchType,
+              category_id: dbCategoryId,
+            }),
+          });
+
+          if (insertRes.ok) {
+            // Replace temp ID with real ID from server response
+            const insertBody = await insertRes.text();
+            let insertedRows: any[] = [];
+            try { insertedRows = insertBody ? JSON.parse(insertBody) : []; } catch (e) { log.warn('[TransactionParsing] Failed to parse insert response:', e); insertedRows = []; }
+            if (Array.isArray(insertedRows) && insertedRows.length > 0) {
+              const realId = insertedRows[0].id;
+              setVendorOverrides((prev) =>
+                prev.map((vo) => vo.id === tempId ? { ...vo, id: realId } : vo)
+              );
+            }
+          } else {
+            // Recovery path for "the row already existed". Scoped to the same
+            // category so it can only ever touch the pairing we were trying to
+            // create — unscoped, it would rewrite a DIFFERENT rule for this
+            // vendor (Walmart→Groceries becoming Walmart→Other) on any insert
+            // failure.
+            const updateRes = await restFetch(
+              `/overrides?user_id=eq.${userId}` +
+                `&proper_name=eq.${encodeURIComponent(vendorName)}` +
+                `&category_id=eq.${encodeURIComponent(dbCategoryId)}`,
+              { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ category_id: dbCategoryId }) },
+            );
+
+            if (updateRes.ok) {
+              // Replace temp override with the real data from the update response
+              const updateBody = await updateRes.text();
+              let updatedRows: any[] = [];
+              try { updatedRows = updateBody ? JSON.parse(updateBody) : []; } catch (e) { log.warn('[TransactionParsing] Failed to parse update response:', e); updatedRows = []; }
+              if (Array.isArray(updatedRows) && updatedRows.length > 0) {
+                const realId = updatedRows[0].id;
+                setVendorOverrides((prev) =>
+                  prev.map((vo) => vo.id === tempId ? { ...vo, id: realId } : vo)
+                );
+              } else {
+                // The insert failed and there was no existing row to update
+                // either, so nothing was saved. Leaving the optimistic rule in
+                // the list showed a lesson the database never learned — it
+                // would be gone on the next launch and never filed anything.
+                log.error('[TransactionParsing] Vendor override was not saved (insert failed, no existing rule):', (await insertRes.text()).slice(0, 200));
+                setVendorOverrides((prev) => prev.filter((vo) => vo.id !== tempId));
+                return;
+              }
+            } else {
+              const insertBody = await insertRes.text();
+              const updateBody = await updateRes.text();
+              log.error('[TransactionParsing] Error setting vendor override (insert failed:', insertBody.slice(0, 200), ', update failed:', updateBody.slice(0, 200), ')');
+              setVendorOverrides((prev) => prev.filter((vo) => vo.id !== tempId));
+              return;
+            }
+          }
+        }
+      } catch (err: any) {
+        log.error('[TransactionParsing] Exception setting vendor category:', err?.message || err);
+      }
+
+      // Volunteer the pair to the community pool — a no-op unless this
+      // household has deliberately opted in. Deliberately last, and never
+      // awaited into the user's path: contributing is a courtesy to other
+      // households and must never be able to fail the rule the user just
+      // taught.
+      void contributeRule(userId, vendorKey, categoryName);
+
+      setExpandedVendorCategory(null);
+    },
+    [userId, vendorOverrides, budgets],
+  );
+
+  // ── Combine several of a chain's own rules into one ──
+  //
+  // Only ever called from the "Needs attention" section of LearnedRulesCard,
+  // on a group `findChainMergeGroups` (lib/vendors/ruleCleanup.ts) has already
+  // verified: two or more of the user's own rules for a chain on the safe
+  // list (chainVendorKeys.ts), already agreeing on one category. Nothing here
+  // re-checks that — it trusts the caller the same way handleDeleteVendorOverride
+  // trusts its caller with an id.
+  //
+  // `keepId` already carries the chain-wide key when the group has a
+  // `canonical` row (a previous combine, or a hand-written prefix rule); in
+  // that case this only deletes `removeIds`. Otherwise `keepId` is one of the
+  // branch rows, PATCHed to the chain's own key so it starts matching every
+  // branch instead of just its own. Either way, deleting the other rows goes
+  // through handleDeleteVendorOverride so the pool-withdrawal and local-state
+  // bookkeeping stay in the one place that already does it correctly.
+  const handleCombineChainRules = useCallback(
+    async (params: {
+      keepId: string;
+      removeIds: string[];
+      chainRoot: string;
+      alreadyCanonical: boolean;
+    }): Promise<boolean> => {
+      const { keepId, removeIds, chainRoot, alreadyCanonical } = params;
+      if (!userId || removeIds.length === 0) return false;
+
+      if (!alreadyCanonical) {
+        const keeper = vendorOverrides.find((vo) => vo.id === keepId);
+        if (!keeper) return false;
+
+        setVendorOverrides((prev) =>
+          prev.map((vo) =>
+            vo.id === keepId ? { ...vo, match_key: chainRoot, match_type: 'prefix' } : vo,
+          ),
+        );
+
+        try {
+          const res = await restFetch(`/overrides?id=eq.${keepId}&user_id=eq.${userId}`, {
+            method: 'PATCH',
+            headers: { Prefer: 'return=representation' },
+            body: JSON.stringify({ match_key: chainRoot, match_type: 'prefix' }),
+          });
+          // A PATCH that matched nothing comes back 200 with an empty array —
+          // the row is gone (deleted on the other phone, say). Deleting the
+          // branches now would leave the merchant with no rule at all, so the
+          // whole combine is abandoned instead. Same rule as
+          // vendorOverrideWrite.ts: an empty answer is an answer.
+          const patchBody = res.ok ? await res.text() : '';
+          let patchedRows: unknown[] = [];
+          try {
+            patchedRows = patchBody ? JSON.parse(patchBody) : [];
+          } catch {
+            patchedRows = [];
+          }
+          if (!res.ok || !Array.isArray(patchedRows) || patchedRows.length === 0) {
+            log.error(
+              '[TransactionParsing] Error combining chain rule:',
+              res.status,
+              patchBody.slice(0, 200),
+            );
+            setVendorOverrides((prev) =>
+              prev.map((vo) =>
+                vo.id === keepId
+                  ? { ...vo, match_key: keeper.match_key, match_type: keeper.match_type }
+                  : vo,
+              ),
+            );
+            return false;
+          }
+        } catch (err: any) {
+          log.error('[TransactionParsing] Exception combining chain rule:', err?.message || err);
+          setVendorOverrides((prev) =>
+            prev.map((vo) =>
+              vo.id === keepId
+                ? { ...vo, match_key: keeper.match_key, match_type: keeper.match_type }
+                : vo,
+            ),
+          );
+          return false;
+        }
+      }
+
+      for (const id of removeIds) {
+        await handleDeleteVendorOverride(id);
+      }
+      return true;
+    },
+    [userId, vendorOverrides, handleDeleteVendorOverride],
+  );
+
+  // ── Set or update a vendor's proper (display) name ──
+  const handleSetProperName = useCallback(
+    async (vendorName: string, properName: string) => {
+      if (!userId) return;
+
+      const vendorKey = toVendorKey(vendorName);
+      const existing = vendorOverrides.find((vo) =>
+        vo.proper_name.toLowerCase() === vendorName.toLowerCase() ||
+        (vo.match_key ? vo.match_key === vendorKey : toVendorKey(vo.proper_name) === vendorKey)
+      );
+      if (!existing) return;
+
+      const trimmed = properName.trim();
+      const newProperName = trimmed === '' ? null : trimmed;
+
+      setVendorOverrides((prev) =>
+        prev.map((vo) =>
+          vo.id === existing.id
+            ? { ...vo, proper_name: newProperName ?? existing.proper_name }
+            : vo
+        )
+      );
+
+      try {
+        // Use proper_name-based URL when override has a temp ID (not yet synced with DB)
+        const url = existing.id.startsWith('temp-')
+          ? `/overrides?user_id=eq.${userId}&proper_name=eq.${encodeURIComponent(existing.proper_name)}`
+          : `/overrides?id=eq.${existing.id}&user_id=eq.${userId}`;
+        const res = await restFetch(
+          url,
+          { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ proper_name: newProperName }) },
+        );
+        const body = await res.text();
+        let data: any[] = [];
+        try { data = body ? JSON.parse(body) : []; } catch { data = []; }
+
+        if (!res.ok || !Array.isArray(data) || data.length === 0) {
+          log.error('[TransactionParsing] Error setting proper name:', res.status, body.slice(0, 200));
+          setVendorOverrides((prev) =>
+            prev.map((vo) =>
+              vo.id === existing.id
+                ? { ...vo, proper_name: existing.proper_name }
+                : vo
+            )
+          );
+          return;
+        }
+
+        const actualValue = data[0].proper_name ?? existing.proper_name;
+        const realId = data[0].id ?? existing.id;
+        setVendorOverrides((prev) =>
+          prev.map((vo) =>
+            vo.id === existing.id
+              ? { ...vo, proper_name: actualValue, id: realId }
+              : vo
+          )
+        );
+      } catch (err: any) {
+        log.error('[TransactionParsing] Exception setting proper name:', err?.message || err);
+        setVendorOverrides((prev) =>
+          prev.map((vo) =>
+            vo.id === existing.id
+              ? { ...vo, proper_name: existing.proper_name }
+              : vo
+          )
+        );
+      }
+    },
+    [userId, vendorOverrides],
+  );
+
+  // ── Optimistically upsert a vendor override in local state (no DB call) ──
+  const upsertLocalVendorOverride = useCallback(
+    (vendorName: string, categoryId: string, categoryNameOverride?: string) => {
+      const category = budgets.find((b) => b.id === categoryId);
+      if (!category) return;
+      const categoryName = categoryNameOverride || category.name;
+
+      setVendorOverrides((prev) => {
+        // Matched on vendor AND category, mirroring handleSetVendorCategory.
+        // Vendor-only matching here would make the optimistic update overwrite
+        // a different rule for the same merchant, so the UI would briefly show
+        // one Walmart rule where the DB has two.
+        const existingIdx = prev.findIndex(
+          (vo) =>
+            vo.proper_name.toLowerCase() === vendorName.toLowerCase() &&
+            vo.category_id === categoryId,
+        );
+        if (existingIdx !== -1) {
+          // Update existing override
+          const updated = [...prev];
+          updated[existingIdx] = {
+            ...updated[existingIdx],
+            category_id: categoryId,
+            category_name: categoryName,
+          };
+          return updated;
+        }
+        // Add new override
+        return [
+          ...prev,
+          {
+            id: `temp-${crypto.randomUUID()}`,
+            proper_name: vendorName,
+            match_key: toVendorKey(vendorName),
+            category_id: categoryId,
+            category_name: categoryName,
+          },
+        ];
+      });
+    },
+    [budgets],
+  );
+
+  return {
+    vendorOverrides,
+    partnerOverrides,
+    expandedVendorCategory,
+    setExpandedVendorCategory,
+    loadVendorOverrides,
+    handleDeleteVendorOverride,
+    handleSetVendorCategory,
+    handleSetProperName,
+    handleCombineChainRules,
+    upsertLocalVendorOverride,
+  };
+}

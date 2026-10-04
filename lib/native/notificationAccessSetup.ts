@@ -1,0 +1,289 @@
+// lib/native/notificationAccessSetup.ts
+//
+// The state machine behind the guided "turn on capture" flow.
+//
+// Granting notification access to a sideloaded Android app takes three grants
+// across three screens, and the platform signposts none of them: notification
+// access itself, the restricted-settings unlock that Android 13 puts in front
+// of it, and permission for Covault to post its own notifications. Miss any
+// one and the symptom is identical — nothing is ever captured — so the flow has
+// to name each step, check the ones that can be checked, and never depend on
+// the user remembering the order.
+//
+// The order is the part that is easy to get wrong, and it is not the order the
+// steps read in. "Allow restricted settings" does not exist in the App info
+// menu until Android has blocked the app at least once: the user has to go to
+// the notification-access switch, watch it refuse to move, and only then does
+// the way to unlock it appear. So the flow leads with the attempt, and the
+// unlock step is revealed by the failure rather than offered up front — sending
+// someone to an overflow menu that does not yet contain the item they were told
+// to look for is worse than saying nothing.
+//
+// Kept free of React and of Capacitor so the ordering rules are testable
+// without a device; the component is only responsible for rendering these
+// steps and for asking the native side the three questions they read.
+
+/**
+ * The steps the flow can show.
+ *
+ * Four ids for three grants, because the notification-access switch has to be
+ * visited twice on a sideloaded install and the two visits are not the same
+ * instruction. The first one is expected to fail — being refused is what makes
+ * Android offer the unlock at all — and telling someone to "try again" after a
+ * refusal reads as the app not knowing what happened. So the first visit is a
+ * step that completes by being attempted, and `confirm` is the one that
+ * completes by the switch actually moving.
+ */
+export type SetupStepId = 'listener' | 'restricted' | 'confirm' | 'post' | 'battery';
+
+/**
+ * `done` — verified just now against the OS.
+ * `assumed` — the user has been sent to do it, but Android exposes no way to
+ *   read the result: the restricted-settings unlock, and the first visit to the
+ *   notification-access switch, which is expected to be refused.
+ * `active` — the one to do next.
+ * `waiting` — behind an earlier step.
+ */
+export type SetupStepStatus = 'done' | 'assumed' | 'active' | 'waiting';
+
+export interface SetupStep {
+  id: SetupStepId;
+  status: SetupStepStatus;
+}
+
+export interface AccessState {
+  /** Covault is in Android's enabled notification listeners. Verified. */
+  listenerGranted: boolean;
+  /** Covault can post its own notifications. Verified. */
+  canPostNotifications: boolean;
+  /**
+   * The restricted-settings block applies to this install — Android 13+ and
+   * not installed from a store. False leaves the step out of the flow.
+   */
+  restrictedApplies: boolean;
+  /**
+   * The user has been sent to the notification-access page at least once and
+   * come back without it. What makes the unlock step appear — and, on the
+   * device, what makes Android put "Allow restricted settings" in the App info
+   * menu in the first place.
+   */
+  listenerAttempted: boolean;
+  /** The user has tapped through to the App info page at least once. */
+  restrictedVisited: boolean;
+  /**
+   * Android is leaving Covault alone rather than sleeping it. Verified — this
+   * is the one of these the platform will actually report back.
+   */
+  batteryExempt: boolean;
+  /** The user has been sent to the battery screen at least once. */
+  batteryAsked: boolean;
+}
+
+/**
+ * The steps to show, in order, with each one's state.
+ *
+ * The restricted-settings step is the awkward one twice over. It cannot be
+ * offered until the user has already been refused, because until then Android
+ * does not show the menu item it asks for. And it can never be confirmed: there
+ * is no API that reports whether the unlock was granted. What can be said is
+ * that notification access being granted afterwards is proof the block is gone
+ * — nothing else could have let that switch move — so it resolves when the step
+ * above it succeeds, and reads as assumed until then.
+ */
+export function buildSetupSteps(state: AccessState): SetupStep[] {
+  const steps: SetupStep[] = [];
+
+  // Revealed by the refusal, never before it.
+  const showRestricted =
+    state.restrictedApplies && state.listenerAttempted && !state.listenerGranted;
+
+  steps.push({
+    id: 'listener',
+    status: state.listenerGranted
+      ? 'done'
+      : showRestricted
+        ? // Tried, and refused — which is this step's whole job on a sideloaded
+          // install. Marked as behind the user rather than failed, because the
+          // way on is the unlock below and not another go at the same switch.
+          // `assumed` and not `done`: all that is known is that the user was
+          // sent there, never that they touched anything.
+          'assumed'
+        : 'active',
+  });
+
+  if (showRestricted) {
+    steps.push({ id: 'restricted', status: state.restrictedVisited ? 'assumed' : 'active' });
+    // The second visit to the same switch, and a step in its own right: after
+    // the unlock it is the one thing left to do, and it is the only step here
+    // that Android will confirm. Held back until the unlock has been visited so
+    // the list never offers two ways forward at once.
+    steps.push({
+      id: 'confirm',
+      status: state.restrictedVisited ? 'active' : 'waiting',
+    });
+  }
+
+  steps.push({
+    id: 'post',
+    status: state.canPostNotifications ? 'done' : state.listenerGranted ? 'active' : 'waiting',
+  });
+
+  // Last, and only while it is still worth saying.
+  //
+  // It is last because it protects something that has to exist first: there is
+  // no point asking a phone not to sleep a listener that has not been granted
+  // yet. It is dropped once the exemption is in place because, unlike every
+  // other step here, this one can be read back — a finished step that stays on
+  // the list is a list nobody finishes.
+  //
+  // `asked` resolves it to `assumed` rather than removing it. Somebody who was
+  // sent to that screen and chose to leave optimisation on has answered the
+  // question, and asking again on every visit is how an app teaches people to
+  // ignore it. The Settings card obeys the same rule.
+  if (!state.batteryExempt) {
+    steps.push({
+      id: 'battery',
+      status: state.batteryAsked ? 'assumed' : state.listenerGranted ? 'active' : 'waiting',
+    });
+  }
+
+  return steps;
+}
+
+/**
+ * Whether every step is behind the user.
+ *
+ * Posting notifications counts, even though captures are saved without it:
+ * with it missing, a purchase caught while the app is closed is saved in
+ * silence and the bank's own alert is never replaced, which is
+ * indistinguishable from capture being broken.
+ */
+export function isSetupComplete(state: AccessState): boolean {
+  return state.listenerGranted && state.canPostNotifications;
+}
+
+/**
+ * Whether the flow has nothing left to offer.
+ *
+ * Deliberately NOT the same question as `isSetupComplete`, which is what
+ * switches capture on and what the onboarding step waits for. Capture genuinely
+ * is set up without the battery exemption — it works today and may go on
+ * working for weeks — so making it a condition of "complete" would hold a new
+ * user at a screen they cannot finish if they decide against the exemption, to
+ * protect them from a failure that may never come.
+ *
+ * What it does control is whether the card collapses to its one-line finished
+ * state. A card that says "Capture is set up" while a step is still on the list
+ * would be hiding the step.
+ */
+export function isSetupSettled(state: AccessState): boolean {
+  return isSetupComplete(state) && (state.batteryExempt || state.batteryAsked);
+}
+
+/** Capture itself works — the part that survives without the extras. */
+export function isCaptureWorking(state: AccessState): boolean {
+  return state.listenerGranted;
+}
+
+// ---------------------------------------------------------------------------
+// "The user is part-way through setup"
+// ---------------------------------------------------------------------------
+//
+// Granting access means leaving Covault for Android's settings, possibly for
+// several minutes, and coming back. The app has to be able to tell that return
+// apart from an ordinary launch, because on that return it owes the user two
+// things it must not do at any other time: switch capture on, and ask for
+// permission to post notifications.
+//
+// Getting this wrong in the other direction is worse than not doing it at all.
+// If "notification access is granted" alone were enough to switch capture on,
+// a user who had deliberately turned capture off would find it back on at the
+// next launch, for good — Android's permission stays granted, so the condition
+// would be true forever. Hence a flag with an explicit beginning and end,
+// rather than inferring intent from the permission.
+//
+// It lives in localStorage because the WebView is routinely destroyed while the
+// user is away in Settings; anything held in memory would not survive the trip.
+
+const SETUP_PENDING_KEY = 'covault_notification_setup_pending_v1';
+const RESTRICTED_VISITED_KEY = 'covault_restricted_settings_visited_v1';
+const LISTENER_ATTEMPTED_KEY = 'covault_listener_attempted_v1';
+
+function readFlag(key: string): boolean {
+  try {
+    return localStorage.getItem(key) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeFlag(key: string, value: boolean): void {
+  try {
+    if (value) localStorage.setItem(key, '1');
+    else localStorage.removeItem(key);
+  } catch {
+    // A device with storage blocked loses only the automatic finish; every
+    // step is still reachable by hand.
+  }
+}
+
+/** The user has started the flow and has not finished or abandoned it. */
+export function isSetupPending(): boolean {
+  return readFlag(SETUP_PENDING_KEY);
+}
+
+/** Called when the user starts the flow. */
+export function markSetupPending(): void {
+  writeFlag(SETUP_PENDING_KEY, true);
+}
+
+/** Called once the grant has been seen, or when the user closes the flow. */
+export function clearSetupPending(): void {
+  writeFlag(SETUP_PENDING_KEY, false);
+}
+
+/** The user has been sent to the App info page at least once. */
+export function hasVisitedRestrictedSettings(): boolean {
+  return readFlag(RESTRICTED_VISITED_KEY);
+}
+
+/** Called as the user is sent to the App info page. */
+export function markRestrictedSettingsVisited(): void {
+  writeFlag(RESTRICTED_VISITED_KEY, true);
+}
+
+/**
+ * The user has been sent to the notification-access page at least once.
+ *
+ * Recorded on the way out rather than on the way back, because the trip
+ * frequently outlives the WebView. It is also the closest thing to a signal
+ * that Android's restricted-settings block is now unlockable: the menu item
+ * appears only after an attempt, and an attempt is exactly what this records.
+ */
+export function hasAttemptedListener(): boolean {
+  return readFlag(LISTENER_ATTEMPTED_KEY);
+}
+
+/** Called as the user is sent to the notification-access page. */
+export function markListenerAttempted(): void {
+  writeFlag(LISTENER_ATTEMPTED_KEY, true);
+}
+
+/**
+ * Whether returning from Android's settings should switch capture on.
+ *
+ * True exactly once per run through the flow: access has been granted, the
+ * in-app setting is still off, and the user is the one who asked for this. The
+ * caller clears the pending flag as it acts.
+ *
+ * This is the fix for capture that "works but doesn't work" — permission
+ * granted at the OS level while Covault's own switch stayed off, so nothing was
+ * ever recorded and nothing said why.
+ */
+export function shouldEnableAfterGrant(opts: {
+  listenerGranted: boolean;
+  settingEnabled: boolean;
+  setupPending: boolean;
+}): boolean {
+  return opts.listenerGranted && !opts.settingEnabled && opts.setupPending;
+}

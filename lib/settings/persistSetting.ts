@@ -1,4 +1,4 @@
-import { restFetch } from '../apiHelpers';
+import { restFetch } from '../api/apiHelpers';
 import type { SettingValue } from './settingSaveQueue';
 
 type Request = (path: string, init: RequestInit) => Promise<Response>;

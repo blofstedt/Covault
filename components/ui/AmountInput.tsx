@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react';
 import type { InputHTMLAttributes, RefObject } from 'react';
 import { NumericFormat, numericFormatter } from 'react-number-format';
-import { normalizePastedManualAmount } from '../../lib/manualAmount';
+import { normalizePastedManualAmount } from '../../lib/money/manualAmount';
 import {
   manualAmountDraftSchema, manualAmountSchema, MANUAL_AMOUNT_ERROR, MANUAL_AMOUNT_TYPING_ERROR, MANUAL_AMOUNT_PASTE_ERROR,
-} from '../../lib/validation/manualEntry';
+} from '../../lib/transactions/validation/manualEntry';
 
 type AmountInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'defaultValue' | 'onChange' | 'onBlur' | 'onKeyDown' | 'onPaste'> & {
   value: string;

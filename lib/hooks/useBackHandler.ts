@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { pushBackHandler, type BackHandler, type BackLayer } from '../backStack';
+import { pushBackHandler, type BackHandler, type BackLayer } from '../navigation/backStack';
 
 /**
  * Makes the Android back button close this thing while `active` is true.

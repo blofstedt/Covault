@@ -9,7 +9,7 @@ import { androidTestBuild } from './android-e2e/testBuildPlugin.ts';
 /**
  * Drop the ONNX Runtime WebAssembly binary that nothing loads.
  *
- * Transformers.js resolves that binary from a CDN — `lib/aiExtractor.ts` sets
+ * Transformers.js resolves that binary from a CDN — `lib/ai/aiExtractor.ts` sets
  * the path explicitly so this is a guarantee rather than a default. But the
  * library also carries a `new URL(..., import.meta.url)` fallback for the case
  * where the path is unset, Vite reads that statically, and emits a 21MB file
@@ -18,7 +18,7 @@ import { androidTestBuild } from './android-e2e/testBuildPlugin.ts';
  *
  * Deliberately not an error when there is nothing to drop — a dependency that
  * stops emitting the file is fine. It is the pairing with aiExtractor that
- * matters, and `lib/__tests__/aiRuntimeSource.test.ts` holds that.
+ * matters, and `test/__tests__/regressions/aiRuntimeSource.test.ts` holds that.
  */
 function dropUnusedOrtWasm(): Plugin {
   return {

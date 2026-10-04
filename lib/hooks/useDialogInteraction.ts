@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, type KeyboardEvent, type RefObject } from 'react';
-import { pushBackHandler } from '../backStack';
+import { pushBackHandler } from '../navigation/backStack';
 
 let bodyScrollLockCount = 0;
 let bodyOverflowBeforeLock: string | undefined;

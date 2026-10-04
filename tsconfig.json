@@ -32,6 +32,7 @@
     "app",
     "components",
     "lib",
+    "test",
     "visual-tests",
     "types.ts",
     "constants.ts"

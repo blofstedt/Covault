@@ -1,0 +1,219 @@
+import React, { useId, useRef, useState } from 'react';
+import { formatCurrency } from '../../lib/money/formatCurrency';
+import { useDialogInteraction } from '../../lib/hooks/useDialogInteraction';
+import { useDialogExit } from '../../lib/hooks/useDialogExit';
+import Portal from '../ui/Portal';
+
+export type NotATxRuleType = 'exact' | 'contains';
+
+interface NotATransactionModalProps {
+  /** The raw notification text the user is marking as not-a-transaction. */
+  rawNotification: string;
+  /** The vendor/amount the row currently shows, for context in the modal. */
+  vendor: string;
+  amount: number;
+  /** Whether a save is currently in progress. */
+  isSaving?: boolean;
+  /** Confirmed: create the rule and delete the transaction. */
+  onConfirm: (ruleType: NotATxRuleType) => void;
+  /** Cancelled. */
+  onCancel: () => void;
+}
+
+/**
+ * Confirmation modal for "this isn't a transaction". Lets the user pick
+ * how the skip rule should match future notifications:
+ *   - exact   : this alert, and later ones with the same wording
+ *   - contains: this wording anywhere inside a longer alert (broader, riskier)
+ *
+ * Both are matched on the alert's SHAPE as well as its text — the same wording
+ * with a different amount or date in it counts as the same alert. Without that
+ * a rule made from anything reporting a changing figure could never fire
+ * again, which is what "exact text match" used to promise and quietly fail to
+ * deliver. See lib/capture/notificationShape.ts. The wording here says so, because a
+ * rule that silently does more than it says is worse than one that does less.
+ *
+ * The user is shown the rule that will be created before they confirm,
+ * so they can sanity-check. Defaults to the narrower of the two.
+ *
+ * Visually consistent with the rest of the app: dark backdrop blur,
+ * rounded-[2.5rem] card, emerald accents, monospace for the pattern
+ * preview to match the raw-notification expander.
+ */
+const NotATransactionModal: React.FC<NotATransactionModalProps> = ({
+  rawNotification,
+  vendor,
+  amount,
+  isSaving = false,
+  onConfirm,
+  onCancel,
+}) => {
+  const [ruleType, setRuleType] = useState<NotATxRuleType>('exact');
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const id = useId();
+  const { isClosing, close } = useDialogExit();
+  const dismiss = () => {
+    if (!isSaving) close(onCancel);
+  };
+  const handleKeyDown = useDialogInteraction(dialogRef, dismiss, { disabled: isClosing });
+
+  const pattern = rawNotification.trim();
+
+  return (
+    <Portal>
+    <div
+      className={`fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm ${isClosing ? 'dialog-exiting dialog-exit-backdrop' : 'animate-in fade-in dialog-motion'}`}
+      onClick={(e) => { if (e.target === e.currentTarget) dismiss(); }}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={`${id}-title`}
+        aria-describedby={`${id}-message`}
+        tabIndex={-1}
+        onKeyDown={handleKeyDown}
+        className={`w-full max-w-md bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl border border-slate-200 dark:border-slate-700/50 ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] overflow-hidden ${isClosing ? 'dialog-exiting dialog-exit-surface' : 'animate-in zoom-in-95 dialog-motion'}`}
+      >
+        {/* Header */}
+        <div className="px-6 pt-6 pb-4">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center shrink-0">
+              <svg className="w-5 h-5 text-amber-600 dark:text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <h2 id={`${id}-title`} className="text-base font-bold text-slate-800 dark:text-slate-100 tracking-tight">
+                Mark as not a transaction?
+              </h2>
+              <p id={`${id}-message`} className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
+                <span className="font-semibold text-slate-700 dark:text-slate-200">{vendor}</span> {formatCurrency(amount)} will be removed, and alerts like it will be ignored from now on — including the same wording with a different amount in it.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Pattern preview */}
+        <div className="px-6 pb-3">
+          <p className="text-[11px] font-bold tracking-wide text-slate-400 dark:text-slate-500 uppercase mb-1.5">
+            Pattern
+          </p>
+          <div className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/50 font-mono text-[11px] text-slate-700 dark:text-slate-200 break-words leading-relaxed max-h-32 overflow-y-auto">
+            {pattern || <span className="italic text-slate-400">no notification text available</span>}
+          </div>
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5">
+            Source: {vendor} {formatCurrency(amount)} charge
+          </p>
+        </div>
+
+        {/* Rule type selector */}
+        <div className="px-6 pb-4">
+          <p className="text-[11px] font-bold tracking-wide text-slate-400 dark:text-slate-500 uppercase mb-2">
+            Match future notifications by
+          </p>
+          <div className="space-y-1.5">
+            <button
+              type="button"
+              onClick={() => setRuleType('exact')}
+              disabled={isSaving}
+              className={`w-full flex items-start gap-2.5 px-3 py-2.5 rounded-xl border text-left transition-all duration-200 active:scale-[0.98] ${
+                ruleType === 'exact'
+                  ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-700/60'
+                  : 'bg-white dark:bg-slate-800/30 border-slate-200 dark:border-slate-700/50 hover:border-slate-300 dark:hover:border-slate-600'
+              }`}
+            >
+              <div className={`w-4 h-4 mt-0.5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                ruleType === 'exact'
+                  ? 'border-emerald-500'
+                  : 'border-slate-300 dark:border-slate-600'
+              }`}>
+                {ruleType === 'exact' && (
+                  <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                  Alerts like this one
+                  <span className="ml-2 text-[11px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/40 px-1.5 py-0.5 rounded">Recommended</span>
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
+                  This wording is skipped whatever the amount or date says. A different merchant still comes through.
+                </p>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setRuleType('contains')}
+              disabled={isSaving}
+              className={`w-full flex items-start gap-2.5 px-3 py-2.5 rounded-xl border text-left transition-all duration-200 active:scale-[0.98] ${
+                ruleType === 'contains'
+                  ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-700/60'
+                  : 'bg-white dark:bg-slate-800/30 border-slate-200 dark:border-slate-700/50 hover:border-slate-300 dark:hover:border-slate-600'
+              }`}
+            >
+              <div className={`w-4 h-4 mt-0.5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                ruleType === 'contains'
+                  ? 'border-emerald-500'
+                  : 'border-slate-300 dark:border-slate-600'
+              }`}>
+                {ruleType === 'contains' && (
+                  <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                  Contains substring
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
+                  Skipped wherever this wording appears, even inside a longer alert. Broader, and may block real purchases.
+                </p>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="px-6 pb-6 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={dismiss}
+            data-dialog-initial-focus
+            disabled={isSaving}
+            className="flex-1 px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800/60 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 transition-all duration-150 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfirm(ruleType)}
+            disabled={isSaving || !pattern}
+            className="flex-1 px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-emerald-500 hover:bg-emerald-600 active:scale-95 transition-all duration-150 disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1.5"
+          >
+            {isSaving ? (
+              <>
+                <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                  <circle cx="12" cy="12" r="10" opacity="0.25" />
+                  <path d="M12 2a10 10 0 0110 10" />
+                </svg>
+                Saving…
+              </>
+            ) : (
+              <>
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                Mark + learn
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+    </Portal>
+  );
+};
+
+export default NotATransactionModal;
