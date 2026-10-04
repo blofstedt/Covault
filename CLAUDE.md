@@ -87,6 +87,9 @@ Supabase (Postgres + RLS) for data. On-device flan-T5 via
 `@huggingface/transformers` for parsing. Vitest for unit and component tests;
 Playwright for browser tests.
 
+The browser entry is `app/index.tsx`; root app state and routing live in
+`app/App.tsx`. Shared styles stay in `index.css`.
+
 ```bash
 npm run verify     # typecheck + typecheck:unused + lint + test + build  ← run before committing
 npm run test:e2e   # Playwright browser tests against a local stand-in for Supabase

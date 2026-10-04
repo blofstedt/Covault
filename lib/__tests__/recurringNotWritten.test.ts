@@ -23,8 +23,8 @@ describe('recurring charges', () => {
     expect(existsSync(resolve(root, 'lib/recurringExecutor.ts'))).toBe(false);
   });
 
-  it('is not auto-inserted from App.tsx', () => {
-    const app = readFileSync(resolve(root, 'App.tsx'), 'utf8');
+  it('is not auto-inserted from app/App.tsx', () => {
+    const app = readFileSync(resolve(root, 'app/App.tsx'), 'utf8');
     expect(app).not.toMatch(/executeRecurringTransactions/);
     expect(app).not.toMatch(/sendRecurringCatchUpNotification/);
   });

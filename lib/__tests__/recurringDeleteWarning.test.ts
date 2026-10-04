@@ -6,7 +6,7 @@ import {
   ONE_TIME_DELETE_MESSAGE,
 } from '../../components/ConfirmDeleteModal';
 
-const APP_PATH = resolve(__dirname, '../../App.tsx');
+const APP_PATH = resolve(__dirname, '../../app/App.tsx');
 const ACTION_MODAL_PATH = resolve(__dirname, '../../components/TransactionActionModal.tsx');
 
 /**
