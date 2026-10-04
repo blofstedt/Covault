@@ -5,6 +5,13 @@ import { isManualAmountOverLimit, parseManualAmount } from '../manualAmount';
 
 export const MANUAL_AMOUNT_ERROR = 'Enter an amount greater than zero, with up to two decimal places.';
 export const MANUAL_AMOUNT_LIMIT_ERROR = 'Enter an amount of $9,999,999,999.99 or less.';
+export const MANUAL_AMOUNT_TYPING_ERROR = 'Enter numbers only, with up to two decimal places.';
+export const MANUAL_AMOUNT_PASTE_ERROR = 'Paste an amount only, with up to two decimal places.';
+
+/** Incomplete editing states are allowed, but formatting must not hide errors. */
+export const manualAmountDraftSchema = z.string()
+  .regex(/^\d*(?:\.\d{0,2})?$/, { error: MANUAL_AMOUNT_TYPING_ERROR })
+  .refine(value => !isManualAmountOverLimit(value), { error: MANUAL_AMOUNT_LIMIT_ERROR });
 
 export const manualAmountSchema = z.string({ error: MANUAL_AMOUNT_ERROR })
   .refine(value => !isManualAmountOverLimit(value), { error: MANUAL_AMOUNT_LIMIT_ERROR })

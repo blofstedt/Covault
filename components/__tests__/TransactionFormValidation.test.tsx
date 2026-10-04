@@ -72,10 +72,91 @@ describe('manual entry validation', () => {
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ amount: 0.01, budget_id: 'food' })));
   });
 
-  it('ignores letters and keeps at most two decimal places while typing', async () => {
+  it.each(['12abc', '1e3', '-12', '12.345'])('rejects typed %s without saving a numeric prefix', async text => {
     const { user, onSave } = openForm({ vendor: 'Store', budgetId: 'food' });
-    await user.type(screen.getByLabelText('Amount'), 'abc12.349xyz');
-    expect(screen.getByLabelText('Amount')).toHaveValue('12.34');
+    const amount = screen.getByLabelText('Amount');
+    await user.type(amount, text);
+    expect(amount).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByText('Enter numbers only, with up to two decimal places.')).toBeVisible();
+    await user.tab();
+    expect(amount).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('button', { name: 'Confirm Entry' })).toBeDisabled();
+    fireEvent.submit(screen.getByRole('form', { name: 'Manual entry' }));
+    expect(onSave).not.toHaveBeenCalled();
+
+    await user.clear(amount);
+    await user.type(amount, '12.34');
+    await user.click(screen.getByRole('button', { name: 'Confirm Entry' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ amount: 12.34 })));
+  });
+
+  it('rejects a whole mobile insertion before formatting and allows a replacement', async () => {
+    const { user, onSave } = openForm({ vendor: 'Store', budgetId: 'food' });
+    const amount = screen.getByLabelText('Amount');
+    fireEvent.input(amount, { target: { value: '12abc' }, inputType: 'insertText', data: '12abc' });
+    expect(amount).toHaveValue('');
+    expect(amount).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('button', { name: 'Confirm Entry' })).toBeDisabled();
+    fireEvent.input(amount, { target: { value: '12.34' }, inputType: 'insertText', data: '12.34' });
+    await user.click(screen.getByRole('button', { name: 'Confirm Entry' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ amount: 12.34 })));
+  });
+
+  it('lets Backspace erase a rejected attempt on an empty field', async () => {
+    const { user, onSave } = openForm({ vendor: 'Store', budgetId: 'food' });
+    const amount = screen.getByLabelText('Amount');
+    await user.type(amount, '-');
+    expect(amount).toHaveValue('');
+    expect(amount).toHaveAttribute('aria-invalid', 'true');
+    await user.keyboard('{Backspace}1');
+    expect(amount).toHaveAttribute('aria-invalid', 'false');
+    await user.click(screen.getByRole('button', { name: 'Confirm Entry' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ amount: 1 })));
+  });
+
+  it('allows completing zero into a positive amount after Next explains the error', async () => {
+    const { user, onSave } = openForm({ vendor: 'Store', budgetId: 'food' });
+    const amount = screen.getByLabelText('Amount');
+    await user.type(amount, '0{Enter}');
+    expect(amount).toHaveAttribute('aria-invalid', 'true');
+    await user.type(amount, '.01');
+    expect(amount).toHaveAttribute('aria-invalid', 'false');
+    await user.click(screen.getByRole('button', { name: 'Confirm Entry' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ amount: 0.01 })));
+  });
+
+  it('accepts a decimal comma from the keyboard without changing cents', async () => {
+    const { user, onSave } = openForm({ vendor: 'Store', budgetId: 'food' });
+    const amount = screen.getByLabelText('Amount');
+    await user.type(amount, '12,34');
+    expect(amount).toHaveValue('12.34');
+    await user.click(screen.getByRole('button', { name: 'Confirm Entry' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ amount: 12.34 })));
+  });
+
+  it.each([['1,2', '1,2'], ['1,,2', null], ['12,34', '12,34']])('rejects malformed whole insertion %s', async (text, data) => {
+    const { user, onSave } = openForm({ vendor: 'Store', budgetId: 'food' });
+    const amount = screen.getByLabelText('Amount');
+    fireEvent.input(amount, { target: { value: text }, inputType: 'insertReplacementText', data });
+    expect(amount).toHaveValue('');
+    expect(amount).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('button', { name: 'Confirm Entry' })).toBeDisabled();
+    await user.clear(amount);
+    await user.type(amount, '12.34');
+    await user.click(screen.getByRole('button', { name: 'Confirm Entry' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ amount: 12.34 })));
+  });
+
+  it('does not reuse an empty Backspace as permission to strip a later malformed replacement', async () => {
+    const { user, onSave } = openForm({ vendor: 'Store', budgetId: 'food' });
+    const amount = screen.getByLabelText('Amount');
+    await user.keyboard('{Backspace}');
+    fireEvent.input(amount, { target: { value: '1,,2' }, inputType: 'insertReplacementText', data: null });
+    expect(amount).toHaveValue('');
+    expect(amount).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('button', { name: 'Confirm Entry' })).toBeDisabled();
+    await user.keyboard('{Backspace}');
+    await user.type(amount, '12.34');
     await user.click(screen.getByRole('button', { name: 'Confirm Entry' }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ amount: 12.34 })));
   });
@@ -86,6 +167,8 @@ describe('manual entry validation', () => {
     await user.click(amount);
     await user.paste('99abc');
     expect(amount).toHaveValue('12.34');
+    await user.tab();
+    expect(amount).toHaveAttribute('aria-invalid', 'true');
     expect(screen.getByText('Paste an amount only, with up to two decimal places.')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Confirm Entry' })).toBeDisabled();
     fireEvent.submit(screen.getByRole('form', { name: 'Manual entry' }));

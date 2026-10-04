@@ -1,9 +1,8 @@
 
 import type React from 'react';
 import { useState, useRef, useMemo } from 'react';
-import { NumericFormat } from 'react-number-format';
-import { isPastedManualAmountOverLimit, parseManualAmount, parsePastedManualAmount } from '../lib/manualAmount';
-import { createManualEntrySchema, MANUAL_AMOUNT_ERROR, MANUAL_AMOUNT_LIMIT_ERROR } from '../lib/validation/manualEntry';
+import AmountInput from './ui/AmountInput';
+import { createManualEntrySchema, MANUAL_AMOUNT_LIMIT_ERROR } from '../lib/validation/manualEntry';
 import { type Transaction, type BudgetCategory, Recurrence, TransactionLabel } from '../types';
 import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
 import { cleanVendorInput } from '../lib/formatVendorName';
@@ -383,55 +382,19 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                 <label htmlFor="transaction-amount" className="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-400">Amount</label>
                 <div className="flex w-full min-w-0 items-center justify-center gap-1 px-4">
                   <span className={`text-xl font-black select-none ${isRefund ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}>$</span>
-                  <NumericFormat
+                  <AmountInput
                     id="transaction-amount"
-                    getInputRef={amountInputRef}
+                    inputRef={amountInputRef}
                     data-dialog-initial-focus={!initialTransaction ? 'true' : undefined}
-                    type="text"
-                    inputMode="decimal"
                     enterKeyHint="next"
-                    autoComplete="off"
-                    valueIsNumericString
-                    allowNegative={false}
-                    decimalScale={2}
-                    thousandSeparator=","
-                    allowedDecimalSeparators={['.', ',']}
-                    aria-invalid={!!displayedAmountError}
+                    error={displayedAmountError}
+                    onErrorChange={setAmountError}
+                    disabled={isSaving}
                     aria-describedby="transaction-amount-help"
                     placeholder="0.00"
                     value={amountStr}
-                    onValueChange={({ value }) => {
-                      setAmountStr(value);
-                      setAmountError(null);
-                    }}
-                    onPaste={event => {
-                      const pasted = event.clipboardData.getData('text');
-                      if (parsePastedManualAmount(pasted) === null) {
-                        event.preventDefault();
-                        setAmountError(isPastedManualAmountOverLimit(pasted)
-                          ? MANUAL_AMOUNT_LIMIT_ERROR
-                          : 'Paste an amount only, with up to two decimal places.');
-                      } else {
-                        setAmountError(null);
-                      }
-                    }}
-                    onBlur={() => {
-                      if (!amountStr) return;
-                      const parsed = parseManualAmount(amountStr);
-                      if (parsed === null) {
-                        setAmountError(fieldError('amount') ?? MANUAL_AMOUNT_ERROR);
-                      } else {
-                        setAmountStr(parsed.toFixed(2));
-                        setAmountError(null);
-                      }
-                    }}
-                    onKeyDown={event => {
-                      if (event.key === 'Enter') {
-                        event.preventDefault();
-                        if (hasAmount) vendorInputRef.current?.focus();
-                        else setAmountError(amountError ?? amountIssue ?? MANUAL_AMOUNT_ERROR);
-                      }
-                    }}
+                    onValueChange={setAmountStr}
+                    onValidEnter={() => vendorInputRef.current?.focus()}
                     className={`bg-transparent text-center text-3xl font-black tracking-tighter outline-none placeholder-slate-500 dark:placeholder-slate-400 min-w-0 max-w-full ${isRefund ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-50'}`}
                     style={{ width: amountStr ? `${Math.min(amountStr.length + Math.floor(amountStr.length / 3) + 0.5, 14)}ch` : '4ch' }}
                   />

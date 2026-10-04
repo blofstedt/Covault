@@ -1,6 +1,8 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { formatCurrency } from '../../lib/formatCurrency';
 import { hapticTap } from '../../lib/haptics';
+import AmountInput from '../ui/AmountInput';
+import { manualAmountSchema } from '../../lib/validation/manualEntry';
 import type { FuelHold } from '../../lib/fuelHold';
 import type { SettlementCandidate } from '../../lib/fuelHoldReconcile';
 
@@ -58,18 +60,21 @@ export const FuelHoldPrompt: React.FC<FuelHoldPromptProps> = ({
 }) => {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');
+  const [amountError, setAmountError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const helpId = useId();
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (open) inputRef.current?.focus();
   }, [open]);
 
-  const parsed = parseAmount(draft);
-  const canSave = parsed != null && parsed > 0 && !isSaving;
+  const validation = manualAmountSchema.safeParse(draft);
+  const parsed = validation.success ? validation.data : null;
+  const canSave = parsed !== null && !amountError && !isSaving;
 
   const handleSave = useCallback(async () => {
-    if (parsed == null || parsed <= 0 || isSaving) return;
+    if (parsed === null || amountError || isSaving) return;
     hapticTap();
     setIsSaving(true);
     try {
@@ -77,7 +82,7 @@ export const FuelHoldPrompt: React.FC<FuelHoldPromptProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [parsed, isSaving, onSubmit]);
+  }, [parsed, amountError, isSaving, onSubmit]);
 
   return (
     <div className={panelClass}>
@@ -99,40 +104,40 @@ export const FuelHoldPrompt: React.FC<FuelHoldPromptProps> = ({
       </div>
 
       {open ? (
-        <div className="flex items-center gap-2 mt-3">
-          <div className="relative flex-1 min-w-0">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] font-bold text-amber-600 dark:text-amber-400 pointer-events-none">
-              $
-            </span>
-            <input
-              ref={inputRef}
-              type="text"
-              inputMode="decimal"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  void handleSave();
-                } else if (e.key === 'Escape') {
-                  e.preventDefault();
-                  setOpen(false);
-                }
-              }}
-              disabled={isSaving}
-              placeholder="0.00"
-              aria-label="Amount actually paid"
-              className="w-full min-h-[44px] pl-7 pr-3 text-[14px] font-bold rounded-2xl border border-amber-300 dark:border-amber-700/60 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-400/40 disabled:opacity-50"
-            />
+        <div className="mt-3">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1 min-w-0">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] font-bold text-amber-600 dark:text-amber-400 pointer-events-none">
+                $
+              </span>
+              <AmountInput
+                inputRef={inputRef}
+                enterKeyHint="done"
+                error={amountError}
+                onErrorChange={setAmountError}
+                aria-describedby={helpId}
+                value={draft}
+                onValueChange={setDraft}
+                onValidEnter={() => { void handleSave(); }}
+                onEscape={() => setOpen(false)}
+                disabled={isSaving}
+                placeholder="0.00"
+                aria-label="Amount actually paid"
+                className="w-full min-h-[44px] pl-7 pr-3 text-[14px] font-bold rounded-2xl border border-amber-300 dark:border-amber-700/60 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-400/40 disabled:opacity-50"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleSave()}
+              disabled={!canSave}
+              className={`shrink-0 ${primaryBtn}`}
+            >
+              {isSaving ? 'Saving…' : 'Save'}
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => void handleSave()}
-            disabled={!canSave}
-            className={`shrink-0 ${primaryBtn}`}
-          >
-            {isSaving ? 'Saving…' : 'Save'}
-          </button>
+          <p id={helpId} aria-live="polite" className={`mt-1.5 text-[11px] leading-snug ${amountError ? 'text-rose-700 dark:text-rose-400' : 'text-slate-600 dark:text-slate-400'}`}>
+            {amountError ?? 'Use numbers and up to two decimal places.'}
+          </p>
         </div>
       ) : (
         <div className="flex items-center gap-2 mt-3">
@@ -236,14 +241,5 @@ export const FuelSettlementOffer: React.FC<SettlementOfferProps> = ({
     </div>
   );
 };
-
-/** Accept "72", "72.43", "$72.43" and "1,072.43"; reject anything else. */
-function parseAmount(input: string): number | null {
-  const cleaned = (input || '').replace(/[$,\s]/g, '');
-  if (!cleaned) return null;
-  if (!/^\d*\.?\d{0,2}$/.test(cleaned)) return null;
-  const value = parseFloat(cleaned);
-  return Number.isFinite(value) ? value : null;
-}
 
 export default FuelHoldPrompt;
