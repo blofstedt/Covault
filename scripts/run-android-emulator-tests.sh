@@ -137,6 +137,11 @@ STAGE=native-instrumentation
   2>&1 | tee "$RESULTS_DIR/logs/instrumentation.txt"
 adb -s "$ANDROID_SERIAL" exec-out screencap -p > "$RESULTS_DIR/screenshots/after-native.png"
 
+# Gradle's connected test runner removes the target APK after instrumentation.
+# Install the same validated test APK again for the WebView flows.
+STAGE=reinstall-test-app
+adb -s "$ANDROID_SERIAL" install -r -t android/app/build/outputs/apk/debug/app-debug.apk
+
 STAGE=reset-test-app
 adb -s "$ANDROID_SERIAL" shell am broadcast --include-stopped-packages -n "$BANK_ID/.BankNotificationReceiver" \
   -a "$BANK_ID.CANCEL_ALL"

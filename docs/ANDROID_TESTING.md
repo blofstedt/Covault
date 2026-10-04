@@ -50,7 +50,8 @@ an existing installation. It does not change shell profiles or require a
 Maestro Cloud account.
 
 The runner installs the app, instrumentation and fake-bank APKs, puts the
-emulator offline, runs the native tests, clears the test app, then restores its
+emulator offline, runs the native tests, reinstalls the test app after Gradle's
+test cleanup, clears its data, then restores its
 native bank selection and notification access before running the UI flows.
 It posts the bank alert between the two flows. Leave `clearState` out of the
 flows: it would erase the runner's native setup.
