@@ -1,0 +1,100 @@
+name: PR screenshots
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-screenshots-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  capture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CI: 'true'
+      COVAULT_SCREENSHOT_PORT: '4231'
+    steps:
+      - name: Checkout exact proposed version
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, MIT
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: after
+          persist-credentials: false
+
+      - name: Checkout exact baseline
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, MIT
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: before
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0, MIT
+        with:
+          node-version: '24'
+
+      # PR code runs here without secrets, saved Git credentials or write access.
+      # Do not share a dependency cache with the trusted publishing workflow.
+      - name: Install each version's locked dependencies
+        run: |
+          (cd before && npm ci)
+          (cd after && npm ci)
+
+      - name: Install the comparison browser
+        working-directory: after
+        run: ./node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Check screenshot publication boundaries
+        working-directory: after
+        run: python3 -B -m unittest discover -s scripts/tests -v
+
+      - name: Capture baseline with the same scenarios and browser
+        working-directory: after
+        env:
+          COVAULT_SCREENSHOT_APP_DIR: ${{ github.workspace }}/before
+          COVAULT_SCREENSHOT_DIR: ${{ github.workspace }}/screenshots/before
+        run: ./node_modules/.bin/playwright test --config=playwright.screenshots.config.ts
+
+      - name: Capture proposed version
+        working-directory: after
+        env:
+          COVAULT_SCREENSHOT_APP_DIR: ${{ github.workspace }}/after
+          COVAULT_SCREENSHOT_DIR: ${{ github.workspace }}/screenshots/after
+        run: ./node_modules/.bin/playwright test --config=playwright.screenshots.config.ts
+
+      - name: Record comparison versions
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib
+          manifest = {"version": 1, "pr": int(os.environ["PR_NUMBER"]),
+                      "base": os.environ["BASE_SHA"], "head": os.environ["HEAD_SHA"]}
+          pathlib.Path("screenshots/manifest.json").write_text(json.dumps(manifest) + "\n")
+          PY
+
+      - name: Upload comparison images
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1, MIT
+        with:
+          name: pr-screenshots-${{ github.run_id }}-${{ github.run_attempt }}
+          path: screenshots/
+          retention-days: 3
+          if-no-files-found: error
+
+      - name: Upload capture diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1, MIT
+        with:
+          name: pr-screenshot-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: after/test-results/pr-screenshots/
+          retention-days: 3
+          if-no-files-found: warn

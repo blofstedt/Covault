@@ -1,7 +1,8 @@
 <!--
 Keep the description brief and useful to the person reviewing it. Lead with
 what changes for the app's users. Check every claim and remove optional sections
-that do not apply. Replace prompts before requesting review.
+that do not apply. Replace prompts before requesting review. Keep Screenshots
+for every PR. Follow docs/PR_SCREENSHOTS.md for visual evidence.
 -->
 
 ## Summary
@@ -31,11 +32,13 @@ that do not apply. Replace prompts before requesting review.
 
 ## Screenshots
 
-<!-- Optional for visual changes. Add one row per changed screen or state, including relevant themes and phone sizes. Name the baseline version. Keep error states when affected. Remove this section for changes without a visual effect. -->
+<!-- Required for visible changes, including agent-created PRs. Show images only for changed screens or states. Add relevant mobile before/after pairs with short captions, exact base/head commits, viewport, and theme. You may link the automated screenshot comment instead of duplicating its images, but identify which pairs show this change. Inspect the images before claiming visual verification. Keep affected error and interaction states. Extend capture coverage for new UI outside the default states before requesting review. The default suite does not verify every new feature. -->
 
-| Screen or state | Before (version) | After (branch) |
-| --- | --- | --- |
-|  |  |  |
+<!-- Do not include unchanged comparison images. For changes with no visible effect, replace the table with "No visible change" and explain why. Do not classify a dependency or styling change as nonvisual without checking its effect on rendered screens. See docs/PR_SCREENSHOTS.md for the publisher's initial activation limit and verification limits. -->
+
+| Screen or state, viewport, theme | Before, base commit | After, head commit | Caption and visual result |
+| --- | --- | --- | --- |
+| [Relevant mobile state] | [Image or bot-comment link] | [Image or bot-comment link] | [What changed, what was inspected, and any limit] |
 
 <!-- Optional: add a real issue link or "Closes #123" when applicable. -->
 
