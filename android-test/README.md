@@ -152,7 +152,16 @@ to bind the same number inside the emulator.
 A free host port can already be occupied on Android. Before each flow the
 runner checks host IPv4 and IPv6 binding, the emulator's TCP sockets in all
 states, and its actual ephemeral range. The chosen port must be below that
-range. Unavailable socket inspection or an occupied port stops the run with
+range. Android 16 can deny the shell's socket inventory while returning a
+successful exit code, so the runner rejects warnings as well as failures.
+Socket inspection uses `su 0 ss` only after checking the selected emulator's
+QEMU flag, debuggable flag, `userdebug` or `eng` build type and an actual UID 0
+response from `su 0 id -u`. Android's
+[debug command](https://android.googlesource.com/platform/system/extras/+/refs/heads/android16-release/su/su.cpp)
+and [debug-only policy](https://android.googlesource.com/platform/system/sepolicy/+/refs/heads/android16-release/private/su.te)
+permit this separate inspection process. The app keeps its normal UID and
+permissions. The runner does not restart ADB or change global SELinux settings.
+Unavailable socket inspection or an occupied port stops the run with
 diagnostics. The check releases its host probe before Maestro binds, so it
 cannot reserve the port against a new unrelated process. It never stops such
 a process, selects another port, or retries a failed test.
@@ -171,11 +180,12 @@ python3 android-test/test_emulator_preflight.py
 bash -n scripts/run-android-emulator-tests.sh
 ```
 
-They execute the preflight command against synthetic ADB responses and real
-temporary host socket bindings. They cover delayed or missing service
+The 20 focused tests execute the preflight command against synthetic ADB
+responses and real temporary host socket bindings. They cover delayed or missing service
 registration, hung commands, occupied IPv4 and IPv6 ports, connected and closing
-Android sockets, and unavailable inspection. They do not prove the Android
-image exposes its socket inventory; the hosted emulator run must verify that.
+Android sockets, each denied privilege capability, and unavailable inspection.
+They do not prove the Android image exposes its socket inventory; the hosted
+emulator run must verify that.
 
 ## Dependency checks
 
