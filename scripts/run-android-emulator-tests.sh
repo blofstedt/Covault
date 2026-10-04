@@ -101,13 +101,15 @@ for expected in \
     echo "Refusing to install an APK with the wrong application ID: $apk" >&2
     exit 1
   fi
-  apkanalyzer manifest print "$apk" | python3 -c '
+  manifest_report="$RESULTS_DIR/logs/$package-manifest.xml"
+  apkanalyzer manifest print "$apk" > "$manifest_report"
+  python3 -c '
 import sys
 from xml.etree import ElementTree
-app = ElementTree.parse(sys.stdin).getroot().find("application")
+app = ElementTree.parse(sys.argv[1]).getroot().find("application")
 if app is None or app.get("{http://schemas.android.com/apk/res/android}testOnly") != "true":
-    sys.exit("Refusing to install an APK without android:testOnly=true")
-'
+    sys.exit(f"Refusing to install {sys.argv[2]} without android:testOnly=true; see {sys.argv[1]}")
+' "$manifest_report" "$apk"
 done
 
 adb -s "$ANDROID_SERIAL" logcat -c

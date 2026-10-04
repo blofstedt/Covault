@@ -26,6 +26,7 @@ python3 - "$ANDROID_DIR" <<'PY'
 from pathlib import Path
 import re
 import sys
+from xml.etree import ElementTree
 
 android = Path(sys.argv[1])
 blocks = {
@@ -43,12 +44,31 @@ for relative, content in blocks.items():
 manifest = android / 'app/src/main/AndroidManifest.xml'
 text = manifest.read_text()
 text = re.sub(r'(android:name=")\.([^\"]+)(")', r'\1com.covault.app.\2\3', text)
-if 'android:testOnly=' not in text:
-    text = re.sub(r'<application\b', '<application android:testOnly="true"', text, count=1)
+application = re.search(r'<application\b[^>]*>', text, flags=re.S)
+if application is None:
+    sys.exit('Generated app manifest has no application element')
+tag = application.group()
+if 'android:testOnly=' in tag:
+    tag = re.sub(r'android:testOnly="[^"]*"', 'android:testOnly="true"', tag)
+else:
+    tag = tag.replace('<application', '<application android:testOnly="true"', 1)
+text = text[:application.start()] + tag + text[application.end():]
 text = text.replace('android:label="@string/app_name"', 'android:label="Covault CI"')
 text = text.replace('android:label="@string/title_activity_main"', 'android:label="Covault CI"')
 text = text.replace('android:scheme="com.covault.app"', 'android:scheme="com.covault.app.test"')
 manifest.write_text(text)
+
+# The instrumentation APK has its own application element. AGP does not inherit
+# the target APK's testOnly flag, so its copied overlay must set it explicitly.
+for relative in (
+    'app/src/main/AndroidManifest.xml',
+    'app/src/androidTest/AndroidManifest.xml',
+    'fake-bank/src/main/AndroidManifest.xml',
+):
+    path = android / relative
+    app = ElementTree.parse(path).getroot().find('application')
+    if app is None or app.get('{http://schemas.android.com/apk/res/android}testOnly') != 'true':
+        sys.exit(f'Prepared manifest is missing android:testOnly=true: {path}')
 PY
 
 echo "Prepared disposable Covault CI app, Android instrumentation and :fake-bank."

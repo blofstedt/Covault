@@ -4,7 +4,9 @@ This folder is copied into a disposable generated Android project only by
 `scripts/prepare-android-tests.sh`. Normal APK builds do not contain the helper,
 instrumentation or fake data. The app APK uses `com.covault.app.test`, is labelled
 Covault CI, has a separate deep-link scheme and is marked `testOnly`. Install
-both APKs with `adb install -t`. Do not publish these APKs as app updates.
+all three APKs with `adb install -t`. The instrumentation APK has its own
+explicit test-only manifest, as that flag is not inherited from the target app.
+Do not publish these APKs as app updates.
 
 ## Build and run
 
