@@ -30,6 +30,7 @@ node_modules
 screenshots/
 playwright-report/
 test-results/
+android-e2e-results/
 
 # Session-specific context file with credentials. Lives only on the
 # developer's local machine, never committed.

@@ -1,0 +1,17 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace 'com.covault.fakebank'
+    compileSdk rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId 'com.covault.fakebank'
+        minSdk 26
+        targetSdk rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName 'android-ci'
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
