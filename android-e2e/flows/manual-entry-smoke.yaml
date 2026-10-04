@@ -31,7 +31,7 @@ androidWebViewHierarchy: devtools
 # These are keyboard input checks, not a simulated browser paste.
 - inputText: "abc"
 - pressKey: enter
-- assertVisible: 'Enter an amount greater than zero, with up to two decimal places\.'
+- assertVisible: 'Enter numbers only, with up to two decimal places\.'
 - assertVisible:
     text: "Confirm Entry"
     enabled: false
