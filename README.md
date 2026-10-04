@@ -35,11 +35,11 @@ works without React or Tailwind, including when the browser is too old to draw t
 git clone https://github.com/blofstedt/Covault.git
 cd Covault
 npm ci --legacy-peer-deps        # install exactly what the lockfile records
-cp .env.example .env             # then fill in the values below
-npm run dev                      # http://localhost:3000
+cp .env.example .env.development.local # then fill in the values below
+npm run dev                      # http://127.0.0.1:4173
 ```
 
-`.env`:
+`.env.development.local`:
 
 ```
 VITE_SUPABASE_URL=https://<your-project-ref>.supabase.co
@@ -52,7 +52,8 @@ and the "anon/public" key). `VITE_PUBLIC_SUPABASE_URL` also works in place of
 the first.
 
 Without them the app falls back to a stub client that logs warnings and does
-nothing useful.
+nothing useful when started directly with Vite. `npm run dev` checks the
+configuration first and explains missing values before starting the server.
 
 **Never commit the service-role key.** It belongs in an environment variable or
 a GitHub Actions secret, never in the client bundle. `.env` and anything
@@ -80,7 +81,8 @@ Required for Google OAuth to work on web and Android.
 
 In Supabase → **Authentication → URL Configuration**, add these redirect URLs:
 
-- `http://localhost:3000` — local dev
+- `http://localhost:*` and `http://localhost:*/**` — local development
+- `http://127.0.0.1:*` and `http://127.0.0.1:*/**` — local development
 - your production web URL
 - `com.covault.app://auth/callback` — **required for Android**
 
@@ -88,6 +90,33 @@ In [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services
 Credentials → your OAuth 2.0 Client ID, add this authorised redirect URI:
 
 - `https://<your-project-ref>.supabase.co/auth/v1/callback`
+
+## Local sign-in
+
+Use **Connect with Google** at `http://127.0.0.1:4173`. Local development uses
+real Supabase authentication and the same vault as the deployed app.
+
+The local redirect entries above must be saved in Supabase's **Authentication
+→ URL Configuration → Redirect URLs**. Keep the **Site URL** set to the deployed
+app. If a local address is absent from the allowlist, Supabase sends sign-in
+back to the deployed Site URL instead. Editing these settings requires an
+account with permission to manage authentication.
+
+`npm run dev` uses one fixed port and stops if that port is occupied. It does
+not silently pick another address. For a second preview, supply another free
+port with Vite's `--port` option. The loopback redirect patterns above cover
+those ports too. Continue the sign-in in the same browser and at the same
+hostname where it started; `localhost` and `127.0.0.1` store separate sessions.
+
+Linked Git worktrees can reuse the main checkout's `.env.development.local`
+when they have no Supabase settings of their own. Only the public project URL
+and client key are inherited. A worktree's own settings take priority; a
+partially configured worktree fails clearly rather than borrowing a key from
+another project. Nothing copies or commits the environment files. Use a
+Supabase **publishable** or **anon/public** key, never a secret or service-role key.
+
+The browser test suite remains separate. It uses fake local accounts and
+never signs into the live household.
 
 ## Commands
 

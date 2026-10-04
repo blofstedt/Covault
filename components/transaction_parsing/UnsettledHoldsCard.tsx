@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import ParsingCard from '../ui/ParsingCard';
+import AmountInput from '../ui/AmountInput';
+import { manualAmountSchema } from '../../lib/validation/manualEntry';
 import { HOLD_SETTLE_DAYS, type PendingHold } from '../../lib/pendingHold';
 
 interface UnsettledHoldsCardProps {
@@ -35,16 +37,17 @@ const UnsettledHoldsCard: React.FC<UnsettledHoldsCardProps> = ({
   onToggleExpanded,
 }) => {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [busy, setBusy] = useState<string | null>(null);
 
   if (holds.length === 0) return null;
 
   const handleRecord = async (hold: PendingHold) => {
-    const value = Number.parseFloat((drafts[hold.id] || '').replace(/[^0-9.]/g, ''));
-    if (!Number.isFinite(value) || value <= 0 || busy) return;
+    const validation = manualAmountSchema.safeParse(drafts[hold.id] || '');
+    if (!validation.success || errors[hold.id] || busy) return;
     setBusy(hold.id);
     try {
-      await onRecord(hold, value);
+      await onRecord(hold, validation.data);
     } finally {
       setBusy(null);
     }
@@ -91,29 +94,39 @@ const UnsettledHoldsCard: React.FC<UnsettledHoldsCardProps> = ({
             </p>
 
             <div className="flex gap-1.5">
-              <input
-                inputMode="decimal"
+              <AmountInput
+                enterKeyHint="done"
+                aria-label={`Amount actually paid at ${hold.vendor}`}
+                aria-describedby={`hold-amount-help-${hold.id}`}
+                disabled={busy !== null}
+                error={errors[hold.id] ?? null}
+                onErrorChange={error => setErrors(prev => ({ ...prev, [hold.id]: error }))}
+                onValidEnter={() => { void handleRecord(hold); }}
                 placeholder="Amount"
                 value={drafts[hold.id] || ''}
-                onChange={(e) =>
-                  setDrafts((prev) => ({ ...prev, [hold.id]: e.target.value }))
+                onValueChange={value =>
+                  setDrafts((prev) => ({ ...prev, [hold.id]: value }))
                 }
-                className="flex-1 min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-[12px] font-bold text-slate-600 dark:text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                className="flex-1 min-w-0 min-h-[44px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-[12px] font-bold text-slate-600 dark:text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
               />
               <button
                 type="button"
                 onClick={() => { void handleRecord(hold); }}
-                disabled={busy === hold.id || !(drafts[hold.id] || '').trim()}
-                className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-[11px] font-bold active:scale-[0.97] transition-all disabled:opacity-30"
+                disabled={busy !== null || !!errors[hold.id] || !manualAmountSchema.safeParse(drafts[hold.id] || '').success}
+                className="min-h-[44px] px-3 py-2 rounded-lg bg-emerald-700 text-white text-[11px] font-bold active:scale-[0.97] transition-all disabled:opacity-30"
               >
                 {busy === hold.id ? 'Adding…' : 'Add it'}
               </button>
             </div>
 
+            <p id={`hold-amount-help-${hold.id}`} aria-live="polite" className={`text-[11px] leading-snug ${errors[hold.id] ? 'text-rose-700 dark:text-rose-400' : 'text-slate-600 dark:text-slate-400'}`}>
+              {errors[hold.id] ?? 'Use numbers and up to two decimal places.'}
+            </p>
             <button
               type="button"
+              disabled={busy !== null}
               onClick={() => onDismiss(hold)}
-              className="text-[10.5px] font-semibold text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+              className="min-h-[44px] text-[10.5px] font-semibold text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
             >
               It never went through
             </button>

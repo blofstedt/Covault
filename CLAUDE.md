@@ -24,7 +24,7 @@ is unreviewable.
   resolves". If a mechanism has to be mentioned, one clause, then back to what
   it means for them.
 - **Say plainly what you did not verify.** They cannot infer it. CI never runs
-  this app on a phone: compile-green proves nothing about capture, the widget,
+  this app on a physical phone: compile-green proves nothing about capture, the widget,
   or anything visual. Say so rather than letting a green build imply it works.
 - **Answer the question that was asked**, then stop. If they ask whether
   something is right, the first thing they should read is whether it is right.
@@ -93,7 +93,7 @@ The browser entry is `app/index.tsx`; root app state and routing live in
 ```bash
 npm run verify     # typecheck + typecheck:unused + lint + test + build  ← run before committing
 npm run test:e2e   # Playwright browser tests against a local stand-in for Supabase
-npm run dev        # localhost:3000
+npm run dev        # http://127.0.0.1:4173, checks local sign-in setup first
 npm run cap:build  # web build + cap sync + scripts/sync-android.sh
 ```
 
@@ -186,6 +186,7 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | "the app didn't offer me the update" / "it didn't update itself" | `lib/appUpdate.ts` (the check) → `lib/hooks/useAppUpdate.ts` (when, and which of the two routes) → `android-custom/CovaultUpdaterPlugin.java` (install, or unpack) |
 | "it still asked me to confirm the update" | the three conditions in the APK-route invariant below — `UPDATE_PACKAGES_WITHOUT_USER_ACTION` in `android-custom/AndroidManifest.xml`, Android 12+, and the install permission. A refusal is recorded per build in `CovaultUpdaterPlugin` and reported by `getStatus` as `quietInstallSupported` |
 | anything about the Android build | `scripts/sync-android.sh`, `.github/workflows/build-android.yml` |
+| "test on Android" / "fake a bank notification" | `docs/ANDROID_TESTING.md` → `.github/workflows/android-emulator.yml` → `android-test/` and `android-e2e/` |
 | "the Play build got rejected" / "why can't it see my bank on the Play version" | `scripts/play-manifest.mjs` — the AAB is built from a stripped manifest. See Invariants |
 | "my trial ran out early / never ran out" | `lib/serverClock.ts` → `lib/entitlement.ts`. The trial is judged on the DATABASE's clock, not the phone's |
 
@@ -838,13 +839,22 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
 
 ## Verification reality
 
-CI type-checks, tests and builds an APK. **Nothing runs the app on a phone or
-against the real database.** Compile-green is not evidence for: notification
-capture, tray suppression, on-device AI, the home-screen widget, haptics, or
-anything visual. Those need a device or `npm run dev`. Say so plainly rather
-than implying a green build means it works.
+CI type-checks, tests and builds an APK. **Nothing runs the app on a physical
+phone or against the real database.** Compile-green alone is not evidence for
+notification capture, tray suppression, on-device AI, the home-screen widget,
+haptics, or anything visual. Say which behavior checks actually ran.
 
-The one exception is narrow. The `Browser smoke` workflow runs the Playwright
+The `Android emulator checks` workflow installs a separate `Covault CI` test
+APK on Android 16, with an isolated synthetic vault and a separate fake bank
+APK. It tests genuine OS notification delivery, durable native capture,
+suppression permissions, source selection, quiet income/decline alerts and
+widget snapshot numbers. Maestro checks installed-app expense validation,
+saving across restarts and a real fake-bank alert appearing in Review once.
+This does not verify real Google sign-in, Supabase access rules, a widget's
+launcher layout, physical-phone smoothness, haptics or vendor battery policies.
+See `docs/ANDROID_TESTING.md` for the test setup and evidence artifacts.
+
+The `Browser smoke` workflow runs the Playwright
 suite (`npm run test:e2e`) in headless Chromium emulating a Pixel 7,
 against `e2e/mockSupabase.ts`: the sign-in screen and its theme, two
 signed-in households that must not see each other's purchases, and manual entry
