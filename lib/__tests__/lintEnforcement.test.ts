@@ -132,4 +132,33 @@ describe('repository lint enforcement', () => {
       }
     `, 'components/ui/LintProbe.tsx')).toEqual([]);
   });
+
+  it('rejects misspelled Tailwind classes and accepts registered app controls', async () => {
+    const source = `
+      export default function Control() {
+        return <div className="bg-slate-900 made-up-control" />;
+      }
+    `;
+    expect(await lint(source, 'components/ui/LintProbe.tsx')).toEqual([
+      'tailwindcss/no-custom-classname',
+    ]);
+    expect(await lint(source.replace('made-up-control',
+      'animate-in fade-in dialog-motion flex-shrink-0 no-scrollbar'),
+    'components/ui/LintProbe.tsx')).toEqual([]);
+  });
+
+  it('rejects contradictory Tailwind display values and accepts responsive alternatives', async () => {
+    const source = `
+      export default function Control() {
+        return <div className="flex hidden" />;
+      }
+    `;
+    expect(await lint(source, 'components/ui/LintProbe.tsx')).toEqual([
+      'tailwindcss/no-contradicting-classname',
+      'tailwindcss/no-contradicting-classname',
+    ]);
+    expect(await lint(source.replace('flex hidden', 'flex md:hidden'),
+      'components/ui/LintProbe.tsx')).toEqual([]);
+  });
+
 });

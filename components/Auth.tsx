@@ -97,7 +97,7 @@ const Auth: React.FC<AuthProps> = () => {
         </div>
       </div>
 
-      <div className="relative space-y-6 mt-auto flex flex-col items-center pb-8">
+      <div className="relative gap-6 mt-auto flex flex-col items-center pb-8">
         {authError && (
           <div className="w-full max-w-xs p-4 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-2xl mb-4 animate-in fade-in slide-in-from-bottom-2">
             <p className="text-[10px] font-semibold text-rose-500 tracking-wide mb-1 text-center">

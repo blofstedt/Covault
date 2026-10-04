@@ -29,7 +29,7 @@ export default tseslint.config(
   react.configs.flat['jsx-runtime'],
   jsxA11y.flatConfigs.recommended,
   ...tanstackQuery.configs['flat/recommended'],
-  ...tailwind.configs['flat/recommended'],
+  tailwind.configs.recommended,
   {
     files: ['**/*.{ts,tsx,js,mjs,cjs}'],
     languageOptions: {
@@ -37,10 +37,11 @@ export default tseslint.config(
       sourceType: 'module',
       globals: { ...globals.browser, ...globals.node },
     },
-    plugins: { 'react-hooks': reactHooks, 'react-refresh': reactRefresh },
+    plugins: { 'react-hooks': reactHooks, 'react-refresh': reactRefresh, tailwindcss: tailwind },
     settings: {
       react: { version: 'detect' },
       'jsx-a11y': { components: { NumericFormat: 'input' } },
+      tailwindcss: { cssConfigPath: './index.css' },
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
@@ -154,6 +155,9 @@ export default tseslint.config(
       // ── Tailwind: class ORDER and shorthands are taste; contradicting
       // classes and made-up class names are bugs, and stay on.
       'tailwindcss/classnames-order': 'off',
+      // Equivalent supported spellings are formatting, like class order.
+      'tailwindcss/enforces-canonical-classname': 'off',
+      'tailwindcss/important-modifier-suffix': 'off',
       'tailwindcss/enforces-shorthand': 'off',
       'tailwindcss/no-unnecessary-arbitrary-value': 'off',
       'tailwindcss/no-custom-classname': 'error',
