@@ -34,7 +34,7 @@ From the repository root:
 
 ```sh
 bash scripts/build-android-test.sh
-(cd android && ./gradlew --no-daemon assembleDebug assembleAndroidTest :fake-bank:assembleDebug)
+(cd android && ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest :fake-bank:assembleDebug)
 
 task_maestro_workspace="$(mktemp -d "${TMPDIR:-/tmp}/covault-maestro.XXXXXX")"
 bash scripts/install-maestro.sh "$task_maestro_workspace/cli"

@@ -72,7 +72,7 @@ jobs:
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon assembleDebug assembleAndroidTest :fake-bank:assembleDebug 2>&1 | tee "$COVAULT_ANDROID_RESULTS/logs/gradle-build.txt"
+          ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest :fake-bank:assembleDebug 2>&1 | tee "$COVAULT_ANDROID_RESULTS/logs/gradle-build.txt"
 
       - name: Install checksum-verified Maestro CLI
         run: bash scripts/install-maestro.sh "$RUNNER_TEMP/covault-maestro" 2>&1 | tee "$COVAULT_ANDROID_RESULTS/logs/maestro-install.txt"

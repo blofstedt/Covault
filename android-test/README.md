@@ -11,7 +11,7 @@ both APKs with `adb install -t`. Do not publish these APKs as app updates.
 Run the normal Capacitor add/sync and `scripts/sync-android.sh` first. Then run
 `scripts/prepare-android-tests.sh`. It is repeatable and requires the production
 NotificationListener to have been copied. From the generated Android folder,
-build `assembleDebug assembleAndroidTest :fake-bank:assembleDebug` and run
+build `:app:assembleDebug :app:assembleDebugAndroidTest :fake-bank:assembleDebug` and run
 `:app:connectedDebugAndroidTest` on an isolated API 35 or newer emulator.
 
 The files are:

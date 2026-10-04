@@ -52,4 +52,4 @@ manifest.write_text(text)
 PY
 
 echo "Prepared disposable Covault CI app, Android instrumentation and :fake-bank."
-echo "Build with android/gradlew assembleDebug assembleAndroidTest :fake-bank:assembleDebug."
+echo "Build with android/gradlew :app:assembleDebug :app:assembleDebugAndroidTest :fake-bank:assembleDebug."
