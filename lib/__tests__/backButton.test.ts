@@ -77,7 +77,7 @@ describe('the wiring', () => {
     expect(hook).toContain("addListener('backButton'");
     expect(hook).toContain('handleBack()');
     expect(hook).toContain('minimizeApp');
-    expect(read('App.tsx')).toContain('useHardwareBack()');
+    expect(read('app/App.tsx')).toContain('useHardwareBack()');
   });
 
   it('makes every dialog answer the back button as it answers Escape', () => {

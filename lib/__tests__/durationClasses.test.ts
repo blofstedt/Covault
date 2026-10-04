@@ -36,7 +36,7 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
 }
 
 const files = [
-  resolve(ROOT, 'App.tsx'),
+  resolve(ROOT, 'app/App.tsx'),
   ...SEARCH_DIRS.flatMap(dir => sourceFiles(resolve(ROOT, dir))),
 ];
 
