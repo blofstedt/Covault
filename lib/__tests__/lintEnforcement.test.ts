@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { ESLint } from 'eslint';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 const eslint = new ESLint({ cwd: fileURLToPath(new URL('../../', import.meta.url)) });
 
@@ -10,6 +10,12 @@ async function lint(source: string, filePath: string) {
 }
 
 describe('repository lint enforcement', () => {
+  // Typed lint opens the full TypeScript project once. Keep cold loading in
+  // bounded setup, leaving each behavior check's normal timeout intact.
+  beforeAll(async () => {
+    await eslint.lintFiles(['lib/**/validation/manualEntry.ts']);
+  }, 30_000);
+
   it('retains React checks through the ESLint compatibility adapter', async () => {
     const source = `
       export default function Notice() {
