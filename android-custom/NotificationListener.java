@@ -1142,6 +1142,17 @@ public class NotificationListener extends NotificationListenerService {
         Notification notification = sbn.getNotification();
         if (notification == null) return;
 
+        // A group summary describes the child notifications, not another
+        // purchase. Android can create one under the bank's package with no
+        // text at all. Check the platform flag for both live delivery and
+        // reconnect scans; grouped children still take the normal capture path.
+        if ((notification.flags & Notification.FLAG_GROUP_SUMMARY) != 0) {
+            Log.i(TAG, "Skipping notification group summary: pkg=" + packageName
+                + " id=" + sbn.getId() + " flags=" + notification.flags
+                + " fromScan=" + fromScan);
+            return;
+        }
+
         Bundle extras = notification.extras;
         if (extras == null) return;
 
