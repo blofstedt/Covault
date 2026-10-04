@@ -826,6 +826,13 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
 
 ## Conventions
 
+Follow [Contributor rules](docs/CONTRIBUTING_RULES.md) for folder ownership,
+exports, types, data boundaries, interaction states, tests and thematic PRs.
+
+- Follow [System messages](docs/SYSTEM_MESSAGES.md) for new or changed
+  confirmations, toasts, status messages and errors. State the actual outcome,
+  consequences and supported recovery in the app's own language.
+
 - **The turn lint hook collects Claude's Write/Edit targets**
   (`.claude/hooks/lint-changed.mjs`, wired in `.claude/settings.json`). It runs
   one `eslint --fix` batch when the turn ends, including files already committed.
