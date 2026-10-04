@@ -44,10 +44,16 @@ sys.exit(response.get("code", 0))
 ''')
         self.adb.chmod(0o755)
 
-    def run_cli(self, action, responses):
-        self.config.write_text(json.dumps(responses))
+    def run_cli(self, action, responses, serial="emulator-5554"):
+        capabilities = {
+            "getprop ro.kernel.qemu": {"stdout": "1"},
+            "getprop ro.debuggable": {"stdout": "1"},
+            "getprop ro.build.type": {"stdout": "userdebug"},
+            "su 0 id -u": {"stdout": "0"},
+        }
+        self.config.write_text(json.dumps({**capabilities, **responses}))
         return subprocess.run(
-            [sys.executable, str(SCRIPT), "--adb", str(self.adb), "--serial", "emulator-5554", *action],
+            [sys.executable, str(SCRIPT), "--adb", str(self.adb), "--serial", serial, *action],
             capture_output=True,
             text=True,
             timeout=3,
@@ -75,7 +81,7 @@ sys.exit(response.get("code", 0))
             ["check-port", str(port)],
             {
                 "cat /proc/sys/net/ipv4/ip_local_port_range": {"stdout": limits},
-                "ss -tanH": {"stdout": sockets, "code": code, "stderr": "" if code == 0 else "Permission denied"},
+                "su 0 ss -tanH": {"stdout": sockets, "code": code, "stderr": "" if code == 0 else "Permission denied"},
             },
         )
 
@@ -107,8 +113,12 @@ sys.exit(response.get("code", 0))
     def test_available_local_port_ignores_a_matching_remote_peer(self):
         reservation, port = self.free_host_port()
         reservation.close()
-        result = self.port(port, f"ESTAB 0 0 127.0.0.1:16000 127.0.0.1:{port}\n")
+        result = self.port(port,
+            f"ESTAB 0 0 127.0.0.1:16000 127.0.0.1:{port}\n"
+            f"TIME-WAIT 0 0 [::1]:16001 [::1]:{port}\n"
+            "LISTEN 0 0 [::]:16002 *:*\n")
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Selected debug emulator verified: qemu=1, debuggable=1, su 0 UID=0.", result.stdout)
         self.assertIn(f"Driver TCP port {port} is available on host and emulator.", result.stdout)
 
     def test_empty_readable_socket_inventory_is_available(self):
@@ -151,7 +161,7 @@ sys.exit(response.get("code", 0))
 
     def test_unavailable_or_unparseable_socket_inspection_is_a_failure(self):
         for sockets, code, expected in [
-            ("", 1, "Cannot inspect emulator ss -tanH: Permission denied"),
+            ("", 1, "Cannot inspect emulator su 0 ss -tanH: Permission denied"),
             ("Permission denied", 0, "Cannot interpret emulator TCP socket row"),
             ("LISTEN 0 0 broken *:*", 0, "Cannot interpret emulator TCP local endpoint"),
         ]:
@@ -170,17 +180,71 @@ sys.exit(response.get("code", 0))
     def test_inspection_warning_cannot_pass_as_an_empty_socket_inventory(self):
         result = self.run_cli(["check-port", "17001"], {
             "cat /proc/sys/net/ipv4/ip_local_port_range": {"stdout": "32768 60999"},
-            "ss -tanH": {"stdout": "", "stderr": "Cannot open netlink socket", "code": 0},
+            "su 0 ss -tanH": {"stdout": "", "stderr": "Cannot open netlink socket", "code": 0},
         })
         self.assertEqual(result.returncode, 1)
-        self.assertIn("Cannot inspect emulator ss -tanH: Cannot open netlink socket", result.stderr)
+        self.assertIn("Cannot inspect emulator su 0 ss -tanH: Cannot open netlink socket", result.stderr)
+
+    def test_privileged_inventory_requires_a_selected_emulator_serial(self):
+        result = self.run_cli(["check-port", "17001"], {}, serial="physical-device")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Privileged socket inspection requires a selected emulator serial.", result.stderr)
+
+    def test_privileged_inventory_requires_actual_emulator_property(self):
+        result = self.run_cli(["check-port", "17001"], {
+            "getprop ro.kernel.qemu": {"stdout": "0"},
+        })
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("requires ro.kernel.qemu=1; observed '0'", result.stderr)
+
+    def test_privileged_inventory_requires_debuggable_property(self):
+        result = self.run_cli(["check-port", "17001"], {
+            "getprop ro.debuggable": {"stdout": "0"},
+        })
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("requires ro.debuggable=1; observed '0'", result.stderr)
+
+    def test_privileged_inventory_requires_debug_build_type(self):
+        result = self.run_cli(["check-port", "17001"], {
+            "getprop ro.build.type": {"stdout": "user"},
+        })
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("requires a userdebug or eng build; observed 'user'", result.stderr)
+
+    def test_privileged_inventory_requires_proven_root_uid(self):
+        result = self.run_cli(["check-port", "17001"], {
+            "su 0 id -u": {"stdout": "2000"},
+        })
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("requires su 0 UID 0; observed '2000'", result.stderr)
+
+    def test_failed_or_warning_privilege_probe_cannot_claim_uid_zero(self):
+        for response, expected in [
+            ({"stdout": "0", "code": 1}, "Cannot inspect emulator su 0 id -u: 0"),
+            ({"stdout": "0", "stderr": "Privilege denied"}, "Cannot inspect emulator su 0 id -u: Privilege denied"),
+        ]:
+            with self.subTest(response=response):
+                result = self.run_cli(["check-port", "17001"], {"su 0 id -u": response})
+                self.assertEqual(result.returncode, 1)
+                self.assertIn(expected, result.stderr)
+
+    def test_denied_diagnostic_privilege_preserves_other_failure_evidence(self):
+        result = self.run_cli(["diagnostics"], {
+            "su 0 id -u": {"stdout": "2000"},
+            "service check phone": {"stdout": "Service phone: not found"},
+            "ps -A": {"stdout": "radio 2336 621 com.android.phone"},
+        })
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Service phone: not found", result.stdout)
+        self.assertIn("radio 2336 621 com.android.phone", result.stdout)
+        self.assertIn("Privileged socket diagnostic unavailable: Privileged socket inspection requires su 0 UID 0", result.stdout)
 
     def test_failure_diagnostics_preserve_available_service_and_process_evidence(self):
         result = self.run_cli(["diagnostics"], {
             "service check phone": {"stdout": "Service phone: not found"},
             "service list": {"stdout": "Found 1 services:\n0 connectivity: [android.net.IConnectivityManager]"},
             "ps -A": {"stdout": "USER PID PPID NAME\nradio 2336 621 com.android.phone"},
-            "ss -tanp": {"code": 1, "stderr": "Socket inspection unavailable"},
+            "su 0 ss -tanp": {"code": 1, "stderr": "Socket inspection unavailable"},
         })
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Service phone: not found", result.stdout)
