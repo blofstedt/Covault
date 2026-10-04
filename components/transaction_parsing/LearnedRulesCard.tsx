@@ -2,6 +2,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import ParsingCard from '../ui/ParsingCard';
 import { readRecentUses, ruleSourceText } from '../../lib/notificationRules';
 import SkipPhrasePicker from './SkipPhrasePicker';
+import CategoryPickerSheet from './CategoryPickerSheet';
 import Portal from '../ui/Portal';
 import ConfirmModal from '../ui/ConfirmModal';
 import type { NotificationRule, PatternType } from '../../lib/notificationRules';
@@ -10,7 +11,6 @@ import { toVendorKey } from '../../lib/deviceTransactionParser';
 import { formatCurrency } from '../../lib/formatCurrency';
 import { findStaleOtherRules, findChainMergeGroups, StaleOtherGroup, ChainMergeGroup } from '../../lib/ruleCleanup';
 import { BudgetCategory, Toast, Transaction } from '../../types';
-import { selectableBudgets } from '../../lib/budgetVisibility';
 import {
   searchTerms,
   filterBySearch,
@@ -184,6 +184,7 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [editingProperName, setEditingProperName] = useState<string | null>(null);
   const [properNameDraft, setProperNameDraft] = useState('');
+  const [categoryRule, setCategoryRule] = useState<LearnedRule | null>(null);
   const [mergingRule, setMergingRule] = useState<string | null>(null);
   const [mergeTarget, setMergeTarget] = useState<string | null>(null);
   const [expandedSkipRule, setExpandedSkipRule] = useState<string | null>(null);
@@ -737,26 +738,15 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
                         {/* Actions */}
                         <div className="flex flex-wrap gap-1.5 pt-1">
                           {/* Change Category */}
-                          <div className="relative group">
-                            <button className="px-2 py-1 text-[11px] font-bold rounded-lg bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/40 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-all">
-                              Change Category
-                            </button>
-                            <div className="absolute bottom-full left-0 mb-1 hidden group-hover:grid grid-cols-2 gap-1 p-2 bg-white dark:bg-slate-800 rounded-xl border border-violet-200 dark:border-violet-800/40 shadow-lg z-20 min-w-[180px]">
-                              {selectableBudgets(budgets, hiddenCategories, [rule.categoryId]).map((b) => (
-                                <button
-                                  key={b.id}
-                                  onClick={() => {
-                                    for (const p of rule.patterns) {
-                                      onSetVendorCategory?.(p.proper_name, b.id);
-                                    }
-                                  }}
-                                  className="px-2 py-1 text-[11px] font-bold rounded-lg bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-all text-left"
-                                >
-                                  {b.name}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setCategoryRule(rule)}
+                            aria-haspopup="dialog"
+                            aria-expanded={categoryRule?.properName === rule.properName && categoryRule.categoryId === rule.categoryId}
+                            className="px-2 py-1 text-[11px] font-bold rounded-lg bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/40 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-all"
+                          >
+                            Change Category
+                          </button>
 
                           {/* Edit Name */}
                           {editingProperName === ruleKey ? (
@@ -1084,6 +1074,21 @@ const LearnedRulesCard: React.FC<LearnedRulesCardProps> = ({
             </div>
           )}
         </div>
+      )}
+
+      {categoryRule && (
+        <CategoryPickerSheet
+          vendor={categoryRule.properName}
+          budgets={budgets}
+          hiddenCategories={hiddenCategories}
+          currentBudgetId={categoryRule.categoryId}
+          onClose={() => setCategoryRule(null)}
+          onPick={(budgetId) => {
+            for (const pattern of categoryRule.patterns) {
+              onSetVendorCategory?.(pattern.proper_name, budgetId);
+            }
+          }}
+        />
       )}
 
       {/* ── Every destructive action on this card ──

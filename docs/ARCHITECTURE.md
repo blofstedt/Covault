@@ -15,7 +15,8 @@ forward unchecked.
 App.tsx / index.tsx      Root state, auth, routing (onboarding → dashboard → review → settings)
 constants.ts             The 7 system budget categories + their fixed UUIDs
 types.ts                 Domain types: User, BudgetCategory, Transaction, Toast, Recurrence, ...
-index.css                Hand-rolled keyframes + the reduced-motion block
+index.css                Tailwind 4 entry, shared theme, keyframes + reduced motion
+public/app-unavailable.html  Plain HTML recovery for Android startup errors
 
 components/
   Dashboard.tsx                  Home. Owns SETTING_DB_KEYS and the widget-snapshot push

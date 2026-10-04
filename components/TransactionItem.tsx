@@ -87,7 +87,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
         // change start an all-property transition on every row mid-expand.
         //
         // Guarded by lib/__tests__/transactionItemNoBackdropBlur.test.ts.
-        className="relative z-10 p-4 rounded-[2rem] border shadow-sm ring-1 ring-inset ring-white/10 dark:ring-white/[0.03] bg-white/90 dark:bg-slate-900/90 border-slate-200/40 dark:border-slate-700/40 cursor-pointer hover:bg-white/95 dark:hover:bg-slate-900/95 active:scale-[0.98] transition-[background-color,transform] duration-200 w-full text-left"
+        className="relative z-10 p-4 rounded-[2rem] border shadow-sm ring-1 ring-inset ring-white/10 dark:ring-white/[0.03] bg-white/90 dark:bg-slate-900/90 border-slate-200/40 dark:border-slate-700/40 cursor-pointer hover:bg-white/95 dark:hover:bg-slate-900/95 active:scale-[0.98] transition-[background-color,transform,scale] duration-200 w-full text-left"
         aria-label={`Transaction: ${transaction.vendor}, ${Math.abs(txAmount).toFixed(2)} dollars on ${FULL_DATE_FMT.format(transactionDate)}`}
       >
         <div className="flex items-center justify-between">
