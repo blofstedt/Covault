@@ -895,3 +895,19 @@ a general database skill does not authorize live changes or household-row reads.
 
 See `.agents/skills/README.md` for pinned sources, licences, local adaptations,
 commands and update instructions. No personal skill folders are required.
+
+## Pull request screenshot evidence
+
+Every PR must state its visual effect. Visible changes need mobile before/after
+images of the affected states, including affected errors, before review. A
+change without a visual effect explains why in the template's Screenshots
+section. This applies to dependency updates and agent-created PRs too.
+
+The `PR screenshots` workflow compares the exact base and head with synthetic
+data. A separate trusted workflow publishes validated PNGs in one bot comment
+without changing the author's description. Default captures cover Dashboard,
+manual entry, invalid amounts, Review and Settings. Add scenarios for changed
+screens outside that set, inspect the images, and keep evidence current after
+pushes. See [Pull request screenshots](docs/PR_SCREENSHOTS.md) for the workflow
+and its activation limit. Browser images do not verify Android keyboards,
+physical-phone motion, real sign-in or live database access.

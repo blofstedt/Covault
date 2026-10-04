@@ -1,0 +1,46 @@
+name: Publish PR screenshots
+
+on:
+  workflow_run:
+    workflows: [PR screenshots]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Completed PR screenshots run to publish
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  # All PRs share the image branch. Serialize its updates without cancelling.
+  group: publish-pr-screenshots
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: write
+      pull-requests: write
+    steps:
+      # Always load the publisher from the trusted default branch, never the PR.
+      # No npm install, PR checkout, PR script or artifact execution in this job.
+      - name: Checkout trusted publisher
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, MIT
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Check trusted publication boundaries
+        run: python3 -B -m unittest discover -s scripts/tests -v
+
+      - name: Validate and publish images
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COVAULT_SCREENSHOT_RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
+        run: python3 scripts/publish-pr-screenshots.py
