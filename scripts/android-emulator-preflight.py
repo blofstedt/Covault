@@ -53,6 +53,23 @@ def inspect_device(adb, serial, arguments):
     return result.stdout.strip()
 
 
+def require_socket_inspection_access(adb, serial):
+    if not serial.startswith("emulator-") or not serial[len("emulator-"):].isdigit():
+        raise RuntimeError("Privileged socket inspection requires a selected emulator serial.")
+    for property_name, allowed, requirement in [
+        ("ro.kernel.qemu", {"1"}, "ro.kernel.qemu=1"),
+        ("ro.debuggable", {"1"}, "ro.debuggable=1"),
+        ("ro.build.type", {"userdebug", "eng"}, "a userdebug or eng build"),
+    ]:
+        value = inspect_device(adb, serial, ["getprop", property_name])
+        if value not in allowed:
+            raise RuntimeError(f"Privileged socket inspection requires {requirement}; observed {value!r}.")
+    uid = inspect_device(adb, serial, ["su", "0", "id", "-u"])
+    if uid != "0":
+        raise RuntimeError(f"Privileged socket inspection requires su 0 UID 0; observed {uid!r}.")
+    print("Selected debug emulator verified: qemu=1, debuggable=1, su 0 UID=0.", flush=True)
+
+
 def check_host_port(port):
     families = [socket.AF_INET]
     if socket.has_ipv6:
@@ -72,6 +89,7 @@ def check_host_port(port):
 
 
 def check_port(adb, serial, port):
+    require_socket_inspection_access(adb, serial)
     limits = inspect_device(adb, serial, ["cat", "/proc/sys/net/ipv4/ip_local_port_range"]).split()
     if len(limits) != 2 or not all(value.isdigit() for value in limits):
         raise RuntimeError("Cannot interpret the emulator TCP ephemeral port range.")
@@ -84,7 +102,7 @@ def check_port(adb, serial, port):
 
     # -a includes connected, closing and TIME-WAIT sockets, not just listeners.
     # Numeric output and no header make IPv4 and IPv6 local endpoints unambiguous.
-    sockets = inspect_device(adb, serial, ["ss", "-tanH"])
+    sockets = inspect_device(adb, serial, ["su", "0", "ss", "-tanH"])
     for row in sockets.splitlines():
         fields = row.split()
         if len(fields) < 5 or not fields[1].isdigit() or not fields[2].isdigit():
@@ -105,7 +123,6 @@ def diagnostics(adb, serial):
         ["shell", "service", "check", "phone"],
         ["shell", "service", "list"],
         ["shell", "ps", "-A"],
-        ["shell", "ss", "-tanp"],
         ["shell", "cat", "/proc/sys/net/ipv4/ip_local_port_range"],
         ["shell", "settings", "get", "global", "airplane_mode_on"],
     ]:
@@ -115,6 +132,13 @@ def diagnostics(adb, serial):
             print(f"Exit status: {result.returncode}\n{result.stdout}{result.stderr}", flush=True)
         except (OSError, subprocess.TimeoutExpired) as error:
             print(f"Diagnostic unavailable: {error}", flush=True)
+    print("\nSelected emulator socket diagnostic: shell su 0 ss -tanp", flush=True)
+    try:
+        require_socket_inspection_access(adb, serial)
+        sockets = inspect_device(adb, serial, ["su", "0", "ss", "-tanp"])
+        print(f"Exit status: 0\n{sockets}", flush=True)
+    except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+        print(f"Privileged socket diagnostic unavailable: {error}", flush=True)
     for port in [17001, 17002]:
         try:
             check_host_port(port)
