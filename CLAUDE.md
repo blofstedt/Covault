@@ -90,7 +90,7 @@ Playwright for browser tests.
 ```bash
 npm run verify     # typecheck + typecheck:unused + lint + test + build  ← run before committing
 npm run test:e2e   # Playwright browser tests against a local stand-in for Supabase
-npm run dev        # localhost:3000
+npm run dev        # http://127.0.0.1:4173, checks local sign-in setup first
 npm run cap:build  # web build + cap sync + scripts/sync-android.sh
 ```
 
