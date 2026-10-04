@@ -35,6 +35,8 @@ public final class BankNotificationReceiver extends BroadcastReceiver {
                     item.put("id", posted.getId());
                     item.put("title", posted.getNotification().extras.getString(Notification.EXTRA_TITLE));
                     item.put("body", posted.getNotification().extras.getString(Notification.EXTRA_TEXT));
+                    item.put("flags", posted.getNotification().flags);
+                    item.put("group", posted.getNotification().getGroup());
                     active.put(item);
                 }
                 finish("active", active);
@@ -70,14 +72,21 @@ public final class BankNotificationReceiver extends BroadcastReceiver {
                 default:
                     throw new IllegalArgumentException("Unknown scenario: " + scenario);
             }
-            Notification notification = new Notification.Builder(context, CHANNEL)
+            Notification.Builder builder = new Notification.Builder(context, CHANNEL)
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle("Covault CI Bank")
-                .setContentText(body)
-                .setStyle(new Notification.BigTextStyle().bigText(body))
-                .setAutoCancel(true)
-                .build();
-            manager.notify(intent.getIntExtra("id", 701), notification);
+                .setAutoCancel(true);
+            if (!intent.getBooleanExtra("blank_content", false)) {
+                builder.setContentTitle("Covault CI Bank")
+                    .setContentText(body)
+                    .setStyle(new Notification.BigTextStyle().bigText(body));
+            }
+            String group = intent.getStringExtra("group");
+            if (group != null) builder.setGroup(group);
+            if (intent.getBooleanExtra("group_summary", false)) {
+                if (group == null || group.isEmpty()) throw new IllegalArgumentException("A summary needs a group");
+                builder.setGroupSummary(true);
+            }
+            manager.notify(intent.getIntExtra("id", 701), builder.build());
             setResultCode(0);
             setResultData(body);
         } catch (Exception error) {
