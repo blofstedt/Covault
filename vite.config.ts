@@ -3,6 +3,7 @@ import { execSync } from 'node:child_process';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { mockSupabase } from './e2e/mockSupabase';
+import { androidTestBuild } from './android-e2e/testBuildPlugin';
 
 /**
  * Drop the ONNX Runtime WebAssembly binary that nothing loads.
@@ -84,6 +85,7 @@ export default defineConfig(({ mode }) => {
       react(),
       dropUnusedOrtWasm(),
       ...(mode === 'e2e' ? [mockSupabase()] : []),
+      ...androidTestBuild(mode),
     ],
 
     // 2. DEFINE ENV VARIABLES: This replaces process.env and import.meta.env references at build time.

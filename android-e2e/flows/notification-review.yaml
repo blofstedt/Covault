@@ -1,0 +1,51 @@
+appId: com.covault.app.test
+name: Genuine Android bank notification reaches Review once
+androidWebViewHierarchy: devtools
+---
+# The runner posts the helper notification after the manual-entry flow.
+# Keep the resulting database and native capture queue intact.
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "Open review"
+    timeout: 30000
+- tapOn:
+    id: "Open review"
+- extendedWaitUntil:
+    visible: "Second Cup"
+    timeout: 45000
+- assertVisible: '\$12\.34'
+- assertVisible:
+    id: "Delete all 1 captured transactions"
+- assertVisible:
+    id: 'Open details for Second Cup, \$12\.34'
+- takeScreenshot: android-e2e-results/notification-review
+
+# A second startup must not capture the same notification again.
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "Open review"
+    timeout: 30000
+- tapOn:
+    id: "Open review"
+- extendedWaitUntil:
+    visible: "Second Cup"
+    timeout: 30000
+- assertVisible:
+    id: "Delete all 1 captured transactions"
+- tapOn:
+    id: 'Open details for Second Cup, \$12\.34'
+- assertVisible: "Edit Entry"
+- assertVisible:
+    id: "transaction-amount"
+    text: '12\.34'
+- assertVisible:
+    id: "transaction-vendor"
+    text: "Second Cup"
+- hideKeyboard
+- pressKey: back
+- extendedWaitUntil:
+    notVisible: "Edit Entry"
+    timeout: 10000
+- assertVisible: "Second Cup"

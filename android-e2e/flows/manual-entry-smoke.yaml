@@ -1,0 +1,110 @@
+appId: com.covault.app.test
+name: Installed Android manual entry and persistence
+androidWebViewHierarchy: devtools
+---
+# The runner clears data and sets native preferences before this flow.
+# Clearing here would remove the selected bank and listener preferences.
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "add-transaction-button"
+    timeout: 30000
+
+# Read the seeded household through the normal dashboard search.
+- tapOn: 'Find entry\.\.\.'
+- inputText: "Android Seed Store"
+- hideKeyboard
+- assertVisible:
+    id: 'Transaction: Android Seed Store, 20\.00 dollars on .*'
+- tapOn:
+    id: "Clear search"
+- tapOn:
+    id: "add-transaction-button"
+- assertVisible: "Manual Entry"
+- assertVisible:
+    id: "transaction-amount"
+    focused: true
+- assertVisible:
+    text: "Confirm Entry"
+    enabled: false
+
+# These are keyboard input checks, not a simulated browser paste.
+- inputText: "abc"
+- pressKey: enter
+- assertVisible: 'Enter an amount greater than zero, with up to two decimal places\.'
+- assertVisible:
+    text: "Confirm Entry"
+    enabled: false
+- eraseText: 3
+- inputText: "0"
+- pressKey: enter
+- assertVisible: 'Enter an amount greater than zero, with up to two decimal places\.'
+- assertVisible:
+    text: "Confirm Entry"
+    enabled: false
+
+# Correct the amount. Enter must move to the real vendor field.
+- eraseText: 1
+- inputText: "12.34"
+- pressKey: enter
+- assertVisible:
+    id: "transaction-vendor"
+    focused: true
+- inputText: "Android Corner Store"
+- assertVisible:
+    id: "transaction-vendor"
+    text: "Android Corner Store"
+- pressKey: enter
+- hideKeyboard
+- assertVisible: "Manual Entry"
+- scrollUntilVisible:
+    element:
+      text: "Groceries"
+      below: "Target Vault"
+    direction: DOWN
+    timeout: 10000
+- tapOn:
+    text: "Groceries"
+    below: "Target Vault"
+- assertVisible:
+    text: "Confirm Entry"
+    enabled: true
+- takeScreenshot: android-e2e-results/manual-entry-ready
+- tapOn: "Confirm Entry"
+- extendedWaitUntil:
+    notVisible: "Manual Entry"
+    timeout: 10000
+- tapOn: 'Find entry\.\.\.'
+- inputText: "Android Corner Store"
+- hideKeyboard
+- assertVisible:
+    id: 'Transaction: Android Corner Store, 12\.34 dollars on .*'
+
+# Restart the installed app without clearing data. This must read the saved row.
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "add-transaction-button"
+    timeout: 30000
+- tapOn: 'Find entry\.\.\.'
+- inputText: "Android Corner Store"
+- hideKeyboard
+- assertVisible:
+    id: 'Transaction: Android Corner Store, 12\.34 dollars on .*'
+- tapOn:
+    id: 'Transaction: Android Corner Store, 12\.34 dollars on .*'
+- assertVisible: "Edit Entry"
+- assertVisible:
+    id: "transaction-amount"
+    text: '12\.34'
+- assertVisible:
+    id: "transaction-vendor"
+    text: "Android Corner Store"
+- hideKeyboard
+- takeScreenshot: android-e2e-results/manual-entry-reopened
+- pressKey: back
+- extendedWaitUntil:
+    notVisible: "Edit Entry"
+    timeout: 10000
+- assertVisible:
+    id: "add-transaction-button"
