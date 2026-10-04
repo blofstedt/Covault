@@ -62,7 +62,7 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           # Error reporting. Absent until the secret is added, and the app is
           # built with reporting switched off rather than broken — see
-          # lib/errorReporting.ts.
+          # lib/observability/errorReporting.ts.
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
           # The run number is already the versionCode and the release tag; this
           # makes it the reporter's release identity too, so a crash can be
@@ -202,7 +202,7 @@ jobs:
 
       # The web layer, publishable on its own. Almost every change here is
       # React rather than Java, and the app can replace this without being
-      # reinstalled — see lib/hooks/useAppUpdate.ts.
+      # reinstalled — see app/hooks/useAppUpdate.ts.
       #
       # The native fingerprint is in the filename because that is the one place
       # it cannot drift from the bundle it describes. A phone applies only the

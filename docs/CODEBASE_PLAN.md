@@ -77,7 +77,7 @@ phone app usable after each step.
   Supabase, Capacitor and native-plugin imports in `components/ui` and
   `components/shared`, and a direct Supabase client in dashboard and Review
   components; the capture-source picker, which does call the phone, moved to
-  `components/capture_sources`. Those folders also require explicit button
+  `components/Notifications/CaptureSourcePicker`. Those folders also require explicit button
   types, type-only imports, and no `any`.
 - [ ] Put related screen code together as each feature changes. A feature can
   own its screen, small controls, hook, data operations, and tests. Keep

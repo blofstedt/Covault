@@ -4,35 +4,35 @@ import { App as CapApp } from '@capacitor/app';
 import Auth from '../components/Auth';
 import Dashboard from '../components/Dashboard';
 import Onboarding from '../components/Onboarding';
-import FullScreenLoader from '../components/FullScreenLoader';
-import SubscriptionRequired from '../components/SubscriptionRequired';
-import { getEntitlementStatus } from '../lib/entitlement';
-import { serverNow } from '../lib/serverClock';
-import ErrorBoundary from '../components/ErrorBoundary';
-import UpdateBanner from '../components/UpdateBanner';
+import FullScreenLoader from '../components/shared/FullScreenLoader';
+import SubscriptionRequired from '../components/Subscription';
+import { getEntitlementStatus } from '../lib/auth/entitlement';
+import { serverNow } from '../lib/time/serverClock';
+import ErrorBoundary from '../components/shared/ErrorBoundary';
+import UpdateBanner from '../components/Updates';
 import type { AppState, BudgetCategory, Transaction, Toast } from '../types';
-import { supabase } from '../lib/supabase';
-import { useAuthState, AuthStatus } from '../lib/hooks/useAuthState';
-import { useDeepLinks } from '../lib/hooks/useDeepLinks';
-import { useHardwareBack } from '../lib/hooks/useHardwareBack';
-import { useNotificationListener } from '../lib/hooks/useNotificationListener';
-import { useNotificationSetupCompletion } from '../lib/hooks/useNotificationSetupCompletion';
-import { covaultNotification, autoDetectAndSaveMonitoredApps } from '../lib/covaultNotification';
-import { loadBankingAppsFromDB } from '../lib/bankingApps';
-import { useAppTheme } from '../lib/hooks/useAppTheme';
-import { useAppUpdate } from '../lib/hooks/useAppUpdate';
-import { getInstalledVersionCode } from '../lib/appUpdate';
-import { setReportingBuild, setReportingUser } from '../lib/errorReporting';
-import { useUserData } from '../lib/hooks/useUserData';
-import { markOnboarded } from '../lib/onboardingState';
-import { noteCaptureEnabled, noteCaptureDisabled } from '../lib/bankHeartbeat';
-import { useFirstPaintCache } from '../lib/hooks/useFirstPaintCache';
-import { preloadAIModel } from '../lib/aiExtractor';
-import { setHapticsEnabled } from '../lib/haptics';
-import { log } from '../lib/log';
-import { resolveToastMessage } from '../lib/toastSubject';
-import { callRpc } from '../lib/apiHelpers';
-import { deleteAccountErrorMessage } from '../lib/accountDeletion';
+import { supabase } from '../lib/api/supabase';
+import { useAuthState, AuthStatus } from './hooks/useAuthState';
+import { useDeepLinks } from './hooks/useDeepLinks';
+import { useHardwareBack } from './hooks/useHardwareBack';
+import { useNotificationListener } from './hooks/useNotificationListener';
+import { useNotificationSetupCompletion } from './hooks/useNotificationSetupCompletion';
+import { covaultNotification, autoDetectAndSaveMonitoredApps } from '../lib/native/covaultNotification';
+import { loadBankingAppsFromDB } from '../lib/capture/bankingApps';
+import { useAppTheme } from './hooks/useAppTheme';
+import { useAppUpdate } from './hooks/useAppUpdate';
+import { getInstalledVersionCode } from '../lib/native/appUpdate';
+import { setReportingBuild, setReportingUser } from '../lib/observability/errorReporting';
+import { useUserData } from './data/useUserData';
+import { markOnboarded } from './hooks/onboardingState';
+import { noteCaptureEnabled, noteCaptureDisabled } from '../lib/capture/bankHeartbeat';
+import { useFirstPaintCache } from './hooks/useFirstPaintCache';
+import { preloadAIModel } from '../lib/ai/aiExtractor';
+import { setHapticsEnabled } from '../lib/native/haptics';
+import { log } from '../lib/observability/log';
+import { resolveToastMessage } from '../lib/ui/toastSubject';
+import { callRpc } from '../lib/api/apiHelpers';
+import { deleteAccountErrorMessage } from '../lib/auth/accountDeletion';
 
 // `Toast` lives in types.ts because Dashboard and the Review page raise their
 // own (e.g. Undo after filing a captured transaction) and importing it from
@@ -196,7 +196,7 @@ const App: React.FC = () => {
   useHardwareBack();
 
   // Keep a copy of what is on screen so the next launch can draw it before the
-  // network answers. See lib/firstPaintCache.ts.
+  // network answers. See lib/cache/firstPaintCache.ts.
   useFirstPaintCache(appState);
 
   // Pre-load the on-device AI model in the background so the first
@@ -221,7 +221,7 @@ const App: React.FC = () => {
   // There used to be an executor here that inserted a real row for every due
   // date it thought was missing. It double-counted every subscription: the
   // dashboard already includes the current month's recurring occurrences via
-  // `lib/projectedTransactions.ts` (they are solidified to is_projected:false
+  // `lib/transactions/projectedTransactions.ts` (they are solidified to is_projected:false
   // once their date has passed), so the executor's row was a second copy of a
   // charge already in the total. Its rows also landed in the review queue as
   // label 'Automatic', so the user deleted them by hand each day — and once
@@ -283,7 +283,7 @@ const App: React.FC = () => {
   // warning that depended on which route was taken would be wrong for the other
   // two. Stamping it is idempotent; switching capture off clears it, so the
   // grace period starts again rather than counting silence from a time nothing
-  // was listening. See lib/bankHeartbeat.ts.
+  // was listening. See lib/capture/bankHeartbeat.ts.
   useEffect(() => {
     if (appState.settings.notificationsEnabled) noteCaptureEnabled();
     else noteCaptureDisabled();
@@ -464,7 +464,7 @@ const App: React.FC = () => {
     return <FullScreenLoader />;
   }
 
-  // Against the database's clock, not the phone's. See lib/serverClock.ts.
+  // Against the database's clock, not the phone's. See lib/time/serverClock.ts.
   const entitlementStatus = getEntitlementStatus(appState.user, serverNow());
 
   return (

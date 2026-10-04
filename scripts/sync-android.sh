@@ -56,7 +56,7 @@ cp -v "$CUSTOM_DIR/res/drawable/ic_covault_foreground.xml" "$RES_DIR/drawable/"
 cp -v "$CUSTOM_DIR/res/drawable/ic_launcher_legacy.xml" "$RES_DIR/drawable/" 2>/dev/null || true
 cp -v "$CUSTOM_DIR/res/drawable/ic_stat_covault.xml" "$RES_DIR/drawable/"
 cp -v "$CUSTOM_DIR/res/drawable/ic_stat_covault_mono.xml" "$RES_DIR/drawable/" 2>/dev/null || true
-# The drawable lib/appNotifications.ts names in NOTIF_SMALL_ICON. Without it
+# The drawable lib/native/appNotifications.ts names in NOTIF_SMALL_ICON. Without it
 # Android cannot resolve the small icon and substitutes a default glyph.
 cp -v "$CUSTOM_DIR/res/drawable/ic_stat_dollar.xml" "$RES_DIR/drawable/"
 cp -v "$CUSTOM_DIR/res/mipmap-anydpi-v26/ic_launcher.xml" "$RES_DIR/mipmap-anydpi-v26/"
@@ -89,7 +89,7 @@ cp -v "$CUSTOM_DIR/res/values/widget_strings.xml" "$RES_DIR/values/"
 # Notification status bar icon (monochrome white). Raster fallbacks at
 # each density ensure older Android versions and the system status bar
 # pick up a reliable icon. The smallIcon name referenced from
-# lib/appNotifications.ts is `ic_stat_covault` (no extension).
+# lib/native/appNotifications.ts is `ic_stat_covault` (no extension).
 for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
   src_dir="$CUSTOM_DIR/res/mipmap-$density"
   if [ -d "$src_dir" ]; then

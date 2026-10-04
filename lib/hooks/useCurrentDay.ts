@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
-import { getLocalToday } from '../dateUtils';
+import { getLocalToday } from '../time/dateUtils';
 
 /**
  * Today's local calendar day as `YYYY-MM-DD`, kept honest while the app is

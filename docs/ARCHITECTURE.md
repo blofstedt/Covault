@@ -21,26 +21,30 @@ index.css                Tailwind 4 entry, shared theme, keyframes + reduced mot
 public/app-unavailable.html  Plain HTML recovery for Android startup errors
 
 components/
-  Dashboard.tsx                  Home. Owns SETTING_DB_KEYS and the widget-snapshot push
-  TransactionParsing.tsx         The "Review" page (bottom-bar tab)
-  BudgetSection.tsx              A budget "vial"
-  dashboard_components/          Balance card, BudgetFlowChart (d3, + the seven-month rail), bottom bar, search
-    settings_modal_components/   One file per settings section
-  transaction_parsing/           Review rows, action sheets, learned-rules card
-  ui/                            Portal, ConfirmModal, ToggleSwitch, PageShell, ParsingCard
+  Dashboard/                 Home, balance, lazy chart, vials and local hooks
+  Review/                    Captured purchases, rows, action sheets and learned rules
+  Transactions/              Manual entry, transaction items and actions
+  Settings/sections/         Settings dialog and one file per settings section
+  Onboarding/steps/          Setup router, progress and steps
+  Tour/                      Guided tour, its steps and the demo screen
+  Auth/, Notifications/, Subscription/, Updates/, Legal/
+  ui/, shared/               Reusable controls, portals and visual pieces
+  CalendarPicker/            Shared calendar control
+
+app/hooks/, app/data/        App-wide lifecycle and user/household orchestration
 
 lib/
-  notificationProcessor.ts   THE capture pipeline (1.7k lines — highest-risk file here)
-  deviceTransactionParser.ts Regex extraction: amount, vendor, confidence, pre-auth detection
-  aiExtractor.ts             On-device flan-T5; few-shot learning from user corrections
-  reviewQueue.ts             Single definition of "waiting in Review"
-  vendorMatchConfidence.ts   Match scoring + the auto-file threshold
-  widgetSnapshot.ts          What the home-screen widget draws
-  caughtTransactionOps.ts    File / undo payloads (exact inverses)
-  haptics.ts                 Safe wrapper; no-ops on web + reduced motion + when off
-  hooks/                     useUserData (facade) → useDataLoading, useTransactionOps,
-                             useHouseholdLinking, useUserSettings, useNotificationListener, ...
-  __tests__/                 Vitest
+  capture/                   Capture pipeline, parsing, sources, holds and review queue
+  vendors/                   Names, matching, vendor overrides and community rules
+  transactions/              Recurrence, refunds, ordering and completed-entry validation
+  budgets/, money/           Allocation and category palette; strict money parsing/formatting
+  api/, auth/, cache/        Supabase boundaries, account/auth helpers and cached state
+  native/, ai/               Capacitor bridges/widget snapshots and on-device extraction
+  time/, navigation/, observability/, settings/, ui/
+  hooks/                     Reusable interaction hooks
+  <owner>/__tests__/         Unit/component tests next to their owner
+
+test/__tests__/regressions/  Cross-module and source-reading regression checks
 
 android-custom/            SOURCE for native code. scripts/sync-android.sh copies into android/
   NotificationListener.java  Capture + capture notification + tray suppression + widget delta
@@ -60,6 +64,8 @@ copies of the Java — `NotificationListener.java` was 609 lines against the rea
 2026-08-01.
 
 ---
+
+See `FOLDER_STRUCTURE.md` for public entry points, ownership and loading exceptions.
 
 ## 2. Notification capture
 
@@ -81,7 +87,7 @@ Android bank notification
       5a. category: vendor overrides first, then AI guess
       6. insert  (caught_cleared: true if auto-file took it)
       6b. post-insert race recovery (rolls back a losing duplicate insert)
-  → Review UI in components/transaction_parsing/
+  → Review UI in components/Review/
 ```
 
 **The ordering is the safety property.** A dismissed bank notification cannot be
@@ -124,7 +130,7 @@ donut is drawn natively on a Canvas. It also has **no Supabase session**, so it
 cannot fetch.
 
 - The app pushes a pre-computed snapshot to SharedPreferences whenever the
-  figures change (`lib/widgetSnapshot.ts`, pushed from `Dashboard.tsx`).
+  figures change (`lib/native/widgetSnapshot.ts`, pushed from `Dashboard.tsx`).
 - The native listener appends optimistic **deltas** for captures made with the
   app closed, so a purchase moves the donut within seconds. Only for a capture
   it also announced: a quiet one (price alert, user skip rule, known recurring)
@@ -224,12 +230,12 @@ policies, grants or function bodies.
 
 ## 5. Money model
 
-- **Refund** = `amount < 0` and `is_income !== true`. `lib/refundMatching.ts`
+- **Refund** = `amount < 0` and `is_income !== true`. `lib/transactions/refundMatching.ts`
   pairs it to an expense (same vendor, same |amount|, same budget, ≤30 days),
   hides the refund from every list, strikes through the matched expense, and
   lets the negative amount reduce the budget total.
 - **Recurring** — display-only, never written to the database.
-  `lib/projectedTransactions.ts` projects 3 months ahead; occurrences earlier in
+  `lib/transactions/projectedTransactions.ts` projects 3 months ahead; occurrences earlier in
   the current month are solidified to `is_projected: false` so they count in the
   dashboard total. There used to be a second system (`lib/recurringExecutor.ts`)
   that inserted a real row per due date; it double-counted every subscription
@@ -244,7 +250,7 @@ policies, grants or function bodies.
 
 ## 6. Subscriptions
 
-`lib/entitlement.ts`'s `getEntitlementStatus` is the single source of truth,
+`lib/auth/entitlement.ts`'s `getEntitlementStatus` is the single source of truth,
 read once in `app/App.tsx` and applied to the whole app — there is no per-feature
 gating (`PremiumGate`/`SubscribeModal` exist but are unused dead code left
 over from an earlier, abandoned per-feature design; do not wire them back up).

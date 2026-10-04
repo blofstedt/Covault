@@ -18,6 +18,7 @@ import playwright from 'eslint-plugin-playwright';
 import testingLibrary from 'eslint-plugin-testing-library';
 import tailwind from 'eslint-plugin-tailwindcss';
 import globals from 'globals';
+import folderStructure from './.eslint/feature-entrypoints.mjs';
 import unicornBaselineRules from './.eslint/unicorn-baseline.js';
 
 // React and accessibility plugins still use APIs ESLint 10 removed. The
@@ -91,7 +92,7 @@ export default tseslint.config(
       'unicorn/consistent-compound-words': 'off',
       // null is load-bearing here: "the read failed" (null) and "the answer
       // is nothing" ([]) are different, and conflating them is how a failed
-      // load once emptied the dashboard. See lib/budgetFallback.ts.
+      // load once emptied the dashboard. See lib/budgets/budgetFallback.ts.
       'unicorn/no-null': 'off',
       'unicorn/no-useless-undefined': 'off',
       // Changes the result: the hashes and the notification ids are defined
@@ -230,7 +231,7 @@ export default tseslint.config(
   {
     // New runtime validation cannot bypass a schema with an unsafe cast or
     // leak an unchecked value. Keep legacy boundary migrations separate.
-    files: ['lib/validation/**/*.ts', 'lib/manualAmount.ts'],
+    files: ['lib/transactions/validation/**/*.ts', 'lib/money/manualAmount.ts'],
     extends: [...tseslint.configs.recommendedTypeChecked],
     languageOptions: {
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
@@ -245,7 +246,9 @@ export default tseslint.config(
   {
     // Start strict local rules at owned boundaries. Legacy app files still
     // have `any` values that need to be removed alongside their data parsing.
-    files: ['components/ui/**/*.{ts,tsx}', 'components/shared/**/*.{ts,tsx}', 'components/capture_sources/**/*.{ts,tsx}', 'components/TransactionForm.tsx', 'e2e/**/*.ts'],
+    files: ['components/ui/**/*.{ts,tsx}', 'components/shared/**/*.{ts,tsx}', 'components/Notifications/CaptureSourcePicker/**/*.{ts,tsx}', 'components/Transactions/TransactionForm.tsx', 'e2e/**/*.ts'],
+    // These shell presentations moved from the root; preserve their existing lint scope.
+    ignores: ['components/shared/CovaultIcon.tsx', 'components/shared/DashboardBottomBar.tsx', 'components/shared/ErrorBoundary.tsx', 'components/shared/FullScreenLoader.tsx'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/consistent-type-imports': ['error', { fixStyle: 'inline-type-imports' }],
@@ -259,7 +262,7 @@ export default tseslint.config(
     rules: {
       'no-restricted-imports': ['error', {
         patterns: [{
-          group: ['@supabase/*', '@capacitor/*', '**/lib/supabase', '**/lib/apiHelpers', '**/lib/covaultNotification', '**/lib/captureSources'],
+          group: ['@supabase/*', '@capacitor/*', '**/lib/api/supabase', '**/lib/api/apiHelpers', '**/lib/native/covaultNotification', '**/lib/capture/captureSources'],
           message: 'Shared controls cannot read household data or call native plugins. Pass values and actions through props.',
         }],
       }],
@@ -269,15 +272,22 @@ export default tseslint.config(
     // Dashboard and review features use their existing data hooks and actions.
     // Settings sections in this tree do own native actions, so this rule only
     // blocks direct Supabase client imports.
-    files: ['components/dashboard_components/**/*.{ts,tsx}', 'components/transaction_parsing/**/*.{ts,tsx}'],
+    files: ['components/Dashboard/**/*.{ts,tsx}', 'components/Settings/**/*.{ts,tsx}', 'components/Review/**/*.{ts,tsx}'],
+    ignores: ['components/Dashboard/Dashboard.tsx', 'components/Review/TransactionParsing.tsx'],
     rules: {
       'no-restricted-imports': ['error', {
         patterns: [{
-          group: ['@supabase/*', '**/lib/supabase'],
+          group: ['@supabase/*', '**/lib/api/supabase'],
           message: 'Use the feature data hooks or actions instead of opening a Supabase client in a component.',
         }],
       }],
     },
+  },
+  {
+    files: ['app/**/*.{ts,tsx}', 'components/**/*.{ts,tsx}', 'lib/**/*.{ts,tsx}', 'visual-tests/**/*.{ts,tsx}', 'android-e2e/**/*.ts'],
+    ignores: ['**/__tests__/**'],
+    plugins: { 'folder-structure': folderStructure },
+    rules: { 'folder-structure/feature-entrypoints': 'error' },
   },
   {
     // The entry point mounts the app; nothing hot-reloads it.

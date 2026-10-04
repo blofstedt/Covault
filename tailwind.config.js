@@ -54,7 +54,7 @@ export default {
         // only restarts an animation when the animation NAME changes — React
         // re-rendering with the same class does nothing. The form alternates
         // between the two, so every tap is answered. See `nudgeClass` in
-        // components/TransactionForm.tsx.
+        // components/Transactions/TransactionForm.tsx.
         'attention-nudge-a': {
           '0%, 100%': { boxShadow: '0 0 0 0 rgba(16, 185, 129, 0.0)' },
           '50%': { boxShadow: '0 0 0 5px rgba(16, 185, 129, 0.45)' },
@@ -92,7 +92,7 @@ export default {
   // generates `animate-fade-in`, not `fade-in`, and nothing referenced that
   // name. They are gone now that the real implementations exist.
   //
-  // lib/__tests__/tailwindAnimatePlugin.test.ts fails the build if these
+  // test/__tests__/regressions/tailwindAnimatePlugin.test.ts fails the build if these
   // classes are ever used again without the plugin registered here.
   plugins: [tailwindcssAnimate],
 }

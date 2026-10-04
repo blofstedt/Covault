@@ -1,5 +1,5 @@
 import { createTestBackend, TEST_BANK_PACKAGE, TEST_SUPABASE_URL, TEST_USER_ID } from './backend';
-import { clearFirstPaintCache } from '../lib/firstPaintCache';
+import { clearFirstPaintCache } from '../lib/cache/firstPaintCache';
 
 // Vite inserts this as the first dependency of the app entry. It never ships
 // in a normal build, and there is no production flag or login bypass at runtime.

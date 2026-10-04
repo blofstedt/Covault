@@ -1,9 +1,9 @@
 import { createRoot } from 'react-dom/client';
 import { QueryClientProvider } from '@tanstack/react-query';
-import GuidedTour from '../components/tour/GuidedTour';
-import TourDemoScreen from '../components/tour/TourDemoScreen';
-import { queryClient } from '../lib/queryClient';
-import type { TourStage } from '../lib/tourSteps';
+import GuidedTour from '../components/Tour';
+import TourDemoScreen from '../components/Tour/TourDemoScreen';
+import { queryClient } from '../lib/cache/queryClient';
+import type { TourStage } from '../components/Tour/tourSteps';
 import CalendarFixture from './CalendarFixture';
 import '../index.css';
 
