@@ -80,6 +80,11 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
+    server: {
+      host: '127.0.0.1',
+      port: 4173,
+      strictPort: true,
+    },
     plugins: [
       react(),
       dropUnusedOrtWasm(),
