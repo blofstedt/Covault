@@ -4,7 +4,9 @@ androidWebViewHierarchy: devtools
 ---
 # The runner posts the helper notification after the manual-entry flow.
 # Keep the resulting database and native capture queue intact.
-- launchApp
+# Do not force-stop the running app while real OS delivery is still in flight.
+- launchApp:
+    stopApp: false
 - extendedWaitUntil:
     visible:
       id: "Open review"
