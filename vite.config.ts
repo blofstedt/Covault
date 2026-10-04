@@ -2,6 +2,7 @@ import path from 'node:path';
 import { execSync } from 'node:child_process';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import { mockSupabase } from './e2e/mockSupabase';
 
 /**
@@ -82,6 +83,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       react(),
+      tailwindcss(),
       dropUnusedOrtWasm(),
       ...(mode === 'e2e' ? [mockSupabase()] : []),
     ],
@@ -135,6 +137,8 @@ export default defineConfig(({ mode }) => {
     build: {
       // 3. OPTIONAL: Ensures the build is compatible with older mobile WebViews
       target: 'es2015',
+      // Tailwind 4's supported CSS engines. JavaScript keeps its existing target.
+      cssTarget: ['chrome111', 'safari16.4', 'firefox128'],
       // Useful for debugging if the white screen persists
       sourcemap: true,
       rollupOptions: {

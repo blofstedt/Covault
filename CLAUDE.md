@@ -82,7 +82,7 @@ Personal budget app for a household. Users track spending by category;
 transactions are captured automatically from Android banking notifications. Two
 people can share a vault.
 
-React 19 + TypeScript + Vite 6 + Tailwind 3, wrapped in Capacitor 8 for Android.
+React 19 + TypeScript + Vite 6 + Tailwind 4, wrapped in Capacitor 8 for Android.
 Supabase (Postgres + RLS) for data. On-device flan-T5 via
 `@huggingface/transformers` for parsing. Vitest for unit and component tests;
 Playwright for browser tests.
@@ -247,6 +247,15 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
 - **`tailwindcss-animate` must stay in `tailwind.config.js` plugins.** ~40 uses
   of `animate-in` / `zoom-in-*` / `slide-in-*` emit *no CSS at all* without it,
   silently. `lib/__tests__/tailwindAnimatePlugin.test.ts` guards this.
+- **Tailwind 4 still draws this app's existing palette and motion.**
+  `index.css` is the Tailwind entry and loads the shared JavaScript theme.
+  Its compatibility tokens retain the colors, shadows and control treatments
+  the app used before the upgrade; replacing them with framework defaults is a
+  visual change, not dependency cleanup. Android requires WebView 111 or newer
+  in `capacitor.config.ts`. The separate `public/app-unavailable.html` recovery
+  page uses plain CSS so an outdated browser can still explain how to reopen
+  the app. Changing that native configuration changes the update fingerprint,
+  so this migration needs an APK rather than a web bundle alone.
 - **Vendor matching exists in three places on purpose** — the TS pipeline, the
   TS widget snapshot, and `WidgetDeltaStore.java`. The Java copy is deliberately
   dumber. `widgetPalette.test.ts` and `widgetAutoFileThreshold.test.ts` fail the

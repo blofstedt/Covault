@@ -21,6 +21,13 @@ working while the code is reorganized.
 - Node.js 22.22.2+
 - A Supabase project
 - For local Android builds: JDK 21 and the Android SDK (or let CI do it)
+- Browser: Chrome 111+, Safari 16.4+, or Firefox 128+
+- Android: System WebView 111 or newer. Update Android System WebView and Chrome
+  through your app store if the app cannot open.
+
+These browser requirements come from [Tailwind 4](https://tailwindcss.com/docs/upgrade-guide).
+The Android configuration declares the same minimum. Its plain HTML recovery page
+works without React or Tailwind, including when the browser is too old to draw the app.
 
 ## Setup
 
