@@ -3,8 +3,8 @@ import { execSync } from 'node:child_process';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
-import { mockSupabase } from './e2e/mockSupabase';
-import { androidTestBuild } from './android-e2e/testBuildPlugin';
+import { mockSupabase } from './e2e/mockSupabase.ts';
+import { androidTestBuild } from './android-e2e/testBuildPlugin.ts';
 
 /**
  * Drop the ONNX Runtime WebAssembly binary that nothing loads.
@@ -137,7 +137,7 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         // Sets '@' to point to your project root
-        '@': path.resolve(__dirname, '.'),
+        '@': path.resolve(import.meta.dirname, '.'),
       },
     },
 
@@ -148,7 +148,7 @@ export default defineConfig(({ mode }) => {
       cssTarget: ['chrome111', 'safari16.4', 'firefox128'],
       // Useful for debugging if the white screen persists
       sourcemap: true,
-      rollupOptions: {
+      rolldownOptions: {
         output: {
           // Split the heavy third-party deps out of the entry chunk so a cold
           // start doesn't parse them all. The AI stack in particular is larger

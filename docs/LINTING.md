@@ -27,7 +27,32 @@ Library plugin recognizes this provider helper without mistaking ReactDOM's
 `lib/__tests__/lintEnforcement.test.ts` runs invalid and valid examples through
 the real ESLint configuration. It checks that browser waits, component user
 events, unsafe validation casts, lost validation promises and shared-control
-imports are actually rejected.
+imports are actually rejected. It also checks React, accessibility, conditional
+hooks and missing effect dependencies with rejected and accepted examples.
+
+## Tooling upgrades
+
+ESLint 10 uses the official `@eslint/compat` adapter for the React and JSX
+accessibility plugins, which still declare older ESLint peer ranges and use
+removed APIs. Only those plugins are adapted. Unicorn's current rules run
+directly. The committed `.npmrc` makes ordinary local and CI installations use
+the same peer-resolution setting; it does not establish compatibility by
+itself. The real rule probes above verify the checks the app relies on.
+
+`.eslint/unicorn-baseline.js` records the previously reviewed Unicorn 65 rule
+selection while the installed plugin supplies the latest implementations.
+It contains configuration data, not an older plugin dependency. New recommended
+rules are reviewed separately instead of silently changing the application's
+naming, formatting or control-flow policy during a package upgrade. The two
+expanded guard-format rules remain disabled for the reasons documented in
+`eslint.config.js`; correctness, promise, validation and import checks remain
+enforced.
+
+React Hooks retains hook-order and effect-dependency checks. Its newer React
+Compiler migration diagnostics are not enabled because this application does
+not use that compiler. Introducing it and its additional checks is a separate
+change. TypeScript remains on 5.8 as requested; its proposed 7.x upgrade is
+deferred.
 
 ## Limits
 
@@ -55,7 +80,9 @@ The added plugins are pinned to the stable versions checked on 2026-10-03:
 - `eslint-plugin-testing-library` 7.16.2, MIT. See its [official repository](https://github.com/testing-library/eslint-plugin-testing-library).
 
 Their npm metadata and licenses at the matching Git tags were checked before
-installation. The installation audit still reports the same six existing high
-severity findings in the Tailwind 3 build-tool chain. The production-only audit
-reports no known vulnerabilities. These checks do not establish a clean full
-dependency audit.
+installation. After the Tailwind 4 migration and the 2026-10-04 development-tool
+upgrade, both the full and production-only npm audits report zero known
+vulnerabilities. The compatibility adapter is `@eslint/compat` 2.1.1,
+[Apache-2.0](https://github.com/eslint/rewrite/blob/main/LICENSE).
+Audit results can change as new advisories are published. The existing plugin
+peer-range limitations still need the actual rule checks described above.

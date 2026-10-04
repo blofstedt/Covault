@@ -10,6 +10,63 @@ async function lint(source: string, filePath: string) {
 }
 
 describe('repository lint enforcement', () => {
+  it('retains React checks through the ESLint compatibility adapter', async () => {
+    const source = `
+      export default function Notice() {
+        return <div children="Saved" />;
+      }
+    `;
+    expect(await lint(source, 'components/ui/LintProbe.tsx')).toEqual([
+      'react/no-children-prop',
+    ]);
+    expect(await lint(source.replace('<div children="Saved" />', '<div>Saved</div>'),
+      'components/ui/LintProbe.tsx')).toEqual([]);
+  });
+
+  it('retains accessibility checks through the ESLint compatibility adapter', async () => {
+    const source = `
+      export default function Avatar() {
+        return <img src="/avatar.png" />;
+      }
+    `;
+    expect(await lint(source, 'components/ui/LintProbe.tsx')).toEqual([
+      'jsx-a11y/alt-text',
+    ]);
+    expect(await lint(source.replace('src="/avatar.png"', 'src="/avatar.png" alt="Profile"'),
+      'components/ui/LintProbe.tsx')).toEqual([]);
+  });
+
+  it('rejects conditional hooks and accepts the same hook called unconditionally', async () => {
+    const source = `
+      import { useEffect } from 'react';
+      export default function Clock({ enabled }: { enabled: boolean }) {
+        if (enabled) useEffect(() => { document.title = 'Clock'; }, []);
+        return <span>Clock</span>;
+      }
+    `;
+    expect(await lint(source, 'components/ui/LintProbe.tsx')).toEqual([
+      'react-hooks/rules-of-hooks',
+    ]);
+    expect(await lint(source.replace("if (enabled) useEffect(() => { document.title = 'Clock'; }, []);",
+      "useEffect(() => { if (enabled) document.title = 'Clock'; }, [enabled]);"),
+    'components/ui/LintProbe.tsx')).toEqual([]);
+  });
+
+  it('rejects stale effect dependencies and accepts the declared dependency', async () => {
+    const source = `
+      import { useEffect } from 'react';
+      export default function Title({ title }: { title: string }) {
+        useEffect(() => { document.title = title; }, []);
+        return <span>{title}</span>;
+      }
+    `;
+    expect(await lint(source, 'components/ui/LintProbe.tsx')).toEqual([
+      'react-hooks/exhaustive-deps',
+    ]);
+    expect(await lint(source.replace('}, []);', '}, [title]);'),
+      'components/ui/LintProbe.tsx')).toEqual([]);
+  });
+
   it('rejects unawaited browser actions and assertions and accepts awaited equivalents', async () => {
     const invalid = await lint(`
       import { test, expect } from './fixtures';

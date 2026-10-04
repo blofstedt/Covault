@@ -121,7 +121,7 @@ export function getCommunityPack(): CommunityRule[] {
 let packIndex: { raw: string; byKey: Map<string, CommunityRule> } | null = null;
 
 function readPackIndex(): Map<string, CommunityRule> | null {
-  let raw: string | null = null;
+  let raw: string | null;
   try {
     raw = localStorage.getItem(PACK_KEY);
   } catch {
@@ -130,7 +130,7 @@ function readPackIndex(): Map<string, CommunityRule> | null {
   if (!raw) return null;
   if (packIndex && packIndex.raw === raw) return packIndex.byKey;
 
-  let stored: StoredPack | null = null;
+  let stored: StoredPack | null;
   try {
     stored = JSON.parse(raw) as StoredPack;
   } catch {

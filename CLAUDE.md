@@ -82,7 +82,7 @@ Personal budget app for a household. Users track spending by category;
 transactions are captured automatically from Android banking notifications. Two
 people can share a vault.
 
-React 19 + TypeScript + Vite 6 + Tailwind 4, wrapped in Capacitor 8 for Android.
+React 19 + TypeScript + Vite 8 + Tailwind 4, wrapped in Capacitor 8 for Android.
 Supabase (Postgres + RLS) for data. On-device flan-T5 via
 `@huggingface/transformers` for parsing. Vitest for unit and component tests;
 Playwright for browser tests.

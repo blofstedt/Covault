@@ -3,7 +3,7 @@ export const MAX_MANUAL_AMOUNT_CENTS = 999_999_999_999;
 
 function readManualCents(value: string): number | null {
   if (!/^(?:\d+(?:\.\d{0,2})?|\.\d{1,2})$/.test(value)) return null;
-  const [whole, fraction = ''] = value.split('.');
+  const [whole, fraction = ''] = value.split('.', 2);
   // Build cents before converting to Number, so a large dollar value cannot
   // round off its fraction during multiplication.
   return Number(`${whole || '0'}${fraction.padEnd(2, '0')}`);
