@@ -10,7 +10,7 @@ and household data, with no Supabase credentials or real bank account.
 | Check | Behavior exercised |
 | --- | --- |
 | Native instrumentation | Genuine Android bank notifications, durable capture, notification permission and source filtering, listener reconnect, and widget totals. See [native test details](../android-test/README.md). |
-| Manual entry | Seeded dashboard row; invalid keyboard text and zero cannot be saved; Enter advances to the vendor; a $12.34 Groceries entry saves; restarting the app preserves it; its editor reopens; Android Back closes it. |
+| Manual entry | Seeded dashboard row; invalid keyboard text and zero cannot be saved; Enter moves focus from amount to vendor, then to the first category; a $12.34 Groceries entry saves; restarting the app preserves it; its editor reopens; Android Back closes it. |
 | Notification Review | A helper app posts a real $12.34 Second Cup notification through Android; the app shows one captured row in Review; reopening preserves one row; the editor shows the captured vendor and amount. |
 
 These are test expectations, not a report that a particular run passed. Check

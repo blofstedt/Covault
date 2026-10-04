@@ -54,9 +54,13 @@ androidWebViewHierarchy: devtools
 - assertVisible:
     id: "transaction-vendor"
     text: "Android Corner Store"
+# Enter moves to the first category and dismisses the IME. Maestro's
+# hideKeyboard always sends Back, which would close this still-open form.
 - pressKey: enter
-- hideKeyboard
 - assertVisible: "Manual Entry"
+- assertVisible:
+    text: "Housing"
+    focused: true
 - scrollUntilVisible:
     element:
       text: "Groceries"
@@ -100,7 +104,7 @@ androidWebViewHierarchy: devtools
 - assertVisible:
     id: "transaction-vendor"
     text: "Android Corner Store"
-- hideKeyboard
+# Existing-row dialogs initially focus a button, so there is no IME to dismiss.
 - takeScreenshot: android-e2e-results/manual-entry-reopened
 - pressKey: back
 - extendedWaitUntil:

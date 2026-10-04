@@ -45,7 +45,7 @@ androidWebViewHierarchy: devtools
 - assertVisible:
     id: "transaction-vendor"
     text: "Second Cup"
-- hideKeyboard
+# Existing-row dialogs initially focus a button; Back should close the editor.
 - pressKey: back
 - extendedWaitUntil:
     notVisible: "Edit Entry"
