@@ -13,6 +13,8 @@ import jsxA11y from 'eslint-plugin-jsx-a11y';
 import unicorn from 'eslint-plugin-unicorn';
 import tanstackQuery from '@tanstack/eslint-plugin-query';
 import vitest from '@vitest/eslint-plugin';
+import playwright from 'eslint-plugin-playwright';
+import testingLibrary from 'eslint-plugin-testing-library';
 import tailwind from 'eslint-plugin-tailwindcss';
 import globals from 'globals';
 
@@ -27,7 +29,7 @@ export default tseslint.config(
   react.configs.flat['jsx-runtime'],
   jsxA11y.flatConfigs.recommended,
   ...tanstackQuery.configs['flat/recommended'],
-  ...tailwind.configs['flat/recommended'],
+  tailwind.configs.recommended,
   {
     files: ['**/*.{ts,tsx,js,mjs,cjs}'],
     languageOptions: {
@@ -35,8 +37,12 @@ export default tseslint.config(
       sourceType: 'module',
       globals: { ...globals.browser, ...globals.node },
     },
-    plugins: { 'react-hooks': reactHooks, 'react-refresh': reactRefresh },
-    settings: { react: { version: 'detect' } },
+    plugins: { 'react-hooks': reactHooks, 'react-refresh': reactRefresh, tailwindcss: tailwind },
+    settings: {
+      react: { version: 'detect' },
+      'jsx-a11y': { components: { NumericFormat: 'input' } },
+      tailwindcss: { cssConfigPath: './index.css' },
+    },
     rules: {
       ...reactHooks.configs.recommended.rules,
       // `catch (err: any)` and raw PostgREST rows are this codebase's idiom;
@@ -149,6 +155,9 @@ export default tseslint.config(
       // ── Tailwind: class ORDER and shorthands are taste; contradicting
       // classes and made-up class names are bugs, and stay on.
       'tailwindcss/classnames-order': 'off',
+      // Equivalent supported spellings are formatting, like class order.
+      'tailwindcss/enforces-canonical-classname': 'off',
+      'tailwindcss/important-modifier-suffix': 'off',
       'tailwindcss/enforces-shorthand': 'off',
       'tailwindcss/no-unnecessary-arbitrary-value': 'off',
       'tailwindcss/no-custom-classname': 'error',
@@ -174,9 +183,46 @@ export default tseslint.config(
     },
   },
   {
+    // Async browser actions and assertions must be awaited; fixed delays,
+    // focused tests and bypassed actionability checks hide regressions.
+    ...playwright.configs['flat/recommended'],
+    files: ['e2e/**/*.ts'],
+    rules: {
+      ...playwright.configs['flat/recommended'].rules,
+      'playwright/missing-playwright-await': ['error', { includePageLocatorMethods: true }],
+    },
+  },
+  {
+    // Test the controls through their accessible names, await user events,
+    // and keep side effects out of retrying assertions.
+    ...testingLibrary.configs['flat/react'],
+    files: ['**/__tests__/**/*.{test,spec}.{ts,tsx}'],
+    settings: {
+      'testing-library/custom-renders': ['renderWithProviders'],
+      // Only our provider helper re-exports a render. ReactDOM's root.render
+      // is not a Testing Library helper and still needs React's act.
+      'testing-library/utils-module': 'renderWithProviders',
+    },
+  },
+  {
+    // New runtime validation cannot bypass a schema with an unsafe cast or
+    // leak an unchecked value. Keep legacy boundary migrations separate.
+    files: ['lib/validation/**/*.ts', 'lib/manualAmount.ts'],
+    extends: [...tseslint.configs.recommendedTypeChecked],
+    languageOptions: {
+      parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
+    },
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/consistent-type-imports': ['error', { fixStyle: 'inline-type-imports' }],
+      '@typescript-eslint/no-unsafe-type-assertion': 'error',
+      '@typescript-eslint/switch-exhaustiveness-check': 'error',
+    },
+  },
+  {
     // Start strict local rules at owned boundaries. Legacy app files still
     // have `any` values that need to be removed alongside their data parsing.
-    files: ['components/ui/**/*.{ts,tsx}', 'components/shared/**/*.{ts,tsx}', 'components/capture_sources/**/*.{ts,tsx}', 'e2e/**/*.ts'],
+    files: ['components/ui/**/*.{ts,tsx}', 'components/shared/**/*.{ts,tsx}', 'components/capture_sources/**/*.{ts,tsx}', 'components/TransactionForm.tsx', 'e2e/**/*.ts'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/consistent-type-imports': ['error', { fixStyle: 'inline-type-imports' }],
@@ -212,7 +258,7 @@ export default tseslint.config(
   },
   {
     // The entry point mounts the app; nothing hot-reloads it.
-    files: ['index.tsx'],
+    files: ['app/index.tsx'],
     rules: { 'react-refresh/only-export-components': 'off' },
   },
   {

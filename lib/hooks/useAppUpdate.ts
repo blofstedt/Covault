@@ -60,7 +60,6 @@ const CHECK_INTERVAL_MS = 15 * 60 * 1000;
  */
 const LAUNCH_CHECK_FLOOR_MS = 60 * 1000;
 const LAST_CHECK_KEY = 'covault_update_last_check';
-const DISMISSED_KEY = 'covault_update_dismissed';
 /**
  * The APK that has already been downloaded and is waiting to be installed.
  *
@@ -371,9 +370,8 @@ export function useAppUpdate(): AppUpdate {
     // quiet install is what makes that distinction worth having.
     void fetchApkUpdate(next.versionCode, next.apkUrl);
 
-    // A version the user has already waved away stays away until the one after
-    // it. Nagging on every resume is how a good prompt becomes a bad one.
-    if (readNumber(DISMISSED_KEY) === next.versionCode) return;
+    // Waving the pill away only hides it for this session. It comes back on the
+    // next launch or resume until the user actually taps it.
     setUpdate(next);
   }, [stageWebUpdate, fetchApkUpdate]);
 
@@ -578,13 +576,13 @@ export function useAppUpdate(): AppUpdate {
   }, [webUpdateReady]);
 
   const dismiss = useCallback(() => {
-    if (update) writeNumber(DISMISSED_KEY, update.versionCode);
+    // Not remembered: the pill returns at the next launch or resume.
     setUpdate(null);
     // Waved away only for this session: the bundle is still applied at the
     // next cold start, so there is no version to remember having refused.
     setWebUpdateReady(null);
     setError(null);
-  }, [update]);
+  }, []);
 
   return {
     update, phase, percent, error, install, dismiss, webUpdateReady, applyWebUpdate, apkReady,

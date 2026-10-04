@@ -5,10 +5,14 @@ const config: CapacitorConfig = {
   appName: 'Covault',
   webDir: 'dist',
   server: {
-    androidScheme: 'https'
+    androidScheme: 'https',
+    errorPath: 'app-unavailable.html'
   },
   plugins: {},
   android: {
+    // Tailwind 4 needs Chromium 111's CSS features. Use a plain HTML recovery
+    // page on older engines rather than opening an app its browser cannot draw.
+    minWebViewVersion: 111,
     // An https page may not pull http subresources. This was true, which
     // together with usesCleartextTraffic in the manifest meant a page served
     // over https could still be fed plain-http content. Nothing in the app

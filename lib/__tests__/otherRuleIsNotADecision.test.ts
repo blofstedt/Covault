@@ -27,12 +27,52 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { distinctCategories, merchantRuleScope } from '../vendorRuleScope';
+import {
+  assignCaptureCategory,
+  type NotificationCategoryAssignmentDependencies,
+  type NotificationCategoryAssignmentInput,
+  type VendorRuleRow,
+} from '../notificationCategoryAssignment';
 
 const WENDYS = [
   { proper_name: "Wendy's", match_key: 'wendysolympic', category_id: 'Leisure' },
   { proper_name: "Wendy's", match_key: 'wendyscrowfoot', category_id: 'Other' },
   { proper_name: "Wendy's", match_key: 'wendyscochrane', category_id: 'Leisure' },
 ];
+
+const ASSIGNMENT_CATEGORIES = [
+  { id: 'budget:groceries', name: 'Groceries' },
+  { id: 'budget:leisure', name: 'Leisure' },
+  { id: 'budget:transport', name: 'Transport' },
+  { id: 'budget:other', name: 'Other' },
+];
+
+function makeAssignmentInput(
+  overrides: Partial<NotificationCategoryAssignmentInput> = {},
+): NotificationCategoryAssignmentInput {
+  return {
+    userId: 'user-1',
+    vendor: "Wendy's Crowfoot",
+    vendorAliases: [],
+    parsed: { vendorKey: 'wendyscrowfoot', vendorDisplay: "Wendy's Crowfoot" },
+    availableCategories: ASSIGNMENT_CATEGORIES,
+    ...overrides,
+  };
+}
+
+function makeAssignmentDependencies(
+  overrides: Partial<NotificationCategoryAssignmentDependencies> = {},
+): NotificationCategoryAssignmentDependencies {
+  return {
+    vendorRules: Promise.resolve({ data: [] }),
+    readTransactionFrequencies: async () => ({ data: [] }),
+    readProperNameRule: async () => ({ data: [] }),
+    fetchPartnerRules: async () => [],
+    lookupCommunityRule: () => null,
+    getVendorMap: () => ({}),
+    ...overrides,
+  };
+}
 
 describe('an Other rule is not a real opinion, for the merchant-level check', () => {
   it('does not count as a conflict against a single real category', () => {
@@ -76,41 +116,84 @@ describe('an Other rule is not a real opinion, for the merchant-level check', ()
 });
 
 describe('the capture pipeline: suggestions and Other rescue', () => {
-  const source = readFileSync(resolve(__dirname, '../notificationProcessor.ts'), 'utf8');
+  it('does not offer Other back as a frequency-based suggestion', async () => {
+    const rules: VendorRuleRow[] = [
+      {
+        category_id: 'Other',
+        proper_name: "Wendy's",
+        match_key: 'wendyscrowfoot',
+        match_type: 'exact',
+      },
+      {
+        category_id: 'Groceries',
+        proper_name: "Wendy's",
+        match_key: 'wendysolympic',
+        match_type: 'exact',
+      },
+      {
+        category_id: 'Transport',
+        proper_name: "Wendy's",
+        match_key: 'wendyscochrane',
+        match_type: 'exact',
+      },
+    ];
+    let candidates: string[] = [];
+    await assignCaptureCategory(makeAssignmentInput({
+      availableCategories: [],
+    }), makeAssignmentDependencies({
+      vendorRules: Promise.resolve({ data: rules }),
+      readTransactionFrequencies: async (_userId, candidateNames) => {
+        candidates = candidateNames;
+        return { data: [] };
+      },
+    }));
 
-  it('never suggests Other back as the frequency-based candidate', () => {
-    const block = source.slice(
-      source.indexOf('const candidateNames = [...new Set('),
-      source.indexOf('try {', source.indexOf('const candidateNames')),
-    );
-    expect(block).toContain("!== 'other'");
+    expect(candidates).toEqual(['Groceries', 'Transport']);
   });
 
-  it('replaces a narrowly-matched Other rule with the merchant\'s one real category', () => {
-    const block = source.slice(
-      source.indexOf('5a-i-b: an Other answer is not a real answer'),
-      source.indexOf('5a-ii: the borrowed layers'),
-    );
-    expect(block).toContain("(categoryName || '').toLowerCase() === 'other'");
-    expect(block).toContain('realCategories.length === 1');
-    expect(block).toContain('categoryId = realCat.id');
-    expect(block).toContain('categoryName = realCat.name');
+  it('replaces a matched Other rule with the merchant single real category', async () => {
+    const rules: VendorRuleRow[] = [
+      { category_id: 'Other', proper_name: "Wendy's", match_key: 'wendyscrowfoot', match_type: 'exact' },
+      { category_id: 'Leisure', proper_name: "Wendy's", match_key: 'wendysolympic', match_type: 'exact' },
+    ];
+    const result = await assignCaptureCategory(makeAssignmentInput(), makeAssignmentDependencies({
+      vendorRules: Promise.resolve({ data: rules }),
+    }));
+
+    expect(result.categoryName).toBe('Leisure');
   });
 
-  it('never lets the rescued category auto-file — confidence stays 0', () => {
-    const block = source.slice(
-      source.indexOf('5a-i-b: an Other answer is not a real answer'),
-      source.indexOf('5a-ii: the borrowed layers'),
-    );
-    expect(block).toContain('overrideMatchConfidence = 0');
+  it('keeps the rescued category at zero confidence', async () => {
+    const rules: VendorRuleRow[] = [
+      { category_id: 'Other', proper_name: "Wendy's", match_key: 'wendyscrowfoot', match_type: 'exact' },
+      { category_id: 'Leisure', proper_name: "Wendy's", match_key: 'wendysolympic', match_type: 'exact' },
+    ];
+    const result = await assignCaptureCategory(makeAssignmentInput(), makeAssignmentDependencies({
+      vendorRules: Promise.resolve({ data: rules }),
+    }));
+
+    expect(result.categoryName).toBe('Leisure');
+    expect(result.overrideMatchConfidence).toBe(0);
   });
 
-  it('only fires when there is exactly one real answer, not when there is a genuine conflict', () => {
-    const block = source.slice(
-      source.indexOf('5a-i-b: an Other answer is not a real answer'),
-      source.indexOf('5a-ii: the borrowed layers'),
-    );
-    expect(block).toContain('!overrideRuleConflict');
+  it('does not rescue Other when two real categories remain in conflict', async () => {
+    const rules: VendorRuleRow[] = [
+      { category_id: 'Other', proper_name: "Wendy's", match_key: 'wendyscrowfoot', match_type: 'exact' },
+      { category_id: 'Groceries', proper_name: "Wendy's", match_key: 'wendysolympic', match_type: 'exact' },
+      { category_id: 'Transport', proper_name: "Wendy's", match_key: 'wendyscochrane', match_type: 'exact' },
+    ];
+    // Every category is available, so a rescue that fired by mistake would
+    // land on Groceries or Transport and show up here; with no household
+    // history to suggest from, neither may be chosen.
+    const result = await assignCaptureCategory(makeAssignmentInput(), makeAssignmentDependencies({
+      vendorRules: Promise.resolve({ data: rules }),
+    }));
+
+    expect(result.overrideRuleConflict).toBe(true);
+    expect(result.realCategories).toEqual(['groceries', 'transport']);
+    expect(result.categoryName).not.toBe('Groceries');
+    expect(result.categoryName).not.toBe('Transport');
+    expect(result.overrideMatchConfidence).toBe(0);
   });
 });
 

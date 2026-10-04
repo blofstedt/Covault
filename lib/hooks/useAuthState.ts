@@ -163,6 +163,9 @@ export const useAuthState = ({
       } else {
         setAuthState('unauthenticated');
       }
+    }).catch(() => {
+      log.error('[Auth] Could not read the initial sign-in session.');
+      setAuthState(state => state === 'loading' ? 'unauthenticated' : state);
     });
 
     // Listen for auth state changes

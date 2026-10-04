@@ -30,6 +30,7 @@ node_modules
 screenshots/
 playwright-report/
 test-results/
+android-e2e-results/
 
 # Session-specific context file with credentials. Lives only on the
 # developer's local machine, never committed.
@@ -42,3 +43,9 @@ CONTEXT.local.md
 # The real source for custom native code is `android-custom/`, copied in by
 # scripts/sync-android.sh. Tracked copies here only go stale and mislead.
 android/
+
+# Share repository skills even when a machine-wide ignore hides .agents.
+!.agents/
+.agents/*
+!.agents/skills/
+!.agents/skills/**

@@ -21,6 +21,13 @@ working while the code is reorganized.
 - Node.js 22.22.2+
 - A Supabase project
 - For local Android builds: JDK 21 and the Android SDK (or let CI do it)
+- Browser: Chrome 111+, Safari 16.4+, or Firefox 128+
+- Android: System WebView 111 or newer. Update Android System WebView and Chrome
+  through your app store if the app cannot open.
+
+These browser requirements come from [Tailwind 4](https://tailwindcss.com/docs/upgrade-guide).
+The Android configuration declares the same minimum. Its plain HTML recovery page
+works without React or Tailwind, including when the browser is too old to draw the app.
 
 ## Setup
 
@@ -28,11 +35,11 @@ working while the code is reorganized.
 git clone https://github.com/blofstedt/Covault.git
 cd Covault
 npm ci --legacy-peer-deps        # install exactly what the lockfile records
-cp .env.example .env             # then fill in the values below
-npm run dev                      # http://localhost:3000
+cp .env.example .env.development.local # then fill in the values below
+npm run dev                      # http://127.0.0.1:4173
 ```
 
-`.env`:
+`.env.development.local`:
 
 ```
 VITE_SUPABASE_URL=https://<your-project-ref>.supabase.co
@@ -45,7 +52,8 @@ and the "anon/public" key). `VITE_PUBLIC_SUPABASE_URL` also works in place of
 the first.
 
 Without them the app falls back to a stub client that logs warnings and does
-nothing useful.
+nothing useful when started directly with Vite. `npm run dev` checks the
+configuration first and explains missing values before starting the server.
 
 **Never commit the service-role key.** It belongs in an environment variable or
 a GitHub Actions secret, never in the client bundle. `.env` and anything
@@ -53,24 +61,19 @@ matching `*credentials*` / `*secrets*` are gitignored.
 
 ## Database
 
-For an existing database, run
-`supabase/migrations/2026_08_01_sync_schema_to_app.sql` in the Supabase SQL
-editor. It is idempotent — safe to run twice — and brings the schema in line
-with the current app. Migration files whose header says **SUPERSEDED** are
-history; you do not need them.
+For a new project, run `supabase/schema.sql` once in the Supabase SQL editor.
+That is the whole setup. It was generated from the live project and checked
+against it on 2026-10-03, and it refuses to run where the tables already exist.
 
-The `2026_09_*` migrations were written after that sync file and are not folded
-into it. Which of them an existing database still needs, and in what order, has
-not been checked against a live project yet — see the
-[codebase plan](docs/CODEBASE_PLAN.md) before applying them to a vault.
+The existing live project is fully up to date as of 2026-10-03. For how to
+check any database, and for how to change one, see
+[docs/DATABASE_SETUP.md](docs/DATABASE_SETUP.md). Do not re-run the older
+files in `supabase/migrations/`. Live already reflects them, and some of them
+drop tables.
 
-For a fresh project, run `supabase/schema.sql` first. It creates the tables the
-app uses: `settings`, `budgets`, `transactions`, `overrides`, `banks`,
-`notification_rules`. Without it you will see 404s in the console for missing
-tables.
-
-`pending_transactions` is deliberately **not** in the schema; the app treats its
-absence as an empty queue. See `docs/ARCHITECTURE.md`.
+`pending_transactions` is deliberately **not** in the schema, and the app no
+longer refers to it. Captures waiting with the app closed live in the phone's
+own queue. See `docs/ARCHITECTURE.md`.
 
 ## Auth configuration
 
@@ -78,7 +81,8 @@ Required for Google OAuth to work on web and Android.
 
 In Supabase → **Authentication → URL Configuration**, add these redirect URLs:
 
-- `http://localhost:3000` — local dev
+- `http://localhost:*` and `http://localhost:*/**` — local development
+- `http://127.0.0.1:*` and `http://127.0.0.1:*/**` — local development
 - your production web URL
 - `com.covault.app://auth/callback` — **required for Android**
 
@@ -86,6 +90,33 @@ In [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services
 Credentials → your OAuth 2.0 Client ID, add this authorised redirect URI:
 
 - `https://<your-project-ref>.supabase.co/auth/v1/callback`
+
+## Local sign-in
+
+Use **Connect with Google** at `http://127.0.0.1:4173`. Local development uses
+real Supabase authentication and the same vault as the deployed app.
+
+The local redirect entries above must be saved in Supabase's **Authentication
+→ URL Configuration → Redirect URLs**. Keep the **Site URL** set to the deployed
+app. If a local address is absent from the allowlist, Supabase sends sign-in
+back to the deployed Site URL instead. Editing these settings requires an
+account with permission to manage authentication.
+
+`npm run dev` uses one fixed port and stops if that port is occupied. It does
+not silently pick another address. For a second preview, supply another free
+port with Vite's `--port` option. The loopback redirect patterns above cover
+those ports too. Continue the sign-in in the same browser and at the same
+hostname where it started; `localhost` and `127.0.0.1` store separate sessions.
+
+Linked Git worktrees can reuse the main checkout's `.env.development.local`
+when they have no Supabase settings of their own. Only the public project URL
+and client key are inherited. A worktree's own settings take priority; a
+partially configured worktree fails clearly rather than borrowing a key from
+another project. Nothing copies or commits the environment files. Use a
+Supabase **publishable** or **anon/public** key, never a secret or service-role key.
+
+The browser test suite remains separate. It uses fake local accounts and
+never signs into the live household.
 
 ## Commands
 

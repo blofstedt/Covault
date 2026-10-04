@@ -1,8 +1,8 @@
 import { log } from '../lib/log';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
-import { supabase } from '../lib/supabase';
+import { initialWebAuthError, supabase } from '../lib/supabase';
 import CovaultIcon from './CovaultIcon';
 
 interface AuthProps {
@@ -17,16 +17,26 @@ interface AuthProps {
 const Auth: React.FC<AuthProps> = () => {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const hasRetried = useRef(false);
+
+  useEffect(() => {
+    let active = true;
+    void initialWebAuthError.then(error => {
+      if (active && !hasRetried.current) setAuthError(error);
+    });
+    return () => { active = false; };
+  }, []);
 
   const handleGoogleLogin = async () => {
     try {
       setIsLoggingIn(true);
       setAuthError(null);
+      hasRetried.current = true;
 
       // For native apps, use a deep link callback
       // For web apps, use the origin to ensure consistent redirect URL
       // NOTE: Add this URL to Supabase Dashboard (Authentication > URL Configuration > Redirect URLs)
-      // and to Google Cloud Console (APIs & Services > Credentials > OAuth 2.0 Client > Authorized redirect URIs)
+      // Google Console uses the Supabase project's /auth/v1/callback URL.
       const isNative = Capacitor.isNativePlatform();
       const redirectUrl = isNative
         ? 'com.covault.app://auth/callback'
@@ -48,24 +58,22 @@ const Auth: React.FC<AuthProps> = () => {
       });
 
       if (error) {
-        log.error('[Auth] OAuth error:', error);
         throw error;
       }
 
+      if (!data?.url) throw new Error('No Google sign-in URL was returned.');
+
       // On Android with skipBrowserRedirect, we get a URL to open in the system browser
-      if (isNative && data?.url) {
-        log.debug('[Auth] Opening OAuth URL in browser:', data.url);
+      if (isNative) {
         await Browser.open({ url: data.url });
       }
 
       // NOTE: For web, Supabase redirects automatically
       // For Android, the browser opens and then deep links back
       // In both cases, App.tsx listens for auth changes via useAuthState
-    } catch (err: any) {
-      log.error('[Auth] Supabase Auth Error Detail:', err);
-      setAuthError(
-        err.message || 'An unexpected error occurred during sign in.',
-      );
+    } catch (error: unknown) {
+      log.error('[Auth] Google sign-in failed:', error instanceof Error ? error.name : 'Unknown error');
+      setAuthError("We couldn't start Google sign-in. Please try again.");
       setIsLoggingIn(false);
     }
   };
@@ -97,25 +105,12 @@ const Auth: React.FC<AuthProps> = () => {
         </div>
       </div>
 
-      <div className="relative space-y-6 mt-auto flex flex-col items-center pb-8">
+      <div className="relative gap-6 mt-auto flex flex-col items-center pb-8">
         {authError && (
-          <div className="w-full max-w-xs p-4 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-2xl mb-4 animate-in fade-in slide-in-from-bottom-2">
-            <p className="text-[10px] font-semibold text-rose-500 tracking-wide mb-1 text-center">
-              Security Alert
-            </p>
-            <p className="text-xs text-rose-600 dark:text-rose-400 text-center font-medium">
+          <div role="alert" className="w-full max-w-xs p-4 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-2xl mb-4 animate-in fade-in slide-in-from-bottom-2">
+            <p className="text-sm text-rose-700 dark:text-rose-300 text-center font-medium">
               {authError}
             </p>
-            {!Capacitor.isNativePlatform() && (
-              <div className="mt-2 space-y-1">
-                <p className="text-[7px] text-slate-400 text-center uppercase">
-                  1. Add your site URL to Supabase redirect URLs
-                </p>
-                <p className="text-[7px] text-slate-400 text-center uppercase">
-                  2. Add Supabase callback to Google Console OAuth URIs
-                </p>
-              </div>
-            )}
           </div>
         )}
 
@@ -146,6 +141,7 @@ const Auth: React.FC<AuthProps> = () => {
           </div>
         ) : (
           <button
+            type="button"
             onClick={handleGoogleLogin}
             className="w-full max-w-xs py-5 bg-white dark:bg-slate-900 border-2 border-slate-100 dark:border-slate-800 rounded-[2rem] shadow-xl hover:shadow-2xl hover:border-emerald-500 transition-all duration-200 active:scale-[0.97] flex items-center justify-center space-x-4 group ring-1 ring-inset ring-white/10 dark:ring-white/[0.04]"
           >

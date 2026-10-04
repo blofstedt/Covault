@@ -1,8 +1,11 @@
 -- Migration: a client may only CREATE its settings row with the columns it
 -- would be allowed to UPDATE.
 --
--- NOT YET APPLIED. Run it in the Supabase SQL editor (or ask Claude to apply
--- it). Safe to run more than once. Nothing in the app changes behaviour.
+-- APPLIED to the live project on 2026-10-03 in the SQL editor, and confirmed
+-- afterwards through the read-only connection: authenticated can insert
+-- exactly email, monthly_income, name and user_id, and the grant fingerprint
+-- now equals supabase/schema.sql's. Safe to run more than once. Nothing in
+-- the app changes behaviour.
 --
 -- 2026_09_security_review.sql closed the paywall to the client on UPDATE: the
 -- table grant was taken away and only the ordinary preference columns were
@@ -30,6 +33,19 @@
 -- Deliberately only columns that exist in every version of this schema, so the
 -- GRANT cannot fail half way through on a project that is behind on
 -- migrations and leave the table with no INSERT grant at all.
+--
+-- And the two run as one transaction, because the half-applied state is the
+-- worse of the two failures: with the REVOKE committed and the GRANT not,
+-- the app's own fallback can no longer create a missing settings row at all.
+-- Rolled back, nothing changes and the gap is merely still open. Checked on
+-- live 2026-10-03 before applying: the table grant to authenticated is the
+-- ONLY insert route — PUBLIC holds none, authenticated belongs to no other
+-- role, and there are no column-level insert grants — so after this the
+-- client can insert exactly these four columns and nothing else.
+--
+-- To undo: GRANT INSERT ON public.settings TO authenticated;
 
+BEGIN;
 REVOKE INSERT ON public.settings FROM authenticated;
 GRANT INSERT (user_id, name, email, monthly_income) ON public.settings TO authenticated;
+COMMIT;

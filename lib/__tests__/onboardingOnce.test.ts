@@ -34,7 +34,7 @@ import {
  * Both halves are held here: the intro is shown once per person per device,
  * and finishing it can no longer overwrite data that has already loaded.
  */
-const APP_TSX = readFileSync(resolve(__dirname, '../../App.tsx'), 'utf-8');
+const APP_TSX = readFileSync(resolve(__dirname, '../../app/App.tsx'), 'utf-8');
 const AUTH_STATE = readFileSync(resolve(__dirname, '../hooks/useAuthState.ts'), 'utf-8');
 const ONBOARDING = readFileSync(resolve(__dirname, '../../components/Onboarding.tsx'), 'utf-8');
 

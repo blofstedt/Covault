@@ -777,7 +777,7 @@ const BudgetFlowChart: React.FC<BudgetFlowChartProps> = ({
                   onClick={() => onSelectMonth(key)}
                   aria-pressed={isSelected}
                   aria-label={longMonthLabel(key)}
-                  className={`relative flex-1 py-1.5 text-[10px] font-semibold tracking-[0.04em] active:scale-[0.97] motion-safe:transition-[color,transform] motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)] ${
+                  className={`relative flex-1 py-1.5 text-[10px] font-semibold tracking-[0.04em] active:scale-[0.97] motion-safe:transition-[color,transform,scale] motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)] ${
                     isSelected
                       ? isNow
                         ? 'text-emerald-600 dark:text-emerald-400'

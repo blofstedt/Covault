@@ -2,6 +2,12 @@
 import { log } from './log';
 import { createClient } from '@supabase/supabase-js';
 import { Capacitor } from '@capacitor/core';
+import { captureOAuthCallback, callbackRecoveryMessage, clearOAuthCallbackParameters, OAUTH_CALLBACK_FAILURE } from './oauthCallback';
+
+// The SDK starts URL detection during construction, so remember the callback first.
+const initialWebCallback = !Capacitor.isNativePlatform() && typeof window !== 'undefined'
+  ? captureOAuthCallback(new URL(window.location.href))
+  : null;
 
 // ✅ These MUST match what you have in Vercel / .env / GitHub
 // Supports both naming conventions for compatibility:
@@ -68,6 +74,9 @@ const createStubClient = () => {
 
   return {
     auth: {
+      async initialize() {
+        return { error: { message: 'Supabase is not configured.' } };
+      },
       async getSession() {
         log.warn('[supabase] Stub client in use: getSession');
         return { data: { session: null }, error: null };
@@ -129,3 +138,33 @@ export const supabase = supabaseUrl && supabaseAnonKey
       },
     })
   : createStubClient();
+
+// Observe the SDK's existing initialization. Calling initialize again returns its
+// cached result; getSession alone does not expose a failed callback exchange.
+// Native callbacks remain exclusively in useDeepLinks and accept PKCE codes only.
+async function resolveInitialWebAuthError(): Promise<string | null> {
+  if (!initialWebCallback) return null;
+  try {
+    const initialization = await supabase.auth.initialize();
+    const { data: { session }, error } = await supabase.auth.getSession();
+    return callbackRecoveryMessage(initialWebCallback, {
+      initializationFailed: !!initialization.error,
+      sessionFailed: !!error,
+      hasSession: !!session,
+    });
+  } catch {
+    return OAUTH_CALLBACK_FAILURE;
+  } finally {
+    // Wait for URL detection before clearing code or error parameters.
+    const cleaned = clearOAuthCallbackParameters(new URL(window.location.href), initialWebCallback);
+    if (cleaned !== window.location.href) {
+      try {
+        window.history.replaceState(window.history.state, '', cleaned);
+      } catch {
+        log.warn('[Auth] Could not clear the completed sign-in callback from browser history.');
+      }
+    }
+  }
+}
+
+export const initialWebAuthError = resolveInitialWebAuthError();

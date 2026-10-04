@@ -44,9 +44,11 @@ describe('the APK arrives before it is asked for', () => {
     // with the quiet install behind it, that distinction is the feature.
     const check = hook.slice(hook.indexOf('const check = useCallback'));
     const fetched = check.indexOf('fetchApkUpdate(next.versionCode');
-    const dismissed = check.indexOf('readNumber(DISMISSED_KEY) === next.versionCode');
+    const shown = check.indexOf('setUpdate(next)');
     expect(fetched).toBeGreaterThan(-1);
-    expect(dismissed).toBeGreaterThan(fetched);
+    expect(shown).toBeGreaterThan(fetched);
+    // A dismissal is never remembered across launches.
+    expect(hook).not.toContain('DISMISSED_KEY');
   });
 
   it('keeps it out of the notification shade', () => {

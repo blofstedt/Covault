@@ -466,7 +466,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
       {/* HEADER / SUMMARY */}
       <div
         onClick={handleHeaderClick}
-        className={`relative z-10 flex items-center justify-between cursor-pointer active:scale-[0.99] motion-safe:transition-[transform,padding] motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)] ${
+        className={`relative z-10 flex items-center justify-between cursor-pointer active:scale-[0.99] motion-safe:transition-[transform,scale,padding] motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.32,0.72,0.24,1)] ${
           isExpanded
             ? 'flex-none py-6 px-8'
             : isDense
@@ -535,7 +535,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
         >
           {isExpanded ? (
             <>
-              <div className="flex items-baseline space-x-1">
+              <div className="flex items-baseline gap-1">
                 <span className="text-sm font-bold font-mono mr-2 tracking-tight motion-safe:transition-colors motion-safe:duration-[320ms] text-slate-500">
                   ${total.toFixed(0)}
                   <span className="mx-1.5 opacity-30 font-medium text-slate-400">/</span>

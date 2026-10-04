@@ -24,26 +24,25 @@ is unreviewable.
   resolves". If a mechanism has to be mentioned, one clause, then back to what
   it means for them.
 - **Say plainly what you did not verify.** They cannot infer it. CI never runs
-  this app on a phone: compile-green proves nothing about capture, the widget,
+  this app on a physical phone: compile-green proves nothing about capture, the widget,
   or anything visual. Say so rather than letting a green build imply it works.
 - **Answer the question that was asked**, then stop. If they ask whether
   something is right, the first thing they should read is whether it is right.
 
-## Where work goes: main
+## Where work goes: pull requests
 
-**Commit to `main` and push to `main`.** Do not create a feature branch, and do
-not open a pull request, unless they ask for one in that request. They do not
-want to manage branches, and a PR only adds a review step that nobody performs
-— they cannot read the diff, which is the whole point of the section above.
+**Commit and push a feature branch, then open a pull request to `main`.**
+Leave the PR open for review. Do not commit or push directly to `main`, merge
+a PR, or enable auto-merge unless the user explicitly asks.
 
-If the harness you are running under forces you onto a branch, finish the work
-there, then fast-forward `main` to it and push, and say in your reply that you
-did. Do not leave the work parked on a branch and call it delivered.
+Use a separate branch or worktree when another agent is using the checkout.
+Use [the repository's pull request template](.github/pull_request_template.md)
+for the description. Explain the outcome in plain English, report the checks
+actually run, and state what remains unverified.
 
-`main` is what CI builds the APK from, so it is also the phone build. That
-makes `npm run verify` before pushing non-negotiable, not a nicety: breaking
-`main` means no APK to install. It still does not mean the app works — see the
-Verification reality section.
+`main` is what CI builds the phone APK from, and merging can publish an app
+update. Run `npm run verify` before committing and pushing the branch. Passing
+checks still do not mean the app works on a phone; see Verification reality.
 
 ## What they care about: how it looks and how it moves
 
@@ -83,15 +82,18 @@ Personal budget app for a household. Users track spending by category;
 transactions are captured automatically from Android banking notifications. Two
 people can share a vault.
 
-React 19 + TypeScript + Vite 6 + Tailwind 3, wrapped in Capacitor 8 for Android.
+React 19 + TypeScript + Vite 6 + Tailwind 4, wrapped in Capacitor 8 for Android.
 Supabase (Postgres + RLS) for data. On-device flan-T5 via
 `@huggingface/transformers` for parsing. Vitest for unit and component tests;
 Playwright for browser tests.
 
+The browser entry is `app/index.tsx`; root app state and routing live in
+`app/App.tsx`. Shared styles stay in `index.css`.
+
 ```bash
 npm run verify     # typecheck + typecheck:unused + lint + test + build  ← run before committing
 npm run test:e2e   # Playwright browser tests against a local stand-in for Supabase
-npm run dev        # localhost:3000
+npm run dev        # http://127.0.0.1:4173, checks local sign-in setup first
 npm run cap:build  # web build + cap sync + scripts/sync-android.sh
 ```
 
@@ -112,6 +114,14 @@ a Supabase sign-in the first time in a session.
 - **Changes still go through a migration file.** Write a new
   `supabase/migrations/` file and tell the user to run it in the Supabase SQL
   editor; this connection cannot apply it, by design.
+- **A change to live is also a change to `supabase/schema.sql`.** That file is
+  how a new database is built, and it was regenerated from live on 2026-10-03
+  because the hand-kept version had fallen a month behind — no household
+  sharing, no partner-link functions, no account deletion. After any
+  migration, make the same change there and follow the check in
+  `docs/DATABASE_SETUP.md`: build a throwaway copy with
+  `scripts/verify-schema.sh` and compare its fingerprint with live's. Then
+  update that page's table of what is applied.
 
 ## Where to look, by what the user says
 
@@ -149,6 +159,7 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | "it filed a charge under a shop I've never bought from" | `stripProcessorPrefixes` in `lib/deviceTransactionParser.ts` (what "GOOGLE *SERVICES" is left as) → step 5b of `lib/notificationProcessor.ts` (which remembered merchant it then adopts). See Invariants |
 | "the ignored-alert rules on Review are stale / missing" | `lib/queries/notificationRules.ts` (cached, prefetched query) → `components/transaction_parsing/useNotificationRules.ts`. The cache itself is `lib/queryClient.ts` |
 | "lint is failing" / "why is this lint rule off" | `eslint.config.js` — every rule switched off carries its reason. Several would CHANGE behaviour if auto-fixed (hashes, `null` vs `[]`, newer-WebView-only methods). It also holds the import boundaries: shared controls may not reach the database or native plugins, and dashboard and Review components may not open a Supabase client |
+| "set up a new database" / "which migrations does the database still need" | `docs/DATABASE_SETUP.md` — the one setup path, the applied-on-live table, and how to verify `supabase/schema.sql` against live |
 | "the browser tests are failing" | `playwright.config.ts` → `e2e/fixtures.ts` (blocks every outside request, creates a separate test household per test) → `e2e/mockSupabase.ts` (the stand-in database, served by Vite in `e2e` mode only) |
 | "the review list / badge is wrong" | `lib/reviewQueue.ts` — the single definition of "waiting"; the list, badge and widget all read it |
 | "the widget is stale or wrong" | `lib/widgetSnapshot.ts` → `android-custom/WidgetDeltaStore.java` → `android-custom/WidgetRenderer.java` |
@@ -175,6 +186,7 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 | "the app didn't offer me the update" / "it didn't update itself" | `lib/appUpdate.ts` (the check) → `lib/hooks/useAppUpdate.ts` (when, and which of the two routes) → `android-custom/CovaultUpdaterPlugin.java` (install, or unpack) |
 | "it still asked me to confirm the update" | the three conditions in the APK-route invariant below — `UPDATE_PACKAGES_WITHOUT_USER_ACTION` in `android-custom/AndroidManifest.xml`, Android 12+, and the install permission. A refusal is recorded per build in `CovaultUpdaterPlugin` and reported by `getStatus` as `quietInstallSupported` |
 | anything about the Android build | `scripts/sync-android.sh`, `.github/workflows/build-android.yml` |
+| "test on Android" / "fake a bank notification" | `docs/ANDROID_TESTING.md` → `.github/workflows/android-emulator.yml` → `android-test/` and `android-e2e/` |
 | "the Play build got rejected" / "why can't it see my bank on the Play version" | `scripts/play-manifest.mjs` — the AAB is built from a stripped manifest. See Invariants |
 | "my trial ran out early / never ran out" | `lib/serverClock.ts` → `lib/entitlement.ts`. The trial is judged on the DATABASE's clock, not the phone's |
 
@@ -239,6 +251,15 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
 - **`tailwindcss-animate` must stay in `tailwind.config.js` plugins.** ~40 uses
   of `animate-in` / `zoom-in-*` / `slide-in-*` emit *no CSS at all* without it,
   silently. `lib/__tests__/tailwindAnimatePlugin.test.ts` guards this.
+- **Tailwind 4 still draws this app's existing palette and motion.**
+  `index.css` is the Tailwind entry and loads the shared JavaScript theme.
+  Its compatibility tokens retain the colors, shadows and control treatments
+  the app used before the upgrade; replacing them with framework defaults is a
+  visual change, not dependency cleanup. Android requires WebView 111 or newer
+  in `capacitor.config.ts`. The separate `public/app-unavailable.html` recovery
+  page uses plain CSS so an outdated browser can still explain how to reopen
+  the app. Changing that native configuration changes the update fingerprint,
+  so this migration needs an APK rather than a web bundle alone.
 - **Vendor matching exists in three places on purpose** — the TS pipeline, the
   TS widget snapshot, and `WidgetDeltaStore.java`. The Java copy is deliberately
   dumber. `widgetPalette.test.ts` and `widgetAutoFileThreshold.test.ts` fail the
@@ -818,15 +839,59 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
 
 ## Verification reality
 
-CI type-checks, tests and builds an APK. **Nothing runs the app on a phone or
-against the real database.** Compile-green is not evidence for: notification
-capture, tray suppression, on-device AI, the home-screen widget, haptics, or
-anything visual. Those need a device or `npm run dev`. Say so plainly rather
-than implying a green build means it works.
+CI type-checks, tests and builds an APK. **Nothing runs the app on a physical
+phone or against the real database.** Compile-green alone is not evidence for
+notification capture, tray suppression, on-device AI, the home-screen widget,
+haptics, or anything visual. Say which behavior checks actually ran.
 
-The one exception is narrow. The `Browser smoke` workflow runs the Playwright
+The `Android emulator checks` workflow installs a separate `Covault CI` test
+APK on Android 16, with an isolated synthetic vault and a separate fake bank
+APK. It tests genuine OS notification delivery, durable native capture,
+suppression permissions, source selection, quiet income/decline alerts and
+widget snapshot numbers. Maestro checks installed-app expense validation,
+saving across restarts and a real fake-bank alert appearing in Review once.
+This does not verify real Google sign-in, Supabase access rules, a widget's
+launcher layout, physical-phone smoothness, haptics or vendor battery policies.
+See `docs/ANDROID_TESTING.md` for the test setup and evidence artifacts.
+
+The `Browser smoke` workflow runs the Playwright
 suite (`npm run test:e2e`) in headless Chromium emulating a Pixel 7,
-against `e2e/mockSupabase.ts`: the sign-in screen and its theme, and two
-signed-in households that must not see each other's purchases. That proves the
-web app starts and those screens work. It says nothing about the real
-database's access rules, Android, or how anything looks or moves.
+against `e2e/mockSupabase.ts`: the sign-in screen and its theme, two
+signed-in households that must not see each other's purchases, and manual entry
+at phone widths and short screen heights. Manual-entry checks cover keyboard
+progression, reachable controls in both themes, rejected clipboard text and the
+corrected amount sent to a local saving response. These checks use artificial
+data and do not verify real database writes, access rules, Android keyboards or
+on-device motion. Inspect the generated screenshots for visual changes.
+
+## Shared repository skills
+
+Nine reference skills are committed in `.agents/skills/`, with portable links in
+`.claude/skills/`. Contributors get these copies when they pull. Shared
+`.claude/settings.json` explicitly lists each project skill as `on` through
+Claude Code's supported `skillOverrides` setting. Existing React, Vite and
+Vitest plugins remain enabled there too.
+
+Use the repository-local guides by default for the matching task. Read the
+relevant skill before editing; loading a skill is not permission to broaden the
+request or change the app's established behavior.
+
+| Task | Default skills |
+| --- | --- |
+| Writing replies, interface copy or documentation | `unslop` |
+| Reading or editing TypeScript | `typescript-best-practices`, including its local type-system and boundary references |
+| Defining input validation or changing Zod schemas | `zod` and the TypeScript boundary reference |
+| Writing or changing tests | `principle-test-behavior-not-implementation`, plus the existing Vitest guidance when applicable |
+| Adding or changing inputs, dialogs or other controls | `accessibility` and `design-everyday-things` |
+| Changing layout, typography or visual design | `frontend-design` and `design-everyday-things` |
+| Changing feedback, transitions or interaction states | `microinteractions` |
+| Writing SQL, migrations, schema, indexes or access rules | `supabase-postgres-best-practices` |
+
+Use only the guides relevant to the task. Keep this app's category palette,
+shared components and 320ms Android motion clock. Validate money as complete
+input before converting it, and follow the Zod guide's Covault compatibility
+notes. Database work still follows the live-schema and read-only rules above;
+a general database skill does not authorize live changes or household-row reads.
+
+See `.agents/skills/README.md` for pinned sources, licences, local adaptations,
+commands and update instructions. No personal skill folders are required.

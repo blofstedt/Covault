@@ -12,10 +12,13 @@ forward unchecked.
 ## 1. Repo layout
 
 ```
-App.tsx / index.tsx      Root state, auth, routing (onboarding → dashboard → review → settings)
+app/
+  App.tsx                Root state, auth, routing (onboarding → dashboard → review → settings)
+  index.tsx              Browser entry, shared providers and static-page routing
 constants.ts             The 7 system budget categories + their fixed UUIDs
 types.ts                 Domain types: User, BudgetCategory, Transaction, Toast, Recurrence, ...
-index.css                Hand-rolled keyframes + the reduced-motion block
+index.css                Tailwind 4 entry, shared theme, keyframes + reduced motion
+public/app-unavailable.html  Plain HTML recovery for Android startup errors
 
 components/
   Dashboard.tsx                  Home. Owns SETTING_DB_KEYS and the widget-snapshot push
@@ -47,8 +50,8 @@ android-custom/            SOURCE for native code. scripts/sync-android.sh copie
   res/                       Icons, widget layout, appwidget-provider XML
 
 supabase/
-  schema.sql                 Canonical fresh schema
-  migrations/                2026_08_01_sync_schema_to_app.sql is the live one; others SUPERSEDED
+  schema.sql                 New-database schema, generated from live (see docs/DATABASE_SETUP.md)
+  migrations/                The record of changes; which are applied on live is in docs/DATABASE_SETUP.md
 ```
 
 `android/` is generated and gitignored. It used to contain four *tracked* stale
@@ -146,14 +149,18 @@ cannot fetch.
 
 ## 4. Database
 
-Five live tables plus `notification_rules`: `settings`, `transactions`,
-`budgets`, `overrides`, `banks`. RLS on all of them, `auth.uid()`-based; a
-partner sees your rows via `settings.partner_id`.
+Eight live tables (checked 2026-10-03): `settings`, `transactions`, `budgets`,
+`overrides`, `banks`, `notification_rules`, and the two community-rule tables
+`rule_contributions` and `community_rules`. RLS on all of them,
+`auth.uid()`-based. A partner sees your rows only through
+`linked_partner_id()`, which requires both settings rows to point at each
+other. `share_level` decides how much they see. `supabase/schema.sql` is
+generated from live, and `docs/DATABASE_SETUP.md` records what was compared.
 
-Enums: `Budgets` (Housing/Groceries/Leisure/Utilities/Transport/Services/Other —
-matches `constants.ts` exactly), `Type` (Manual/Automatic), `Recurrence`
-(One-time/Biweekly/Monthly/Yearly — `Yearly` added by
-`2026_add_yearly_recurrence.sql`).
+Enums: `Budgets` (Housing/Groceries/Leisure/Utilities/Transport/Services/Other,
+plus the opt-in Shopping/Personal/Travel, matching `constants.ts`), `Type`
+(Manual/Automatic), `Recurrence` (One-time/Biweekly/Monthly/Yearly, with
+`Yearly` added by `2026_add_yearly_recurrence.sql`).
 
 ### Verified 2026-08-01
 
@@ -193,20 +200,25 @@ per-user display preference and each side owns its own row for it.
   other spelling. See the invariant in CLAUDE.md before removing it.
 - **Theme default disagrees.** `settings.theme_selected` defaults to `'dark'`;
   the app's in-memory default is `'light'`. A new user renders light, then flips.
-- **`budgets` unique index** is `unique_user_budget`, a bare `CREATE UNIQUE
-  INDEX` rather than a table constraint — so a constraints-only schema export
-  appears to show nothing. `ON CONFLICT` accepts either, so the upsert works.
+- **`budgets` uniqueness** is the table constraint `unique_user_budget`
+  (`user_uuid, budget`), checked on live 2026-10-03. An earlier note here said
+  it was a bare index; it is not. `ON CONFLICT` works either way.
 - **`notification_rules.pattern_type`** allows only `exact`/`contains` — narrower
   than `overrides.match_type`, which also allows `prefix`.
-- **Unverified:** whether the dead RPCs `get_my_partner_id` and
-  `generate_transaction_hash` were ever dropped.
+- **Dead functions (checked 2026-10-03):** `get_my_partner_id` is gone.
+  `generate_transaction_hash`, `match_vendor` and `update_updated_at_column`
+  are still on live, unused by the app and open to signed-out callers. None of
+  them is SECURITY DEFINER. See the loose ends in `docs/DATABASE_SETUP.md`.
 
 ### Tools
 
-`scripts/introspect_schema.sql` — paste into the Supabase SQL editor for a full
-read-only dump. `scripts/check_schema_drift.sh` compares live against
-`schema.sql`; **not wired into CI**, needs `SUPABASE_SECRET_KEY`, which is how
-drift accumulated in the first place.
+`scripts/verify-schema.sh` builds a throwaway copy from `schema.sql` in Docker,
+prints its fingerprint (`scripts/schema-fingerprint.sql`) for comparison with
+live, and runs the access-rule checks (`scripts/rls-check.sql`) as signed-in
+test accounts. The read-only Supabase connection runs the same fingerprint
+against live. The older `scripts/introspect_schema.sql` and
+`scripts/check_schema_drift.sh` predate that, and they check less: no
+policies, grants or function bodies.
 
 ---
 
@@ -233,7 +245,7 @@ drift accumulated in the first place.
 ## 6. Subscriptions
 
 `lib/entitlement.ts`'s `getEntitlementStatus` is the single source of truth,
-read once in `App.tsx` and applied to the whole app — there is no per-feature
+read once in `app/App.tsx` and applied to the whole app — there is no per-feature
 gating (`PremiumGate`/`SubscribeModal` exist but are unused dead code left
 over from an earlier, abandoned per-feature design; do not wire them back up).
 Access is: `is_tester` OR `subscription_status === 'active'` OR now <

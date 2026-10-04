@@ -1,6 +1,9 @@
 
-import React, { useState, useRef, useMemo } from 'react';
-import { Transaction, BudgetCategory, Recurrence, TransactionLabel } from '../types';
+import type React from 'react';
+import { useState, useRef, useMemo } from 'react';
+import AmountInput from './ui/AmountInput';
+import { createManualEntrySchema, MANUAL_AMOUNT_LIMIT_ERROR } from '../lib/validation/manualEntry';
+import { type Transaction, type BudgetCategory, Recurrence, TransactionLabel } from '../types';
 import { getBudgetIcon } from './dashboard_components/getBudgetIcon';
 import { cleanVendorInput } from '../lib/formatVendorName';
 import { parseLocalDate } from '../lib/dateUtils';
@@ -53,6 +56,8 @@ interface TransactionFormProps {
   };
 }
 
+const EMPTY_CATEGORY_IDS: string[] = [];
+
 const generateUUID = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
@@ -68,7 +73,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   onClose,
   onSave,
   budgets,
-  hiddenCategories = [],
+  hiddenCategories = EMPTY_CATEGORY_IDS,
   userId,
   userName,
   initialTransaction,
@@ -79,13 +84,12 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   initialValues,
 }) => {
   const [vendor, setVendor] = useState(initialTransaction?.vendor || initialValues?.vendor || '');
-  const [amountStr, setAmountStr] = useState(
-    initialTransaction
-      ? Math.abs(initialTransaction.amount).toString()
-      : initialValues?.amount !== undefined
-        ? initialValues.amount.toString()
-        : '',
-  );
+  const [amountStr, setAmountStr] = useState(() => {
+    const initialAmount = initialTransaction?.amount ?? initialValues?.amount;
+    return initialAmount !== undefined && Number.isFinite(initialAmount)
+      ? Math.abs(initialAmount).toFixed(2)
+      : '';
+  });
   const [date, setDate] = useState(() => {
     if (initialTransaction?.date) {
       return initialTransaction.date.slice(0, 10);
@@ -99,14 +103,15 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     return `${y}-${m}-${d}`;
   });
 
-  const [recurrence, setRecurrence] = useState<Recurrence>(
-    (initialTransaction?.recurrence as Recurrence | undefined) ||
+  const [recurrence, setRecurrence] = useState<NonNullable<Transaction['recurrence']>>(
+    initialTransaction?.recurrence ||
       initialValues?.recurrence ||
       Recurrence.ONE_TIME,
   );
   const [isRefund, setIsRefund] = useState(() => initialTransaction ? initialTransaction.amount < 0 : false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [amountError, setAmountError] = useState<string | null>(null);
   const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
   const { isClosing, close } = useDialogExit();
   const [showCalendar, setShowCalendar] = useState(false);
@@ -139,7 +144,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     setVendor(item.vendor);
     setShowSuggestions(false);
     setHighlightedSuggestion(-1);
-    if (!initialTransaction && item.budget_id) {
+    if (!initialTransaction && vaults.some(budget => budget.id === item.budget_id)) {
       setSelectedId(item.budget_id);
     }
   };
@@ -148,6 +153,14 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   // entry (and is swallowed so it doesn't submit the form); Escape closes the
   // list without closing the whole modal.
   const handleVendorKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && (!showSuggestions || highlightedSuggestion < 0)) {
+      e.preventDefault();
+      if (vendor.trim()) {
+        setShowSuggestions(false);
+        dialogRef.current?.querySelector<HTMLButtonElement>('[data-vault-choice]:not([disabled])')?.focus();
+      }
+      return;
+    }
     if (!showSuggestions || suggestions.length === 0) return;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -165,11 +178,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     }
   };
 
-  // Format date for styled display — use parseLocalDate to avoid timezone shifts
-  const formattedDate = parseLocalDate(date).toLocaleDateString(undefined, {
-    weekday: 'short', month: 'short', day: 'numeric'
-  });
-
   const [selectedId, setSelectedId] = useState<string | null>(
     initialTransaction?.budget_id ?? initialValues?.budgetId ?? null
   );
@@ -182,29 +190,49 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   // one this entry is already filed under so the form opens showing where the
   // money is. See lib/budgetVisibility.ts.
   const vaults = useMemo(
-    () => selectableBudgets(budgets, hiddenCategories, [selectedId]),
-    [budgets, hiddenCategories, selectedId],
+    () => selectableBudgets(budgets, hiddenCategories, [initialTransaction?.budget_id]),
+    [budgets, hiddenCategories, initialTransaction?.budget_id],
   );
 
-  // Whole cents. A number field accepts "12.345", and that was saved as typed —
-  // a fraction of a cent the dashboard never shows but every total carries.
-  // Rounded here, so the check that enables Confirm and the figure saved are
-  // the same number (and "0.001" is not a purchase at all).
-  const amount = Math.round((parseFloat(amountStr) || 0) * 100) / 100;
+  // Formatting owns typing; one schema decides whether the completed draft
+  // may be submitted and supplies the normalized values that are saved.
+  const entrySchema = useMemo(
+    () => createManualEntrySchema(vaults.map(budget => budget.id)),
+    [vaults],
+  );
+  const entryValidation = entrySchema.safeParse({
+    amount: amountStr, vendor, budgetId: selectedId, date, recurrence, isRefund,
+  });
+  const fieldError = (field: 'amount' | 'vendor' | 'budgetId' | 'date' | 'recurrence') =>
+    entryValidation.success
+      ? undefined
+      : entryValidation.error.issues.find(issue => issue.path[0] === field)?.message;
+  const dateError = fieldError('date');
+  const recurrenceError = fieldError('recurrence');
+  const amountIssue = fieldError('amount');
+  const displayedAmountError = amountError ?? (amountIssue === MANUAL_AMOUNT_LIMIT_ERROR ? amountIssue : null);
+
+  // Format a valid local calendar day without timezone shifts or date rollover.
+  const formattedDate = dateError ? 'Choose a date' : parseLocalDate(date).toLocaleDateString(undefined, {
+    weekday: 'short', month: 'short', day: 'numeric'
+  });
+  const isFormValid = entryValidation.success && !amountError;
+  const canSubmit = isFormValid && !isSaving;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!amount || amount <= 0 || !selectedId || !vendor.trim()) return;
+    if (!entryValidation.success || amountError) return;
     if (isSaving) return;
     setIsSaving(true);
+    const draft = entryValidation.data;
 
     const tx: Transaction = {
       id: initialTransaction?.id || generateUUID(),
-      vendor: cleanVendorInput(vendor) || 'Untitled Vendor',
-      amount: isRefund ? -Math.abs(amount) : Math.abs(amount),
-      date: date + 'T12:00:00.000Z',
-      budget_id: selectedId,
-      recurrence,
+      vendor: draft.vendor,
+      amount: draft.isRefund ? -draft.amount : draft.amount,
+      date: draft.date + 'T12:00:00.000Z',
+      budget_id: draft.budgetId,
+      recurrence: draft.recurrence,
       label: initialTransaction && initialTransaction.label === TransactionLabel.AUTOMATIC
         ? TransactionLabel.AUTOMATIC
         : TransactionLabel.MANUAL,
@@ -216,14 +244,14 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
     // Notify about vendor override changes for AI transactions (only on save)
     if (isAITransaction && onVendorOverrideUpdated && initialTransaction) {
-      const vendorChanged = cleanVendorInput(vendor) !== cleanVendorInput(initialTransaction.vendor || '');
+      const vendorChanged = draft.vendor !== cleanVendorInput(initialTransaction.vendor || '');
       const categoryChanged = tx.budget_id !== initialTransaction.budget_id;
       if (vendorChanged) {
-        onVendorOverrideUpdated(cleanVendorInput(vendor), 'vendor_name_changed');
+        onVendorOverrideUpdated(draft.vendor, 'vendor_name_changed');
       }
       if (categoryChanged) {
         const budgetName = budgets.find(b => b.id === tx.budget_id)?.name || '';
-        onVendorOverrideUpdated(cleanVendorInput(vendor), budgetName);
+        onVendorOverrideUpdated(draft.vendor, budgetName);
       }
     }
 
@@ -232,16 +260,13 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     // synchronous throw so the modal still closes cleanly.
     try {
       await onSave(tx);
-    } catch (err: any) {
+    } catch (err: unknown) {
       log.error('Save failed:', err);
       setIsSaving(false);
       return;
     }
     handleClose();
   };
-
-  const isFormValid = amount > 0 && selectedId !== null && vendor.trim() !== '';
-  const canSubmit = isFormValid && !isSaving;
 
   // ── Which part of the form is still waiting ──
   //
@@ -257,9 +282,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   // a vendor to file. `isFormValid` above remains the only thing the Confirm
   // button consults, so what the form asks for and what it accepts cannot drift
   // apart.
-  const hasAmount = amount > 0;
-  const hasVendor = vendor.trim() !== '';
-  const hasVault = selectedId !== null;
+  const hasAmount = !fieldError('amount') && !amountError;
+  const hasVendor = !fieldError('vendor');
+  const hasVault = !fieldError('budgetId');
   const awaiting: 'amount' | 'vendor' | 'vault' | null =
     !hasAmount ? 'amount' : !hasVendor ? 'vendor' : !hasVault ? 'vault' : null;
 
@@ -307,7 +332,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   /** Greyed and inert, with the tap still answered by the caller's onClick. */
   const LOCKED = 'opacity-40 pointer-events-none';
 
-  // Closing is the same 300ms as opening, in reverse.
+  // Closing is the same 320ms as opening, in reverse.
   //
   // A 250ms duration used to be asked for below, which is not a value
   // Tailwind's scale generates — so it emitted no CSS, the fade out fell back
@@ -316,7 +341,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   // closing. Durations must come from Tailwind's scale or be written as
   // arbitrary values; `durationClasses.test.ts` enforces it.
   return (
-    <div className={`fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-xl ${isClosing ? 'dialog-exiting dialog-exit-backdrop' : 'animate-in fade-in dialog-motion'}`}>
+    <div className={`fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-2 sm:p-6 bg-slate-900/60 backdrop-blur-xl ${isClosing ? 'dialog-exiting dialog-exit-backdrop' : 'animate-in fade-in dialog-motion'}`}>
       <div
         ref={dialogRef}
         id="tutorial-transaction-form"
@@ -325,9 +350,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
         aria-label={initialTransaction ? 'Edit entry' : 'Manual entry'}
         tabIndex={-1}
         onKeyDown={handleDialogKeyDown}
-        className={`w-full max-w-sm lg:max-w-lg bg-white dark:bg-slate-900 rounded-[3rem] p-6 space-y-4 shadow-2xl border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] border-slate-100 dark:border-slate-800/60 max-h-[90vh] overflow-y-auto no-scrollbar ${isClosing ? 'dialog-exiting dialog-exit-surface' : 'animate-in zoom-in-95 dialog-motion'}`}
+        className={`flex w-full max-w-sm lg:max-w-lg flex-col gap-4 bg-white dark:bg-slate-900 rounded-[2rem] sm:rounded-[3rem] p-5 sm:p-6 shadow-2xl border ring-1 ring-inset ring-white/10 dark:ring-white/[0.04] border-slate-100 dark:border-slate-800/60 max-h-[calc(100dvh-1rem)] sm:max-h-[90dvh] overflow-hidden ${isClosing ? 'dialog-exiting dialog-exit-surface' : 'animate-in zoom-in-95 dialog-motion'}`}
       >
-        <div className="flex items-center justify-between">
+        <div className="flex shrink-0 items-center justify-between">
           <div className="flex flex-col">
             <h2 className="text-lg font-bold text-slate-600 dark:text-slate-100 tracking-tight">
               {/* "Manual Entry", not "New Entry": this modal is the one route
@@ -337,7 +362,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
               {initialTransaction ? 'Edit Entry' : 'Manual Entry'}
             </h2>
             {isSharedAccount && (
-              <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 tracking-wide mt-1">
+              <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 tracking-wide mt-1">
                 Recording as {userName}
               </span>
             )}
@@ -350,283 +375,314 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           <CloseButton onClick={handleClose} />
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-3">
-            <div id="tutorial-amount-field" data-tour="form-amount" className={`flex flex-col items-center justify-center py-5 bg-slate-50/50 dark:bg-slate-800/20 rounded-3xl border border-slate-100/50 dark:border-slate-800/30 ${attention('amount')} ${nudge('amount')}`}>
-              <div className="flex items-center justify-center space-x-1">
-                <span className={`text-xl font-black select-none ${isRefund ? 'text-emerald-400 dark:text-emerald-500' : 'text-slate-300 dark:text-slate-700'}`}>$</span>
-                <input
-                  ref={amountInputRef}
-                  data-dialog-initial-focus={!initialTransaction ? 'true' : undefined}
-                  type="number"
-                  inputMode="decimal"
-                  placeholder="0.00"
-                  value={amountStr}
-                  onChange={e => setAmountStr(e.target.value)}
-                  className={`bg-transparent text-center text-3xl font-black tracking-tighter outline-none placeholder-slate-200 dark:placeholder-slate-800 w-auto min-w-[1ch] ${isRefund ? 'text-emerald-500 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-50'}`}
-                  style={{ width: amountStr ? `${amountStr.length + 0.5}ch` : '4ch' }}
-                />
-              </div>
-
-              {/* Expense / Refund toggle */}
-              <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-full mt-3 w-48 mx-auto">
-                <button
-                  type="button"
-                  onClick={() => setIsRefund(false)}
-                  className={`flex-1 py-1.5 text-[10px] font-semibold rounded-full transition-all tracking-wide ${
-                    !isRefund
-                      ? 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-200 shadow-sm'
-                      : 'text-slate-400'
-                  }`}
-                >
-                  Expense
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsRefund(true)}
-                  className={`flex-1 py-1.5 text-[10px] font-semibold rounded-full transition-all tracking-wide ${
-                    isRefund
-                      ? 'bg-emerald-500 text-white shadow-sm'
-                      : 'text-slate-400'
-                  }`}
-                >
-                  Refund
-                </button>
-              </div>
-            </div>
-
-            {/* Vendor input with autocomplete */}
-            <div className="flex items-center justify-between px-2">
-              <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 tracking-wide">
-                Vendor
-              </span>
-              {!vendorUnlocked && (
-                <span className="text-[10px] font-medium text-slate-300 dark:text-slate-600 tracking-wide">
-                  Enter the amount first
-                </span>
-              )}
-            </div>
-
-            {/* onClick sits on the wrapper because the input inside is inert
-                while locked — a disabled control raises no click of its own,
-                so without this the tap would land on nothing. */}
-            <div
-              id="tutorial-vendor-field"
-              data-tour="form-vendor"
-              onClick={vendorUnlocked ? undefined : refuse}
-              className={`relative rounded-2xl ${attention('vendor')} ${nudge('vendor')}`}
-            >
-              <div className={`transition-opacity duration-200 ${vendorUnlocked ? 'opacity-100' : LOCKED}`}>
-              <input
-                ref={vendorInputRef}
-                type="text"
-                disabled={!vendorUnlocked}
-                // The field is named by the label above now, so the placeholder
-                // is free to say what a vendor IS rather than asking where the
-                // money went — which is what it used to do, badly: it read as a
-                // location, and it vanished on the first keystroke, leaving the
-                // field with nothing naming it at all.
-                placeholder="Store, restaurant, website…"
-                value={vendor}
-                onChange={e => { setVendor(e.target.value); setShowSuggestions(true); setHighlightedSuggestion(-1); }}
-                onFocus={() => setShowSuggestions(true)}
-                onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                onKeyDown={handleVendorKeyDown}
-                role="combobox"
-                aria-expanded={showSuggestions && suggestions.length > 0}
-                aria-autocomplete="list"
-                aria-controls="vendor-suggestions" 
-                className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 rounded-2xl py-3 px-6 text-sm font-bold placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500/20 text-slate-500 dark:text-slate-100 text-center shadow-sm"
-              />
-              {showSuggestions && suggestions.length > 0 && (
-                <div id="vendor-suggestions" role="listbox" className="absolute left-0 right-0 top-full mt-1 z-50 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-xl overflow-hidden">
-                  {suggestions.map((s, i) => {
-                    const budget = budgets.find(b => b.id === s.budget_id);
-                    const isHighlighted = i === highlightedSuggestion;
-                    return (
-                      <button
-                        key={s.vendor}
-                        type="button"
-                        role="option"
-                        aria-selected={isHighlighted}
-                        onMouseDown={e => e.preventDefault()}
-                        onClick={() => selectSuggestion(s)}
-                        onMouseEnter={() => setHighlightedSuggestion(i)}
-                        className={`w-full flex items-center px-4 py-3 transition-colors text-left ${isHighlighted ? 'bg-slate-50 dark:bg-slate-700/50' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}
-                      >
-                        <div className="w-6 h-6 flex items-center justify-center text-emerald-500 mr-3 shrink-0">
-                          {budget ? getBudgetIcon(budget.name) : null}
-                        </div>
-                        <span className="text-sm font-bold text-slate-500 dark:text-slate-200 capitalize">{s.vendor}</span>
-                        {budget && (
-                          <span className="text-[10px] font-semibold text-slate-400 ml-auto tracking-wide">{budget.name}</span>
-                        )}
-                      </button>
-                    );
-                  })}
+        <form onSubmit={handleSubmit} aria-label={initialTransaction ? 'Edit entry' : 'Manual entry'} className="flex min-h-0 flex-1 flex-col gap-4">
+          <div className="-mx-1 min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-1 no-scrollbar">
+            <div className="space-y-3">
+              <div id="tutorial-amount-field" data-tour="form-amount" className={`flex flex-col items-center justify-center py-5 bg-slate-50/50 dark:bg-slate-800/20 rounded-3xl border border-slate-100/50 dark:border-slate-800/30 ${attention('amount')} ${nudge('amount')}`}>
+                <label htmlFor="transaction-amount" className="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-400">Amount</label>
+                <div className="flex w-full min-w-0 items-center justify-center gap-1 px-4">
+                  <span className={`text-xl font-black select-none ${isRefund ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}>$</span>
+                  <AmountInput
+                    id="transaction-amount"
+                    inputRef={amountInputRef}
+                    data-dialog-initial-focus={!initialTransaction ? 'true' : undefined}
+                    enterKeyHint="next"
+                    error={displayedAmountError}
+                    onErrorChange={setAmountError}
+                    disabled={isSaving}
+                    aria-describedby="transaction-amount-help"
+                    placeholder="0.00"
+                    value={amountStr}
+                    onValueChange={setAmountStr}
+                    onValidEnter={() => vendorInputRef.current?.focus()}
+                    className={`bg-transparent text-center text-3xl font-black tracking-tighter outline-none placeholder-slate-500 dark:placeholder-slate-400 min-w-0 max-w-full ${isRefund ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-50'}`}
+                    style={{ width: amountStr ? `${Math.min(amountStr.length + Math.floor(amountStr.length / 3) + 0.5, 14)}ch` : '4ch' }}
+                  />
                 </div>
-              )}
-              </div>
-            </div>
-          </div>
 
-          {/* The ring goes around the WHOLE vault section — its heading as
-              well as the grid — rather than around the grid alone.
-              
-              The two steps above it each have a filled, rounded control for
-              the ring to hug, so it reads as an outline on a thing. The vaults
-              have no such box: a ring drawn round the bare grid traced the
-              tiles' bounding box and looked like an accident. Round the
-              section it is an outline on the step being asked for, which is
-              what it means.
-              
-              Tapping in here before the form is ready puts the cursor where it
-              IS waiting and flashes that section, rather than doing nothing —
-              a dimmed control that ignores a tap teaches the user the app is
-              broken. */}
-          <div
-            onClick={vaultUnlocked ? undefined : refuse}
-            className={`space-y-3 rounded-3xl ${attention('vault')} ${nudge('vault')}`}
-          >
-            <div className="flex items-center justify-between px-2">
-              <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 tracking-wide">
-                Target Vault
-              </span>
-              {!vaultUnlocked && (
-                <span className="text-[10px] font-medium text-slate-300 dark:text-slate-600 tracking-wide">
-                  {hasAmount ? 'Name the vendor first' : 'Enter the amount first'}
-                </span>
-              )}
-            </div>
+                <p id="transaction-amount-help" aria-live="polite" className={`mt-2 px-4 text-center text-xs ${displayedAmountError ? 'text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-slate-400'}`}>
+                  {displayedAmountError ?? 'Use numbers and up to two decimal places.'}
+                </p>
 
-            {/* Equal thirds, whatever the count.
-                //
-                // This was two hand-cut rows — the first three categories, then
-                // every one after that in a single row — with each tile sized
-                // `calc(25% - 5px)`. That only works for exactly seven
-                // categories, and only by accident: the second row came out
-                // edge-to-edge and the first floated inset, so the squares did
-                // not line up. Past seven the extra tiles were squeezed onto one
-                // line — the user with ten categories (the app ships ten, three
-                // of them off by default) got three big squares above a row of
-                // seven slivers pressed against the card's edges. A grid gives
-                // every tile the same footprint and wraps the last row on its
-                // own; three across keeps the names under the icons legible. */}
-            <div
-              id="tutorial-budget-grid"
-              data-tour="form-budget"
-              className={`grid grid-cols-3 gap-1.5 transition-opacity duration-200 ${
-                vaultUnlocked ? 'opacity-100' : LOCKED
-              }`}
-            >
-              {vaults.map(b => {
-                const isSelected = selectedId === b.id;
-
-                return (
+                {/* Expense / Refund toggle */}
+                <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-full mt-3 w-48 mx-auto">
                   <button
-                    key={b.id}
                     type="button"
-                    disabled={!vaultUnlocked}
-                    onClick={() => toggleCategory(b.id)}
-                    className={`
-                      relative flex items-center justify-center p-2 rounded-2xl transition-all duration-200 border w-full aspect-square active:scale-[0.97]
-                      ${isSelected
-                        ? 'border-emerald-500/50 bg-emerald-50/60 dark:bg-emerald-900/20 shadow-lg shadow-emerald-500/10'
-                        : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-400'
-                      }
-                    `}
+                    onClick={() => setIsRefund(false)}
+                    aria-pressed={!isRefund}
+                    className={`flex-1 min-h-11 py-2 text-xs font-semibold rounded-full transition-all dialog-transition tracking-wide ${
+                      !isRefund
+                        ? 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-200 shadow-sm'
+                        : 'text-slate-600 dark:text-slate-400'
+                    }`}
                   >
-                    <div className="flex flex-col items-center justify-center">
-                      <div className={`flex items-center justify-center w-5 h-5 ${isSelected ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>
-                        {getBudgetIcon(b.name)}
-                      </div>
-                      <span className={`text-[9px] font-bold tracking-tight mt-1.5 leading-none text-center ${isSelected ? 'text-emerald-700 dark:text-emerald-300' : ''}`}>
-                        {b.name}
-                      </span>
-                    </div>
+                    Expense
                   </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Date and recurrence are deliberately NOT gated, unlike everything
-              above them. The three steps above are gated because the form
-              cannot be saved without them and an empty one says nothing; these
-              two already hold the right answer for almost every entry — today,
-              and One-time — so there is nothing to insist on. Locking them
-              would be the form being strict for its own sake. */}
-          <div className="space-y-3">
-            {/* Styled date picker */}
-            <div
-              onClick={() => setShowCalendar(true)}
-              className="relative flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 cursor-pointer active:scale-[0.98] transition-all"
-            >
-              <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 tracking-wide ml-1">Date</span>
-              <div className="flex items-center space-x-2">
-                <span className="text-sm font-bold text-slate-500 dark:text-slate-100">{formattedDate}</span>
-                <svg className="w-4 h-4 text-slate-300 dark:text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
-                </svg>
-              </div>
-            </div>
-
-            <div data-tour="form-recurrence" className="space-y-3">
-              <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 tracking-wide px-2 text-center block">Recurrence</span>
-              <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl">
-                {['One-time', 'Biweekly', 'Monthly', 'Yearly'].map(r => (
                   <button
-                    key={r}
                     type="button"
-                    onClick={() => setRecurrence(r as Recurrence)}
-                    className={`flex-1 py-2.5 text-[11px] font-semibold rounded-xl transition-all tracking-wide ${recurrence === r ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-slate-400'}`}
+                    onClick={() => setIsRefund(true)}
+                    aria-pressed={isRefund}
+                    className={`flex-1 min-h-11 py-2 text-xs font-semibold rounded-full transition-all dialog-transition tracking-wide ${
+                      isRefund
+                        ? 'bg-emerald-700 text-white shadow-sm'
+                        : 'text-slate-600 dark:text-slate-400'
+                    }`}
                   >
-                    {r}
+                    Refund
                   </button>
-                ))}
+                </div>
               </div>
-            </div>
-          </div>
 
-          {/* The wrapper is what makes a premature tap answerable at all: a
-              disabled button raises no click event, so the impatient tap on
-              Confirm — the likeliest one there is — would otherwise be the one
-              place in the form that stays silent. */}
-          <div onClick={isFormValid ? undefined : refuse}>
-            <button
-              type="submit"
-              data-tour="form-save"
-              disabled={!canSubmit}
-              aria-busy={isSaving}
-              className={`w-full py-3 rounded-2xl font-semibold text-xs shadow-xl active:scale-[0.97] transition-all duration-200 tracking-wide mt-1 ${canSubmit ? 'bg-emerald-600 text-white' : `bg-slate-100 dark:bg-slate-800 text-slate-400 opacity-50 cursor-not-allowed ${isFormValid ? '' : 'pointer-events-none'}`}`}
-            >
-              {isSaving ? 'Saving…' : initialTransaction ? 'Update Transaction' : 'Confirm Entry'}
-            </button>
-          </div>
+              {/* Vendor input with autocomplete */}
+              <div className="flex items-center justify-between px-2">
+                <label htmlFor="transaction-vendor" className="text-xs font-semibold text-slate-600 dark:text-slate-400">
+                  Vendor
+                </label>
+                {!vendorUnlocked && (
+                  <span className="text-[10px] font-medium text-slate-600 dark:text-slate-400 tracking-wide">
+                    Enter the amount first
+                  </span>
+                )}
+              </div>
 
-          {/* Delete button only shown when editing an existing transaction */}
-          {initialTransaction && onDelete && (
-            <button
-              type="button"
-              onClick={onDelete}
-              className="w-full py-3 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-500 dark:text-slate-400 rounded-2xl font-semibold text-xs active:scale-[0.97] transition-all duration-200 tracking-wide flex items-center justify-center space-x-2 mt-1"
-            >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+              {/* onClick sits on the wrapper because the input inside is inert
+                  while locked — a disabled control raises no click of its own,
+                  so without this the tap would land on nothing. */}
+              <div
+                id="tutorial-vendor-field"
+                data-tour="form-vendor"
+                onClick={vendorUnlocked ? undefined : refuse}
+                className={`relative rounded-2xl ${attention('vendor')} ${nudge('vendor')}`}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2.5}
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                <div className={`transition-opacity dialog-transition ${vendorUnlocked ? 'opacity-100' : LOCKED}`}>
+                <input
+                  ref={vendorInputRef}
+                  id="transaction-vendor"
+                  type="text"
+                  enterKeyHint="next"
+                  autoComplete="off"
+                  disabled={!vendorUnlocked}
+                  // The field is named by the label above now, so the placeholder
+                  // is free to say what a vendor IS rather than asking where the
+                  // money went — which is what it used to do, badly: it read as a
+                  // location, and it vanished on the first keystroke, leaving the
+                  // field with nothing naming it at all.
+                  placeholder="Store, restaurant, website…"
+                  value={vendor}
+                  onChange={e => { setVendor(e.target.value); setShowSuggestions(true); setHighlightedSuggestion(-1); }}
+                  onFocus={() => setShowSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                  onKeyDown={handleVendorKeyDown}
+                  role="combobox"
+                  aria-expanded={showSuggestions && suggestions.length > 0}
+                  aria-autocomplete="list"
+                  aria-controls="vendor-suggestions"
+                  className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 rounded-2xl py-3 px-6 text-base font-bold placeholder-slate-600 dark:placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500/20 text-slate-600 dark:text-slate-100 text-center shadow-sm"
                 />
-              </svg>
-              <span>Delete Transaction</span>
-            </button>
-          )}
+                {showSuggestions && suggestions.length > 0 && (
+                  <div id="vendor-suggestions" role="listbox" className="absolute left-0 right-0 top-full mt-1 z-50 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-xl overflow-hidden">
+                    {suggestions.map((s, i) => {
+                      const budget = budgets.find(b => b.id === s.budget_id);
+                      const isHighlighted = i === highlightedSuggestion;
+                      return (
+                        <button
+                          key={s.vendor}
+                          type="button"
+                          role="option"
+                          aria-selected={isHighlighted}
+                          onMouseDown={e => e.preventDefault()}
+                          onClick={() => selectSuggestion(s)}
+                          onMouseEnter={() => setHighlightedSuggestion(i)}
+                          className={`w-full flex items-center px-4 py-3 transition-colors text-left ${isHighlighted ? 'bg-slate-50 dark:bg-slate-700/50' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}
+                        >
+                          <div className="w-6 h-6 flex items-center justify-center text-emerald-600 dark:text-emerald-400 mr-3 shrink-0">
+                            {budget ? getBudgetIcon(budget.name) : null}
+                          </div>
+                          <span className="text-sm font-bold text-slate-600 dark:text-slate-200 capitalize">{s.vendor}</span>
+                          {budget && (
+                            <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 ml-auto tracking-wide">{budget.name}</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                </div>
+              </div>
+            </div>
+
+            {/* The ring goes around the WHOLE vault section — its heading as
+                well as the grid — rather than around the grid alone.
+
+                The two steps above it each have a filled, rounded control for
+                the ring to hug, so it reads as an outline on a thing. The vaults
+                have no such box: a ring drawn round the bare grid traced the
+                tiles' bounding box and looked like an accident. Round the
+                section it is an outline on the step being asked for, which is
+                what it means.
+
+                Tapping in here before the form is ready puts the cursor where it
+                IS waiting and flashes that section, rather than doing nothing —
+                a dimmed control that ignores a tap teaches the user the app is
+                broken. */}
+            <div
+              onClick={vaultUnlocked ? undefined : refuse}
+              className={`space-y-3 rounded-3xl ${attention('vault')} ${nudge('vault')}`}
+            >
+              <div className="flex items-center justify-between px-2">
+                <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 tracking-wide">
+                  Target Vault
+                </span>
+                {!vaultUnlocked && (
+                  <span className="text-[10px] font-medium text-slate-600 dark:text-slate-400 tracking-wide">
+                    {hasAmount ? 'Name the vendor first' : 'Enter the amount first'}
+                  </span>
+                )}
+              </div>
+
+              {/* Equal thirds, whatever the count.
+                  //
+                  // This was two hand-cut rows — the first three categories, then
+                  // every one after that in a single row — with each tile sized
+                  // `calc(25% - 5px)`. That only works for exactly seven
+                  // categories, and only by accident: the second row came out
+                  // edge-to-edge and the first floated inset, so the squares did
+                  // not line up. Past seven the extra tiles were squeezed onto one
+                  // line — the user with ten categories (the app ships ten, three
+                  // of them off by default) got three big squares above a row of
+                  // seven slivers pressed against the card's edges. A grid gives
+                  // every tile the same footprint and wraps the last row on its
+                  // own; three across keeps the names under the icons legible. */}
+              <div
+                id="tutorial-budget-grid"
+                data-tour="form-budget"
+                className={`grid grid-cols-3 gap-1.5 transition-opacity dialog-transition ${
+                  vaultUnlocked ? 'opacity-100' : LOCKED
+                }`}
+              >
+                {vaults.map(b => {
+                  const isSelected = selectedId === b.id;
+
+                  return (
+                    <button
+                      key={b.id}
+                      type="button"
+                      disabled={!vaultUnlocked}
+                      onClick={() => toggleCategory(b.id)}
+                      aria-pressed={isSelected}
+                      data-vault-choice
+                      className={`
+                        relative flex items-center justify-center min-h-16 p-3 rounded-2xl transition-all dialog-transition border w-full active:scale-[0.97]
+                        ${isSelected
+                          ? 'border-emerald-500/50 bg-emerald-50/60 dark:bg-emerald-900/20 shadow-lg shadow-emerald-500/10'
+                          : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+                        }
+                      `}
+                    >
+                      <div className="flex flex-col items-center justify-center">
+                        <div className={`flex items-center justify-center w-5 h-5 ${isSelected ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>
+                          {getBudgetIcon(b.name)}
+                        </div>
+                        <span className={`text-[11px] font-bold tracking-tight mt-1.5 leading-none text-center ${isSelected ? 'text-emerald-700 dark:text-emerald-300' : ''}`}>
+                          {b.name}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Date and recurrence are deliberately NOT gated, unlike everything
+                above them. The three steps above are gated because the form
+                cannot be saved without them and an empty one says nothing; these
+                two already hold the right answer for almost every entry — today,
+                and One-time — so there is nothing to insist on. Locking them
+                would be the form being strict for its own sake. */}
+            <div className="space-y-3">
+              {/* Styled date picker */}
+              <button
+                type="button"
+                onClick={() => setShowCalendar(true)}
+                aria-describedby={dateError ? 'transaction-date-error' : undefined}
+                className="relative w-full min-h-12 flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 cursor-pointer active:scale-[0.98] transition-all dialog-transition"
+              >
+                <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 tracking-wide ml-1">Date</span>
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm font-bold text-slate-600 dark:text-slate-100">{formattedDate}</span>
+                  <svg className="w-4 h-4 text-slate-600 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+                  </svg>
+                </div>
+              </button>
+              {dateError && (
+                <p id="transaction-date-error" role="alert" className="px-2 text-xs text-rose-600 dark:text-rose-400">{dateError}</p>
+              )}
+
+              <div data-tour="form-recurrence" className="space-y-3">
+                <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 tracking-wide px-2 text-center block">Recurrence</span>
+                <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl">
+                  {Object.values(Recurrence).map(r => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setRecurrence(r)}
+                      aria-pressed={recurrence === r}
+                      className={`flex-1 min-h-11 py-2.5 text-[11px] font-semibold rounded-xl transition-all dialog-transition tracking-wide ${recurrence === r ? 'bg-white dark:bg-slate-700 text-emerald-700 dark:text-emerald-400 shadow-sm' : 'text-slate-600 dark:text-slate-400'}`}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+                {recurrenceError && (
+                  <p role="alert" className="px-2 text-xs text-rose-600 dark:text-rose-400">{recurrenceError}</p>
+                )}
+              </div>
+            </div>
+
+          </div>
+
+          <div className="shrink-0 space-y-2 pb-[env(safe-area-inset-bottom)]">
+            {/* The wrapper is what makes a premature tap answerable at all: a
+                disabled button raises no click event, so the impatient tap on
+                Confirm — the likeliest one there is — would otherwise be the one
+                place in the form that stays silent. */}
+            <div onClick={isFormValid ? undefined : refuse}>
+              <button
+                type="submit"
+                data-tour="form-save"
+                disabled={!canSubmit}
+                aria-busy={isSaving}
+                className={`w-full min-h-12 py-3 rounded-2xl font-semibold text-sm shadow-xl active:scale-[0.97] transition-all dialog-transition tracking-wide ${canSubmit ? 'bg-emerald-700 text-white' : `bg-slate-100 dark:bg-slate-800 text-slate-400 opacity-50 cursor-not-allowed ${isFormValid ? '' : 'pointer-events-none'}`}`}
+              >
+                {isSaving ? 'Saving…' : initialTransaction ? 'Update Transaction' : 'Confirm Entry'}
+              </button>
+            </div>
+
+            {/* Delete button only shown when editing an existing transaction */}
+            {initialTransaction && onDelete && (
+              <button
+                type="button"
+                onClick={onDelete}
+                className="w-full min-h-11 py-3 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-200 rounded-2xl font-semibold text-xs active:scale-[0.97] transition-all dialog-transition tracking-wide flex items-center justify-center space-x-2"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
+                </svg>
+                <span>Delete Transaction</span>
+              </button>
+            )}
+          </div>
         </form>
       </div>
 

@@ -27,6 +27,16 @@ describe('creating a settings row from the app', () => {
     expect(grant).toBeGreaterThan(revoke);
   });
 
+  it('applies the revoke and the grant together or not at all', () => {
+    // Half-applied — revoke committed, grant not — would stop the app's own
+    // fallback from creating a missing settings row.
+    const begin = migration.indexOf('BEGIN;');
+    const commit = migration.indexOf('COMMIT;');
+    expect(begin).toBeGreaterThan(-1);
+    expect(begin).toBeLessThan(migration.indexOf('REVOKE INSERT ON public.settings'));
+    expect(commit).toBeGreaterThan(migration.indexOf('GRANT INSERT ('));
+  });
+
   it.each([
     'is_tester',
     'subscription_status',

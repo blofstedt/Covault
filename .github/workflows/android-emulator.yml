@@ -1,0 +1,122 @@
+name: Android emulator checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-emulator:
+    # Standard public-repository runner. No paid device farm or Maestro Cloud.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      ANDROID_SERIAL: emulator-5554
+      COVAULT_ANDROID_RESULTS: ${{ github.workspace }}/android-e2e-results
+      MAESTRO_CLI_NO_ANALYTICS: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, MIT
+        with:
+          persist-credentials: false
+
+      - name: Prepare artifact directory
+        run: |
+          mkdir -p "$COVAULT_ANDROID_RESULTS/logs" "$COVAULT_ANDROID_RESULTS/reports"
+          printf '%s\n' 'Separate test APK, fake vault and fake bank. No production credentials.' > "$COVAULT_ANDROID_RESULTS/test-environment.txt"
+          printf 'XDG_STATE_HOME=%s/covault-maestro-state\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0, MIT
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1, MIT
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4, MIT
+        with:
+          packages: platform-tools
+
+      - name: Install locked app dependencies
+        run: npm ci 2>&1 | tee "$COVAULT_ANDROID_RESULTS/logs/npm-ci.txt"
+
+      - name: Type-check isolated test build
+        run: ./node_modules/.bin/tsc --noEmit -p tsconfig.android-e2e.json
+
+      - name: Check offline fake vault behavior
+        run: ./node_modules/.bin/vitest run android-e2e/__tests__/backend.test.ts
+
+      - name: Build isolated web and native test projects
+        run: bash scripts/build-android-test.sh 2>&1 | tee "$COVAULT_ANDROID_RESULTS/logs/test-build.txt"
+
+      - name: Assemble test APKs
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest :fake-bank:assembleDebug 2>&1 | tee "$COVAULT_ANDROID_RESULTS/logs/gradle-build.txt"
+
+      - name: Install checksum-verified Maestro CLI
+        run: bash scripts/install-maestro.sh "$RUNNER_TEMP/covault-maestro" 2>&1 | tee "$COVAULT_ANDROID_RESULTS/logs/maestro-install.txt"
+
+      - name: Enable emulator hardware acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run native and screen checks
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0, Apache-2.0
+        with:
+          api-level: '36'
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          avd-name: covault-ci
+          emulator-port: 5554
+          cores: 2
+          ram-size: 3072M
+          disk-size: 4096M
+          emulator-boot-timeout: 300
+          channel: stable
+          # Keep animations on. This app's transitions are part of its behavior.
+          disable-animations: false
+          disable-spellchecker: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: bash scripts/run-android-emulator-tests.sh
+
+      - name: Record tests that could not start
+        if: always()
+        run: |
+          mkdir -p "$COVAULT_ANDROID_RESULTS/reports"
+          if [ ! -f "$COVAULT_ANDROID_RESULTS/reports/orchestration-junit.xml" ]; then
+            printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?><testsuite name="Android emulator setup" tests="1" skipped="1"><testcase name="Emulator checks"><skipped message="Setup or emulator boot failed before tests could start. See workflow and build logs."/></testcase></testsuite>' > "$COVAULT_ANDROID_RESULTS/reports/not-started-junit.xml"
+            printf '%s\n' 'Tests did not start. No emulator screenshots or device logs are available.' > "$COVAULT_ANDROID_RESULTS/run-state.txt"
+          fi
+
+      - name: Upload screenshots, logs and JUnit reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1, MIT
+        with:
+          name: android-emulator-results-${{ github.run_id }}-${{ github.run_attempt }}
+          path: android-e2e-results/
+          retention-days: 3
+          if-no-files-found: error
