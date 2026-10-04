@@ -5,6 +5,7 @@
 // keeps acting on a stale one, a promise nobody waits for. `npm run verify`
 // and CI both run it, so an error here fails the build.
 import js from '@eslint/js';
+import { fixupConfigRules } from '@eslint/compat';
 import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
 import react from 'eslint-plugin-react';
@@ -17,17 +18,30 @@ import playwright from 'eslint-plugin-playwright';
 import testingLibrary from 'eslint-plugin-testing-library';
 import tailwind from 'eslint-plugin-tailwindcss';
 import globals from 'globals';
+import unicornBaselineRules from './.eslint/unicorn-baseline.js';
 
+// React and accessibility plugins still use APIs ESLint 10 removed. The
+// official adapter retains their checks while upstream adds native support.
 export default tseslint.config(
   {
     ignores: ['dist/**', 'android/**', 'node_modules/**', 'supabase/functions/**', 'public/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
-  unicorn.configs.recommended,
-  react.configs.flat.recommended,
-  react.configs.flat['jsx-runtime'],
-  jsxA11y.flatConfigs.recommended,
+  {
+    // Preserve the reviewed rules while using the latest implementations.
+    // New preset rules need their own review, not an application-wide rewrite
+    // hidden inside a tooling update.
+    name: 'covault/unicorn-reviewed-rules',
+    languageOptions: unicorn.configs.recommended.languageOptions,
+    plugins: { unicorn },
+    rules: unicornBaselineRules,
+  },
+  ...fixupConfigRules([
+    react.configs.flat.recommended,
+    react.configs.flat['jsx-runtime'],
+    jsxA11y.flatConfigs.recommended,
+  ]),
   ...tanstackQuery.configs['flat/recommended'],
   tailwind.configs.recommended,
   {
@@ -44,7 +58,11 @@ export default tseslint.config(
       tailwindcss: { cssConfigPath: './index.css' },
     },
     rules: {
-      ...reactHooks.configs.recommended.rules,
+      // Keep the hooks checks the app already enforces. The newer preset also
+      // enables React Compiler migration diagnostics; this app does not use
+      // that compiler, so adopting those checks is a separate migration.
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
       // `catch (err: any)` and raw PostgREST rows are this codebase's idiom;
       // flagging all ~200 of them would bury the findings that matter.
       '@typescript-eslint/no-explicit-any': 'off',
@@ -104,7 +122,7 @@ export default tseslint.config(
       'unicorn/no-nested-ternary': 'off',
       'unicorn/import-style': 'off',
       'unicorn/prefer-spread': 'off',
-      'unicorn/no-array-for-each': 'off',
+      'unicorn/no-for-each': 'off',
       'unicorn/no-array-reduce': 'off',
       'unicorn/no-array-callback-reference': 'off',
       'unicorn/no-await-expression-member': 'off',
@@ -124,6 +142,11 @@ export default tseslint.config(
       'unicorn/no-object-as-default-parameter': 'off',
       'unicorn/no-unreadable-array-destructuring': 'off',
       'unicorn/prefer-string-slice': 'off',
+      // These newer implementations also flag existing guard statements.
+      // Ternaries are formatting taste; condition order can carry short-circuit
+      // effects. Preserve the reviewed guards instead of rewriting the app.
+      'unicorn/prefer-ternary': 'off',
+      'unicorn/prefer-simple-condition-first': 'off',
 
       // ── React: TypeScript already checks props, and an apostrophe in JSX
       // text renders fine.

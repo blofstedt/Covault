@@ -70,7 +70,7 @@ const NO_TRANSACTIONS: Transaction[] = [];
 const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 function formatMonthLabel(key: string): string {
-  const [year, month] = key.split('-');
+  const [year, month] = key.split('-', 2);
   return `${MONTH_ABBR[parseInt(month, 10) - 1]} ${year}`;
 }
 

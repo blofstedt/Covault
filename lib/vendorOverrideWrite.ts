@@ -144,7 +144,7 @@ export async function persistVendorOverride({
   }
 
   const patchBody = await patchRes.text();
-  let patchedRows: unknown[] = [];
+  let patchedRows: unknown[];
   try {
     patchedRows = patchBody ? JSON.parse(patchBody) : [];
   } catch {

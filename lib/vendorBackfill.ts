@@ -151,7 +151,7 @@ async function patchByIds(
     // The PATCH doesn't return the rows by default. Use a separate
     // select if we need a sample. For our use case the count is enough.
     const body = await patchRes.text();
-    let updatedRows: any[] = [];
+    let updatedRows: any[];
     try { updatedRows = body ? JSON.parse(body) : []; } catch { updatedRows = []; }
     updatedTotal += Array.isArray(updatedRows) ? updatedRows.length : 0;
   }

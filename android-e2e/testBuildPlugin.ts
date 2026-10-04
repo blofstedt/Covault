@@ -1,5 +1,5 @@
 import type { Plugin } from 'vite';
-import { TEST_SUPABASE_URL } from './backend';
+import { TEST_SUPABASE_URL } from './backend.ts';
 
 export function androidTestBuild(mode: string): Plugin[] {
   const optedIn = process.env.COVAULT_ANDROID_TEST === '1';
