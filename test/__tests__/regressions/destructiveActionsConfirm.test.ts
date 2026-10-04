@@ -20,13 +20,13 @@ import { resolve } from 'node:path';
  * delete entry points until their rendered flows are tested.
  */
 
-const read = (rel: string) => readFileSync(resolve(__dirname, '../../../', rel), 'utf8');
+const read = (rel: string) => readFileSync(resolve(__dirname, '../../..', rel), 'utf8');
 
-const RULES_CARD = read('components/Review/LearnedRulesCard.tsx');
-const DUP_BADGE = read('components/Review/SoftDuplicateBadge.tsx');
-const SHARING = read('components/Settings/sections/VaultSharingSection.tsx');
-const ACTION_MODAL = read('components/Transactions/TransactionActionModal/TransactionActionModal.tsx');
-const PARSING = read('components/Review/TransactionParsing.tsx');
+const RULES_CARD = read('app/components/review/TransactionParsing/LearnedRulesCard/LearnedRulesCard.tsx');
+const DUP_BADGE = read('app/components/review/TransactionParsing/AITransactionsEnteredCard/AIEnteredRow/SoftDuplicateBadge.tsx');
+const SHARING = read('app/components/settings/DashboardSettingsModal/sections/VaultSharingSection.tsx');
+const ACTION_MODAL = read('app/components/transactions/TransactionActionModal/TransactionActionModal.tsx');
+const PARSING = read('app/components/review/TransactionParsing/TransactionParsing.tsx');
 
 describe('the rules card', () => {
   it('sends every delete through one confirmation', () => {
@@ -70,7 +70,7 @@ describe('the rest of the destructive actions', () => {
     expect(DUP_BADGE).toContain('<ConfirmModal');
     expect(DUP_BADGE).toMatch(/setConfirmDelete\(true\)/);
     // And it is Portal'd for the same reason the rules card's modal is.
-    expect(DUP_BADGE).toMatch(/import Portal from '\.\.\/ui\/Portal';/);
+    expect(DUP_BADGE).toMatch(/import Portal from '[^']*common\/Portal';/);
   });
 
   it('asks before disconnecting a partner', () => {
@@ -93,8 +93,8 @@ describe('the rest of the destructive actions', () => {
       ['the duplicate badge', DUP_BADGE],
       ['vault sharing', SHARING],
     ] as const) {
-      expect(source, `${name} should use components/ui/ConfirmModal`)
-        .toMatch(/import ConfirmModal from '[^']*ui\/ConfirmModal';/);
+      expect(source, `${name} should use App/Components/Common/ConfirmModal`)
+        .toMatch(/import ConfirmModal from '[^']*common\/ConfirmModal';/);
     }
   });
 });

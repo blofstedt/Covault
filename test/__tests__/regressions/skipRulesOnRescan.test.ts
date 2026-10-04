@@ -17,7 +17,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  */
 
 const restFetchMock = vi.fn();
-vi.mock('../../../lib/api/apiHelpers', () => ({
+vi.mock('../../../app/lib/api/apiHelpers', () => ({
   restFetch: (...args: unknown[]) => restFetchMock(...args),
   REST_BASE: 'https://example.test/rest/v1',
   getAuthHeaders: async () => ({}),
@@ -46,14 +46,14 @@ function tableChain(table: string) {
   return chain;
 }
 
-vi.mock('../../../lib/api/supabase', () => ({
+vi.mock('../../../app/lib/api/supabase', () => ({
   supabase: { from: (table: string) => tableChain(table) },
   supabaseUrl: 'https://example.test',
   supabaseAnonKey: 'anon',
 }));
 
-import { processNotificationWithAI, _clearDedupCacheForTesting } from '../../../lib/capture/notificationProcessor';
-import { invalidateNotificationRulesCache } from '../../../lib/capture/notificationRules';
+import { processNotificationWithAI, _clearDedupCacheForTesting } from '../../../app/lib/capture/notificationProcessor';
+import { invalidateNotificationRulesCache } from '../../../app/lib/capture/notificationRules';
 
 const PROMO = 'BMO You spent $12.40 at Nowhere Cafe';
 

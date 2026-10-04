@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { parseNotificationText, stripVendorNoise } from '../../../lib/capture/deviceTransactionParser';
-import { normalizeVendorForDedup, fuzzyVendorMatch } from '../../../lib/vendors/formatVendorName';
+import { parseNotificationText, stripVendorNoise } from '../../../app/lib/capture/deviceTransactionParser';
+import { normalizeVendorForDedup, fuzzyVendorMatch } from '../../../app/lib/vendors/formatVendorName';
 
 /**
  * One purchase is often announced twice — by the bank app and by Google Wallet —

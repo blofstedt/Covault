@@ -1,22 +1,28 @@
 // app/data/useTransactionOps.ts
-import { log } from '../../lib/observability/log';
+import { log } from '../lib/observability/log';
 import { useCallback } from 'react';
-import type { Transaction } from '../../types';
-import { Recurrence } from '../../types';
-import { restFetch } from '../../lib/api/apiHelpers';
-import { persistVendorOverride } from '../../lib/vendors/vendorOverrideWrite';
-import { toVendorKey } from '../../lib/capture/deviceTransactionParser';
-import { cleanVendorInput, formatVendorName } from '../../lib/vendors/formatVendorName';
-import { markReviewQueueStatus, upsertVendorMapEntry } from '../../lib/capture/localNotificationMemory';
-import { useToSupabaseTransaction, useFromSupabaseTransaction } from '../../lib/api/transactionMappers';
-import { getSourceTransactionIdFromProjectedId } from '../../lib/transactions/projectedTransactions';
-import { clearCaptureNotificationForRows } from '../../lib/native/covaultNotification';
+import type { Transaction } from '../types';
+import { Recurrence } from '../types';
+import { restFetch } from '../lib/api/apiHelpers';
+import { persistVendorOverride } from '../lib/vendors/vendorOverrideWrite';
+import { toVendorKey } from '../lib/capture/deviceTransactionParser';
+import { cleanVendorInput, formatVendorName } from '../lib/vendors/formatVendorName';
+import { markReviewQueueStatus, upsertVendorMapEntry } from '../lib/capture/localNotificationMemory';
+import { useToSupabaseTransaction, useFromSupabaseTransaction } from '../lib/api/transactionMappers';
+import { getSourceTransactionIdFromProjectedId } from '../lib/transactions/projectedTransactions';
+import { clearCaptureNotificationForRows } from '../lib/native/covaultNotification';
 import {
   applyRecurringDeletePlan,
   planRecurringDelete,
   type RecurringDeletePlan,
-} from '../../lib/transactions/recurringDelete';
+} from '../lib/transactions/recurringDelete';
 import type { UseUserDataParams } from './types';
+import {
+  captureAccountDataScope,
+  isCurrentAccountDataScope,
+  type AccountDataScope,
+  type AccountDataScopeRef,
+} from '../lib/auth/accountScope';
 
 
 // Re-exported from where the projected ids are minted, so the pattern has one
@@ -26,6 +32,14 @@ import type { UseUserDataParams } from './types';
 
 /** PostgREST `in.(...)` list, quoted the way the other bulk calls here do. */
 const toIdList = (ids: string[]) => ids.map(id => `"${String(id).replace(/"/g, '')}"`).join(',');
+
+const isOperationScopeCurrent = (
+  accountScopeRef: AccountDataScopeRef | undefined,
+  scope: AccountDataScope | null,
+  userId: string,
+): boolean => !accountScopeRef || (
+  scope?.userId === userId && isCurrentAccountDataScope(accountScopeRef, scope)
+);
 
 /**
  * The row that is actually written when an edit is saved.
@@ -67,6 +81,7 @@ export const useTransactionOps = ({
   setAppState,
   setDbError,
   categoriesLoaded,
+  accountScopeRef,
 }: UseUserDataParams & { categoriesLoaded: boolean }) => {
   const toSupabaseTransaction = useToSupabaseTransaction(appState.budgets);
   const fromSupabaseTransaction = useFromSupabaseTransaction();
@@ -74,6 +89,15 @@ export const useTransactionOps = ({
   // Add transaction
   const handleAddTransaction = useCallback(
     async (tx: Transaction) => {
+      const userId = appState.user?.id;
+      const scope = userId && accountScopeRef
+        ? captureAccountDataScope(accountScopeRef, userId)
+        : null;
+      if (!userId || !isOperationScopeCurrent(accountScopeRef, scope, userId)) {
+        if (!userId) setDbError('Cannot add transaction: no account is signed in');
+        return;
+      }
+      if (tx.user_id !== userId) return;
       if (!categoriesLoaded) {
         setDbError('Cannot add transaction: categories not yet loaded');
         return;
@@ -92,10 +116,11 @@ export const useTransactionOps = ({
       // TransactionForm, so we just make sure source is set to 'manual' for
       // user-typed entries. The dedup logic uses this to distinguish manual
       // entries from executor-spawned and notification-inserted rows.
-      setAppState(prev => ({
-        ...prev,
-        transactions: [{ ...tx, source: tx.source ?? 'manual' }, ...prev.transactions],
-      }));
+      setAppState(prev => (
+        isOperationScopeCurrent(accountScopeRef, scope, userId) && prev.user?.id === userId
+          ? { ...prev, transactions: [{ ...tx, source: tx.source ?? 'manual' }, ...prev.transactions] }
+          : prev
+      ));
 
       try {
         const row = toSupabaseTransaction(tx);
@@ -109,6 +134,7 @@ export const useTransactionOps = ({
           body: JSON.stringify(row),
         });
         const body = await res.text();
+        if (!isOperationScopeCurrent(accountScopeRef, scope, userId)) return;
         log.debug(
           '[insert] status:',
           res.status,
@@ -125,10 +151,11 @@ export const useTransactionOps = ({
             budget_id: tx.budget_id
           });
           setDbError(msg);
-          setAppState(prev => ({
-            ...prev,
-            transactions: prev.transactions.filter(t => t.id !== tx.id),
-          }));
+          setAppState(prev => (
+            isOperationScopeCurrent(accountScopeRef, scope, userId) && prev.user?.id === userId
+              ? { ...prev, transactions: prev.transactions.filter(t => t.id !== tx.id) }
+              : prev
+          ));
           return;
         }
 
@@ -139,6 +166,7 @@ export const useTransactionOps = ({
 
         log.debug('[insert] OK, id:', saved.id);
         setAppState(prev => {
+          if (!isOperationScopeCurrent(accountScopeRef, scope, userId) || prev.user?.id !== userId) return prev;
           const hasOptimistic = prev.transactions.some(t => t.id === tx.id);
           if (hasOptimistic) {
             return {
@@ -154,20 +182,24 @@ export const useTransactionOps = ({
           return { ...prev, transactions: [saved, ...prev.transactions] };
         });
       } catch (err: any) {
+        if (!isOperationScopeCurrent(accountScopeRef, scope, userId)) return;
         const msg = `Insert exception: ${err?.message || err}`;
         log.error(msg);
         setDbError(msg);
-        setAppState(prev => ({
-          ...prev,
-          transactions: prev.transactions.filter(t => t.id !== tx.id),
-        }));
+        setAppState(prev => (
+          isOperationScopeCurrent(accountScopeRef, scope, userId) && prev.user?.id === userId
+            ? { ...prev, transactions: prev.transactions.filter(t => t.id !== tx.id) }
+            : prev
+        ));
       }
     },
     [
+      appState.user,
       categoriesLoaded,
       fromSupabaseTransaction,
       setAppState,
       setDbError,
+      accountScopeRef,
       toSupabaseTransaction,
     ],
   );
@@ -175,9 +207,15 @@ export const useTransactionOps = ({
   // Update transaction
   const handleUpdateTransaction = useCallback(
     async (updatedTx: Transaction): Promise<boolean> => {
+      const userId = appState.user?.id;
+      const scope = userId && accountScopeRef
+        ? captureAccountDataScope(accountScopeRef, userId)
+        : null;
+      if (!userId || !isOperationScopeCurrent(accountScopeRef, scope, userId)) return false;
       const sourceTransactionId = getSourceTransactionIdFromProjectedId(updatedTx.id);
       const isProjectedEdit = Boolean(sourceTransactionId);
       const originalTx = appState.transactions.find(t => t.id === (sourceTransactionId || updatedTx.id));
+      if (originalTx && originalTx.user_id !== userId) return false;
 
       if (isProjectedEdit && !originalTx) {
         const msg = `[updateTransaction] Could not find source transaction for projected id ${updatedTx.id}`;
@@ -193,12 +231,11 @@ export const useTransactionOps = ({
       const isAIRecategorize = isAI && txToPersist.budget_id !== originalTx?.budget_id;
       const isAIVendorRename = isAI && originalTx && cleanVendorInput(txToPersist.vendor) !== cleanVendorInput(originalTx.vendor);
 
-      setAppState(prev => ({
-        ...prev,
-        transactions: prev.transactions.map(t =>
-          t.id === txToPersist.id ? txToPersist : t,
-        ),
-      }));
+      setAppState(prev => (
+        isOperationScopeCurrent(accountScopeRef, scope, userId) && prev.user?.id === userId
+          ? { ...prev, transactions: prev.transactions.map(t => t.id === txToPersist.id ? txToPersist : t) }
+          : prev
+      ));
 
       // Set once the database has confirmed the change, so an exception after
       // that point (the local vendor memory, the rule write) is never mistaken
@@ -219,6 +256,7 @@ export const useTransactionOps = ({
           { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify(row) },
         );
         const body = await res.text();
+        if (!isOperationScopeCurrent(accountScopeRef, scope, userId)) return false;
         log.debug(
           '[update] status:',
           res.status,
@@ -232,12 +270,11 @@ export const useTransactionOps = ({
           setDbError(msg);
           // Revert optimistic update
           if (originalTx) {
-            setAppState(prev => ({
-              ...prev,
-              transactions: prev.transactions.map(t =>
-                t.id === txToPersist.id ? originalTx : t
-              ),
-            }));
+            setAppState(prev => (
+              isOperationScopeCurrent(accountScopeRef, scope, userId) && prev.user?.id === userId
+                ? { ...prev, transactions: prev.transactions.map(t => t.id === txToPersist.id ? originalTx : t) }
+                : prev
+            ));
           }
           return false;
         } else {
@@ -263,16 +300,17 @@ export const useTransactionOps = ({
             log.error(`[updateTransaction] no rows updated for transaction ${txToPersist.id}`);
             setDbError('That change could not be saved. Please try again.');
             if (originalTx) {
-              setAppState(prev => ({
-                ...prev,
-                transactions: prev.transactions.map(t =>
-                  t.id === txToPersist.id ? originalTx : t
-                ),
-              }));
+              setAppState(prev => (
+                isOperationScopeCurrent(accountScopeRef, scope, userId) && prev.user?.id === userId
+                  ? { ...prev, transactions: prev.transactions.map(t => t.id === txToPersist.id ? originalTx : t) }
+                  : prev
+              ));
             }
             return false;
           }
           saved = true;
+
+          if (!isOperationScopeCurrent(accountScopeRef, scope, userId)) return false;
 
           markReviewQueueStatus(txToPersist.id, 'reviewed');
           const mappedBudget = appState.budgets.find(b => b.id === txToPersist.budget_id)?.name || 'Other';
@@ -319,8 +357,9 @@ export const useTransactionOps = ({
 
             // Persist to DB overrides table (upsert by match_key first, fall back to proper_name)
             try {
+              if (!isOperationScopeCurrent(accountScopeRef, scope, userId)) return saved;
               await persistVendorOverride({
-                userId: appState.user.id,
+                userId,
                 properName: newVendorName,
                 matchKey: vendorKey,
                 categoryName: budgetName,
@@ -334,6 +373,7 @@ export const useTransactionOps = ({
         }
         return saved;
       } catch (err: any) {
+        if (!isOperationScopeCurrent(accountScopeRef, scope, userId)) return saved;
         const msg = `Update exception: ${err?.message || err}`;
         log.error(msg);
         setDbError(msg);
@@ -341,28 +381,32 @@ export const useTransactionOps = ({
         // saved nothing, so the edit comes back off the screen rather than
         // sitting there looking saved until the next reload quietly reverts it.
         if (!saved && originalTx) {
-          setAppState(prev => ({
-            ...prev,
-            transactions: prev.transactions.map(t =>
-              t.id === txToPersist.id ? originalTx : t
-            ),
-          }));
+          setAppState(prev => (
+            isOperationScopeCurrent(accountScopeRef, scope, userId) && prev.user?.id === userId
+              ? { ...prev, transactions: prev.transactions.map(t => t.id === txToPersist.id ? originalTx : t) }
+              : prev
+          ));
         }
         return saved;
       }
     },
-    [appState.transactions, appState.user, appState.budgets, setAppState, setDbError, toSupabaseTransaction],
+    [appState.transactions, appState.user, appState.budgets, accountScopeRef, setAppState, setDbError, toSupabaseTransaction],
   );
 
   // Delete transaction.
   //
   // For a recurring charge this deletes the occurrence the user chose and
   // every later one, and ends the series at that point so the projections and
-  // the executor don't bring it back — see lib/transactions/recurringDelete.ts. Returns the
+  // the executor don't bring it back — see lib/recurringDelete.ts. Returns the
   // plan it carried out (null if nothing was deleted) so the caller can offer
   // an Undo that restores all of it.
   const handleDeleteTransaction = useCallback(
     async (id: string): Promise<RecurringDeletePlan | null> => {
+      const userId = appState.user?.id;
+      const scope = userId && accountScopeRef
+        ? captureAccountDataScope(accountScopeRef, userId)
+        : null;
+      if (!userId || !isOperationScopeCurrent(accountScopeRef, scope, userId)) return null;
       const plan = planRecurringDelete(id, appState.transactions);
 
       if (!plan) {
@@ -377,13 +421,15 @@ export const useTransactionOps = ({
 
       // Optimistic: drop the deleted occurrences and stop the ones that
       // already elapsed from recurring.
-      setAppState(prev => ({
-        ...prev,
-        transactions: applyRecurringDeletePlan(prev.transactions, plan),
-      }));
+      setAppState(prev => (
+        isOperationScopeCurrent(accountScopeRef, scope, userId) && prev.user?.id === userId
+          ? { ...prev, transactions: applyRecurringDeletePlan(prev.transactions, plan) }
+          : prev
+      ));
 
       const restore = () => {
         setAppState(prev => {
+          if (!isOperationScopeCurrent(accountScopeRef, scope, userId) || prev.user?.id !== userId) return prev;
           const present = new Set(prev.transactions.map(t => t.id));
           const recurrenceById = new Map(plan.endSeries.map(t => [t.id, t.recurrence]));
           return {
@@ -406,9 +452,11 @@ export const useTransactionOps = ({
             `/transactions?id=in.(${toIdList(removedIds)})`,
             { method: 'DELETE' },
           );
+          if (!isOperationScopeCurrent(accountScopeRef, scope, userId)) return null;
 
           if (!res.ok) {
             const body = await res.text();
+            if (!isOperationScopeCurrent(accountScopeRef, scope, userId)) return null;
             const msg = `Delete failed (${res.status}): ${body.slice(0, 200)}`;
             log.error(msg);
             setDbError(msg);
@@ -419,6 +467,7 @@ export const useTransactionOps = ({
           // Whichever of the deleted rows still had their capture
           // notification sitting in the tray — best-effort, and a no-op for
           // every row that never carried the marker, which is most of them.
+          if (!isOperationScopeCurrent(accountScopeRef, scope, userId)) return null;
           clearCaptureNotificationForRows(plan.remove);
         }
 
@@ -433,9 +482,11 @@ export const useTransactionOps = ({
               body: JSON.stringify({ recur: Recurrence.ONE_TIME }),
             },
           );
+          if (!isOperationScopeCurrent(accountScopeRef, scope, userId)) return plan;
 
           if (!res.ok) {
             const body = await res.text();
+            if (!isOperationScopeCurrent(accountScopeRef, scope, userId)) return plan;
             // The deletes already went through, so this is not restorable by
             // putting the rows back — report it and leave the UI as it is.
             // The series will reappear on the next load if this failed.
@@ -453,6 +504,7 @@ export const useTransactionOps = ({
         );
         return plan;
       } catch (err: any) {
+        if (!isOperationScopeCurrent(accountScopeRef, scope, userId)) return null;
         const msg = `Delete exception: ${err?.message || err}`;
         log.error(msg);
         setDbError(msg);
@@ -460,7 +512,7 @@ export const useTransactionOps = ({
         return null;
       }
     },
-    [appState.transactions, setAppState, setDbError],
+    [appState.transactions, appState.user, accountScopeRef, setAppState, setDbError],
   );
 
 
@@ -470,6 +522,11 @@ export const useTransactionOps = ({
   const handleClearApprovedTransactions = useCallback(
     async (ids: string[]) => {
       if (ids.length === 0) return;
+      const userId = appState.user?.id;
+      const scope = userId && accountScopeRef
+        ? captureAccountDataScope(accountScopeRef, userId)
+        : null;
+      if (!userId || !isOperationScopeCurrent(accountScopeRef, scope, userId)) return;
       try {
         const idList = ids.map(id => `"${id.replace(/"/g, '')}"`).join(',');
         const res = await restFetch(`/transactions?id=in.(${idList})`, {
@@ -477,8 +534,10 @@ export const useTransactionOps = ({
           headers: { Prefer: 'return=representation' },
           body: JSON.stringify({ type: 'Manual' }),
         });
+        if (!isOperationScopeCurrent(accountScopeRef, scope, userId)) return;
         if (!res.ok) {
           const body = await res.text();
+          if (!isOperationScopeCurrent(accountScopeRef, scope, userId)) return;
           const msg = `[clearApproved] PATCH failed (${res.status}): ${body.slice(0, 200)}`;
           log.error(msg);
           setDbError(msg);
@@ -487,20 +546,23 @@ export const useTransactionOps = ({
         // Update UI state: set label to 'Manual' so they no longer appear in "Approved Transactions"
         // but remain visible on the main transactions page
         const idSet = new Set(ids);
-        setAppState(prev => ({
-          ...prev,
-          transactions: prev.transactions.map(t =>
-            idSet.has(t.id) ? { ...t, label: 'Manual' as const } : t,
-          ),
-        }));
+        setAppState(prev => (
+          isOperationScopeCurrent(accountScopeRef, scope, userId) && prev.user?.id === userId
+            ? {
+                ...prev,
+                transactions: prev.transactions.map(t => idSet.has(t.id) ? { ...t, label: 'Manual' as const } : t),
+              }
+            : prev
+        ));
         log.debug('[clearApproved] OK, cleared labels for', ids.length, 'approved transactions');
       } catch (err: any) {
+        if (!isOperationScopeCurrent(accountScopeRef, scope, userId)) return;
         const msg = `Clear approved exception: ${err?.message || err}`;
         log.error(msg);
         setDbError(msg);
       }
     },
-    [setAppState, setDbError],
+    [appState.user, accountScopeRef, setAppState, setDbError],
   );
 
   return {
@@ -511,4 +573,4 @@ export const useTransactionOps = ({
   };
 };
 
-export {getSourceTransactionIdFromProjectedId} from '../../lib/transactions/projectedTransactions';
+export {getSourceTransactionIdFromProjectedId} from '../lib/transactions/projectedTransactions';

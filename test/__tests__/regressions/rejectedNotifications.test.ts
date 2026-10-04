@@ -19,7 +19,7 @@ import {
   markNotificationRejected,
   isNotificationRejected,
   clearRejectedNotifications,
-} from '../../../lib/capture/localNotificationMemory';
+} from '../../../app/lib/capture/localNotificationMemory';
 
 const KEY = 'com.wealthsimple|habc123';
 
@@ -97,7 +97,7 @@ describe('captured vs rejected notifications', () => {
 // The invariant these protect: a rescan must NEVER re-import a transaction that
 // is already captured, while two genuinely separate purchases that produce
 // identical notification text must both be able to land.
-import { buildCapturedKey, buildInMemoryDedupKey } from '../../../lib/capture/notificationProcessor';
+import { buildCapturedKey, buildInMemoryDedupKey } from '../../../app/lib/capture/notificationProcessor';
 
 const APP = 'com.wealthsimple';
 const TEXT = 'POSTAL OUTLET 33 LD You spent $60.57 with your credit card.';

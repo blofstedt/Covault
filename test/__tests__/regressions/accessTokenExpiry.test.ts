@@ -11,13 +11,13 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 
-vi.mock('../../../lib/api/supabase', () => ({
+vi.mock('../../../app/lib/api/supabase', () => ({
   supabase: { auth: { getSession: vi.fn() } },
   supabaseUrl: 'https://example.supabase.test',
   supabaseAnonKey: 'anon',
 }));
 
-import { readTokenExpMs } from '../../../lib/api/apiHelpers';
+import { readTokenExpMs } from '../../../app/lib/api/apiHelpers';
 
 const b64url = (value: string) => Buffer.from(value, 'utf8').toString('base64url');
 

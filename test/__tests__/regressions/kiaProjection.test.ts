@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { generateProjectedTransactions } from '../../../lib/transactions/projectedTransactions';
-import type { Transaction } from '../../../types';
+import { generateProjectedTransactions } from '../../../app/lib/transactions/projectedTransactions';
+import type { Transaction } from '../../../app/types';
 
 /**
  * Biweekly projection from a recurring anchor.

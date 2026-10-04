@@ -143,7 +143,7 @@ npm run cap:build
 cd android && ./gradlew assembleDebug
 ```
 
-Custom native code lives in **`android-custom/`**, not `android/`.
+Custom native code lives in **`native/android/`**, not `android/`.
 `scripts/sync-android.sh` copies it in. The `android/` directory is generated
 and gitignored — CI deletes and recreates it on every build, so edits made there
 are lost.

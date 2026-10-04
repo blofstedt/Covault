@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
-import { handleBack } from '../../lib/navigation/backStack';
+import { handleBack } from '../lib/navigation/backStack';
 
 /**
  * Wires the phone's back button (the gesture, the on-screen key or a physical

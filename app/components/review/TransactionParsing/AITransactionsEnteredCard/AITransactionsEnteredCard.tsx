@@ -1,0 +1,404 @@
+import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
+import { log } from '../../../../lib/observability/log';
+import { Transaction, BudgetCategory } from '../../../../types';
+import ParsingCard from '../../../common/ParsingCard';
+import EmptyState from '../../../common/EmptyState';
+import AIEnteredRow from './AIEnteredRow';
+import type { NotATxRuleType } from './AIEnteredRow/NotATransactionModal';
+import type { ExistingRule } from '../../CategoryPickerSheet';
+import { useVendorMatcher, selectBulkAcceptable } from '../../useVendorMatcher';
+import type { VendorOverride } from '../../../../lib/vendors/useVendorOverrides';
+import { hapticSuccess } from '../../../../lib/native/haptics';
+import { detectFuelHoldPlaceholder } from '../../../../lib/capture/fuelHold';
+import { isFuelHoldResolved } from '../../../../lib/capture/localNotificationMemory';
+import { useSpinHighlight } from '../../../../hooks/useSpinHighlight';
+import { hasEverCaptured } from '../../../../lib/capture/reviewQueue';
+
+interface AITransactionsEnteredCardProps {
+  /**
+   * Bumped when the user arrived here from a capture notification or the
+   * widget's review pill. Each change runs a light around the rows that are
+   * waiting, so "something needs you" resolves to "these ones".
+   */
+  highlightNonce?: number;
+  aiTransactions: Transaction[];
+  budgets: BudgetCategory[];
+  /**
+   * The categories the user has turned off in settings. The picker that files a
+   * row does not offer them. See lib/budgetVisibility.ts.
+   */
+  hiddenCategories?: string[];
+  onTransactionTap?: (tx: Transaction) => void;
+  /**
+   * File every row shown here. Handed the rows themselves, for the same reason
+   * onDeleteAll is: the confirmation quotes a count, and it has to be the count
+   * of what the user was actually looking at. Called bare, it left the parent
+   * to re-derive the list — which still held rows the user had just filed one
+   * by one, so the dialog offered to file three when one was on screen.
+   */
+  onClear?: (txs: Transaction[]) => void;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
+  /** Captured refunds filtered out upstream, surfaced in the subtitle. */
+  refundCount?: number;
+  needsReviewIds?: Set<string>;
+  onDeleteTransaction?: (id: string) => Promise<void> | void;
+  /**
+   * Delete every row shown here, outright. Handed the rows themselves rather
+   * than called bare, so what gets deleted is exactly what the user was looking
+   * at when they tapped — not whatever the parent's copy of the list says a
+   * reload later.
+   */
+  onDeleteAll?: (txs: Transaction[]) => void;
+  onVendorRenamed?: (tx: Transaction, newVendor: string, categoryId?: string) => Promise<void> | void;
+  onMarkNotTransaction?: (tx: Transaction, ruleType: NotATxRuleType) => Promise<void> | void;
+  userId?: string;
+  isExpanded?: boolean;
+  onToggleExpanded?: () => void;
+  vendorOverrides?: VendorOverride[];
+  /** The partner's rules, matched after the user's own and never merged with them. */
+  partnerOverrides?: VendorOverride[];
+  /** Their name, so a borrowed suggestion can say whose rule it is. */
+  partnerName?: string;
+  /** Accept the current mapping and file the row. */
+  onAccept?: (tx: Transaction) => Promise<boolean> | boolean;
+  /** File the row under a budget AND remember the pairing as a rule. */
+  onChangeCategory?: (tx: Transaction, targetBudgetId: string) => Promise<boolean> | boolean;
+  /** Rules already taught for a given vendor, offered first in the picker. */
+  existingRulesFor?: (vendor: string) => ExistingRule[];
+  /** Every rule the user has taught, for the rename typeahead. */
+  knownRules?: ExistingRule[];
+  /** File several rows at once (the "Accept N known vendors" action). */
+  onAcceptMany?: (txs: Transaction[]) => Promise<boolean> | boolean;
+  /** Replace a fuel-hold placeholder with what the user actually paid. */
+  onAmountCorrected?: (tx: Transaction, amount: number) => Promise<void> | void;
+  /** Every loaded transaction, for pairing a settled fuel charge with its hold. */
+  allTransactions?: Transaction[];
+  /**
+   * Whether capture is switched on. An empty list means something different
+   * when it is off — nothing is coming, and saying "all caught up" to somebody
+   * whose bank alerts are not being read is the app agreeing that everything
+   * is fine while it does nothing at all.
+   */
+  captureEnabled?: boolean;
+  /** Fold a settled fuel charge into the placeholder row it settles. */
+  onSettleFuelHold?: (placeholder: Transaction, charge: Transaction) => Promise<void> | void;
+}
+
+// Stable identities for omitted props — a fresh Set/array per render would
+// invalidate the memos that depend on them.
+const EMPTY_IDS = new Set<string>();
+const EMPTY_OVERRIDES: VendorOverride[] = [];
+
+const AITransactionsEnteredCard: React.FC<AITransactionsEnteredCardProps> = ({
+  highlightNonce = 0,
+  aiTransactions,
+  budgets,
+  hiddenCategories = [],
+  onTransactionTap,
+  onClear,
+  onRefresh,
+  isRefreshing = false,
+  refundCount = 0,
+  needsReviewIds = EMPTY_IDS,
+  onDeleteTransaction,
+  onDeleteAll,
+  onVendorRenamed,
+  onMarkNotTransaction,
+  userId,
+  isExpanded = true,
+  onToggleExpanded,
+  vendorOverrides = EMPTY_OVERRIDES,
+  partnerOverrides = EMPTY_OVERRIDES,
+  partnerName,
+  onAccept,
+  onChangeCategory,
+  existingRulesFor,
+  knownRules,
+  onAcceptMany,
+  onAmountCorrected,
+  allTransactions,
+  captureEnabled = true,
+  onSettleFuelHold,
+}) => {
+  const { classifyAll } = useVendorMatcher(vendorOverrides, partnerOverrides);
+  const matchMap = useMemo(() => classifyAll(aiTransactions), [classifyAll, aiTransactions]);
+
+  // Rows the user just filed — hidden immediately (after their completion
+  // animation) so they vanish smoothly without waiting for the DB reload.
+  const [filedIds, setFiledIds] = useState<Set<string>>(new Set());
+  const handleFiled = useCallback((txId: string) => {
+    setFiledIds((prev) => {
+      const next = new Set(prev);
+      next.add(txId);
+      return next;
+    });
+  }, []);
+  const [isAcceptingAll, setIsAcceptingAll] = useState(false);
+  const isAcceptingAllRef = useRef(false);
+
+  // Let go the moment the reload confirms the row is filed.
+  //
+  // This set is only a bridge across the DB round-trip, but it used to be kept
+  // for the life of the page — which quietly broke the Undo on the "Filed X"
+  // toast. Undo puts `caught_cleared` back and reloads, so the row returns to
+  // `aiTransactions`, and this filter then hid it again: the user tapped Undo
+  // and nothing came back.
+  //
+  // An id that has left `aiTransactions` has been confirmed filed by the
+  // server, so the bridge is no longer holding anything up and can be dropped.
+  // If Undo later brings that row back it is no longer on the list and shows
+  // again, which is the whole point of offering the Undo.
+  useEffect(() => {
+    setFiledIds((prev) => {
+      if (prev.size === 0) return prev;
+      const present = new Set(aiTransactions.map((tx) => tx.id));
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (present.has(id)) next.add(id);
+      }
+      return next.size === prev.size ? prev : next;
+    });
+  }, [aiTransactions]);
+
+  // `aiTransactions` already excludes refunds and cleared rows — the caller
+  // filters with selectAwaitingReview (App/Lib/Capture/reviewQueue.ts), which is what keeps
+  // this list and the bottom-bar badge in agreement. All that's left here is
+  // hiding rows the user just filed, before the DB reload catches up.
+  const nonRefunds = useMemo(
+    () => aiTransactions.filter((tx) => !filedIds.has(tx.id)),
+    [aiTransactions, filedIds],
+  );
+
+  // Whether capture has ever produced anything, which is what separates "you
+  // are up to date" from "this has never worked". Read from the whole ledger
+  // rather than from the waiting list, which is empty in both cases.
+  const everCaptured = useMemo(
+    () => hasEverCaptured(allTransactions || aiTransactions),
+    [allTransactions, aiTransactions],
+  );
+
+  // The light that says which rows the notification meant.
+  //
+  // A nonce of zero means the user walked here themselves and nothing is lit.
+  // Anything above it is an arrival, and each arrival plays exactly once — the
+  // ref is what enforces that, because this now also runs when the rows change
+  // and filing a row must not replay the light around the ones that are left.
+  //
+  // The wait for `nonRefunds` is the whole reason it is written this way. On a
+  // cold start the tap opens this page before any data has arrived, so the
+  // light used to run around an empty list: the one moment it was asked for
+  // was the one moment it had nothing to point at. It now holds until there is
+  // something to light — from the cached first paint, usually in the same
+  // frame, and otherwise whenever the fetch lands.
+  const { spinning, spin } = useSpinHighlight();
+  const playedNonceRef = useRef(0);
+  useEffect(() => {
+    if (highlightNonce <= 0 || highlightNonce === playedNonceRef.current) return;
+    if (nonRefunds.length === 0) return;
+    playedNonceRef.current = highlightNonce;
+    spin(nonRefunds.map((tx) => tx.id));
+  }, [highlightNonce, nonRefunds, spin]);
+
+  // Rows a single tap can file: rules the user wrote, already pointing at a
+  // category. Offered from two upwards — for one row the per-row Accept is
+  // right there and a second control would just be noise.
+  const budgetIds = useMemo(() => new Set(budgets.map((b) => b.id)), [budgets]);
+  // Fuel holds are excluded even when the vendor rule is a perfect match. The
+  // one-tap bulk action exists for rows there is nothing left to decide about,
+  // and a placeholder amount is precisely a row with something left to decide —
+  // filing it in a batch is how a wrong number gets into the budget without
+  // anyone reading it.
+  const bulkAcceptable = useMemo(
+    () =>
+      selectBulkAcceptable(
+        nonRefunds,
+        matchMap,
+        (tx) => !!tx.budget_id && budgetIds.has(tx.budget_id),
+      ).filter((tx) => isFuelHoldResolved(tx.id) || !detectFuelHoldPlaceholder(tx)),
+    [nonRefunds, matchMap, budgetIds],
+  );
+
+  const handleAcceptAll = useCallback(async () => {
+    if (!onAcceptMany || bulkAcceptable.length === 0 || isAcceptingAllRef.current) return;
+    isAcceptingAllRef.current = true;
+    setIsAcceptingAll(true);
+    try {
+      const filed = await onAcceptMany(bulkAcceptable);
+      if (!filed) return;
+
+      // The larger haptic and the row transition follow a confirmed write.
+      hapticSuccess();
+      setFiledIds((prev) => {
+        const next = new Set(prev);
+        for (const tx of bulkAcceptable) next.add(tx.id);
+        return next;
+      });
+    } catch (err) {
+      log.warn('[AITransactionsEnteredCard] bulk filing failed:', err);
+    } finally {
+      isAcceptingAllRef.current = false;
+      setIsAcceptingAll(false);
+    }
+  }, [onAcceptMany, bulkAcceptable]);
+
+  return (
+    <ParsingCard
+      id="parsing-ai-entered"
+      colorScheme="emerald"
+      className="shrink-0"
+      collapsible
+      isExpanded={isExpanded}
+      onToggleExpanded={onToggleExpanded}
+      icon={<><path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></>}
+      title="To review"
+      subtitle={
+        nonRefunds.length === 0
+          ? 'Nothing waiting'
+          : refundCount > 0
+            ? `${refundCount} refund${refundCount === 1 ? '' : 's'} hidden`
+            : 'From your bank alerts'
+      }
+      count={nonRefunds.length}
+      onScan={onRefresh}
+      isScanning={isRefreshing}
+      scanLabel="Scan for new transactions"
+      headerAction={
+        onDeleteAll && nonRefunds.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => onDeleteAll(nonRefunds)}
+            aria-label={`Delete all ${nonRefunds.length} captured transactions`}
+            title="Delete all captured transactions"
+            // Sized and shaped like the scan button beside it — same square
+            // target, same radius, muted until touched — so the header reads as
+            // one row of controls rather than a warning bolted onto it. The
+            // colour only turns red on press, where it means something.
+            className="shrink-0 inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded-xl text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 active:scale-95 transition-all"
+          >
+            <svg
+              className="w-[18px] h-[18px]"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-.867 12.142A2 2 0 0116.138 20H7.862a2 2 0 01-1.995-1.858L5 6" />
+              <path d="M10 11v6M14 11v6" />
+              <path d="M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2" />
+            </svg>
+          </button>
+        ) : undefined
+      }
+    >
+      {isExpanded && (
+        <div className="space-y-3">
+          {onAcceptMany && bulkAcceptable.length > 1 && (
+            <button
+              type="button"
+              onClick={handleAcceptAll}
+              disabled={isAcceptingAll}
+              aria-busy={isAcceptingAll}
+              className="w-full min-h-[44px] inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-200 dark:border-emerald-800/40 bg-emerald-50 dark:bg-emerald-900/20 text-[13px] font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 active:scale-[0.99] transition-all"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              {isAcceptingAll
+                ? `Filing ${bulkAcceptable.length} known purchases…`
+                : `Accept ${bulkAcceptable.length} known ${bulkAcceptable.length === 1 ? 'vendor' : 'vendors'}`}
+            </button>
+          )}
+          {nonRefunds.length === 0 ? (
+            /* Three different empty lists, which used to be one.
+               ---------------------------------------------------------
+               "All caught up" is only true for somebody whose captures have
+               been arriving and who has dealt with them. Said to a new user it
+               is actively misleading: it reports success at the one moment
+               they most need to know that nothing has happened yet, and it was
+               said just as loudly when capture was switched off entirely.
+               So the message now depends on which of the three this is. */
+            <EmptyState
+              icon={<svg className="w-8 h-8 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+              message={
+                !captureEnabled
+                  ? 'Capture is off'
+                  : everCaptured
+                    ? 'All caught up'
+                    : 'Nothing caught yet'
+              }
+              description={
+                !captureEnabled
+                  ? 'Nothing will arrive here until you turn capture on in Settings.'
+                  : everCaptured
+                    ? 'New transactions from your bank alerts will show up here.'
+                    : "The next time your bank announces a purchase, Covault will read it and leave it here for you to check. Nothing counts against a vial until you accept it. Most banks announce a purchase within a minute or two — if a day goes by with nothing, it is usually the bank's own alerts that are switched off."
+              }
+            />
+          ) : (
+            nonRefunds.map((tx) => {
+              const matched = matchMap.get(tx.id);
+              const lit = spinning.has(tx.id);
+              return (
+                // The wrapper exists only to carry the light. AIEnteredRow is
+                // its own card with its own radius, and a plain div inside the
+                // list's `space-y` leaves the spacing identical either way.
+                <div
+                  key={tx.id}
+                  className={lit ? 'covault-spin-highlight' : undefined}
+                  style={
+                    lit
+                      ? ({
+                          // Amber, the same "needs a look" colour the review
+                          // pill and the row's own badge already use.
+                          '--covault-spin-color': '#f59e0b',
+                          '--covault-spin-radius': '1.5rem',
+                        } as React.CSSProperties)
+                      : undefined
+                  }
+                >
+                <AIEnteredRow
+                  tx={tx}
+                  budgets={budgets}
+                  hiddenCategories={hiddenCategories}
+                  isForReview={needsReviewIds.has(tx.id)}
+                  onTransactionTap={onTransactionTap}
+                  onDeleteTransaction={onDeleteTransaction}
+                  onVendorRenamed={onVendorRenamed}
+                  onMarkNotTransaction={onMarkNotTransaction}
+                  userId={userId}
+                  matchResult={matched}
+                  partnerName={partnerName}
+                  onAccept={onAccept}
+                  onChangeCategory={onChangeCategory}
+                  existingRules={existingRulesFor?.(tx.vendor)}
+                  knownRules={knownRules}
+                  onFiled={handleFiled}
+                  onAmountCorrected={onAmountCorrected}
+                  allTransactions={allTransactions}
+                  onSettleFuelHold={onSettleFuelHold}
+                />
+                </div>
+              );
+            })
+          )}
+          {onClear && nonRefunds.length > 0 && (
+            <button
+              type="button"
+              onClick={() => onClear(nonRefunds)}
+              className="w-full min-h-[44px] mt-1 text-[11px] font-bold rounded-2xl text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors active:scale-[0.99]"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+      )}
+    </ParsingCard>
+  );
+};
+
+export default AITransactionsEnteredCard;

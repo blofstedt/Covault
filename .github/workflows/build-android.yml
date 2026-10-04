@@ -49,6 +49,7 @@ jobs:
 
       - name: Type-check and run unit tests
         run: |
+          npm run check:structure
           npm run typecheck
           npm run typecheck:unused
           npm run lint
@@ -62,7 +63,7 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           # Error reporting. Absent until the secret is added, and the app is
           # built with reporting switched off rather than broken — see
-          # lib/observability/errorReporting.ts.
+          # app/lib/observability/errorReporting.ts.
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
           # The run number is already the versionCode and the release tag; this
           # makes it the reporter's release identity too, so a crash can be
@@ -149,7 +150,7 @@ jobs:
             printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$KEYSTORE"
           else
             echo "Using the committed debug signing key."
-            cp android-custom/covault-debug.keystore "$KEYSTORE"
+            cp native/android/covault-debug.keystore "$KEYSTORE"
           fi
           echo "KEYSTORE_PATH=$KEYSTORE" >> $GITHUB_ENV
 

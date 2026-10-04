@@ -23,6 +23,8 @@ SCREENS = {
     "mobile-manual-invalid-dark.png": "Invalid amount, dark",
     "mobile-manual-invalid-light.png": "Invalid amount, light",
     "mobile-review-dark.png": "Review, dark",
+    "mobile-review-filing-dark.png": "Review filing pending, dark",
+    "mobile-review-rejected-dark.png": "Review filing rejected, dark",
     "mobile-settings-light.png": "Settings, light",
 }
 MAX_PNG = 2 * 1024 * 1024

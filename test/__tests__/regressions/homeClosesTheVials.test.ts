@@ -16,7 +16,7 @@ import { resolve } from 'node:path';
  * that the handler is not `closeParsing` and that it puts the screen back.
  */
 const DASHBOARD = readFileSync(
-  resolve(__dirname, '../../../components/Dashboard/Dashboard.tsx'),
+  resolve(__dirname, '../../../app/components/Dashboard/Dashboard.tsx'),
   'utf8',
 );
 

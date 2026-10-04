@@ -5,9 +5,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { screen, waitFor, waitForElementToBeRemoved, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
-import LearnedRulesCard from '../../../components/Review/LearnedRulesCard';
-import type { NotificationRule } from '../../../lib/capture/notificationRules';
-import type { VendorOverride } from '../../../lib/vendors/useVendorOverrides';
+import LearnedRulesCard from '../../../app/components/review/TransactionParsing/LearnedRulesCard';
+import type { NotificationRule } from '../../../app/lib/capture/notificationRules';
+import type { VendorOverride } from '../../../app/lib/vendors/useVendorOverrides';
 import { renderWithProviders } from '../../renderWithProviders';
 
 const skipRule: NotificationRule = {

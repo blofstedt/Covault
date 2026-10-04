@@ -12,11 +12,11 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { SYSTEM_CATEGORIES, OPT_IN_CATEGORIES, isOptInCategory } from '../../../constants';
-import { sortBudgets, budgetRank } from '../../../lib/budgets/budgetOrder';
-import { detectMerchantSignal, resolveSignalCategory } from '../../../lib/vendors/merchantCategorySignals';
-import { chooseNotificationFallbackCategory } from '../../../lib/capture/notificationCategory';
-import { shouldUseDenseRows, DENSE_ROW_THRESHOLD } from '../../../lib/budgets/vialDensity';
+import { SYSTEM_CATEGORIES, OPT_IN_CATEGORIES, isOptInCategory } from '../../../app/constants';
+import { sortBudgets, budgetRank } from '../../../app/lib/budgets/budgetOrder';
+import { detectMerchantSignal, resolveSignalCategory } from '../../../app/lib/vendors/merchantCategorySignals';
+import { chooseNotificationFallbackCategory } from '../../../app/lib/capture/notificationCategory';
+import { shouldUseDenseRows, DENSE_ROW_THRESHOLD } from '../../../app/lib/budgets/vialDensity';
 
 describe('the category list itself', () => {
   it('offers all ten', () => {
@@ -66,7 +66,7 @@ describe('the category list itself', () => {
   it('gives every category its own colour, with no repeats', () => {
     // The fallback palette repeats, so a category missing from the map is not
     // "similar" to another vial — it is drawn in the identical colour.
-    const source = readFileSync(resolve(__dirname, '../../../lib/budgets/budgetColors.ts'), 'utf8');
+    const source = readFileSync(resolve(__dirname, '../../../app/lib/budgets/budgetColors.ts'), 'utf8');
     const map = source.slice(
       source.indexOf('BUDGET_CATEGORY_COLORS'),
       source.indexOf('FALLBACK_COLORS'),
@@ -84,7 +84,7 @@ describe('the category list itself', () => {
     // Unmatched names all fall through to the same three-dot placeholder, and
     // three vials wearing one glyph reads as a bug.
     const source = readFileSync(
-      resolve(__dirname, '../../../components/shared/getBudgetIcon.tsx'),
+      resolve(__dirname, '../../../app/components/common/getBudgetIcon.tsx'),
       'utf8',
     );
     for (const category of SYSTEM_CATEGORIES) {
@@ -256,7 +256,7 @@ describe('the collapsed row drops to one line past seven vials', () => {
 
   it('only ever applies while every card is collapsed', () => {
     const source = readFileSync(
-      resolve(__dirname, '../../../components/Dashboard/BudgetSections/DashboardBudgetSectionsList.tsx'),
+      resolve(__dirname, '../../../app/components/Dashboard/DashboardBudgetSectionsList/DashboardBudgetSectionsList.tsx'),
       'utf8',
     );
     // An expanded card has the whole column to itself and must be drawn full
@@ -268,7 +268,7 @@ describe('the collapsed row drops to one line past seven vials', () => {
   it('counts only the VISIBLE vials', () => {
     // Switching a category off has to give the others their second line back.
     const source = readFileSync(
-      resolve(__dirname, '../../../components/Dashboard/BudgetSections/DashboardBudgetSectionsList.tsx'),
+      resolve(__dirname, '../../../app/components/Dashboard/DashboardBudgetSectionsList/DashboardBudgetSectionsList.tsx'),
       'utf8',
     );
     expect(source).toContain('shouldUseDenseRows(visibleBudgets.length)');
@@ -276,7 +276,7 @@ describe('the collapsed row drops to one line past seven vials', () => {
   });
 
   it('drops the "left" line and nothing else', () => {
-    const source = readFileSync(resolve(__dirname, '../../../components/Dashboard/BudgetSections/BudgetSection.tsx'), 'utf8');
+    const source = readFileSync(resolve(__dirname, '../../../app/components/Dashboard/DashboardBudgetSectionsList/BudgetSection/BudgetSection.tsx'), 'utf8');
     // The name and the limit stay; the middle line goes.
     expect(source).toContain('{!isExpanded && !isDense && (');
     // And an expanded card ignores density entirely.

@@ -17,14 +17,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  * at.
  */
 
-vi.mock('../../../lib/ai/aiExtractor', () => ({
+vi.mock('../../../app/lib/ai/aiExtractor', () => ({
   extractWithAI: async () => {
     throw new Error('the AI is not consulted for a confidently parsed alert');
   },
   aiFindRefundMatch: async () => null,
 }));
 
-vi.mock('../../../lib/api/apiHelpers', () => ({
+vi.mock('../../../app/lib/api/apiHelpers', () => ({
   restFetch: async () => ({ ok: true, status: 200, json: async () => [], text: async () => '[]' }),
   REST_BASE: 'https://example.test/rest/v1',
   getAuthHeaders: async () => ({}),
@@ -55,14 +55,14 @@ function tableChain(table: string) {
   return chain;
 }
 
-vi.mock('../../../lib/api/supabase', () => ({
+vi.mock('../../../app/lib/api/supabase', () => ({
   supabase: { from: (table: string) => tableChain(table) },
   supabaseUrl: 'https://example.test',
   supabaseAnonKey: 'anon',
 }));
 
-import { processNotificationWithAI, _clearDedupCacheForTesting } from '../../../lib/capture/notificationProcessor';
-import { getLocalToday } from '../../../lib/time/dateUtils';
+import { processNotificationWithAI, _clearDedupCacheForTesting } from '../../../app/lib/capture/notificationProcessor';
+import { getLocalToday } from '../../../app/lib/time/dateUtils';
 
 const CATEGORIES = [
   { id: 'cat-transport', name: 'Transport' },

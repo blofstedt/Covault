@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { selectBulkAcceptable, type VendorMatchResult } from '../../../components/Review/useVendorMatcher';
-import type { Transaction } from '../../../types';
-import type { VendorOverride } from '../../../lib/vendors/useVendorOverrides';
+import { selectBulkAcceptable, type VendorMatchResult } from '../../../app/components/review/useVendorMatcher';
+import type { Transaction } from '../../../app/types';
+import type { VendorOverride } from '../../../app/lib/vendors/useVendorOverrides';
 
 /**
  * "Accept N known vendors" files a screenful of rows in one tap, so what it is
@@ -30,7 +30,7 @@ function tx(over: Partial<Transaction> & { id: string }): Transaction {
     budget_id: 'b1',
     is_projected: false,
     label: 'Automatic',
-    userName: 'Test',
+    userName: 'test',
     created_at: '2026-07-31T00:00:00Z',
     ...over,
   } as Transaction;

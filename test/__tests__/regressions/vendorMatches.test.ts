@@ -6,7 +6,7 @@ vi.mock('@capacitor/core', () => ({
   registerPlugin: vi.fn(),
 }));
 
-vi.mock('../../../lib/api/supabase', () => ({
+vi.mock('../../../app/lib/api/supabase', () => ({
   supabase: {
     from: vi.fn(() => ({
       select: vi.fn().mockReturnThis(),
@@ -30,7 +30,7 @@ vi.mock('../../../lib/api/supabase', () => ({
   supabaseAnonKey: 'mock-anon-key',
 }));
 
-import { vendorMatches } from '../../../lib/capture/notificationProcessor';
+import { vendorMatches } from '../../../app/lib/capture/notificationProcessor';
 
 describe('vendorMatches', () => {
   it('exact case-insensitive match', () => {

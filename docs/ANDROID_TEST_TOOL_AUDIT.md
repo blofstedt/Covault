@@ -14,7 +14,7 @@ This Android testing PR does not merge that upgrade.
 ## Android test libraries
 
 The exact latest stable AndroidX versions, their Apache-2.0 licenses and direct
-OSV query results are documented in [the native test README](../android-test/README.md).
+OSV query results are documented in [the native test README](../test/android/README.md).
 Those direct queries found no known advisories. The full resolved Gradle
 transitive dependency tree has not been audited.
 

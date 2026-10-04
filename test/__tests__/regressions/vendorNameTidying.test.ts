@@ -15,7 +15,7 @@
  * are already clean, which is most of them.
  */
 import { describe, it, expect } from 'vitest';
-import { parseNotificationText, stripVendorNoise } from '../../../lib/capture/deviceTransactionParser';
+import { parseNotificationText, stripVendorNoise } from '../../../app/lib/capture/deviceTransactionParser';
 
 const rbc = (merchant: string) =>
   `RBC Mobile A purchase of $12.08 CAD was made from RBC credit card 9141 at ${merchant}`;

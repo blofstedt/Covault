@@ -12,10 +12,10 @@ changed during a turn.
 | React Query | TanStack Query recommended rules for query dependencies and stable cache usage |
 | Accessible controls | JSX accessibility rules, with `NumericFormat` treated as an input |
 | Tailwind classes | Unknown classes and contradictory classes |
-| Vitest tests in `__tests__` | Valid assertions, missing assertions and focused tests |
+| Vitest tests in `Tests` | Valid assertions, missing assertions and focused tests |
 | Component tests | Testing Library recommended React rules, including awaited user events and queries, accessible queries, and no side effects inside retrying assertions |
 | Browser tests in `e2e` | Playwright recommended rules, plus awaited page and locator actions; focused tests, fixed sleeps and forced actions fail lint |
-| Runtime validation in `lib/transactions/validation`, plus `lib/money/manualAmount.ts` | Type-aware TypeScript rules for unchecked values and promises, unsafe casts, exhaustive switches, explicit `any`, and type-only imports |
+| Runtime validation in `App/Lib/Transactions/Validation`, plus `app/lib/money/manualAmount.ts` | Type-aware TypeScript rules for unchecked values and promises, unsafe casts, exhaustive switches, explicit `any`, and type-only imports |
 | Shared controls | Database and native-plugin imports are forbidden; native buttons need an explicit type |
 | Feature imports | Cross-feature runtime imports use public entries; same-feature siblings, type-only imports and the narrow lazy chart entry remain allowed |
 | Dashboard and Review components | Direct Supabase imports are forbidden; use their data hooks and actions |

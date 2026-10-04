@@ -56,7 +56,7 @@ export default tseslint.config(
     settings: {
       react: { version: 'detect' },
       'jsx-a11y': { components: { NumericFormat: 'input' } },
-      tailwindcss: { cssConfigPath: './index.css' },
+      tailwindcss: { cssConfigPath: './app/index.css' },
     },
     rules: {
       // Keep the hooks checks the app already enforces. The newer preset also
@@ -92,7 +92,7 @@ export default tseslint.config(
       'unicorn/consistent-compound-words': 'off',
       // null is load-bearing here: "the read failed" (null) and "the answer
       // is nothing" ([]) are different, and conflating them is how a failed
-      // load once emptied the dashboard. See lib/budgets/budgetFallback.ts.
+      // load once emptied the dashboard. See app/lib/budgets/budgetFallback.ts.
       'unicorn/no-null': 'off',
       'unicorn/no-useless-undefined': 'off',
       // Changes the result: the hashes and the notification ids are defined
@@ -210,7 +210,7 @@ export default tseslint.config(
     // Async browser actions and assertions must be awaited; fixed delays,
     // focused tests and bypassed actionability checks hide regressions.
     ...playwright.configs['flat/recommended'],
-    files: ['e2e/**/*.ts'],
+    files: ['e2e/**/*.e2e.ts', 'e2e/**/*.visual.ts', 'e2e/fixtures.ts', 'e2e/pr-screenshots.fixtures.ts'],
     rules: {
       ...playwright.configs['flat/recommended'].rules,
       'playwright/missing-playwright-await': ['error', { includePageLocatorMethods: true }],
@@ -231,7 +231,7 @@ export default tseslint.config(
   {
     // New runtime validation cannot bypass a schema with an unsafe cast or
     // leak an unchecked value. Keep legacy boundary migrations separate.
-    files: ['lib/transactions/validation/**/*.ts', 'lib/money/manualAmount.ts'],
+    files: ['app/lib/transactions/validation/**/*.ts', 'app/lib/money/manualAmount.ts'],
     extends: [...tseslint.configs.recommendedTypeChecked],
     languageOptions: {
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
@@ -246,9 +246,9 @@ export default tseslint.config(
   {
     // Start strict local rules at owned boundaries. Legacy app files still
     // have `any` values that need to be removed alongside their data parsing.
-    files: ['components/ui/**/*.{ts,tsx}', 'components/shared/**/*.{ts,tsx}', 'components/Notifications/CaptureSourcePicker/**/*.{ts,tsx}', 'components/Transactions/TransactionForm.tsx', 'e2e/**/*.ts'],
+    files: ['app/components/common/**/*.{ts,tsx}', 'app/components/notifications/CaptureSourcePicker/**/*.{ts,tsx}', 'app/components/transactions/TransactionForm.tsx', 'e2e/**/*.ts'],
     // These shell presentations moved from the root; preserve their existing lint scope.
-    ignores: ['components/shared/CovaultIcon.tsx', 'components/shared/DashboardBottomBar.tsx', 'components/shared/ErrorBoundary.tsx', 'components/shared/FullScreenLoader.tsx'],
+    ignores: ['app/components/common/CovaultIcon.tsx', 'app/components/common/DashboardBottomBar.tsx', 'app/components/common/ErrorBoundary.tsx', 'app/components/common/FullScreenLoader/FullScreenLoader.tsx'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/consistent-type-imports': ['error', { fixStyle: 'inline-type-imports' }],
@@ -258,11 +258,11 @@ export default tseslint.config(
   {
     // Shared visual controls must work without a vault, database, or native
     // plugin. Keep data loading and phone effects in their owning features.
-    files: ['components/ui/**/*.{ts,tsx}', 'components/shared/**/*.{ts,tsx}'],
+    files: ['app/components/common/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': ['error', {
         patterns: [{
-          group: ['@supabase/*', '@capacitor/*', '**/lib/api/supabase', '**/lib/api/apiHelpers', '**/lib/native/covaultNotification', '**/lib/capture/captureSources'],
+          group: ['@supabase/*', '@capacitor/*', '**/lib/api/**', '**/lib/native/**', '**/data/**', '**/lib/capture/captureSources*'],
           message: 'Shared controls cannot read household data or call native plugins. Pass values and actions through props.',
         }],
       }],
@@ -272,22 +272,22 @@ export default tseslint.config(
     // Dashboard and review features use their existing data hooks and actions.
     // Settings sections in this tree do own native actions, so this rule only
     // blocks direct Supabase client imports.
-    files: ['components/Dashboard/**/*.{ts,tsx}', 'components/Settings/**/*.{ts,tsx}', 'components/Review/**/*.{ts,tsx}'],
-    ignores: ['components/Dashboard/Dashboard.tsx', 'components/Review/TransactionParsing.tsx'],
+    files: ['app/components/Dashboard/**/*.{ts,tsx}', 'app/components/settings/**/*.{ts,tsx}', 'app/components/review/**/*.{ts,tsx}'],
+    ignores: ['app/components/Dashboard/Dashboard.tsx', 'app/components/review/TransactionParsing/TransactionParsing.tsx'],
     rules: {
       'no-restricted-imports': ['error', {
         patterns: [{
-          group: ['@supabase/*', '**/lib/api/supabase'],
+          group: ['@supabase/*', '**/lib/api/supabase*'],
           message: 'Use the feature data hooks or actions instead of opening a Supabase client in a component.',
         }],
       }],
     },
   },
   {
-    files: ['app/**/*.{ts,tsx}', 'components/**/*.{ts,tsx}', 'lib/**/*.{ts,tsx}', 'visual-tests/**/*.{ts,tsx}', 'android-e2e/**/*.ts'],
+    files: ['App.{tsx,jsx}', 'app/**/*.{ts,tsx}', 'app/components/**/*.{ts,tsx}', 'app/lib/**/*.{ts,tsx}', 'visualTests/**/*.{ts,tsx}', 'e2e/android/**/*.ts'],
     ignores: ['**/__tests__/**'],
     plugins: { 'folder-structure': folderStructure },
-    rules: { 'folder-structure/feature-entrypoints': 'error' },
+    rules: { 'folder-structure/feature-entrypoints': 'error', 'folder-structure/component-implementation-entrypoints': 'error' },
   },
   {
     // The entry point mounts the app; nothing hot-reloads it.

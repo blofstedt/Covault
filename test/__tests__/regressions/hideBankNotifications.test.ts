@@ -5,7 +5,7 @@ import {
   canPostCaptureNotifications,
   openNotificationSettings,
   type CovaultNotificationPlugin,
-} from '../../../lib/native/covaultNotification';
+} from '../../../app/lib/native/covaultNotification';
 
 /**
  * Tray suppression lets the native listener dismiss a bank's own notification

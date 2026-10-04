@@ -52,6 +52,7 @@ jobs:
 
       - name: Type-check and run unit tests
         run: |
+          npm run check:structure
           npm run typecheck
           npm run typecheck:unused
           npm run lint

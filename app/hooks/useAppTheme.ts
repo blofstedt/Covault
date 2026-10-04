@@ -1,4 +1,4 @@
-// lib/useAppTheme.ts
+// app/hooks/useAppTheme.ts
 import { useEffect } from 'react';
 
 export const useAppTheme = (theme: 'light' | 'dark') => {

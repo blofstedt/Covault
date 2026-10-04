@@ -21,7 +21,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const ROOT = resolve(__dirname, '../../..');
-const form = readFileSync(resolve(ROOT, 'components/Transactions/TransactionForm.tsx'), 'utf8');
+const form = readFileSync(resolve(ROOT, 'app/components/transactions/TransactionForm.tsx'), 'utf8');
 const tailwind = readFileSync(resolve(ROOT, 'tailwind.config.js'), 'utf8');
 
 describe('each step waits for the one above it', () => {

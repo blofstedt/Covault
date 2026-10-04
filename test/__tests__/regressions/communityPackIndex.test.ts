@@ -31,7 +31,7 @@ describe('looking a merchant up in the community pack', () => {
   });
 
   it('parses the stored pack once for any number of lookups', async () => {
-    const { lookupCommunityRule } = await import('../../../lib/vendors/communityRules');
+    const { lookupCommunityRule } = await import('../../../app/lib/vendors/communityRules');
     const stored = pack([
       { matchKey: 'costco', category: 'Groceries' },
       { matchKey: 'shell', category: 'Transport' },
@@ -49,7 +49,7 @@ describe('looking a merchant up in the community pack', () => {
   });
 
   it('reads a refreshed pack rather than answering from the old one', async () => {
-    const { lookupCommunityRule } = await import('../../../lib/vendors/communityRules');
+    const { lookupCommunityRule } = await import('../../../app/lib/vendors/communityRules');
     localStorage.setItem(PACK_KEY, pack([{ matchKey: 'costco', category: 'Groceries' }]));
     expect(lookupCommunityRule('costco')?.category).toBe('Groceries');
 
@@ -61,7 +61,7 @@ describe('looking a merchant up in the community pack', () => {
   });
 
   it('keeps the first answer for a key listed twice, as the old scan did', async () => {
-    const { lookupCommunityRule } = await import('../../../lib/vendors/communityRules');
+    const { lookupCommunityRule } = await import('../../../app/lib/vendors/communityRules');
     localStorage.setItem(
       PACK_KEY,
       pack([
@@ -73,7 +73,7 @@ describe('looking a merchant up in the community pack', () => {
   });
 
   it('treats a corrupt pack as no pack', async () => {
-    const { lookupCommunityRule } = await import('../../../lib/vendors/communityRules');
+    const { lookupCommunityRule } = await import('../../../app/lib/vendors/communityRules');
     localStorage.setItem(PACK_KEY, '{not json');
     expect(lookupCommunityRule('costco')).toBeNull();
   });

@@ -29,13 +29,11 @@
     "noEmit": true
   },
   "include": [
+    "App.tsx",
     "app",
-    "components",
-    "lib",
     "test",
-    "visual-tests",
-    "types.ts",
-    "constants.ts"
+    "e2e",
+    "visualTests"
   ],
   "exclude": [
     "node_modules",

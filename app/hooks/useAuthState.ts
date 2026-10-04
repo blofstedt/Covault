@@ -1,11 +1,18 @@
 // lib/useAuthState.ts
-import { log } from '../../lib/observability/log';
+import { log } from '../lib/observability/log';
 import React, { useCallback, useEffect, useRef } from 'react';
-import { supabase } from '../../lib/api/supabase';
-import { clearCachedAccessToken, setCachedAccessToken } from '../../lib/api/apiHelpers';
-import { clearFirstPaintCache } from '../../lib/cache/firstPaintCache';
-import { queryClient } from '../../lib/cache/queryClient';
-import type { AppState, User } from '../../types';
+import { supabase } from '../lib/api/supabase';
+import { clearCachedAccessToken, setCachedAccessToken } from '../lib/api/apiHelpers';
+import { clearFirstPaintCache } from '../lib/cache/firstPaintCache';
+import { queryClient } from '../lib/cache/queryClient';
+import type { AppState, User } from '../types';
+import { DEFAULT_SETTINGS, resetSettingsForAccount } from '../lib/settings/defaultSettings';
+import {
+  isCurrentAccountDataScope,
+  transitionAccountDataScope,
+  type AccountDataScope,
+  type AccountDataScopeRef,
+} from '../lib/auth/accountScope';
 
 import { shouldShowOnboarding } from './onboardingState';
 
@@ -40,63 +47,94 @@ const isSessionValid = (): boolean => {
 interface UseAuthStateParams {
   setAppState: React.Dispatch<React.SetStateAction<AppState>>;
   setAuthState: React.Dispatch<React.SetStateAction<AuthStatus>>;
-  loadUserData: (userId: string) => Promise<void>;
+  loadUserData: (userId: string, scope: AccountDataScope) => Promise<void>;
+  accountScopeRef?: AccountDataScopeRef;
 }
 
 export const useAuthState = ({
   setAppState,
   setAuthState,
   loadUserData,
+  accountScopeRef: providedAccountScopeRef,
 }: UseAuthStateParams) => {
-  const lastLoadedUserIdRef = useRef<string | null>(null);
-  const loadUserDataPromiseRef = useRef<Promise<void> | null>(null);
-  const loadingUserIdRef = useRef<string | null>(null);
-  const pendingUserIdRef = useRef<string | null>(null);
+  const internalAccountScopeRef = useRef<AccountDataScope>({ userId: null, generation: 0 });
+  const accountScopeRef = providedAccountScopeRef ?? internalAccountScopeRef;
+  const lastLoadedScopeRef = useRef<AccountDataScope | null>(null);
+  const loadUserDataPromiseRef = useRef<{
+    scope: AccountDataScope;
+    promise: Promise<void>;
+  } | null>(null);
 
   const maybeLoadUserData = useCallback(
-    (userId: string, { forceReload = false }: { forceReload?: boolean } = {}) => {
-      if (!forceReload && lastLoadedUserIdRef.current === userId) {
-        return loadUserDataPromiseRef.current ?? Promise.resolve();
+    (scope: AccountDataScope, { forceReload = false }: { forceReload?: boolean } = {}) => {
+      const { userId } = scope;
+      if (!userId || !isCurrentAccountDataScope(accountScopeRef, scope)) {
+        return Promise.resolve();
       }
 
-      if (loadUserDataPromiseRef.current) {
-        if (!forceReload && loadingUserIdRef.current === userId) {
-          return loadUserDataPromiseRef.current;
-        }
-        pendingUserIdRef.current = userId;
-        return loadUserDataPromiseRef.current;
+      const lastLoadedScope = lastLoadedScopeRef.current;
+      if (!forceReload && lastLoadedScope?.userId === userId
+        && lastLoadedScope.generation === scope.generation) {
+        return Promise.resolve();
       }
 
-      loadingUserIdRef.current = userId;
-      const loadPromise = loadUserData(userId)
+      const activeLoad = loadUserDataPromiseRef.current;
+      if (activeLoad?.scope.userId === userId
+        && activeLoad.scope.generation === scope.generation) {
+        return activeLoad.promise;
+      }
+
+      const loadRecord: { scope: AccountDataScope; promise: Promise<void> } = {
+        scope,
+        promise: Promise.resolve(),
+      };
+      const loadPromise = Promise.resolve()
+        .then(() => loadUserData(userId, scope))
         .then(() => {
-          lastLoadedUserIdRef.current = userId;
+          if (isCurrentAccountDataScope(accountScopeRef, scope)) {
+            lastLoadedScopeRef.current = scope;
+          }
+        })
+        .catch(error => {
+          log.error(
+            `[useAuthState] Error loading data for user ${userId}:`,
+            error,
+          );
         })
         .finally(() => {
-          loadUserDataPromiseRef.current = null;
-          loadingUserIdRef.current = null;
-          const pendingUserId = pendingUserIdRef.current;
-          pendingUserIdRef.current = null;
-          if (pendingUserId && pendingUserId !== lastLoadedUserIdRef.current) {
-            maybeLoadUserData(pendingUserId).catch(error => {
-              // A transient failure here (network blip, RLS hiccup, etc.) must not
-              // sign the user out — the Supabase session is still valid. Just log
-              // and leave the existing app state intact; the next loadUserData
-              // triggered by a SIGNED_IN / token refresh will retry.
-              log.error(
-                `[useAuthState] Error loading pending user data for user ${pendingUserId}. This may indicate a network issue or invalid user ID:`,
-                error,
-              );
-            });
+          // An older account load may finish after the new account has started.
+          // It must not release or replace the newer account's load record.
+          if (loadUserDataPromiseRef.current === loadRecord) {
+            loadUserDataPromiseRef.current = null;
           }
         });
-      loadUserDataPromiseRef.current = loadPromise;
+      loadRecord.promise = loadPromise;
+      loadUserDataPromiseRef.current = loadRecord;
       return loadPromise;
     },
-    [loadUserData],
+    [accountScopeRef, loadUserData],
+  );
+
+  const resetAccountState = useCallback(
+    (user: User | null) => {
+      setAppState(prev => ({
+        ...prev,
+        user,
+        budgets: [],
+        transactions: [],
+        partnerIncome: null,
+        partnerSummary: null,
+        partnerBudgets: null,
+        settings: resetSettingsForAccount(prev.settings ?? DEFAULT_SETTINGS),
+      }));
+    },
+    [setAppState],
   );
 
   useEffect(() => {
+    let authEventRevision = 0;
+    let disposed = false;
+
     // Helper: map Supabase user to your internal User type
     const mapUser = (sessionUser: any): User => ({
       id: sessionUser.id,
@@ -111,18 +149,33 @@ export const useAuthState = ({
     });
 
     // Merge mapped user into state, preserving DB-loaded fields for the same user
-    const mergeUser = (mappedUser: User) => {
+    const mergeUser = (mappedUser: User): AccountDataScope => {
+      const oldScope = accountScopeRef.current;
+      const changedAccount = oldScope.userId !== mappedUser.id;
+      const scope = transitionAccountDataScope(accountScopeRef, mappedUser.id);
+
+      if (changedAccount) {
+        // Keep a matching first-paint snapshot on a cold launch (null → first
+        // authenticated owner), but remove the old owner's cached screen data
+        // when a live session changes identities.
+        if (oldScope.userId !== null || oldScope.generation > 0) {
+          clearFirstPaintCache();
+          queryClient.clear();
+        }
+        // Clear old-account rows and settings in the same state update that
+        // makes the new identity visible. Device preferences stay local.
+        resetAccountState(mappedUser);
+        lastLoadedScopeRef.current = null;
+        loadUserDataPromiseRef.current = null;
+        return scope;
+      }
+
       setAppState(prev => ({
         ...prev,
         user: prev.user?.id === mappedUser.id
           ? {
-              // Preserve DB-loaded fields (hasJointAccounts, budgetingSolo,
-              // partnerId/Name/Email, trial_*, subscription_*, monthlyIncome,
-              // etc.) and only refresh the fields that actually come from the
-              // auth session. The previous version spread `...mappedUser`,
-              // which clobbered hasJointAccounts/budgetingSolo on every
-              // TOKEN_REFRESHED / USER_UPDATED event with the mapper's
-              // hard-coded defaults.
+              // Preserve DB-loaded fields for the same account and refresh only
+              // values supplied by the auth session.
               ...prev.user,
               id: mappedUser.id,
               name: mappedUser.name,
@@ -130,10 +183,14 @@ export const useAuthState = ({
             }
           : mappedUser,
       }));
+      return scope;
     };
 
     // Initial session check
     supabase.auth.getSession().then(({ data: { session } }) => {
+      // An auth event is newer evidence than the startup session request. A
+      // slow getSession response must not sign the app back into an old user.
+      if (disposed || authEventRevision > 0) return;
       setCachedAccessToken(session?.access_token);
       if (session?.user) {
         // Check 14-day window
@@ -143,15 +200,15 @@ export const useAuthState = ({
           clearCachedAccessToken();
           clearFirstPaintCache();
           queryClient.clear();
-          lastLoadedUserIdRef.current = null;
+          transitionAccountDataScope(accountScopeRef, null);
+          lastLoadedScopeRef.current = null;
           loadUserDataPromiseRef.current = null;
-          loadingUserIdRef.current = null;
-          pendingUserIdRef.current = null;
+          resetAccountState(null);
           setAuthState('unauthenticated');
           return;
         }
 
-        mergeUser(mapUser(session.user));
+        const scope = mergeUser(mapUser(session.user));
         // Asked here too, and not only on the signed-out-to-signed-in
         // transition below. Signing in with Google leaves the app for a browser
         // and comes back through a deep link, and a phone under memory pressure
@@ -159,11 +216,12 @@ export const useAuthState = ({
         // session frequently arrives HERE, with no transition to observe, and
         // they reached the dashboard having never seen the intro.
         setAuthState(shouldShowOnboarding(session.user) ? 'onboarding' : 'authenticated');
-        maybeLoadUserData(session.user.id, { forceReload: true });
+        maybeLoadUserData(scope, { forceReload: true });
       } else {
         setAuthState('unauthenticated');
       }
     }).catch(() => {
+      if (disposed || authEventRevision > 0) return;
       log.error('[Auth] Could not read the initial sign-in session.');
       setAuthState(state => state === 'loading' ? 'unauthenticated' : state);
     });
@@ -172,6 +230,7 @@ export const useAuthState = ({
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
+      authEventRevision += 1;
       if (session?.user) {
         setCachedAccessToken(session.access_token);
 
@@ -179,12 +238,12 @@ export const useAuthState = ({
           markSessionStart();
         }
 
-        mergeUser(mapUser(session.user));
+        const scope = mergeUser(mapUser(session.user));
         // The intro belongs to a first sign-in, not to every sign-in. This
         // used to read the transition alone — signed out, now signed in — which
         // is also what happens when the same person comes back after signing
         // out, so they were asked to set the app up from scratch again and the
-        // starter budgets replaced their own. See app/hooks/onboardingState.ts.
+        // starter budgets replaced their own. See lib/onboardingState.ts.
         setAuthState(prev => {
           // Already in the intro: stay in it. Every token refresh and user
           // update lands here too, and the old expression answered
@@ -198,7 +257,7 @@ export const useAuthState = ({
           // user's sign-in looks like, so they were sent through setup again.
           return shouldShowOnboarding(session.user) ? 'onboarding' : 'authenticated';
         });
-        maybeLoadUserData(session.user.id, {
+        maybeLoadUserData(scope, {
           forceReload: event === 'SIGNED_IN',
         });
       } else {
@@ -208,15 +267,17 @@ export const useAuthState = ({
         // spending flash up behind the sign-in screen.
         clearFirstPaintCache();
         queryClient.clear();
-        lastLoadedUserIdRef.current = null;
+        transitionAccountDataScope(accountScopeRef, null);
+        lastLoadedScopeRef.current = null;
         loadUserDataPromiseRef.current = null;
-        loadingUserIdRef.current = null;
-        pendingUserIdRef.current = null;
         setAuthState('unauthenticated');
-        setAppState(prev => ({ ...prev, user: null }));
+        resetAccountState(null);
       }
     });
 
-    return () => subscription.unsubscribe();
-  }, [setAppState, setAuthState, maybeLoadUserData]);
+    return () => {
+      disposed = true;
+      subscription.unsubscribe();
+    };
+  }, [accountScopeRef, maybeLoadUserData, resetAccountState, setAppState, setAuthState]);
 };

@@ -9,7 +9,7 @@ import {
   type NotificationCategoryAssignmentDependencies,
   type NotificationCategoryAssignmentInput,
   type VendorRuleRow,
-} from '../../../lib/capture/notificationCategoryAssignment';
+} from '../../../app/lib/capture/notificationCategoryAssignment';
 
 const CATEGORIES = [
   { id: 'budget:groceries', name: 'Groceries' },

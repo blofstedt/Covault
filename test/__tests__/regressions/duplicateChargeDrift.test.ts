@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { generateProjectedTransactions } from '../../../lib/transactions/projectedTransactions';
-import { findRecurringScheduleMatch } from '../../../lib/transactions/recurringSchedule';
-import { amountsAgree, isSameCharge } from '../../../lib/transactions/duplicateCharge';
-import type { Transaction } from '../../../types';
+import { generateProjectedTransactions } from '../../../app/lib/transactions/projectedTransactions';
+import { findRecurringScheduleMatch } from '../../../app/lib/transactions/recurringSchedule';
+import { amountsAgree, isSameCharge } from '../../../app/lib/transactions/duplicateCharge';
+import type { Transaction } from '../../../app/types';
 
 /**
  * The screenshot this file exists for: one monthly insurance premium on the

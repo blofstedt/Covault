@@ -1,0 +1,491 @@
+// app/components/notifications/NotificationAccessGuide/NotificationAccessGuide.tsx
+import { log } from '../../../lib/observability/log';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
+import {
+  BATTERY_STEP_COPY,
+  hasAskedBatteryExemption,
+  markBatteryExemptionAsked,
+  oemBatteryNote,
+} from '../../../lib/native/batteryOptimization';
+import type { CovaultNotificationPlugin } from '../../../lib/native/covaultNotification';
+import {
+  canPostCaptureNotifications,
+  openAppInfo,
+  openNotificationSettings,
+  restrictedSettingsApply,
+  batteryOptimizationInfo,
+  requestBatteryExemption,
+} from '../../../lib/native/covaultNotification';
+import { requestPostNotifications } from '../../../lib/native/appNotifications';
+import {
+  buildSetupSteps,
+  hasAttemptedListener,
+  hasVisitedRestrictedSettings,
+  isSetupComplete,
+  markListenerAttempted,
+  markRestrictedSettingsVisited,
+  type AccessState,
+  type SetupStep,
+  type SetupStepId,
+  isSetupSettled,
+} from '../../../lib/native/notificationAccessSetup';
+import { CLOCK } from './motion';
+import AppInfoSketch from './AppInfoSketch';
+import StepMarker from './StepMarker';
+
+interface NotificationAccessGuideProps {
+  /** The native plugin, or null before it has been registered. */
+  plugin: CovaultNotificationPlugin | null;
+  /**
+   * Fired the first time notification access is seen as granted. The settings
+   * screen uses it to switch capture on, so finishing the flow is the whole
+   * job — there is no separate toggle left to remember.
+   */
+  onGranted?: () => void;
+  /** Fired when every step is behind the user. */
+  onComplete?: () => void;
+}
+
+/**
+ * What each step says. Kept beside the copy it belongs to, not in the logic.
+ *
+ * The first step has two versions of itself and the difference matters more
+ * than the words do. Where Android's restricted-settings block applies — a
+ * sideloaded install on Android 13 or newer, which is every Covault install —
+ * the switch is GOING to refuse, and the user needs to be told that before they
+ * tap it rather than left to read a refusal as a failure. Where the block does
+ * not apply, the same tap simply works, and promising a refusal that never
+ * comes would be its own small lie.
+ */
+const STEP_COPY: Record<
+  SetupStepId,
+  { title: string; body: string; action: string }
+> = {
+  listener: {
+    title: 'Tap the switch — it will refuse',
+    body:
+      "Opens Covault's own notification-access page. Tap the switch there. Android will not let it move, and that is exactly what should happen: being refused once is what makes the unlock in step 2 exist. Then come straight back here.",
+    action: 'Open notification access',
+  },
+  restricted: {
+    title: 'Allow restricted settings',
+    body:
+      'On the page that opens: tap the ⋮ at the top right, choose Allow restricted settings, and confirm with your fingerprint. That menu item is there only because the switch just refused you.',
+    action: 'Open App info',
+  },
+  confirm: {
+    title: 'Now turn the switch on',
+    body:
+      'Back to the same page as step 1. The switch will move this time — turn it on and confirm. Covault ticks this off by itself the moment it sees access.',
+    action: 'Open notification access',
+  },
+  post: {
+    title: 'Let Covault notify you',
+    body:
+      'So a purchase caught while the app is closed tells you about itself, and the bank alert can be replaced rather than doubled.',
+    action: 'Allow notifications',
+  },
+  battery: BATTERY_STEP_COPY,
+};
+
+/**
+ * What the user is told once they are looking at Android's Settings.
+ *
+ * Everything above is on a screen that stops existing the moment the button is
+ * tapped. These are shown as a Toast on the way out — the only thing an app can
+ * put in front of someone inside Settings, since Android blocks drawing over it
+ * — and they carry the one sentence each step turns on:
+ *
+ *  - the switch is going to refuse, and being refused is the point;
+ *  - the thing to tap is an unlabelled ⋮ in the corner;
+ *  - this time the switch will move.
+ *
+ * Kept beside STEP_COPY rather than in the Java, so there is one set of words
+ * and not two to keep in step.
+ */
+const STEP_HINT: Record<SetupStepId, string> = {
+  listener: "The switch will refuse to move — that's expected. Come straight back.",
+  restricted: 'Tap the ⋮ at the top right → Allow restricted settings',
+  confirm: 'This time the switch will move — turn it on.',
+  post: 'Allow notifications so Covault can tell you what it caught.',
+  // Filled in at the call site: this step has two routes — a one-tap dialog or
+  // a list of every installed app — and they need different sentences. See
+  // `batteryHintFor` in App/Lib/Native/batteryOptimization.ts.
+  battery: '',
+};
+
+/**
+ * The same first step where nothing is blocking it — a Play Store install, or
+ * Android 12 and below. Promising a refusal that is not coming would be its own
+ * small lie, and the user would sit waiting for one.
+ */
+const UNBLOCKED_LISTENER_HINT = "Find Covault and turn its switch on.";
+
+/**
+ * The first step where nothing is blocking it: one tap, and it works.
+ *
+ * Same step, same button — only the promise changes, because on this install
+ * the switch is not going to refuse anything.
+ */
+const UNBLOCKED_LISTENER_COPY = {
+  title: 'Turn on notification access',
+  body:
+    "Opens Covault's own permission page. Switch it on and confirm — this is what lets Covault read your bank's alerts. If the switch won't move, come back here: Android has one more thing to unlock and it only appears once you've tried.",
+  action: 'Open notification access',
+};
+
+/**
+ * Said once, above the steps, after a trip to the notification-access page
+ * that didn't come back with access.
+ *
+ * Phrased as a question because it is a guess: all that is known is that the
+ * user went and returned without the permission. Backing out of the page
+ * without touching anything looks identical from here, and telling someone
+ * their phone refused them when it didn't is how a guide loses their trust.
+ */
+const BLOCKED_HEADLINE = "The switch wouldn't move — good";
+const BLOCKED_BODY =
+  "That is the refusal these steps were waiting for. Covault didn't come from the Play Store, so Android holds notification access behind an unlock, and it only offers that unlock after an app has been refused once. Step 2 opens the page where it now lives.";
+
+/** One clock for everything that moves in this card. */
+
+
+
+
+/**
+ * The guided route to notification access.
+ *
+ * Replaces a collapsed list of written instructions that skipped the one step
+ * nobody can guess. Every step here is a button that lands on the exact screen
+ * it names, and the card re-checks itself every time the app comes back to the
+ * foreground — for as long as it is on screen, not for a fixed window. The
+ * previous flow watched for forty seconds and then stopped, which is less time
+ * than the detour through the restricted-settings menu takes, so the common
+ * case was permission granted and the app none the wiser.
+ */
+const NotificationAccessGuide: React.FC<NotificationAccessGuideProps> = ({
+  plugin,
+  onGranted,
+  onComplete,
+}) => {
+  const isNative = Capacitor.isNativePlatform();
+  const [state, setState] = useState<AccessState>({
+    listenerGranted: false,
+    canPostNotifications: true,
+    restrictedApplies: false,
+    listenerAttempted: hasAttemptedListener(),
+    restrictedVisited: hasVisitedRestrictedSettings(),
+    // Exempt until the phone says otherwise: a build too old to answer must
+    // not show a permanent warning about a setting it cannot see.
+    batteryExempt: true,
+    batteryAsked: hasAskedBatteryExemption(),
+  });
+  // Which route the battery step will take, and whether this skin hides a
+  // second switch of its own. Read alongside the rest rather than at press
+  // time — the sentence shown on the way out depends on it.
+  const [batteryRoute, setBatteryRoute] = useState({ canRequestDirectly: false, manufacturer: '' });
+  const [busy, setBusy] = useState<SetupStepId | null>(null);
+  // Fired once. `onGranted` switches capture on, and re-firing it would undo a
+  // user who has since turned capture off with the permission still granted.
+  const [announcedGrant, setAnnouncedGrant] = useState(false);
+  const [announcedComplete, setAnnouncedComplete] = useState(false);
+
+  const refresh = useCallback(async () => {
+    if (!plugin) return;
+    try {
+      const [{ enabled: listenerGranted }, canPost, restrictedApplies, battery] = await Promise.all([
+        plugin.isEnabled(),
+        canPostCaptureNotifications(plugin),
+        restrictedSettingsApply(plugin),
+        batteryOptimizationInfo(plugin),
+      ]);
+      setBatteryRoute({
+        canRequestDirectly: battery.canRequestDirectly,
+        manufacturer: battery.manufacturer,
+      });
+      setState({
+        listenerGranted,
+        canPostNotifications: canPost,
+        restrictedApplies,
+        listenerAttempted: hasAttemptedListener(),
+        restrictedVisited: hasVisitedRestrictedSettings(),
+        batteryExempt: battery.exempt,
+        batteryAsked: hasAskedBatteryExemption(),
+      });
+    } catch (e) {
+      log.warn('[NotificationAccessGuide] refresh failed:', e);
+    }
+  }, [plugin]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  // Every route back into the app re-checks. `resume` is the Capacitor event;
+  // `visibilitychange` covers the WebView being restored without one, which is
+  // what happens on some devices when Settings is dismissed rather than backed
+  // out of. Both are cheap, and a duplicate check costs nothing.
+  useEffect(() => {
+    if (!isNative) return;
+    const onBack = () => { refresh(); };
+    const onVisible = () => { if (!document.hidden) refresh(); };
+    document.addEventListener('resume', onBack);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      document.removeEventListener('resume', onBack);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [isNative, refresh]);
+
+  useEffect(() => {
+    if (state.listenerGranted && !announcedGrant) {
+      setAnnouncedGrant(true);
+      onGranted?.();
+    }
+  }, [state.listenerGranted, announcedGrant, onGranted]);
+
+  useEffect(() => {
+    if (isSetupComplete(state) && !announcedComplete) {
+      setAnnouncedComplete(true);
+      onComplete?.();
+    }
+  }, [state, announcedComplete, onComplete]);
+
+  const runStep = async (id: SetupStepId) => {
+    if (busy) return;
+    setBusy(id);
+    try {
+      if (id === 'restricted') {
+        // Recorded before the trip, not after: the WebView is often destroyed
+        // while the user is away, so anything written on return may never run.
+        markRestrictedSettingsVisited();
+        setState((s) => ({ ...s, restrictedVisited: true }));
+        await openAppInfo(plugin, STEP_HINT.restricted);
+      } else if (id === 'listener' || id === 'confirm') {
+        // Recorded before the trip for the same reason, and because the
+        // attempt itself is what makes Android offer the unlock at all — so
+        // this is also what reveals the step below.
+        markListenerAttempted();
+        setState((s) => ({ ...s, listenerAttempted: true }));
+        await plugin?.requestAccess({
+          hint:
+            id === 'listener' && !state.restrictedApplies
+              ? UNBLOCKED_LISTENER_HINT
+              : STEP_HINT[id],
+        });
+      } else if (id === 'battery') {
+        // Recorded before the trip, like every other step here: the WebView is
+        // routinely destroyed while the user is away in Settings, so anything
+        // written on the way back may never run. The exemption itself is read
+        // again on return, so a yes still ticks the step off properly — this
+        // flag only stops the app asking a second time after a no.
+        markBatteryExemptionAsked();
+        setState((s2) => ({ ...s2, batteryAsked: true }));
+        await requestBatteryExemption(plugin, batteryRoute);
+      } else {
+        // Two routes, because Android offers the prompt once ever: ask, and if
+        // the answer is still no — already denied, or the channel rather than
+        // the app is switched off — the settings page is the only way left.
+        await requestPostNotifications();
+        const allowed = await canPostCaptureNotifications(plugin);
+        setState((s) => ({ ...s, canPostNotifications: allowed }));
+        if (!allowed) await openNotificationSettings(plugin);
+      }
+    } catch (e) {
+      log.warn('[NotificationAccessGuide] step failed:', id, e);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  if (!isNative) return null;
+
+  const steps = buildSetupSteps(state);
+  // `isSetupSettled`, not `isSetupComplete`: capture is complete without the
+  // battery exemption, but collapsing to the one-line finished card while that
+  // step is still on the list would hide it. See notificationAccessSetup.ts.
+  const complete = isSetupSettled(state);
+  // The unlock is the step in hand, which can only happen after the switch has
+  // refused. Once it is behind the user the headline goes back to the ordinary
+  // one — the flow has a next step again, and dwelling on the refusal reads as
+  // if it were still the problem.
+  const blocked = steps.some((step) => step.id === 'restricted' && step.status === 'active');
+  // Every permission is granted and the only thing outstanding is the phone's
+  // own power management. The headline says so rather than promising this step
+  // will make Covault able to notify you, which it already can.
+  const keepingItRunning =
+    isSetupComplete(state) && steps.some((step) => step.id === 'battery');
+
+  if (complete) {
+    return (
+      <div
+        className={`rounded-2xl border border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/70 dark:bg-emerald-950/25 px-3 py-2.5 ${CLOCK}`}
+        data-testid="notification-access-guide"
+      >
+        <div className="flex items-center">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 mr-2 flex-shrink-0" />
+          <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+            Capture is set up
+          </span>
+        </div>
+        <p className="mt-1.5 text-[10px] leading-relaxed text-emerald-900/70 dark:text-emerald-200/70">
+          Covault can read your bank's alerts and tell you what it caught. Nothing else to grant.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`rounded-2xl border border-amber-200/70 dark:border-amber-800/40 bg-amber-50/60 dark:bg-amber-950/20 px-3 py-3 ${CLOCK}`}
+      data-testid="notification-access-guide"
+    >
+      <span className="text-[11px] font-semibold text-amber-800 dark:text-amber-300">
+        {state.listenerGranted
+          ? keepingItRunning
+            ? 'Keep it running'
+            : 'One thing left'
+          : blocked
+            ? BLOCKED_HEADLINE
+            : 'Set up capture'}
+      </span>
+      <p className="mt-1 text-[10px] leading-relaxed text-amber-900/70 dark:text-amber-200/70">
+        {state.listenerGranted
+          ? keepingItRunning
+            ? 'Capture is on and working. What is left is making sure Android does not quietly stop it.'
+            : 'Capture is on. This last step is what lets Covault tell you about it.'
+          : blocked
+            ? BLOCKED_BODY
+            : 'Android asks for these one screen at a time. Each button opens exactly the right page — come back here after each one and it ticks itself off.'}
+      </p>
+
+      <ol className="mt-3 space-y-3">
+        {steps.map((step: SetupStep, index) => {
+          // The first step reads differently where nothing is going to block
+          // it — see UNBLOCKED_LISTENER_COPY. Keyed off the same flag that
+          // decides whether the unlock step exists at all, so the promise and
+          // the list can never disagree.
+          const copy =
+            step.id === 'listener' && !state.restrictedApplies
+              ? UNBLOCKED_LISTENER_COPY
+              : STEP_COPY[step.id];
+          const settled = step.status === 'done' || step.status === 'assumed';
+          // Numbered by position, because the list changes shape: the unlock
+          // step appears only once Android has refused, and a fixed number per
+          // step would leave a gap where it used to be.
+          const number = index + 1;
+          return (
+            <li key={step.id} className="flex items-start space-x-3">
+              <StepMarker status={step.status} number={number} />
+              <div className="flex-1 min-w-0">
+                <span
+                  className={`block text-[11px] font-semibold ${CLOCK} ${
+                    settled
+                      ? 'text-emerald-700/80 dark:text-emerald-400/80'
+                      : step.status === 'active'
+                        ? 'text-amber-900 dark:text-amber-200'
+                        : 'text-slate-400 dark:text-slate-500'
+                  }`}
+                >
+                  {copy.title}
+                </span>
+
+                {/* Only the step in hand carries its instructions. Three
+                    paragraphs of Android trivia at once is how the old help
+                    text went unread. */}
+                {step.status === 'active' && (
+                  <>
+                    <p className="mt-1 text-[10px] leading-relaxed text-amber-900/80 dark:text-amber-200/80">
+                      {copy.body}
+                    </p>
+                    {step.id === 'restricted' && <AppInfoSketch />}
+                    {/* The second place this particular skin hides the same
+                        switch. Words rather than a button: those screens are
+                        reached by undocumented intents that differ between
+                        versions and throw when absent, and a button that
+                        silently does nothing is worse than a sentence. */}
+                    {step.id === 'battery' && oemBatteryNote(batteryRoute.manufacturer) && (
+                      <p className="mt-1.5 text-[10px] leading-relaxed text-amber-900/70 dark:text-amber-200/70">
+                        {oemBatteryNote(batteryRoute.manufacturer)}
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => runStep(step.id)}
+                      disabled={busy !== null}
+                      className={`mt-2 inline-flex items-center px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-900/40 border border-amber-300 dark:border-amber-700 text-[10px] font-semibold text-amber-800 dark:text-amber-200 ${CLOCK} ${
+                        busy !== null ? 'opacity-50' : 'active:scale-[0.97]'
+                      }`}
+                    >
+                      {copy.action} →
+                    </button>
+                  </>
+                )}
+
+                {/* The first visit, behind the user. It ticks off by being
+                    made, because Android reports nothing about it and the
+                    refusal it was expected to end in is not a failure to
+                    report. The way back stays visible for the one case this
+                    cannot tell apart: someone who backed out without tapping
+                    anything. */}
+                {step.id === 'listener' && step.status === 'assumed' && (
+                  <button
+                    type="button"
+                    onClick={() => runStep(step.id)}
+                    disabled={busy !== null}
+                    className={`mt-1 text-[10px] font-medium text-amber-700/80 dark:text-amber-300/70 underline underline-offset-2 text-left ${CLOCK} ${
+                      busy !== null ? 'opacity-50' : 'active:scale-[0.97]'
+                    }`}
+                  >
+                    Didn't get as far as the switch? Open it again
+                  </button>
+                )}
+
+                {/* Sent there, and Android is still sleeping the app — so
+                    either they said no, which is their decision, or they never
+                    reached the switch. The step stops asking either way; this
+                    is the way back for the second case. */}
+                {step.id === 'battery' && step.status === 'assumed' && (
+                  <button
+                    type="button"
+                    onClick={() => runStep(step.id)}
+                    disabled={busy !== null}
+                    className={`mt-1 text-[10px] font-medium text-amber-700/80 dark:text-amber-300/70 underline underline-offset-2 text-left ${CLOCK} ${
+                      busy !== null ? 'opacity-50' : 'active:scale-[0.97]'
+                    }`}
+                  >
+                    Android is still allowed to sleep Covault — open it again
+                  </button>
+                )}
+
+                {/* The one step Android will not report back on. Saying so is
+                    better than a tick the user can't trust, and it keeps the
+                    way back visible if the switch above still won't move. */}
+                {step.id === 'restricted' && step.status === 'assumed' && (
+                  <button
+                    type="button"
+                    onClick={() => runStep(step.id)}
+                    disabled={busy !== null}
+                    className={`mt-1 text-[10px] font-medium text-amber-700/80 dark:text-amber-300/70 underline underline-offset-2 text-left ${CLOCK} ${
+                      busy !== null ? 'opacity-50' : 'active:scale-[0.97]'
+                    }`}
+                  >
+                    Switch still greyed out? Open App info again
+                  </button>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+
+      <p className="mt-3 text-[10px] leading-relaxed text-amber-700/70 dark:text-amber-300/60">
+        One-time setup. Android keeps these behind extra steps so no app can read your
+        notifications without you saying so.
+      </p>
+    </div>
+  );
+};
+
+export default NotificationAccessGuide;

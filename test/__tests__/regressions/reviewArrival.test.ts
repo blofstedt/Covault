@@ -37,7 +37,7 @@ describe('arriving at Review from a notification', () => {
     // parallel reads (the partner's income and summary), and an unscoped search
     // finds whichever happens to appear first in the file.
     const load = src.slice(src.indexOf('const loadUserData = useCallback('));
-    const hydrate = load.indexOf('hydrateFromCache(userId)');
+    const hydrate = load.indexOf('hydrateFromCache(userId, scope)');
     const fetches = load.indexOf('await Promise.all(');
     expect(hydrate).toBeGreaterThan(-1);
     expect(fetches).toBeGreaterThan(-1);
@@ -57,7 +57,7 @@ describe('arriving at Review from a notification', () => {
   });
 
   it('scrolls the arrival to the capture section, expanded', () => {
-    const src = read('components/Review/TransactionParsing.tsx');
+    const src = read('app/components/review/TransactionParsing/TransactionParsing.tsx');
     expect(src).toContain('reviewCardRef');
     // Scrolling to a collapsed section arrives at nothing, so the section is
     // opened as part of the arrival.
@@ -66,7 +66,7 @@ describe('arriving at Review from a notification', () => {
   });
 
   it('holds the light until there are rows to light', () => {
-    const src = read('components/Review/AITransactionsEnteredCard.tsx');
+    const src = read('app/components/review/TransactionParsing/AITransactionsEnteredCard/AITransactionsEnteredCard.tsx');
     expect(src).toContain('if (nonRefunds.length === 0) return;');
     // Once per arrival: the effect now also runs when the rows change, and
     // filing a row must not replay the light around the ones left behind.
@@ -76,6 +76,6 @@ describe('arriving at Review from a notification', () => {
   it('lowers the nonce when the user leaves Review', () => {
     // Otherwise the counter stays raised for the session and the next manual
     // visit scrolls and lights up as though a notification had sent them.
-    expect(read('components/Dashboard/Dashboard.tsx')).toContain('setReviewHighlightNonce(0)');
+    expect(read('app/components/Dashboard/Dashboard.tsx')).toContain('setReviewHighlightNonce(0)');
   });
 });

@@ -1,5 +1,5 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["android-e2e/**/*.ts"],
-  "exclude": ["node_modules", "dist", "android-e2e/**/*.e2e.ts"]
+  "include": ["e2e/android/**/*.ts"],
+  "exclude": ["node_modules", "dist", "e2e/android/**/*.e2e.ts"]
 }

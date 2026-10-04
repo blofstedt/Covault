@@ -22,7 +22,7 @@ states:
 | Date picker | `?screen=calendar&theme=dark` | Month controls, announcement, and safe-area padding |
 
 Start the local Vite server and open each address at
-`/visual-tests/index.html` with the query shown above. Replace `theme=dark`
+`/visualTests/index.html` with the query shown above. Replace `theme=dark`
 with `theme=light` to compare the other palette. For motion-sensitive checks,
 enable the browser's reduced-motion preference before opening the page. The
 tour advances through onboarding using its own Next button; wait for the

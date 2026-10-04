@@ -1,17 +1,17 @@
 import React, { Suspense, lazy } from 'react';
 import ReactDOM from 'react-dom/client';
 import { QueryClientProvider } from '@tanstack/react-query';
-import App from './App';
-import FullScreenLoader from '../components/shared/FullScreenLoader';
-import '../index.css';
-import { initErrorReporting } from '../lib/observability/errorReporting';
-import { queryClient } from '../lib/cache/queryClient';
+import App from '../App';
+import FullScreenLoader from './components/common/FullScreenLoader';
+import './index.css';
+import { initErrorReporting } from './lib/observability/errorReporting';
+import { queryClient } from './lib/cache/queryClient';
 
 // Only one of the four routes ever renders. The static pages are lazy so
 // they stay out of the entry chunk that the app itself loads from.
-const PrivacyPolicy = lazy(() => import('../components/Legal/PrivacyPolicy'));
-const Terms = lazy(() => import('../components/Legal/Terms'));
-const DeleteAccountRequest = lazy(() => import('../components/Legal/DeleteAccountRequest'));
+const PrivacyPolicy = lazy(() => import('./components/legal/PrivacyPolicy'));
+const Terms = lazy(() => import('./components/legal/Terms'));
+const DeleteAccountRequest = lazy(() => import('./components/legal/DeleteAccountRequest'));
 
 // Before the first render, so an error thrown during mount is still reported.
 // Fire and forget: it loads the reporter in the background and a build with no

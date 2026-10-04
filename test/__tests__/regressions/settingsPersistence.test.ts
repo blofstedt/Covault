@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { persistSetting } from '../../../lib/settings/persistSetting';
-import { SettingSaveQueue, type SettingValue } from '../../../lib/settings/settingSaveQueue';
+import { persistSetting } from '../../../app/lib/settings/persistSetting';
+import { SettingSaveQueue, type SettingValue } from '../../../app/lib/settings/settingSaveQueue';
 
 describe('saving a dashboard setting', () => {
   it('reports success only when the server changed a row', async () => {

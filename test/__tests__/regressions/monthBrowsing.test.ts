@@ -11,8 +11,8 @@ import {
   remainingForMonth,
   shiftMonthKey,
   shortMonthName,
-} from '../../../lib/time/monthWindow';
-import type { Transaction } from '../../../types';
+} from '../../../app/lib/time/monthWindow';
+import type { Transaction } from '../../../app/types';
 
 /**
  * Reading another month, and coming back from it.
@@ -41,11 +41,11 @@ function stripComments(source: string): string {
     .replace(/^\s*\/\/.*$/gm, '');
 }
 
-const DASHBOARD = stripComments(readFileSync(join(ROOT, 'components/Dashboard/Dashboard.tsx'), 'utf8'));
+const DASHBOARD = stripComments(readFileSync(join(ROOT, 'app/components/Dashboard/Dashboard.tsx'), 'utf8'));
 const CHART = stripComments(
-  readFileSync(join(ROOT, 'components/Dashboard/BudgetFlowChart/BudgetFlowChart.tsx'), 'utf8'),
+  readFileSync(join(ROOT, 'app/components/Dashboard/BudgetFlowChart.tsx'), 'utf8'),
 );
-const SELECTION = stripComments(readFileSync(join(ROOT, 'components/Dashboard/useMonthSelection.ts'), 'utf8'));
+const SELECTION = stripComments(readFileSync(join(ROOT, 'app/components/Dashboard/useMonthSelection.ts'), 'utf8'));
 
 const tx = (date: string, amount: number): Transaction =>
   ({ id: date + amount, user_id: 'u', vendor: 'V', amount, date, budget_id: 'b', is_projected: false }) as Transaction;

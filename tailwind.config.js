@@ -3,11 +3,12 @@ import tailwindcssAnimate from 'tailwindcss-animate';
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
+    "./App.{jsx,tsx}",
     "./index.html",
     "./app/**/*.{js,ts,jsx,tsx}",
-    "./components/**/*.{js,ts,jsx,tsx}",
-    "./lib/**/*.{js,ts,jsx,tsx}",
-    "./visual-tests/**/*.{js,ts,jsx,tsx}",
+    "./app/components/**/*.{js,ts,jsx,tsx}",
+    "./app/lib/**/*.{js,ts,jsx,tsx}",
+    "./visualTests/**/*.{js,ts,jsx,tsx}",
     "./*.{js,ts,jsx,tsx}",
   ],
   darkMode: 'class',
@@ -54,7 +55,7 @@ export default {
         // only restarts an animation when the animation NAME changes — React
         // re-rendering with the same class does nothing. The form alternates
         // between the two, so every tap is answered. See `nudgeClass` in
-        // components/Transactions/TransactionForm.tsx.
+        // app/components/transactions/TransactionForm.tsx.
         'attention-nudge-a': {
           '0%, 100%': { boxShadow: '0 0 0 0 rgba(16, 185, 129, 0.0)' },
           '50%': { boxShadow: '0 0 0 5px rgba(16, 185, 129, 0.45)' },

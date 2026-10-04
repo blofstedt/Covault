@@ -4,12 +4,12 @@ import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { mockSupabase } from './e2e/mockSupabase.ts';
-import { androidTestBuild } from './android-e2e/testBuildPlugin.ts';
+import { androidTestBuild } from './e2e/android/testBuildPlugin.ts';
 
 /**
  * Drop the ONNX Runtime WebAssembly binary that nothing loads.
  *
- * Transformers.js resolves that binary from a CDN — `lib/ai/aiExtractor.ts` sets
+ * Transformers.js resolves that binary from a CDN — `app/lib/ai/aiExtractor.ts` sets
  * the path explicitly so this is a guarantee rather than a default. But the
  * library also carries a `new URL(..., import.meta.url)` fallback for the case
  * where the path is unset, Vite reads that statically, and emits a 21MB file

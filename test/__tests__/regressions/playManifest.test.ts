@@ -21,7 +21,7 @@ import { toPlayManifest, bankingPackages, PLAY_FORBIDDEN_PERMISSIONS } from '../
  */
 
 const MANIFEST = readFileSync(
-  resolve(__dirname, '../../../android-custom/AndroidManifest.xml'),
+  resolve(__dirname, '../../../native/android/AndroidManifest.xml'),
   'utf8',
 );
 

@@ -16,11 +16,11 @@ import { resolve } from 'node:path';
  * so there is no way to obtain one without asking them for it.
  */
 
-const read = (rel: string) => readFileSync(resolve(__dirname, '../../../', rel), 'utf8');
+const read = (rel: string) => readFileSync(resolve(__dirname, '../../..', rel), 'utf8');
 
 const LINKING = read('app/data/useHouseholdLinking.ts');
-const SHARING = read('components/Settings/sections/VaultSharingSection.tsx');
-const ONBOARDING = read('components/Onboarding/Onboarding.tsx');
+const SHARING = read('app/components/settings/DashboardSettingsModal/sections/VaultSharingSection.tsx');
+const ONBOARDING = read('app/components/Onboarding/Onboarding.tsx');
 const DROP = read('supabase/migrations/2026_09_drop_email_linking.sql');
 
 describe('linking a partner', () => {

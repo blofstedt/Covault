@@ -20,7 +20,7 @@ import { join, relative, resolve } from 'node:path';
 const ALLOWED = new Set([0, 75, 100, 150, 200, 300, 500, 700, 1000]);
 
 const ROOT = resolve(__dirname, '../../..');
-const SEARCH_DIRS = ['components', 'lib'];
+const SEARCH_DIRS = ['app/components', 'app/lib'];
 const EXTENSIONS = ['.ts', '.tsx'];
 
 function sourceFiles(dir: string, out: string[] = []): string[] {
@@ -36,7 +36,7 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
 }
 
 const files = [
-  resolve(ROOT, 'app/App.tsx'),
+  resolve(ROOT, 'App.tsx'),
   ...SEARCH_DIRS.flatMap(dir => sourceFiles(resolve(ROOT, dir))),
 ];
 

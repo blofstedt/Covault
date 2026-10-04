@@ -48,7 +48,8 @@ describe('a replace-load carries both halves', () => {
     // A different account signing in must not inherit the previous one's
     // partner. RLS would refuse the read anyway, but "the read comes back
     // empty" is a weak thing to be relying on for correctness.
-    expect(source).toContain('partnerOwnerIdRef.current === userId ? partnerIdRef.current : null');
+    expect(source).toContain('partnerOwnerIdRef.current === scope.userId');
+    expect(source).toContain('partnerOwnerGenerationRef.current === scope.generation');
   });
 });
 
@@ -62,7 +63,7 @@ describe('a failed read still cannot empty the dashboard', () => {
 
   it('keeps the read gate on the replace path', () => {
     // Two loads are routinely in flight at once and the older one must not win.
-    // See lib/api/readGate.ts — this is the guard that stopped a slow launch read
+    // See app/lib/api/readGate.ts — this is the guard that stopped a slow launch read
     // from putting back the list from before a capture.
     expect(source).toContain('transactionReads.take()');
     expect(source).toContain('!merge && !transactionReads.accepts(ticket)');

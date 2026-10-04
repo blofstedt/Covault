@@ -8,8 +8,8 @@ import {
   isBundledEmailNotification,
   looksLikeBankSender,
   parseEmailAlert,
-} from '../../../lib/capture/emailNotification';
-import { parseNotificationText } from '../../../lib/capture/deviceTransactionParser';
+} from '../../../app/lib/capture/emailNotification';
+import { parseNotificationText } from '../../../app/lib/capture/deviceTransactionParser';
 
 /**
  * Reading email is the most dangerous thing this app does, and this file is the
@@ -207,10 +207,10 @@ describe('what reaches the parser', () => {
  */
 describe('the listener holds the same lists', () => {
   const JAVA = readFileSync(
-    resolve(__dirname, '../../../android-custom/NotificationListener.java'),
+    resolve(__dirname, '../../../native/android/NotificationListener.java'),
     'utf-8',
   );
-  const TS = readFileSync(resolve(__dirname, '../../../lib/capture/emailNotification.ts'), 'utf-8');
+  const TS = readFileSync(resolve(__dirname, '../../../app/lib/capture/emailNotification.ts'), 'utf-8');
 
   function block(source: string, name: string): string {
     const begin = source.indexOf(`// ${name}_BEGIN`);

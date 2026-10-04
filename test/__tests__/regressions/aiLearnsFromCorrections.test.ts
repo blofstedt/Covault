@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { selectLearnedExamples, type LearnedVendorExample } from '../../../lib/ai/aiExtractor';
+import { selectLearnedExamples, type LearnedVendorExample } from '../../../app/lib/ai/aiExtractor';
 
 /**
  * The on-device model (flan-t5-small) cannot be fine-tuned, so "learning" means

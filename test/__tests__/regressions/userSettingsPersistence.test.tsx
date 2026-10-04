@@ -2,7 +2,7 @@
 import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AppState } from '../../../types';
+import type { AppState } from '../../../app/types';
 
 const apiMocks = vi.hoisted(() => ({
   REST_BASE: 'https://supabase.test/rest/v1',
@@ -11,7 +11,7 @@ const apiMocks = vi.hoisted(() => ({
   restFetch: vi.fn(),
 }));
 
-vi.mock('../../../lib/api/apiHelpers', () => apiMocks);
+vi.mock('../../../app/lib/api/apiHelpers', () => apiMocks);
 
 import { useUserSettings } from '../../../app/data/useUserSettings';
 

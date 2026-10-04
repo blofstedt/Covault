@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { matchesRule } from '../../../lib/capture/notificationRules';
-import type { NotificationRule } from '../../../lib/capture/notificationRules';
+import { matchesRule } from '../../../app/lib/capture/notificationRules';
+import type { NotificationRule } from '../../../app/lib/capture/notificationRules';
 
 /**
  * What "exact" and "contains" actually mean on a skip pattern.

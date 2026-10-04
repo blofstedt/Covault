@@ -18,8 +18,8 @@ import { resolve } from 'node:path';
  * Nothing in CI runs the widget, so this reads the source.
  */
 
-const RENDERER = resolve(__dirname, '../../../android-custom/WidgetRenderer.java');
-const PROVIDER = resolve(__dirname, '../../../android-custom/CovaultWidgetProvider.java');
+const RENDERER = resolve(__dirname, '../../../native/android/WidgetRenderer.java');
+const PROVIDER = resolve(__dirname, '../../../native/android/CovaultWidgetProvider.java');
 
 describe('the widget targets that open the app', () => {
   const renderer = readFileSync(RENDERER, 'utf8');

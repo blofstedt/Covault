@@ -11,11 +11,11 @@ class MemoryStorage {
 }
 vi.stubGlobal('localStorage', new MemoryStorage());
 
-import { parseNotificationText } from '../../../lib/capture/deviceTransactionParser';
+import { parseNotificationText } from '../../../app/lib/capture/deviceTransactionParser';
 import {
   rememberHold, settleHold, holdsToAsk, forgetHold, readHolds, pruneHolds,
   HOLD_SETTLE_DAYS, MIN_HOLD_TO_ASK,
-} from '../../../lib/capture/pendingHold';
+} from '../../../app/lib/capture/pendingHold';
 
 /**
  * Money held is not money spent, and the app may say neither that it was nor
@@ -33,9 +33,9 @@ import {
  */
 
 const LISTENER = readFileSync(
-  resolve(__dirname, '../../../android-custom/NotificationListener.java'), 'utf8');
+  resolve(__dirname, '../../../native/android/NotificationListener.java'), 'utf8');
 const PARSER = readFileSync(
-  resolve(__dirname, '../../../lib/capture/deviceTransactionParser.ts'), 'utf8');
+  resolve(__dirname, '../../../app/lib/capture/deviceTransactionParser.ts'), 'utf8');
 
 function listFrom(source: string, marker: string): string[] {
   const start = source.indexOf(`${marker}_BEGIN`);

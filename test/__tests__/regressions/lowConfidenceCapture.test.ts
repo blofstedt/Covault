@@ -22,12 +22,12 @@ import { resolve } from 'node:path';
 
 // ── The on-device model, forced to be unsure ──
 const mockExtractWithAI = vi.fn();
-vi.mock('../../../lib/ai/aiExtractor', () => ({
+vi.mock('../../../app/lib/ai/aiExtractor', () => ({
   extractWithAI: (...args: unknown[]) => mockExtractWithAI(...args),
   aiFindRefundMatch: async () => null,
 }));
 
-vi.mock('../../../lib/api/apiHelpers', () => ({
+vi.mock('../../../app/lib/api/apiHelpers', () => ({
   restFetch: async () => ({ ok: true, status: 200, json: async () => [], text: async () => '[]' }),
   REST_BASE: 'https://example.test/rest/v1',
   getAuthHeaders: async () => ({}),
@@ -61,13 +61,13 @@ function tableChain(table: string) {
   return chain;
 }
 
-vi.mock('../../../lib/api/supabase', () => ({
+vi.mock('../../../app/lib/api/supabase', () => ({
   supabase: { from: (table: string) => tableChain(table) },
   supabaseUrl: 'https://example.test',
   supabaseAnonKey: 'anon',
 }));
 
-import { processNotificationWithAI, _clearDedupCacheForTesting } from '../../../lib/capture/notificationProcessor';
+import { processNotificationWithAI, _clearDedupCacheForTesting } from '../../../app/lib/capture/notificationProcessor';
 
 const CATEGORIES = [
   { id: 'cat-groceries', name: 'Groceries' },
@@ -191,7 +191,7 @@ describe('a capture the model was unsure about', () => {
 describe('the pipeline source', () => {
   it('does not insert into pending_transactions anywhere', () => {
     const source = readFileSync(
-      resolve(__dirname, '../../../lib/capture/notificationProcessor.ts'),
+      resolve(__dirname, '../../../app/lib/capture/notificationProcessor.ts'),
       'utf-8',
     );
     expect(source).not.toMatch(/from\(['"]pending_transactions['"]\)\s*\n?\s*\.insert/);

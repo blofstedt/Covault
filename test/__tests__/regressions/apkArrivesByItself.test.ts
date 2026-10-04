@@ -28,10 +28,10 @@ import { resolve } from 'node:path';
 const read = (p: string) => readFileSync(resolve(__dirname, '../../..', p), 'utf-8');
 
 const hook = read('app/hooks/useAppUpdate.ts');
-const plugin = read('android-custom/CovaultUpdaterPlugin.java');
-const banner = read('components/Updates/UpdateBanner.tsx');
-const bridge = read('lib/native/covaultUpdater.ts');
-const manifest = read('android-custom/AndroidManifest.xml');
+const plugin = read('native/android/CovaultUpdaterPlugin.java');
+const banner = read('app/components/updates/UpdateBanner.tsx');
+const bridge = read('app/lib/native/covaultUpdater.ts');
+const manifest = read('native/android/AndroidManifest.xml');
 
 describe('the APK arrives before it is asked for', () => {
   it('starts the download from the check, not from the tap', () => {

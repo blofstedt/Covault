@@ -1,15 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { parseNotificationText } from '../../../lib/capture/deviceTransactionParser';
-import { buildWidgetSnapshot, mergeWidgetDeltas } from '../../../lib/native/widgetSnapshot';
-import { parseCaptureOutcomes, isCaptureProblem, describeCaptureOutcome } from '../../../lib/capture/captureOutcome';
+import { parseNotificationText } from '../../../app/lib/capture/deviceTransactionParser';
+import { buildWidgetSnapshot, mergeWidgetDeltas } from '../../../app/lib/native/widgetSnapshot';
+import { parseCaptureOutcomes, isCaptureProblem, describeCaptureOutcome } from '../../../app/lib/capture/captureOutcome';
 
 /**
  * A payday deposit showed up on the home-screen widget as spending.
  *
  * The app itself was never wrong about it: Covault records expenses only, and
- * lib/capture/deviceTransactionParser.ts has always rejected a deposit, an e-Transfer
+ * app/lib/capture/deviceTransactionParser.ts has always rejected a deposit, an e-Transfer
  * received or a payroll credit on sight, so no row was ever created. But the
  * parser runs in the WebView, and with the app closed the only part of Covault
  * running is the native listener — which posted "$2,480.00 captured" and told
@@ -31,11 +31,11 @@ import { parseCaptureOutcomes, isCaptureProblem, describeCaptureOutcome } from '
  */
 
 const LISTENER_JAVA = readFileSync(
-  resolve(__dirname, '../../../android-custom/NotificationListener.java'),
+  resolve(__dirname, '../../../native/android/NotificationListener.java'),
   'utf-8',
 );
 const PARSER_TS = readFileSync(
-  resolve(__dirname, '../../../lib/capture/deviceTransactionParser.ts'),
+  resolve(__dirname, '../../../app/lib/capture/deviceTransactionParser.ts'),
   'utf-8',
 );
 

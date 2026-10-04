@@ -8,9 +8,9 @@ vi.mock('@capacitor/core', () => ({
   registerPlugin: vi.fn(),
 }));
 
-import { KNOWN_BANKING_APPS, EXCLUDED_APPS, isExcludedApp } from '../../../lib/capture/bankingApps';
+import { KNOWN_BANKING_APPS, EXCLUDED_APPS, isExcludedApp } from '../../../app/lib/capture/bankingApps';
 
-const JAVA_PATH = resolve(__dirname, '../../../android-custom/NotificationListener.java');
+const JAVA_PATH = resolve(__dirname, '../../../native/android/NotificationListener.java');
 
 /**
  * Parse a `static final Set<String> <name>` block from NotificationListener.java.

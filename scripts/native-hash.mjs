@@ -37,9 +37,10 @@ function walk(dir, out = []) {
 const hash = createHash('sha256');
 
 // The custom native source: Java, the manifest, and the resources they name.
-for (const file of walk(join(root, 'android-custom'))) {
+for (const file of walk(join(root, 'native/android'))) {
   // Path as well as content, so a rename counts as a change.
-  hash.update(relative(root, file).split(sep).join('/'));
+  // Keep the established fingerprint namespace across source-root moves.
+  hash.update('android-custom/' + relative(join(root, 'native/android'), file).split(sep).join('/'));
   hash.update(readFileSync(file));
 }
 

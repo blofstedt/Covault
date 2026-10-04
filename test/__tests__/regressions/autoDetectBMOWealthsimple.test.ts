@@ -44,8 +44,8 @@ vi.mock('@capacitor/core', () => ({
 }));
 
 // NOW import the real function — it will use our mocked plugin
-import { autoDetectAndSaveMonitoredApps } from '../../../lib/native/covaultNotification';
-import { KNOWN_BANKING_APPS } from '../../../lib/capture/bankingApps';
+import { autoDetectAndSaveMonitoredApps } from '../../../app/lib/native/covaultNotification';
+import { KNOWN_BANKING_APPS } from '../../../app/lib/capture/bankingApps';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 

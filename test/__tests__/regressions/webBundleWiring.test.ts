@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { parseWebBundleName } from '../../../lib/native/appUpdate';
+import { parseWebBundleName } from '../../../app/lib/native/appUpdate';
 
 /**
  * A background web update is four files agreeing with each other across three
@@ -20,7 +20,7 @@ const read = (path: string) => readFileSync(resolve(root, path), 'utf8');
 
 const workflow = read('.github/workflows/build-android.yml');
 const syncScript = read('scripts/sync-android.sh');
-const plugin = read('android-custom/CovaultUpdaterPlugin.java');
+const plugin = read('native/android/CovaultUpdaterPlugin.java');
 
 describe('the published bundle name', () => {
   it('is the shape the app parses', () => {
@@ -79,7 +79,7 @@ describe('applying a downloaded bundle without a cold start', () => {
   // method name, the TypeScript declaration of it, and the pair of version
   // numbers the pill decides on. Any of them can drift in silence.
   const hook = read('app/hooks/useAppUpdate.ts');
-  const bridgeTs = read('lib/native/covaultUpdater.ts');
+  const bridgeTs = read('app/lib/native/covaultUpdater.ts');
 
   it('is offered by the same method name on both sides', () => {
     expect(plugin).toContain('public void applyWebBundleNow');

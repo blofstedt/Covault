@@ -20,7 +20,7 @@ types.ts                 Domain types: User, BudgetCategory, Transaction, Toast,
 index.css                Tailwind 4 entry, shared theme, keyframes + reduced motion
 public/app-unavailable.html  Plain HTML recovery for Android startup errors
 
-components/
+App/Components/
   Dashboard/                 Home, balance, lazy chart, vials and local hooks
   Review/                    Captured purchases, rows, action sheets and learned rules
   Transactions/              Manual entry, transaction items and actions
@@ -33,7 +33,7 @@ components/
 
 app/hooks/, app/data/        App-wide lifecycle and user/household orchestration
 
-lib/
+App/Lib/
   capture/                   Capture pipeline, parsing, sources, holds and review queue
   vendors/                   Names, matching, vendor overrides and community rules
   transactions/              Recurrence, refunds, ordering and completed-entry validation
@@ -42,11 +42,11 @@ lib/
   native/, ai/               Capacitor bridges/widget snapshots and on-device extraction
   time/, navigation/, observability/, settings/, ui/
   hooks/                     Reusable interaction hooks
-  <owner>/__tests__/         Unit/component tests next to their owner
+  <owner>/Tests/         Unit/component tests next to their owner
 
 test/__tests__/regressions/  Cross-module and source-reading regression checks
 
-android-custom/            SOURCE for native code. scripts/sync-android.sh copies into android/
+native/android/            SOURCE for native code. scripts/sync-android.sh copies into android/
   NotificationListener.java  Capture + capture notification + tray suppression + widget delta
   CovaultNotificationPlugin.java  JS↔native bridge
   MainActivity.java          Parks notification-tap routes
@@ -87,7 +87,7 @@ Android bank notification
       5a. category: vendor overrides first, then AI guess
       6. insert  (caught_cleared: true if auto-file took it)
       6b. post-insert race recovery (rolls back a losing duplicate insert)
-  → Review UI in components/Review/
+  → Review UI in app/components/review/
 ```
 
 **The ordering is the safety property.** A dismissed bank notification cannot be
@@ -130,7 +130,7 @@ donut is drawn natively on a Canvas. It also has **no Supabase session**, so it
 cannot fetch.
 
 - The app pushes a pre-computed snapshot to SharedPreferences whenever the
-  figures change (`lib/native/widgetSnapshot.ts`, pushed from `Dashboard.tsx`).
+  figures change (`app/lib/native/widgetSnapshot.ts`, pushed from `Dashboard.tsx`).
 - The native listener appends optimistic **deltas** for captures made with the
   app closed, so a purchase moves the donut within seconds. Only for a capture
   it also announced: a quiet one (price alert, user skip rule, known recurring)
@@ -230,12 +230,12 @@ policies, grants or function bodies.
 
 ## 5. Money model
 
-- **Refund** = `amount < 0` and `is_income !== true`. `lib/transactions/refundMatching.ts`
+- **Refund** = `amount < 0` and `is_income !== true`. `app/lib/transactions/refundMatching.ts`
   pairs it to an expense (same vendor, same |amount|, same budget, ≤30 days),
   hides the refund from every list, strikes through the matched expense, and
   lets the negative amount reduce the budget total.
 - **Recurring** — display-only, never written to the database.
-  `lib/transactions/projectedTransactions.ts` projects 3 months ahead; occurrences earlier in
+  `app/lib/transactions/projectedTransactions.ts` projects 3 months ahead; occurrences earlier in
   the current month are solidified to `is_projected: false` so they count in the
   dashboard total. There used to be a second system (`lib/recurringExecutor.ts`)
   that inserted a real row per due date; it double-counted every subscription
@@ -250,8 +250,8 @@ policies, grants or function bodies.
 
 ## 6. Subscriptions
 
-`lib/auth/entitlement.ts`'s `getEntitlementStatus` is the single source of truth,
-read once in `app/App.tsx` and applied to the whole app — there is no per-feature
+`app/lib/auth/entitlement.ts`'s `getEntitlementStatus` is the single source of truth,
+read once in `App.tsx` and applied to the whole app — there is no per-feature
 gating (`PremiumGate`/`SubscribeModal` exist but are unused dead code left
 over from an earlier, abandoned per-feature design; do not wire them back up).
 Access is: `is_tester` OR `subscription_status === 'active'` OR now <

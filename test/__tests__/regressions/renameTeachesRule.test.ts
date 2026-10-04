@@ -17,9 +17,9 @@ import { resolve } from 'node:path';
  */
 
 const restFetch = vi.fn();
-vi.mock('../../../lib/api/apiHelpers', () => ({ restFetch: (...args: any[]) => restFetch(...args) }));
+vi.mock('../../../app/lib/api/apiHelpers', () => ({ restFetch: (...args: any[]) => restFetch(...args) }));
 
-import { persistVendorOverride, onVendorOverrideWritten } from '../../../lib/vendors/vendorOverrideWrite';
+import { persistVendorOverride, onVendorOverrideWritten } from '../../../app/lib/vendors/vendorOverrideWrite';
 
 const ok = (rows: unknown[]) => ({ ok: true, status: 200, text: async () => JSON.stringify(rows) });
 const created = () => ({ ok: true, status: 201, text: async () => '' });
@@ -119,7 +119,7 @@ describe('a taught rule announces itself', () => {
  */
 describe('the rules list listens for rules taught elsewhere', () => {
   const source = readFileSync(
-    resolve(__dirname, '../../../lib/vendors/useVendorOverrides.ts'),
+    resolve(__dirname, '../../../app/lib/vendors/useVendorOverrides.ts'),
     'utf8',
   );
 

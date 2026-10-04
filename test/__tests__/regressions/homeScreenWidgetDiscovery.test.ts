@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { BUDGET_CATEGORY_COLORS } from '../../../lib/budgets/budgetColors';
+import { BUDGET_CATEGORY_COLORS } from '../../../app/lib/budgets/budgetColors';
 
 /**
  * The widget has existed since it shipped, and nothing in the app ever said
@@ -22,14 +22,15 @@ import { BUDGET_CATEGORY_COLORS } from '../../../lib/budgets/budgetColors';
  * the one route that has always worked.
  */
 const SECTION = readFileSync(
-  resolve(__dirname, '../../../components/Settings/sections/HomeScreenWidgetSection.tsx'),
+  resolve(__dirname, '../../../app/components/settings/DashboardSettingsModal/sections/HomeScreenWidgetSection/HomeScreenWidgetSection.tsx'),
   'utf-8',
 );
-const PLUGIN = readFileSync(resolve(__dirname, '../../../android-custom/CovaultWidgetPlugin.java'), 'utf-8');
-const BRIDGE = readFileSync(resolve(__dirname, '../../../lib/native/covaultWidget.ts'), 'utf-8');
-const MAIN_ACTIVITY = readFileSync(resolve(__dirname, '../../../android-custom/MainActivity.java'), 'utf-8');
+const PREVIEW = readFileSync(resolve(__dirname, '../../../app/components/settings/DashboardSettingsModal/sections/HomeScreenWidgetSection/WidgetPreview.tsx'), 'utf-8');
+const PLUGIN = readFileSync(resolve(__dirname, '../../../native/android/CovaultWidgetPlugin.java'), 'utf-8');
+const BRIDGE = readFileSync(resolve(__dirname, '../../../app/lib/native/covaultWidget.ts'), 'utf-8');
+const MAIN_ACTIVITY = readFileSync(resolve(__dirname, '../../../native/android/MainActivity.java'), 'utf-8');
 const MODAL = readFileSync(
-  resolve(__dirname, '../../../components/Settings/DashboardSettingsModal.tsx'),
+  resolve(__dirname, '../../../app/components/settings/DashboardSettingsModal/DashboardSettingsModal.tsx'),
   'utf-8',
 );
 
@@ -38,15 +39,15 @@ describe('the in-app preview', () => {
     // The whole safety property: this file cannot show a category colour the
     // real widget doesn't, because there is only one source for either of
     // them to read.
-    expect(SECTION).toContain('BUDGET_CATEGORY_COLORS');
-    expect(SECTION).not.toMatch(/#[0-9a-fA-F]{6}/);
+    expect(PREVIEW).toContain('BUDGET_CATEGORY_COLORS');
+    expect(PREVIEW).not.toMatch(/#[0-9a-fA-F]{6}/);
   });
 
   it('uses categories the palette actually has', () => {
     for (const name of ['Groceries', 'Leisure', 'Transport']) {
       expect(BUDGET_CATEGORY_COLORS[name], `${name} missing from BUDGET_CATEGORY_COLORS`)
         .toBeTruthy();
-      expect(SECTION).toContain(`BUDGET_CATEGORY_COLORS.${name}`);
+      expect(PREVIEW).toContain(`BUDGET_CATEGORY_COLORS.${name}`);
     }
   });
 
@@ -54,15 +55,15 @@ describe('the in-app preview', () => {
     // Same rule the native picker preview follows, and for the same reason —
     // a placeholder bar cannot be mistaken for a real total; an invented
     // figure could be.
-    expect(SECTION).not.toMatch(/\$\d/);
+    expect(PREVIEW).not.toMatch(/\$\d/);
   });
 
   it('follows the app theme the same way every other element does', () => {
     // No isDarkMode prop, no media-query check — Tailwind's class strategy,
     // like the rest of the app, and like the widget itself (WidgetRenderer's
     // LIGHT/DARK palettes follow the same in-app theme setting).
-    expect(SECTION).toContain('dark:fill-slate-900');
-    expect(SECTION).toContain('dark:stroke-slate-800');
+    expect(PREVIEW).toContain('dark:fill-slate-900');
+    expect(PREVIEW).toContain('dark:stroke-slate-800');
   });
 });
 

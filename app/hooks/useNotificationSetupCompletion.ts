@@ -1,11 +1,11 @@
 // app/hooks/useNotificationSetupCompletion.ts
-import { log } from '../../lib/observability/log';
+import { log } from '../lib/observability/log';
 import { useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
-import { covaultNotification } from '../../lib/native/covaultNotification';
-import { requestPostNotifications } from '../../lib/native/appNotifications';
-import { clearSetupPending, isSetupPending, shouldEnableAfterGrant } from '../../lib/native/notificationAccessSetup';
+import { covaultNotification } from '../lib/native/covaultNotification';
+import { requestPostNotifications } from '../lib/native/appNotifications';
+import { clearSetupPending, isSetupPending, shouldEnableAfterGrant } from '../lib/native/notificationAccessSetup';
 
 interface Params {
   /** Covault's own capture switch. */

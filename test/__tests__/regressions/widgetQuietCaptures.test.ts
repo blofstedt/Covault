@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { parseNotificationText } from '../../../lib/capture/deviceTransactionParser';
-import { buildWidgetSnapshot, mergeWidgetDeltas } from '../../../lib/native/widgetSnapshot';
+import { parseNotificationText } from '../../../app/lib/capture/deviceTransactionParser';
+import { buildWidgetSnapshot, mergeWidgetDeltas } from '../../../app/lib/native/widgetSnapshot';
 
 /**
  * A crypto price alert broke the home-screen widget.
@@ -27,7 +27,7 @@ import { buildWidgetSnapshot, mergeWidgetDeltas } from '../../../lib/native/widg
  */
 
 const LISTENER_JAVA = readFileSync(
-  resolve(__dirname, '../../../android-custom/NotificationListener.java'),
+  resolve(__dirname, '../../../native/android/NotificationListener.java'),
   'utf-8',
 );
 

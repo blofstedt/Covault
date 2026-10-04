@@ -1,39 +1,37 @@
 // lib/useUserData.ts
 // Facade hook that composes sub-hooks for data loading, transactions,
 // household linking, and user settings.
-import type React from 'react';
-import type { AppState } from '../../types';
+import type { UseUserDataParams } from './types';
 import { useDataLoading } from './useDataLoading';
 import { useTransactionOps } from './useTransactionOps';
 import { useHouseholdLinking } from './useHouseholdLinking';
 import { useUserSettings } from './useUserSettings';
-import { writeDashboardSetting } from '../../lib/settings/dashboardSettingWrite';
-
-interface UseUserDataParams {
-  appState: AppState;
-  setAppState: React.Dispatch<React.SetStateAction<AppState>>;
-  setDbError: (msg: string | null) => void;
-}
+import { writeDashboardSetting } from '../lib/settings/dashboardSettingWrite';
 
 export const useUserData = ({
   appState,
   setAppState,
   setDbError,
+  accountScopeRef,
 }: UseUserDataParams) => {
-  const { categoriesLoaded, loadUserData, loadTransactions } = useDataLoading({ setAppState, setDbError });
+  const { categoriesLoaded, loadUserData, loadTransactions } = useDataLoading({
+    setAppState,
+    setDbError,
+    accountScopeRef,
+  });
 
   const {
     handleAddTransaction,
     handleUpdateTransaction,
     handleDeleteTransaction,
     handleClearApprovedTransactions,
-  } = useTransactionOps({ appState, setAppState, setDbError, categoriesLoaded });
+  } = useTransactionOps({ appState, setAppState, setDbError, categoriesLoaded, accountScopeRef });
 
   const {
     handleGenerateLinkCode,
     handleJoinWithCode,
     handleUnlinkPartner,
-  } = useHouseholdLinking({ appState, setAppState, setDbError });
+  } = useHouseholdLinking({ appState, setAppState, setDbError, accountScopeRef });
 
   const {
     saveBudgetLimit,
@@ -41,7 +39,7 @@ export const useUserData = ({
     saveTheme,
     saveBudgetVisibility,
     saveSettingToDb,
-  } = useUserSettings({ appState, setAppState, setDbError });
+  } = useUserSettings({ appState, setAppState, setDbError, accountScopeRef });
 
   const saveDashboardSetting = async (key: string, value: boolean | string | number) => {
     try {

@@ -12,8 +12,8 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { withoutPartner, householdIncome, householdSpend } from '../../../lib/budgets/householdSharing';
-import type { AppState, Transaction } from '../../../types';
+import { withoutPartner, householdIncome, householdSpend } from '../../../app/lib/budgets/householdSharing';
+import type { AppState, Transaction } from '../../../app/types';
 
 const ME = 'me';
 const THEM = 'them';

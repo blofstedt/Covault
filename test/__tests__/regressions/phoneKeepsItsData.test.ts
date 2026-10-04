@@ -18,7 +18,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const ROOT = resolve(__dirname, '../../..');
-const manifest = readFileSync(resolve(ROOT, 'android-custom/AndroidManifest.xml'), 'utf8');
+const manifest = readFileSync(resolve(ROOT, 'native/android/AndroidManifest.xml'), 'utf8');
 
 describe('the phone does not hand the session to a backup', () => {
   it('refuses cloud backup outright', () => {
@@ -34,7 +34,7 @@ describe('the phone does not hand the session to a backup', () => {
   });
 
   it.each(['backup_rules', 'data_extraction_rules'])('%s excludes every domain', (name) => {
-    const xml = readFileSync(resolve(ROOT, `android-custom/res/xml/${name}.xml`), 'utf8');
+    const xml = readFileSync(resolve(ROOT, `native/android/res/xml/${name}.xml`), 'utf8');
     for (const domain of ['root', 'file', 'database', 'sharedpref', 'external']) {
       expect(xml).toContain(`<exclude domain="${domain}" />`);
     }
@@ -73,7 +73,7 @@ describe('permissions the app does not use are not asked for', () => {
   ])('%s is gone', (permission) => {
     // This app has never started a foreground service — a
     // NotificationListenerService is bound by the system, and nothing in
-    // android-custom/ calls startForeground. FOREGROUND_SERVICE_SPECIAL_USE
+    // native/android/ calls startForeground. FOREGROUND_SERVICE_SPECIAL_USE
     // additionally needs a written justification at upload for a service that
     // does not exist.
     expect(manifest).not.toContain(`<uses-permission android:name="${permission}" />`);
@@ -92,7 +92,7 @@ describe('no client-side unlock keyed to a string in the bundle', () => {
   it('VITE_ADMIN_EMAIL is not read anywhere', () => {
     // It named an email address that was always granted premium access. The
     // value would have been readable by anyone who downloaded the app.
-    const entitlement = readFileSync(resolve(ROOT, 'lib/auth/entitlement.ts'), 'utf8');
+    const entitlement = readFileSync(resolve(ROOT, 'app/lib/auth/entitlement.ts'), 'utf8');
     expect(entitlement).not.toContain('ADMIN_EMAIL');
     const vite = readFileSync(resolve(ROOT, 'vite.config.ts'), 'utf8');
     expect(vite).not.toContain('VITE_ADMIN_EMAIL');

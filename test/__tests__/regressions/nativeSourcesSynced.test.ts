@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 /**
- * Every Java file in android-custom/ has to reach the generated Android
+ * Every Java file in native/android/ has to reach the generated Android
  * project, and every class MainActivity names has to exist.
  *
  * The android/ directory is thrown away and recreated by CI, so
@@ -19,8 +19,8 @@ const root = resolve(__dirname, '../../..');
 const read = (path: string) => readFileSync(resolve(root, path), 'utf8');
 
 const syncScript = read('scripts/sync-android.sh');
-const mainActivity = read('android-custom/MainActivity.java');
-const javaFiles = readdirSync(resolve(root, 'android-custom')).filter((f) => f.endsWith('.java'));
+const mainActivity = read('native/android/MainActivity.java');
+const javaFiles = readdirSync(resolve(root, 'native/android')).filter((f) => f.endsWith('.java'));
 
 describe('the custom Java sources', () => {
   it('are copied as a whole directory, not a hand-kept list', () => {
@@ -48,7 +48,7 @@ describe('MainActivity', () => {
     );
     expect(registered.length).toBeGreaterThan(0);
     for (const cls of registered) {
-      expect(javaFiles, `${cls} is registered but android-custom/${cls}.java is missing`).toContain(
+      expect(javaFiles, `${cls} is registered but native/android/${cls}.java is missing`).toContain(
         `${cls}.java`,
       );
     }

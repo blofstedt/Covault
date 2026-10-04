@@ -63,10 +63,10 @@ jobs:
         run: ./node_modules/.bin/tsc --noEmit -p tsconfig.android-e2e.json
 
       - name: Check offline fake vault behavior
-        run: ./node_modules/.bin/vitest run android-e2e/__tests__/backend.test.ts
+        run: ./node_modules/.bin/vitest run e2e/android/__tests__/backend.test.ts
 
       - name: Check emulator startup guards
-        run: python3 android-test/test_emulator_preflight.py
+        run: python3 test/android/__tests__/test_emulator_preflight.py
 
       - name: Build isolated web and native test projects
         run: bash scripts/build-android-test.sh 2>&1 | tee "$COVAULT_ANDROID_RESULTS/logs/test-build.txt"

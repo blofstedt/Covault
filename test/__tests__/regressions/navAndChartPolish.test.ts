@@ -11,8 +11,8 @@ import { join, resolve } from 'node:path';
 const ROOT = resolve(__dirname, '../../..');
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8');
 
-const BOTTOM_BAR = read('components/shared/DashboardBottomBar.tsx');
-const CHART = read('components/Dashboard/BudgetFlowChart/BudgetFlowChart.tsx');
+const BOTTOM_BAR = read('app/components/common/DashboardBottomBar.tsx');
+const CHART = read('app/components/Dashboard/BudgetFlowChart.tsx');
 
 describe('the bottom bar', () => {
   it('marks the selected tab by highlighting it, never by filling it', () => {

@@ -4,10 +4,10 @@ import { resolve } from 'node:path';
 import {
   RECURRING_DELETE_MESSAGE,
   ONE_TIME_DELETE_MESSAGE,
-} from '../../../components/Transactions/TransactionActionModal/ConfirmDeleteModal';
+} from '../../../app/components/transactions/TransactionActionModal/ConfirmDeleteModal';
 
-const APP_PATH = resolve(__dirname, '../../../app/App.tsx');
-const ACTION_MODAL_PATH = resolve(__dirname, '../../../components/Transactions/TransactionActionModal/TransactionActionModal.tsx');
+const APP_PATH = resolve(__dirname, '../../../App.tsx');
+const ACTION_MODAL_PATH = resolve(__dirname, '../../../app/components/transactions/TransactionActionModal/TransactionActionModal.tsx');
 
 /**
  * Deleting one occurrence of a recurring charge takes every later occurrence

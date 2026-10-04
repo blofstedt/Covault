@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
-import { handleBack, pushBackHandler } from '../../../lib/navigation/backStack';
-import { previousStep } from '../../../components/Onboarding/onboardingProgress';
+import { handleBack, pushBackHandler } from '../../../app/lib/navigation/backStack';
+import { previousStep } from '../../../app/components/Onboarding/onboardingProgress';
 
 const read = (p: string) => readFileSync(new URL(`../../../${p}`, import.meta.url), 'utf8');
 
@@ -77,10 +77,10 @@ describe('the wiring', () => {
     expect(hook).toContain("addListener('backButton'");
     expect(hook).toContain('handleBack()');
     expect(hook).toContain('minimizeApp');
-    expect(read('app/App.tsx')).toContain('useHardwareBack()');
+    expect(read('App.tsx')).toContain('useHardwareBack()');
   });
 
   it('makes every dialog answer the back button as it answers Escape', () => {
-    expect(read('lib/hooks/useDialogInteraction.ts')).toContain('pushBackHandler');
+    expect(read('app/hooks/useDialogInteraction.ts')).toContain('pushBackHandler');
   });
 });

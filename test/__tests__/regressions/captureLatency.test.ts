@@ -35,7 +35,7 @@ vi.mock('@huggingface/transformers', () => ({
   pipeline: async () => async () => [{ generated_text: '' }],
 }));
 
-vi.mock('../../../lib/api/apiHelpers', () => ({
+vi.mock('../../../app/lib/api/apiHelpers', () => ({
   REST_BASE: 'https://mock.supabase.co/rest/v1',
   getAuthHeaders: vi.fn().mockResolvedValue({}),
   // No skip rules: this capture is an ordinary purchase.
@@ -82,7 +82,7 @@ function chainFor(table: string) {
   return chain;
 }
 
-vi.mock('../../../lib/api/supabase', () => ({
+vi.mock('../../../app/lib/api/supabase', () => ({
   supabase: {
     from: vi.fn((table: string) => chainFor(table)),
     auth: { getSession: vi.fn().mockResolvedValue({ data: { session: null } }) },
@@ -95,8 +95,8 @@ import {
   processNotificationWithAI,
   _clearDedupCacheForTesting,
   _clearRecurringCacheForTesting,
-} from '../../../lib/capture/notificationProcessor';
-import { invalidateNotificationRulesCache } from '../../../lib/capture/notificationRules';
+} from '../../../app/lib/capture/notificationProcessor';
+import { invalidateNotificationRulesCache } from '../../../app/lib/capture/notificationRules';
 
 const CATEGORIES = [
   { id: 'cat-groceries', name: 'Groceries' },

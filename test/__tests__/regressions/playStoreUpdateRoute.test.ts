@@ -17,8 +17,8 @@ import { resolve } from 'node:path';
  */
 
 const root = resolve(__dirname, '../../..');
-const plugin = readFileSync(resolve(root, 'android-custom/CovaultUpdaterPlugin.java'), 'utf8');
-const bridge = readFileSync(resolve(root, 'lib/native/covaultUpdater.ts'), 'utf8');
+const plugin = readFileSync(resolve(root, 'native/android/CovaultUpdaterPlugin.java'), 'utf8');
+const bridge = readFileSync(resolve(root, 'app/lib/native/covaultUpdater.ts'), 'utf8');
 const hook = readFileSync(resolve(root, 'app/hooks/useAppUpdate.ts'), 'utf8');
 
 describe('the Play Store install-source check', () => {

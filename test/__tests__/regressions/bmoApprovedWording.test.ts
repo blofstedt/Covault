@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseNotificationText } from '../../../lib/capture/deviceTransactionParser';
+import { parseNotificationText } from '../../../app/lib/capture/deviceTransactionParser';
 
 /**
  * BMO words a COMPLETED purchase as "was approved at <vendor>". 'approved' used

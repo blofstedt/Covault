@@ -5,8 +5,8 @@ import {
   budgetsAfterFailedRead,
   looksLikeWrongColumn,
   worthRetryingWithFreshToken,
-} from '../../../lib/budgets/budgetFallback';
-import { SYSTEM_CATEGORIES } from '../../../constants';
+} from '../../../app/lib/budgets/budgetFallback';
+import { SYSTEM_CATEGORIES } from '../../../app/constants';
 
 /**
  * The user opened the app and found their budgets back at the starter figures,
@@ -31,7 +31,7 @@ import { SYSTEM_CATEGORIES } from '../../../constants';
  * away from being saved over the real ones.
  *
  * There is no React renderer in this project's test setup, so the rule lives in
- * lib/budgets/budgetFallback.ts where it can be exercised, and the wiring around it is
+ * app/lib/budgets/budgetFallback.ts where it can be exercised, and the wiring around it is
  * pinned by reading the source. What cannot be tested here is the phone.
  */
 
@@ -91,7 +91,7 @@ describe('the loader is wired to those rules', () => {
   });
 
   it('routes every failure path through the seeding helper', () => {
-    const calls = source.match(/seedDefaultBudgetsIfEmpty\(\)/g) ?? [];
+    const calls = source.match(/seedDefaultBudgetsIfEmpty\(scope\)/g) ?? [];
     // The three ways the read can fail: table missing, non-ok, thrown.
     expect(calls.length).toBeGreaterThanOrEqual(3);
   });

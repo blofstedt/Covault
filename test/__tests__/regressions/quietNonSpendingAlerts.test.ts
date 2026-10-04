@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { parseNotificationText } from '../../../lib/capture/deviceTransactionParser';
-import { parseCaptureOutcomes, isCaptureProblem, describeCaptureOutcome } from '../../../lib/capture/captureOutcome';
+import { parseNotificationText } from '../../../app/lib/capture/deviceTransactionParser';
+import { parseCaptureOutcomes, isCaptureProblem, describeCaptureOutcome } from '../../../app/lib/capture/captureOutcome';
 
 /**
  * A declined charge and a balance alert both arrived as captured spending.
@@ -37,11 +37,11 @@ import { parseCaptureOutcomes, isCaptureProblem, describeCaptureOutcome } from '
  */
 
 const LISTENER_JAVA = readFileSync(
-  resolve(__dirname, '../../../android-custom/NotificationListener.java'),
+  resolve(__dirname, '../../../native/android/NotificationListener.java'),
   'utf-8',
 );
 const PARSER_TS = readFileSync(
-  resolve(__dirname, '../../../lib/capture/deviceTransactionParser.ts'),
+  resolve(__dirname, '../../../app/lib/capture/deviceTransactionParser.ts'),
   'utf-8',
 );
 
