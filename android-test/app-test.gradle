@@ -4,6 +4,8 @@ android {
         applicationId 'com.covault.app.test'
         testApplicationId 'com.covault.app.test.test'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+        // Ignore Capacitor's generated sample test, which assumes its template app ID.
+        testInstrumentationRunnerArguments 'class': 'com.covault.app.NativeCaptureTest'
         versionCode 1
         versionName 'android-ci'
     }

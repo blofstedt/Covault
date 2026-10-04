@@ -28,6 +28,14 @@ The tests grant their required notification permissions and listener access,
 then restore posting permission, disconnect the listener and clean up their
 alerts and test preferences. They refuse to run against a different app ID or
 version. They require no backend, login, HTTP server or actual banking app.
+The runner selects `com.covault.app.NativeCaptureTest` explicitly so Capacitor's
+generated sample test is excluded. The blocked-notification case revokes the
+actual runtime grant through Android's no-kill notification permission test API,
+as the platform's own CTS tests do. The [Android 16 permission API](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android16-release/core/java/android/permission/PermissionManager.java)
+defines that hook; the [instrumentation launcher](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android16-release/cmds/am/src/com/android/commands/am/Instrument.java)
+permits test APIs by default.
+The case fails explicitly if that hook is unavailable; it never substitutes an
+AppOps setting or skips the denied-permission assertions.
 
 ## Post a real bank alert with ADB
 

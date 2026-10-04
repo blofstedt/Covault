@@ -6,12 +6,15 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import android.Manifest;
 import android.app.Notification;
 import android.app.NotificationManager;
+import android.app.UiAutomation;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -33,6 +36,7 @@ import org.xmlpull.v1.XmlPullParser;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.lang.reflect.Method;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
@@ -62,9 +66,8 @@ public final class NativeCaptureTest {
         notifications = context.getSystemService(NotificationManager.class);
         shell("cmd notification disallow_listener " + COMPONENT);
         await("listener disconnect", () -> NotificationListener.getInstance() == null);
-        shell("pm grant " + BANK + " android.permission.POST_NOTIFICATIONS");
-        shell("pm grant " + APP + " android.permission.POST_NOTIFICATIONS");
-        shell("appops set " + APP + " POST_NOTIFICATION allow");
+        grantPostingPermission(BANK);
+        grantPostingPermission(APP);
         bankCommand("CANCEL_ALL", null);
         notifications.cancelAll();
         assertTrue(prefs.edit().clear()
@@ -82,8 +85,8 @@ public final class NativeCaptureTest {
     @After
     public void cleanUp() throws Exception {
         if (device == null) return;
-        // Restore appops even when an assertion failed in the blocked-permission test.
-        shell("appops set " + APP + " POST_NOTIFICATION allow");
+        // Restore the actual runtime grant even if the denied-permission assertion failed.
+        grantPostingPermission(APP);
         shell("cmd notification disallow_listener " + COMPONENT);
         await("listener cleanup", () -> NotificationListener.getInstance() == null);
         bankCommand("CANCEL_ALL", null);
@@ -121,10 +124,12 @@ public final class NativeCaptureTest {
 
     @Test
     public void blockedReplacementPermissionKeepsOriginalEvenThoughCaptureIsDurable() throws Exception {
-        // Appops changes notification permission without revoking a runtime
-        // permission and killing the instrumentation process itself.
-        shell("appops set " + APP + " POST_NOTIFICATION ignore");
-        await("posting blocked", () -> !notifications.areNotificationsEnabled());
+        revokePostingPermissionWithoutKill();
+        await("runtime posting permission denied", () ->
+            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                == PackageManager.PERMISSION_DENIED && !notifications.areNotificationsEnabled());
+        assertEquals(PackageManager.PERMISSION_DENIED,
+            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS));
         post(201, "purchase", "22.45");
         await("blocked capture outcome", () -> hasOutcome(22.45, "blocked"));
         assertEquals(22.45, findCapture(diskQueue(), 22.45).getDouble("amount"), 0.000001);
@@ -132,7 +137,7 @@ public final class NativeCaptureTest {
         assertEquals(0, notifications.getActiveNotifications().length);
         assertWidget(62.45, 937.55, 1);
 
-        shell("appops set " + APP + " POST_NOTIFICATION allow");
+        grantPostingPermission(APP);
         await("posting restored", notifications::areNotificationsEnabled);
         post(202, "purchase", "23.46");
         await("new purchase suppression after permission restored", () ->
@@ -216,6 +221,38 @@ public final class NativeCaptureTest {
         snapshot.put("pendingReview", 0);
         snapshot.put("slices", new JSONArray("[{\"name\":\"Other\",\"amount\":40,\"color\":\"#64748B\"}]"));
         WidgetDeltaStore.writeSnapshot(context, snapshot.toString(), "[]", false);
+    }
+
+    private void grantPostingPermission(String packageName) {
+        InstrumentationRegistry.getInstrumentation().getUiAutomation()
+            .grantRuntimePermission(packageName, Manifest.permission.POST_NOTIFICATIONS);
+    }
+
+    private void revokePostingPermissionWithoutKill() throws Exception {
+        // Android 13+ stores app-wide notification consent as a runtime grant.
+        // Changing the legacy POST_NOTIFICATION appop does not revoke that grant.
+        // This is the platform's CTS test hook, not a replacement for production code.
+        // Android's instrumentation launcher permits @TestApi access by default.
+        UiAutomation automation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        Object manager = context.getSystemService("permission");
+        assertNotNull("Android PermissionManager is required for the runtime-denial test", manager);
+        int userId = Integer.parseInt(device.executeShellCommand("am get-current-user").trim());
+        automation.adoptShellPermissionIdentity(
+            "android.permission.REVOKE_POST_NOTIFICATIONS_WITHOUT_KILL",
+            "android.permission.REVOKE_RUNTIME_PERMISSIONS");
+        try {
+            // @TestApi is excluded from the public compile SDK. Reflect only this
+            // exact API, which revokes POST_NOTIFICATIONS without killing our runner.
+            Method revoke = manager.getClass().getMethod(
+                "revokePostNotificationPermissionWithoutKillForTest", String.class, int.class);
+            revoke.invoke(manager, APP, userId);
+        } catch (ReflectiveOperationException error) {
+            throw new AssertionError("The emulator must expose Android's no-kill notification "
+                + "permission test hook with instrumentation @TestApi access", error);
+        } finally {
+            // Check and capture as the real target UID, without adopted shell permissions.
+            automation.dropShellPermissionIdentity();
+        }
     }
 
     private void assertWidget(double spent, double remaining, int pending) throws Exception {
