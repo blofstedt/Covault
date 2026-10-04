@@ -62,8 +62,7 @@ const MAX_PENDING = 20;
 
 function dsn(): string | undefined {
   try {
-    const value = (import.meta as { env?: Record<string, string | undefined> }).env
-      ?.VITE_SENTRY_DSN;
+    const value = import.meta.env?.VITE_SENTRY_DSN;
     return value && value.trim() ? value.trim() : undefined;
   } catch {
     return undefined;
@@ -81,8 +80,7 @@ function dsn(): string | undefined {
  */
 function release(): string | undefined {
   try {
-    const build = (import.meta as { env?: Record<string, string | undefined> }).env
-      ?.VITE_BUILD_NUMBER;
+    const build = import.meta.env?.VITE_BUILD_NUMBER;
     return build && build.trim() ? `covault@${build.trim()}` : undefined;
   } catch {
     return undefined;
@@ -128,16 +126,27 @@ export function initErrorReporting(): void {
         replaysSessionSampleRate: 0,
         replaysOnErrorSampleRate: 0,
 
-        // Never attach the things Sentry can infer about a person.
-        sendDefaultPii: false,
+        // Sentry 11 collects these by default. None belongs in a crash report
+        // from an app whose requests, AI inputs and local state contain money.
+        dataCollection: {
+          userInfo: false,
+          cookies: false,
+          httpHeaders: { request: false, response: false },
+          httpBodies: [],
+          urlQueryParams: false,
+          genAI: { inputs: false, outputs: false },
+          databaseQueryData: false,
+          queues: false,
+          graphQL: { document: false, variables: false },
+          stackFrameVariables: false,
+        },
 
         integrations: (defaults) =>
           defaults
             // The console integration attaches recent console output to every
             // event, and `log.warn`/`log.error` survive into production builds
             // where some of them name a merchant.
-            .filter((integration) => integration.name !== 'Breadcrumbs')
-            .concat(Sentry.breadcrumbsIntegration({ console: false })),
+            .filter((integration) => integration.name !== 'Console'),
 
         beforeBreadcrumb(breadcrumb) {
           if (breadcrumb.category === 'console') return null;
@@ -148,7 +157,7 @@ export function initErrorReporting(): void {
         },
 
         beforeSend(event) {
-          // Belt and braces over `sendDefaultPii: false`, because these are
+          // Keep this last check alongside `dataCollection`, because these are
           // the fields that would carry a real person's identity and the cost
           // of one of them slipping through is not recoverable.
           if (event.user) {

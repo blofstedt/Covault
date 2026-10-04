@@ -3,7 +3,8 @@
 Verified on 2026-10-04 against each package's official npm registry latest tag
 and published license metadata. The table records the final lockfile. No
 prerelease or paid-license package was selected. TypeScript 7 is deferred at
-the user's request. React type packages are updated in production PR 313.
+the user's request. The runtime and React type updates from production PR 313
+are now included in this branch.
 
 | Package | Resolved version | Current stable | License |
 | --- | --- | --- | --- |
@@ -19,8 +20,8 @@ the user's request. React type packages are updated in production PR 313.
 | [@testing-library/user-event](https://registry.npmjs.org/%40testing-library%2Fuser-event/latest) | 14.6.7 | 14.6.7 | MIT |
 | [@types/jest-axe](https://registry.npmjs.org/%40types%2Fjest-axe/latest) | 3.5.9 | 3.5.9 | MIT |
 | [@types/node](https://registry.npmjs.org/%40types%2Fnode/latest) | 26.6.4 | 26.6.4 | MIT |
-| [@types/react](https://registry.npmjs.org/%40types%2Freact/latest) | 19.2.17 | 19.3.0 | MIT |
-| [@types/react-dom](https://registry.npmjs.org/%40types%2Freact-dom/latest) | 19.2.3 | 19.3.0 | MIT |
+| [@types/react](https://registry.npmjs.org/%40types%2Freact/latest) | 19.3.0 | 19.3.0 | MIT |
+| [@types/react-dom](https://registry.npmjs.org/%40types%2Freact-dom/latest) | 19.3.0 | 19.3.0 | MIT |
 | [@vitejs/plugin-react](https://registry.npmjs.org/%40vitejs%2Fplugin-react/latest) | 6.1.1 | 6.1.1 | MIT |
 | [@vitest/eslint-plugin](https://registry.npmjs.org/%40vitest%2Feslint-plugin/latest) | 1.6.27 | 1.6.27 | MIT |
 | [autoprefixer](https://registry.npmjs.org/autoprefixer/latest) | 10.6.1 | 10.6.1 | MIT |
@@ -64,12 +65,27 @@ removal remain in effect. The older es2015 target still produces tolerated
 BigInt-transform warnings in ONNX code. The app already requires a modern
 WebView with BigInt support. This update does not change device support.
 
-A normal clean install, full and runtime npm audits, both TypeScript checks,
-explicit build-config checks, zero-warning lint, 2,356 tests, 25 browser cases
-and ordinary/synthetic-configured production builds passed locally. Both npm
-audits report zero known vulnerabilities. React, D3 and Supabase remain
-separate build chunks; the unused ONNX WASM file is absent.
+React, D3 and Supabase remain separate build chunks; the unused ONNX WASM
+file is absent from the combined production build.
 
 Local checks used Node 26. Hosted Node 22/24 checks, Android APK and AI runtime,
 physical-phone performance and the live database need their own evidence.
 The audit covers npm packages, not every native or upstream CI dependency.
+
+## Combined runtime and development checks
+
+The merged lock retains every approved runtime version and the current tools,
+with TypeScript staying on 5.8. Capacitor core now declares 8.5.2 as its minimum
+to preserve the approved runtime version when the lock is regenerated.
+
+A normal clean install, full and runtime npm audits, app and unused-code type
+checks, explicit build-config and Android test-build type checks, zero-warning
+lint, all 2,347 unit tests and the production build passed with this combined
+lock. The focused checks passed all three real-SDK crash-report privacy tests
+and all thirteen lint probes. The full and runtime audits both report zero
+known vulnerabilities.
+
+The previous separate PR heads passed installed Android emulator checks and
+browser checks. Those results do not verify this new combined head. Its hosted
+and browser checks still need to run after delivery; physical phones and the
+live database remain unverified.
