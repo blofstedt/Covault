@@ -813,11 +813,13 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
 
 ## Conventions
 
-- **A Stop hook lints every file the turn changed** (`.claude/hooks/lint-changed.sh`,
-  wired in `.claude/settings.json`). It runs `eslint --fix` on files that differ
-  from the commit the turn started on, committed or not. If that rewrites
-  anything, or leaves errors, the turn is sent back once — commit the fixes or
-  repair the rest before finishing. It never loops a second time.
+- **The turn lint hook collects Claude's Write/Edit targets**
+  (`.claude/hooks/lint-changed.mjs`, wired in `.claude/settings.json`). It runs
+  one `eslint --fix` batch when the turn ends, including files already committed.
+  Each session keeps its own file list; unrelated dirty files are left alone.
+  Remaining errors send Claude back to repair them, with bounded retries.
+  Shell edits and interrupted turns still need `npm run verify`. Review and
+  commit any automatic fixes before delivering the branch.
 
 - Surgical, behaviour-preserving changes. No broad rewrites unless asked.
 - Never wrap imports in `try`/`catch`.

@@ -6,7 +6,24 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/turn-start.sh\""
+            "command": "node",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/lint-changed.mjs"
+            ]
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/lint-changed.mjs"
+            ]
           }
         ]
       }
@@ -16,9 +33,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/lint-changed.sh\"",
-            "timeout": 120,
-            "statusMessage": "Linting files changed this turn"
+            "command": "node",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/lint-changed.mjs"
+            ],
+            "timeout": 130,
+            "statusMessage": "Linting files edited this turn"
           }
         ]
       }
