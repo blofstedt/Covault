@@ -19,6 +19,10 @@ collect_results() {
   trap - EXIT
   set +e
   if [ "$DEVICE_READY" = 1 ]; then
+    if [ "$status" != 0 ]; then
+      python3 scripts/android-emulator-preflight.py --serial "$ANDROID_SERIAL" diagnostics \
+        > "$RESULTS_DIR/logs/startup-diagnostics.txt" 2>&1
+    fi
     adb -s "$ANDROID_SERIAL" exec-out screencap -p > "$RESULTS_DIR/screenshots/final.png"
     adb -s "$ANDROID_SERIAL" shell dumpsys notification > "$RESULTS_DIR/logs/notifications.txt"
     adb -s "$ANDROID_SERIAL" shell dumpsys webviewupdate > "$RESULTS_DIR/logs/webview.txt"
@@ -81,6 +85,7 @@ for file in \
   android/app/build/outputs/apk/debug/app-debug.apk \
   android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk \
   android/fake-bank/build/outputs/apk/debug/fake-bank-debug.apk \
+  scripts/android-emulator-preflight.py \
   android-test/configure-device.sh \
   android-e2e/flows/manual-entry-smoke.yaml \
   android-e2e/flows/notification-review.yaml; do
@@ -126,6 +131,8 @@ adb -s "$ANDROID_SERIAL" install -r -t android/fake-bank/build/outputs/apk/debug
 STAGE=offline
 adb -s "$ANDROID_SERIAL" shell cmd connectivity airplane-mode enable
 adb -s "$ANDROID_SERIAL" shell svc wifi disable
+python3 scripts/android-emulator-preflight.py --serial "$ANDROID_SERIAL" wait-phone \
+  2>&1 | tee "$RESULTS_DIR/logs/phone-service-readiness.txt"
 adb -s "$ANDROID_SERIAL" shell svc data disable
 if [ "$(adb -s "$ANDROID_SERIAL" shell settings get global airplane_mode_on | tr -d '\r')" != 1 ]; then
   echo "Could not enable airplane mode; refusing to run the offline app tests." >&2
@@ -149,8 +156,11 @@ adb -s "$ANDROID_SERIAL" shell pm clear "$APP_ID"
 bash android-test/configure-device.sh seed
 bash android-test/configure-device.sh permissions
 
+STAGE=manual-entry-port-preflight
+python3 scripts/android-emulator-preflight.py --serial "$ANDROID_SERIAL" check-port 17001 \
+  2>&1 | tee "$RESULTS_DIR/logs/manual-entry-port-preflight.txt"
 STAGE=manual-entry
-maestro --device "$ANDROID_SERIAL" test --format junit \
+maestro --device "$ANDROID_SERIAL" test --driver-host-port 17001 --format junit \
   --output "$RESULTS_DIR/reports/manual-entry-junit.xml" \
   --test-output-dir "$RESULTS_DIR/maestro/manual-entry" \
   android-e2e/flows/manual-entry-smoke.yaml \
@@ -161,8 +171,11 @@ STAGE=post-bank-notification
 adb -s "$ANDROID_SERIAL" shell am broadcast --include-stopped-packages -n "$BANK_ID/.BankNotificationReceiver" \
   -a "$BANK_ID.POST" --es scenario purchase --ei id 701
 
+STAGE=notification-review-port-preflight
+python3 scripts/android-emulator-preflight.py --serial "$ANDROID_SERIAL" check-port 17002 \
+  2>&1 | tee "$RESULTS_DIR/logs/notification-review-port-preflight.txt"
 STAGE=notification-review
-maestro --device "$ANDROID_SERIAL" test --format junit \
+maestro --device "$ANDROID_SERIAL" test --driver-host-port 17002 --format junit \
   --output "$RESULTS_DIR/reports/notification-review-junit.xml" \
   --test-output-dir "$RESULTS_DIR/maestro/notification-review" \
   android-e2e/flows/notification-review.yaml \
