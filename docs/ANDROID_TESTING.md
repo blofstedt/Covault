@@ -106,7 +106,8 @@ changing the expected behavior.
 
 The test build requires both Android test mode and an explicit opt-in. Its
 bootstrap supplies only a synthetic session and a local persistent fake
-backend. Other external requests are refused, and the runner disables device
+backend. Each cold startup clears the app's first-paint cache so a reopening
+check must reload the saved database row. Other external requests are refused, and the runner disables device
 networking. The APK uses `com.covault.app.test`, a separate deep-link scheme,
 the **Covault CI** name and Android's `testOnly` flag. The fake bank is
 `com.covault.fakebank`. Normal builds do not include this bootstrap, helper or

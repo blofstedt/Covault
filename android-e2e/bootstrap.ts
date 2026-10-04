@@ -1,7 +1,10 @@
 import { createTestBackend, TEST_BANK_PACKAGE, TEST_SUPABASE_URL, TEST_USER_ID } from './backend';
+import { clearFirstPaintCache } from '../lib/firstPaintCache';
 
 // Vite inserts this as the first dependency of the app entry. It never ships
 // in a normal build, and there is no production flag or login bypass at runtime.
+// Reopen checks must read the fake database rather than pass from cached UI rows.
+clearFirstPaintCache();
 const expiry = Math.floor(Date.now() / 1000) + 86_400;
 const payload = btoa(JSON.stringify({ exp: expiry, sub: TEST_USER_ID, role: 'authenticated' }));
 const token = `android-test.${payload}.not-a-real-signature`;
