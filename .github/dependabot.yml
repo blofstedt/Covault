@@ -3,22 +3,66 @@ updates:
   - package-ecosystem: npm
     directory: /
     schedule:
-      interval: monthly
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Toronto
+    open-pull-requests-limit: 10
+    # Let routine releases settle. Security updates bypass this cooldown.
+    cooldown:
+      default-days: 7
     groups:
+      # Keep native packages together, ahead of the broader app group.
+      capacitor:
+        patterns:
+          - "@capacitor/*"
+          - "@aparajita/capacitor-*"
+        update-types: [minor, patch]
+      react:
+        patterns:
+          - react
+          - react-dom
+          - "@types/react"
+          - "@types/react-dom"
+        update-types: [minor, patch]
       production-dependencies:
         dependency-type: production
-        patterns:
-          - "*"
+        patterns: ["*"]
+        update-types: [minor, patch]
       development-tools:
         dependency-type: development
+        patterns: ["*"]
+        update-types: [minor, patch]
+      # Security updates have their own groups and do not wait for Monday.
+      capacitor-security:
+        applies-to: security-updates
         patterns:
-          - "*"
+          - "@capacitor/*"
+          - "@aparajita/capacitor-*"
+      production-security:
+        applies-to: security-updates
+        dependency-type: production
+        patterns: ["*"]
+      development-security:
+        applies-to: security-updates
+        dependency-type: development
+        patterns: ["*"]
+    # Unmatched major upgrades get individual PRs for deliberate review.
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: monthly
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Toronto
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
     groups:
       github-actions:
-        patterns:
-          - "*"
+        patterns: ["*"]
+        update-types: [minor, patch]
+      github-actions-security:
+        applies-to: security-updates
+        patterns: ["*"]
