@@ -1,14 +1,14 @@
 // app/data/useDataLoading.ts
-import { log } from '../../lib/observability/log';
+import { log } from '../lib/observability/log';
 import { useCallback, useRef, useState } from 'react';
-import { SYSTEM_CATEGORIES, isOptInCategory } from '../../constants';
-import { sortBudgets } from '../../lib/budgets/budgetOrder';
+import { SYSTEM_CATEGORIES, isOptInCategory } from '../constants';
+import { sortBudgets } from '../lib/budgets/budgetOrder';
 import {
   budgetsAfterFailedRead,
   looksLikeWrongColumn,
   worthRetryingWithFreshToken,
-} from '../../lib/budgets/budgetFallback';
-import type { BudgetCategory, Transaction } from '../../types';
+} from '../lib/budgets/budgetFallback';
+import type { BudgetCategory, Transaction } from '../types';
 import {
   REST_BASE,
   getAuthHeaders,
@@ -16,19 +16,24 @@ import {
   clearCachedAccessToken,
   DEFAULT_MONTHLY_INCOME,
   callRpc,
-} from '../../lib/api/apiHelpers';
-import { syncServerClock } from '../../lib/time/serverClock';
-import { getLocalToday } from '../../lib/time/dateUtils';
+} from '../lib/api/apiHelpers';
+import { syncServerClock } from '../lib/time/serverClock';
+import { getLocalToday } from '../lib/time/dateUtils';
 import {
   readPartnerSummary,
   withoutPartner,
   type ShareLevel,
   type BudgetMode,
-} from '../../lib/budgets/householdSharing';
-import { useFromSupabaseTransaction } from '../../lib/api/transactionMappers';
-import { readFirstPaintCache } from '../../lib/cache/firstPaintCache';
-import { createReadGate, type ReadGate } from '../../lib/api/readGate';
+} from '../lib/budgets/householdSharing';
+import { useFromSupabaseTransaction } from '../lib/api/transactionMappers';
+import { readFirstPaintCache } from '../lib/cache/firstPaintCache';
+import { createReadGate, type ReadGate } from '../lib/api/readGate';
 import type { UseUserDataParams } from './types';
+import {
+  captureAccountDataScope,
+  isCurrentAccountDataScope,
+  type AccountDataScope,
+} from '../lib/auth/accountScope';
 
 /** Merge incoming transactions into existing ones, deduplicating by ID. */
 function mergeTransactions(existing: Transaction[], incoming: Transaction[]): Transaction[] {
@@ -45,8 +50,20 @@ const toBudgetId = (row: any): string => {
 export const useDataLoading = ({
   setAppState,
   setDbError,
-}: Pick<UseUserDataParams, 'setAppState' | 'setDbError'>) => {
-  const [categoriesLoaded, setCategoriesLoaded] = useState(false);
+  accountScopeRef: providedAccountScopeRef,
+}: Pick<UseUserDataParams, 'setAppState' | 'setDbError' | 'accountScopeRef'>) => {
+  const internalAccountScopeRef = useRef<AccountDataScope>({ userId: null, generation: 0 });
+  const accountScopeRef = providedAccountScopeRef ?? internalAccountScopeRef;
+  const [categoriesLoadedState, setCategoriesLoadedState] = useState({
+    generation: accountScopeRef.current.generation,
+    loaded: false,
+  });
+  const categoriesLoaded = categoriesLoadedState.generation === accountScopeRef.current.generation
+    && categoriesLoadedState.loaded;
+  const markCategoriesLoaded = useCallback((scope: AccountDataScope) => {
+    if (!isCurrentAccountDataScope(accountScopeRef, scope)) return;
+    setCategoriesLoadedState({ generation: scope.generation, loaded: true });
+  }, [accountScopeRef]);
   const fromSupabaseTransaction = useFromSupabaseTransaction();
 
   // ── Which transaction load is allowed to win ──
@@ -63,7 +80,7 @@ export const useDataLoading = ({
   // again. On a capture the user still has to review, that is one tap away
   // from being noticed and fixed; on one filed automatically there is no such
   // tap, so the row simply was not there, and the purchase got entered a
-  // second time by hand. See lib/api/readGate.ts.
+  // second time by hand. See lib/readGate.ts.
   //
   // A ref, not state: this must not re-render anything, and it has to be
   // readable inside a callback created several renders ago. Initialised
@@ -93,13 +110,14 @@ export const useDataLoading = ({
   // previous one's partner: RLS would refuse the read anyway, but "the read
   // comes back empty" is a weak place to be relying on for correctness.
   const partnerOwnerIdRef = useRef<string | null>(null);
+  const partnerOwnerGenerationRef = useRef<number | null>(null);
 
   // Load budgets from Supabase (replaces both loadCategories and loadUserBudgets)
   // The budgets table now serves as both categories and per-user budget limits.
-  const loadCategories = useCallback(async () => {
+  const loadCategories = useCallback(async (scope: AccountDataScope) => {
     // Categories are now loaded as part of loadUserBudgets; mark as loaded immediately
-    setCategoriesLoaded(true);
-  }, []);
+    markCategoriesLoaded(scope);
+  }, [markCategoriesLoaded]);
 
   // Ensure all default budgets exist in the budgets table for this user
   //
@@ -186,18 +204,21 @@ export const useDataLoading = ({
    * screen edits and writes back, so showing the starter 500s over the user's
    * real figures put the app one tap away from saving them.
    */
-  const seedDefaultBudgetsIfEmpty = useCallback(() => {
+  const seedDefaultBudgetsIfEmpty = useCallback((scope: AccountDataScope) => {
+    if (!isCurrentAccountDataScope(accountScopeRef, scope)) return;
     setAppState(prev => {
+      if (prev.user?.id !== scope.userId) return prev;
       const next = budgetsAfterFailedRead(prev.budgets, SYSTEM_CATEGORIES);
       return next === prev.budgets ? prev : { ...prev, budgets: next as BudgetCategory[] };
     });
-  }, [setAppState]);
+  }, [accountScopeRef, setAppState]);
 
   // Load user budgets from budgets table (this is now the single source of truth for categories)
   const loadUserBudgets = useCallback(
-    async (userId: string) => {
+    async (userId: string, scope: AccountDataScope) => {
       try {
         const headers = await getAuthHeaders();
+        if (!isCurrentAccountDataScope(accountScopeRef, scope)) return;
         let res = await fetch(
           `${REST_BASE}/budgets?select=*&user_uuid=eq.${userId}`,
           { headers },
@@ -219,6 +240,7 @@ export const useDataLoading = ({
         if (worthRetryingWithFreshToken(res.status)) {
           log.warn('[loadUserBudgets] 401 — retrying once with a fresh token');
           clearCachedAccessToken();
+          if (!isCurrentAccountDataScope(accountScopeRef, scope)) return;
           res = await fetch(
             `${REST_BASE}/budgets?select=*&user_uuid=eq.${userId}`,
             { headers: await getAuthHeaders() },
@@ -233,6 +255,7 @@ export const useDataLoading = ({
         // asking a second time for a column this schema does not have — a
         // guaranteed 400, turning one recoverable failure into a certain one.
         if (!res.ok && looksLikeWrongColumn(res.status)) {
+          if (!isCurrentAccountDataScope(accountScopeRef, scope)) return;
           res = await fetch(
             `${REST_BASE}/budgets?select=*&user_id=eq.${userId}`,
             { headers },
@@ -241,23 +264,26 @@ export const useDataLoading = ({
         const body = await res.text();
 
         if (!res.ok) {
+          if (!isCurrentAccountDataScope(accountScopeRef, scope)) return;
           if (res.status === 404 && body.includes('Could not find the table')) {
             log.debug('[loadUserBudgets] budgets table not found - using defaults');
-            seedDefaultBudgetsIfEmpty();
-            setCategoriesLoaded(true);
+            seedDefaultBudgetsIfEmpty(scope);
+            markCategoriesLoaded(scope);
             return;
           }
           log.error('[loadUserBudgets] failed:', res.status, body.slice(0, 200));
-          seedDefaultBudgetsIfEmpty();
-          setCategoriesLoaded(true);
+          seedDefaultBudgetsIfEmpty(scope);
+          markCategoriesLoaded(scope);
           return;
         }
 
         const rows = JSON.parse(body);
+        if (!isCurrentAccountDataScope(accountScopeRef, scope)) return;
 
         // Ensure all default budgets exist in the table
         const existingCategories = new Set<string>(rows.map((r: any) => r.category || r.budget).filter(Boolean));
         await ensureDefaultBudgets(userId, existingCategories);
+        if (!isCurrentAccountDataScope(accountScopeRef, scope)) return;
 
         // If we just seeded new budgets, re-fetch to get their IDs
         let finalRows = rows;
@@ -318,32 +344,35 @@ export const useDataLoading = ({
         // moment a row is UPDATEd, because the new version is written at the
         // end of the heap. Editing one budget's limit therefore moved that
         // vial to the bottom of the dashboard on the next load, for no reason
-        // the user could see. See lib/budgets/budgetOrder.ts.
+        // the user could see. See lib/budgetOrder.ts.
         const orderedBudgets = sortBudgets(budgets);
 
-        setAppState(prev => ({
-          ...prev,
-          budgets: orderedBudgets,
-          settings: {
-            ...prev.settings,
-            hiddenCategories: hiddenCategoryIds,
-          },
-        }));
+        setAppState(prev => {
+          if (!isCurrentAccountDataScope(accountScopeRef, scope) || prev.user?.id !== scope.userId) return prev;
+          return {
+            ...prev,
+            budgets: orderedBudgets,
+            settings: {
+              ...prev.settings,
+              hiddenCategories: hiddenCategoryIds,
+            },
+          };
+        });
 
         log.debug('[loadUserBudgets] loaded:', orderedBudgets.map(b => ({ id: b.id, name: b.name, limit: b.totalLimit })));
-        setCategoriesLoaded(true);
+        markCategoriesLoaded(scope);
       } catch (err: any) {
         log.error('[loadUserBudgets] exception:', err?.message || err);
-        seedDefaultBudgetsIfEmpty();
-        setCategoriesLoaded(true);
+        seedDefaultBudgetsIfEmpty(scope);
+        markCategoriesLoaded(scope);
       }
     },
-    [setAppState, ensureDefaultBudgets, seedDefaultBudgetsIfEmpty],
+    [accountScopeRef, markCategoriesLoaded, setAppState, ensureDefaultBudgets, seedDefaultBudgetsIfEmpty],
   );
 
   // Load user settings from Supabase (monthly_income, etc.)
   const loadUserSettings = useCallback(
-    async (userId: string) => {
+    async (userId: string, scope: AccountDataScope) => {
       try {
         const BASE_COLUMNS =
           'monthly_income,theme_selected,trial_started_at,trial_ends_at,trial_consumed,' +
@@ -368,6 +397,7 @@ export const useDataLoading = ({
         );
 
         if (!res.ok) {
+          if (!isCurrentAccountDataScope(accountScopeRef, scope)) return;
           res = await restFetch(
             `/settings?select=${BASE_COLUMNS}&user_id=eq.${userId}`,
             { cache: 'no-store' },
@@ -380,6 +410,7 @@ export const useDataLoading = ({
         }
         
         const rows = await res.json();
+        if (!isCurrentAccountDataScope(accountScopeRef, scope)) return;
 
         if (rows && rows.length > 0) {
           const rawMonthlyIncome = rows[0].monthly_income;
@@ -411,7 +442,9 @@ export const useDataLoading = ({
           // stays `undefined` on purpose — see getEntitlementStatus.
           const is_tester = rows[0].is_tester === undefined ? undefined : !!rows[0].is_tester;
 
-          setAppState(prev => ({
+          setAppState(prev => {
+            if (!isCurrentAccountDataScope(accountScopeRef, scope) || prev.user?.id !== scope.userId) return prev;
+            return {
             ...prev,
             user: prev.user
               ? {
@@ -455,7 +488,8 @@ export const useDataLoading = ({
               community_rules_contribute:
                 rows[0].community_rules_contribute ?? prev.settings.community_rules_contribute,
             },
-          }));
+            };
+          });
 
           log.debug(
             shouldUseDefault
@@ -468,18 +502,19 @@ export const useDataLoading = ({
           // No settings row exists (shouldn't happen with trigger, but handle it)
           // Use default value only in this case
           log.debug('[loadUserSettings] no settings row found, using default:', DEFAULT_MONTHLY_INCOME);
-          setAppState(prev => ({
-            ...prev,
-            user: prev.user
-              ? { ...prev.user, monthlyIncome: DEFAULT_MONTHLY_INCOME }
-              : null,
-          }));
+          setAppState(prev => {
+            if (!isCurrentAccountDataScope(accountScopeRef, scope) || prev.user?.id !== scope.userId) return prev;
+            return {
+              ...prev,
+              user: { ...prev.user, monthlyIncome: DEFAULT_MONTHLY_INCOME },
+            };
+          });
         }
       } catch (err: any) {
         log.error('[loadUserSettings] exception:', err?.message || err);
       }
     },
-    [setAppState],
+    [accountScopeRef, setAppState],
   );
 
   /**
@@ -488,7 +523,7 @@ export const useDataLoading = ({
    * one, and conflating them is how a failed read empties the dashboard.
    */
   const fetchTransactionsFor = useCallback(
-    async (userId: string): Promise<Transaction[] | null> => {
+    async (userId: string, scope: AccountDataScope): Promise<Transaction[] | null> => {
       const res = await restFetch(
         `/transactions?select=*&user_id=eq.${userId}&order=date.desc`,
         // The settings read has said this for a while, for the same reason.
@@ -497,6 +532,7 @@ export const useDataLoading = ({
         { cache: 'no-store' },
       );
       const body = await res.text();
+      if (!isCurrentAccountDataScope(accountScopeRef, scope)) return null;
       log.debug(
         '[loadTransactions] status:',
         res.status,
@@ -507,7 +543,7 @@ export const useDataLoading = ({
       if (!res.ok) {
         const msg = `Load transactions failed (${res.status}): ${body.slice(0, 200)}`;
         log.error(msg);
-        setDbError(msg);
+        if (isCurrentAccountDataScope(accountScopeRef, scope)) setDbError(msg);
         return null;
       }
 
@@ -524,27 +560,38 @@ export const useDataLoading = ({
       }
       return transactions;
     },
-    [fromSupabaseTransaction, setDbError],
+    [accountScopeRef, fromSupabaseTransaction, setDbError],
   );
 
   // Load transactions from Supabase via raw fetch
   // When merge is true, new transactions are appended to existing ones (used for partner data)
   const loadTransactions = useCallback(
-    async (userId: string, { merge = false }: { merge?: boolean } = {}) => {
+    async (
+      userId: string,
+      { merge = false, scope: providedScope }: { merge?: boolean; scope?: AccountDataScope } = {},
+    ) => {
+      const scope = providedScope ?? captureAccountDataScope(accountScopeRef, userId);
+      if (!scope || !isCurrentAccountDataScope(accountScopeRef, scope)) return;
+      if (!merge && scope.userId !== userId) return;
       // Claimed before the request goes out, so tickets are ordered by when
       // the read STARTED — which is what decides whose answer is older.
       const ticket = transactionReads.take();
       try {
-        const own = await fetchTransactionsFor(userId);
+        const own = await fetchTransactionsFor(userId, scope);
         if (own === null) return;
+        if (!isCurrentAccountDataScope(accountScopeRef, scope)) return;
 
         // A replace has to carry the partner's rows too, or it drops them.
         // Best-effort: a partner read that fails leaves the signed-in user's
         // own list intact rather than blocking the whole reload.
         let data = own;
-        const partnerId = partnerOwnerIdRef.current === userId ? partnerIdRef.current : null;
+        const partnerId = partnerOwnerIdRef.current === scope.userId
+          && partnerOwnerGenerationRef.current === scope.generation
+          ? partnerIdRef.current
+          : null;
         if (!merge && partnerId && partnerId !== userId) {
-          const partnerRows = await fetchTransactionsFor(partnerId);
+          const partnerRows = await fetchTransactionsFor(partnerId, scope);
+          if (!isCurrentAccountDataScope(accountScopeRef, scope)) return;
           if (partnerRows && partnerRows.length > 0) {
             data = mergeTransactions(own, partnerRows);
           }
@@ -556,11 +603,13 @@ export const useDataLoading = ({
           log.debug('[loadTransactions] OK, count:', transactions.length);
           // A partner merge only ever adds rows, so it can never take one away
           // and is applied whenever it lands. A replace has to be the newest.
+          if (!isCurrentAccountDataScope(accountScopeRef, scope)) return;
           if (!merge && !transactionReads.accepts(ticket)) {
             log.debug('[loadTransactions] dropping a slower, older read');
             return;
           }
           setAppState(prev => {
+            if (!isCurrentAccountDataScope(accountScopeRef, scope) || prev.user?.id !== scope.userId) return prev;
             const mergedTransactions = merge
               ? mergeTransactions(prev.transactions, transactions)
               : transactions;
@@ -571,26 +620,31 @@ export const useDataLoading = ({
           if (!merge) {
             // The most destructive answer of all, and the one most worth
             // dropping when it is out of date: emptying the list.
+            if (!isCurrentAccountDataScope(accountScopeRef, scope)) return;
             if (!transactionReads.accepts(ticket)) {
               log.debug('[loadTransactions] dropping a slower, older empty read');
               return;
             }
-            setAppState(prev => ({ ...prev, transactions: [] }));
+            setAppState(prev => (
+              isCurrentAccountDataScope(accountScopeRef, scope) && prev.user?.id === scope.userId
+                ? { ...prev, transactions: [] }
+                : prev
+            ));
           }
         }
       } catch (err: any) {
         const msg = `Load transactions exception: ${err?.message || err}`;
         log.error(msg);
-        setDbError(msg);
+        if (isCurrentAccountDataScope(accountScopeRef, scope)) setDbError(msg);
       }
     },
-    [fetchTransactionsFor, transactionReads, setAppState, setDbError],
+    [accountScopeRef, fetchTransactionsFor, transactionReads, setAppState, setDbError],
   );
 
 
   // Load household link status from settings table (partner_id field)
   const loadHouseholdLink = useCallback(
-    async (userId: string) => {
+    async (userId: string, scope: AccountDataScope) => {
       try {
         // Check if the user has a partner_id set in their settings
         const res = await restFetch(
@@ -604,11 +658,15 @@ export const useDataLoading = ({
 
         const body = await res.text();
         const data = JSON.parse(body);
+        if (!isCurrentAccountDataScope(accountScopeRef, scope)) return;
         // Who the partner was at the previous load, read before it is
         // overwritten below — the only way to tell "the link just ended" from
         // "there never was one".
         const previousPartnerId =
-          partnerOwnerIdRef.current === userId ? partnerIdRef.current : null;
+          partnerOwnerIdRef.current === userId
+            && partnerOwnerGenerationRef.current === scope.generation
+            ? partnerIdRef.current
+            : null;
         // Recorded (or cleared) before anything else, so a reload triggered
         // while this is still resolving already knows who to fetch alongside
         // the signed-in user — and so unlinking, or signing in as somebody
@@ -616,6 +674,7 @@ export const useDataLoading = ({
         partnerIdRef.current =
           data && data.length > 0 && data[0].partner_id ? String(data[0].partner_id) : null;
         partnerOwnerIdRef.current = userId;
+        partnerOwnerGenerationRef.current = scope.generation;
         if (!partnerIdRef.current) {
           // No partner. For someone who never had one this changes nothing.
           // For someone whose partner unlinked from THEIR phone, it is the
@@ -626,8 +685,11 @@ export const useDataLoading = ({
           // Only onto this user's own state: a load that finishes after the
           // account on screen has changed must not filter the new account's
           // rows against the old one's id.
-          setAppState(prev => (prev.user?.id === userId ? withoutPartner(prev, userId) : prev));
-          if (previousPartnerId) {
+          setAppState(prev => {
+            if (!isCurrentAccountDataScope(accountScopeRef, scope)) return prev;
+            return prev.user?.id === userId ? withoutPartner(prev, userId) : prev;
+          });
+          if (previousPartnerId && isCurrentAccountDataScope(accountScopeRef, scope)) {
             // The other side's app wrote nothing to this row when it unlinked,
             // so `budgeting_solo` still says "shared" and the next launch
             // would label the balance "Our" again. The same write this phone
@@ -643,24 +705,26 @@ export const useDataLoading = ({
           const partnerId = data[0].partner_id;
           const partnerName = data[0].partner_name;
 
-          setAppState(prev => ({
-            ...prev,
-            user: prev.user
-              ? {
-                  ...prev.user,
-                  budgetingSolo: false,
-                  hasJointAccounts: true,
-                  partnerId,
-                  partnerName: partnerName || undefined,
-                }
-              : null,
-          }));
+          setAppState(prev => {
+            if (!isCurrentAccountDataScope(accountScopeRef, scope) || prev.user?.id !== scope.userId) return prev;
+            return {
+              ...prev,
+              user: {
+                ...prev.user,
+                budgetingSolo: false,
+                hasJointAccounts: true,
+                partnerId,
+                partnerName: partnerName || undefined,
+              },
+            };
+          });
 
           // Load partner's transactions and merge with existing user transactions.
           // At a sharing level below 'transactions' the database refuses these
           // rows, so this comes back empty and the summary below is the only
           // record of what they spent.
-          await loadTransactions(partnerId, { merge: true });
+          await loadTransactions(partnerId, { merge: true, scope });
+          if (!isCurrentAccountDataScope(accountScopeRef, scope)) return;
 
           // ── What the household is, beyond the rows ──
           //
@@ -679,6 +743,7 @@ export const useDataLoading = ({
             callRpc<unknown>('partner_month_summary', { p_month: monthKey }),
             restFetch(`/budgets?select=*&user_uuid=eq.${partnerId}`).catch(() => null),
           ]);
+          if (!isCurrentAccountDataScope(accountScopeRef, scope)) return;
 
           let partnerBudgets: BudgetCategory[] | null = null;
           try {
@@ -698,20 +763,23 @@ export const useDataLoading = ({
             partnerBudgets = null;
           }
 
-          setAppState(prev => ({
-            ...prev,
-            partnerIncome: income.ok && Number.isFinite(Number(income.data))
-              ? Number(income.data)
-              : null,
-            partnerSummary: summary.ok ? readPartnerSummary(summary.data) : null,
-            partnerBudgets,
-          }));
+          setAppState(prev => {
+            if (!isCurrentAccountDataScope(accountScopeRef, scope) || prev.user?.id !== scope.userId) return prev;
+            return {
+              ...prev,
+              partnerIncome: income.ok && Number.isFinite(Number(income.data))
+                ? Number(income.data)
+                : null,
+              partnerSummary: summary.ok ? readPartnerSummary(summary.data) : null,
+              partnerBudgets,
+            };
+          });
         }
       } catch (err: any) {
         log.error('[loadHouseholdLink]', err?.message || err);
       }
     },
-    [loadTransactions, setAppState],
+    [accountScopeRef, loadTransactions, setAppState],
   );
 
   /**
@@ -723,11 +791,13 @@ export const useDataLoading = ({
    * on screen until the fetch returned.
    */
   const hydrateFromCache = useCallback(
-    (userId: string) => {
+    (userId: string, scope: AccountDataScope) => {
+      if (!isCurrentAccountDataScope(accountScopeRef, scope)) return;
       const cached = readFirstPaintCache(userId);
       if (!cached) return;
 
       setAppState(prev => {
+        if (!isCurrentAccountDataScope(accountScopeRef, scope) || prev.user?.id !== scope.userId) return prev;
         const wantsTransactions = prev.transactions.length === 0 && cached.transactions.length > 0;
         const wantsBudgets = prev.budgets.length === 0 && cached.budgets.length > 0;
         const wantsIncome =
@@ -749,17 +819,18 @@ export const useDataLoading = ({
       });
       log.debug('[loadUserData] painted from cache:', cached.transactions.length, 'transactions');
     },
-    [setAppState],
+    [accountScopeRef, setAppState],
   );
 
   // Load all data from Supabase
   const loadUserData = useCallback(
-    async (userId: string) => {
+    async (userId: string, scope: AccountDataScope) => {
+      if (scope.userId !== userId || !isCurrentAccountDataScope(accountScopeRef, scope)) return;
       log.debug('loadUserData called for user:', userId);
       // Before the round-trips, not after: the whole point is the second the
       // fetches spend in flight.
-      hydrateFromCache(userId);
-      await loadCategories();
+      hydrateFromCache(userId, scope);
+      await loadCategories(scope);
 
       // These are mutually independent: each uses a functional setAppState
       // updater and they touch disjoint keys (budgets + hiddenCategories /
@@ -770,20 +841,22 @@ export const useDataLoading = ({
       // the trial date it is compared against is any use, and it costs nothing
       // here — it is one more request in a batch that is already waiting.
       await Promise.all([
-        loadUserBudgets(userId), // user-specific budget limits
-        loadUserSettings(userId), // monthly_income, theme, trial flags
-        loadTransactions(userId),
+        loadUserBudgets(userId, scope), // user-specific budget limits
+        loadUserSettings(userId, scope), // monthly_income, theme, trial flags
+        loadTransactions(userId, { scope }),
         syncServerClock(), // what time the database thinks it is
       ]);
+      if (!isCurrentAccountDataScope(accountScopeRef, scope)) return;
 
       // Must stay after loadTransactions: it merges the partner's rows onto
       // the list that call populates. It must also stay after
       // loadUserSettings, which reads budgetingSolo and defers to the
       // `=== false` this call sets.
-      await loadHouseholdLink(userId);
+      await loadHouseholdLink(userId, scope);
+      if (!isCurrentAccountDataScope(accountScopeRef, scope)) return;
       log.debug('loadUserData completed');
     },
-    [hydrateFromCache, loadCategories, loadHouseholdLink, loadTransactions, loadUserBudgets, loadUserSettings],
+    [accountScopeRef, hydrateFromCache, loadCategories, loadHouseholdLink, loadTransactions, loadUserBudgets, loadUserSettings],
   );
 
   return {

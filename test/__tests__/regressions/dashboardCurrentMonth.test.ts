@@ -19,9 +19,9 @@ import { resolve, join } from 'node:path';
 
 const ROOT = resolve(__dirname, '../../..');
 
-const dashboard = readFileSync(join(ROOT, 'components/Dashboard/Dashboard.tsx'), 'utf8');
+const dashboard = readFileSync(join(ROOT, 'app/components/Dashboard/Dashboard.tsx'), 'utf8');
 const totals = readFileSync(
-  join(ROOT, 'components/Dashboard/useDashboardTotals.ts'),
+  join(ROOT, 'app/components/Dashboard/useDashboardTotals.ts'),
   'utf8',
 );
 

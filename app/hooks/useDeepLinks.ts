@@ -1,17 +1,17 @@
-// lib/useDeepLinks.ts
-import { log } from '../../lib/observability/log';
+// app/hooks/useDeepLinks.ts
+import { log } from '../lib/observability/log';
 import { useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
-import { supabase } from '../../lib/api/supabase';
+import { supabase } from '../lib/api/supabase';
 
 /**
  * The PKCE authorization code in a sign-in callback, or null.
  *
  * ONLY a code. This used to accept an access token and refresh token straight
  * out of the link too — an "implicit flow" fallback — and hand them to
- * `setSession`. But the app signs in with PKCE (lib/api/supabase.ts), so a real
+ * `setSession`. But the app signs in with PKCE (app/lib/api/supabase.ts), so a real
  * callback never carries tokens, and any page or app on the phone can open a
  * `com.covault.app://` link. One carrying someone else's tokens would have
  * signed this phone into THEIR account without a word — after which every

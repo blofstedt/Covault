@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
-import { toVendorKey } from '../../../lib/capture/deviceTransactionParser';
-import { fuzzyVendorMatch } from '../../../lib/vendors/formatVendorName';
+import { toVendorKey } from '../../../app/lib/capture/deviceTransactionParser';
+import { fuzzyVendorMatch } from '../../../app/lib/vendors/formatVendorName';
 
 /**
  * A learned rule is identified by vendor AND category, not vendor alone.
@@ -70,7 +70,7 @@ describe('near-match consolidation', () => {
 describe('rule-system guards', () => {
   it('teaching is not an opt-in second button any more', () => {
     const row = readFileSync(
-      join(ROOT, 'components/Review/AIEnteredRow.tsx'),
+      join(ROOT, 'app/components/review/TransactionParsing/AITransactionsEnteredCard/AIEnteredRow/AIEnteredRow.tsx'),
       'utf8',
     );
 
@@ -88,7 +88,7 @@ describe('rule-system guards', () => {
 
   it('deleting one rule cannot take out the vendor’s other rules', () => {
     const source = readFileSync(
-      join(ROOT, 'lib/vendors/useVendorOverrides.ts'),
+      join(ROOT, 'app/lib/vendors/useVendorOverrides.ts'),
       'utf8',
     );
 

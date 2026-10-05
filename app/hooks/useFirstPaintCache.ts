@@ -1,7 +1,8 @@
 // app/hooks/useFirstPaintCache.ts
 import { useEffect } from 'react';
-import { writeFirstPaintCache } from '../../lib/cache/firstPaintCache';
-import type { AppState } from '../../types';
+import { writeFirstPaintCache } from '../lib/cache/firstPaintCache';
+import { captureAccountDataScope, isCurrentAccountDataScope, type AccountDataScopeRef } from '../lib/auth/accountScope';
+import type { AppState } from '../types';
 
 /**
  * Wait for the state to settle before writing. Serialising the transaction
@@ -20,8 +21,9 @@ const WRITE_DELAY_MS = 800;
  * open, a row the user just filed, a budget limit they just changed. The next
  * launch then draws what they last saw, not what the last full reload saw.
  */
-export function useFirstPaintCache(state: AppState): void {
+export function useFirstPaintCache(state: AppState, accountScopeRef: AccountDataScopeRef): void {
   const userId = state.user?.id;
+  const scope = userId ? captureAccountDataScope(accountScopeRef, userId) : null;
   const monthlyIncome = state.user?.monthlyIncome ?? 0;
   const { transactions, budgets } = state;
   const hiddenCategories = state.settings.hiddenCategories;
@@ -30,9 +32,12 @@ export function useFirstPaintCache(state: AppState): void {
     // Nothing worth keeping until both halves are real. An empty list here is
     // the pre-load state, and caching it would blank the next launch's first
     // paint — the one thing this exists to prevent.
-    if (!userId || transactions.length === 0 || budgets.length === 0) return;
+    if (!userId || !scope || transactions.length === 0 || budgets.length === 0) return;
 
     const timer = setTimeout(() => {
+      // The callback may outlive the account that scheduled it. In particular,
+      // A → B → A must not let the first A timer write into the later session.
+      if (!isCurrentAccountDataScope(accountScopeRef, scope)) return;
       writeFirstPaintCache({
         userId,
         savedAt: Date.now(),
@@ -44,5 +49,5 @@ export function useFirstPaintCache(state: AppState): void {
     }, WRITE_DELAY_MS);
 
     return () => clearTimeout(timer);
-  }, [userId, transactions, budgets, hiddenCategories, monthlyIncome]);
+  }, [userId, scope, accountScopeRef, transactions, budgets, hiddenCategories, monthlyIncome]);
 }

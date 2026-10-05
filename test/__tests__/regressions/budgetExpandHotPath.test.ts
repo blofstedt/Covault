@@ -33,10 +33,10 @@ const BACKDROP_BLUR = /\bbackdrop-blur(-|\b)/;
 
 /** Files that render inside, or directly on top of, the animating budget list. */
 const HOT_PATH_FILES = [
-  'components/Transactions/TransactionItem/TransactionItem.tsx',
-  'components/Dashboard/BudgetSections/BudgetSection.tsx',
-  'components/Dashboard/BudgetSections/DashboardBudgetSectionsList.tsx',
-  'components/shared/DashboardBottomBar.tsx',
+  'app/components/transactions/TransactionItem.tsx',
+  'app/components/Dashboard/DashboardBudgetSectionsList/BudgetSection/BudgetSection.tsx',
+  'app/components/Dashboard/DashboardBudgetSectionsList/DashboardBudgetSectionsList.tsx',
+  'app/components/common/DashboardBottomBar.tsx',
 ];
 
 describe('budget expand hot path', () => {
@@ -61,7 +61,7 @@ describe('budget expand hot path', () => {
   }
 
   it('keeps every transaction row out of layout until the expand has finished', () => {
-    const source = readFileSync(join(ROOT, 'components/Dashboard/BudgetSections/BudgetSection.tsx'), 'utf8');
+    const source = readFileSync(join(ROOT, 'app/components/Dashboard/DashboardBudgetSectionsList/BudgetSection/BudgetSection.tsx'), 'utf8');
 
     expect(
       /contentVisibility:\s*revealed\s*\?\s*'visible'\s*:\s*'hidden'/.test(source),
@@ -83,7 +83,7 @@ describe('budget expand hot path', () => {
   });
 
   it('never animates box-shadow on the card that is growing', () => {
-    const source = readFileSync(join(ROOT, 'components/Dashboard/BudgetSections/BudgetSection.tsx'), 'utf8');
+    const source = readFileSync(join(ROOT, 'app/components/Dashboard/DashboardBudgetSectionsList/BudgetSection/BudgetSection.tsx'), 'utf8');
     const code = source
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/^\s*\/\/.*$/gm, '');
@@ -102,7 +102,7 @@ describe('budget expand hot path', () => {
 
   it('fades the chart with CSS, not with a d3 rAF loop, while the card expands', () => {
     const source = readFileSync(
-      join(ROOT, 'components/Dashboard/BudgetFlowChart/BudgetFlowChart.tsx'),
+      join(ROOT, 'app/components/Dashboard/BudgetFlowChart.tsx'),
       'utf8',
     );
     const code = source
@@ -126,7 +126,7 @@ describe('budget expand hot path', () => {
 
   it('walls each budget row off from its siblings during the layout animation', () => {
     const source = readFileSync(
-      join(ROOT, 'components/Dashboard/BudgetSections/DashboardBudgetSectionsList.tsx'),
+      join(ROOT, 'app/components/Dashboard/DashboardBudgetSectionsList/DashboardBudgetSectionsList.tsx'),
       'utf8',
     );
 
@@ -146,7 +146,7 @@ describe('budget expand hot path', () => {
     // The cost of driving it from JS is this attribute: rename it on the row
     // and the query silently matches nothing. No error, no failing build, just
     // a cascade that quietly stops happening.
-    const source = readFileSync(join(ROOT, 'components/Dashboard/BudgetSections/BudgetSection.tsx'), 'utf8');
+    const source = readFileSync(join(ROOT, 'app/components/Dashboard/DashboardBudgetSectionsList/BudgetSection/BudgetSection.tsx'), 'utf8');
     expect(source, 'row wrapper lost its data-stack-row marker').toContain('data-stack-row=""');
     expect(source, 'the cascade no longer queries for it').toContain("'[data-stack-row]'");
   });

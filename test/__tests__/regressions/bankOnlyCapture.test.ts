@@ -25,11 +25,11 @@ import {
   getApprovedCaptureSources,
   EXCLUDED_APPS,
   KNOWN_BANKING_APPS,
-} from '../../../lib/capture/bankingApps';
+} from '../../../app/lib/capture/bankingApps';
 
-const JAVA_PATH = resolve(__dirname, '../../../android-custom/NotificationListener.java');
+const JAVA_PATH = resolve(__dirname, '../../../native/android/NotificationListener.java');
 const HOOK_PATH = resolve(__dirname, '../../../app/hooks/useNotificationListener.ts');
-const PROCESSOR_PATH = resolve(__dirname, '../../../lib/capture/notificationProcessor.ts');
+const PROCESSOR_PATH = resolve(__dirname, '../../../app/lib/capture/notificationProcessor.ts');
 
 /**
  * Capture is for banks. Anything else that mentions money — a chat message
@@ -61,7 +61,7 @@ describe('only banking apps can produce a capture', () => {
     // Outlook stays here on purpose even though mail apps can now be capture
     // sources. It is not a BANK, and this is the bank question — a mail app is
     // a different kind of source with its own, stricter rule (the sender has to
-    // be a bank; see lib/capture/emailNotification.ts), and it is off until the user
+    // be a bank; see app/lib/capture/emailNotification.ts), and it is off until the user
     // ticks it. Nothing about email support may quietly turn a mail app into a
     // bank, which is what would happen if this assertion were relaxed.
     for (const pkg of [

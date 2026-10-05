@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mocked for the same reason notificationRulesCache.test.ts mocks it: the real
 // restFetch sits behind an auth-token retry loop that sleeps without a session.
 const restFetchMock = vi.fn();
-vi.mock('../../../lib/api/apiHelpers', () => ({
+vi.mock('../../../app/lib/api/apiHelpers', () => ({
   restFetch: (...args: unknown[]) => restFetchMock(...args),
   REST_BASE: 'https://example.test/rest/v1',
   getAuthHeaders: async () => ({}),
@@ -11,7 +11,7 @@ vi.mock('../../../lib/api/apiHelpers', () => ({
 
 type PushedRule = { pattern: string; pattern_type: string };
 const pushSkipRulesMock = vi.fn(async (_rules: PushedRule[]) => true);
-vi.mock('../../../lib/native/covaultNotification', () => ({
+vi.mock('../../../app/lib/native/covaultNotification', () => ({
   covaultNotification: { pushSkipRules: () => Promise.resolve(true) },
   pushSkipRules: (rules: PushedRule[]) => pushSkipRulesMock(rules),
 }));
@@ -20,7 +20,7 @@ import {
   checkNotificationRules,
   updateNotificationRulePatternType,
   invalidateNotificationRulesCache,
-} from '../../../lib/capture/notificationRules';
+} from '../../../app/lib/capture/notificationRules';
 
 const rule = {
   id: 'r1',

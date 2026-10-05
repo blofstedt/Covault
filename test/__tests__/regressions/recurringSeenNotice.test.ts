@@ -19,9 +19,9 @@ import { resolve } from 'node:path';
 const root = resolve(__dirname, '../../..');
 const read = (p: string) => readFileSync(resolve(root, p), 'utf8');
 
-const LISTENER = read('android-custom/NotificationListener.java');
-const PLUGIN = read('android-custom/CovaultNotificationPlugin.java');
-const COVAULT_NOTIFICATION = read('lib/native/covaultNotification.ts');
+const LISTENER = read('native/android/NotificationListener.java');
+const PLUGIN = read('native/android/CovaultNotificationPlugin.java');
+const COVAULT_NOTIFICATION = read('app/lib/native/covaultNotification.ts');
 const USE_LISTENER = read('app/hooks/useNotificationListener.ts');
 
 describe('the native side posts the notice itself, in the common case', () => {

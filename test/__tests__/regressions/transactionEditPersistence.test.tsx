@@ -13,7 +13,7 @@
 import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AppState, Transaction } from '../../../types';
+import type { AppState, Transaction } from '../../../app/types';
 
 const apiMocks = vi.hoisted(() => ({ restFetch: vi.fn() }));
 const memoryMocks = vi.hoisted(() => ({
@@ -21,10 +21,10 @@ const memoryMocks = vi.hoisted(() => ({
   upsertVendorMapEntry: vi.fn(),
 }));
 
-vi.mock('../../../lib/api/apiHelpers', () => apiMocks);
-vi.mock('../../../lib/capture/localNotificationMemory', () => memoryMocks);
-vi.mock('../../../lib/vendors/vendorOverrideWrite', () => ({ persistVendorOverride: vi.fn() }));
-vi.mock('../../../lib/native/covaultNotification', () => ({ clearCaptureNotificationForRows: vi.fn() }));
+vi.mock('../../../app/lib/api/apiHelpers', () => apiMocks);
+vi.mock('../../../app/lib/capture/localNotificationMemory', () => memoryMocks);
+vi.mock('../../../app/lib/vendors/vendorOverrideWrite', () => ({ persistVendorOverride: vi.fn() }));
+vi.mock('../../../app/lib/native/covaultNotification', () => ({ clearCaptureNotificationForRows: vi.fn() }));
 
 import { useTransactionOps } from '../../../app/data/useTransactionOps';
 

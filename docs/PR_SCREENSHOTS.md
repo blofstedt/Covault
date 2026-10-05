@@ -13,7 +13,7 @@ affect the app's appearance even if it adds no screen.
 ## What the automatic capture covers
 
 The [capture workflow](../.github/workflows/pr-screenshots.yml) renders the PR's exact base and head commits with the
-same artificial data. It takes eight screenshots per revision in a Chromium
+same artificial data. It takes ten screenshots per revision in a Chromium
 mobile viewport of 393 × 852:
 
 | State | Theme |
@@ -22,6 +22,7 @@ mobile viewport of 393 × 852:
 | Manual entry, filled | Dark and light |
 | Manual entry, invalid amount | Dark and light |
 | Review | Dark |
+| Review filing, pending and rejected | Dark |
 | Settings | Light |
 
 These states show a repeatable sample of the app. They do not cover every

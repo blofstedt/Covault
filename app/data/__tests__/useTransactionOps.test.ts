@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// lib/api/supabase.ts reads `localStorage` at module load time (inside
+// app/lib/api/supabase.ts reads `localStorage` at module load time (inside
 // createClient's auth config). Vitest runs in Node, which has no
 // `localStorage` by default, so we stub one before any module that
 // transitively imports supabase.ts gets evaluated. ES module imports

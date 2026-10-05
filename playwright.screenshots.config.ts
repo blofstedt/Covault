@@ -17,7 +17,7 @@ const baseURL = `http://127.0.0.1:${environment.COVAULT_SCREENSHOT_PORT}`;
 const quote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
 
 export default defineConfig({
-  testDir: resolve(harnessDirectory, 'e2e'),
+  testDir: resolve(harnessDirectory, 'e2e/__tests__'),
   testMatch: '**/pr-screenshots.visual.ts',
   workers: 1,
   fullyParallel: false,

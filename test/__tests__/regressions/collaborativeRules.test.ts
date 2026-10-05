@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { classifyMatch } from '../../../components/Review/useVendorMatcher';
+import { classifyMatch } from '../../../app/components/review/useVendorMatcher';
 import {
   assignCaptureCategory,
   type NotificationCategoryAssignmentDependencies,
   type NotificationCategoryAssignmentInput,
   type VendorRuleRow,
-} from '../../../lib/capture/notificationCategoryAssignment';
+} from '../../../app/lib/capture/notificationCategoryAssignment';
 
 /**
  * The shared rule layers, and the three promises that make them safe.
@@ -129,7 +129,7 @@ describe('what a borrowed rule is allowed to do', () => {
     // screenful of them in a tap would agree to rules nobody in this household
     // had ever seen — and adopt none of them, since adoption happens on the
     // single-row accept.
-    const { selectBulkAcceptable } = await import('../../../components/Review/useVendorMatcher');
+    const { selectBulkAcceptable } = await import('../../../app/components/review/useVendorMatcher');
     const rule = {
       id: 'r1', proper_name: 'Costco', match_key: 'costco',
       match_type: 'exact' as const, category_id: 'budget:groceries',
@@ -151,7 +151,7 @@ describe('what a borrowed rule is allowed to do', () => {
     // The native matcher has its own auto-file threshold and runs with the app
     // closed. A borrowed rule mirrored to it would file money with nobody
     // watching — the one thing this design refuses.
-    const dashboard = stripComments(read('components/Dashboard/Dashboard.tsx'));
+    const dashboard = stripComments(read('app/components/Dashboard/Dashboard.tsx'));
     const push = dashboard.slice(dashboard.indexOf('const rules: WidgetVendorRule[]'));
     expect(push).toContain('vendorOverrides.map');
     expect(
@@ -178,12 +178,12 @@ describe('the community pool', () => {
   it('answers nothing at all when it has no pack', async () => {
     // Fail closed. A stale, empty or unreachable pack must mean "no community
     // answer" and fall through to the guesses below it — never a wrong answer.
-    const { lookupCommunityRule } = await import('../../../lib/vendors/communityRules');
+    const { lookupCommunityRule } = await import('../../../app/lib/vendors/communityRules');
     expect(lookupCommunityRule('costco')).toBeNull();
   });
 
   it('answers on the whole key only, never on a fragment', async () => {
-    const { lookupCommunityRule } = await import('../../../lib/vendors/communityRules');
+    const { lookupCommunityRule } = await import('../../../app/lib/vendors/communityRules');
     localStorage.setItem(
       'covault_community_rules_v1',
       JSON.stringify({ fetchedAt: Date.now(), rules: [{ matchKey: 'costco', category: 'Groceries' }] }),
@@ -196,7 +196,7 @@ describe('the community pool', () => {
   });
 
   it('says nothing when the user has switched it off', async () => {
-    const { lookupCommunityRule, setCommunityFlags } = await import('../../../lib/vendors/communityRules');
+    const { lookupCommunityRule, setCommunityFlags } = await import('../../../app/lib/vendors/communityRules');
     localStorage.setItem(
       'covault_community_rules_v1',
       JSON.stringify({ fetchedAt: Date.now(), rules: [{ matchKey: 'costco', category: 'Groceries' }] }),
@@ -206,7 +206,7 @@ describe('the community pool', () => {
   });
 
   it('receives by default and sends only when asked', async () => {
-    const { getCommunityFlags } = await import('../../../lib/vendors/communityRules');
+    const { getCommunityFlags } = await import('../../../app/lib/vendors/communityRules');
     const flags = getCommunityFlags();
     expect(flags.enabled, 'receiving costs the user nothing and sends nothing').toBe(true);
     expect(flags.contribute, 'contributing must never be a default').toBe(false);
@@ -214,16 +214,16 @@ describe('the community pool', () => {
 
   it('contributes nothing while the switch is off', async () => {
     const fetchSpy = vi.fn();
-    vi.doMock('../../../lib/api/apiHelpers', () => ({ restFetch: fetchSpy }));
-    const { contributeRule } = await import('../../../lib/vendors/communityRules');
+    vi.doMock('../../../app/lib/api/apiHelpers', () => ({ restFetch: fetchSpy }));
+    const { contributeRule } = await import('../../../app/lib/vendors/communityRules');
     await contributeRule('user-1', 'costco', 'Groceries');
     expect(fetchSpy).not.toHaveBeenCalled();
-    vi.doUnmock('../../../lib/api/apiHelpers');
+    vi.doUnmock('../../../app/lib/api/apiHelpers');
   });
 });
 
 describe('what the pool is told, and what it can be asked', () => {
-  const source = read('lib/vendors/communityRules.ts');
+  const source = read('app/lib/vendors/communityRules.ts');
   const migration = read('supabase/migrations/2026_09_collaborative_rules.sql');
 
   it('sends a merchant and a category, and nothing else', () => {

@@ -19,9 +19,9 @@ import { resolve } from 'node:path';
  * widget, so this reads the source.
  */
 
-const RENDERER = resolve(__dirname, '../../../android-custom/WidgetRenderer.java');
-const PROVIDER = resolve(__dirname, '../../../android-custom/CovaultWidgetProvider.java');
-const LAYOUT = resolve(__dirname, '../../../android-custom/res/layout/widget_covault.xml');
+const RENDERER = resolve(__dirname, '../../../native/android/WidgetRenderer.java');
+const PROVIDER = resolve(__dirname, '../../../native/android/CovaultWidgetProvider.java');
+const LAYOUT = resolve(__dirname, '../../../native/android/res/layout/widget_covault.xml');
 
 const renderer = readFileSync(RENDERER, 'utf8');
 const provider = readFileSync(PROVIDER, 'utf8');

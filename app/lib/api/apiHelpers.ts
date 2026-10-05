@@ -1,0 +1,178 @@
+// App/Lib/Api/apiHelpers.ts
+import { supabase, supabaseAnonKey, supabaseUrl } from './supabase';
+
+export const REST_BASE = `${supabaseUrl}/rest/v1`;
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+let cachedAccessToken = '';
+// Expiry of `cachedAccessToken`, in ms. Cached alongside the token so the
+// staleness check is a numeric compare instead of an atob + JSON.parse of the
+// JWT on every single request (loadUserData alone issues ~10).
+let cachedAccessTokenExpMs: number | null = null;
+
+/**
+ * Decode a JWT's `exp` claim, in ms. Null if it can't be read.
+ *
+ * A JWT is base64URL, not base64: `-` and `_` where base64 has `+` and `/`,
+ * and no padding. `atob` rejects the first two outright, and a real session
+ * token almost always contains one of them somewhere in its payload — so this
+ * used to return null for nearly every token, every token read as stale, and
+ * the cache above it never cached: each of the ~10 requests in a load went
+ * back to `getSession()` first. Translated here; padding is optional to atob.
+ */
+export const readTokenExpMs = (token: string): number | null => {
+  try {
+    const base64Url = token.split('.', 2)[1] ?? '';
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(atob(base64));
+    return typeof payload.exp === 'number' ? payload.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+};
+
+export const setCachedAccessToken = (token?: string | null) => {
+  cachedAccessToken = token || '';
+  cachedAccessTokenExpMs = cachedAccessToken ? readTokenExpMs(cachedAccessToken) : null;
+};
+
+export const clearCachedAccessToken = () => {
+  cachedAccessToken = '';
+  cachedAccessTokenExpMs = null;
+};
+
+/** Returns true if the JWT is expired or within 90 seconds of expiry. */
+const isTokenStale = (token: string): boolean => {
+  const expMs =
+    token === cachedAccessToken && cachedAccessTokenExpMs !== null
+      ? cachedAccessTokenExpMs
+      : readTokenExpMs(token);
+  // An undecodable token is treated as stale, exactly as before.
+  if (expMs === null) return true;
+  return Date.now() > expMs - 90_000;
+};
+
+const readAccessToken = async (): Promise<string> => {
+  if (cachedAccessToken && !isTokenStale(cachedAccessToken)) return cachedAccessToken;
+
+  // During initial sign-in, auth state can update before the access token is
+  // immediately available to `getSession()`. Retry briefly to avoid firing
+  // unauthenticated REST calls that return 401 and leave dashboard data empty.
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const token = session?.access_token || '';
+    if (token) {
+      setCachedAccessToken(token);
+      return token;
+    }
+
+    if (attempt < 7) {
+      await sleep(200);
+    }
+  }
+
+  return '';
+};
+
+export const getAuthHeaders = async (): Promise<Record<string, string>> => {
+  const token = await readAccessToken();
+
+  return {
+    apikey: supabaseAnonKey || '',
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  };
+};
+
+/**
+ * Thin wrapper over `fetch` for Supabase PostgREST calls. Resolves auth headers,
+ * prefixes `REST_BASE`, and merges any per-call headers — nothing else. It does
+ * NOT inspect `res.ok` or parse the body, so each caller keeps its own error
+ * handling and response parsing (some sites throw, some return early, some log
+ * and continue). Pass a path beginning with `/`, e.g.
+ * `restFetch(`/settings?select=*&user_id=eq.${userId}`)`.
+ */
+export const restFetch = async (
+  pathAndQuery: string,
+  init: RequestInit = {},
+): Promise<Response> => {
+  const authHeaders = await getAuthHeaders();
+  return fetch(`${REST_BASE}${pathAndQuery}`, {
+    ...init,
+    headers: { ...authHeaders, ...(init.headers as Record<string, string> | undefined) },
+  });
+};
+
+// Default monthly income when user has not set income
+export const DEFAULT_MONTHLY_INCOME = 5000;
+
+/**
+ * The shape every caller of a Postgres RPC gets back.
+ *
+ * A plain shape rather than a discriminated union: this project's tsconfig
+ * doesn't enable `strict`, so narrowing on an `ok: true | false` discriminant
+ * doesn't happen and every `result.message` read fails to compile.
+ */
+export interface RpcResult<T> {
+  ok: boolean;
+  data?: T;
+  /** Present only when ok is false. */
+  message?: string;
+  /**
+   * An explicit non-2xx response confirms rejection. A transport or response
+   * parsing failure leaves the server outcome unknown.
+   */
+  failureKind?: 'rejected' | 'unknown';
+}
+
+/**
+ * Call a Postgres RPC and unwrap PostgREST's error shape.
+ *
+ * Moved here from useHouseholdLinking.ts, which was the only caller when this
+ * was written but is no longer: account deletion needs the exact same
+ * unwrapping (the RPC RAISEs a message written for the user, e.g. "Not
+ * authenticated", and PostgREST passes it through in the response body) for
+ * the same reason partner linking does — a SECURITY DEFINER function is a
+ * plain POST as far as the client is concerned, and its errors arrive shaped
+ * like any other REST error, not like a thrown JS exception.
+ */
+export async function callRpc<T>(fn: string, args: Record<string, unknown>): Promise<RpcResult<T>> {
+  try {
+    const res = await restFetch(`/rpc/${fn}`, {
+      method: 'POST',
+      body: JSON.stringify(args),
+    });
+
+    if (!res.ok) {
+      let message = '';
+      try {
+        const body = await res.text();
+        message = (JSON.parse(body) as { message?: string })?.message || '';
+      } catch {
+        // The HTTP response itself confirms rejection, even if its body cannot
+        // be read or decoded. Keep the status-derived classification.
+      }
+      return {
+        ok: false,
+        failureKind: 'rejected',
+        message: message || `Request failed (${res.status})`,
+      };
+    }
+
+    const body = await res.text();
+    return { ok: true, data: (body ? JSON.parse(body) : null) as T };
+  } catch (err: unknown) {
+    const message = err instanceof Error
+      ? err.message
+      : typeof err === 'string'
+        ? err
+        : typeof err === 'object' && err !== null && 'message' in err && typeof err.message === 'string'
+          ? err.message
+          : 'Network error';
+    return { ok: false, failureKind: 'unknown', message };
+  }
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { easeOutCubic, tweenValue } from '../../../lib/hooks/useAnimatedNumber';
+import { easeOutCubic, tweenValue } from '../../../app/hooks/useAnimatedNumber';
 
 /**
  * The hook itself needs a DOM and a frame loop, but the part that decides what

@@ -15,7 +15,7 @@ vi.mock('@capacitor/core', () => ({
   registerPlugin: vi.fn(() => null),
 }));
 
-import { pushRecurringCharges } from '../../../lib/native/covaultNotification';
+import { pushRecurringCharges } from '../../../app/lib/native/covaultNotification';
 
 function fakePlugin() {
   return { setRecurringCharges: vi.fn().mockResolvedValue(undefined) } as any;

@@ -63,7 +63,7 @@
     "covault-skills": {
       "source": {
         "source": "directory",
-        "path": "./.claude/marketplace"
+        "path": ".claude/marketplace"
       },
       "autoUpdate": true
     }

@@ -29,15 +29,15 @@ import {
   normalizePackage,
   setSelectedSources,
   setSourceSelected,
-} from '../../../lib/capture/captureSources';
-import { EXCLUDED_APPS, KNOWN_BANKING_APPS } from '../../../lib/capture/bankingApps';
+} from '../../../app/lib/capture/captureSources';
+import { EXCLUDED_APPS, KNOWN_BANKING_APPS } from '../../../app/lib/capture/bankingApps';
 
 const JAVA_LISTENER = readFileSync(
-  resolve(__dirname, '../../../android-custom/NotificationListener.java'),
+  resolve(__dirname, '../../../native/android/NotificationListener.java'),
   'utf-8',
 );
 const JAVA_PLUGIN = readFileSync(
-  resolve(__dirname, '../../../android-custom/CovaultNotificationPlugin.java'),
+  resolve(__dirname, '../../../native/android/CovaultNotificationPlugin.java'),
   'utf-8',
 );
 
@@ -247,7 +247,7 @@ describe('the phone agrees with the app', () => {
   });
 
   it('the selection and the phone list are written by one function', () => {
-    const helper = readFileSync(resolve(__dirname, '../../../lib/native/covaultNotification.ts'), 'utf-8');
+    const helper = readFileSync(resolve(__dirname, '../../../app/lib/native/covaultNotification.ts'), 'utf-8');
     expect(helper).toMatch(/export async function applySourceSelection/);
     expect(helper).toMatch(/setSelectedSources\(packages\)/);
     expect(helper).toMatch(/saveMonitoredApps\(\{[\s\S]{0,120}chosen: true/);

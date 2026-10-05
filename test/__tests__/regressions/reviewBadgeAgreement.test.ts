@@ -1,15 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { countAwaitingReview, selectAwaitingReview } from '../../../lib/capture/reviewQueue';
-import type { Transaction } from '../../../types';
+import { countAwaitingReview, selectAwaitingReview } from '../../../app/lib/capture/reviewQueue';
+import type { Transaction } from '../../../app/types';
 
 /**
  * Four places show "how many captures are waiting", and they have to agree.
  *
  * The bottom bar draws a badge on the home screen and on the Review page; the
  * Review card draws a count of its own; the home-screen widget draws a pill.
- * lib/capture/reviewQueue.ts exists precisely so all four ask the same question — a
+ * app/lib/capture/reviewQueue.ts exists precisely so all four ask the same question — a
  * badge you cannot trust is worse than no badge, because its whole job is to be
  * the backstop when a capture notification gets dismissed by mistake.
  *
@@ -41,8 +41,8 @@ const tx = (over: Partial<Transaction> = {}): Transaction =>
   }) as Transaction;
 
 describe('every count comes from the one selector', () => {
-  const dashboard = read('components/Dashboard/Dashboard.tsx');
-  const parsing = read('components/Review/TransactionParsing.tsx');
+  const dashboard = read('app/components/Dashboard/Dashboard.tsx');
+  const parsing = read('app/components/review/TransactionParsing/TransactionParsing.tsx');
 
   it('the home screen badge reads countAwaitingReview', () => {
     expect(dashboard).toContain('countAwaitingReview(state.transactions)');

@@ -6,8 +6,8 @@ import {
   shapeMatches,
   wordingOverlap,
   candidatePatternsFor,
-} from '../../../lib/capture/notificationShape';
-import { matchesRule, type NotificationRule } from '../../../lib/capture/notificationRules';
+} from '../../../app/lib/capture/notificationShape';
+import { matchesRule, type NotificationRule } from '../../../app/lib/capture/notificationRules';
 
 /**
  * A rule the user made from "BTC is trading at $104,455.73" could never fire
@@ -31,7 +31,7 @@ import { matchesRule, type NotificationRule } from '../../../lib/capture/notific
  */
 
 const LISTENER_JAVA = readFileSync(
-  resolve(__dirname, '../../../android-custom/NotificationListener.java'),
+  resolve(__dirname, '../../../native/android/NotificationListener.java'),
   'utf-8',
 );
 

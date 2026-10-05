@@ -39,16 +39,16 @@ vi.mock('@capacitor/core', () => ({
   }),
 }));
 
-import { pushSkipRules, cancelCaptureNotification } from '../../../lib/native/covaultNotification';
-import { matchesRule, type NotificationRule } from '../../../lib/capture/notificationRules';
-import { parseCaptureOutcomes, isCaptureProblem, describeCaptureOutcome } from '../../../lib/capture/captureOutcome';
+import { pushSkipRules, cancelCaptureNotification } from '../../../app/lib/native/covaultNotification';
+import { matchesRule, type NotificationRule } from '../../../app/lib/capture/notificationRules';
+import { parseCaptureOutcomes, isCaptureProblem, describeCaptureOutcome } from '../../../app/lib/capture/captureOutcome';
 
 const LISTENER_JAVA = readFileSync(
-  resolve(__dirname, '../../../android-custom/NotificationListener.java'),
+  resolve(__dirname, '../../../native/android/NotificationListener.java'),
   'utf-8',
 );
 const PLUGIN_JAVA = readFileSync(
-  resolve(__dirname, '../../../android-custom/CovaultNotificationPlugin.java'),
+  resolve(__dirname, '../../../native/android/CovaultNotificationPlugin.java'),
   'utf-8',
 );
 const LISTENER_HOOK = readFileSync(

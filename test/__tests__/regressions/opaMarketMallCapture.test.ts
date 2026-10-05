@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { parseNotificationText, isCommonNounOnly } from '../../../lib/capture/deviceTransactionParser';
+import { parseNotificationText, isCommonNounOnly } from '../../../app/lib/capture/deviceTransactionParser';
 
 /**
  * A real capture that went wrong, kept here as the regression case.
@@ -34,7 +34,7 @@ import { parseNotificationText, isCommonNounOnly } from '../../../lib/capture/de
  * collapses on vendor similarity, and "You" vs "a purchase" share nothing.
  */
 
-const JAVA_PATH = resolve(__dirname, '../../../android-custom/NotificationListener.java');
+const JAVA_PATH = resolve(__dirname, '../../../native/android/NotificationListener.java');
 
 // Exactly as the native side builds it: title + " " + body.
 const WEALTHSIMPLE_FULL_TEXT =

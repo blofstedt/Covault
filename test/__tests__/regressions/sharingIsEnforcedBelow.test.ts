@@ -16,9 +16,9 @@ import { resolve } from 'node:path';
 
 const SQL = readFileSync(
   resolve(__dirname, '../../../supabase/migrations/2026_09_household_sharing.sql'), 'utf8');
-const SHARING = readFileSync(resolve(__dirname, '../../../lib/budgets/householdSharing.ts'), 'utf8');
+const SHARING = readFileSync(resolve(__dirname, '../../../app/lib/budgets/householdSharing.ts'), 'utf8');
 const SETTINGS = readFileSync(
-  resolve(__dirname, '../../../components/Settings/sections/VaultSharingSection.tsx'),
+  resolve(__dirname, '../../../app/components/settings/DashboardSettingsModal/sections/VaultSharingSection.tsx'),
   'utf8');
 
 describe('the partner read', () => {

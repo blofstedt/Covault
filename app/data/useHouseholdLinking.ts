@@ -1,9 +1,23 @@
 // app/data/useHouseholdLinking.ts
-import { log } from '../../lib/observability/log';
+import { log } from '../lib/observability/log';
 import { useCallback } from 'react';
-import { restFetch, callRpc } from '../../lib/api/apiHelpers';
-import { withoutPartner } from '../../lib/budgets/householdSharing';
+import { restFetch, callRpc } from '../lib/api/apiHelpers';
+import { withoutPartner } from '../lib/budgets/householdSharing';
 import type { UseUserDataParams } from './types';
+import {
+  captureAccountDataScope,
+  isCurrentAccountDataScope,
+  type AccountDataScope,
+  type AccountDataScopeRef,
+} from '../lib/auth/accountScope';
+
+const isLinkScopeCurrent = (
+  accountScopeRef: AccountDataScopeRef | undefined,
+  scope: AccountDataScope | null,
+  userId: string,
+): boolean => !accountScopeRef || (
+  scope?.userId === userId && isCurrentAccountDataScope(accountScopeRef, scope)
+);
 
 /**
  * Partner linking goes through SECURITY DEFINER functions, not plain REST.
@@ -20,7 +34,7 @@ import type { UseUserDataParams } from './types';
  * handshake therefore lives in the database:
  * supabase/migrations/2026_08_01_sync_schema_to_app.sql.
  *
- * `callRpc` itself now lives in lib/api/apiHelpers.ts — account deletion needs the
+ * `callRpc` itself now lives in app/lib/api/apiHelpers.ts — account deletion needs the
  * exact same PostgREST-error unwrapping this always did, for the same reason.
  */
 
@@ -49,16 +63,21 @@ export const useHouseholdLinking = ({
   appState,
   setAppState,
   setDbError,
+  accountScopeRef,
 }: UseUserDataParams) => {
 
   // Generate a link code for household linking (stored in settings row)
   const handleGenerateLinkCode = useCallback(async (): Promise<string | null> => {
+    const userId = appState.user?.id;
+    const scope = userId && accountScopeRef
+      ? captureAccountDataScope(accountScopeRef, userId)
+      : null;
     try {
-      const userId = appState.user?.id;
       if (!userId) {
         setDbError('User not logged in');
         return null;
       }
+      if (!isLinkScopeCurrent(accountScopeRef, scope, userId)) return null;
 
       // Minted in the database, not here. The old version was
       // `Math.random().toString(36).substring(2, 8)`: not a cryptographic
@@ -70,6 +89,7 @@ export const useHouseholdLinking = ({
       // characters of gen_random_bytes on an alphabet with no 0/O or 1/I/L to
       // misread, unique among live codes, and good for thirty minutes.
       const result = await callRpc<string>('generate_link_code', {});
+      if (!isLinkScopeCurrent(accountScopeRef, scope, userId)) return null;
       if (!result.ok) {
         setDbError(`Failed to generate link code: ${result.message}`);
         return null;
@@ -84,10 +104,11 @@ export const useHouseholdLinking = ({
       log.debug('[generateLinkCode] Generated code');
       return code;
     } catch (err: any) {
+      if (!userId || !isLinkScopeCurrent(accountScopeRef, scope, userId)) return null;
       setDbError(`Generate link code exception: ${err?.message || err}`);
       return null;
     }
-  }, [appState.user, setDbError]);
+  }, [accountScopeRef, appState.user, setDbError]);
 
   /**
    * Join a household with the code its owner gave you.
@@ -106,13 +127,17 @@ export const useHouseholdLinking = ({
    */
   const handleJoinWithCode = useCallback(
     async (code: string): Promise<LinkOutcome> => {
+      const userId = appState.user?.id;
+      const userName = appState.user?.name;
+      const scope = userId && accountScopeRef
+        ? captureAccountDataScope(accountScopeRef, userId)
+        : null;
       try {
-        const userId = appState.user?.id;
-        const userName = appState.user?.name;
         if (!userId || !userName) {
           setDbError('User not logged in');
           return { ok: false, message: 'User not logged in' };
         }
+        if (!isLinkScopeCurrent(accountScopeRef, scope, userId)) return { ok: false };
 
         // One call does both halves: it claims the code and writes each row's
         // partner fields in a single statement, so two people racing on the
@@ -124,6 +149,7 @@ export const useHouseholdLinking = ({
         const result = await callRpc<LinkedPartner[]>('link_partner_by_code', {
           p_code: code,
         });
+        if (!isLinkScopeCurrent(accountScopeRef, scope, userId)) return { ok: false };
 
         if (!result.ok) {
           const message = result.message ?? 'Could not link your partner. Please try again.';
@@ -146,38 +172,47 @@ export const useHouseholdLinking = ({
           method: 'PATCH',
           body: JSON.stringify({ budgeting_solo: false }),
         });
+        if (!isLinkScopeCurrent(accountScopeRef, scope, userId)) return { ok: false };
 
-        setAppState(prev => ({
-          ...prev,
-          user: prev.user
-            ? {
-                ...prev.user,
-                budgetingSolo: false,
-                hasJointAccounts: true,
-                partnerId: linked.partner_id,
-                partnerName: linked.partner_name || undefined,
-                partnerEmail: linked.partner_email || undefined,
-              }
-            : null,
-        }));
+        setAppState(prev => {
+          if (!isLinkScopeCurrent(accountScopeRef, scope, userId) || prev.user?.id !== userId) return prev;
+          return {
+            ...prev,
+            user: prev.user
+              ? {
+                  ...prev.user,
+                  budgetingSolo: false,
+                  hasJointAccounts: true,
+                  partnerId: linked.partner_id,
+                  partnerName: linked.partner_name || undefined,
+                  partnerEmail: linked.partner_email || undefined,
+                }
+              : null,
+          };
+        });
 
         log.debug('[joinWithCode] Successfully linked household');
         return { ok: true };
       } catch (err: any) {
+        if (!userId || !isLinkScopeCurrent(accountScopeRef, scope, userId)) return { ok: false };
         const message = `Join with code exception: ${err?.message || err}`;
         setDbError(message);
         return { ok: false, message };
       }
     },
-    [appState.user, setAppState, setDbError],
+    [accountScopeRef, appState.user, setAppState, setDbError],
   );
 
 
   // Disconnect household (clear partner fields in both users' settings)
   const handleUnlinkPartner = useCallback(async () => {
+    const userId = appState.user?.id;
+    const scope = userId && accountScopeRef
+      ? captureAccountDataScope(accountScopeRef, userId)
+      : null;
     try {
-      const userId = appState.user?.id;
       if (!userId) return;
+      if (!isLinkScopeCurrent(accountScopeRef, scope, userId)) return;
 
       // Clears BOTH rows. Previously this cleared its own and then PATCHed the
       // partner's, which RLS silently dropped — so the partner stayed linked to
@@ -185,6 +220,7 @@ export const useHouseholdLinking = ({
       // SELECT policies. The function only clears the other row if it actually
       // points back at you.
       const result = await callRpc<null>('unlink_partner', {});
+      if (!isLinkScopeCurrent(accountScopeRef, scope, userId)) return;
       if (!result.ok) {
         setDbError(result.message ?? 'Could not unlink your partner. Please try again.');
         return;
@@ -195,11 +231,13 @@ export const useHouseholdLinking = ({
         method: 'PATCH',
         body: JSON.stringify({ budgeting_solo: true }),
       });
+      if (!isLinkScopeCurrent(accountScopeRef, scope, userId)) return;
 
       // Everything derived from the partner goes too — their income in the
       // household figure, their month summary, their limits and their
       // purchases — not just their name. See withoutPartner.
       setAppState(prev => {
+        if (!isLinkScopeCurrent(accountScopeRef, scope, userId)) return prev;
         if (prev.user?.id !== userId) return prev;
         const next = withoutPartner(prev, userId);
         if (!next.user || next.user.budgetingSolo) return next;
@@ -207,9 +245,10 @@ export const useHouseholdLinking = ({
       });
       log.debug('[unlinkPartner] OK');
     } catch (err: any) {
+      if (!userId || !isLinkScopeCurrent(accountScopeRef, scope, userId)) return;
       setDbError(`Unlink exception: ${err?.message || err}`);
     }
-  }, [appState.user, setAppState, setDbError]);
+  }, [accountScopeRef, appState.user, setAppState, setDbError]);
 
   return {
     handleGenerateLinkCode,

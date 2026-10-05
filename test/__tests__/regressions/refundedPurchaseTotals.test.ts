@@ -17,13 +17,13 @@
  * tests hold every total to it.
  */
 import { describe, it, expect } from 'vitest';
-import { countedAmount } from '../../../lib/transactions/refundMatching';
-import { computeBudgetTotals } from '../../../lib/budgets/discretionaryShield';
-import { householdSpend, emptySummary } from '../../../lib/budgets/householdSharing';
-import { remainingForMonth } from '../../../lib/time/monthWindow';
-import { buildWidgetSnapshot } from '../../../lib/native/widgetSnapshot';
-import { generateProjectedTransactions } from '../../../lib/transactions/projectedTransactions';
-import { Recurrence, type BudgetCategory, type Transaction } from '../../../types';
+import { countedAmount } from '../../../app/lib/transactions/refundMatching';
+import { computeBudgetTotals } from '../../../app/lib/budgets/discretionaryShield';
+import { householdSpend, emptySummary } from '../../../app/lib/budgets/householdSharing';
+import { remainingForMonth } from '../../../app/lib/time/monthWindow';
+import { buildWidgetSnapshot } from '../../../app/lib/native/widgetSnapshot';
+import { generateProjectedTransactions } from '../../../app/lib/transactions/projectedTransactions';
+import { Recurrence, type BudgetCategory, type Transaction } from '../../../app/types';
 
 const ME = 'me';
 const GROCERIES = 'b-groceries';

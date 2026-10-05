@@ -36,8 +36,8 @@ vi.mock('@capacitor/core', () => ({
   }),
 }));
 
-import { autoDetectAndSaveMonitoredApps } from '../../../lib/native/covaultNotification';
-import { KNOWN_BANKING_APPS } from '../../../lib/capture/bankingApps';
+import { autoDetectAndSaveMonitoredApps } from '../../../app/lib/native/covaultNotification';
+import { KNOWN_BANKING_APPS } from '../../../app/lib/capture/bankingApps';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 function simulateInstalledApps(apps: Array<{ packageName: string; name: string }>) {

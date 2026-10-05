@@ -26,13 +26,13 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { distinctCategories, merchantRuleScope } from '../../../lib/vendors/vendorRuleScope';
+import { distinctCategories, merchantRuleScope } from '../../../app/lib/vendors/vendorRuleScope';
 import {
   assignCaptureCategory,
   type NotificationCategoryAssignmentDependencies,
   type NotificationCategoryAssignmentInput,
   type VendorRuleRow,
-} from '../../../lib/capture/notificationCategoryAssignment';
+} from '../../../app/lib/capture/notificationCategoryAssignment';
 
 const WENDYS = [
   { proper_name: "Wendy's", match_key: 'wendysolympic', category_id: 'Leisure' },
@@ -199,13 +199,13 @@ describe('the capture pipeline: suggestions and Other rescue', () => {
 
 describe('nothing writes a rule for Other', () => {
   it('the standalone write path refuses it', () => {
-    const source = readFileSync(resolve(__dirname, '../../../lib/vendors/vendorOverrideWrite.ts'), 'utf8');
+    const source = readFileSync(resolve(__dirname, '../../../app/lib/vendors/vendorOverrideWrite.ts'), 'utf8');
     expect(source).toContain("categoryName.trim().toLowerCase() === 'other'");
   });
 
   it('the review-row categorisation path refuses it too', () => {
     const source = readFileSync(
-      resolve(__dirname, '../../../lib/vendors/useVendorOverrides.ts'),
+      resolve(__dirname, '../../../app/lib/vendors/useVendorOverrides.ts'),
       'utf8',
     );
     expect(source).toContain("categoryName.trim().toLowerCase() === 'other'");
@@ -217,7 +217,7 @@ describe('nothing writes a rule for Other', () => {
     // CALLER (TransactionParsing.tsx), which must not be short-circuited by
     // this guard at all — confirmed by the toast copy no longer claiming
     // anything was learned.
-    const source = readFileSync(resolve(__dirname, '../../../components/Review/TransactionParsing.tsx'), 'utf8');
+    const source = readFileSync(resolve(__dirname, '../../../app/components/review/TransactionParsing/TransactionParsing.tsx'), 'utf8');
     expect(source).toContain("(name || '').toLowerCase() === 'other'");
     expect(source).toContain('Filed ${tx.vendor} as Other');
     expect(source).not.toContain('Learned ${tx.vendor} → Other');

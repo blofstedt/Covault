@@ -6,7 +6,7 @@ vi.mock('@capacitor/core', () => ({
   registerPlugin: vi.fn(),
 }));
 
-import { KNOWN_BANKING_APPS } from '../../../lib/capture/bankingApps';
+import { KNOWN_BANKING_APPS } from '../../../app/lib/capture/bankingApps';
 
 describe('autoDetectAndSaveMonitoredApps', () => {
   // We test the logic by re-implementing the same algorithm the function uses,

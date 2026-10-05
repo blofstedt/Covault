@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cleanVendorInput, formatVendorName } from '../../../lib/vendors/formatVendorName';
+import { cleanVendorInput, formatVendorName } from '../../../app/lib/vendors/formatVendorName';
 
 /**
  * A manual rename must survive exactly as typed. formatVendorName lowercases

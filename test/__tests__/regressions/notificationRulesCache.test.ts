@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mock restFetch directly so these tests don't go through the auth-token
 // retry loop in apiHelpers (which sleeps 8 x 200ms when there's no session).
 const restFetchMock = vi.fn();
-vi.mock('../../../lib/api/apiHelpers', () => ({
+vi.mock('../../../app/lib/api/apiHelpers', () => ({
   restFetch: (...args: unknown[]) => restFetchMock(...args),
   REST_BASE: 'https://example.test/rest/v1',
   getAuthHeaders: async () => ({}),
@@ -14,7 +14,7 @@ import {
   createNotificationRule,
   deleteNotificationRule,
   invalidateNotificationRulesCache,
-} from '../../../lib/capture/notificationRules';
+} from '../../../app/lib/capture/notificationRules';
 
 const rule = {
   id: 'r1',

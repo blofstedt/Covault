@@ -22,7 +22,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { writeDashboardSetting } from '../../../lib/settings/dashboardSettingWrite';
+import { writeDashboardSetting } from '../../../app/lib/settings/dashboardSettingWrite';
 
 const migration = readFileSync(
   resolve(__dirname, '../../../supabase/migrations/2026_09_security_review.sql'),
@@ -37,7 +37,7 @@ const migration = readFileSync(
 function codeOnly(source: string): string {
   return source
     .split('\n')
-    .filter((line) => !line.trimStart().startsWith('//'))
+    .filter((line) => !line.trimStart().startsWith('/'))
     .join('\n');
 }
 

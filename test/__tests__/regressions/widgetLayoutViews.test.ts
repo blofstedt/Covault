@@ -27,7 +27,7 @@ const REMOTABLE = new Set([
   'CheckBox', 'RadioButton', 'RadioGroup', 'Switch',
 ]);
 
-const LAYOUT = resolve(__dirname, '../../../android-custom/res/layout/widget_covault.xml');
+const LAYOUT = resolve(__dirname, '../../../native/android/res/layout/widget_covault.xml');
 
 describe('the widget layout', () => {
   const source = readFileSync(LAYOUT, 'utf8');

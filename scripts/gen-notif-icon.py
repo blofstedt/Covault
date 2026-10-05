@@ -3,7 +3,7 @@
 Render the Covault status-bar notification icon at all Android
 mipmap densities.
 
-This is a faithful port of components/shared/CovaultIcon.tsx — the React
+This is a faithful port of app/components/common/CovaultIcon.tsx — the React
 component that renders the actual Covault brand mark on the login
 screen and inside the app. We deliberately do NOT use
 icons/icon-512.png because that file is stale and does not match
@@ -23,7 +23,7 @@ clip the outer rounded rectangle.
 from PIL import Image, ImageDraw
 import os
 
-OUT_DIR = "/workspace/Covault/android-custom/res"
+OUT_DIR = "/workspace/covault/native/android/res"
 DPI_TO_DIR = {
     "mdpi": "mipmap-mdpi",
     "hdpi": "mipmap-hdpi",

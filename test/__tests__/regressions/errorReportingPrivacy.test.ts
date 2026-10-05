@@ -24,7 +24,7 @@ const server = createServer((request, response) => {
 async function startReporting(dsn = testDsn) {
   vi.stubEnv('VITE_SENTRY_DSN', dsn);
   vi.stubEnv('VITE_BUILD_NUMBER', '2468');
-  const reporting = await import('../../../lib/observability/errorReporting');
+  const reporting = await import('../../../app/lib/observability/errorReporting');
   const sdk = await import('@sentry/react');
   activeSdk = sdk;
   const previousClient = sdk.getClient();

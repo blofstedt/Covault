@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url';
 import { ESLint } from 'eslint';
 import { beforeAll, describe, expect, it } from 'vitest';
 
-const eslint = new ESLint({ cwd: fileURLToPath(new URL('../../../', import.meta.url)) });
+const eslint = new ESLint({ cwd: fileURLToPath(new URL('../../..', import.meta.url)) });
 
 async function lint(source: string, filePath: string) {
   const [result] = await eslint.lintText(source, { filePath });
@@ -13,7 +13,7 @@ describe('repository lint enforcement', () => {
   // Typed lint opens the full TypeScript project once. Keep cold loading in
   // bounded setup, leaving each behavior check's normal timeout intact.
   beforeAll(async () => {
-    await eslint.lintFiles(['lib/**/validation/manualEntry.ts']);
+    await eslint.lintFiles(['app/lib/transactions/validation/manualEntry.ts']);
   }, 30_000);
 
   it('retains React checks through the ESLint compatibility adapter', async () => {
@@ -22,11 +22,11 @@ describe('repository lint enforcement', () => {
         return <div children="Saved" />;
       }
     `;
-    expect(await lint(source, 'components/ui/LintProbe.tsx')).toEqual([
+    expect(await lint(source, 'app/components/common/lintProbe.tsx')).toEqual([
       'react/no-children-prop',
     ]);
     expect(await lint(source.replace('<div children="Saved" />', '<div>Saved</div>'),
-      'components/ui/LintProbe.tsx')).toEqual([]);
+      'app/components/common/lintProbe.tsx')).toEqual([]);
   });
 
   it('retains accessibility checks through the ESLint compatibility adapter', async () => {
@@ -35,11 +35,11 @@ describe('repository lint enforcement', () => {
         return <img src="/avatar.png" />;
       }
     `;
-    expect(await lint(source, 'components/ui/LintProbe.tsx')).toEqual([
+    expect(await lint(source, 'app/components/common/lintProbe.tsx')).toEqual([
       'jsx-a11y/alt-text',
     ]);
     expect(await lint(source.replace('src="/avatar.png"', 'src="/avatar.png" alt="Profile"'),
-      'components/ui/LintProbe.tsx')).toEqual([]);
+      'app/components/common/lintProbe.tsx')).toEqual([]);
   });
 
   it('rejects conditional hooks and accepts the same hook called unconditionally', async () => {
@@ -50,12 +50,12 @@ describe('repository lint enforcement', () => {
         return <span>Clock</span>;
       }
     `;
-    expect(await lint(source, 'components/ui/LintProbe.tsx')).toEqual([
+    expect(await lint(source, 'app/components/common/lintProbe.tsx')).toEqual([
       'react-hooks/rules-of-hooks',
     ]);
     expect(await lint(source.replace("if (enabled) useEffect(() => { document.title = 'Clock'; }, []);",
       "useEffect(() => { if (enabled) document.title = 'Clock'; }, [enabled]);"),
-    'components/ui/LintProbe.tsx')).toEqual([]);
+    'app/components/common/lintProbe.tsx')).toEqual([]);
   });
 
   it('rejects stale effect dependencies and accepts the declared dependency', async () => {
@@ -66,11 +66,11 @@ describe('repository lint enforcement', () => {
         return <span>{title}</span>;
       }
     `;
-    expect(await lint(source, 'components/ui/LintProbe.tsx')).toEqual([
+    expect(await lint(source, 'app/components/common/lintProbe.tsx')).toEqual([
       'react-hooks/exhaustive-deps',
     ]);
     expect(await lint(source.replace('}, []);', '}, [title]);'),
-      'components/ui/LintProbe.tsx')).toEqual([]);
+      'app/components/common/lintProbe.tsx')).toEqual([]);
   });
 
   it('rejects unawaited browser actions and assertions and accepts awaited equivalents', async () => {
@@ -128,11 +128,11 @@ describe('repository lint enforcement', () => {
         expect(screen.getByText('Saved')).toBeVisible();
       });
     `;
-    expect(await lint(source, 'components/__tests__/LintProbe.test.tsx')).toEqual([
+    expect(await lint(source, 'app/components/__tests__/lintProbe.test.tsx')).toEqual([
       'testing-library/await-async-events',
     ]);
     expect(await lint(source.replace('user.click(', 'await user.click('),
-      'components/__tests__/LintProbe.test.tsx')).toEqual([]);
+      'app/components/__tests__/lintProbe.test.tsx')).toEqual([]);
   });
 
   it('rejects validation that asserts a type and accepts validation that parses it', async () => {
@@ -140,7 +140,7 @@ describe('repository lint enforcement', () => {
       export function readAmount(value: unknown): number {
         return value as number;
       }
-    `, 'lib/transactions/validation/manualEntry.ts')).toEqual([
+    `, 'app/lib/transactions/validation/manualEntry.ts')).toEqual([
       '@typescript-eslint/no-unsafe-type-assertion',
     ]);
     expect(await lint(`
@@ -148,7 +148,7 @@ describe('repository lint enforcement', () => {
       export function readAmount(value: unknown): number {
         return z.number().positive().parse(value);
       }
-    `, 'lib/transactions/validation/manualEntry.ts')).toEqual([]);
+    `, 'app/lib/transactions/validation/manualEntry.ts')).toEqual([]);
   });
 
   it('rejects lost validation promises and accepts their awaited result', async () => {
@@ -159,12 +159,12 @@ describe('repository lint enforcement', () => {
         amountSchema.parseAsync(value);
       }
     `;
-    expect(await lint(source, 'lib/transactions/validation/manualEntry.ts')).toEqual([
+    expect(await lint(source, 'app/lib/transactions/validation/manualEntry.ts')).toEqual([
       '@typescript-eslint/require-await',
       '@typescript-eslint/no-floating-promises',
     ]);
     expect(await lint(source.replace('amountSchema.parseAsync(value);',
-      'return await amountSchema.parseAsync(value);'), 'lib/transactions/validation/manualEntry.ts')).toEqual([]);
+      'return await amountSchema.parseAsync(value);'), 'app/lib/transactions/validation/manualEntry.ts')).toEqual([]);
   });
 
   it('requires every validation variant to be handled', async () => {
@@ -176,24 +176,24 @@ describe('repository lint enforcement', () => {
         }
       }
     `;
-    expect(await lint(source, 'lib/transactions/validation/manualEntry.ts')).toEqual([
+    expect(await lint(source, 'app/lib/transactions/validation/manualEntry.ts')).toEqual([
       '@typescript-eslint/switch-exhaustiveness-check',
     ]);
     expect(await lint(source.replace("case 'expense': return 1;",
       "case 'expense': return 1; case 'refund': return -1;"),
-    'lib/transactions/validation/manualEntry.ts')).toEqual([]);
+    'app/lib/transactions/validation/manualEntry.ts')).toEqual([]);
   });
 
   it('keeps reusable controls away from the database and accepts values through props', async () => {
     expect(await lint(`
       import { supabase } from '../../lib/api/supabase';
       export function readUser() { return supabase.auth.getUser(); }
-    `, 'components/ui/LintProbe.tsx')).toEqual(['no-restricted-imports']);
+    `, 'app/components/common/lintProbe.tsx')).toEqual(['no-restricted-imports']);
     expect(await lint(`
       export default function SaveButton({ onSave }: { onSave: () => void }) {
         return <button type="button" onClick={onSave}>Save</button>;
       }
-    `, 'components/ui/LintProbe.tsx')).toEqual([]);
+    `, 'app/components/common/lintProbe.tsx')).toEqual([]);
   });
 
   it('rejects misspelled Tailwind classes and accepts registered app controls', async () => {
@@ -202,12 +202,12 @@ describe('repository lint enforcement', () => {
         return <div className="bg-slate-900 made-up-control" />;
       }
     `;
-    expect(await lint(source, 'components/ui/LintProbe.tsx')).toEqual([
+    expect(await lint(source, 'app/components/common/lintProbe.tsx')).toEqual([
       'tailwindcss/no-custom-classname',
     ]);
     expect(await lint(source.replace('made-up-control',
       'animate-in fade-in dialog-motion flex-shrink-0 no-scrollbar'),
-    'components/ui/LintProbe.tsx')).toEqual([]);
+    'app/components/common/lintProbe.tsx')).toEqual([]);
   });
 
   it('rejects contradictory Tailwind display values and accepts responsive alternatives', async () => {
@@ -216,12 +216,12 @@ describe('repository lint enforcement', () => {
         return <div className="flex hidden" />;
       }
     `;
-    expect(await lint(source, 'components/ui/LintProbe.tsx')).toEqual([
+    expect(await lint(source, 'app/components/common/lintProbe.tsx')).toEqual([
       'tailwindcss/no-contradicting-classname',
       'tailwindcss/no-contradicting-classname',
     ]);
     expect(await lint(source.replace('flex hidden', 'flex md:hidden'),
-      'components/ui/LintProbe.tsx')).toEqual([]);
+      'app/components/common/lintProbe.tsx')).toEqual([]);
   });
 
 });

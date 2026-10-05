@@ -20,17 +20,17 @@ const root = resolve(__dirname, '../../..');
 
 describe('recurring charges', () => {
   it('has no DB-writing recurring executor module', () => {
-    expect(existsSync(resolve(root, 'lib/recurringExecutor.ts'))).toBe(false);
+    expect(existsSync(resolve(root, 'app/lib/recurringExecutor.ts'))).toBe(false);
   });
 
-  it('is not auto-inserted from app/App.tsx', () => {
-    const app = readFileSync(resolve(root, 'app/App.tsx'), 'utf8');
+  it('is not auto-inserted from App/App/App.tsx', () => {
+    const app = readFileSync(resolve(root, 'App.tsx'), 'utf8');
     expect(app).not.toMatch(/executeRecurringTransactions/);
     expect(app).not.toMatch(/sendRecurringCatchUpNotification/);
   });
 
   it('has no module posting rows marked as executor-spawned', () => {
-    const notifications = readFileSync(resolve(root, 'lib/native/appNotifications.ts'), 'utf8');
+    const notifications = readFileSync(resolve(root, 'app/lib/native/appNotifications.ts'), 'utf8');
     expect(notifications).not.toMatch(/Recurring transactions caught up/);
   });
 });

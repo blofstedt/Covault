@@ -1,20 +1,20 @@
-// lib/useNotificationListener.ts
-import { log } from '../../lib/observability/log';
+// app/hooks/useNotificationListener.ts
+import { log } from '../lib/observability/log';
 import { useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
-import type { Transaction, User, BudgetCategory } from '../../types';
-import { covaultNotification, cancelCaptureNotification, acknowledgeCaptureNotification } from '../../lib/native/covaultNotification';
-import type { TransactionDetectedEvent } from '../../lib/native/covaultNotification';
-import { drainQueuedNotifications } from '../../lib/capture/pendingCaptureQueue';
-import { processNotificationWithAI, buildInMemoryDedupKey } from '../../lib/capture/notificationProcessor';
-import { sendPartnerActivityNotification, sendExpenseCapturedNotification } from '../../lib/native/appNotifications';
-import type { NotificationSettingsShape } from '../../lib/native/appNotifications';
-import type { AIProcessingResult } from '../../lib/capture/notificationProcessor';
-import { getBankingApps, isExcludedApp } from '../../lib/capture/bankingApps';
-import { allowedSourceKind, isCaptureSourceAllowed, captureSourceName } from '../../lib/capture/captureSources';
-import { noteBankAlertSeen } from '../../lib/capture/bankHeartbeat';
-import { getLocalToday } from '../../lib/time/dateUtils';
+import type { Transaction, User, BudgetCategory } from '../types';
+import { covaultNotification, cancelCaptureNotification, acknowledgeCaptureNotification } from '../lib/native/covaultNotification';
+import type { TransactionDetectedEvent } from '../lib/native/covaultNotification';
+import { drainQueuedNotifications } from '../lib/capture/pendingCaptureQueue';
+import { processNotificationWithAI, buildInMemoryDedupKey } from '../lib/capture/notificationProcessor';
+import { sendPartnerActivityNotification, sendExpenseCapturedNotification } from '../lib/native/appNotifications';
+import type { NotificationSettingsShape } from '../lib/native/appNotifications';
+import type { AIProcessingResult } from '../lib/capture/notificationProcessor';
+import { getBankingApps, isExcludedApp } from '../lib/capture/bankingApps';
+import { allowedSourceKind, isCaptureSourceAllowed, captureSourceName } from '../lib/capture/captureSources';
+import { noteBankAlertSeen } from '../lib/capture/bankHeartbeat';
+import { getLocalToday } from '../lib/time/dateUtils';
 
 export interface UseNotificationListenerParams {
   user: User | null;
@@ -153,7 +153,7 @@ export const useNotificationListener = ({
             // window below, and for every alert rather than only the ones that
             // become purchases: a promo from the bank still proves Android is
             // delivering its notifications, which is the only thing the
-            // settings screen uses this for. See lib/capture/bankHeartbeat.ts.
+            // settings screen uses this for. See App/Lib/Capture/bankHeartbeat.ts.
             // Only a bank's own app proves a BANK is reaching us. A mail app
             // being quiet says nothing about whether the bank is sending
             // alerts, and counting it as a heartbeat would silence the "we have
@@ -217,7 +217,7 @@ export const useNotificationListener = ({
                   autoAcceptKnownVendors:
                     settingsRef.current?.auto_accept_known_vendors === true,
                   // Written onto the row as a marker (see
-                  // lib/capture/captureNotificationMarker.ts), so the notification can
+                  // app/lib/capture/captureNotificationMarker.ts), so the notification can
                   // be found and cleared later if the user deals with the row
                   // from inside the app before ever seeing it in the tray.
                   captureNotificationId: event.capture_notification_id,
@@ -388,7 +388,7 @@ export const useNotificationListener = ({
                 //
                 // Rethrowing is what keeps it: a drained capture that throws
                 // stays parked and is replayed on the next launch (see
-                // lib/capture/pendingCaptureQueue.ts), and a live one is still in the
+                // app/lib/capture/pendingCaptureQueue.ts), and a live one is still in the
                 // native queue for the next drain. Replaying is safe — the
                 // pipeline's own duplicate checks recognise a purchase it had
                 // already recorded before it failed.

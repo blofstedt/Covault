@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => {
   const listeners: ((event: AuthChangeEvent, session: Session | null) => void | Promise<void>)[] = [];
   return { listeners, getSession: vi.fn(), setAppState: vi.fn(), loadUserData: vi.fn() };
 });
-vi.mock('../../../lib/api/supabase', () => ({ supabaseUrl: 'http://127.0.0.1:4203/mock-supabase', supabaseAnonKey: 'local-test-key', supabase: { auth: {
+vi.mock('../../../app/lib/api/supabase', () => ({ supabaseUrl: 'http://127.0.0.1:4203/mock-supabase', supabaseAnonKey: 'local-test-key', supabase: { auth: {
   getSession: mocks.getSession,
   onAuthStateChange: (listener: (event: AuthChangeEvent, session: Session | null) => void | Promise<void>) => {
     mocks.listeners.push(listener);

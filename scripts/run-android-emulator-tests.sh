@@ -86,9 +86,9 @@ for file in \
   android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk \
   android/fake-bank/build/outputs/apk/debug/fake-bank-debug.apk \
   scripts/android-emulator-preflight.py \
-  android-test/configure-device.sh \
-  android-e2e/flows/manual-entry-smoke.yaml \
-  android-e2e/flows/notification-review.yaml; do
+  test/android/configure-device.sh \
+  e2e/android/flows/manual-entry-smoke.yaml \
+  e2e/android/flows/notification-review.yaml; do
   if [ ! -f "$file" ]; then
     echo "Required test input not found: $file" >&2
     exit 2
@@ -153,8 +153,8 @@ STAGE=reset-test-app
 adb -s "$ANDROID_SERIAL" shell am broadcast --include-stopped-packages -n "$BANK_ID/.BankNotificationReceiver" \
   -a "$BANK_ID.CANCEL_ALL"
 adb -s "$ANDROID_SERIAL" shell pm clear "$APP_ID"
-bash android-test/configure-device.sh seed
-bash android-test/configure-device.sh permissions
+bash test/android/configure-device.sh seed
+bash test/android/configure-device.sh permissions
 
 STAGE=manual-entry-port-preflight
 python3 scripts/android-emulator-preflight.py --serial "$ANDROID_SERIAL" check-port 17001 \
@@ -163,7 +163,7 @@ STAGE=manual-entry
 maestro --device "$ANDROID_SERIAL" test --driver-host-port 17001 --format junit \
   --output "$RESULTS_DIR/reports/manual-entry-junit.xml" \
   --test-output-dir "$RESULTS_DIR/maestro/manual-entry" \
-  android-e2e/flows/manual-entry-smoke.yaml \
+  e2e/android/flows/manual-entry-smoke.yaml \
   2>&1 | tee "$RESULTS_DIR/logs/manual-entry.txt"
 adb -s "$ANDROID_SERIAL" exec-out screencap -p > "$RESULTS_DIR/screenshots/after-manual-entry.png"
 
@@ -178,6 +178,6 @@ STAGE=notification-review
 maestro --device "$ANDROID_SERIAL" test --driver-host-port 17002 --format junit \
   --output "$RESULTS_DIR/reports/notification-review-junit.xml" \
   --test-output-dir "$RESULTS_DIR/maestro/notification-review" \
-  android-e2e/flows/notification-review.yaml \
+  e2e/android/flows/notification-review.yaml \
   2>&1 | tee "$RESULTS_DIR/logs/notification-review.txt"
 STAGE=completed

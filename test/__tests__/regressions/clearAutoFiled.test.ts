@@ -3,9 +3,9 @@ import {
   buildAutoFiledClearPayload,
   buildFilePayload,
   buildUndoPayload,
-} from '../../../lib/transactions/caughtTransactionOps';
-import { selectAwaitingReview, selectRecentlyAutoFiled } from '../../../lib/capture/reviewQueue';
-import type { Transaction } from '../../../types';
+} from '../../../app/lib/transactions/caughtTransactionOps';
+import { selectAwaitingReview, selectRecentlyAutoFiled } from '../../../app/lib/capture/reviewQueue';
+import type { Transaction } from '../../../app/types';
 
 /**
  * Clearing the "Filed automatically" receipt.

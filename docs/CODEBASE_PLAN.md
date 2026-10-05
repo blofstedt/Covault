@@ -74,14 +74,14 @@ phone app usable after each step.
   the person's choice and restores it when saving fails. Follow this boundary
   as other settings flows change.
 - [x] Keep shared controls free of household data. `eslint.config.js` refuses
-  Supabase, Capacitor and native-plugin imports in `components/ui` and
-  `components/shared`, and a direct Supabase client in dashboard and Review
+  Supabase, Capacitor and native-plugin imports in `App/Components/Common` and
+  `App/Components/Common`, and a direct Supabase client in dashboard and Review
   components; the capture-source picker, which does call the phone, moved to
-  `components/Notifications/CaptureSourcePicker`. Those folders also require explicit button
+  `App/Components/Notifications/CaptureSourcePicker`. Those folders also require explicit button
   types, type-only imports, and no `any`.
 - [ ] Put related screen code together as each feature changes. A feature can
   own its screen, small controls, hook, data operations, and tests. Keep
-  genuinely shared controls in `components/ui` or `components/shared`; do not
+  genuinely shared controls in `App/Components/Common` or `App/Components/Common`; do not
   create a generic component for a single use.
 - [ ] Split `notificationProcessor.ts` along stable decisions, one at a time.
   The first boundary is already in place: `deviceTransactionParser.ts` owns
@@ -150,7 +150,7 @@ phone app usable after each step.
   Review, onboarding, add-entry, and settings components in browser renders;
   no broad restyle was made before an Android comparison. General and Review
   cards now draw their identical base surface from
-  `components/shared/cardSurface.ts`; the rendered classes are unchanged.
+  `app/components/common/cardSurface.ts`; the rendered classes are unchanged.
 - [ ] Give dialogs and sheets one accessible interaction pattern: initial
   focus, Escape, return focus, scroll locking, and reduced motion. Modal and
   sheet surfaces now share `useDialogInteraction`, including nested layers;
@@ -163,7 +163,7 @@ phone app usable after each step.
   retain their existing lifecycle. A physical-phone keyboard, safe-area, and
   motion check is still outstanding.
 - [x] Add a small set of repeatable visual checks for the dashboard, Review,
-  onboarding, and settings. `visual-tests/index.html` supplies example and
+  onboarding, and settings. `visualTests/index.html` supplies example and
   empty fixtures at a phone viewport; the same components are rendered in dark
   and light mode without Supabase credentials. Browser screenshots passed a
   visual inspection; Android WebView motion and native safe areas remain
@@ -202,7 +202,7 @@ phone app usable after each step.
 
 ## Decisions to challenge
 
-- State ownership is currently split three ways: `app/App.tsx` holds saved budgets,
+- State ownership is currently split three ways: `App.tsx` holds saved budgets,
   transactions, and settings in one React state object; `firstPaintCache.ts`
   restores a bounded snapshot on launch; React Query caches Review's ignored
   notification rules. Keep this map explicit while changing data flow. The

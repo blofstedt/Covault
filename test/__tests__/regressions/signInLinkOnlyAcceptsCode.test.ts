@@ -17,7 +17,7 @@ import { resolve } from 'node:path';
 vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => false } }));
 vi.mock('@capacitor/app', () => ({ App: { addListener: vi.fn() } }));
 vi.mock('@capacitor/browser', () => ({ Browser: { close: vi.fn() } }));
-vi.mock('../../../lib/api/supabase', () => ({ supabase: { auth: {} } }));
+vi.mock('../../../app/lib/api/supabase', () => ({ supabase: { auth: {} } }));
 
 import { parseOAuthCode } from '../../../app/hooks/useDeepLinks';
 

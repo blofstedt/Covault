@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { classifyMatch } from '../../../components/Review/useVendorMatcher';
+import { classifyMatch } from '../../../app/components/review/useVendorMatcher';
 
 describe('classifyMatch (capture-review triage)', () => {
   it('is exact when a deterministic override rule matches', () => {

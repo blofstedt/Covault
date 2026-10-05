@@ -13,7 +13,7 @@
  * that tightening it does not quietly break the cases it is actually for.
  */
 import { describe, it, expect } from 'vitest';
-import { fuzzyVendorMatch } from '../../../lib/vendors/formatVendorName';
+import { fuzzyVendorMatch } from '../../../app/lib/vendors/formatVendorName';
 
 describe('fuzzyVendorMatch — two businesses of the same kind are not one business', () => {
   it.each([

@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ANDROID_DIR="$REPO_ROOT/android"
-TEST_SOURCE="$REPO_ROOT/android-test"
+TEST_SOURCE="$REPO_ROOT/test/android"
 for required in settings.gradle app/build.gradle app/src/main/AndroidManifest.xml; do
   if [ ! -f "$ANDROID_DIR/$required" ]; then
     echo "Missing android/$required. Run Capacitor add/sync and scripts/sync-android.sh first." >&2
@@ -16,7 +16,7 @@ if [ ! -f "$ANDROID_DIR/app/src/main/java/com/covault/app/NotificationListener.j
 fi
 
 mkdir -p "$ANDROID_DIR/app/src/androidTest"
-cp -R "$TEST_SOURCE/instrumentation/." "$ANDROID_DIR/app/src/androidTest/"
+cp -R "$TEST_SOURCE/__tests__/instrumentation/." "$ANDROID_DIR/app/src/androidTest/"
 mkdir -p "$ANDROID_DIR/fake-bank"
 cp -R "$TEST_SOURCE/fake-bank/." "$ANDROID_DIR/fake-bank/"
 cp "$TEST_SOURCE/app-test.gradle" "$ANDROID_DIR/app/covault-android-test.gradle"

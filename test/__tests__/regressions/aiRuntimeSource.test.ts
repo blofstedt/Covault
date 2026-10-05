@@ -12,7 +12,7 @@ import { resolve } from 'node:path';
  */
 
 const root = resolve(__dirname, '../../..');
-const aiExtractor = readFileSync(resolve(root, 'lib/ai/aiExtractor.ts'), 'utf8');
+const aiExtractor = readFileSync(resolve(root, 'app/lib/ai/aiExtractor.ts'), 'utf8');
 const viteConfig = readFileSync(resolve(root, 'vite.config.ts'), 'utf8');
 
 describe('the ONNX runtime binary', () => {

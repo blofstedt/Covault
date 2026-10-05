@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { SYSTEM_CATEGORIES } from '../../../constants';
-import { Recurrence } from '../../../types';
+import { SYSTEM_CATEGORIES } from '../../../app/constants';
+import { Recurrence } from '../../../app/types';
 
 /**
  * supabase/schema.sql has to describe a database this app can actually use.

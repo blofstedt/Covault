@@ -32,14 +32,14 @@ vi.mock('@capacitor/core', () => ({
 
 const drainPendingNotifications = vi.fn();
 
-vi.mock('../../../lib/native/covaultNotification', () => ({
+vi.mock('../../../app/lib/native/covaultNotification', () => ({
   covaultNotification: {
     get drainPendingNotifications() { return drainPendingNotifications; },
   },
   cancelCaptureNotification: vi.fn(),
 }));
 
-import { drainQueuedNotifications, PENDING_CAPTURE_STASH_KEY } from '../../../lib/capture/pendingCaptureQueue';
+import { drainQueuedNotifications, PENDING_CAPTURE_STASH_KEY } from '../../../app/lib/capture/pendingCaptureQueue';
 
 const costco = {
   rawNotification: 'Purchase of $184.32 at COSTCO WHOLESALE #543',

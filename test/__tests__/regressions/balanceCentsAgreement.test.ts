@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { splitCurrency } from '../../../lib/money/formatCurrency';
+import { splitCurrency } from '../../../app/lib/money/formatCurrency';
 
 /**
  * The widget printed the remaining balance with its cents and the app rounded
@@ -18,11 +18,11 @@ import { splitCurrency } from '../../../lib/money/formatCurrency';
  */
 
 const RENDERER_JAVA = readFileSync(
-  resolve(__dirname, '../../../android-custom/WidgetRenderer.java'),
+  resolve(__dirname, '../../../native/android/WidgetRenderer.java'),
   'utf-8',
 );
 const BALANCE_TSX = readFileSync(
-  resolve(__dirname, '../../../components/Dashboard/BalanceSection/DashboardBalanceSection.tsx'),
+  resolve(__dirname, '../../../app/components/Dashboard/DashboardBalanceSection.tsx'),
   'utf-8',
 );
 

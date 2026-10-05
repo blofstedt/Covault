@@ -16,15 +16,15 @@
  *
  * The fix is on both sides, because either one alone leaves the failure
  * reachable by some other generic leftover:
- *   1. lib/capture/deviceTransactionParser.ts keeps the processor's name when what
+ *   1. app/lib/capture/deviceTransactionParser.ts keeps the processor's name when what
  *      follows it names no merchant → "Google Services".
- *   2. lib/capture/notificationProcessor.ts only adopts a remembered merchant's name
+ *   2. app/lib/capture/notificationProcessor.ts only adopts a remembered merchant's name
  *      when the two names START with the same word (leadWordsAgree), instead
  *      of merely preferring that and settling for anything.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { parseNotificationText } from '../../../lib/capture/deviceTransactionParser';
-import { fuzzyVendorMatch, leadWordsAgree } from '../../../lib/vendors/formatVendorName';
+import { parseNotificationText } from '../../../app/lib/capture/deviceTransactionParser';
+import { fuzzyVendorMatch, leadWordsAgree } from '../../../app/lib/vendors/formatVendorName';
 
 const GOOGLE_SERVICES =
   'GOOGLE *SERVICES  You made a recurring payment for $29.40 with your credit card.';
@@ -88,8 +88,8 @@ describe('two names that merely resemble each other', () => {
 
 const vendorMap: Record<string, { vendor_key: string; vendor_display: string; budget: string; updated_at: string }> = {};
 
-vi.mock('../../../lib/capture/localNotificationMemory', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../lib/capture/localNotificationMemory')>();
+vi.mock('../../../app/lib/capture/localNotificationMemory', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../app/lib/capture/localNotificationMemory')>();
   return {
     ...actual,
     getVendorMap: () => vendorMap,
@@ -104,14 +104,14 @@ vi.mock('../../../lib/capture/localNotificationMemory', async (importOriginal) =
   };
 });
 
-vi.mock('../../../lib/ai/aiExtractor', () => ({
+vi.mock('../../../app/lib/ai/aiExtractor', () => ({
   extractWithAI: async () => {
     throw new Error('the parser was confident; the model must not be consulted');
   },
   aiFindRefundMatch: async () => null,
 }));
 
-vi.mock('../../../lib/api/apiHelpers', () => ({
+vi.mock('../../../app/lib/api/apiHelpers', () => ({
   restFetch: async () => ({ ok: true, status: 200, json: async () => [], text: async () => '[]' }),
   REST_BASE: 'https://example.test/rest/v1',
   getAuthHeaders: async () => ({}),
@@ -140,13 +140,13 @@ function tableChain(table: string) {
   return chain;
 }
 
-vi.mock('../../../lib/api/supabase', () => ({
+vi.mock('../../../app/lib/api/supabase', () => ({
   supabase: { from: (table: string) => tableChain(table) },
   supabaseUrl: 'https://example.test',
   supabaseAnonKey: 'anon',
 }));
 
-const { processNotificationWithAI, _clearDedupCacheForTesting } = await import('../../../lib/capture/notificationProcessor');
+const { processNotificationWithAI, _clearDedupCacheForTesting } = await import('../../../app/lib/capture/notificationProcessor');
 
 const CATEGORIES = [
   { id: 'cat-leisure', name: 'Leisure' },

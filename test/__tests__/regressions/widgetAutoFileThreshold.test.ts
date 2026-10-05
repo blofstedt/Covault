@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { AUTO_ACCEPT_MIN_CONFIDENCE } from '../../../lib/vendors/vendorMatchConfidence';
+import { AUTO_ACCEPT_MIN_CONFIDENCE } from '../../../app/lib/vendors/vendorMatchConfidence';
 
 /**
  * The widget's review badge has to predict what the JS pipeline will do with a
@@ -18,7 +18,7 @@ import { AUTO_ACCEPT_MIN_CONFIDENCE } from '../../../lib/vendors/vendorMatchConf
  * Same guard shape as widgetPalette.test.ts.
  */
 
-const JAVA = resolve(__dirname, '../../../android-custom/WidgetDeltaStore.java');
+const JAVA = resolve(__dirname, '../../../native/android/WidgetDeltaStore.java');
 
 function parseJavaThreshold(): number {
   const source = readFileSync(JAVA, 'utf8');

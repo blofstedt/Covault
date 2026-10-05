@@ -1,15 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const callRpcMock = vi.fn();
-vi.mock('../../../lib/api/apiHelpers', () => ({
+vi.mock('../../../app/lib/api/apiHelpers', () => ({
   callRpc: (...args: unknown[]) => callRpcMock(...args),
   restFetch: vi.fn(),
   REST_BASE: 'https://example.test/rest/v1',
   getAuthHeaders: async () => ({}),
 }));
 
-import { serverNow, syncServerClock, resetServerClock, serverClockSynced } from '../../../lib/time/serverClock';
-import { getEntitlementStatus, type EntitlementUser } from '../../../lib/auth/entitlement';
+import { serverNow, syncServerClock, resetServerClock, serverClockSynced } from '../../../app/lib/time/serverClock';
+import { getEntitlementStatus, type EntitlementUser } from '../../../app/lib/auth/entitlement';
 
 /**
  * The trial is a date, and it was being compared against the phone's clock —

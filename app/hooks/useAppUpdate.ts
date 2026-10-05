@@ -8,9 +8,9 @@ import {
   getInstalledVersionCode,
   selectUpdate,
   selectWebBundle,
-} from '../../lib/native/appUpdate';
-import { covaultUpdater, type CovaultUpdaterPlugin } from '../../lib/native/covaultUpdater';
-import { log } from '../../lib/observability/log';
+} from '../lib/native/appUpdate';
+import { covaultUpdater, type CovaultUpdaterPlugin } from '../lib/native/covaultUpdater';
+import { log } from '../lib/observability/log';
 
 /**
  * Keeps the phone on the newest build without anyone downloading an APK by
@@ -588,5 +588,3 @@ export function useAppUpdate(): AppUpdate {
     update, phase, percent, error, install, dismiss, webUpdateReady, applyWebUpdate, apkReady,
   };
 }
-
-export default useAppUpdate;

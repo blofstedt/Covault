@@ -12,7 +12,7 @@ import {
   AI_MODEL_ID,
   type ModelFileStore,
   type StoredFile,
-} from '../../../lib/ai/aiModelStore';
+} from '../../../app/lib/ai/aiModelStore';
 
 /**
  * The reading model is ~70MB and used to be fetched at the exact moment a

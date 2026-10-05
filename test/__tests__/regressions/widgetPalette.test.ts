@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { BUDGET_CATEGORY_COLORS } from '../../../lib/budgets/budgetColors';
+import { BUDGET_CATEGORY_COLORS } from '../../../app/lib/budgets/budgetColors';
 
 /**
  * The widget is a second implementation of a chart the app already draws.
@@ -15,7 +15,7 @@ import { BUDGET_CATEGORY_COLORS } from '../../../lib/budgets/budgetColors';
  * asserts it matches, so that fails the build instead of shipping.
  */
 
-const JAVA = resolve(__dirname, '../../../android-custom/WidgetRenderer.java');
+const JAVA = resolve(__dirname, '../../../native/android/WidgetRenderer.java');
 
 /** Pull the entries between the CATEGORY_COLORS_BEGIN/END markers. */
 function parseJavaPalette(): Record<string, string> {

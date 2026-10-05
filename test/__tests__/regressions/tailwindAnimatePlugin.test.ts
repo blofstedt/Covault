@@ -29,8 +29,8 @@ function ancestorMedia(rule: Rule): string[] {
 }
 
 beforeAll(async () => {
-  const compiler = await compile(readFileSync(resolve(rootDirectory, 'index.css'), 'utf8'), {
-    base: rootDirectory,
+  const compiler = await compile(readFileSync(resolve(rootDirectory, 'app/index.css'), 'utf8'), {
+    base: resolve(rootDirectory, 'app'),
     onDependency: () => {},
   });
   generated = postcss.parse(compiler.build([

@@ -27,13 +27,13 @@ vi.mock('@huggingface/transformers', () => ({
   pipeline: async () => async () => [{ generated_text: '' }],
 }));
 
-vi.mock('../../../lib/api/supabase', () => ({
+vi.mock('../../../app/lib/api/supabase', () => ({
   supabase: { from: vi.fn() },
   supabaseUrl: 'https://mock.supabase.co',
   supabaseAnonKey: 'mock-anon-key',
 }));
 
-import { decideConcurrentCapture } from '../../../lib/capture/notificationDuplicates';
+import { decideConcurrentCapture } from '../../../app/lib/capture/notificationDuplicates';
 
 const ours = { id: 'bbb', created_at: '2026-08-14T22:10:00.200000+00:00' };
 const theirs = { id: 'aaa', created_at: '2026-08-14T22:10:00.100000+00:00' };
@@ -101,7 +101,7 @@ describe('reconciling a concurrent double-insert', () => {
  * losing. A version that deletes whenever any other row exists is the bug.
  */
 describe('the post-insert duplicate check', () => {
-  const source = readFileSync(resolve(__dirname, '../../../lib/capture/notificationProcessor.ts'), 'utf8');
+  const source = readFileSync(resolve(__dirname, '../../../app/lib/capture/notificationProcessor.ts'), 'utf8');
 
   it('reads our own row back rather than excluding it', () => {
     // `.neq('id', transactionId)` on the race check is what made our own row
@@ -132,7 +132,7 @@ describe('the post-insert duplicate check', () => {
  * scans from the purchase claim left the cold-start path unguarded.
  */
 describe('the purchase claim', () => {
-  const source = readFileSync(resolve(__dirname, '../../../lib/capture/notificationProcessor.ts'), 'utf8');
+  const source = readFileSync(resolve(__dirname, '../../../app/lib/capture/notificationProcessor.ts'), 'utf8');
 
   it('applies to a rescan too', () => {
     expect(source).toMatch(/if \(!claimPurchase\(purchaseKey\)\)/);

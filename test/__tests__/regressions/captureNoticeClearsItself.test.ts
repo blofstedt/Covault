@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { captureNotificationId } from '../../../lib/native/appNotifications';
+import { captureNotificationId } from '../../../app/lib/native/appNotifications';
 
 /**
  * One purchase, one notification, and it goes away when the purchase is dealt
@@ -19,9 +19,9 @@ import { captureNotificationId } from '../../../lib/native/appNotifications';
  * source for the wiring and tests the id arithmetic directly.
  */
 
-const read = (rel: string) => readFileSync(resolve(__dirname, '../../../', rel), 'utf8');
+const read = (rel: string) => readFileSync(resolve(__dirname, '../../..', rel), 'utf8');
 const LISTENER = read('app/hooks/useNotificationListener.ts');
-const PARSING = read('components/Review/TransactionParsing.tsx');
+const PARSING = read('app/components/review/TransactionParsing/TransactionParsing.tsx');
 
 describe('the id a capture notice is posted under', () => {
   it('is the same every time for the same transaction', () => {

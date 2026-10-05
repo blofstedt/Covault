@@ -2,19 +2,19 @@ import { describe, expect, it, vi, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { generateProjectedTransactions } from '../../../lib/transactions/projectedTransactions';
+import { generateProjectedTransactions } from '../../../app/lib/transactions/projectedTransactions';
 import {
   collectRecurringCharges,
   findRecurringScheduleMatch,
   isRecurringRow,
   scheduleLandsNear,
-} from '../../../lib/transactions/recurringSchedule';
-import { recurringSeriesKey } from '../../../lib/transactions/recurringDelete';
-import { normalizeRecurrence, stepForward } from '../../../lib/transactions/recurrence';
-import { parseNotificationText } from '../../../lib/capture/deviceTransactionParser';
-import { toSupabaseTransaction } from '../../../lib/api/transactionMappers';
-import { Recurrence } from '../../../types';
-import type { Transaction } from '../../../types';
+} from '../../../app/lib/transactions/recurringSchedule';
+import { recurringSeriesKey } from '../../../app/lib/transactions/recurringDelete';
+import { normalizeRecurrence, stepForward } from '../../../app/lib/transactions/recurrence';
+import { parseNotificationText } from '../../../app/lib/capture/deviceTransactionParser';
+import { toSupabaseTransaction } from '../../../app/lib/api/transactionMappers';
+import { Recurrence } from '../../../app/types';
+import type { Transaction } from '../../../app/types';
 
 /**
  * The yearly cadence, end to end.
@@ -34,7 +34,7 @@ const MIGRATION = readFileSync(
   'utf8',
 );
 
-const PROCESSOR = readFileSync(join(__dirname, '../../../lib/capture/notificationProcessor.ts'), 'utf8');
+const PROCESSOR = readFileSync(join(__dirname, '../../../app/lib/capture/notificationProcessor.ts'), 'utf8');
 
 function makeTransaction(overrides: Partial<Transaction> & { recur?: string } = {}): Transaction {
   return {

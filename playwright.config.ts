@@ -4,7 +4,7 @@ const port = Number(process.env.COVAULT_E2E_PORT ?? 4179);
 const baseURL = `http://127.0.0.1:${port}`;
 
 export default defineConfig({
-  testDir: './e2e',
+  testDir: './e2e/__tests__',
   testMatch: '**/*.e2e.ts',
   fullyParallel: true,
   workers: 2,

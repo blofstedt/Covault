@@ -3,14 +3,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mocked for the same reason notificationRulesCache.test.ts mocks it: the real
 // restFetch sits behind an auth-token retry loop that sleeps without a session.
 const restFetchMock = vi.fn();
-vi.mock('../../../lib/api/apiHelpers', () => ({
+vi.mock('../../../app/lib/api/apiHelpers', () => ({
   restFetch: (...args: unknown[]) => restFetchMock(...args),
   REST_BASE: 'https://example.test/rest/v1',
   getAuthHeaders: async () => ({}),
 }));
 
-import { bumpRuleUseCount, readRecentUses, MAX_RECENT_USES } from '../../../lib/capture/notificationRules';
-import type { NotificationRule, RuleUse } from '../../../lib/capture/notificationRules';
+import { bumpRuleUseCount, readRecentUses, MAX_RECENT_USES } from '../../../app/lib/capture/notificationRules';
+import type { NotificationRule, RuleUse } from '../../../app/lib/capture/notificationRules';
 
 const okJson = (body: unknown) => ({ ok: true, status: 200, json: async () => body, text: async () => '' });
 const badRequest = { ok: false, status: 400, json: async () => null, text: async () => 'unknown column' };

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { buildSetupSteps } from '../../../lib/native/notificationAccessSetup';
+import { buildSetupSteps } from '../../../app/lib/native/notificationAccessSetup';
 
 /**
  * The instructions stop existing at the moment they are needed.
@@ -22,10 +22,10 @@ import { buildSetupSteps } from '../../../lib/native/notificationAccessSetup';
 const root = resolve(__dirname, '../../..');
 const read = (path: string) => readFileSync(resolve(root, path), 'utf8');
 
-const GUIDE = read('components/Notifications/NotificationAccessGuide/NotificationAccessGuide.tsx');
-const JAVA = read('android-custom/CovaultNotificationPlugin.java');
+const GUIDE = read('app/components/notifications/NotificationAccessGuide/NotificationAccessGuide.tsx');
+const JAVA = read('native/android/CovaultNotificationPlugin.java');
 const SETTINGS = read(
-  'components/Settings/sections/NotificationSettingsSection.tsx',
+  'app/components/settings/DashboardSettingsModal/sections/NotificationSettingsSection/NotificationSettingsSection.tsx',
 );
 
 describe('the hint shown once the user is inside Settings', () => {

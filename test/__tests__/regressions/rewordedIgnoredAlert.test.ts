@@ -29,7 +29,7 @@ const { mockLooksLikeIgnored } = vi.hoisted(() => ({
   mockLooksLikeIgnored: vi.fn(),
 }));
 
-vi.mock('../../../lib/ai/aiExtractor', () => ({
+vi.mock('../../../app/lib/ai/aiExtractor', () => ({
   aiLooksLikeIgnoredAlert: mockLooksLikeIgnored,
   aiFindRefundMatch: vi.fn().mockResolvedValue(null),
   extractWithAI: vi.fn().mockRejectedValue(new Error('no model in tests')),
@@ -38,7 +38,7 @@ vi.mock('../../../lib/ai/aiExtractor', () => ({
 /** One rule: a gym charge the user has told Covault to leave alone. */
 const IGNORED = 'ACME GYM MEMBERSHIP You spent $45.00 with your credit card.';
 
-vi.mock('../../../lib/api/apiHelpers', () => ({
+vi.mock('../../../app/lib/api/apiHelpers', () => ({
   REST_BASE: 'https://mock.supabase.co/rest/v1',
   getAuthHeaders: vi.fn().mockResolvedValue({}),
   restFetch: vi.fn().mockImplementation((path: string) => {
@@ -83,7 +83,7 @@ function chainFor(table: string) {
   return chain;
 }
 
-vi.mock('../../../lib/api/supabase', () => ({
+vi.mock('../../../app/lib/api/supabase', () => ({
   supabase: {
     from: vi.fn((table: string) => chainFor(table)),
     auth: { getSession: vi.fn().mockResolvedValue({ data: { session: null } }) },
@@ -96,8 +96,8 @@ import {
   processNotificationWithAI,
   _clearDedupCacheForTesting,
   _clearRecurringCacheForTesting,
-} from '../../../lib/capture/notificationProcessor';
-import { invalidateNotificationRulesCache } from '../../../lib/capture/notificationRules';
+} from '../../../app/lib/capture/notificationProcessor';
+import { invalidateNotificationRulesCache } from '../../../app/lib/capture/notificationRules';
 
 const CATEGORIES = [{ id: 'cat-other', name: 'Other' }];
 

@@ -2,10 +2,10 @@
 import { act, useRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import ConfirmModal from '../../../components/ui/ConfirmModal';
-import NoticeModal from '../../../components/ui/NoticeModal';
-import { useDialogInteraction } from '../../../lib/hooks/useDialogInteraction';
-import { DIALOG_EXIT_DURATION_MS } from '../../../lib/hooks/useDialogExit';
+import ConfirmModal from '../../../app/components/common/ConfirmModal';
+import NoticeModal from '../../../app/components/common/NoticeModal';
+import { useDialogInteraction } from '../../../app/hooks/useDialogInteraction';
+import { DIALOG_EXIT_DURATION_MS } from '../../../app/hooks/useDialogExit';
 
 let container: HTMLDivElement;
 let root: Root;

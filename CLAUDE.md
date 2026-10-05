@@ -56,10 +56,10 @@ language, or stutters on the phone is not finished, and saying "it works" about
 it will not land.
 
 - **Consistency over invention.** The app already has a design language: one
-  category palette (`lib/budgets/budgetColors.ts`, reused by bars, icons and the
+  category palette (`app/lib/budgets/budgetColors.ts`, reused by bars, icons and the
   chart), `rounded-[2rem]` cards, tight tracking on big numerals, muted glassy
-  surfaces. Reuse the existing pieces — `components/ui/`, `components/shared/`,
-  `getBudgetIcon`, and `components/shared/cardSurface.ts`, the one card surface
+  surfaces. Reuse the existing pieces — `app/components/common/`,
+  `getBudgetIcon`, and `app/components/common/cardSurface.ts`, the one card surface
   general and Review cards share — before adding a new visual idea. A new control that looks
   like it came from a different app is a regression even if it works.
 - **One clock per interaction.** Everything moving as part of the same gesture
@@ -92,7 +92,7 @@ Supabase (Postgres + RLS) for data. On-device flan-T5 via
 Playwright for browser tests.
 
 The browser entry is `app/index.tsx`; root app state and routing live in
-`app/App.tsx`. Shared styles stay in `index.css`.
+`App.tsx`. Shared styles stay in `app/index.css`.
 
 ```bash
 npm run verify     # typecheck + typecheck:unused + lint + test + build  ← run before committing
@@ -142,66 +142,66 @@ Requests arrive in plain language. Start here, not with a repo-wide search.
 
 | The user says | Open, in this order |
 |---|---|
-| "a purchase wasn't captured" | `lib/capture/deviceTransactionParser.ts` (regex) → `lib/capture/notificationProcessor.ts` (pipeline) |
-| "something that isn't my bank got captured" | `android-custom/NotificationListener.java` (forwarding) → `lib/capture/bankingApps.ts` (`isBankingApp`, the JS backstop) |
-| "my bank stopped being captured" | `lib/capture/bankingApps.ts` — `suggestUnknownBankApps`, surfaced in `components/Notifications/NotificationSettings.tsx` |
-| "the gas amount is wrong" / "it says placeholder" | `lib/capture/fuelHold.ts` — hold detection, applied at step 6 of the processor and re-derived per row in `AIEnteredRow` |
-| "I have two rows for one tank of gas" | `lib/capture/fuelHoldReconcile.ts` — pairs a settled charge with the hold it replaces |
-| "I got a duplicate" | `lib/capture/notificationProcessor.ts` — dedup is steps 1, 2, 5 and the post-insert race recovery |
-| "recurring charges are duplicating / I keep deleting them" | `lib/transactions/projectedTransactions.ts` — recurring is display-only. Nothing writes recurring rows. See Invariants |
-| "a deposit / my pay showed up as spending" | `INCOME_PHRASES` in `lib/capture/deviceTransactionParser.ts`, mirrored into `android-custom/NotificationListener.java` — the native listener has to know income on sight, or it announces the deposit and adds it to the widget hours before the parser rejects it |
-| "something that isn't spending got captured" (a deposit, a declined card, a statement reminder, a balance alert) | the four mirrored lists at the top of `lib/capture/deviceTransactionParser.ts` — `INCOME_PHRASES`, `FAILED_CHARGE_PHRASES`, `BILL_NOTICE_PHRASES`, and `STOP_PHRASES` vs `GO_PHRASES` — each copied into `android-custom/NotificationListener.java`, because the listener has to reach the same verdict on sight or it announces the capture and adds it to the widget hours before the parser rejects it |
-| "my bank only emails me, nothing gets captured" | `lib/capture/emailNotification.ts` — the sender has to be a bank before the body is read at all. A bank whose sender name is not in `EMAIL_BANK_SENDERS` is silently never captured; adding it there (and to the mirrored Java list) is the fix |
-| "an email that wasn't a purchase got captured" | `lib/capture/emailNotification.ts` — the sender gate, then the four existing phrase lists in `deviceTransactionParser.ts`, which email inherits unchanged |
-| "I turned a bank off and it kept capturing" | `lib/capture/captureSources.ts` (the user's list, and the three-state "never chosen" flag) → `isMonitoredApp` in `android-custom/NotificationListener.java` → `autoDetectBankingApps` in `CovaultNotificationPlugin.java`, which must only ever SEED |
-| "nothing is captured at all any more" | `lib/capture/captureSources.ts` first — `isCaptureSourceAllowed` returning false for everything is the one silent, total failure this app has. Check `monitored_apps_chosen` before anything else |
-| "I got two rows for one tap-to-pay purchase" | `lib/capture/captureChannel.ts` (`isOtherAppSameTap`) → step 4d of `lib/capture/notificationProcessor.ts`. Matched on amount and timing, never on the merchant name |
-| "a subscription got captured / notified about anyway" | `lib/transactions/recurringSchedule.ts` — matches the capture against the recurring *schedule*, not just nearby rows; applied at step 5b. The notification is suppressed in `NotificationListener.java` (`RECURRING_CHARGES_KEY`) and withdrawn by `useNotificationListener.ts` when it slipped through |
-| "the budget pills keep rearranging" | `lib/budgets/budgetOrder.ts` — the `budgets` table has no sort column, so the order is fixed in code. See Invariants |
-| "my budget limits / hidden categories are back to the defaults" | `loadUserBudgets` in `app/data/useDataLoading.ts` → `lib/budgets/budgetFallback.ts`. Check the Supabase edge logs for a non-200 on `/rest/v1/budgets` before assuming the data is gone — it usually isn't |
-| "it picked the wrong category" | `components/Review/useVendorMatcher.ts`, `lib/vendors/vendorMatchConfidence.ts`, step 5a of the processor |
-| "a new restaurant landed in Other" | `lib/vendors/merchantCategorySignals.ts` — the offline descriptor/POS-prefix guess plus the named-chain list, applied in step 5c |
-| "a haircut / a flight / a shop landed in Other" | `lib/vendors/merchantCategorySignals.ts` — same detector, four kinds now (dining, personal, travel, shopping). Only dining has a fallback; the rest resolve to a category of that name or nothing. See Invariants |
-| "I switched a category on and nothing files there" / "three new vials appeared" | `OPT_IN_CATEGORIES` in `constants.ts` → `ensureDefaultBudgets` in `app/data/useDataLoading.ts`. A later addition is seeded hidden into an existing vault. See Invariants |
-| "the vials only show one line now" | `lib/budgets/vialDensity.ts` — past seven visible vials the collapsed row drops its "$288 left" line. Measured, not guessed. See Invariants |
-| "it keeps getting ONE merchant wrong" / "the picker offered me the same budget twice" | `lib/vendors/vendorRuleScope.ts` — a chain writes one rule per branch; this is what makes them read as one merchant. See Invariants |
-| "it filed as Other and now keeps filing as Other" | `lib/vendors/vendorOverrideWrite.ts` / `useVendorOverrides.ts` refuse to teach a rule for Other in the first place; `notificationProcessor.ts` step 5a-i-b ignores an existing Other rule when the rest of the merchant agrees on something real. See Invariants |
-| "it taught the same restaurant chain twice" / "I want one lesson to cover every branch" | `lib/vendors/chainVendorKeys.ts` — a short, hand-curated list of single-category chains get a `prefix` rule instead of a branch-specific `exact` one. See Invariants |
-| "the merchant name has a dot / a store number / a branch on it" | `stripVendorNoise` in `lib/capture/deviceTransactionParser.ts` — the display name IS the merchant's identity, so every stray spelling costs a rule. See Invariants |
-| "it used a different shop's name / budget" / "a purchase went missing" | `fuzzyVendorMatch` in `lib/vendors/formatVendorName.ts` — the one "are these the same merchant?" answer, asked by the duplicate skip, the soft-dup warning, the local vendor memory and the recurring lookup. See Invariants |
-| "it filed a charge under a shop I've never bought from" | `stripProcessorPrefixes` in `lib/capture/deviceTransactionParser.ts` (what "GOOGLE *SERVICES" is left as) → step 5b of `lib/capture/notificationProcessor.ts` (which remembered merchant it then adopts). See Invariants |
-| "the ignored-alert rules on Review are stale / missing" | `lib/capture/queries/notificationRules.ts` (cached, prefetched query) → `components/Review/useNotificationRules.ts`. The cache itself is `lib/cache/queryClient.ts` |
+| "a purchase wasn't captured" | `app/lib/capture/deviceTransactionParser.ts` (regex) → `app/lib/capture/notificationProcessor.ts` (pipeline) |
+| "something that isn't my bank got captured" | `native/android/NotificationListener.java` (forwarding) → `app/lib/capture/bankingApps.ts` (`isBankingApp`, the JS backstop) |
+| "my bank stopped being captured" | `app/lib/capture/bankingApps.ts` — `suggestUnknownBankApps`, surfaced in `app/components/notifications/NotificationSettings.tsx` |
+| "the gas amount is wrong" / "it says placeholder" | `app/lib/capture/fuelHold.ts` — hold detection, applied at step 6 of the processor and re-derived per row in `AIEnteredRow` |
+| "I have two rows for one tank of gas" | `app/lib/capture/fuelHoldReconcile.ts` — pairs a settled charge with the hold it replaces |
+| "I got a duplicate" | `app/lib/capture/notificationProcessor.ts` — dedup is steps 1, 2, 5 and the post-insert race recovery |
+| "recurring charges are duplicating / I keep deleting them" | `app/lib/transactions/projectedTransactions.ts` — recurring is display-only. Nothing writes recurring rows. See Invariants |
+| "a deposit / my pay showed up as spending" | `INCOME_PHRASES` in `app/lib/capture/deviceTransactionParser.ts`, mirrored into `native/android/NotificationListener.java` — the native listener has to know income on sight, or it announces the deposit and adds it to the widget hours before the parser rejects it |
+| "something that isn't spending got captured" (a deposit, a declined card, a statement reminder, a balance alert) | the four mirrored lists at the top of `app/lib/capture/deviceTransactionParser.ts` — `INCOME_PHRASES`, `FAILED_CHARGE_PHRASES`, `BILL_NOTICE_PHRASES`, and `STOP_PHRASES` vs `GO_PHRASES` — each copied into `native/android/NotificationListener.java`, because the listener has to reach the same verdict on sight or it announces the capture and adds it to the widget hours before the parser rejects it |
+| "my bank only emails me, nothing gets captured" | `app/lib/capture/emailNotification.ts` — the sender has to be a bank before the body is read at all. A bank whose sender name is not in `EMAIL_BANK_SENDERS` is silently never captured; adding it there (and to the mirrored Java list) is the fix |
+| "an email that wasn't a purchase got captured" | `app/lib/capture/emailNotification.ts` — the sender gate, then the four existing phrase lists in `deviceTransactionParser.ts`, which email inherits unchanged |
+| "I turned a bank off and it kept capturing" | `app/lib/capture/captureSources.ts` (the user's list, and the three-state "never chosen" flag) → `isMonitoredApp` in `native/android/NotificationListener.java` → `autoDetectBankingApps` in `CovaultNotificationPlugin.java`, which must only ever SEED |
+| "nothing is captured at all any more" | `app/lib/capture/captureSources.ts` first — `isCaptureSourceAllowed` returning false for everything is the one silent, total failure this app has. Check `monitored_apps_chosen` before anything else |
+| "I got two rows for one tap-to-pay purchase" | `app/lib/capture/captureChannel.ts` (`isOtherAppSameTap`) → step 4d of `app/lib/capture/notificationProcessor.ts`. Matched on amount and timing, never on the merchant name |
+| "a subscription got captured / notified about anyway" | `app/lib/transactions/recurringSchedule.ts` — matches the capture against the recurring *schedule*, not just nearby rows; applied at step 5b. The notification is suppressed in `NotificationListener.java` (`RECURRING_CHARGES_KEY`) and withdrawn by `useNotificationListener.ts` when it slipped through |
+| "the budget pills keep rearranging" | `app/lib/budgets/budgetOrder.ts` — the `budgets` table has no sort column, so the order is fixed in code. See Invariants |
+| "my budget limits / hidden categories are back to the defaults" | `loadUserBudgets` in `app/data/useDataLoading.ts` → `app/lib/budgets/budgetFallback.ts`. Check the Supabase edge logs for a non-200 on `/rest/v1/budgets` before assuming the data is gone — it usually isn't |
+| "it picked the wrong category" | `app/components/review/useVendorMatcher.ts`, `app/lib/vendors/vendorMatchConfidence.ts`, step 5a of the processor |
+| "a new restaurant landed in Other" | `app/lib/vendors/merchantCategorySignals.ts` — the offline descriptor/POS-prefix guess plus the named-chain list, applied in step 5c |
+| "a haircut / a flight / a shop landed in Other" | `app/lib/vendors/merchantCategorySignals.ts` — same detector, four kinds now (dining, personal, travel, shopping). Only dining has a fallback; the rest resolve to a category of that name or nothing. See Invariants |
+| "I switched a category on and nothing files there" / "three new vials appeared" | `OPT_IN_CATEGORIES` in `app/constants.ts` → `ensureDefaultBudgets` in `app/data/useDataLoading.ts`. A later addition is seeded hidden into an existing vault. See Invariants |
+| "the vials only show one line now" | `app/lib/budgets/vialDensity.ts` — past seven visible vials the collapsed row drops its "$288 left" line. Measured, not guessed. See Invariants |
+| "it keeps getting ONE merchant wrong" / "the picker offered me the same budget twice" | `app/lib/vendors/vendorRuleScope.ts` — a chain writes one rule per branch; this is what makes them read as one merchant. See Invariants |
+| "it filed as Other and now keeps filing as Other" | `app/lib/vendors/vendorOverrideWrite.ts` / `useVendorOverrides.ts` refuse to teach a rule for Other in the first place; `notificationProcessor.ts` step 5a-i-b ignores an existing Other rule when the rest of the merchant agrees on something real. See Invariants |
+| "it taught the same restaurant chain twice" / "I want one lesson to cover every branch" | `app/lib/vendors/chainVendorKeys.ts` — a short, hand-curated list of single-category chains get a `prefix` rule instead of a branch-specific `exact` one. See Invariants |
+| "the merchant name has a dot / a store number / a branch on it" | `stripVendorNoise` in `app/lib/capture/deviceTransactionParser.ts` — the display name IS the merchant's identity, so every stray spelling costs a rule. See Invariants |
+| "it used a different shop's name / budget" / "a purchase went missing" | `fuzzyVendorMatch` in `app/lib/vendors/formatVendorName.ts` — the one "are these the same merchant?" answer, asked by the duplicate skip, the soft-dup warning, the local vendor memory and the recurring lookup. See Invariants |
+| "it filed a charge under a shop I've never bought from" | `stripProcessorPrefixes` in `app/lib/capture/deviceTransactionParser.ts` (what "GOOGLE *SERVICES" is left as) → step 5b of `app/lib/capture/notificationProcessor.ts` (which remembered merchant it then adopts). See Invariants |
+| "the ignored-alert rules on Review are stale / missing" | `app/lib/capture/queries/notificationRules.ts` (cached, prefetched query) → `app/components/review/useNotificationRules.ts`. The cache itself is `app/lib/cache/queryClient.ts` |
 | "lint is failing" / "why is this lint rule off" | `eslint.config.js` — every rule switched off carries its reason. Several would CHANGE behaviour if auto-fixed (hashes, `null` vs `[]`, newer-WebView-only methods). It also holds the import boundaries: shared controls may not reach the database or native plugins, and dashboard and Review components may not open a Supabase client |
 | "set up a new database" / "which migrations does the database still need" | `docs/DATABASE_SETUP.md` — the one setup path, the applied-on-live table, and how to verify `supabase/schema.sql` against live |
 | "the browser tests are failing" | `playwright.config.ts` → `e2e/fixtures.ts` (blocks every outside request, creates a separate test household per test) → `e2e/mockSupabase.ts` (the stand-in database, served by Vite in `e2e` mode only) |
-| "the review list / badge is wrong" | `lib/capture/reviewQueue.ts` — the single definition of "waiting"; the list, badge and widget all read it |
-| "the widget is stale or wrong" | `lib/native/widgetSnapshot.ts` → `android-custom/WidgetDeltaStore.java` → `android-custom/WidgetRenderer.java` |
-| "the 'add widget' button in settings doesn't work" | `android-custom/CovaultWidgetPlugin.java` (`isSupported` / `requestPinAppWidget`) → `components/Settings/sections/HomeScreenWidgetSection.tsx` — the button is one of two routes and only ever shown once `isSupported` says the launcher can honour it; the other route is the written steps, unconditional and always correct |
-| "notifications look wrong / didn't arrive" | `lib/native/appNotifications.ts` (JS-posted) and `android-custom/NotificationListener.java` (native, fires with app closed) |
-| "bank alerts aren't being hidden any more" | `canPostCaptureNotifications` in `android-custom/NotificationListener.java` **first** — suppression needs Covault's own notification to post, and `POST_NOTIFICATIONS` is a separate permission a reinstall resets. Only then the gates in `maybeHideBankNotification` |
-| "tapping a notification goes to the wrong place" | `components/Dashboard/useNotificationRoute.ts`, `android-custom/MainActivity.java` |
+| "the review list / badge is wrong" | `app/lib/capture/reviewQueue.ts` — the single definition of "waiting"; the list, badge and widget all read it |
+| "the widget is stale or wrong" | `app/lib/native/widgetSnapshot.ts` → `native/android/WidgetDeltaStore.java` → `native/android/WidgetRenderer.java` |
+| "the 'add widget' button in settings doesn't work" | `native/android/CovaultWidgetPlugin.java` (`isSupported` / `requestPinAppWidget`) → `app/components/settings/DashboardSettingsModal/sections/HomeScreenWidgetSection/HomeScreenWidgetSection.tsx` — the button is one of two routes and only ever shown once `isSupported` says the launcher can honour it; the other route is the written steps, unconditional and always correct |
+| "notifications look wrong / didn't arrive" | `app/lib/native/appNotifications.ts` (JS-posted) and `native/android/NotificationListener.java` (native, fires with app closed) |
+| "bank alerts aren't being hidden any more" | `canPostCaptureNotifications` in `native/android/NotificationListener.java` **first** — suppression needs Covault's own notification to post, and `POST_NOTIFICATIONS` is a separate permission a reinstall resets. Only then the gates in `maybeHideBankNotification` |
+| "tapping a notification goes to the wrong place" | `app/components/Dashboard/useNotificationRoute.ts`, `native/android/MainActivity.java` |
 | "partner sharing / linking is broken" | `app/data/useHouseholdLinking.ts` + the RPCs in `supabase/migrations/2026_08_01_sync_schema_to_app.sql` |
-| "it won't let me lower a budget" / "it says I'm over my income" | `lib/budgets/budgetAllocation.ts` — the rule is direction, not the line; see the invariant below |
-| "nothing is being captured from one of my banks" | the amber card in `NotificationSettingsSection.tsx`, fed by `lib/capture/bankHeartbeat.ts`. The app cannot read another app's notification settings — this is an inference from silence |
-| "a setting doesn't stick" | `SETTING_DB_KEYS` in `components/Dashboard/Dashboard.tsx` → `app/data/useUserSettings.ts` → `app/data/useDataLoading.ts`. **Usually a missing DB column** — see Invariants |
-| "an edit didn't save" | `app/data/useTransactionOps.ts`. If it's a **vendor rename**, also `lib/vendors/formatVendorName.ts` — it has previously overwritten the user's own capitalisation |
-| "the numbers are wrong" | `components/Dashboard/useDashboardTotals.ts`, `lib/transactions/refundMatching.ts`, `lib/transactions/projectedTransactions.ts` |
-| "a refund didn't change my balance" / "the balance and the bars disagree" | `countedAmount` in `lib/transactions/refundMatching.ts` — the one per-row rule every spending total uses. See Invariants |
-| "we unlinked but the balance still has their money in it" | `withoutPartner` in `lib/budgets/householdSharing.ts`, applied by `handleUnlinkPartner` and by `loadHouseholdLink` when a reload finds no partner |
-| "I got a budget alert about my partner's spending" / "it never told me I went over" | `checkAndTriggerAppNotifications` in `lib/native/appNotifications.ts` — same limits and same rows as the vials; the warning and the overrun are remembered separately |
+| "it won't let me lower a budget" / "it says I'm over my income" | `app/lib/budgets/budgetAllocation.ts` — the rule is direction, not the line; see the invariant below |
+| "nothing is being captured from one of my banks" | the amber card in `NotificationSettingsSection.tsx`, fed by `app/lib/capture/bankHeartbeat.ts`. The app cannot read another app's notification settings — this is an inference from silence |
+| "a setting doesn't stick" | `SETTING_DB_KEYS` in `app/components/Dashboard/Dashboard.tsx` → `app/data/useUserSettings.ts` → `app/data/useDataLoading.ts`. **Usually a missing DB column** — see Invariants |
+| "an edit didn't save" | `app/data/useTransactionOps.ts`. If it's a **vendor rename**, also `app/lib/vendors/formatVendorName.ts` — it has previously overwritten the user's own capitalisation |
+| "the numbers are wrong" | `app/components/Dashboard/useDashboardTotals.ts`, `app/lib/transactions/refundMatching.ts`, `app/lib/transactions/projectedTransactions.ts` |
+| "a refund didn't change my balance" / "the balance and the bars disagree" | `countedAmount` in `app/lib/transactions/refundMatching.ts` — the one per-row rule every spending total uses. See Invariants |
+| "we unlinked but the balance still has their money in it" | `withoutPartner` in `app/lib/budgets/householdSharing.ts`, applied by `handleUnlinkPartner` and by `loadHouseholdLink` when a reload finds no partner |
+| "I got a budget alert about my partner's spending" / "it never told me I went over" | `checkAndTriggerAppNotifications` in `app/lib/native/appNotifications.ts` — same limits and same rows as the vials; the warning and the overrun are remembered separately |
 | "a sign-in link did something strange" | `parseOAuthCode` in `app/hooks/useDeepLinks.ts` — only a PKCE code is ever accepted. See Invariants |
-| "the chart is showing the wrong months" / "I tapped a month and nothing changed" | `lib/time/monthWindow.ts` (the seven keys) → `components/Dashboard/useMonthSelection.ts` (which one is on screen, and what puts it back) → `components/Dashboard/BudgetFlowChart/BudgetFlowChart.tsx` (the rail) |
-| "it's showing me an old month" / "the balance at the top looks wrong" | `components/Dashboard/Dashboard.tsx` — `monthKey` is the month we are IN, `viewMonthKey` the one being READ. See the invariant below before moving anything onto the second |
-| "last month's entries are still listed" / "the list is in the wrong order" | `lib/transactions/transactionOrdering.ts` (one month, chronological) → `lib/hooks/useCurrentDay.ts` (the single clock) → `components/Dashboard/Dashboard.tsx` |
-| "a modal/sheet looks broken or is cut off" | `components/ui/Portal.tsx` — overlays inside `<main>` need it; see Invariants |
-| "the animation is janky" | `index.css`, `components/Dashboard/BudgetSections/BudgetSection.tsx`, `components/Dashboard/BudgetFlowChart/BudgetFlowChart.tsx` |
-| "the intro didn't set anything up" / "I got dropped on an empty dashboard" | `components/Onboarding/Onboarding.tsx` (the step router) → `components/Onboarding/steps/` (one file per setup step) → `components/Onboarding/onboardingProgress.ts` (where it resumes from) |
-| "the app didn't offer me the update" / "it didn't update itself" | `lib/native/appUpdate.ts` (the check) → `app/hooks/useAppUpdate.ts` (when, and which of the two routes) → `android-custom/CovaultUpdaterPlugin.java` (install, or unpack) |
-| "it still asked me to confirm the update" | the three conditions in the APK-route invariant below — `UPDATE_PACKAGES_WITHOUT_USER_ACTION` in `android-custom/AndroidManifest.xml`, Android 12+, and the install permission. A refusal is recorded per build in `CovaultUpdaterPlugin` and reported by `getStatus` as `quietInstallSupported` |
+| "the chart is showing the wrong months" / "I tapped a month and nothing changed" | `app/lib/time/monthWindow.ts` (the seven keys) → `app/components/Dashboard/useMonthSelection.ts` (which one is on screen, and what puts it back) → `app/components/Dashboard/BudgetFlowChart.tsx` (the rail) |
+| "it's showing me an old month" / "the balance at the top looks wrong" | `app/components/Dashboard/Dashboard.tsx` — `monthKey` is the month we are IN, `viewMonthKey` the one being READ. See the invariant below before moving anything onto the second |
+| "last month's entries are still listed" / "the list is in the wrong order" | `app/lib/transactions/transactionOrdering.ts` (one month, chronological) → `app/hooks/useCurrentDay.ts` (the single clock) → `app/components/Dashboard/Dashboard.tsx` |
+| "a modal/sheet looks broken or is cut off" | `app/components/common/Portal.tsx` — overlays inside `<main>` need it; see Invariants |
+| "the animation is janky" | `app/index.css`, `app/components/Dashboard/DashboardBudgetSectionsList/BudgetSection/BudgetSection.tsx`, `app/components/Dashboard/BudgetFlowChart.tsx` |
+| "the intro didn't set anything up" / "I got dropped on an empty dashboard" | `app/components/Onboarding/Onboarding.tsx` (the step router) → `app/components/Onboarding/steps/` (one file per setup step) → `app/components/Onboarding/onboardingProgress.ts` (where it resumes from) |
+| "the app didn't offer me the update" / "it didn't update itself" | `app/lib/native/appUpdate.ts` (the check) → `app/hooks/useAppUpdate.ts` (when, and which of the two routes) → `native/android/CovaultUpdaterPlugin.java` (install, or unpack) |
+| "it still asked me to confirm the update" | the three conditions in the APK-route invariant below — `UPDATE_PACKAGES_WITHOUT_USER_ACTION` in `native/android/AndroidManifest.xml`, Android 12+, and the install permission. A refusal is recorded per build in `CovaultUpdaterPlugin` and reported by `getStatus` as `quietInstallSupported` |
 | anything about the Android build | `scripts/sync-android.sh`, `.github/workflows/build-android.yml` |
-| "test on Android" / "fake a bank notification" | `docs/ANDROID_TESTING.md` → `.github/workflows/android-emulator.yml` → `android-test/` and `android-e2e/` |
+| "test on Android" / "fake a bank notification" | `docs/ANDROID_TESTING.md` → `.github/workflows/android-emulator.yml` → `test/android/` and `e2e/android/` |
 | "the Play build got rejected" / "why can't it see my bank on the Play version" | `scripts/play-manifest.mjs` — the AAB is built from a stripped manifest. See Invariants |
-| "my trial ran out early / never ran out" | `lib/time/serverClock.ts` → `lib/auth/entitlement.ts`. The trial is judged on the DATABASE's clock, not the phone's |
+| "my trial ran out early / never ran out" | `app/lib/time/serverClock.ts` → `app/lib/auth/entitlement.ts`. The trial is judged on the DATABASE's clock, not the phone's |
 
 Deeper detail on any of these: `docs/ARCHITECTURE.md`. Human setup: `README.md`.
 
@@ -238,7 +238,7 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   So the AAB workflow sets `COVAULT_DISTRIBUTION=play` and
   `scripts/play-manifest.mjs` removes five permissions and replaces
   `QUERY_ALL_PACKAGES` with a `<queries>` list generated from
-  `lib/capture/bankingApps.ts`. Two things are load-bearing. It is OPT-IN: the APK
+  `app/lib/capture/bankingApps.ts`. Two things are load-bearing. It is OPT-IN: the APK
   workflow does not set the variable, so the phone build is unchanged, and it
   must stay that way — a sideload build without `REQUEST_INSTALL_PACKAGES`
   cannot update itself. And a permission it means to remove but cannot find
@@ -252,7 +252,7 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
 - **The trial is judged on the database's clock, not the phone's.** It is "you
   have until this date", and it was being compared against `Date.now()` — the
   clock belonging to the person being charged, so winding the phone back a
-  month extended the trial for ever. `lib/time/serverClock.ts` asks the database for
+  month extended the trial for ever. `app/lib/time/serverClock.ts` asks the database for
   the time once per load and carries the difference as an offset; every
   entitlement question passes `serverNow()`. It fails OPEN on purpose: no
   network, or a database without `server_now()`, leaves the offset at zero and
@@ -265,7 +265,7 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   of `animate-in` / `zoom-in-*` / `slide-in-*` emit *no CSS at all* without it,
   silently. `test/__tests__/regressions/tailwindAnimatePlugin.test.ts` guards this.
 - **Tailwind 4 still draws this app's existing palette and motion.**
-  `index.css` is the Tailwind entry and loads the shared JavaScript theme.
+  `app/index.css` is the Tailwind entry and loads the shared JavaScript theme.
   Its compatibility tokens retain the colors, shadows and control treatments
   the app used before the upgrade; replacing them with framework defaults is a
   visual change, not dependency cleanup. Android requires WebView 111 or newer
@@ -282,7 +282,7 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   no matter how large its own z-index is.
 - **The APK signing key is pinned, and the pinning is verified.** CI writes an
   explicit `signingConfigs.debug` into `android/app/build.gradle` naming
-  `android-custom/covault-debug.keystore`, then checks the built APK's
+  `native/android/covault-debug.keystore`, then checks the built APK's
   certificate with `apksigner` and fails if it doesn't match. Both halves are
   load-bearing. Without a pinned key Gradle mints a fresh one per run and
   Android refuses to install the update, so the only way forward is
@@ -298,7 +298,7 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   workflow to catch it.
 - **A web-only change updates itself; anything native needs the APK.** Which
   route a release takes is decided by `scripts/native-hash.mjs` — a fingerprint
-  of `android-custom/`, `capacitor.config.ts` and the Capacitor plugin
+  of `native/android/`, `capacitor.config.ts` and the Capacitor plugin
   versions, baked into the APK and used to name the published web bundle. A
   phone applies only a bundle carrying its own fingerprint, so touching any
   native file automatically forces a full install instead. Do not "simplify"
@@ -330,7 +330,7 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   at it. `useAppUpdate` calling `confirmWebBundle()` a few seconds after mount
   is the other half — remove it and every update silently reverts.
 - **The 21MB ONNX runtime is dropped from the build on purpose.**
-  `vite.config.ts` deletes it because `lib/ai/aiExtractor.ts` pins the runtime to
+  `vite.config.ts` deletes it because `app/lib/ai/aiExtractor.ts` pins the runtime to
   a CDN, which makes the bundled copy unreachable. The two only work as a pair;
   `aiRuntimeSource.test.ts` fails the build if one goes without the other. The
   model weights come from huggingface.co regardless, so the AI fallback has
@@ -339,7 +339,7 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   optimistically and `saveSettingToDb` only logs failures, so a missing column
   is indistinguishable from success. Check the column exists.
 - **Recurring charges are never written to the database.**
-  `lib/transactions/projectedTransactions.ts` already includes the current month's
+  `app/lib/transactions/projectedTransactions.ts` already includes the current month's
   occurrences in the dashboard total — an occurrence whose date has passed is
   emitted with `is_projected: false`, so it counts exactly like a real row. A
   `lib/recurringExecutor.ts` used to also insert a real row per due date; every
@@ -375,7 +375,7 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   a wrong screen — the limits shown are what the settings screen writes back, so
   the starter figures sat one tap from being saved over the real ones. The rule
   is the one `fetchTransactionsFor` already follows: an empty answer is an
-  answer, a failed request is not. See `lib/budgets/budgetFallback.ts`, which also holds
+  answer, a failed request is not. See `app/lib/budgets/budgetFallback.ts`, which also holds
   why the `user_uuid`/`user_id` fallback fires only on 400/404 — answering a 401
   by asking for a column the schema lacks turned a recoverable failure into a
   certain one. `budgetsSurviveFailedRead.test.ts` pins all of it.
@@ -438,7 +438,7 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   the same amount to the cent, the same day and the same category, so a
   premium reported at $477.45 on its due date and captured at $477.46 the next
   day sat on the dashboard twice. It is now "looks like the same charge"
-  (`lib/transactions/duplicateCharge.ts`) — but paired off one-to-one, closest first,
+  (`app/lib/transactions/duplicateCharge.ts`) — but paired off one-to-one, closest first,
   because the household has two Fizz charges a month three days apart and a
   single unpaired sweep would let the first of them cancel both. Do not
   simplify either half back: exactness put a phantom row on the dashboard,
@@ -483,7 +483,7 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   the starter set is seven categories at $500 and they were over the line
   before touching anything. Lowering a limit still left them over, so lowering
   was refused too: the only escape the app offered was to claim a bigger
-  income. `lib/budgets/budgetAllocation.ts` holds the rule and
+  income. `app/lib/budgets/budgetAllocation.ts` holds the rule and
   `budgetAllocation.test.ts` pins it. Do not "restore" the simpler check.
 
 - **The intro's setup steps write each answer as it is given, and never render
@@ -491,7 +491,7 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   The writing: the capture step leaves the app for Android's settings, where the
   WebView is routinely destroyed, so a flow that collected answers and committed
   them at the end would commit at a moment many users never reach —
-  `components/Onboarding/onboardingProgress.ts` therefore only has to remember WHICH step, never
+  `app/components/Onboarding/onboardingProgress.ts` therefore only has to remember WHICH step, never
   what was typed. The ids: `budgets` has no id column, so a loaded row is
   `budget:<name>` while the starter constants carry fixed UUIDs, and
   `hiddenCategories` stores whichever id was on screen when the eye was tapped
@@ -507,7 +507,7 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   `getNotificationChannels` are scoped to the caller, the per-package variants
   are system APIs, and the listener's ranking data only describes notifications
   that were actually posted, which is no help when the complaint is that none
-  are. So `lib/capture/bankHeartbeat.ts` records the one observable thing — the last
+  are. So `app/lib/capture/bankHeartbeat.ts` records the one observable thing — the last
   time each bank reached us — and the warning is worded as a guess with a
   button to the page that fixes it. Do not reword it into a statement of fact,
   and do not shorten the silence window: the same silence is what a quiet week
@@ -573,7 +573,7 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   vials on the dashboard of every household already using the app, on the one
   screen they read every day, as a side effect of an update they never chose,
   at a vial count the two-line row cannot hold. So `OPT_IN_CATEGORIES` in
-  `constants.ts` names the later additions and they are seeded `Visible:
+  `app/constants.ts` names the later additions and they are seeded `Visible:
   false` whenever the vault already had rows. "Already had rows" is the honest
   test, and it is only reachable on a SUCCESSFUL read: an empty answer is a
   first-ever load, a failed one returns before seeding — the same rule
@@ -613,7 +613,7 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   literally truncated at any of those — checked against the browser's own
   rendering rather than assumed — but from eight up the row is wearing its
   padding as slack and by ten it runs edge to edge, which on this app is a
-  real problem rather than a cosmetic one. So `lib/budgets/vialDensity.ts` drops the
+  real problem rather than a cosmetic one. So `app/lib/budgets/vialDensity.ts` drops the
   "$288 left" line past seven and keeps the name and the limit, whose natural
   height is about 30px and therefore fits eight, nine and ten with room to
   spare. It is driven by the COUNT, not by a measurement, because a measured
@@ -690,7 +690,7 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   household's history sat in Leisure, and nothing was ever shown to the user to
   disagree with. The same split made the review picker offer "Wendy's ·
   Leisure", "Wendy's · Leisure" and "Wendy's · Other" — the same answer twice,
-  with nothing on screen telling the two apart. `lib/vendors/vendorRuleScope.ts` holds
+  with nothing on screen telling the two apart. `app/lib/vendors/vendorRuleScope.ts` holds
   both halves: the conflict check widens to every rule sharing a display name,
   and the picker collapses to one entry per category. The widening decides only
   WHETHER to ask — the rule actually applied is still one whose slug matched,
@@ -708,7 +708,7 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   filing that one branch's charges under Other indefinitely, with nothing on
   screen to say the rest of the merchant disagreed. Two halves fix it.
   Nothing writes an Other rule any more — `persistVendorOverride` in
-  `lib/vendors/vendorOverrideWrite.ts` and `handleSetVendorCategory` in
+  `app/lib/vendors/vendorOverrideWrite.ts` and `handleSetVendorCategory` in
   `useVendorOverrides.ts` both refuse before the network call, though the
   transaction itself is still filed as Other; only the "remember this" side
   effect is skipped, and the review-row toast says "Filed as Other" rather
@@ -728,7 +728,7 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   an end-to-end pass through the real pipeline.
 
 - **A rule is taught for the CHAIN, not the branch, but only for chains named
-  in `lib/vendors/chainVendorKeys.ts` — and that list is short on purpose.** A
+  in `app/lib/vendors/chainVendorKeys.ts` — and that list is short on purpose.** A
   learned rule's `match_key` has to be what the bank literally sends, because
   that is the string that recurs; a chain announces every location under its
   own name, so a household that had corrected three Wendy's branches had
@@ -762,7 +762,7 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   `vendorOverrideWrite.test.ts` pin both halves.
 
 - **React Query caches screen-level reads only — never transactions, budgets
-  or settings.** `lib/cache/queryClient.ts` holds reads a screen makes when it
+  or settings.** `app/lib/cache/queryClient.ts` holds reads a screen makes when it
   opens (today: the Review page's skip rules), so a return visit draws at once
   and the read can be started early — a few seconds after the dashboard
   settles, and on the first touch of the Review button. The core load in
@@ -783,7 +783,7 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   purchase left its vial and kept lowering "Remaining Balance". And the vial
   over-corrected the hand-entered kind, dropping the struck-through purchase
   AND subtracting the refund, so a returned $60 read -$60. `countedAmount` in
-  `lib/transactions/refundMatching.ts` is now the only rule: a flagged purchase is 0,
+  `app/lib/transactions/refundMatching.ts` is now the only rule: a flagged purchase is 0,
   everything else counts at face value, so a hand-entered pair nets to zero
   by itself. A projected occurrence never inherits `refunded` from the row it
   was copied from — a refund belongs to one charge, not the series. Any new
@@ -808,7 +808,7 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
   having returned normally, released the capture from the queue for good.
   `captureSurvivesPipelineError.test.ts` pins it.
 
-- **The budget order comes from `lib/budgets/budgetOrder.ts`, not from the database.**
+- **The budget order comes from `app/lib/budgets/budgetOrder.ts`, not from the database.**
   `budgets` has no primary key and no sort column, and `loadUserBudgets` reads
   it with a plain `select=*`, so PostgREST returns Postgres's heap order — which
   moves a row to the end the moment it is UPDATEd. Editing one budget's limit
@@ -820,7 +820,7 @@ Do not "clean these up". Each one was a real failure that cost real debugging.
 ## Do not read
 
 - `android/` — generated by CI (`rm -rf android && npx cap add android`) and
-  gitignored. Custom native source lives in `android-custom/`.
+  gitignored. Custom native source lives in `native/android/`.
 - `dist/`, `node_modules/`.
 - `supabase/migrations/*.sql` marked **SUPERSEDED** in their header.
 
@@ -843,9 +843,9 @@ exports, types, data boundaries, interaction states, tests and thematic PRs.
 
 - Surgical, behaviour-preserving changes. No broad rewrites unless asked.
 - Never wrap imports in `try`/`catch`.
-- Enum/label ↔ DB mapping belongs in `lib/api/transactionMappers.ts`.
+- Enum/label ↔ DB mapping belongs in `app/lib/api/transactionMappers.ts`.
 - New bank or vendor pattern ⇒ add a parser test.
-- Shared controls in `components/ui/` and `components/shared/` take data and
+- Shared controls in `app/components/common/` take data and
   actions through props. Lint refuses Supabase, Capacitor and native-plugin
   imports there, so the same control renders in a test, the visual check page
   and the app alike.

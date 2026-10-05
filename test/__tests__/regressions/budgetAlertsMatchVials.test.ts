@@ -37,8 +37,8 @@ class MemoryStorage {
 const storage = new MemoryStorage();
 vi.stubGlobal('localStorage', storage);
 
-import { checkAndTriggerAppNotifications } from '../../../lib/native/appNotifications';
-import type { BudgetCategory, Transaction } from '../../../types';
+import { checkAndTriggerAppNotifications } from '../../../app/lib/native/appNotifications';
+import type { BudgetCategory, Transaction } from '../../../app/types';
 
 const ME = 'me';
 const THEM = 'them';

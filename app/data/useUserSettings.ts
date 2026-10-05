@@ -1,10 +1,16 @@
 // app/data/useUserSettings.ts
-import { log } from '../../lib/observability/log';
+import { log } from '../lib/observability/log';
 import { useCallback, useEffect, useRef } from 'react';
-import { REST_BASE, getAuthHeaders, restFetch, DEFAULT_MONTHLY_INCOME } from '../../lib/api/apiHelpers';
-import { persistSetting } from '../../lib/settings/persistSetting';
-import { SettingSaveQueue, type SettingValue } from '../../lib/settings/settingSaveQueue';
+import { REST_BASE, getAuthHeaders, restFetch, DEFAULT_MONTHLY_INCOME } from '../lib/api/apiHelpers';
+import { persistSetting } from '../lib/settings/persistSetting';
+import { SettingSaveQueue, type SettingValue } from '../lib/settings/settingSaveQueue';
 import type { UseUserDataParams } from './types';
+import {
+  captureAccountDataScope,
+  isCurrentAccountDataScope,
+  type AccountDataScope,
+  type AccountDataScopeRef,
+} from '../lib/auth/accountScope';
 
 const parseRows = (body: string): unknown[] => {
   try {
@@ -55,6 +61,14 @@ const parseThemeChoice = (value: SettingValue): 'light' | 'dark' => {
   if (value === 'light' || value === 'dark') return value;
   throw new TypeError('Invalid queued theme choice');
 };
+
+const isSaveScopeCurrent = (
+  accountScopeRef: AccountDataScopeRef | undefined,
+  scope: AccountDataScope | null,
+  userId: string,
+): boolean => !accountScopeRef || (
+  scope?.userId === userId && isCurrentAccountDataScope(accountScopeRef, scope)
+);
 
 async function persistBudgetRow(
   userId: string,
@@ -153,12 +167,13 @@ export const useUserSettings = ({
   appState,
   setAppState,
   setDbError,
+  accountScopeRef,
 }: UseUserDataParams) => {
   const saveQueueRef = useRef(new SettingSaveQueue());
   const budgetRowChoicesRef = useRef(new Map<string, BudgetRowChoice>());
   useEffect(() => {
     saveQueueRef.current.clear();
-  }, [appState.user?.id]);
+  }, [appState.user?.id, accountScopeRef?.current.generation]);
 
   const currentHiddenCategories = appState.settings.hiddenCategories || [];
   if (appState.user?.id) {
@@ -174,10 +189,14 @@ export const useUserSettings = ({
   const saveBudgetLimit = useCallback(
     async (categoryId: string, newLimit: number) => {
       const userId = appState.user?.id;
+      const scope = userId && accountScopeRef
+        ? captureAccountDataScope(accountScopeRef, userId)
+        : null;
       if (!userId) {
         setDbError('Could not save this budget limit. Please try again.');
         return;
       }
+      if (!isSaveScopeCurrent(accountScopeRef, scope, userId)) return;
 
       // Find the category name from the categoryId
       const category = appState.budgets.find(b => b.id === categoryId);
@@ -196,12 +215,11 @@ export const useUserSettings = ({
       budgetRowChoicesRef.current.set(rowKey, nextChoice);
 
       // Optimistic UI update
-      setAppState(prev => ({
-        ...prev,
-        budgets: prev.budgets.map(b =>
-          b.id === categoryId ? { ...b, totalLimit: newLimit } : b,
-        ),
-      }));
+      setAppState(prev => (
+        isSaveScopeCurrent(accountScopeRef, scope, userId) && prev.user?.id === userId
+          ? { ...prev, budgets: prev.budgets.map(b => b.id === categoryId ? { ...b, totalLimit: newLimit } : b) }
+          : prev
+      ));
 
       return saveQueueRef.current.enqueue({
         key: `budget-row:${userId}:${categoryId}`,
@@ -218,13 +236,14 @@ export const useUserSettings = ({
           );
         },
         onFailure: (lastSavedValue, error) => {
+          if (!isSaveScopeCurrent(accountScopeRef, scope, userId)) return;
           const msg = saveErrorMessage(error, 'saveBudgetLimit');
           log.error(msg);
           setDbError(msg);
           const lastSavedChoice = parseBudgetRowChoice(lastSavedValue);
           budgetRowChoicesRef.current.set(rowKey, lastSavedChoice);
           setAppState(prev => {
-            if (prev.user?.id !== userId) return prev;
+            if (!isSaveScopeCurrent(accountScopeRef, scope, userId) || prev.user?.id !== userId) return prev;
             const hidden = prev.settings.hiddenCategories || [];
             const hiddenCategories = lastSavedChoice.visible
               ? hidden.filter(id => id !== categoryId)
@@ -240,7 +259,7 @@ export const useUserSettings = ({
         },
       });
     },
-    [appState.user, appState.budgets, appState.settings.hiddenCategories, setAppState, setDbError],
+    [appState.user, appState.budgets, appState.settings.hiddenCategories, accountScopeRef, setAppState, setDbError],
   );
 
   // Save user monthly income to Supabase settings table
@@ -249,21 +268,26 @@ export const useUserSettings = ({
       const userId = appState.user?.id;
       const userName = appState.user?.name;
       const userEmail = appState.user?.email;
+      const scope = userId && accountScopeRef
+        ? captureAccountDataScope(accountScopeRef, userId)
+        : null;
       
       if (!userId) {
         log.warn('[saveUserIncome] missing userId, skipping save');
         setDbError('Could not save your monthly income. Please try again.');
         return;
       }
+      if (!isSaveScopeCurrent(accountScopeRef, scope, userId)) return;
 
       // Store the previous value for rollback (with fallback to default if not set)
       const previousIncome = appState.user?.monthlyIncome ?? DEFAULT_MONTHLY_INCOME;
 
       // Optimistic UI update
-      setAppState(prev => ({
-        ...prev,
-        user: prev.user ? { ...prev.user, monthlyIncome: income } : null,
-      }));
+      setAppState(prev => (
+        isSaveScopeCurrent(accountScopeRef, scope, userId) && prev.user?.id === userId
+          ? { ...prev, user: { ...prev.user, monthlyIncome: income } }
+          : prev
+      ));
 
       return saveQueueRef.current.enqueue({
         key: 'user-income',
@@ -327,11 +351,13 @@ export const useUserSettings = ({
           log.debug(`[saveUserIncome] POST OK: ${income}`);
         },
         onFailure: (lastSavedValue, error) => {
+          if (!isSaveScopeCurrent(accountScopeRef, scope, userId)) return;
           const msg = saveErrorMessage(error, 'saveUserIncome');
           log.error(msg);
           setDbError(msg);
           setAppState(prev => {
-            if (prev.user?.id !== userId || prev.user.monthlyIncome !== income) return prev;
+            if (!isSaveScopeCurrent(accountScopeRef, scope, userId)
+              || prev.user?.id !== userId || prev.user.monthlyIncome !== income) return prev;
             return {
               ...prev,
               user: { ...prev.user, monthlyIncome: Number(lastSavedValue) },
@@ -340,27 +366,32 @@ export const useUserSettings = ({
         },
       });
     },
-    [appState.user, setAppState, setDbError],
+    [appState.user, accountScopeRef, setAppState, setDbError],
   );
 
   // Save theme to Supabase settings table
   const saveTheme = useCallback(
     async (theme: 'light' | 'dark') => {
       const userId = appState.user?.id;
+      const scope = userId && accountScopeRef
+        ? captureAccountDataScope(accountScopeRef, userId)
+        : null;
       if (!userId) {
         log.warn('[saveTheme] no userId, skipping save');
         setDbError('Could not save your theme choice. Please try again.');
         return;
       }
+      if (!isSaveScopeCurrent(accountScopeRef, scope, userId)) return;
 
       // Store the previous value for rollback
       const previousTheme = appState.settings.theme;
 
       // Optimistic UI update
-      setAppState(prev => ({
-        ...prev,
-        settings: { ...prev.settings, theme },
-      }));
+      setAppState(prev => (
+        isSaveScopeCurrent(accountScopeRef, scope, userId) && prev.user?.id === userId
+          ? { ...prev, settings: { ...prev.settings, theme } }
+          : prev
+      ));
 
       return saveQueueRef.current.enqueue({
         key: 'theme',
@@ -382,27 +413,33 @@ export const useUserSettings = ({
           log.debug(`[saveTheme] successfully updated to ${theme}`);
         },
         onFailure: (lastSavedValue, error) => {
+          if (!isSaveScopeCurrent(accountScopeRef, scope, userId)) return;
           const msg = saveErrorMessage(error, 'saveTheme');
           log.error(msg);
           setDbError(msg);
           setAppState(prev => {
-            if (prev.user?.id !== userId || prev.settings.theme !== theme) return prev;
+            if (!isSaveScopeCurrent(accountScopeRef, scope, userId)
+              || prev.user?.id !== userId || prev.settings.theme !== theme) return prev;
             return { ...prev, settings: { ...prev.settings, theme: parseThemeChoice(lastSavedValue) } };
           });
         },
       });
     },
-    [appState.user, appState.settings.theme, setAppState, setDbError],
+    [appState.user, appState.settings.theme, accountScopeRef, setAppState, setDbError],
   );
 
   // Save budget visibility to Supabase budgets table
   const saveBudgetVisibility = useCallback(
     async (categoryId: string, visible: boolean) => {
       const userId = appState.user?.id;
+      const scope = userId && accountScopeRef
+        ? captureAccountDataScope(accountScopeRef, userId)
+        : null;
       if (!userId) {
         setDbError('Could not save this budget visibility choice. Please try again.');
         return;
       }
+      if (!isSaveScopeCurrent(accountScopeRef, scope, userId)) return;
 
       // Find the category name from the categoryId
       const category = appState.budgets.find(b => b.id === categoryId);
@@ -421,6 +458,7 @@ export const useUserSettings = ({
       budgetRowChoicesRef.current.set(rowKey, nextChoice);
 
       setAppState(prev => {
+        if (!isSaveScopeCurrent(accountScopeRef, scope, userId) || prev.user?.id !== userId) return prev;
         const hidden = prev.settings.hiddenCategories || [];
         const nextHidden = visible
           ? hidden.filter(id => id !== categoryId)
@@ -443,13 +481,14 @@ export const useUserSettings = ({
           );
         },
         onFailure: (lastSavedValue, error) => {
+          if (!isSaveScopeCurrent(accountScopeRef, scope, userId)) return;
           const msg = saveErrorMessage(error, 'saveBudgetVisibility');
           log.error(msg);
           setDbError(msg);
           const lastSavedChoice = parseBudgetRowChoice(lastSavedValue);
           budgetRowChoicesRef.current.set(rowKey, lastSavedChoice);
           setAppState(prev => {
-            if (prev.user?.id !== userId) return prev;
+            if (!isSaveScopeCurrent(accountScopeRef, scope, userId) || prev.user?.id !== userId) return prev;
             const hidden = prev.settings.hiddenCategories || [];
             const nextHidden = lastSavedChoice.visible
               ? hidden.filter(id => id !== categoryId)
@@ -465,7 +504,7 @@ export const useUserSettings = ({
         },
       });
     },
-    [appState.user, appState.budgets, appState.settings.hiddenCategories, setAppState, setDbError],
+    [appState.user, appState.budgets, appState.settings.hiddenCategories, accountScopeRef, setAppState, setDbError],
   );
 
   // Save one setting to the person's settings row. A successful HTTP response
@@ -476,15 +515,21 @@ export const useUserSettings = ({
       if (!userId) {
         throw new Error('No signed-in user to save this setting for.');
       }
+      const scope = accountScopeRef
+        ? captureAccountDataScope(accountScopeRef, userId)
+        : null;
+      if (!isSaveScopeCurrent(accountScopeRef, scope, userId)) return;
       try {
         await persistSetting(userId, dbKey, value);
+        if (!isSaveScopeCurrent(accountScopeRef, scope, userId)) return;
         log.debug(`[saveSettingToDb] ${dbKey} = ${value}`);
       } catch (error) {
+        if (!isSaveScopeCurrent(accountScopeRef, scope, userId)) return;
         log.error('[saveSettingToDb] failed:', error);
         throw error;
       }
     },
-    [appState.user],
+    [appState.user, accountScopeRef],
   );
 
   return {

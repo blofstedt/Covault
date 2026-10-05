@@ -13,11 +13,11 @@ import {
   captureNotifiedAt,
   isOtherAppSameTap,
   CROSS_APP_WINDOW_MS,
-} from '../../../lib/capture/captureChannel';
-import { amountsAgree, isSameCharge } from '../../../lib/transactions/duplicateCharge';
-import { withFuelHoldMarker, readFuelHoldMarker, stripFuelHoldMarker } from '../../../lib/capture/fuelHold';
+} from '../../../app/lib/capture/captureChannel';
+import { amountsAgree, isSameCharge } from '../../../app/lib/transactions/duplicateCharge';
+import { withFuelHoldMarker, readFuelHoldMarker, stripFuelHoldMarker } from '../../../app/lib/capture/fuelHold';
 
-const PROCESSOR = readFileSync(resolve(__dirname, '../../../lib/capture/notificationProcessor.ts'), 'utf-8');
+const PROCESSOR = readFileSync(resolve(__dirname, '../../../app/lib/capture/notificationProcessor.ts'), 'utf-8');
 
 /**
  * One purchase, one row — however many ways the bank announces it.

@@ -14,10 +14,10 @@ import { resolve } from 'node:path';
 const root = resolve(__dirname, '../../..');
 const read = (p: string) => readFileSync(resolve(root, p), 'utf8');
 
-const PROCESSOR = read('lib/capture/notificationProcessor.ts');
+const PROCESSOR = read('app/lib/capture/notificationProcessor.ts');
 const USE_LISTENER = read('app/hooks/useNotificationListener.ts');
 const USE_TX_OPS = read('app/data/useTransactionOps.ts');
-const PARSING = read('components/Review/TransactionParsing.tsx');
+const PARSING = read('app/components/review/TransactionParsing/TransactionParsing.tsx');
 
 describe('written at capture', () => {
   it('the id reaches the pipeline input', () => {

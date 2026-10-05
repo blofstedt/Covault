@@ -8,19 +8,19 @@ import { resolve } from 'node:path';
 import { QueryClient } from '@tanstack/react-query';
 
 const restFetch = vi.fn();
-vi.mock('../../../lib/api/apiHelpers', () => ({ restFetch: (...args: unknown[]) => restFetch(...args) }));
-vi.mock('../../../lib/native/covaultNotification', () => ({
+vi.mock('../../../app/lib/api/apiHelpers', () => ({ restFetch: (...args: unknown[]) => restFetch(...args) }));
+vi.mock('../../../app/lib/native/covaultNotification', () => ({
   covaultNotification: null,
   pushSkipRules: () => Promise.resolve(true),
 }));
 
-import { fetchNotificationRuleList, listNotificationRules } from '../../../lib/capture/notificationRules';
+import { fetchNotificationRuleList, listNotificationRules } from '../../../app/lib/capture/notificationRules';
 import {
   canFetchNotificationRules,
   notificationRulesKey,
   notificationRulesQuery,
   prefetchNotificationRules,
-} from '../../../lib/capture/queries/notificationRules';
+} from '../../../app/lib/capture/queries/notificationRules';
 
 const read = (p: string) => readFileSync(resolve(__dirname, '../../..', p), 'utf8');
 const ok = (rows: unknown[]) => Response.json(rows, { status: 200 });
@@ -91,27 +91,13 @@ describe('wiring', () => {
   });
 
   it('the Review button warms the cache before the tap completes', () => {
-    const bar = read('components/shared/DashboardBottomBar.tsx');
+    const bar = read('app/components/common/DashboardBottomBar.tsx');
     expect(bar).toMatch(/onPointerDown=\{onPrefetchParsing\}/);
-    expect(read('components/Dashboard/Dashboard.tsx')).toMatch(/onPrefetchParsing=\{prefetchReview\}/);
-  });
-
-  it('signing out empties the cache, so the next person never sees these rules', () => {
-    const auth = read('app/hooks/useAuthState.ts');
-    const listenerStart = auth.indexOf('supabase.auth.onAuthStateChange');
-    const listenerEnd = auth.indexOf('return () => subscription.unsubscribe()', listenerStart);
-    expect(listenerStart).toBeGreaterThanOrEqual(0);
-    expect(listenerEnd).toBeGreaterThan(listenerStart);
-    const listener = auth.slice(listenerStart, listenerEnd);
-    const signedOutStart = listener.lastIndexOf('} else {');
-    expect(signedOutStart).toBeGreaterThanOrEqual(0);
-    const signedOutBranch = listener.slice(signedOutStart);
-    expect(signedOutBranch).toMatch(/clearFirstPaintCache\(\)/);
-    expect(signedOutBranch).toMatch(/queryClient\.clear\(\)/);
+    expect(read('app/components/Dashboard/Dashboard.tsx')).toMatch(/onPrefetchParsing=\{prefetchReview\}/);
   });
 
   it('the Review page reads the rules through the cache', () => {
-    const hook = read('components/Review/useNotificationRules.ts');
+    const hook = read('app/components/review/useNotificationRules.ts');
     expect(hook).toMatch(/useQuery\(/);
     expect(hook).not.toMatch(/useState/);
   });

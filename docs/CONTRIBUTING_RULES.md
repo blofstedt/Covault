@@ -6,20 +6,26 @@ CLAUDE.md. A general convention never overrides a verified app requirement.
 
 ## Folder ownership and exports
 
-- Use PascalCase for every authored folder in the React application and its
-  test trees. Never introduce snake_case folders. Generated native projects,
-  tool configuration and infrastructure keep their required names.
-- Give every component its own folder and an index file exporting its main
-  component as the default. Keep one component per implementation file.
+- Use PascalCase for component folders. Structural folders use lowercase names;
+  prefer one word, and use camelCase when two words are necessary. Never use
+  snake_case folders, except the required `__tests__` convention. Generated
+  native projects and tool configuration keep their required names.
+- Keep simple components as files directly in their owning folder, including
+  `app/components/common`. A component with its own subcomponents gets a
+  same-name PascalCase folder and an `index.ts` exporting its main component.
+  Tests alone do not justify a component folder. Keep one component per file.
+- `App.tsx` or `App.jsx` may live at the project root. Never create `app/app`.
+- Put every test or spec file in an `__tests__` folder beside its owner.
 - Place a component used by one parent beneath that parent. Group private
   parts by the visible container they belong to, such as a card or section.
   Place shared feature parts at their nearest common feature owner.
-- Promote code to Common only when independent consumers actually share it,
+- Promote code to common only when independent consumers actually share it,
   or when it has a deliberately reusable control or accessibility contract.
   Similar-looking code alone does not establish shared ownership.
 - Keep feature hooks, tests and pure helpers beside their owner. Put stateful
   services in descriptive files. Do not turn utils.ts into unrelated storage.
-- Import a component through its folder entry. Export only its main component
+- Import a complex component through its folder entry. Import simple components
+  directly from their files. Export only its main component
   and contracts needed outside it. Do not create an app-wide component barrel.
   Private implementation imports remain within their owner.
 - Export hooks and ordinary functions by name. Do not export the same binding

@@ -53,7 +53,7 @@ jobs:
 
       - name: Check screenshot publication boundaries
         working-directory: after
-        run: python3 -B -m unittest discover -s scripts/tests -v
+        run: python3 -B -m unittest discover -s scripts/__tests__ -v
 
       - name: Capture baseline with the same scenarios and browser
         working-directory: after

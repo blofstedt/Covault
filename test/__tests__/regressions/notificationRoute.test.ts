@@ -3,8 +3,8 @@ import {
   consumePendingRoute,
   parseNotificationRoute,
   type CovaultNotificationPlugin,
-} from '../../../lib/native/covaultNotification';
-import { idsForDay } from '../../../lib/hooks/useSpinHighlight';
+} from '../../../app/lib/native/covaultNotification';
+import { idsForDay } from '../../../app/hooks/useSpinHighlight';
 
 /**
  * Tapping a capture notification has to land on the Review page — it says
